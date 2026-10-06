@@ -1,5 +1,5 @@
 import { cpSync, existsSync, lstatSync, realpathSync, rmSync } from 'node:fs';
-import { basename, isAbsolute, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type {
   PluginInstallationRevision,
@@ -12,6 +12,7 @@ import {
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import {
   capturePluginProviderGeneration,
   preparePluginProviderGeneration,
@@ -20,11 +21,21 @@ import {
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
+import {
+  readRegistryCatalogSelection,
+  registrySourceManager,
+} from '../../providers/registries/registry-source-manager.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import {
+  pluginCommandEffectFields,
+  settlePluginCommandEffectsForResponse,
+  withdrawPluginCommandEffects,
+} from '../../services/plugins/plugin-command-effects.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
+  computePluginContentDigest,
   copyPluginTree,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
@@ -64,6 +75,7 @@ import {
   quiesceAllPluginPublicServerModules,
   quiescePluginPublicServerModule,
 } from '../../services/plugins/plugin-public-server.js';
+import { pluginInstallationGeneration } from '../../services/plugins/plugin-runtime-artifact.js';
 import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
 import {
   isRegistryAcquisitionRefusal,
@@ -81,6 +93,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { commandChoiceOnly } from '../working-directory-authority.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import {
   operatorOnly,
@@ -186,6 +199,54 @@ async function findOwningPluginRegistryProvider(
   | { success: false; message: string }
 > {
   await ensureCanonicalRegistryInstallAliases(projectHomeDir);
+  const catalogAliases = Object.entries(
+    readRegistryInstallAliases(projectHomeDir),
+  ).filter(
+    ([id, alias]) =>
+      (id === name || alias.pluginName === name) &&
+      readRegistryCatalogSelection(id),
+  );
+  if (catalogAliases.length > 0) {
+    const identities = new Set(
+      catalogAliases.map(([id]) => {
+        const selection = readRegistryCatalogSelection(id)!;
+        return `${selection.sourceId}:${selection.itemId}`;
+      }),
+    );
+    if (identities.size !== 1)
+      return {
+        success: false,
+        message: 'Installed plugin has multiple marketplace source owners.',
+      };
+    const [id, alias] = catalogAliases[0]!;
+    const selection = readRegistryCatalogSelection(id)!;
+    const manager = registrySourceManager(projectHomeDir);
+    const item = (await manager.catalog('plugins')).find(
+      (item) =>
+        item.catalog?.sourceId === selection.sourceId &&
+        item.catalog.itemId === selection.itemId,
+    );
+    if (!item)
+      return {
+        success: false,
+        message:
+          'Installed plugin marketplace is unavailable. Its package is preserved.',
+      };
+    const resolved = await manager.resolve(item.id);
+    const provider = resolved.entry
+      .provider as import('../../providers/provider-interfaces.js').IPluginRegistryProvider;
+    if (provider.registryKey !== alias.registryKey)
+      return {
+        success: false,
+        message: 'Installed plugin marketplace source identity changed.',
+      };
+    return {
+      success: true,
+      entry: { provider, source: resolved.entry.source.displayName },
+      installedName: alias.pluginName,
+      registryId: item.id,
+    };
+  }
   const matches: Array<{
     entry: PluginRegistryProviderEntry;
     installedName: string;
@@ -428,6 +489,11 @@ export function registerPluginLifecycleRoutes(
     };
   };
 
+  // Updating pulls and runs new code: the person check on the route, and the
+  // authority to choose a command ahead of it.
+  // (The person check also stays on the route; it runs first here so its
+  // refusal is the one a delegated or unconfirmed device reads.)
+  app.use('/:name/update', personOnly('update a plugin'), commandChoiceOnly);
   app.post('/:name/update', personOnly('update a plugin'), async (c) => {
     const name = param(c, 'name');
     try {
@@ -466,6 +532,18 @@ export function registerPluginLifecycleRoutes(
           success: false,
           error:
             'Plugin installation changed before update; reload before retrying',
+        },
+        409,
+      );
+    if (
+      !registryOwner.success &&
+      registryOwner.message.startsWith('Installed plugin')
+    )
+      return c.json(
+        {
+          success: false,
+          error:
+            'Installed plugin marketplace is unavailable or its source changed. Its package is preserved. Refresh the source and inspect the item again.',
         },
         409,
       );
@@ -625,14 +703,21 @@ export function registerPluginLifecycleRoutes(
           { kind: 'update', pluginName: name },
           logger,
         );
+        // LP-C: the install transaction released its locks.
+        const settled = await settlePluginCommandEffectsForResponse(
+          projectHomeDir,
+          mutation.value,
+          configurationMutationStatus(mutation.activation, 200),
+        );
         return c.json(
           {
             ...mutation.value,
+            ...settled.fields,
             success: mutation.activation?.status !== 'pending',
             ...configurationActivationPayload(mutation.activation),
             ...proposalOutcome,
           },
-          configurationMutationStatus(mutation.activation, 200),
+          settled.status as ContentfulStatusCode,
         );
       } catch (error) {
         if (error instanceof PluginInstallationPending)
@@ -855,6 +940,27 @@ export function registerPluginLifecycleRoutes(
                   await deps.reconcileEngineConnections?.(originalIdentity);
                   await settleProviderAdapterRetirements?.();
 
+                  // LP-W (update, kontourai/station#1419): the new tree and
+                  // its re-bound grants are final and the content lock is
+                  // still held. Effects admitted against any other generation
+                  // are captured; ledger trouble is reported, never a veto.
+                  const updatedDigest = computePluginContentDigest(
+                    dirname(pluginDir),
+                    basename(pluginDir),
+                  );
+                  const currentGeneration = updatedDigest
+                    ? pluginInstallationGeneration({ digest: updatedDigest })
+                    : null;
+                  const commandEffects = await withdrawPluginCommandEffects(
+                    projectHomeDir,
+                    {
+                      pluginId: originalIdentity,
+                      cause: 'update',
+                      captures: (effect) =>
+                        effect.installationGeneration !== currentGeneration,
+                    },
+                  );
+
                   eventBus?.emit('plugins:updated', {
                     name,
                     version: manifest.version,
@@ -873,6 +979,7 @@ export function registerPluginLifecycleRoutes(
                       withdrawn: rebound.withdrawn,
                       retained: rebound.retained,
                     },
+                    ...pluginCommandEffectFields(commandEffects),
                   };
                 } catch (error) {
                   try {
@@ -965,15 +1072,21 @@ export function registerPluginLifecycleRoutes(
         { kind: 'update', pluginName: name },
         logger,
       );
-
+      // LP-C: every lock is released; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
           ...proposalOutcome,
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       if (isRegistryAcquisitionRefusal(error))
@@ -1108,14 +1221,22 @@ export function registerPluginLifecycleRoutes(
         { kind: 'remove', pluginName: name },
         logger,
       );
+      // LP-C: the uninstall released its locks; 200 only once every captured
+      // command effect settled with proof, else 202 winding-down.
+      const settled = await settlePluginCommandEffectsForResponse(
+        projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
           ...proposalOutcome,
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       if (isContextSafetyError(error)) {

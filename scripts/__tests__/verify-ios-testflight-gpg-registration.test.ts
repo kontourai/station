@@ -7,7 +7,7 @@ import {
 const fingerprint = 'A'.repeat(40);
 const colon = (
   key = fingerprint,
-  uid = `Brian Anderson <${INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL}>`,
+  uid = `Casey Example <${INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL}>`,
 ) =>
   `pub:u:4096:1:${key.slice(-16)}:0::::::23::0:\nfpr:::::::::${key}:\nuid:u::::0::0::${uid}:\n`;
 
@@ -28,7 +28,7 @@ describe('internal TestFlight GPG registration verifier', () => {
 
   test.each([
     { githubColons: colon('B'.repeat(40)) },
-    { authorityColons: colon(fingerprint, 'Brian <other@example.com>') },
+    { authorityColons: colon(fingerprint, 'Casey <other@example.com>') },
     { githubColons: 'pub:u:4096:1:0000000000000000:0::::::23::0:\n' },
   ])('fails closed on unregistered or mismatched identity %o', (overrides) =>
     expect(() =>

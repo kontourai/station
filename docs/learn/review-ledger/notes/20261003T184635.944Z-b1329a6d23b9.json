@@ -1,0 +1,7 @@
+{
+  "revision": "11a503bdec4dd8f0f5a0e559993429b1ff065e07",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Checked the batched note-coverage read: it now lists a moved-away source's old path (no rename detection) and reads NUL-separated paths, matching the earlier per-file history check. No documented claim about freshness modes, notes or commands changed.","inputs":["docs/guides/code-quality.md","scripts/lib/documentation-freshness.mjs"]}
+  ]
+}

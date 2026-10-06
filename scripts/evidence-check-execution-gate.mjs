@@ -2,6 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { loadAll } from 'js-yaml';
+import {
+  collectCorpusTestFiles,
+  SCRIPT_FILE_PATTERN,
+  SPAWN_FORM_PATTERN,
+} from './lib/spawned-script-scan.mjs';
 
 const DEFAULT_REPO_ROOT = resolve(import.meta.dirname, '..');
 const LANE_ROOTS = Object.freeze([
@@ -24,38 +29,9 @@ const EXACT_NPM_RUN_PATTERN = /^npm\s+run\s+([A-Za-z0-9][A-Za-z0-9:._-]*)$/;
 // its exit status runs it inside the corpus -- for PROCESS_HEAVY files, under
 // full:regression, the nightly and release gate. That execution was invisible
 // here, so `advisory` could carry the note "no Station lane consumes its exit
-// status" for a check the nightly corpus does consume (#1746).
-const TEST_CORPUS_ROOTS = Object.freeze([
-  'scripts/__tests__',
-  'src-server',
-  'src-ui',
-  'src-desktop',
-  'packages',
-  'tests',
-]);
-const CORPUS_SKIPPED_DIRECTORIES = new Set([
-  '.git',
-  'coverage',
-  'dist',
-  'node_modules',
-  'target',
-]);
-const CORPUS_TEST_FILE_PATTERN = /\.test\.[cm]?[jt]sx?$/;
-// A path mentioned in prose is not an execution. Requiring a spawn form in
-// the same file is what separates "this test runs the script" from "this test
-// names the script"; both shapes exist in the real corpus today.
-//
-// The signal is deliberately file-level co-occurrence, not an argv match. A
-// stricter rule would miss the case this gate exists for:
-// proof-repo-guardrails-fail-closed.test.ts reads the real script's source,
-// writes a copy (unmutated for its positive control) into a temporary
-// directory, and spawns THAT -- so no spawn argument ever holds the
-// repository path. File-level co-occurrence is therefore evidence the corpus
-// reaches the check, not proof of a direct invocation, and the messages below
-// say exactly what was observed.
-const SPAWN_FORM_PATTERN =
-  /\bspawnSync\b|\bexecFileSync\b|\bexecFile\(|\bspawn\(/;
-const SCRIPT_FILE_PATTERN = /scripts\/[A-Za-z0-9][A-Za-z0-9._-]*\.mjs/g;
+// status" for a check the nightly corpus does consume (#1746). The corpus
+// walk, the spawn form and the script path form live in
+// scripts/lib/spawned-script-scan.mjs, which test selection shares (#2922).
 const CORPUS_EXECUTION_KEY = '_corpusExecution';
 const MAPPING_METADATA_KEYS = new Set(['_note', CORPUS_EXECUTION_KEY]);
 // An acknowledgement names the file that runs the check. A bare "yes" was
@@ -181,33 +157,6 @@ function executeCandidate(repoRoot, scriptName) {
 
 function repoRelativePath(repoRoot, path) {
   return relative(repoRoot, path).split(sep).join('/');
-}
-
-function collectCorpusTestFiles(repoRoot) {
-  const files = [];
-  // A symlinked directory reports isDirectory() false through withFileTypes,
-  // so the walk cannot follow one out of the repository or into a cycle.
-  const pending = TEST_CORPUS_ROOTS.map((root) => resolve(repoRoot, root));
-  while (pending.length > 0) {
-    const directory = pending.pop();
-    let entries;
-    try {
-      entries = readdirSync(directory, { withFileTypes: true });
-    } catch {
-      // A root a repository does not have is not a corpus, and not an error:
-      // the gate runs against fixture roots that carry only what they test.
-      continue;
-    }
-    for (const entry of entries) {
-      const path = resolve(directory, entry.name);
-      if (entry.isDirectory()) {
-        if (!CORPUS_SKIPPED_DIRECTORIES.has(entry.name)) pending.push(path);
-      } else if (entry.isFile() && CORPUS_TEST_FILE_PATTERN.test(entry.name)) {
-        files.push(path);
-      }
-    }
-  }
-  return files.sort();
 }
 
 /**

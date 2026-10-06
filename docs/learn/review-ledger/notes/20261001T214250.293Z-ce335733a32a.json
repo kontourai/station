@@ -1,0 +1,7 @@
+{
+  "revision": "ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Re-reviewed after the record types were renamed (CodingSessionPanelsRecord) and the store's parser table (COMPOSITE_RECORD_PARSERS) landed: still one composite device setting with its own import parser; nothing in this document names the device-setting inventory, the store's import path or the Coding layout's panels, so the prose stands.","inputs":["docs/guides/starter-work.md","docs/learn/media.json","packages/contracts/src/device-settings.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/session-detail/AttachedSessionDetail.tsx","src-ui/src/index.css","src-ui/src/views/HomeView.tsx","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

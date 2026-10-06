@@ -1,0 +1,23 @@
+{
+  "revision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+
+  "notes": [
+    {"path":"docs/design/collaborative-editor-pane.md","note":"index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.","inputs":["docs/design/collaborative-editor-pane.md"]},
+
+    {"path":"docs/design/placement.md","note":"index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.","inputs":["docs/design/placement.md"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Checked the accepted shape and threshold table against branding-theme.ts after the swap to validateBrandOverride, including where Station is stricter than the shared rule (action on panel, brand on page). The focus-ring bullet is back to main's wording (a theme's or a Dev, Beta or Nightly build's --k-focus wins, the device accent otherwise), which the data-brand-focus marker in applyBrandingTheme and the index.css focus rule make true with ui 1.16.0. Added two rules checked against branding-theme.ts and branding-theme.test.ts: a flat value that a mode object replaces must still be #rgb/#rrggbb or the theme is rejected (shadowedFlatViolations), and a mode that sets --k-brand without either action property uses the brand as its action with --k-brand-contrast or the shipped action contrast, so the brand must pass the action rules too.","inputs":["examples/custom-branding/README.md"]},
+
+    {"path":"packages/basis-pane/README.md","note":"Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.","inputs":["packages/basis-pane/README.md"]},
+
+    {"path":"packages/board-pane/README.md","note":"Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.","inputs":["packages/board-pane/README.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.","inputs":["src-desktop/icons/README.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.","inputs":["src-desktop/icons/README.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.","inputs":["src-desktop/icons/README.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.","inputs":["src-desktop/icons/README.md"]}
+  ]
+}

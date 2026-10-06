@@ -1,0 +1,7 @@
+{
+  "revision": "c940b8d8bd415857e855a1674fc214f5d456b5a8",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Checked the corrected contracts paragraph (1000-context cap replaces the false one-page claim): still no glossary term for pull-request review and none introduced.","inputs":["docs/glossary.md"]}
+  ]
+}

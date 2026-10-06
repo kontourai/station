@@ -1,0 +1,35 @@
+{
+  "path": "docs/design/developer-surface.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the full route/tab/redirect and shortcut note against routing, App registrations, DeveloperView and the Telemetry wrapper.",
+
+  "limits": "Mounted fixture and source evidence; no native keyboard or external telemetry collector qualification.",
+
+  "sources": [
+    "src-ui/src/App.tsx",
+
+    "src-ui/src/app-shell/routing.ts",
+
+    "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
+
+    "src-ui/src/views/DeveloperView.tsx",
+
+    "src-ui/src/views/MonitoringView.tsx",
+
+    "src-ui/src/views/developer/TelemetryTab.tsx"
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Current short note corrected directly; no dated measurement or decision removed.",
+
+    "154 Developer view/body and routing tests passed.",
+
+    "Reviewed integration deltas: src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged."
+  ]
+}

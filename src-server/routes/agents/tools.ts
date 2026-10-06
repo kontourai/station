@@ -3,7 +3,12 @@
  */
 
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import { Hono } from 'hono';
+import {
+  canonicalDisabledMcpTools,
+  mcpToolDisabled,
+  originalMcpToolName,
+} from '@kontourai/station-shared/mcp-tool-selection';
+import { type Context, Hono } from 'hono';
 import {
   markIntegrationEnabledExplicit,
   wasIntegrationEnabledExplicit,
@@ -21,6 +26,7 @@ import {
   MCPServerDisabledError,
   type MCPService,
   MCPToolDisabledError,
+  type ToolServerAccountActor,
 } from '../../services/plugins/mcp-service.js';
 import {
   integrationIconAssetReads,
@@ -33,7 +39,10 @@ import {
   toolDefinitionOps,
   toolServerCredentialWrites,
 } from '../../telemetry/metrics.js';
+import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
+import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { resolveHomeDir } from '../../utils/paths.js';
+import { normalizeToolName } from '../../utils/tool-name-normalizer.js';
 import {
   errorMessage,
   getBody,
@@ -43,6 +52,12 @@ import {
   param,
   validate,
 } from '../schemas/schemas.js';
+import {
+  changesAny,
+  launchesCommand,
+  refuseUngrantedCommandChoice,
+  submitsAnyEntry,
+} from '../working-directory-authority.js';
 
 /**
  * Optional collaborators for the MCP-UI tool-call proxy (S2 approval+audit).
@@ -96,6 +111,13 @@ export interface McpUiCallDeps {
     arguments: Record<string, unknown>;
     request: Request;
   }) => Promise<unknown | undefined>;
+  /**
+   * #3279: the calling request's own `PrincipalRef.id` for connected-account
+   * actions, when that principal may own an account (the same id an
+   * authorized turn records as its session owner). `undefined` otherwise; a
+   * person-owned integration then refuses rather than guessing.
+   */
+  resolveAccountPrincipalId?: (c: Context) => string | undefined;
 }
 
 /**
@@ -149,6 +171,21 @@ function integrationReadProjection(
     : undefined;
   return {
     ...safe,
+    ...(safe.disabledTools
+      ? {
+          disabledTools: canonicalDisabledMcpTools(
+            safe.id,
+            safe.id === 'station-control'
+              ? stationControlToolCatalog().map((tool) => tool.name)
+              : safe.id === 'station-knowledge'
+                ? stationKnowledgeToolCatalog().map((tool) => tool.name)
+                : (probe?.toolNames ?? []).map((name) =>
+                    originalMcpToolName(safe.id, name),
+                  ),
+            safe.disabledTools,
+          ),
+        }
+      : {}),
     ...(probe ? { probe } : {}),
     // CI-R7: derived from the registered-id gate, not from `kind` (which is
     // `'mcp'` for both built-ins). A client uses it to stop offering a delete
@@ -168,6 +205,9 @@ function integrationReadProjection(
   };
 }
 
+/** The fields whose values reach a launched tool server's environment. */
+const ENV_FIELDS = ['env', 'secretEnv'] as const;
+
 export function createToolRoutes(
   mcpService: MCPService,
   reinitialize: () => Promise<void>,
@@ -177,6 +217,29 @@ export function createToolRoutes(
   const iconAssets =
     mcpUiCallDeps.integrationIconAssets ??
     new IntegrationIconAssets(resolveHomeDir());
+
+  /**
+   * The caller as a connected-account actor. Only the principal comes from
+   * request authority; the body may choose `owner` and a narrowing Project.
+   */
+  function accountActor(
+    c: Context,
+    body: Record<string, unknown> = {},
+  ): ToolServerAccountActor | undefined {
+    const principalId = mcpUiCallDeps.resolveAccountPrincipalId?.(c);
+    if (!principalId) return undefined;
+    const owner = body.owner;
+    if (owner !== undefined && owner !== 'self' && owner !== 'instance')
+      throw new Error('owner must be self or instance');
+    const projectSlug = body.projectSlug;
+    if (projectSlug !== undefined && typeof projectSlug !== 'string')
+      throw new Error('projectSlug must be a string');
+    return {
+      principalId,
+      ...(owner ? { owner } : {}),
+      ...(projectSlug ? { projectSlug } : {}),
+    };
+  }
 
   async function persistAndActivate(
     id: string,
@@ -260,21 +323,61 @@ export function createToolRoutes(
         mcpService.getToolAgentMap(),
         Promise.resolve(mcpService.getMCPToolCatalog()),
       ]);
-      const data = tools.map((t) => ({
-        ...t,
-        builtin: isRuntimeManagedIntegrationId(t.id),
-        usedBy: agentMap[t.id] || [],
-        connected:
-          mcpService.getConnectionStatus('default', t.id)?.connected ?? false,
-        tools: catalog
-          .filter((tool) => tool.serverId === t.id)
-          .map((tool) => ({ name: tool.name, description: tool.description })),
-        // Per-server render permission (S2). Default allowed; only false when
-        // explicitly revoked. Drives the settings toggle's current state.
-        renderAllowed: mcpUiCallDeps.isRenderRevoked
-          ? !mcpUiCallDeps.isRenderRevoked(t.id)
-          : true,
-      }));
+      const stationTools = stationControlToolCatalog();
+      const data = tools.map((t) => {
+        const entries =
+          t.id === 'station-control'
+            ? stationTools
+            : t.id === 'station-knowledge'
+              ? stationKnowledgeToolCatalog()
+              : [
+                  ...(t.probe?.toolNames ?? []).map((name) => ({
+                    name: originalMcpToolName(t.id, name),
+                    description: undefined,
+                  })),
+                  ...catalog
+                    .filter((tool) => tool.serverId === t.id)
+                    .map((tool) => ({
+                      name:
+                        tool.toolName ??
+                        originalMcpToolName(t.id, tool.originalName),
+                      description: tool.description,
+                      group:
+                        typeof tool._meta?.['ai.kontour/tool-group'] ===
+                        'string'
+                          ? tool._meta['ai.kontour/tool-group']
+                          : undefined,
+                    })),
+                ];
+        const rows = [
+          ...new Map(entries.map((tool) => [tool.name, tool])).values(),
+        ];
+        return {
+          ...t,
+          ...(t.disabledTools
+            ? {
+                disabledTools: canonicalDisabledMcpTools(
+                  t.id,
+                  rows.map((tool) => tool.name),
+                  t.disabledTools,
+                ),
+              }
+            : {}),
+          builtin: isRuntimeManagedIntegrationId(t.id),
+          usedBy: agentMap[t.id] || [],
+          connected:
+            mcpService.getConnectionStatus('default', t.id)?.connected ?? false,
+          tools: rows.map((tool) => ({
+            ...tool,
+            name: normalizeToolName(`${t.id}_${tool.name}`),
+            toolName: tool.name,
+            disabled: mcpToolDisabled(t.id, tool.name, t.disabledTools),
+          })),
+          renderAllowed: mcpUiCallDeps.isRenderRevoked
+            ? !mcpUiCallDeps.isRenderRevoked(t.id)
+            : true,
+        };
+      });
       return c.json({ success: true, data });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
@@ -285,6 +388,23 @@ export function createToolRoutes(
   app.post('/', validate(integrationSchema), async (c) => {
     try {
       const input = getBody(c) as ToolDef;
+      // A tool server's command, arguments and environment decide what
+      // Station will spawn and with what in its environment (the child gets
+      // `env` and the resolved secret env, mcp-manager.ts
+      // `withResolvedMCPEnvironment`), so setting any of them takes the
+      // authority to choose a command. No key list: any value can steer a
+      // launched program (NODE_OPTIONS, PATH, LD_PRELOAD, ...).
+      const stored = await mcpService
+        .getIntegration(input.id)
+        .catch(() => undefined);
+      if (
+        changesAny(input, undefined, ['command', 'args']) ||
+        (submitsAnyEntry(input, ENV_FIELDS) &&
+          launchesCommand({ ...stored, ...input }))
+      ) {
+        const commandRefused = refuseUngrantedCommandChoice(c);
+        if (commandRefused) return commandRefused;
+      }
       const { env, ...safe } = input;
       delete safe.storedEnvNames;
       if (env)
@@ -677,6 +797,17 @@ export function createToolRoutes(
         delete update.env;
       }
       const existing = await mcpService.getIntegration(id);
+      const next = { ...existing, ...update };
+      if (
+        changesAny(update, existing, ['command', 'args']) ||
+        // A record that holds a command but did not launch it (a URL
+        // transport) starts launching it: that is choosing the command.
+        (launchesCommand(next) && !launchesCommand(existing)) ||
+        (submitsAnyEntry(update, ENV_FIELDS) && launchesCommand(next))
+      ) {
+        const commandRefused = refuseUngrantedCommandChoice(c);
+        if (commandRefused) return commandRefused;
+      }
       // GET intentionally redacts env, so an ordinary edit round-trip omits it.
       // Omission and partial submission preserve untouched stored secrets.
       const merged: ToolDef = { ...existing, ...update, id };
@@ -729,7 +860,10 @@ export function createToolRoutes(
   app.post('/:id/reconnect', async (c) => {
     try {
       toolDefinitionOps.add(1, { op: 'reconnect' });
-      const def = await mcpService.probeIntegration(param(c, 'id'));
+      const def = await mcpService.probeIntegration(
+        param(c, 'id'),
+        accountActor(c),
+      );
       if (def.enabled !== false) await reinitialize();
       return c.json({ success: true, data: integrationReadProjection(def) });
     } catch (error: unknown) {
@@ -765,10 +899,14 @@ export function createToolRoutes(
     try {
       const body = (await c.req.json().catch(() => ({}))) as {
         mode?: unknown;
-      };
+      } & Record<string, unknown>;
       if (body.mode !== 'local' && body.mode !== 'remote')
         throw new Error('mode must be local or remote');
-      const data = await mcpService.startOAuth(param(c, 'id'), body.mode);
+      const data = await mcpService.startOAuth(
+        param(c, 'id'),
+        body.mode,
+        accountActor(c, body),
+      );
       return c.json({ success: true, data });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -779,14 +917,46 @@ export function createToolRoutes(
     try {
       const body = (await c.req.json().catch(() => ({}))) as {
         callbackUrl?: unknown;
-      };
+      } & Record<string, unknown>;
       if (typeof body.callbackUrl !== 'string')
         throw new Error('callbackUrl must be a string');
       const def = await mcpService.finishOAuth(
         param(c, 'id'),
         body.callbackUrl,
+        accountActor(c, body),
       );
+      // A person's first connection may record the tool catalog Agents load
+      // that integration's tools from; reload so they appear.
+      if (def.credentialOwnership && def.enabled !== false)
+        await reinitialize().catch(() => undefined);
       return c.json({ success: true, data: integrationReadProjection(def) });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
+  // #3279: the caller's own account state (owner and availability only).
+  app.get('/:id/account', async (c) => {
+    try {
+      const projectSlug = c.req.query('projectSlug');
+      const data = await mcpService.getAccountStatus(
+        param(c, 'id'),
+        accountActor(c, projectSlug ? { projectSlug } : {}),
+      );
+      return c.json({ success: true, data });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
+  app.delete('/:id/account', async (c) => {
+    try {
+      const projectSlug = c.req.query('projectSlug');
+      const data = await mcpService.disconnectAccount(
+        param(c, 'id'),
+        accountActor(c, projectSlug ? { projectSlug } : {}),
+      );
+      return c.json({ success: true, data });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }

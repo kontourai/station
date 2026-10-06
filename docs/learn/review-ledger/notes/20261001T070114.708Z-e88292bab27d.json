@@ -1,0 +1,7 @@
+{
+  "revision": "69084a9bc52c93cbb54e1abf3c1d09a0813474d4",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Re-read the user journey against checkpoint-ref-store.ts and checkpoint-restore.ts: restoring repository files, a turn without a captured checkpoint having nothing to restore, and checkpoints becoming unavailable are unchanged. New: a Project folder whose .git names another repository captures no checkpoint (degraded, not_a_git_repository) and restore refuses it; the page makes no claim that contradicts this. No prose change.","inputs":["docs/user/workspace-checkpoints.md"]}
+  ]
+}

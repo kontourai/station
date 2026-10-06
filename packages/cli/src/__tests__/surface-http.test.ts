@@ -14,7 +14,7 @@ import {
   vi,
 } from 'vitest';
 import {
-  resetProfileCredentialStoreForTests,
+  getProfileCredentialStore,
   setProfileCredentialStore,
 } from '../commands/profile-credentials.js';
 import { upsertProfile } from '../commands/profile-store.js';
@@ -1270,32 +1270,33 @@ describe('CLI surface commands over HTTP', () => {
 
   test('uses a saved Station credential for a connections surface without printing it', async () => {
     const { runCli } = await import('../cli.js');
+    const previousCredentialStore = getProfileCredentialStore();
     const previousHome = process.env.STATION_HOME;
     const previousRoot = process.env.STATION_ROOT;
     const profileHome = mkdtempSync(join(tmpdir(), 'station-surface-auth-'));
     const credential = 'stored-surface-secret';
     const credentialRef = { kind: 'station-bearer' as const, id: 'surface' };
 
-    process.env.STATION_HOME = profileHome;
-    process.env.STATION_ROOT = profileHome;
-    setProfileCredentialStore({
-      get: (ref) => (ref.id === credentialRef.id ? credential : undefined),
-      set: () => {},
-      delete: () => {},
-      status: () => 'available',
-    });
-    upsertProfile({
-      name: 'surface',
-      endpoint: apiBase,
-      credentialRef,
-      makeDefault: true,
-    });
-
     try {
+      process.env.STATION_HOME = profileHome;
+      process.env.STATION_ROOT = profileHome;
+      setProfileCredentialStore({
+        get: (ref) => (ref.id === credentialRef.id ? credential : undefined),
+        set: () => {},
+        delete: () => {},
+        status: () => 'available',
+      });
+      upsertProfile({
+        name: 'surface',
+        endpoint: apiBase,
+        credentialRef,
+        makeDefault: true,
+      });
+
       await runCli(['connections', 'models', '--station=surface']);
       await runCli(['monitoring', 'events', '--station=surface']);
     } finally {
-      resetProfileCredentialStoreForTests();
+      setProfileCredentialStore(previousCredentialStore);
       rmSync(profileHome, { recursive: true, force: true });
       if (previousHome === undefined) delete process.env.STATION_HOME;
       else process.env.STATION_HOME = previousHome;

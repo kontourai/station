@@ -7,15 +7,22 @@ import type {
   DevicePairingRequest,
   PairedDevice,
 } from '@kontourai/station-contracts';
-import { pairingScopeIncludes } from '@kontourai/station-contracts';
+import type { CredentialRecoveryGroupProjection } from '@kontourai/station-contracts/connection-recovery';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { agentConnectionFixture } from '../../../tests/helpers/connection-fixtures.js';
+import { credentialProfileAppHomeDir } from '../../providers/app-home/credential-profile-registry.js';
+import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
-import { requiredPairingScope } from '../../security/pairing-route-scopes.js';
+import {
+  pairingScopeSatisfiesHttpRoute,
+  requiredPairingScope,
+} from '../../security/pairing-route-scopes.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
+import { DeviceCodeLoginManager } from '../../services/connections/device-code-login.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -76,7 +83,12 @@ const logger: Logger = {
   getLevel: vi.fn(() => 'info' as const),
 };
 
-async function createHarness() {
+async function createHarness(
+  configure?: (
+    app: Hono<{ Bindings: TestBindings }>,
+    security: EnvironmentSecurityService,
+  ) => void,
+) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-auth-tier-'));
   homes.push(homeDir);
   const security = new EnvironmentSecurityService({ homeDir });
@@ -164,7 +176,10 @@ async function createHarness() {
         const grantedScope = security.resolveGrantedScope(principal.credential);
         return (
           grantedScope !== undefined &&
-          pairingScopeIncludes(grantedScope, requiredScope)
+          pairingScopeSatisfiesHttpRoute(grantedScope, requiredScope, {
+            method: 'POST',
+            path: '/api/pairing/requests/request/confirm',
+          })
         );
       },
     }),
@@ -250,6 +265,7 @@ async function createHarness() {
     return (await requestResponse.json()) as DevicePairingRequest;
   };
 
+  configure?.(app, security);
   return {
     security,
     operatorCredential,
@@ -386,17 +402,9 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
     expect(operatorConfirm.status).toBe(200);
   });
 
-  /*
-   * Caught by the live re-verify, not by the first round of this suite: the
-   * ONLY public promotion mechanism (`POST /api/pairing/devices/:id/scope`)
-   * submits a complete replacement scope, and `access:manage` is
-   * default-grant-only (`scope_not_grantable`), so a device promoted that
-   * way holds `access:approve` WITHOUT `access:manage` — it passes the
-   * pairing family's authority boundary and is then 403'd by the scope
-   * table's `/api/pairing` tier. `viewerCanDecide` must compose BOTH gates,
-   * or it renders buttons for a session the table refuses.
-   */
-  test('a device promoted through the real scope route (approve without manage) is 403d by the table, and viewerCanDecide says false', async () => {
+  // The real scope editor cannot grant legacy access:manage. Explicit approval
+  // must still reach only pending-request decisions, through the actual boundary.
+  test('a scope-route promotion lists, confirms and denies pending requests without management authority', async () => {
     const harness = await createHarness();
     const paired = await harness.pairDevice('Scope-route promoted');
     const scopeChange = await harness.request(
@@ -416,15 +424,14 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
     );
     expect(scopeChange.status).toBe(200);
     const pending = await harness.createPendingRequest('New watch');
-
-    const confirm = await harness.request(
-      `/api/pairing/requests/${pending.requestId}/confirm`,
-      cookieInit(paired.credential, 'POST'),
+    const listed = await harness.request(
+      '/api/pairing/requests',
+      cookieInit(paired.credential, 'GET'),
       '203.0.113.41',
     );
-    expect(confirm.status).toBe(403);
-    expect(await confirm.json()).toEqual({
-      error: { code: 'insufficient_scope' },
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      requests: [expect.objectContaining({ requestId: pending.requestId })],
     });
 
     const items = await attentionPairingItems(
@@ -432,9 +439,30 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
       cookieInit(paired.credential, 'GET'),
       '203.0.113.41',
     );
-    expect(items).toEqual([
-      expect.objectContaining({ viewerCanDecide: false }),
-    ]);
+    expect(items).toEqual([expect.objectContaining({ viewerCanDecide: true })]);
+    const confirm = await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      { ...cookieInit(paired.credential, 'POST'), body: '{}' },
+      '203.0.113.41',
+    );
+    expect(confirm.status).toBe(200);
+
+    const deniedRequest = await harness.createPendingRequest('Other phone');
+    const denied = await harness.request(
+      `/api/pairing/requests/${deniedRequest.requestId}`,
+      cookieInit(paired.credential, 'DELETE'),
+      '203.0.113.41',
+    );
+    expect(denied.status).toBe(200);
+    const management = await harness.request(
+      '/api/pairing/devices',
+      cookieInit(paired.credential, 'GET'),
+      '203.0.113.41',
+    );
+    expect(management.status).toBe(403);
+    expect(await management.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
   });
 
   test('an access:approve-promoted device session decides, and its attention read says so', async () => {
@@ -592,4 +620,250 @@ test('the desktop home-proven local grant can invite and approve a phone without
       )
     ).status,
   ).toBe(401);
+});
+
+describe('delegated engine sign-in HTTP admission', () => {
+  test('a promoted device reads safe profiles without gaining management access', async () => {
+    const recovery: CredentialRecoveryGroupProjection = {
+      profiles: [{ ref: 'http-login-read-smoke', label: 'Smoke profile' }],
+      group: {
+        profileRefs: ['http-login-read-smoke'],
+        enrolledProfileRefs: [],
+      },
+      policy: { automatic: false },
+      application: { capability: 'restart_resume' },
+    };
+    let holdRead = false;
+    let releaseRead: (() => void) | undefined;
+    const profileReads = vi.fn(async () => {
+      if (holdRead)
+        await new Promise<void>((resolve) => {
+          releaseRead = resolve;
+        });
+      return recovery;
+    });
+    const capabilities = vi.fn(async () => ({
+      engine: 'codex' as const,
+      observedAt: '2026-09-30T00:00:00Z',
+      evidence: [
+        {
+          mechanism: 'device-code' as const,
+          observedCommand: ['/private/CLI_ARGUMENT_CANARY', 'login', '--help'],
+          observedMatch: '--device-auth',
+          argument: '--device-auth',
+        },
+      ],
+    }));
+    const mutations = vi.fn(async () => recovery);
+    const closedLogins = new DeviceCodeLoginManager();
+    closedLogins.cancelAll();
+    homes.push(credentialProfileAppHomeDir('codex', 'http-login-read-smoke'));
+    const harness = await createHarness((app, security) =>
+      app.route(
+        '/api/connections',
+        createAppHomeRoutes({
+          connectionService: {
+            getConnection: async () =>
+              agentConnectionFixture({ id: 'codex', type: 'codex' }),
+            getCredentialRecovery: profileReads,
+            upsertCredentialProfile: mutations,
+            deleteCredentialProfile: mutations,
+            setCredentialProfileEnrollment: mutations,
+            setCredentialRecoveryAutomaticPolicy: mutations,
+            applyCredentialProfile: async () => ({
+              capability: 'unsupported',
+              outcome: 'unsupported',
+            }),
+          },
+          loginCapabilities: capabilities,
+          deviceCodeLogins: closedLogins,
+          accountAuth: async () => ({ state: 'unauthenticated' }),
+          accountUsage: async () => ({
+            status: 'ok',
+            fetchedAt: '2026-10-01T00:00:00Z',
+            exhausted: false,
+            windows: [{ id: 'five-hour', label: '5 hour', usedPercent: 20 }],
+          }),
+          isLoginReadCurrent: (request) =>
+            isRuntimeRequestPrincipalCurrent(request, security),
+        }),
+      ),
+    );
+    const { device, credential } = await harness.pairDevice('Login reader');
+    const path = '/api/connections/agent/codex/device-code-profiles';
+    const before = await harness.request(
+      path,
+      cookieInit(credential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(before.status).toBe(403);
+    expect(profileReads).not.toHaveBeenCalled();
+    const scopeChange = await harness.request(
+      `/api/pairing/devices/${device.id}/scope`,
+      harness.json(
+        {
+          scope: [
+            'orchestration:read',
+            'orchestration:operate',
+            'engine:login',
+          ],
+          expectedScope: device.scope,
+        },
+        harness.operatorCredential,
+      ),
+    );
+    expect(scopeChange.status).toBe(200);
+    const allowed = await harness.request(
+      path,
+      cookieInit(credential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(allowed.status).toBe(200);
+    const body = await allowed.json();
+    expect(body).toEqual({
+      success: true,
+      data: {
+        profiles: [
+          {
+            ref: 'http-login-read-smoke',
+            label: 'Smoke profile',
+            authState: 'unauthenticated',
+            mechanisms: ['device-code'],
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('CLI_ARGUMENT_CANARY');
+    const accounts = await harness.request(
+      '/api/connections/agent/codex/accounts',
+      cookieInit(credential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(accounts.status).toBe(200);
+    expect(await accounts.json()).toMatchObject({
+      success: true,
+      data: {
+        engine: 'codex',
+        accounts: [
+          { ref: null, label: 'Default account' },
+          { ref: 'http-login-read-smoke', label: 'Smoke profile' },
+        ],
+      },
+    });
+    const usage = await harness.request(
+      '/api/connections/agent/codex/account-usage?profileRef=http-login-read-smoke',
+      cookieInit(credential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(usage.status).toBe(403);
+    const operatorUsage = await harness.request(
+      '/api/connections/agent/codex/account-usage?profileRef=http-login-read-smoke',
+      { headers: { Authorization: `Bearer ${harness.operatorCredential}` } },
+    );
+    expect(operatorUsage.status).toBe(200);
+    expect(JSON.stringify(await operatorUsage.json())).not.toContain(
+      'CLI_ARGUMENT_CANARY',
+    );
+    const globalLogin = await harness.request(
+      '/api/connections/agent/codex/account-login',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+      '203.0.113.42',
+    );
+    expect(globalLogin.status).toBe(400);
+    const missingAccount = await harness.request(
+      '/api/connections/agent/codex/account-usage?profileRef=unregistered',
+      cookieInit(harness.operatorCredential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(missingAccount.status).toBe(404);
+    for (const [method, suffix] of [
+      ['GET', 'credential-recovery'],
+      ['GET', 'enrolment/http-login-read-smoke'],
+      ['POST', 'credential-recovery/profiles'],
+      ['POST', 'credential-recovery/profiles/http-login-read-smoke/import'],
+      ['POST', 'credential-recovery/profiles/http-login-read-smoke/apply'],
+      ['PUT', 'credential-recovery/policy'],
+    ]) {
+      const denied = await harness.request(
+        `/api/connections/agent/codex/${suffix}`,
+        { method, headers: { Authorization: `Bearer ${credential}` } },
+        '203.0.113.42',
+      );
+      expect(denied.status, `${method} ${suffix}`).toBe(403);
+    }
+    expect(mutations).not.toHaveBeenCalled();
+    const operator = await harness.request(path, {
+      headers: { Authorization: `Bearer ${harness.operatorCredential}` },
+    });
+    expect(operator.status).toBe(200);
+    expect(
+      harness.security.resolveGrantedScope(harness.operatorCredential),
+    ).toBe(
+      'orchestration:read orchestration:operate terminal:operate access:manage',
+    );
+    const inference = await harness.request('/api/inference/chat', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${harness.operatorCredential}` },
+    });
+    expect(inference.status).toBe(403);
+    // A closed manager refuses execution; these statuses prove auth admission,
+    // not a successful provider login. Scope failure would be 403 instead.
+    const loginPath =
+      '/api/connections/agent/codex/enrolment/http-login-read-smoke/device-code';
+    for (const [loginCredential, peer] of [
+      [harness.operatorCredential, OPERATOR_PEER],
+      [credential, '203.0.113.42'],
+    ]) {
+      const start = await harness.request(
+        loginPath,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${loginCredential}` },
+        },
+        peer,
+      );
+      expect(start.status).toBe(503);
+      expect(await start.json()).toMatchObject({ data: { outcome: 'closed' } });
+      for (const method of ['GET', 'DELETE']) {
+        const status = await harness.request(
+          loginPath,
+          { method, headers: { Authorization: `Bearer ${loginCredential}` } },
+          peer,
+        );
+        expect(status.status).toBe(404);
+      }
+    }
+    holdRead = true;
+    profileReads.mockClear();
+    capabilities.mockClear();
+    const reading = harness.request(
+      path,
+      cookieInit(credential, 'GET'),
+      '203.0.113.42',
+    );
+    await vi.waitFor(() => expect(releaseRead).toBeTypeOf('function'));
+    const revoke = await harness.request(`/api/pairing/devices/${device.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${harness.operatorCredential}` },
+    });
+    expect(revoke.status).toBe(200);
+    releaseRead?.();
+    expect((await reading).status).toBe(403);
+    expect(capabilities).not.toHaveBeenCalled();
+    profileReads.mockClear();
+    const revoked = await harness.request(
+      path,
+      cookieInit(credential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(revoked.status).toBe(401);
+    expect(profileReads).not.toHaveBeenCalled();
+  });
 });

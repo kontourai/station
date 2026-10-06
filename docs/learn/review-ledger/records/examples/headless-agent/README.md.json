@@ -1,0 +1,27 @@
+{
+  "path": "examples/headless-agent/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed argument/credential prerequisites, accepted-handle observation, failure propagation and existing portable Agent package composition.",
+
+  "limits": "Typecheck and Node build passed; no live authorized provider execution or installed plugin journey.",
+
+  "sources": [
+    "examples/headless-agent/src/main.ts",
+
+    "examples/headless-agent/package.json",
+
+    "examples/headless-agent/tsconfig.json",
+
+    "packages/sdk/src/agent/index.ts",
+
+    "examples/portable-author-kit/plugin.json"
+  ],
+
+  "checks": [
+    "Public Node/browser bundle and host/build focused tests: 28 tests passed. Headless source typecheck and Node build passed. React leakage mutation failed both Agent boundary assertions; restored six bundle tests passed. No live provider run."
+  ]
+}

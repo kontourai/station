@@ -130,7 +130,7 @@ test.describe('compatibility-aware reconnect', () => {
     await installTransport(page, state);
     await page.goto('/');
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible();
 
     // #530: recovery owns only the offline banner. The load-induced
@@ -222,7 +222,7 @@ test.describe('compatibility-aware reconnect', () => {
     await installTransport(page, state);
     await page.goto('/');
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible();
     state.healthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
@@ -260,7 +260,7 @@ test.describe('compatibility-aware reconnect', () => {
       );
       await expect(regionShell).toBeVisible();
       await expect(
-        page.getByRole('heading', { name: 'What do you want to work on?' }),
+        page.getByRole('heading', { name: "What's next?" }),
       ).toBeVisible();
 
       state.healthy = false;
@@ -700,7 +700,7 @@ test.describe('compatibility-aware reconnect', () => {
 
     await page.goto('/');
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible();
     primaryHealthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));

@@ -40,6 +40,56 @@
       "minLength": 1,
       "maxLength": 100
     },
+    "audience": {
+      "description": "Who besides the operator may list, read and invoke this Agent (station.agent-audience/v1); absent = operator only. Member audiences require project.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["version", "kind"],
+          "properties": {
+            "version": { "const": "station.agent-audience/v1" },
+            "kind": { "const": "operator" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["version", "kind", "permission"],
+          "properties": {
+            "version": { "const": "station.agent-audience/v1" },
+            "kind": { "const": "project-permission" },
+            "permission": {
+              "enum": [
+                "view",
+                "discuss",
+                "edit",
+                "execute",
+                "approve",
+                "manage-members",
+                "manage-extensions",
+                "manage-compute"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["version", "kind", "roles"],
+          "properties": {
+            "version": { "const": "station.agent-audience/v1" },
+            "kind": { "const": "project-roles" },
+            "roles": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "enum": ["viewer", "contributor", "admin", "owner"] }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "region": {
       "type": ["string", "null"],
       "description": "AWS region override (optional)",
@@ -123,6 +173,11 @@
               }
             ]
           }
+        },
+        "mcpMode": { "type": "string", "enum": ["add", "replace"] },
+        "mcpLoading": {
+          "type": "string",
+          "enum": ["on-demand", "always"]
         },
         "env": {
           "type": "object",

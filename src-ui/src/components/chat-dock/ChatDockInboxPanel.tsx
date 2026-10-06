@@ -1,14 +1,18 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import {
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { MessageGlyph } from '../icons/Glyph';
+import { NewChatAction } from '../NewChatAction';
 import { Empty } from '../state';
 import {
   type CollapsibleInboxSectionId,
@@ -18,12 +22,10 @@ import {
 } from './ChatDockInboxRows';
 import {
   clearSnooze,
-  groupMobileActivity,
-  readSnoozes,
-  type SnoozeMap,
   snoozeKeyFor,
   writeSnooze,
 } from './mobile-activity-groups';
+import { useInboxGroups } from './useInboxGroups';
 
 export interface ChatDockInboxPanelProps {
   items: HomeWorkItem[];
@@ -52,6 +54,7 @@ export interface ChatDockInboxPanelProps {
   /** Marks the rendered conversation version as seen before opening it. */
   onAcknowledgeConversation?: (item: HomeWorkItem) => void;
   onOpenHistory: () => void;
+  onNewChat?: () => void;
   /**
    * station#3309: mounted only to play its exit. The panel is still on screen,
    * but the user's decision to collapse it is already complete, so it is inert
@@ -74,6 +77,12 @@ export interface ChatDockInboxPanelProps {
    * other shared props — the `memo()` wrap compares shallowly.
    */
   gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
+  /** Project accents by slug; see `InboxGroupListProps.projectAccentBySlug`. */
+  projectAccentBySlug?: InboxGroupListProps['projectAccentBySlug'];
+  /** Project icons by slug; see `InboxGroupListProps.projectIconBySlug`. */
+  projectIconBySlug?: InboxGroupListProps['projectIconBySlug'];
+  /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
+  workFacts?: InboxGroupListProps['workFacts'];
 }
 
 /**
@@ -94,13 +103,24 @@ function ChatDockInboxPanelImpl({
   onCloseChat,
   onAcknowledgeConversation,
   onOpenHistory,
+  onNewChat,
   exiting = false,
   now: suppliedNow,
   agents,
   gitLocationByThreadId,
+  projectAccentBySlug,
+  projectIconBySlug,
+  workFacts,
 }: ChatDockInboxPanelProps) {
-  const now = suppliedNow ?? Date.now();
+  // One coarse tick for the whole list's relative times, rather than a new
+  // `now` on every render of the dock around it.
+  const now = useCoarseNow(suppliedNow);
+  // A pointer that cannot hover gets the always-visible 44px chrome, the
+  // same one the mobile sheet uses, rather than hover-revealed controls.
+  const coarsePointer = useCoarsePointer();
   const panelRef = useRef<HTMLElement>(null);
+  // A row that changes lane remounts in another section; keep focus on it.
+  useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
   // Set on the element rather than passed as a JSX prop so the behaviour does
   // not depend on the renderer's attribute support, matching
   // WorkspacePaneFrame's own `element.inert` seam.
@@ -108,17 +128,15 @@ function ChatDockInboxPanelImpl({
     const panel = panelRef.current;
     if (panel) panel.inert = exiting;
   }, [exiting]);
-  const [snoozed, setSnoozed] = useState<SnoozeMap>(() => readSnoozes(now));
   const { inboxSections: sections } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const openChatIds = useMemo(
     () => new Set(openChatSessionIds),
     [openChatSessionIds],
   );
-  const groups = useMemo(
-    () => groupMobileActivity(items, now, snoozed),
-    [items, now, snoozed],
-  );
+  // The live groups (held lifecycles, live snoozes): the same hook the
+  // inbox toggle's Needs-you count reads, so the two cannot disagree.
+  const groups = useInboxGroups(items, now);
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
     setDeviceSetting('inboxSections', { ...sections, [id]: !sections[id] });
@@ -144,6 +162,10 @@ function ChatDockInboxPanelImpl({
             now={now}
             agents={agents}
             gitLocationByThreadId={gitLocationByThreadId}
+            projectAccentBySlug={projectAccentBySlug}
+            projectIconBySlug={projectIconBySlug}
+            workFacts={workFacts}
+            chrome={coarsePointer ? 'touch' : 'hover'}
             collapsible={{ sections, onToggle: toggleSection }}
             onActivate={(item) => {
               // station#3687 seam 4: acknowledge only after the click did
@@ -174,11 +196,9 @@ function ChatDockInboxPanelImpl({
             onSnoozeWake={(item, wakeAt, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
               const key = snoozeKeyFor(item);
-              setSnoozed(
-                wakeAt === null
-                  ? clearSnooze(key, now)
-                  : writeSnooze(key, wakeAt, now),
-              );
+              // The write notifies every reader of the snooze map.
+              if (wakeAt === null) clearSnooze(key, now);
+              else writeSnooze(key, wakeAt, now);
             }}
             onCloseChat={(sessionId, action) => {
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
@@ -197,8 +217,9 @@ function ChatDockInboxPanelImpl({
       <footer className="chat-dock-inbox__footer">
         <button type="button" onClick={onOpenHistory}>
           <MessageGlyph />
-          Conversation history
+          History
         </button>
+        {onNewChat && <NewChatAction onClick={onNewChat} />}
       </footer>
     </aside>
   );

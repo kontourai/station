@@ -1,0 +1,7 @@
+{
+  "revision": "3bb9789519746a70e1cf8097a3ad5f9c593124d9",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Correction to the previous note on this page, which said it makes no such claims: this IS the page that states them. Updated in #3062: the service section states what schtasks leaves by default (72-hour limit, battery rules on), what install sets and reads back (priority 5, PT0S, both battery rules off, restart count 255 / interval PT1M), that Task Scheduler does not relaunch a service that exits (measured on a Windows runner), and that an existing install reports stale scheduling with service status exiting 1 until reinstalled. Checked against service-windows.ts, service-scheduling.ts and install-smoke run 36813997699.","inputs":["docs/reference/cli.md"]}
+  ]
+}

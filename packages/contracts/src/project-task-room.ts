@@ -1,12 +1,12 @@
 import type { ChannelSequencingEnvelope } from './channel-log.js';
 
 export const PROJECT_TASK_ROOM_SCHEMA_VERSION =
-  'station.project-task-room/v2' as const;
+  'station.project-task-room/v3' as const;
 export const PROJECT_TASK_ROOM_GRANT_SCHEMA_VERSION =
   'station.project-task-room-grant/v1' as const;
 export const PROJECT_TASK_ROOM_ASSURANCE = 'L0' as const;
 /**
- * Exact worst-case item counts for the closed v2 record/page shapes. The
+ * Exact worst-case item counts for the closed v2/v3 record/page shapes. The
  * record maximum uses the agent principal, lifecycle-finished body with run
  * link, correlation+causation, and embedded grant receipt. The wrapper maximum
  * includes checkpoint plus continuation cursor. Changing either closed schema
@@ -63,7 +63,19 @@ export interface ProjectTaskRoomResolvedLink {
   digest: string;
   authorityReceiptId: string;
 }
+/** Human speech about an immutable version; never Task or workflow acceptance. */
+export interface ProjectTaskRoomOutputFeedback {
+  kind: 'output-feedback';
+  target: {
+    outputId: string;
+    digest: `sha256:${string}`;
+    taskCreatedAt: string;
+  };
+  review: 'comment' | 'changes-requested' | 'accepted';
+  text: string;
+}
 export type ProjectTaskRoomAppendBody =
+  | ProjectTaskRoomOutputFeedback
   | { kind: 'human-message'; text: string }
   | { kind: 'live-work-started'; sessionId: string; runReference?: string }
   | {
@@ -87,6 +99,7 @@ export type ProjectTaskRoomAppendBody =
       reference: string;
     };
 export type ProjectTaskRoomBody =
+  | ProjectTaskRoomOutputFeedback
   | { kind: 'human-message'; text: string }
   | {
       kind: 'live-work-started';
@@ -116,7 +129,9 @@ export interface ProjectTaskRoomAppendIntent {
   body: ProjectTaskRoomAppendBody;
 }
 export interface ProjectTaskRoomRecord {
-  schemaVersion: typeof PROJECT_TASK_ROOM_SCHEMA_VERSION;
+  schemaVersion:
+    | typeof PROJECT_TASK_ROOM_SCHEMA_VERSION
+    | 'station.project-task-room/v2';
   scope: ProjectTaskRoomScope;
   principal: ProjectTaskRoomPrincipal;
   correlationId?: string;

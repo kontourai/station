@@ -127,9 +127,12 @@ records delivery differences.
 - **Task workspace** — the `/tasks/:taskId` surface for one durable Task. It keeps identity, files, diffs, artifacts, receipts, and exact Session correlation in context.
 - **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver**, **Learn**, and **Operate** name intended Builder Kit, Knowledge Kit, and Console integrations. Installed, enabled plugin capability declarations make the optional tabs visible. Their current panels describe the integration boundary; visibility does not prove an operational integration. See [the Task experience resolver](../src-ui/src/views/task-experiences.ts) and [Task workspace](../src-ui/src/views/TaskWorkspaceView.tsx).
 - **Session** — one bounded execution episode. A Task may have no Session or correlate an exact Session; a Session is not itself a durable Task.
-- **Draft** (session state) — a Session that nothing has been sent to: no turn has started and no send was attempted anywhere in its conversation's lineage, nothing in that lineage produced output, and it carries no history from elsewhere (attached, adopted, a Station-dispatched delegation, or a fork, which carries copied messages). The server derives it (`OrchestrationSessionSummary.draft`, #2310) so every device computes the same answer from the same read; a Draft is listed under **Drafts**, never under "Active now". A send that was attempted and did not take, with no activity since, is not a Draft either — that Session reads **Failed** with the reason ("Station refused the send before it started", or "The send failed and no activity has been recorded since", since a failed send may still have reached the engine); activity landing later clears it, and a send refused because the caller may not act on the Session changes nothing. The first turn ends a Draft: the sending device re-reads at once, other devices on their next session-list read (live push to other devices depends on #2307 and #2309 Phase B). **Discard draft** (#2312) deletes a Draft on the server — the whole conversation, since the Draft fact is conversation-wide — so every device's next session-list read agrees; the server re-derives the fact and refuses anything that is not a Draft. Drafts created more than 24 hours ago fold under "N older drafts" (creation, because a Draft's other clocks move without anyone touching it — a stop rewrites `updatedAt`) in each Drafts group; nothing is deleted automatically. Not the same thing as a composer draft — unsent text in a chat's input, kept per device.
+- **Draft** (session state) — a Session that nothing has been sent to: no turn has started and no send was attempted anywhere in its conversation's lineage, nothing in that lineage produced output, and it carries no history from elsewhere (attached, adopted, a Station-dispatched delegation, or a fork, which carries copied messages). The server derives it (`OrchestrationSessionSummary.draft`, #2310) so every device computes the same answer from the same read; a Draft is listed under **Drafts**, never under a live lane. A send that was attempted and did not take, with no activity since, is not a Draft either — that Session reads **Failed** with the reason ("Station refused the send before it started", or "The send failed and no activity has been recorded since", since a failed send may still have reached the engine); activity landing later clears it, and a send refused because the caller may not act on the Session changes nothing. The first turn ends a Draft: the sending device re-reads at once, other devices on their next session-list read (live push to other devices depends on #2307 and #2309 Phase B). **Discard draft** (#2312) deletes a Draft on the server — the whole conversation, since the Draft fact is conversation-wide — so every device's next session-list read agrees; the server re-derives the fact and refuses anything that is not a Draft. Drafts created more than 24 hours ago fold under "N older drafts" (creation, because a Draft's other clocks move without anyone touching it — a stop rewrites `updatedAt`) in each Drafts group; nothing is deleted automatically. Not the same thing as a composer draft — unsent text in a chat's input, kept per device; an inbox row whose open chat holds one on this device carries an **Unsent draft** cue.
+- **Live lanes** — the unfinished work every inbox surface (Home, the Activity list, the project live-work badge, the chat dock inbox and the phone picker) lists, split by what is happening, from one derivation (the status ladder, [`workStatus`](../src-ui/src/views/home/work-status.ts)): **Needs you** (an approval, question, review or block you can answer, or a send of yours queued while offline that waits on the connection), **Running** (a turn or reported child work is in flight) and **Idle** (not finished, nothing in flight, nothing asked of you — including a request nothing here can answer, which reads *Elsewhere* with its basis in the hover card). Idle is not "your turn": an idle session may already be done from your point of view. The retired single "Active now" lane counted idle sessions as active. The same call that files a row under a lane also writes the row's one **status line**, and it is the ONLY source of status words on these surfaces (the Activity list, the session detail header, the Plan panel's strip and the chat status pill read it too; `session-state-word-consistency.test.ts` fails on a synonym). The lane is decided by the item's state alone (an owed decision outranks running because the shared attention fold files an awaiting session ahead of an active one, even while its turn is still open); facts derived beside the item only choose the words inside that lane. The words: *Needs approval* (an open approval, permission or confirmation request), *Needs answer* (an open question), *Interrupted* (a turn cut short by a restart), *Blocked*, *Queued to send*, *Waiting on you* (owed something whose kind nothing recorded); *Running* (with the current tool, then how long the turn has run, e.g. `Running · Bash · 1m`), *N sub-agents*, *No progress · 4m* (the turn-stall watchdog's own marker, its duration how long the run has been quiet, with the running tool between when there is one, `No progress · Bash · 4m`: still in the Running lane because the turn is open, drawn in the caution tone with a clock icon and never called stalled, since a quiet run can be expected; the chat's banner says the same in one sentence, "No progress for 4m"); *Idle*; *Done*, *Stopped*, *Failed* (with its cause); *Draft*; *Elsewhere* (started in another app, or a request nothing here can answer — the reason is the hover card's and the Details sheet's, never the row's). The lanes are named the same on every surface: Needs you · Running · Idle · Just finished · Snoozed · Earlier · Drafts. A heading that shows a count reads `Needs you · 2` everywhere, as visible text in the UI face ([`WorkGroupLabel`](../src-ui/src/components/inbox-row/WorkGroupLabel.tsx)); Earlier shows none, and is one flat list, newest first, with no dated sub-headings on any surface — each row's time says when. Times on these surfaces take one compact relative form (`now`, `2m`, `1h`, `2d`, then a short date past a week; the absolute instant is a tooltip, and no row says "ago" or "last activity"). A duration takes the same coarse form — `12s` under a minute, then `4m`, then `1h 4m` ([`formatDuration`](../src-ui/src/utils/relativeTime.ts)) — and a live one counts off one shared clock (`useElapsedClock`), so one item reads the same duration on Home, in the dock and in Activity at the same instant; a stopwatch (`m:ss`) is a different thing. Nothing reports whether a sub-agent itself needs approval, so the ladder has no such rung.
 - **Agent run** — one agent working through a request from start to stop: the thing a step limit counts steps of, an output-token ceiling bounds, and a workspace is chosen for. It is the vocabulary the product already uses in its own settings help ("Station stops an agent run once it has taken this many steps",
   `defaultMaxTurns` in `packages/contracts/src/settings-registry.ts`), and #2182 makes the Settings card that holds those controls say it too — **Agent runs**, not "Defaults". A run is carried by a **Session**, and where the two could both be said, Session names the execution episode Station records and Agent run names what the agent is doing inside it. **"Profile" never names this** (see Saved Stations, above), and neither does **"Agents"** — that word is the entity list at `/agents`, and a Settings strip cannot carry two rows reading "Agents" that go to different places.
+- **Activity** — the one surface that lists this Station's Sessions (its own and read-only attached ones from other apps) to answer "what is running, what needs me, and what happened" ([the Activity list](../src-ui/src/views/SessionsView.tsx)). It groups by **state**, through the same classifier Home uses (`partitionSessionLanes` → `partitionHomeWorkItems`), never a second one: the lanes and their headings are that classifier's (`SESSION_LANE_ORDER`, `SESSION_LANE_LABELS`), live lanes first, then Just finished and Earlier — the same lane names as Home and the chat dock inbox, with each row's own time saying when. Kind (conversations or delegated tasks), project, and where work was started from (the recorded turn origin, "Started in <engine>" for an attached transcript, or "Origin not recorded" — never a guess) are **filters**, not groupings; the project filter's **No project** option lists the Sessions no project claims, including attached transcripts from a folder in no project's repository (#3386). A row's state word comes from the same fold as its lane, so a standalone row never contradicts its heading. A delegated **Run** is the one exception, and it says so: it renders in the most urgent lane any of its members is in, so a finished root can sit under a live lane because a subtask needs attention, and the run's label names that ("2 subtasks · 1 needs you"). An Activity status reports what Station recorded about a Session and is not proof the underlying work is correct.
+- **Run** (delegated run) — a Session plus the delegated tasks it started, directly or through its own delegated tasks, shown together in Activity: the root row leads, and its **subtasks** fold under it with a count ("2 subtasks") and a per-state summary of those subtasks ([run grouping](../src-ui/src/views/sessions/run-groups.ts)). A task joins a run only through a recorded parent link (the parent's thread id, or a task id that matches exactly one scoped owner); shared characteristics never join unrelated work. Not the same as an **Agent run**, which is one agent's work inside one Session.
 - **Direct chat** — an immediate conversation entry point. Starting a direct chat does not silently create or infer a Task.
 - **Workspace availability** — `available`, `ambiguous`, or `unavailable`. Only `available` permits local inspection; the other states preserve the captured identity without claiming the path is still safe or current.
 
@@ -321,6 +324,40 @@ retired names.
 > tab groups and splits; a pane or page may hold **panels**. The user's choices
 > across all of that are the **arrangement**.
 
+## Shell kernel and distribution manifests (designed, not built)
+
+These terms name accepted design in
+[design/shell-plugins-distributions.md](design/shell-plugins-distributions.md).
+Nothing computes them yet except where an entry says so. Use them only for
+that design until their slices ship.
+
+- **Distribution** — always qualify it. **Release distribution** is how Station
+  binaries reach users: trains and channels
+  ([ADR 0020](adr/0020-distribution-two-trains-channels-as-pointers.md)). A
+  **distribution profile** is the layout-catalog policy that exists today
+  (`DistributionProfile`; [guide](guides/distribution-profiles.md)). A
+  **distribution manifest** is a designed plugin package. It pins plugins and
+  keys, and sets defaults, setup, branding and policy for a Station. Its
+  catalog section produces a distribution profile.
+- **Kernel** — the fixed part of the shell: the plugin host and installer,
+  trust and grant records, sign-in, pairing and connection recovery, Settings
+  and the plugin manager, server-side authority over agent actions and
+  approvals, safe mode, and the required slots. Everything else a user works
+  in is a plugin contribution. Do not use "core" for this.
+- **Required slot** — a kernel position that always has a filler, such as
+  Home. A distribution manifest or the operator may override the default
+  filler but never remove it. A failed or removed override falls back to the
+  default filler. Today's Home-role grant is the existing partial case
+  ([`workspace-home-role.ts`](../packages/contracts/src/workspace-home-role.ts)).
+- **Safe mode** — a kernel boot state that loads no plugin browser code and
+  shows sign-in, Settings and the plugin manager. It is not built. It is
+  unrelated to the `--safe-mode` flag that `station triage` passes to the
+  Claude CLI.
+- **Layout subject** — the project a Layout is *about*, separate from its
+  owner (`LayoutOwner`). A project layout's subject is its project; a Board
+  has none; a personal project layout is principal-owned with a project
+  subject. No subject field exists yet.
+
 ## Browser pane, live surface, control lease
 
 The design began in
@@ -358,7 +395,11 @@ frame, input and lifecycle ownership.
   after a lapse. A separate **fence** advances on every holder change,
   including release and expiry, so work from an earlier claim cannot become
   valid when the same agent reclaims control. An agent cannot preempt a live
-  human lease. Viewing and controlling are authorized separately.
+  human lease. The holder can release it explicitly (the Browser pane's driver chip,
+  **Hand back to agent**); otherwise a human hold lapses. A keep-alive (sent
+  while a person is shown a page's held dialog) is not input: it extends only
+  their own current hold, capped from their last real input. Viewing and
+  controlling are authorized separately.
 
 Follow the implementation through
 [runtime composition](../src-server/runtime/routes/runtime-routes.ts),
@@ -418,7 +459,7 @@ and [reset command](reference/cli.md#home-reset) for the separate outcomes.
   the option selected within a connection. Station/external and model/agent
   distinctions remain execution properties.
 - **Guidance → Skills (#2144):** the page a reader reaches at `/guidance` is
-  labelled **Skills** — in the Settings navigation, in the command palette, and
+  labelled **Skills** — in Customize, in the command palette, and
   as its own `h1`. The rename is user-facing only: the `/guidance` route, the
   `guidance` navigation view, the `guidance` destination id and the tab memory
   key are unchanged, `/skills` still redirects to `/guidance?tab=skills`, and

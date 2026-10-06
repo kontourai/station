@@ -2,6 +2,7 @@ import {
   invertPathReadPins,
   scanPathReadPins,
 } from './lib/path-read-pin-scan.mjs';
+import { spawnedScriptDependents } from './lib/spawned-script-scan.mjs';
 
 /**
  * E2E contract seams that Vitest import analysis cannot safely infer. Keep
@@ -426,6 +427,8 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'scripts/__tests__/android-firebase-workflow-env.test.ts',
       'scripts/__tests__/android-network-policy.test.ts',
       'scripts/__tests__/backlog-priority-policy.test.ts',
+      // Derives the event-scoped env scrub list from the workflows (#2922).
+      'scripts/__tests__/ci-event-environment.test.ts',
       'scripts/__tests__/ci-workflow-contract.test.ts',
       'scripts/__tests__/ci-workflow-governance.test.ts',
       'scripts/__tests__/container-release.test.ts',
@@ -714,6 +717,10 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-server/providers/__tests__/child-work-conformance.test.ts',
   'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
+  // Walks src-server/routes/plugins for grant- or content-mutating route
+  // registrations that must reach a command-effect withdrawal (#1419), the
+  // same tree reserved-plugin-identities.test.ts walks.
+  'src-server/routes/plugins/__tests__/plugin-command-effect-withdrawal-sites.test.ts',
   'src-server/runtime/conversation/__tests__/ui-block-provenance-writer-inventory.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
   'src-server/services/__tests__/store-async-lock-cutover.scan.test.ts',
@@ -891,6 +898,39 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'scripts/orchestration-transfer-budget.mjs',
     tests: ['scripts/__tests__/orchestration-transfer-budget.test.ts'],
     reason: 'fail-closed orchestration transfer comparator',
+  },
+  {
+    pattern: 'scripts/lib/transfer-capture-barrier.ts',
+    tests: [
+      'scripts/__tests__/transfer-capture-barrier.test.ts',
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
+    ],
+    reason: 'capture barrier deadline derived from the configured bound',
+  },
+  {
+    pattern: 'scripts/lib/liveness-scale.mjs',
+    tests: [
+      'scripts/__tests__/liveness-scale.test.ts',
+      'scripts/__tests__/prepush-orchestration-transfer.test.ts',
+    ],
+    reason: 'host-pressure liveness scale consumers and transfer scope',
+  },
+  {
+    pattern: 'scripts/lib/liveness-scale-resolve.mjs',
+    tests: ['scripts/__tests__/liveness-scale.test.ts'],
+    reason:
+      'host-pressure liveness scale resolution and the pre-push resolver CLI',
+  },
+  {
+    pattern: 'scripts/lib/transfer-capture-progress.ts',
+    tests: [
+      'scripts/__tests__/transfer-capture-progress.test.ts',
+      'scripts/__tests__/prepush-orchestration-transfer.test.ts',
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
+    ],
+    reason: 'bounded exact-source capture phase diagnostic writer',
   },
   {
     pattern: 'scripts/orchestration-transfer-capture.ts',
@@ -1112,6 +1152,20 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'installer is run by its tests, not imported',
   },
   {
+    // install.ps1 embeds the installer core as a generated bundle and is run,
+    // or read through the generator's exported path, by these suites (#2675
+    // W1). None imports it, so the scanner cannot pin the dependency.
+    pattern: 'install.ps1',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/install-ps1.test.ts',
+      'scripts/__tests__/install-ps1-full.test.ts',
+      'scripts/__tests__/install-script-generated.test.ts',
+      'scripts/__tests__/release-manifest-vectors.test.ts',
+    ],
+    reason: 'Windows installer is run and read by its tests, not imported',
+  },
+  {
     pattern: 'config/channel-ports.json',
     supplemental: true,
     tests: ['scripts/__tests__/install-script-generated.test.ts'],
@@ -1175,6 +1229,34 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: ['src-ui/src/__tests__/station-vocabulary.test.ts'],
     reason: 'glossary copy ratchet scans all src-ui sources by path',
   },
+  // The one-vocabulary scan reads the work surfaces' sources by path, so no
+  // import edge reaches a retired word written in a new file there. Its
+  // edges are exactly the roots it walks (`SURFACE_ROOTS` in the suite), not
+  // all of src-ui, so it is added only where it can find something.
+  // Supplemental, like the copy ratchet above.
+  ...[
+    'src-ui/src/components/home/**',
+    'src-ui/src/components/inbox-row/**',
+    'src-ui/src/components/chat-dock/**',
+    'src-ui/src/components/project-sidebar/**',
+    'src-ui/src/components/session-detail/**',
+    'src-ui/src/components/status/**',
+    'src-ui/src/views/home/**',
+    'src-ui/src/views/activity/**',
+    'src-ui/src/views/sessions/**',
+    'src-ui/src/views/project-page/**',
+    'src-ui/src/views/SessionsView.tsx',
+    'src-ui/src/views/HomeView.tsx',
+    'src-ui/src/components/flow/WorkflowPlanPanel.tsx',
+    'src-ui/src/components/chat/PendingApprovalStrip.tsx',
+    'src-ui/src/components/chat/TurnActivityProgress.tsx',
+    'src-ui/src/components/chat/ChatEmptyState.tsx',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/session-state-word-consistency.test.ts'],
+    reason: 'status vocabulary scan reads the work-surface sources by path',
+  })),
   {
     // #2401: the example-manifest field check reads every examples/*/plugin.json
     // by path, so no import edge reaches it. Supplemental: it ADDS the check to
@@ -1198,13 +1280,29 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
     // Spawned as child processes, outside the import graph (#2923, #2924).
     pattern: 'scripts/check-documentation-freshness.mjs',
-    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    tests: [
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-review-notes.test.ts',
+      'scripts/__tests__/review-ledger-guards.test.ts',
+    ],
     reason: 'scoped documentation freshness CLI and its exit status',
   },
   {
     pattern: 'scripts/record-documentation-review.mjs',
-    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    tests: [
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-review-notes.test.ts',
+      'scripts/__tests__/review-ledger-guards.test.ts',
+    ],
     reason: 'review-ledger record command and its refusals',
+  },
+  {
+    pattern: 'scripts/migrate-review-ledger.mjs',
+    tests: [
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-review-notes.test.ts',
+    ],
+    reason: 'single-file review ledger migration and branch fold (#2936)',
   },
   {
     pattern: '.github/workflows/docs-freshness-sweep.yml',
@@ -1844,15 +1942,101 @@ export function pathReadPinEdges({ root = process.cwd(), entries } = {}) {
 }
 
 /**
- * The committed manifest plus the pin edges derived from the working tree.
- * `runChangedVerification` selects against this; the exported constant stays
+ * Reason recorded on every derived spawned-script edge (#2922).
+ */
+const SPAWNED_SCRIPT_DEPENDENCY_REASON =
+  'a test spawns a script that imports this file, directly or ' +
+  'transitively, outside the import graph Vitest sees (#2922)';
+
+const spawnedScriptEdgeCache = new Map();
+
+/**
+ * Above this many spawning tests, a derived edge defers its tests to the
+ * `test-full` lane instead of running them inline (#2922 review). A shared
+ * entry shim such as `scripts/lib/module-entry.mjs` is imported by most
+ * spawned scripts: a one-line edit selected 75 files and took `test:changed`
+ * past ci:fast's 900 s budget (#2621). The deferral keeps the coverage (the
+ * merge queue's full regression runs them) without the inline cost.
+ */
+export const SPAWNED_SCRIPT_FANOUT_LIMIT = 16;
+const SPAWNED_SCRIPT_DEFERRAL_REASON =
+  `more than ${SPAWNED_SCRIPT_FANOUT_LIMIT} tests spawn scripts that import ` +
+  'this file, so they run in test-full rather than inline (#2922)';
+
+/**
+ * Impact edges derived from the tests that run `scripts/*.mjs` as a child
+ * process (`scripts/lib/spawned-script-scan.mjs`).
+ *
+ * A test that spawns a script has no import edge to it, and so none to the
+ * modules the script imports either: `vitest related` cannot schedule it for
+ * a change to either. `SPAWNED_SCRIPT_EDGES` above hand-lists a few of those
+ * scripts and nothing they import, which is how a change to
+ * `scripts/lib/learning-markdown.mjs` left `guardrail-process-boundary.test.ts`
+ * (it spawns `check-markdown-links.mjs`, which imports that module) to fail
+ * first in the merge queue (#2886). These edges follow the script's own
+ * relative imports, so every file the spawned script reaches selects the
+ * spawning test.
+ *
+ * Same contract as `pathReadPinEdges`: every edge is `supplemental`, so it
+ * only ADDS tests and never changes a path's boundary, escalation or related
+ * selection; tests Vitest cannot run (`tests/`) are filtered; a path that
+ * must own exactly one edge is skipped. Derived at gate time and kept out of
+ * `laneManifestDigest` for the same reason.
+ *
+ * @param {{
+ *   root?: string,
+ *   entries?: readonly { test: string, scripts: readonly string[] }[],
+ * }} [options] `entries` substitutes a spawn scan, for tests.
+ * @returns {readonly ImpactEdge[]}
+ */
+export function spawnedScriptEdges({ root = process.cwd(), entries } = {}) {
+  const cacheable = entries === undefined;
+  const cached = cacheable ? spawnedScriptEdgeCache.get(root) : undefined;
+  if (cached) return cached;
+  const edges = Object.freeze(
+    spawnedScriptDependents({ root, entries }).flatMap(({ path, tests }) => {
+      if (UNIQUE_IMPACT_PATTERNS.has(path)) return [];
+      const schedulable = tests.filter(
+        (test) => !VITEST_INELIGIBLE_TEST.test(test),
+      );
+      if (!schedulable.length) return [];
+      if (schedulable.length > SPAWNED_SCRIPT_FANOUT_LIMIT)
+        return [
+          Object.freeze({
+            pattern: path,
+            supplemental: true,
+            deferredLanes: Object.freeze(['test-full']),
+            reason: SPAWNED_SCRIPT_DEFERRAL_REASON,
+          }),
+        ];
+      return [
+        Object.freeze({
+          pattern: path,
+          supplemental: true,
+          tests: Object.freeze(schedulable),
+          reason: SPAWNED_SCRIPT_DEPENDENCY_REASON,
+        }),
+      ];
+    }),
+  );
+  if (cacheable) spawnedScriptEdgeCache.set(root, edges);
+  return edges;
+}
+
+/**
+ * The committed manifest plus the pin and spawned-script edges derived from
+ * the working tree. `runChangedVerification` selects against this; the exported constant stays
  * static for the consumers that need a stable, tree-independent value.
  *
  * @param {Parameters<typeof pathReadPinEdges>[0]} [options]
  * @returns {readonly ImpactEdge[]}
  */
 export function buildTestImpactManifest(options) {
-  return Object.freeze([...TEST_IMPACT_MANIFEST, ...pathReadPinEdges(options)]);
+  return Object.freeze([
+    ...TEST_IMPACT_MANIFEST,
+    ...pathReadPinEdges(options),
+    ...spawnedScriptEdges({ root: options?.root }),
+  ]);
 }
 
 export function matches(pattern, path) {
@@ -1878,6 +2062,7 @@ export function isEscalationPath(path) {
  *   lanes?: readonly string[],
  *   related?: boolean,
  *   supplemental?: boolean,
+ *   deferredLanes?: readonly string[],
  *   whenAll?: readonly string[],
  *   except?: readonly string[],
  *   reason?: string,
@@ -1893,9 +2078,18 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
   for (const edge of manifest) {
     if (
       !edge?.pattern ||
-      (!edge.related && !edge.tests?.length && !edge.lanes?.length)
+      (!edge.related &&
+        !edge.tests?.length &&
+        !edge.lanes?.length &&
+        !edge.deferredLanes?.length)
     )
       errors.push(`invalid impact edge: ${JSON.stringify(edge)}`);
+    // `deferredLanes` is how a supplemental edge adds a lane: it only adds,
+    // like the supplemental tests, and never touches the boundary decisions.
+    if (edge?.deferredLanes?.length && !edge.supplemental)
+      errors.push(
+        `only a supplemental impact edge may defer to a lane: ${edge.pattern}`,
+      );
     // A supplemental edge is excluded from the boundary, escalation, and
     // related decisions, so `lanes` or `related` on one would be silently
     // ignored — and a reader would believe the lane was scheduled.

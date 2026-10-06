@@ -195,8 +195,9 @@ describe('orchestration source invariants — scan integrity', () => {
  * that is the spelling the two server-side copies used. It is NOT a claim that
  * every resolution of an absent lifecycle state in the repo goes through
  * `foldedSessionLifecycleState`: six `?? ''`-style resolutions that DECIDE
- * survive in `src-ui` (`sessionDisplay.ts`, `home-view-model.ts`,
- * `useMutableSessionDetailState.ts`, `DelegatedTaskCoordinator.tsx`), and they
+ * survived in `src-ui` when this was written (`sessionDisplay.ts`, `home-view-model.ts`,
+ * `useMutableSessionDetailState.ts`, and the since-deleted
+ * `DelegatedTaskCoordinator.tsx`), and they
  * are slice archive#1781's surface, recorded in the PR's divergence table
  * rather than silently absorbed here.
  *

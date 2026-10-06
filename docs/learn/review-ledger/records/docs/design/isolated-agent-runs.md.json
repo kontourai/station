@@ -1,0 +1,27 @@
+{
+  "path": "docs/design/isolated-agent-runs.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Proposed isolated-run record, command shape, ownership rules, and acceptance criteria.",
+
+  "limits": "Current workspace resolver/provisioning owners were checked. No CLI availability claim is inferred from the proposed command, and no isolated-run or cleanup journey was executed.",
+
+  "sources": [
+    "src-server/services/execution-target/execution-target-execution.ts",
+
+    "src-server/services/execution-target/execution-target-resolver.ts"
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "Reviewed integration deltas: src-server/services/execution-target/execution-target-execution.ts: Before recording a carried pick, actual foreground executor checks effective full access for resolved thread/Agent; missing resolver conservatively refuses Default/never without grant. Existing recordApprovalMode and grant paths retained. Approval design C1 and API authority explanation cover changed behavior.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits."
+  ]
+}

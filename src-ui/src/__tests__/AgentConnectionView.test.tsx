@@ -2,10 +2,48 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { AuthorityObservation } from '@kontourai/station-sdk/authority-observation';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  fireEvent,
+  render as renderView,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import type { ReactElement, ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { hostActionCopy } from '../components/host-action/host-action-copy';
+
+const operatorScope = {
+  apiBase: 'https://operator.example.test',
+  authorityKey: 'view-operator',
+  isCurrent: () => true,
+};
+const operatorAuthority: AuthorityObservation = {
+  schemaVersion: 'station.authority-observation/v1',
+  environmentId: 'view-host',
+  principal: { kind: 'human', id: 'human:local:operator' },
+  grant: { kind: 'operator' },
+};
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => operatorScope,
+}));
+let queryClient: QueryClient;
+async function render(view: ReactElement) {
+  const mounted = renderView(view, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
+  });
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+  return mounted;
+}
+afterEach(() => {
+  queryClient.clear();
+  setClientCredentialResolver(undefined);
+});
 
 const save = vi.fn();
 const clearMutate = vi.fn();
@@ -17,6 +55,8 @@ const deleteProfileMutate = vi.fn();
 const resetMutate = vi.fn();
 const importProfileMutate = vi.fn();
 let saveFailure: Error | null = null;
+const checkConnection = vi.fn();
+let modelConnections: unknown[] = [];
 /**
  * The device projection this page reads. `undefined` is the honest default --
  * it is what a server that has not answered yet returns, and `HostAction`
@@ -190,6 +230,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   useTestAgentConnectionMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useSmokeAgentConnectionMutation: () => ({
+    mutate: checkConnection,
+    isPending: false,
+  }),
+  useModelConnectionsQuery: () => ({ data: modelConnections }),
   useReconnectACPConnectionMutation: (options: {
     onError?: (error: Error) => void;
   }) => ({
@@ -297,6 +342,49 @@ import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
   beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    setClientCredentialResolver(() => ({
+      origin: operatorScope.apiBase,
+      requestAuthority: operatorScope,
+      transport: async (url) => {
+        const path = new URL(String(url)).pathname;
+        const reply = (data: unknown) =>
+          new Response(JSON.stringify(data), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        if (path.endsWith('/accounts'))
+          return reply({
+            success: true,
+            data: {
+              engine: path.includes('claude') ? 'claude' : 'codex',
+              accounts: [],
+              activeProfileRef: null,
+            },
+          });
+        if (path.endsWith('/usage-rollup'))
+          return reply({
+            success: true,
+            data: {
+              window: { from: '2026-09-25', to: '2026-10-01' },
+              rows: [],
+              receipts: [],
+              coverage: [],
+            },
+          });
+        if (path.endsWith('/account-login'))
+          return reply({ success: true, data: { login: null } });
+        if (new URL(String(url)).pathname !== '/api/auth/authority')
+          throw new Error('Unexpected authority fixture request');
+        return new Response(JSON.stringify(operatorAuthority), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+    }));
     devicePresentation = undefined;
     resetMutate.mockClear();
     save.mockReset();
@@ -349,7 +437,7 @@ describe('AgentConnectionView', () => {
    * both, and the emptied catalogue asserts the opposite of what the reader
    * can see beside it.
    */
-  test('an engine the list drops as not-yet-added is still offered in Add', () => {
+  test('an engine the list drops as not-yet-added is still offered in Add', async () => {
     agentConnections = [
       ...DEFAULT_AGENT_CONNECTIONS,
       {
@@ -383,7 +471,9 @@ describe('AgentConnectionView', () => {
       },
     ];
 
-    const { rerender } = render(<AgentConnectionView onNavigate={vi.fn()} />);
+    const { rerender } = await render(
+      <AgentConnectionView onNavigate={vi.fn()} />,
+    );
     // Not a configured engine, so the list is right to omit it.
     expect(screen.queryByText('Muse')).toBeNull();
 
@@ -399,7 +489,7 @@ describe('AgentConnectionView', () => {
     ).toBeNull();
   });
 
-  test('the already-listed claim is reserved for a catalogue nothing is missing from', () => {
+  test('the already-listed claim is reserved for a catalogue nothing is missing from', async () => {
     // Every catalogue entry really is a configured engine here, so the
     // sentence is true and must still render.
     agentConnections = [
@@ -417,7 +507,7 @@ describe('AgentConnectionView', () => {
       },
     ];
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
@@ -439,7 +529,7 @@ describe('AgentConnectionView', () => {
   // population) would still pass every OTHER test in this file, since none
   // of them exercises "native empty, ACP non-empty" on its own. This is the
   // one that would catch it.
-  test('the empty-state claim requires both populations exhausted, not just the native one', () => {
+  test('the empty-state claim requires both populations exhausted, not just the native one', async () => {
     agentCatalog = [];
     acpRegistryEntries = [
       {
@@ -451,7 +541,7 @@ describe('AgentConnectionView', () => {
       },
     ];
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
@@ -461,8 +551,8 @@ describe('AgentConnectionView', () => {
     expect(screen.getByText('Kiro CLI')).toBeTruthy();
   });
 
-  test('titles the engines route Engines, not Providers', () => {
-    render(<AgentConnectionView onNavigate={vi.fn()} />);
+  test('titles the engines route Engines, not Providers', async () => {
+    await render(<AgentConnectionView onNavigate={vi.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'Engines' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Providers' })).toBeNull();
@@ -476,11 +566,11 @@ describe('AgentConnectionView', () => {
   // consulted by `SplitPaneLayout`'s `loading` prop but its error was never
   // passed through, so a settled read failure rendered the same "no engines"
   // empty state as a host with none configured — no error, no retry.
-  test('renders the engines list error state with retry when the connections query fails', () => {
+  test('renders the engines list error state with retry when the connections query fails', async () => {
     agentConnections = [];
     agentConnectionsQueryError = new Error('engines unavailable');
 
-    render(<AgentConnectionView onNavigate={vi.fn()} />);
+    await render(<AgentConnectionView onNavigate={vi.fn()} />);
 
     expect(screen.getByText('engines unavailable')).toBeTruthy();
     expect(screen.queryByText('Codex')).toBeNull();
@@ -492,8 +582,10 @@ describe('AgentConnectionView', () => {
   // The section frame owns this section's single add action and reaches the
   // catalogue by route (`/connections/engines/new`), not by an in-view button
   // so the route is what these two drive now.
-  test('keeps available apps in Add and shows the Station engine returned by the API', () => {
-    const { rerender } = render(<AgentConnectionView onNavigate={vi.fn()} />);
+  test('keeps available apps in Add and shows the Station engine returned by the API', async () => {
+    const { rerender } = await render(
+      <AgentConnectionView onNavigate={vi.fn()} />,
+    );
 
     expect(screen.getByText('Codex')).toBeTruthy();
     expect(screen.queryByText('Claude Code')).toBeNull();
@@ -528,7 +620,7 @@ describe('AgentConnectionView', () => {
   // Before this fix, `availableAgentApps` only excluded rows already in
   // `addedIds`; it never required the catalog row's OWN `setup.state` to be
   // `'available'`, so a `'ready'` row rendered here beside an "Add" button.
-  test('a catalog row that already reads ready is not offered as an Add choice', () => {
+  test('a catalog row that already reads ready is not offered as an Add choice', async () => {
     agentCatalog = [
       ...DEFAULT_AGENT_CATALOG,
       {
@@ -548,7 +640,7 @@ describe('AgentConnectionView', () => {
       },
     ];
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
@@ -562,7 +654,7 @@ describe('AgentConnectionView', () => {
   // is now this same list's second population, sharing its readiness
   // vocabulary and continuing into the existing ACP setup route rather than
   // a second catalogue.
-  test('the merged catalogue offers both populations and routes an ACP choice into its setup route', () => {
+  test('the merged catalogue offers both populations and routes an ACP choice into its setup route', async () => {
     acpRegistryEntries = [
       {
         id: 'kiro',
@@ -593,7 +685,7 @@ describe('AgentConnectionView', () => {
     ];
     const onNavigate = vi.fn();
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={onNavigate} />,
     );
 
@@ -625,10 +717,10 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('the merged catalogue routes the trailing custom entry into the ACP custom setup route', () => {
+  test('the merged catalogue routes the trailing custom entry into the ACP custom setup route', async () => {
     const onNavigate = vi.fn();
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={onNavigate} />,
     );
 
@@ -642,9 +734,9 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('reports Add catalog save failures in place', () => {
+  test('reports Add catalog save failures in place', async () => {
     saveFailure = new Error('Could not add Claude Code');
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
@@ -711,7 +803,7 @@ describe('AgentConnectionView', () => {
     ],
   ] as const)(
     'projects the backend %s setup tuple into the provider detail',
-    (state, configured, status, prerequisites, readiness, detail) => {
+    async (state, configured, status, prerequisites, readiness, detail) => {
       connectionQueryData = {
         id: 'claude',
         kind: 'agent',
@@ -729,7 +821,7 @@ describe('AgentConnectionView', () => {
         },
       };
 
-      render(
+      await render(
         <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
       );
 
@@ -752,9 +844,9 @@ describe('AgentConnectionView', () => {
    * remedy the user cannot perform must not be named, and it must not crowd
    * out the one they can.
    */
-  test('a missing engine binary reports setup, never sign-in, even though the server also reports an unmet login prerequisite', () => {
+  test('a missing engine binary reports setup, never sign-in, even though the server also reports an unmet login prerequisite', async () => {
     connectionQueryData = museMissingBinaryConnection();
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
@@ -778,11 +870,11 @@ describe('AgentConnectionView', () => {
    * map is the single source, so this asserts ADOPTION. Re-wording the map
    * must not fail this test; failing to go through the map must.
    */
-  test('a paired device is told which machine the engine is missing from', () => {
+  test('a paired device is told which machine the engine is missing from', async () => {
     devicePresentation = { deviceClass: 'paired', hostName: 'desktop-win' };
     connectionQueryData = museMissingBinaryConnection();
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
@@ -791,11 +883,11 @@ describe('AgentConnectionView', () => {
     expect(screen.getAllByText(expected)).not.toHaveLength(0);
   });
 
-  test('on the host the same state names no second machine', () => {
+  test('on the host the same state names no second machine', async () => {
     devicePresentation = { deviceClass: 'host', hostName: 'desktop-win' };
     connectionQueryData = museMissingBinaryConnection();
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
@@ -811,10 +903,10 @@ describe('AgentConnectionView', () => {
    * two cases differ ONLY in the engine's state, so they fail if the rail goes
    * back to being decoration.
    */
-  test('the setup rail stops at Connect while a prerequisite blocks the engine', () => {
+  test('the setup rail stops at Connect while a prerequisite blocks the engine', async () => {
     connectionQueryData = museMissingBinaryConnection();
 
-    const { container } = render(
+    const { container } = await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
@@ -838,7 +930,7 @@ describe('AgentConnectionView', () => {
     expect(current[0]?.textContent).toBe('Connect');
   });
 
-  test('a ready engine completes every step and announces none as current', () => {
+  test('a ready engine completes every step and announces none as current', async () => {
     connectionQueryData = {
       ...museMissingBinaryConnection(),
       status: 'ready',
@@ -854,7 +946,7 @@ describe('AgentConnectionView', () => {
       setup: { state: 'ready', detected: true, configured: true },
     };
 
-    const { container } = render(
+    const { container } = await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
@@ -875,7 +967,7 @@ describe('AgentConnectionView', () => {
   // first path to the handshake retry — so the setup page has to actually
   // carry the action. The bridge's live connection set is the gate: it is
   // the same projection the reconnect route 404s against.
-  test('an ACP-managed engine offers the handshake reconnect in place', () => {
+  test('an ACP-managed engine offers the handshake reconnect in place', async () => {
     acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
     connectionQueryData = {
       id: 'opencode',
@@ -890,7 +982,7 @@ describe('AgentConnectionView', () => {
       setup: { state: 'ready', detected: true, configured: true },
     };
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
 
@@ -898,7 +990,7 @@ describe('AgentConnectionView', () => {
     expect(reconnectMutate).toHaveBeenCalledWith('opencode');
   });
 
-  test('an engine the ACP bridge does not manage offers no reconnect', () => {
+  test('an engine the ACP bridge does not manage offers no reconnect', async () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
@@ -912,14 +1004,14 @@ describe('AgentConnectionView', () => {
       setup: { state: 'ready', detected: true, configured: false },
     };
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
     expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
   });
 
-  test('a refused reconnect reports the engine observation in place', () => {
+  test('a refused reconnect reports the engine observation in place', async () => {
     acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
     reconnectMutationError = new Error(
       'The ACP connection could not be reconnected. Engine exited before handshake',
@@ -937,7 +1029,7 @@ describe('AgentConnectionView', () => {
       setup: { state: 'ready', detected: true, configured: true },
     };
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
 
@@ -950,10 +1042,10 @@ describe('AgentConnectionView', () => {
    * a single tap with no confirmation, while the less destructive "Clear this
    * app home" five fields away confirmed.
    */
-  test('resetting an engine asks before it deletes', () => {
+  test('resetting an engine asks before it deletes', async () => {
     connectionQueryData = museMissingBinaryConnection();
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
@@ -970,10 +1062,10 @@ describe('AgentConnectionView', () => {
    * user had typed. Re-rendering with a NEW query object is exactly what the
    * effect keyed on.
    */
-  test('a refetch of the same engine does not discard an unsaved edit', () => {
+  test('a refetch of the same engine does not discard an unsaved edit', async () => {
     connectionQueryData = museMissingBinaryConnection();
 
-    const { rerender } = render(
+    const { rerender } = await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
@@ -994,7 +1086,7 @@ describe('AgentConnectionView', () => {
     );
   });
 
-  test('selecting another engine while dirty asks before navigating', () => {
+  test('selecting another engine while dirty asks before navigating', async () => {
     const muse = {
       ...museMissingBinaryConnection(),
       setup: { state: 'ready', detected: true, configured: true },
@@ -1003,7 +1095,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = muse;
     const onNavigate = vi.fn();
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={onNavigate} />,
     );
 
@@ -1023,10 +1115,10 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('selecting a different engine re-seeds the form even after an edit', () => {
+  test('selecting a different engine re-seeds the form even after an edit', async () => {
     connectionQueryData = museMissingBinaryConnection();
 
-    const { rerender } = render(
+    const { rerender } = await render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
 
@@ -1049,7 +1141,7 @@ describe('AgentConnectionView', () => {
     );
   });
 
-  test('claude shows an accessible skills-materialization multiselect, off by default, that saves the selected ids', () => {
+  test('claude shows an accessible skills-materialization multiselect, off by default, that saves the selected ids', async () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
@@ -1068,7 +1160,7 @@ describe('AgentConnectionView', () => {
       setup: { state: 'ready', detected: true, configured: false },
     };
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
 
@@ -1107,7 +1199,7 @@ describe('AgentConnectionView', () => {
     },
   ])(
     '$id shows the app-home opt-in, off by default, that saves the toggle',
-    ({ id, name, description, config }) => {
+    async ({ id, name, description, config }) => {
       connectionQueryData = {
         id,
         kind: 'agent',
@@ -1123,7 +1215,7 @@ describe('AgentConnectionView', () => {
       };
       const importName = `Import a snapshot of your global ${name} settings`;
 
-      render(
+      await render(
         <AgentConnectionView selectedRuntimeId={id} onNavigate={vi.fn()} />,
       );
 
@@ -1150,7 +1242,7 @@ describe('AgentConnectionView', () => {
   );
 
   // archive#896: bounded profile GC — usage report + explicit clear.
-  test('the app home clear action confirms before calling the clear mutation', () => {
+  test('the app home clear action confirms before calling the clear mutation', async () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
@@ -1178,7 +1270,7 @@ describe('AgentConnectionView', () => {
       usage: { sizeBytes: 2048, entryCount: 3, truncated: false },
     };
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
 
@@ -1205,7 +1297,7 @@ describe('AgentConnectionView', () => {
     expect(clearMutate).toHaveBeenCalledWith('claude');
   });
 
-  test('credential recovery is manual-first, safely exposes credential entry labels, and requires explicit enrollment', () => {
+  test('credential recovery is manual-first, safely exposes credential entry labels, and requires explicit enrollment', async () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
@@ -1235,7 +1327,7 @@ describe('AgentConnectionView', () => {
       provenanceUpdated: true,
     };
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
 
@@ -1300,7 +1392,7 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('treats a legacy credential-recovery response as empty and fail-closed instead of crashing the route', () => {
+  test('treats a legacy credential-recovery response as empty and fail-closed instead of crashing the route', async () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
@@ -1315,7 +1407,7 @@ describe('AgentConnectionView', () => {
     };
     credentialRecoveryQueryData = [];
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
@@ -1335,7 +1427,7 @@ describe('AgentConnectionView', () => {
   // archive#771 regression: a settled credential-recovery error used to fall
   // through to the same management UI a genuinely-empty response renders
   // ("No credential entries added yet."), with no indication the read failed.
-  test('renders an error state with retry when the credential-recovery query fails', () => {
+  test('renders an error state with retry when the credential-recovery query fails', async () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
@@ -1351,7 +1443,7 @@ describe('AgentConnectionView', () => {
     credentialRecoveryQueryData = undefined;
     credentialRecoveryQueryError = new Error('credential recovery unavailable');
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
@@ -1394,7 +1486,7 @@ describe('AgentConnectionView', () => {
     },
   ])(
     'keeps automatic recovery and manual apply disabled when $state',
-    ({ recovery, explains }) => {
+    async ({ recovery, explains }) => {
       connectionQueryData = {
         id: 'codex',
         kind: 'agent',
@@ -1409,7 +1501,7 @@ describe('AgentConnectionView', () => {
       };
       credentialRecoveryQueryData = recovery;
 
-      render(
+      await render(
         <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
       );
 
@@ -1435,7 +1527,7 @@ describe('AgentConnectionView', () => {
     },
   );
 
-  test('manual apply explains its billable verification and only runs after confirmation', () => {
+  test('manual apply explains its billable verification and only runs after confirmation', async () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
@@ -1455,7 +1547,7 @@ describe('AgentConnectionView', () => {
       application: { capability: 'restart_resume' },
     };
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
 
@@ -1470,7 +1562,7 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('a rolled-back outcome is announced as failure rather than success', () => {
+  test('a rolled-back outcome is announced as failure rather than success', async () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
@@ -1490,7 +1582,7 @@ describe('AgentConnectionView', () => {
       application: { capability: 'restart_resume', outcome: 'rolled_back' },
     };
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
 
@@ -1499,7 +1591,7 @@ describe('AgentConnectionView', () => {
     );
   });
 
-  test('shows errors from every credential-profile mutation in one accessible error surface', () => {
+  test('shows errors from every credential-profile mutation in one accessible error surface', async () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
@@ -1525,7 +1617,7 @@ describe('AgentConnectionView', () => {
     importProfileMutationError = new Error('Could not import profile');
     applyMutationError = new Error('Could not apply profile');
 
-    render(
+    await render(
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
 
@@ -1572,7 +1664,7 @@ describe('AgentConnectionView', () => {
     ],
   ])(
     'renders continuity dimensions as explanatory detail',
-    (continuity, expected) => {
+    async (continuity, expected) => {
       connectionQueryData = {
         id: 'claude',
         kind: 'agent',
@@ -1586,7 +1678,7 @@ describe('AgentConnectionView', () => {
         setup: { state: 'ready', detected: true, configured: false },
         continuity,
       };
-      render(
+      await render(
         <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
       );
       const rendered =
@@ -1598,4 +1690,63 @@ describe('AgentConnectionView', () => {
         ).toBeTruthy();
     },
   );
+});
+
+test('guided proxy setup saves a reference and checks only saved settings', async () => {
+  modelConnections = [
+    {
+      id: 'proxy-home',
+      kind: 'model',
+      type: 'openai-compat',
+      name: 'home-media',
+      enabled: true,
+      config: { apiKeyConfigured: true },
+      capabilities: ['llm'],
+      status: 'ready',
+      prerequisites: [],
+    },
+  ];
+  connectionQueryData = {
+    id: 'codex',
+    kind: 'agent',
+    type: 'codex',
+    name: 'Codex',
+    enabled: true,
+    capabilities: ['agent-runtime'],
+    status: 'ready',
+    prerequisites: [],
+    config: { defaultModel: 'gpt-6.1-sol' },
+    runtimeCatalog: {
+      source: 'live',
+      models: [
+        { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', originalId: 'gpt-6.1-sol' },
+      ],
+    },
+  };
+  await render(
+    <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
+  );
+  expect(screen.getByRole('combobox', { name: 'Default model' })).toBeTruthy();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Connect through' }), {
+    target: { value: 'proxy-home' },
+  });
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Check connection',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(save).toHaveBeenCalledWith(
+    expect.objectContaining({
+      connection: expect.objectContaining({
+        config: expect.objectContaining({ proxyConnectionId: 'proxy-home' }),
+      }),
+    }),
+  );
+  const stored = save.mock.calls.at(-1)?.[0];
+  expect(stored.connection.config).not.toHaveProperty('apiKey');
+  expect(stored.connection.config).not.toHaveProperty('env');
+  modelConnections = [];
 });

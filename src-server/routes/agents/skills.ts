@@ -99,6 +99,17 @@ export function createSkillRoutes(
     return c.json({ success: true, data: skillService.listSkills() });
   });
 
+  app.get('/experiences', async (c) => {
+    try {
+      return c.json({
+        success: true,
+        data: await skillService.listSkillExperiences(),
+      });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 503);
+    }
+  });
+
   // Get skill detail. `:name` also resolves a `legacyId` (a migrated UUID or
   // `<plugin>:<id>` a skill records), so a caller holding an old identifier
   // keeps working without the caller knowing it moved.

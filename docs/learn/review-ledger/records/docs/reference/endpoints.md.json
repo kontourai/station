@@ -1,0 +1,23 @@
+{
+  "path": "docs/reference/endpoints.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Checked that the page routes readers to a static OpenAPI subset and actual route/auth owners, without promising a live OpenAPI endpoint or complete route coverage.",
+
+  "limits": "Individual API behavior and deployed availability require their own route and runtime review.",
+
+  "sources": [
+    "scripts/__tests__/public-doc-contract-examples.test.ts",
+
+    "scripts/generate-openapi.ts",
+
+    "src-server/openapi/spec.ts"
+  ],
+
+  "checks": [
+    "Documentation foundations: static OpenAPI bytes match buildOpenApiSpec(); included in the passed docs:truth:gate run."
+  ]
+}

@@ -186,7 +186,7 @@ describe('FolderBrowserModal', () => {
   test('derives ".." locally for older servers on Windows paths', () => {
     browseMock.mockReturnValue({
       data: {
-        path: 'C:\\Users\\brian',
+        path: 'C:\\Users\\me',
         entries: [{ name: 'dev', isDirectory: true }],
       },
     });
@@ -195,7 +195,7 @@ describe('FolderBrowserModal', () => {
       <FolderBrowserModal
         onSelect={vi.fn()}
         onClose={vi.fn()}
-        initialPath={'C:\\Users\\brian'}
+        initialPath={'C:\\Users\\me'}
       />,
     );
 
@@ -204,7 +204,7 @@ describe('FolderBrowserModal', () => {
 
     // Legacy entries are joined with the listing's own separator.
     fireEvent.click(screen.getByText('dev'));
-    expect(browseMock).toHaveBeenCalledWith('C:\\Users\\brian\\dev');
+    expect(browseMock).toHaveBeenCalledWith('C:\\Users\\me\\dev');
   });
 
   test('treats a Windows drive root as the top for older servers', () => {

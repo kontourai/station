@@ -174,6 +174,8 @@ export function conversationOpenPatch(
               orchestrationStatus: undefined,
               sessionAutoApprove: [],
               pendingApprovals: [],
+              answeredApprovals: [],
+              pendingApprovalTurnIds: {},
               approvalToasts: new Map(),
               unacknowledgedDecisions: [],
               // Engine reports about the predecessor's session. The

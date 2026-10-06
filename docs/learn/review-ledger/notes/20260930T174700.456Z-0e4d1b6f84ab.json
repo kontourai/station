@@ -1,0 +1,17 @@
+{
+  "revision": "dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits.","inputs":["docs/design/mobile-credential-authority.md"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits.","inputs":["docs/design/ssh-launched-environments.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Bound the newly executed native-chat-dispatch manual lane to its source owner; WebView, IPC and authenticated HTTP fixture proof passed after a 26-second header delay, with no provider/mobile/keyring claim.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits.","inputs":["src-desktop/AGENTS.md"]}
+  ]
+}

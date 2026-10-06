@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { AppConfig } from '@kontourai/station-contracts/config';
 import { afterEach, expect, test, vi } from 'vitest';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { createPersonalTaskAnswerSupportModule } from '../routes/runtime-routes.js';
@@ -86,6 +87,11 @@ test('personal runtime factory follows real graph/session/project/bundle branche
   });
   const reference = graph.readTaskTurnReferenceLinks(task.id)![0];
   const sessionReads = vi.fn(async () => answer);
+  let liveAppConfig: AppConfig = {
+    defaultModel: '',
+    invokeModel: '',
+    structureModel: '',
+  };
   const module = createPersonalTaskAnswerSupportModule({
     taskGraphService: graph,
     projectService: projects,
@@ -94,6 +100,7 @@ test('personal runtime factory follows real graph/session/project/bundle branche
     },
     configLoader: { getProjectHomeDir: () => home },
     appConfig: {},
+    getLiveAppConfig: () => liveAppConfig,
   } as never);
   const authority = {} as never;
   const assertNotFound = async (work: () => Promise<unknown>) => {
@@ -186,4 +193,26 @@ test('personal runtime factory follows real graph/session/project/bundle branche
       answerReferenceId: reference.id,
     }),
   );
+  const evidenceDirectory = join(
+    workspace,
+    '.kontourai',
+    'veritas',
+    'evidence',
+  );
+  mkdirSync(evidenceDirectory, { recursive: true });
+  writeFileSync(
+    join(evidenceDirectory, 'veritas-settings.json'),
+    JSON.stringify({ trust: { bundle } }),
+  );
+  await expect(
+    module.bundles(task.id, reference.id, authority),
+  ).resolves.toHaveLength(2);
+  liveAppConfig = { ...liveAppConfig, surfaceTrustFromVeritasEvidence: false };
+  await expect(
+    module.bundles(task.id, reference.id, authority),
+  ).resolves.toHaveLength(1);
+  liveAppConfig = { ...liveAppConfig, surfaceTrustFromVeritasEvidence: true };
+  await expect(
+    module.bundles(task.id, reference.id, authority),
+  ).resolves.toHaveLength(2);
 }, 120_000);

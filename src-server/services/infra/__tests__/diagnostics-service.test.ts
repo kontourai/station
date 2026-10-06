@@ -42,9 +42,9 @@ describe('DiagnosticsService', () => {
       readConfig,
       readLogTail: async () =>
         `Authorization: Bearer ${seededSecret}\n` +
-        "ENOENT: no such file or directory, open '/Users/brian/station/private/logs.ts'\n" +
+        "ENOENT: no such file or directory, open '/Users/me/station/private/logs.ts'\n" +
         'Cannot find module "C:\\Station Data\\private\\bundle.ts"\n' +
-        'at collectLogs (/Users/brian/Station Data/private/logs.ts:42:7)\n' +
+        'at collectLogs (/Users/me/Station Data/private/logs.ts:42:7)\n' +
         'at renderBundle (C:\\Station Data\\private\\bundle.ts:19:2)',
       logPath: '/tmp/station.log',
       now: () => new Date('2026-07-20T12:34:56.000Z'),
@@ -90,7 +90,7 @@ describe('DiagnosticsService', () => {
     expect(bundle.logs).toContain('Authorization: Bearer [REDACTED]');
     expect(bundle.logs).toContain('collectLogs');
     expect(bundle.logs).toContain('renderBundle');
-    expect(bundle.logs).not.toContain('/Users/brian');
+    expect(bundle.logs).not.toContain('/Users/me');
     expect(bundle.logs).not.toContain('C:\\Station Data');
     expect(bundle.logs).not.toContain('Station Data\\private\\bundle.ts');
     expect(bundle.logs).toContain("open '[REDACTED_PATH]'");

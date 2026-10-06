@@ -1,0 +1,9 @@
+{
+  "revision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
+
+  "notes": [
+    {"path":"src-desktop/CLAUDE.md","note":"Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.","inputs":["src-desktop/CLAUDE.md"]},
+
+    {"path":"src-desktop/CLAUDE.md","note":"Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.","inputs":["src-desktop/CLAUDE.md"]}
+  ]
+}

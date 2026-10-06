@@ -1,0 +1,7 @@
+{
+  "revision": "f575b48480af7db79f68548006fdd1b0ff71a72a",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the merged SDK plugin-command inventory and effect client passage against landed #1418. Its added fields apply only to ready plugin rows, pending/unavailable rows omit them, and the installed declaration plus effect admission owns authority. The shared-Task member/operator projection and uniform404 passages remain consistent with the approved publication service and route tests. No additional prose change needed.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

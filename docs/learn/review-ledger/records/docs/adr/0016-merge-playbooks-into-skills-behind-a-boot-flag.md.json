@@ -1,0 +1,25 @@
+{
+  "path": "docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "The existing owner-decision supersession remains intact. A small current-route note explains that the one-shot migration helper requires the repository ./station launcher; the standalone CLI refuses without its injected server migration dependency. Lower flag/alias sections remain dated design history.",
+
+  "limits": "No user-home migration or rollback was executed. The historical vocabulary-count claim, all legacy fixtures, upgrade paths and every skill consumer were not exhaustively verified. This is not evidence of a current published package or live migration.",
+
+  "sources": [
+    "src-server/services/agents/playbook-skill-migration.ts"
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "Integration source review through d72f79b08: #2904's cli.ts change only routes describeCliError through explainFullAccessRefusal first. The migration-helper route note (repository ./station launcher; the standalone CLI refuses without the server migration dependency) is unaffected. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

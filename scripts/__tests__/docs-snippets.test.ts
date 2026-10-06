@@ -9,7 +9,7 @@
  * a `typecheck:examples` project compiles.
  */
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { projectFiles, typecheckSegments } from '../examples-conformance.mjs';
 
@@ -33,7 +33,7 @@ function markdownFiles(dir: string): string[] {
 function markedBlocks(): MarkedBlock[] {
   return markdownFiles(join(ROOT, 'docs')).flatMap((path) =>
     [...readFileSync(path, 'utf8').matchAll(MARKER)].map((match) => ({
-      doc: path.slice(ROOT.length + 1),
+      doc: relative(ROOT, path).split(sep).join('/'),
       file: match[1],
       block: match[2],
     })),

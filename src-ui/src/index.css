@@ -35,9 +35,9 @@
 
    The brand is also painted as text: the sidebar channel badge and the kit's
    `.eyebrow` read it directly. So every channel value passes the same rules
-   a white-label theme has to (lib/branding-theme.ts), per mode: brand and
-   action as text at 4.5:1 on page and panel, each fill with its text at
-   4.5:1, focus at 3:1. `branding-role-cascade.test.ts` checks those rules
+   a white-label theme has to (lib/branding-theme.ts), per mode: brand as
+   text at 4.5:1 on page, panel and raised panel, action as text at 4.5:1 on
+   page and panel, each fill with its text at 4.5:1, focus at 3:1. `branding-role-cascade.test.ts` checks those rules
    and `channel-text-contrast.test.tsx` measures the rendered text on its
    real surfaces, including the raised rows the panel links sit on and the
    sidebar home button's hover fill behind the badge. Where a channel's
@@ -115,7 +115,17 @@
 
 /* Keyboard focus is a product-level invariant. The narrow !important is
    intentional: it restores a visible ring over legacy component :focus rules
-   that suppress outlines. Pointer focus remains visually unchanged. */
+   that suppress outlines. Pointer focus remains visually unchanged.
+
+   The ring follows `--k-focus` where something chose a focus colour: a
+   white-label theme, or a Dev, Beta or Nightly build (the channel blocks
+   above). Everywhere else it follows the accent, so a device accent chosen
+   in Appearance colours it. The installed @kontourai/ui tokens always define
+   `--k-focus`, so "is it defined" cannot tell those apart; instead
+   applyBrandingTheme marks the root with `data-brand-focus` while the
+   applied theme sets it for the current mode (lib/branding-theme.ts).
+   Without a device accent the accent is the action role, which equals the
+   shipped focus colour. */
 :where(
   a[href],
   button,
@@ -127,8 +137,28 @@
   [role="link"],
   [tabindex]:not([tabindex="-1"])
 ):focus-visible {
-  outline: 2px solid var(--k-focus, var(--accent-primary)) !important;
+  outline: 2px solid var(--accent-primary) !important;
   outline-offset: 2px !important;
+}
+
+:is(
+    :root[data-brand-focus],
+    :root.is-dev-build,
+    :root[data-app-channel="beta"],
+    :root[data-app-channel="nightly"]
+  )
+  :where(
+    a[href],
+    button,
+    input,
+    textarea,
+    select,
+    summary,
+    [role="button"],
+    [role="link"],
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+  outline-color: var(--k-focus) !important;
 }
 
 /*
@@ -334,6 +364,12 @@
   --syntax-keyword: #ff7b72;
   --syntax-number: #79c0ff;
   --syntax-string: #a5d6ff;
+  /* Rungs the File Preview's grammar tokens add (entity names, markup tags,
+     variables): github-dark's own values, text-floor 4.5:1, measured by
+     theme-rung-contrast.test.ts on the page, panel and selected line. */
+  --syntax-function: #b392f0;
+  --syntax-tag: #85e89d;
+  --syntax-variable: #ffab70;
 
   --overlay-bg: rgba(0, 0, 0, 0.2);
   --overlay-bg-dark: rgba(0, 0, 0, 0.3);
@@ -597,6 +633,12 @@
   --syntax-keyword: #b82b3a;
   --syntax-number: #0550ae;
   --syntax-string: #0a3069;
+  /* github-light-default's entity, tag and variable hues, darkened where
+     needed to hold 4.5:1 on the selected-line tint as well as the page
+     (theme-rung-contrast.test.ts measures all three backdrops). */
+  --syntax-function: #6639ba;
+  --syntax-tag: #116329;
+  --syntax-variable: #953800;
 
   /* Overlays & Shadows */
   --overlay-bg: rgba(0, 0, 0, 0.05);
@@ -731,6 +773,15 @@ button:hover {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
+}
+
+/* Nested content owns scrolling; section focus must not pan the shell frame.
+   Keep clipping on older WebViews that do not support the non-scrollable form. */
+@supports (overflow: clip) {
+  .app__main {
+    overflow: clip;
+  }
 }
 
 .app-toolbar {
@@ -741,6 +792,20 @@ button:hover {
   gap: 14px;
   padding: 3px 14px;
   padding-top: var(--safe-top);
+  /* The side padding is composed HERE from three inputs, and breakpoints
+     change the inputs rather than re-declaring `padding`, so a phone rule
+     cannot drop the safe-area insets: the gutter (14px, 12px on a
+     phone), the side safe-area insets (a landscape phone's notch and rounded
+     corner), and the macOS overlay title bar's traffic-light inset (set only
+     in the single-column layout). The macOS collapsed-sidebar rules in
+     ProjectSidebar.css still set `padding-left` directly; they only apply on
+     desktop, where the side insets are 0. */
+  padding-left: max(
+    var(--app-toolbar-gutter, 14px),
+    var(--safe-left),
+    var(--app-toolbar-inset-left, 0px)
+  );
+  padding-right: max(var(--app-toolbar-gutter, 14px), var(--safe-right));
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
 }
@@ -808,10 +873,11 @@ button:hover {
    row at narrow widths. */
 .responsive-dialog-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: var(--responsive-header-padding, var(--space-3));
   border-bottom: 1px solid var(--border-primary);
 }
 
@@ -1104,7 +1170,7 @@ button:hover {
 @keyframes responsive-surface-panel-enter {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(var(--surface-enter-distance, 4px));
   }
   to {
     opacity: 1;
@@ -1118,6 +1184,9 @@ button:hover {
 
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
+  display: none;
+}
+.app-toolbar__lockup {
   display: none;
 }
 .app-toolbar__logo {
@@ -1187,50 +1256,6 @@ button:hover {
   position: relative;
 }
 
-.agent-selector__trigger {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-radius: 10px;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  cursor: pointer;
-  min-width: 220px;
-}
-
-.agent-selector__trigger:hover {
-  border-color: var(--accent-primary);
-}
-
-.agent-selector__current {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.agent-selector__current-label {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.agent-selector__current-name {
-  font-size: var(--text-xl);
-  font-weight: 600;
-}
-
-.agent-selector__current-model {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-}
-
-.agent-selector__chevron {
-  font-size: var(--text-2xl);
-}
-
 .agent-selector__menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -1245,75 +1270,6 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.agent-selector__section-title {
-  display: block;
-  font-size: var(--text-base);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 8px;
-}
-
-.agent-selector__empty {
-  font-size: var(--text-md);
-  color: var(--text-muted);
-}
-
-.agent-selector__option {
-  width: 100%;
-  text-align: left;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: transparent;
-  color: inherit;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  cursor: pointer;
-}
-
-.agent-selector__option:hover {
-  background: var(--bg-tertiary);
-  border-color: var(--accent-primary);
-}
-
-.agent-selector__option-name {
-  font-size: var(--text-lg);
-  font-weight: 600;
-}
-
-.agent-selector__option-meta {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-}
-
-.agent-selector__actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 1fr));
-  gap: 8px;
-}
-
-.agent-selector__manage-button {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-active);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.agent-selector__manage-button:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  background: var(--bg-selected);
-}
-
-.agent-selector__manage-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .agent-list {
@@ -1396,32 +1352,20 @@ button:hover {
   padding: 48px 24px;
   text-align: center;
 }
-.workspace-default__empty {
-  text-align: center;
-  max-width: 320px;
-}
+
 .workspace-default__icon {
   color: var(--text-muted, #555);
   margin-bottom: 1.25rem;
   opacity: 0.4;
 }
-.workspace-default__title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0 0 0.5rem;
-  letter-spacing: -0.01em;
-}
+
 .workspace-default__desc {
   font-size: 0.85rem;
   color: var(--text-muted, #777);
   margin: 0 0 1.5rem;
   line-height: 1.55;
 }
-.workspace-default__actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: center;
-}
+
 .workspace-default__btn {
   padding: 0.5rem 1.25rem;
   font-size: 0.8rem;
@@ -1656,6 +1600,24 @@ button:hover {
   .chat-dock__active-identity-close {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* The send-blocked line's one fix, "Remove attachments", the queued-retry
+     "Discard" the composer repeats in a short dock, and the transcript notice
+     action ("Discard", "Retry"…). Their 44px floor
+     comes from the width-gated mobile block's shared action-row rule, which a
+     touch tablet wider than 768px and taller than 540px never reaches. The
+     floor is a property of the pointer, not the width, and a pointer that
+     cannot hover is the touch one. This is deliberately THESE controls, not the
+     whole action-row vocabulary: that rule's selectors also match header,
+     footer and toolbar rows (the 38px dock header's actions, live-work rows,
+     the inbox footer, tool-call actions) that have no wrap rule or coverage at
+     this width. */
+  .chat-input__blocked-actions > button,
+  .chat-input__queued-retry-actions > button,
+  .ephemeral-message__action {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 
@@ -2180,39 +2142,6 @@ button:hover {
   overflow: hidden;
 }
 
-.chat-dock__scope {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 2px 6px;
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-sm);
-  background: var(--accent-subtle);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  white-space: nowrap;
-}
-
-.chat-dock__scope > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-dock__scope-clear {
-  flex: 0 0 auto;
-  padding: 0 3px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-}
-
-.chat-dock__scope-clear:hover,
-.chat-dock__scope-clear:focus-visible {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
 .chat-dock__title {
   position: relative;
   display: flex;
@@ -2277,24 +2206,24 @@ button:hover {
   font-weight: 600;
 }
 
+/* Quiet chrome (design round 2026-10, B1/B2): the bar's buttons draw no
+   border at rest. Hover and focus are a wash, not an outline; the one
+   labelled action ("New") is the same family at the same weight. */
 .chat-dock__header-actions button {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border-secondary);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
-/* archive#800: the collapsed dock's "Start a chat" label is a real action, not text
-   inheriting the header's pointer cursor. 2026-08-26 audit F6: it used to
-   render as an underlined link (a `chat-dock__counter-action` override on
-   the generic button rule above) — one more control family in a bar that
-   otherwise reads as icon buttons + status text. That override is gone: it
-   is now the same bordered compact button as its siblings (the activity
-   button, Maximize), keeping only its accessible name and click behavior. */
-.chat-dock__header-actions button:hover {
-  border-color: var(--accent-primary);
+/* archive#800: the collapsed dock's New chat action is a real action, not
+   text inheriting the header's pointer cursor; it shares this family. */
+.chat-dock__header-actions button:hover,
+.chat-dock__header-actions button:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* archive#3309 retired the tab strip and clustered its panel toggles (inbox,
@@ -2391,6 +2320,17 @@ button:hover {
    second line inside a bar whose height is a shared geometry token, and the
    token then lied about it. It truncates instead; the full path (and the name
    with it) is the button's `title`. */
+.chat-dock__project-badge-lines {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.chat-dock__project-badge-caption {
+  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-tight);
+}
 .chat-dock__project-badge-name {
   min-width: 0;
   overflow: hidden;
@@ -2436,7 +2376,7 @@ button:hover {
    row. It was the widest thing in the dock header and it left the conversation
    title beside it about one character on a 110-character worktree path. The
    path is the project badge's `title` and the More menu's "Copy project path";
-   the coding-layout link the leaf carried is that menu's "Open code layout".
+   the coding-layout link the leaf carried is that menu's "Open in Coding".
    `.new-chat-modal__context-dir--fallback` still names the retired
    `--fallback` rule in a comment: that surface keeps its own visible path. */
 .chat-dock__project-context > .git-tooltip-anchor {
@@ -2484,10 +2424,10 @@ button:hover {
   background: var(--bg-selected);
 }
 .chat-dock__project-switcher-switch {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--k-space-3);
   min-width: 0;
   min-height: 44px;
   justify-content: center;
@@ -2499,19 +2439,17 @@ button:hover {
   text-align: left;
   cursor: pointer;
 }
-.chat-dock__project-switcher-hint {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
+.chat-dock__project-switcher-icon {
+  display: flex;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
 }
-.chat-dock__project-switcher-switch:hover .chat-dock__project-switcher-hint,
-.chat-dock__project-switcher-switch:focus-visible
-  .chat-dock__project-switcher-hint {
-  color: var(--text-secondary);
+.chat-dock__project-switcher-accent {
+  width: 3px;
+  height: 22px;
+  border-radius: var(--radius-pill);
 }
-/* The Switch button aligns its lines to the start, so without a max-width the
-   name sizes to its text and a long one runs out of the column, under the
-   Open icon. The ellipsis sits on the label: a flex container's own
-   text-overflow never applies to its text. */
 .chat-dock__project-switcher-name {
   display: flex;
   align-items: center;
@@ -2529,16 +2467,40 @@ button:hover {
 }
 /* Decorative only (aria-hidden in the component) — the row it flags never
    disables either action; see D5 in the kontourai-station-793 plan. */
+.chat-dock__project-switcher-cue {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.chat-dock__project-switcher-panel {
+  position: relative;
+}
+.chat-dock__project-switcher-help {
+  position: absolute;
+  right: var(--k-space-4);
+  bottom: calc(52px + var(--k-space-3) * 2 + var(--k-space-2));
+  left: var(--k-space-4);
+  margin: 0;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-overlay);
+  background: var(--bg-secondary);
+  box-shadow: var(--k-elevation-overlay);
+  color: var(--text-primary);
+  font-size: var(--k-text-md);
+  line-height: var(--k-leading-normal);
+  pointer-events: none;
+}
 .chat-dock__project-switcher-current {
-  flex-shrink: 0;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--k-action);
 }
 /* Row action wrapper — its `-actions` suffix is also what
    scripts/responsive-surface-ratchet.mjs discovers for the action-surface
@@ -2594,19 +2556,6 @@ button:hover {
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
-}
-
-.chat-dock__context-actions .chat-dock__command-launcher-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-}
-
-.chat-dock__command-launcher-trigger kbd {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
 }
 
 .chat-dock__context-actions button:hover,
@@ -3322,12 +3271,12 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-secondary);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   cursor: pointer;
   min-height: 32px;
   font-size: var(--text-sm);
@@ -3371,8 +3320,10 @@ button:hover {
   cursor: not-allowed;
 }
 
-.chat-dock__new:hover:not(:disabled) {
-  border-color: var(--accent-primary);
+.chat-dock__new:hover:not(:disabled),
+.chat-dock__new:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .chat-dock__body {
@@ -3449,28 +3400,10 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
-.chat-dock__empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--text-tertiary);
-}
-
-.chat-dock__empty button {
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: var(--accent-primary);
-  cursor: pointer;
-}
-
-.chat-dock__empty button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+/* The dock's "No chat open" card keeps the dock's gutter instead of
+   drawing its dashed edge flush against the screen. */
+.chat-dock__no-chat {
+  margin: var(--k-space-4);
 }
 
 /* Header icon button (settings, collapse) */
@@ -3507,12 +3440,13 @@ button:hover {
 .chat-dock__activity-btn {
   background: transparent;
   border: none;
-  color: var(--accent-primary);
+  color: var(--success-text);
   cursor: pointer;
   padding: 4px 8px;
   display: flex;
   align-items: center;
   gap: 4px;
+  font-size: var(--text-sm);
 }
 
 .chat-dock__activity-dropdown {
@@ -3752,54 +3686,6 @@ button:hover {
   flex-shrink: 0;
 }
 
-/* Settings panel */
-.chat-dock__settings {
-  padding: 12px 16px;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-primary);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-}
-
-.chat-dock__settings-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.chat-dock__settings-label {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-}
-
-.chat-dock__settings-control {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.chat-dock__settings-btn {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  padding: 4px 8px;
-  cursor: pointer;
-  color: var(--text-primary);
-  font-size: var(--text-base);
-}
-
-.chat-dock__settings-btn:hover {
-  border-color: var(--accent-primary);
-}
-
-.chat-dock__settings-value {
-  min-width: 32px;
-  text-align: center;
-  font-size: var(--text-base);
-}
-
 /* Chat Settings Modal */
 .chat-settings-overlay {
   position: fixed;
@@ -3941,12 +3827,6 @@ button:hover {
   font-weight: 500;
 }
 
-.chat-settings-modal__btn--active {
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  border-color: var(--accent-primary);
-}
-
 .chat-messages--empty {
   align-items: center;
   justify-content: center;
@@ -4044,11 +3924,68 @@ button:hover {
   max-width: 90%;
 }
 
-/* Table styling for slash command responses */
+/* Markdown tables in an answer (`MarkdownRenderer` wraps each in
+   `.chat-markdown-table`). The wrapper scrolls sideways; the table is at
+   least the message width and otherwise as wide as its words need, because
+   the cells opt back out of the message's `overflow-wrap: anywhere` — that
+   value lowers min-content to a single character, which is what split a
+   phone's first column letter by letter. The old column rules here
+   (a 500px description column, a centred fourth column) were written for a
+   slash-command listing that now renders its own inline-styled HTML, and
+   applied to every answer's tables. */
+.chat-markdown-table {
+  max-width: 100%;
+  margin: 1em 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* The scroll cue: while a table can still scroll right, its right edge
+   fades out, and the fade is gone at the end of the scroll. A scroll-driven
+   animation on the scroller itself — no listener, no per-row work, and
+   inactive (so no fade at all) when the table fits. Engines without
+   scroll timelines simply show no cue. */
+@supports (animation-timeline: scroll()) {
+  .chat-markdown-table {
+    animation: chat-markdown-table-edge var(--ease-linear) both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
+@keyframes chat-markdown-table-edge {
+  0%,
+  96% {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      #000 calc(100% - 28px),
+      transparent
+    );
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  100% {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+.chat-markdown-table:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .message.assistant table {
   border-collapse: collapse;
-  width: 100%;
+  min-width: 100%;
   margin: 1em 0;
+}
+
+.message.assistant .chat-markdown-table table {
+  margin: 0;
+  /* Inside its scroller a table sizes to its content, each column up to the
+     cell cap below, instead of splitting the viewport between columns: a
+     prose column squeezed to its longest word made rows several hundred
+     pixels tall on a phone. */
+  width: max-content;
 }
 
 .message.assistant table th,
@@ -4056,34 +3993,23 @@ button:hover {
   padding: 8px 12px;
   border: 1px solid var(--border-primary);
   text-align: left;
+  vertical-align: top;
+  /* `break-word`, not the message's `anywhere`: it leaves min-content at
+     the longest word, so a squeezed column can never split words letter by
+     letter, but a token longer than the cell cap — a URL, a commit hash, a
+     long path, in code or not — still breaks inside its own cell instead of
+     painting over the next column. */
+  overflow-wrap: break-word;
+  word-break: normal;
+  /* A readable measure per column: at least 6rem, at most 20rem before a
+     cell wraps. */
+  min-width: 6rem;
+  max-width: 20rem;
 }
 
 .message.assistant table th {
   background: var(--bg-secondary);
   font-weight: 600;
-}
-
-/* Description column with flexible height based on row */
-.message.assistant table td:nth-child(2) {
-  max-width: 500px;
-  padding: 8px 12px;
-  vertical-align: middle;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  word-break: break-word;
-}
-
-/* Fixed width for parameters column with wrapping */
-.message.assistant table td:nth-child(3) {
-  max-width: 250px;
-  word-wrap: break-word;
-  white-space: normal;
-}
-
-/* Center align trusted column */
-.message.assistant table td:nth-child(4),
-.message.assistant table th:nth-child(4) {
-  text-align: center;
 }
 
 .message.loading {
@@ -4164,22 +4090,38 @@ button:hover {
   animation-delay: 0.4s;
 }
 
-.streaming-loading {
-  margin-top: 8px;
-}
-
 /* Pre-content activity line: dots + a live "Thinking… / Working…" label so
    the agent never reads as idle before the first delta arrives. */
 .streaming-activity {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  min-width: 0;
   color: var(--text-secondary);
   font-size: 0.88em;
   line-height: 1.35;
 }
 .streaming-activity .elapsed-wait {
   font-variant-numeric: tabular-nums;
+}
+/* The progress row names a tool, and a tool's name can be a whole command
+   line ("Last: npm run gate:for … 2>&1 | tail"). The name alone shrinks to
+   an ellipsis inside the column, so the outcome after it ("· done") and the
+   elapsed time stay on screen; the full text stays in the row's title. */
+.turn-activity-progress__tool {
+  display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+}
+.turn-activity-progress__fixed {
+  flex-shrink: 0;
+  white-space: pre;
+}
+.turn-activity-progress__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Streaming-aliveness motion primitives (archive#2651) ──────────────────
@@ -4666,8 +4608,12 @@ button.tool-call__line:hover {
   white-space: nowrap;
 }
 
+/* Right-aligned whatever the label's length: a short label ("Ran npm test")
+   used to leave the chevron trailing its text, out of line with the
+   full-width labels and batch summaries above and below it. */
 .tool-call__chevron {
   flex-shrink: 0;
+  margin-inline-start: auto;
   opacity: 0.5;
   font-size: 0.9em;
 }
@@ -4763,6 +4709,10 @@ button.tool-call__line:hover {
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
 .tool-call__status-badge {
+  /* A one- or two-word outcome ("Cancelled", "Output truncated") never
+     breaks mid-word in a narrow row; the label beside it ellipsizes instead. */
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 0.7em;
   padding: 2px 6px;
   background: var(--bg-tertiary);
@@ -4972,7 +4922,9 @@ button.tool-call__line:hover {
 .tool-call-batch__summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* The single row's gap: a run that grows from one call to two keeps its
+     glyph and label where they were. */
+  gap: 6px;
   width: 100%;
   padding: 2px 4px;
   border: 0;
@@ -5264,11 +5216,13 @@ button.tool-call__line:hover {
    dialog overlay as a sibling of its trigger inside this row, and without the
    exclusion this (0,4,0) selector silently overrode the overlay's own
    `align-items`/`background` — the popover floated mid-screen with no scrim
-   on every viewport (#999). */
+   on every viewport (#999). The queued-retry Discard is excluded the same way:
+   its wrapper is shown only when the composer has priority, and this rule's
+   `display: flex` would keep it on screen in every dock. */
 .chat-controls-row
 > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
   .responsive-surface-overlay
-) {
+):not(.chat-input__queued-retry-actions) {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -5291,7 +5245,7 @@ button.tool-call__line:hover {
 .chat-controls-row
   > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
     .responsive-surface-overlay
-  ):hover:not(:disabled) {
+  ):not(.chat-input__queued-retry-actions):hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -5890,31 +5844,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-height: 0;
 }
 
-.agent-editor__steps {
-  display: flex;
-  gap: 0;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--border-primary);
-  background: var(--bg-secondary);
-  flex-shrink: 0;
-}
-
-.agent-editor__content {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.agent-editor__actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  padding: 12px 24px;
-  border-top: 1px solid var(--border-primary);
-  background: var(--bg-secondary);
-  flex-shrink: 0;
-}
-
 .tool-info {
   display: flex;
   flex-direction: column;
@@ -5989,6 +5918,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+/* The chat pane's floating status pill (components/status) sits over the
+   transcript's top-right corner. A constant 36px of clear space keeps it off
+   the first message when the transcript is scrolled to the top; it never
+   changes when the pill comes and goes, so nothing shifts. It is a spacer in
+   the scrolled content (20px plus the column's 16px gap), not padding on the
+   scroller: padding cannot shrink, and in a short dock it pushed the composer
+   out of view. */
+.chat-dock__content-area .chat-messages::before {
+  content: "";
+  flex: none;
+  height: 20px;
 }
 
 .conversation-history {
@@ -6119,11 +6061,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border-radius: 3px;
   font-weight: 500;
   white-space: nowrap;
-}
-
-.session-item__badge--acp {
-  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
-  color: var(--accent-primary);
 }
 
 /* (archive#894): the ACP badge was replaced with a shared EngineChip, whose
@@ -6523,7 +6460,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   /* The collapsed chat dock renders as a bottom bar on mobile. At the desktop
-     38px the "Chat Dock" label + gear / "Start a chat" / send / chevron
+     38px the "Chat Dock" label + gear / New chat / send / chevron
      controls are cramped, so give the bar comfortable room on small screens.
      The chat-dock snap math reads this same variable (collapsedHeight), so the
      Collapsed snap/drag-release continues to land on the actual bar height.
@@ -6568,7 +6505,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
      the corner the sidebar occupies instead. */
   .app-toolbar {
-    padding-left: max(14px, var(--titlebar-inset-left, 0px));
+    --app-toolbar-inset-left: var(--titlebar-inset-left, 0px);
   }
 
   .responsive-surface-overlay {
@@ -6582,6 +6519,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   .responsive-surface-panel {
+    --text-2xs: var(--k-text-sm);
+    --text-xs: var(--k-text-md);
+    --text-sm: var(--k-text-md);
+    --text-base: var(--k-text-md);
+    --surface-enter-distance: var(--k-space-4);
+    font-size: var(--k-text-md);
+    --responsive-header-padding: var(--k-space-4);
     min-width: 0 !important;
     width: min(100%, 720px) !important;
     max-height: 100% !important;
@@ -6591,11 +6535,54 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     -webkit-overflow-scrolling: touch;
   }
 
+  .responsive-dialog-header strong,
+  .background-tasks-sheet__header h2,
+  .tool-call-batch-sheet__title {
+    font-size: var(--k-text-lg);
+    line-height: var(--k-leading-normal);
+  }
+
+  .responsive-dialog-header span {
+    font-size: var(--k-text-md);
+    line-height: var(--k-leading-normal);
+  }
+
+  .composer-popover-panel .composer-actions-menu__item {
+    min-height: 52px;
+    padding: var(--k-space-3) var(--k-space-4);
+    font-size: var(--k-text-lg);
+    line-height: var(--k-leading-normal);
+    overflow-wrap: anywhere;
+  }
+
+  .chat-dock__project-switcher-switch {
+    min-height: 64px;
+    padding: var(--k-space-3);
+    font-size: var(--k-text-lg);
+  }
+
+  .chat-dock__project-switcher-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .chat-dock__project-switcher-current {
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
   .responsive-surface-actions {
     min-width: 0;
     max-width: 100%;
     flex-wrap: wrap;
     padding-bottom: max(0px, var(--safe-bottom, 0px));
+  }
+
+  /* The transcript's own notice action (Retry, Discard, New chat…): its look is
+     inline, its touch floor is here. */
+  .ephemeral-message__action {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .responsive-surface-actions > :is(button, a, .button, [role="button"]) {
@@ -6663,8 +6650,46 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     min-height: 44px;
   }
 
+  /* The logo and the wordmark are ONE wrapping line, a fixed 22px tall with
+     overflow clipped. When the row cannot hold both, the wordmark wraps to a
+     second line that the clip removes, so the app name is either shown in full
+     or not at all - a text-overflow ellipsis here is what produced "S...". The
+     logo stays (it is the home link) and the toolbar stays one row. The
+     connection chip is a fixed 44px dot (chat.css), so the lockup is the one
+     member of the row that gives up width. Both children are 22px tall and
+     share one line, so nothing of the wrapped line peeks into the clip. */
+  .app-toolbar__lockup {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    align-items: center;
+    column-gap: 10px;
+    /* The gap below the first line keeps the wrapped wordmark out of the
+       4px the clip margin lends to the focus ring. */
+    row-gap: 8px;
+    /* Shrinkable, never below the logo. When the name does not fit, the lockup
+       shrinks to the room there is; the blank remainder is invisible and the
+       action cluster stays put. */
+    flex: 0 1 auto;
+    min-width: 22px;
+    height: 22px;
+    overflow: hidden;
+  }
+
+  /* Where supported, clip with a margin so the 2px + 2px focus ring of the home
+     link is not cut off by the lockup's own edge. `clip`, unlike `hidden`, is
+     also never scrolled: focusing a wordmark that has wrapped out of view
+     cannot drag the logo out of the box with it. */
+  @supports (overflow: clip) {
+    .app-toolbar__lockup {
+      overflow: clip;
+      overflow-clip-margin: 4px;
+    }
+  }
+
   .app-toolbar__logo {
     display: block;
+    flex: none;
     width: 22px;
     height: 22px;
     cursor: pointer;
@@ -6672,19 +6697,30 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   .app-toolbar__brand {
     display: block;
+    flex: none;
     font-size: var(--text-15);
     font-weight: 600;
+    line-height: 22px;
+    /* The shared link/button padding would add 16px the lockup cannot spare. */
+    padding: 0;
+    white-space: nowrap;
     color: var(--text-primary);
     cursor: pointer;
-    margin-right: auto;
   }
 
   .header-divider {
     display: none;
   }
 
+  /* On a phone the action cluster is right-anchored by its own auto margin;
+     this empty flex:1 item only added two 8px gaps to a row that has none to
+     spare. */
+  .app-toolbar__spacer {
+    display: none;
+  }
+
   /* Hidden on mobile: the top bar is already tight (even the app name
-     truncates), and the SplitPaneLayout panel header right below repeats the
+     can drop out), and the SplitPaneLayout panel header right below repeats the
      same context, so a top-bar crumb here just clips to noise ("Age…"). The
      universal breadcrumb stays a desktop affordance. Higher specificity than
      the base `.app-toolbar__breadcrumb` rule so the hide wins. */
@@ -6694,7 +6730,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   .app-toolbar {
     gap: 8px;
-    padding: 4px 12px;
+    --app-toolbar-gutter: 12px;
+    padding-bottom: 4px;
     padding-top: calc(4px + var(--safe-top, 0px));
     position: sticky;
     top: 0;
@@ -6711,26 +6748,17 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
        banner telling them they were disconnected.
 
        The toolbar's height is a shared geometry token; a bar that can grow a
-       row is a bar that token lies about. The brand truncates instead — it
-       already carries `min-width: 0` and an ellipsis for exactly this. */
+       row is a bar that token lies about. The wordmark drops out whole
+       (`.app-toolbar__lockup`) before the row would grow. */
     flex-wrap: nowrap;
   }
 
-  /* The brand truncates so the right-side action cluster (notifications,
-     profile, overflow, settings) always stays on-screen at ≤390px instead of
-     overflowing past the right edge. */
-  .app-toolbar__brand {
-    min-width: 0;
-    flex-shrink: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  /* The wordmark never truncates (see `.app-toolbar__lockup`). The right-hand
+     action cluster stays on-screen at <=390px because the lockup is the one
+     member of the row that gives up width. */
 
-  /* Hide the full state and identity spans on mobile. The compact healthy
-     chip keeps its bounded `Station · <saved name>` label in chat.css; the
-     action cluster's right-anchor and shrink behavior live there too
-     (station#3766). */
+  /* Phone connection chrome is a touchable status dot. Its full accessible
+     name and long-press hint are owned by HeaderActions; chat.css sizes it. */
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;
@@ -6827,10 +6855,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   .active-work-frame__overlay {
     padding-bottom: 0;
-  }
-
-  .chat-dock__command-launcher-trigger kbd {
-    display: none;
   }
 
   .command-launcher__overlay {
@@ -7226,13 +7250,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    the SDK copy carried `transition: all` — banned by tokens.css and by
    scripts/motion-contract-ratchet.mjs, which only scans src-ui/src/ and so
    could not see it. The fork is deleted and the tokenized transition now
-   lives with the component that renders the markup. `.workspace-tabs` and
-   `.workspace-tabs__label` below stay: the SDK sheet does not define them. */
-
-.workspace-tabs__label {
-  font-weight: inherit;
-  white-space: nowrap;
-}
+   lives with the component that renders the markup. `.workspace-tabs` above
+   stays: the SDK sheet does not define it. */
 
 /* ============ User Detail Modal (shared) ============ */
 
@@ -7531,10 +7550,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   padding-top: 4px;
 }
 
-.knowledge-section__status-item {
-  font-family: var(--font-mono);
-}
-
 .knowledge-section__clear-btn {
   background: none;
   border: none;
@@ -7595,17 +7610,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-primary);
 }
 
-.chat-dock__filter-pill--active {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: var(--text-on-accent);
-}
-
-.chat-dock__filter-pill--active:hover {
-  background: var(--accent-hover-fill);
-  color: var(--text-on-accent);
-}
-
 /* ── Header Breadcrumb ──────────────────────────────────────────── */
 
 .app-toolbar__breadcrumb {
@@ -7641,44 +7645,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-size: var(--text-sm);
   color: var(--text-muted);
   flex-shrink: 0;
-}
-
-.chat-dock__model-btn {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.chat-dock__model-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.chat-dock__model-icon {
-  font-size: var(--text-2xs);
-}
-
-.chat-dock__model-chevron {
-  font-size: var(--text-micro);
-}
-
-.chat-dock__session-project {
-  background: var(--bg-hover);
-  border-radius: 3px;
-  padding: 1px 6px;
-  font-size: var(--text-xs);
-}
-
-.chat-dock__session-count {
-  margin-left: auto;
-  font-size: var(--text-xs);
 }
 
 /* ── Dock Modes: Left / Right Split ────────────────────────────── */
@@ -8141,14 +8107,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 }
 
-/* New/Open button icon — hidden on desktop, shown on mobile */
-.chat-dock__new-icon {
-  display: none;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
 /* Mobile: compact chat dock header and tab bar */
 /* ── Provider Overview ── */
 .provider-overview {
@@ -8175,43 +8133,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   margin: 0;
 }
 
-.provider-overview__grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
 .provider-overview__card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   padding: 0.875rem 1rem;
-}
-
-.provider-overview__card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.provider-overview__card-icon {
-  font-size: 0.9rem;
-}
-
-.provider-overview__card-label {
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.provider-overview__card-items {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
 }
 
 .provider-overview__card-item {
@@ -8234,21 +8160,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--bg-tertiary);
 }
 
-.provider-overview__card-item--static {
-  cursor: default;
-}
-
-.provider-overview__card-item--static:hover {
-  background: none;
-}
-
-.provider-overview__card-meta {
-  display: block;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  margin-top: 1px;
-}
-
 .provider-overview__dot {
   width: 6px;
   height: 6px;
@@ -8259,13 +8170,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .provider-overview__dot--active {
   background: var(--success-text, #22c55e);
-}
-
-.provider-overview__card-empty {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin: 0;
-  padding: 0.2rem 0.4rem;
 }
 
 /* Quick Setup (shown when no providers exist) */
@@ -9154,20 +9058,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-width: 0;
 }
 
-/* --text-tertiary replaces `opacity: 0.7` over the inherited primary. The
-   rendered colour is within a hair of what the opacity produced (8.36:1 ->
-   7.99:1 dark, 5.67:1 -> 5.80:1 light), but it is a rung of the text scale
-   instead of a transparency, so it survives a background change and is
-   measurable by the contrast helper, which does not model ancestor opacity. */
-.new-chat-modal__agent-desc {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* archive#3027(b): a disabled row's unavailable reason must read as a
    reason, not blend into the muted description above it — same warning tone
    as .new-chat-modal__compat-warning (--warning-text: the accessible,
@@ -9198,32 +9088,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   clip: rect(0 0 0 0);
 }
 
-/* The state chip. Pill geometry from `.lifecycle-chip`, tone from the
-   `--warning-text` family the reason text already used, so an unfinished row
-   reads as a state at a glance rather than as a paragraph of prose. The 14%
-   self-tint is inside the band --warning-text's own definition measured and
-   documented: #92400e holds 5.12:1 at a 15% self-tint in light, "with margin
-   for a tint up to 18%"; dark's #f59e0b starts at 7.65-9.01:1. */
-.new-chat-modal__agent-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-  font-size: var(--text-xs);
-  font-weight: 650;
-  line-height: 1.4;
-  white-space: nowrap;
-  flex-shrink: 0;
-  background: color-mix(in srgb, var(--warning-text) 14%, transparent);
-  color: var(--warning-text);
-}
-
-.new-chat-modal__agent-state svg {
-  width: 12px;
-  height: 12px;
-}
-
 /* ── Mobile touch targets for core UI elements ── */
 /* ══════════════════════════════════════════════════════════════════════════
    Mobile chat chrome — one row (owner direction, 2026-07-27)
@@ -9235,7 +9099,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .chat-dock__mobile-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(80px, 28%) minmax(0, 1fr);
+  /* The title stays centred (equal edge tracks) and takes all but a fixed
+     reserve for the edges: the leading edge's drawer or dock toggle plus a
+     44px project control, mirrored on the right. The project name is what
+     gives way — one line, ellipsised — not the chat title, which used to be
+     held to 28% of the bar and clamped to two lines beside empty space. */
+  --chat-dock-mobile-header-edge: 96px;
+  /* `fit-content`: a short title ("Chat", "New chat") gives its unused width
+     back to the edges, so the project name only truncates when the title
+     actually needs the room. The 80px floor is the identity's own min-width. */
+  grid-template-columns:
+    minmax(0, 1fr)
+    fit-content(calc(100% - 2 * var(--chat-dock-mobile-header-edge)))
+    minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1);
   /* 12px of horizontal padding is a deliberate grab margin: the bar is the
@@ -9286,22 +9162,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    would be a no-op dressed up as a mechanism. Together those two changes are
    what turn a 24px overflow into ~28px of title. */
 @media (max-width: 360px) {
-  .chat-dock__mobile-header {
-    padding: var(--space-1) 8px;
+  .app-toolbar.app-toolbar,
+  .app-toolbar .app-toolbar__actions {
+    gap: 2px;
   }
 
-  /* The maximized chat is the ONLY state that adds the drawer toggle (the app
-     toolbar is hidden, so this bar carries navigation), and it is the state
-     that overflows: six 44px icon slots plus the measured 53.28px labelled
-     connection chip and seven 2px gaps need 331.28px before the identity block,
-     against 304px.
-     The 44px floor is not negotiable and every other control here is the sole
-     entry point for its action — but dock height is not: the ⋯ sheet already
-     carries Expand/Restore/Collapse as named menu items, precisely so the drag
-     gesture is never the only way to change it. So this one control, in this
-     one configuration, defers to the sheet. Wider phones keep it. */
-  .chat-dock__mobile-header--with-drawer .chat-dock__mobile-dock-toggle {
-    display: none;
+  .chat-dock__mobile-header {
+    padding: var(--space-1) 8px;
   }
 }
 
@@ -9484,7 +9351,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .chat-dock__mobile-identity {
   justify-content: center;
-  min-width: 0;
+  min-width: 80px;
   text-align: center;
 }
 
@@ -9579,10 +9446,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     display: none;
   }
 
-  .chat-dock__new-icon {
-    display: block;
-  }
-
   .chat-dock__new {
     padding: 6px 10px;
     min-width: 36px;
@@ -9617,6 +9480,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* A maximized chat is the active phone surface; keep its Restore target
        above sticky toolbar descendants at the shared boundary. */
     z-index: calc(var(--layer-sticky) + 1);
+    /* No accent rule on a maximized sheet. The 2px `--accent-primary` top
+       border is the dock's edge against the page (it is a static accent, not
+       a progress indicator). Maximized, there is no page above it: under a
+       visible toolbar it stacked beneath the toolbar's own hairline as a
+       double rule, and with the toolbar hidden it drew a bright line along
+       the status bar. */
+    border-top: 0;
     /* The 44px mobile dock controls overhang the nominal header line box by a
        few pixels. Keep that hit target below the toolbar while preserving the
        visual-viewport bottom exactly. */
@@ -9793,6 +9663,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
       --chat-visual-viewport-bottom,
       var(--visual-viewport-bottom-inset, 0px)
     );
+    /* A phone in landscape has side insets (the notch or Dynamic Island on
+       one side, the rounded corner on the other; 59px on current iPhones).
+       The sheet's surface still runs edge to edge; its header, transcript
+       and composer sit inside the insets. */
+    padding-inline: var(--safe-left, 0px) var(--safe-right, 0px);
   }
 
   /* A full-screen mobile chat owns the viewport. ChatDockMobileHeader already
@@ -9825,9 +9700,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      owns this header's one mobile treatment). See page-frame.css's own
      responsive breakpoints. */
 
-  .app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header {
-    padding-top: calc(var(--space-1) + var(--safe-top, 0px));
-  }
+  /* No top safe-area padding on the full-screen dock's own header. The dock
+     already starts below the status bar: its `top` adds
+     `--app-toolbar-total-height`, which this mode reduces to `--safe-top`
+     (the maximized rule, and the short-window rule, which adds `--safe-top`
+     itself). Padding the header by the inset as well counted it twice and
+     left a status-bar-tall empty band above the project and chat title on
+     every edge-to-edge phone. tests/mobile-chat-composer.spec.ts measures
+     the header's height against the collapsed bar's with a real inset. */
 
   /* Deliberately NOT animated, reverting an attempt of mine to animate the
      snap into Full. A maximized dock's height tracks the visual viewport, so

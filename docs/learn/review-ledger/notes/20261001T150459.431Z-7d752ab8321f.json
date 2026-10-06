@@ -1,0 +1,7 @@
+{
+  "revision": "33c0de450a1c232f6b2f2f02d22b0ae9cf238fb8",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Integration source review through 33c0de450: 5a2e68619 (#3077) changes only how ChatDock derives its inbox items (shared useInboxWorkItems, inventory acknowledgement stamps layered on as before) and the context meter's open-chat membership check. The chat stream, tool approval and elicitation handling, and every endpoint this reference documents are untouched; the dock remains the current orchestration-based chat consumer. Prose accurate. Source review is separate from executed test evidence.","inputs":["docs/reference/api.md"]}
+  ]
+}

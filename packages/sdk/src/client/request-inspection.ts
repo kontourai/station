@@ -35,7 +35,9 @@ export function parseAttentionRequestInspection(
       typeof data.openedAt !== 'string' ||
       data.openedAt.length > 128 ||
       !Number.isFinite(Date.parse(data.openedAt)) ||
-      typeof data.canRespond !== 'boolean'
+      typeof data.canRespond !== 'boolean' ||
+      (data.requiresAnswers !== undefined &&
+        typeof data.requiresAnswers !== 'boolean')
     )
       throw new Error('Request inspection unavailable');
     if (
@@ -67,6 +69,9 @@ export function parseAttentionRequestInspection(
       openedAt: data.openedAt,
       answerability,
       canRespond: data.canRespond,
+      ...(data.requiresAnswers !== undefined
+        ? { requiresAnswers: data.requiresAnswers }
+        : {}),
     };
   }
   if (

@@ -1,0 +1,7 @@
+{
+  "revision": "d663d1be12c5e2fc585b2bcfcbaacbe56014795a",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"Post-merge reviewed upstream SplitPane selection/hover source and replacement Connections fixture capture. Marked earlier low-contrast observation as historical and described current source treatment without claiming runtime contrast in every consumer. Task capture remains real single-human persistence/geometry evidence.","inputs":["docs/learn/walkthroughs.md"]}
+  ]
+}

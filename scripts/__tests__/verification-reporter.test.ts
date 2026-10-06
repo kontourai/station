@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
+import { ciFastStepMarker } from '../lib/ci-fast-step-marker.mjs';
 import { summarizeLaneResults } from '../lib/npm-lane-aggregate.mjs';
 import { captureOwnedProcessOutput } from '../lib/owned-process.mjs';
 import { executionEquivalenceKey } from '../lib/verification-coordinator.mjs';
@@ -40,7 +41,11 @@ import {
   sweepVerificationArtifactOrphans,
   verifyVerificationArtifacts,
 } from '../lib/verification-reporter.mjs';
-import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
+import {
+  CI_FAST_BUDGET_EXCEEDED_CAUSE,
+  describeCiFastCommand,
+  FAST_STATIC_COMMANDS,
+} from '../run-ci-fast.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 function privateKeyMarker(position: 'BEGIN' | 'END', kind: string): string {
@@ -286,6 +291,58 @@ describe('verification reporter', () => {
       maxBytes: 2048,
     });
     expect(summary.failingStep).toBe('typecheck:scripts');
+  });
+
+  // #2922 review: a direct `node` step prints no npm header, so a failing
+  // code-health gate was blamed on the npm step before it.
+  test('names a failing direct-node ci:fast step, not the npm step before it', () => {
+    const steps = FAST_STATIC_COMMANDS.slice(
+      0,
+      FAST_STATIC_COMMANDS.findIndex(([, args]) =>
+        args.includes('scripts/code-health-gate.mjs'),
+      ) + 1,
+    );
+    // The npm step the old attribution named sits before the failing one.
+    expect(steps.some(([command]) => command === 'npm')).toBe(true);
+    const stdout = steps.flatMap(([command, args], index) => {
+      const last = index === steps.length - 1;
+      return [
+        ciFastStepMarker(command, args).trimEnd(),
+        ...(command === 'npm'
+          ? [
+              `> @kontourai/station-core@0.1.11 ${args[1]}`,
+              `> node scripts/${args[1]}.mjs`,
+            ]
+          : []),
+        last ? 'code-health: 2 introduced unused exports' : 'ok',
+        `[ci:fast] ${describeCiFastCommand(command, [...args])} 0.4s`,
+      ];
+    });
+    const summary = summarizeVerificationOutput({
+      stdout: stdout.join('\n'),
+      stderr: '',
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 0, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.failingStep).toBe('scripts/code-health-gate.mjs');
+  });
+
+  test('an npm step keeps its own script name under the ci:fast marker', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        ciFastStepMarker('npm', ['run', 'lockfile-sync:gate']).trimEnd(),
+        '> @kontourai/station-core@0.1.11 lockfile-sync:gate',
+        'lockfile drift',
+      ].join('\n'),
+      stderr: '',
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 0, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.failingStep).toBe('lockfile-sync:gate');
   });
 
   test('a failed coverage aggregate does not accuse its passing Android bucket', () => {

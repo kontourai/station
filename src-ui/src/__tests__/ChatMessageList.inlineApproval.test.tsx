@@ -375,6 +375,108 @@ describe('#2316 inline approval card', () => {
     expect(screen.queryByRole('button', { name: /Always Allow/ })).toBeNull();
   });
 
+  test.each([
+    [
+      'Read',
+      'the engine suggests a folder rule',
+      [
+        {
+          type: 'addRules',
+          rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+          behavior: 'allow',
+          destination: 'session',
+        },
+      ],
+      'Allow reading this folder for this session',
+    ],
+    ['Read', 'nothing can be forwarded (an ask rule)', undefined, undefined],
+    [
+      'Edit',
+      'the engine suggests acceptEdits',
+      [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+      'Auto-accept file edits for this session',
+    ],
+    ['Edit', 'a sensitive file is asked for in acceptEdits', [], undefined],
+  ])(
+    '#2915: a %s card when %s',
+    async (toolName, _case, suggestions, label) => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      windowEvents.current = claudeBashAwaitingApproval().map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method === 'tool.started') {
+          return {
+            ...entry,
+            event: {
+              ...event,
+              toolName,
+              arguments: { file_path: '/work/b/notes.md' },
+            },
+          };
+        }
+        if (event.method === 'request.opened') {
+          return {
+            ...entry,
+            event: {
+              ...event,
+              title: `Allow ${toolName}`,
+              payload: {
+                ...(event.payload as Record<string, unknown>),
+                toolName,
+                toolInput: { file_path: '/work/b/notes.md' },
+                ...(suggestions ? { suggestions } : {}),
+              },
+            },
+          };
+        }
+        return entry;
+      });
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow Once' });
+      const session = screen.queryByRole('button', {
+        name: /for this session/,
+      });
+      expect(session?.textContent ?? undefined).toBe(label);
+    },
+  );
+
+  test('#2916: a plan exit card offers no session grant', async () => {
+    stubFetch(() => Response.json({ success: true, data: {} }));
+    windowEvents.current = claudeBashAwaitingApproval().map((entry) => {
+      const event = entry.event as Record<string, unknown>;
+      if (event.method === 'tool.started') {
+        return {
+          ...entry,
+          event: {
+            ...event,
+            toolName: 'ExitPlanMode',
+            arguments: { plan: 'Step 1' },
+          },
+        };
+      }
+      if (event.method === 'request.opened') {
+        return {
+          ...entry,
+          event: {
+            ...event,
+            title: 'Allow ExitPlanMode',
+            payload: {
+              ...(event.payload as Record<string, unknown>),
+              toolName: 'ExitPlanMode',
+              toolInput: { plan: 'Step 1' },
+            },
+          },
+        };
+      }
+      return entry;
+    });
+    renderCard();
+    await screen.findByRole('button', { name: 'Allow Once' });
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /for this session/ }),
+    ).toBeNull();
+  });
+
   describe('a second answer for a request that is already settled', () => {
     const refusedAsResolved = (call: WireCall) =>
       call.method === 'POST'
@@ -750,7 +852,7 @@ describe('#2316 inline approval card', () => {
         expect(
           screen.getByRole('status', { name: 'Approval announcements' })
             .textContent,
-        ).toBe('Approval needed: Bash'),
+        ).toBe('Needs approval: Bash'),
       );
     });
 
@@ -796,7 +898,7 @@ describe('#2316 inline approval card', () => {
         }),
       ];
       card.rerender();
-      await waitFor(() => expect(announced()).toBe('Approval needed: Write'));
+      await waitFor(() => expect(announced()).toBe('Needs approval: Write'));
     });
 
     test('the replay-to-live flip announces nothing already waiting, and a later request is announced', async () => {
@@ -835,7 +937,7 @@ describe('#2316 inline approval card', () => {
         }),
       ];
       card.rerender(chatSession());
-      await waitFor(() => expect(announced()).toBe('Approval needed: Edit'));
+      await waitFor(() => expect(announced()).toBe('Needs approval: Edit'));
     });
 
     test('lists only requests with no answerable card, and never takes the last row’s buttons', async () => {
@@ -894,7 +996,19 @@ describe('#2316 inline approval card', () => {
           requestId: 'req-same-id',
           requestType: 'approval',
           title: 'Allow Read',
-          payload: { toolName: 'Read', toolCallId: 'toolu-a' },
+          payload: {
+            toolName: 'Read',
+            toolCallId: 'toolu-a',
+            // The engine's outside-working-directory ask (#2915).
+            suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+                behavior: 'allow',
+                destination: 'session',
+              },
+            ],
+          },
         }),
         runtimeEvent({
           method: 'turn.started',
@@ -917,7 +1031,7 @@ describe('#2316 inline approval card', () => {
       });
       fireEvent.click(
         within(strip).getByRole('button', {
-          name: 'Allow Read for this session',
+          name: 'Allow reading this folder for this session',
         }),
       );
       fireEvent.click(

@@ -1,0 +1,15 @@
+{
+  "path": ".changeset/agent-sdk-boundary.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the Agent entry and host builder support.",
+
+  "limits": "Intent only; does not establish package publication.",
+
+  "sources": [],
+
+  "checks": []
+}

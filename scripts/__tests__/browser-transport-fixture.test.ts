@@ -16,6 +16,7 @@ import {
   runLabCommand,
   startLabRelay,
 } from '../lib/local-collaboration-process.mjs';
+import { startSelfHostedBrokerProcess } from '../lib/self-hosted-broker-process.js';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -90,6 +91,64 @@ function temporaryRoot() {
   roots.push(root);
   return root;
 }
+
+it('adds a late Station scope to the live broker while preserving the first scope and refusing foreign credentials', async () => {
+  const root = temporaryRoot();
+  const scope = {
+    stationId: 'station-a-12345678',
+    enrollmentId: 'enroll-a-12345678',
+    routingGeneration: 1,
+    browserOrigin: 'http://localhost:4173',
+  };
+  const broker = await startSelfHostedBrokerProcess({
+    directory: root,
+    scope,
+    signal: new AbortController().signal,
+  });
+  try {
+    expect((await broker.readLease()).state).toBe('offline');
+    const second = await broker.addScope({
+      directory: join(root, 'second'),
+      scope: {
+        ...scope,
+        stationId: 'station-b-12345678',
+        enrollmentId: 'enroll-b-12345678',
+        browserOrigin: 'http://localhost:4174',
+      },
+    });
+    expect(second.processId).toBe(broker.processId);
+    expect(second.databasePath).toBe(broker.databasePath);
+    expect(second.brokerOrigin).toBe(broker.brokerOrigin);
+    expect(second.bundle.connector.id).not.toBe(broker.bundle.connector.id);
+    expect(second.bundle.routing.id).not.toBe(broker.bundle.routing.id);
+    expect((await broker.readLease()).state).toBe('offline');
+    expect((await second.readLease()).state).toBe('offline');
+    for (const [own, foreign] of [
+      [broker, second],
+      [second, broker],
+    ]) {
+      const refused = await fetch(
+        `${own.brokerOrigin}/broker/v1/stations/status`,
+        {
+          method: 'POST',
+          headers: {
+            Origin: own.scope.browserOrigin,
+            Authorization: `Bearer ${foreign.bundle.routing.secret}`,
+            'X-Broker-Credential-Id': foreign.bundle.routing.id,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ scope: own.scope }),
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      expect(refused.status).toBe(401);
+    }
+    await second.stop();
+    await expect(broker.readLease()).rejects.toThrow();
+  } finally {
+    await broker.stop();
+  }
+}, 30000);
 async function bind(socket: Socket, port = 0) {
   socket.bind(port, '127.0.0.1');
   await once(socket, 'listening');

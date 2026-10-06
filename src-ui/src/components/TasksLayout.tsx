@@ -22,6 +22,7 @@ export function TasksLayout({
         projectId={project?.id}
         projectWorkingDirectory={project?.workingDirectory}
         agents={project?.agents}
+        presentation="board"
       />
     </section>
   );

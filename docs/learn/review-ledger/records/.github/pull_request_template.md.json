@@ -1,0 +1,17 @@
+{
+  "path": ".github/pull_request_template.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Reviewed required handoff fields, including the issue-to-documentation follow-through for fixed limitations.",
+
+  "limits": "A PR template prompts evidence and review; its presence does not enforce behavioral accuracy.",
+
+  "sources": [],
+
+  "checks": [
+    "Reviewed the added affected/unmapped documentation disposition prompt; no token prose edit or new approval requirement."
+  ]
+}

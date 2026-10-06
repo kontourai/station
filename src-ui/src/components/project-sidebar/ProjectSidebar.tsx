@@ -14,6 +14,8 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { ArrowDownGlyph } from '../icons/Glyph';
+import '../DisclosureToggle.css';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -22,13 +24,21 @@ import {
   useNavigation,
   useNavigationActions,
 } from '../../contexts/NavigationContext';
-import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
+import { openChatsStore } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
+import {
+  openChatInboxRows,
+  useInboxWorkItems,
+} from '../../views/home/useInboxWorkItems';
+import { useWorkFacts } from '../../views/home/useWorkFacts';
 import {
   projectLiveCount,
   projectLiveLabel,
@@ -39,7 +49,6 @@ import { Skeleton } from '../state';
 import { ProjectSidebarHeader } from './ProjectSidebarHeader';
 import { ProjectSidebarNav } from './ProjectSidebarNav';
 import { ProjectSidebarRow } from './ProjectSidebarRow';
-import { projectAccents } from './projectAccent';
 import { useProjectListReorder } from './useProjectListReorder';
 import { useProjectSidebarState } from './useProjectSidebarState';
 import { buildSidebarClassName } from './utils';
@@ -142,14 +151,16 @@ function ProjectSidebarImpl() {
     chatDraftsStore.getSnapshot,
   );
   const { data: sessions = [] } = useOrchestrationSessionsQuery();
-  // #765 A1/A2: pass the server session summaries, exactly as the dock inbox
-  // and Sessions view do. Without them `chatLifecycleLabel` has no
-  // correlated turn state and falls back to labelling every open chat
-  // "Running"/Active from local composer state alone — which is how a
-  // session the server had already folded to `failed` kept its "Active"
-  // chip in this sidebar.
-  const openChats = useOpenChats(agents, sessions);
+  // The dock inbox's own items, by the one derivation. #765 A1/A2 passed the
+  // sessions so a chat borrows the server's fold; #3077 goes the whole way:
+  // the row here IS the dock's row for that chat, looked up by its chat id,
+  // so the two inboxes cannot disagree about what a chat is waiting on.
+  const inboxItems = useInboxWorkItems(agents, sessions);
+  const openChats = useMemo(() => openChatInboxRows(inboxItems), [inboxItems]);
   const recentTasks = openChats.slice(0, OPEN_CHATS_SIDEBAR_CAP);
+  const openChatFacts = useWorkFacts(recentTasks, sessions);
+  // One coarse tick for the rows' relative times, not a new clock per render.
+  const openChatsNow = useCoarseNow();
   const openChatsOverflow = openChats.length - recentTasks.length;
   // archive#3314: per-section collapse + removal, persisted device-side alongside
   // `projectSidebarCollapsed` (restore for a removed section lives in
@@ -161,9 +172,28 @@ function ProjectSidebarImpl() {
   // Drafts are composed from the same store the composer writes and the same
   // active-chat identity that the dock can focus. Do not synthesize a sidebar
   // copy: opening one must restore the exact persisted composer value.
+  //
+  // D6: one row per chat. A chat already listed under Open chats carries its
+  // draft on that row (the "Unsent draft" chip, or the Draft status of a chat
+  // that never sent), so it is not listed a second time here; Drafts holds
+  // the drafts of chats that section does not show. A collapsed Open chats
+  // shows none of its rows, so while it is collapsed every draft is listed
+  // here: a draft is always visible somewhere.
+  const openChatsShowRows =
+    !sidebarSections.openChatsHidden && !sidebarSections.openChatsCollapsed;
+  const openChatSessionIds = useMemo(
+    () =>
+      new Set(
+        openChatsShowRows
+          ? recentTasks.map((task) => chatTaskSessionId(task))
+          : [],
+      ),
+    [recentTasks, openChatsShowRows],
+  );
   const unsentDrafts = useMemo(
     () =>
       Object.entries(drafts)
+        .filter(([sessionId]) => !openChatSessionIds.has(sessionId))
         .filter(([, draft]) => draft.text.trim())
         .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
         .map(([sessionId, draft]) => {
@@ -174,14 +204,11 @@ function ProjectSidebarImpl() {
             preview: draft.text.trim(),
           };
         }),
-    [activeChats, drafts],
+    [activeChats, drafts, openChatSessionIds],
   );
-  // Allocate the accent palette across the whole sorted project set so every
-  // color is used before any repeats, stable regardless of API order.
-  const accentBySlug = useMemo(
-    () => projectAccents(projects.map((project) => project.slug)),
-    [projects],
-  );
+  // The one project-colour allocation every surface shares.
+  const accentBySlug = useProjectAccents();
+  const iconBySlug = useProjectIcons();
   const projectSlugs = useMemo(
     () => projects.map((project) => project.slug),
     [projects],
@@ -369,7 +396,9 @@ function ProjectSidebarImpl() {
             // #1582 D4: exactly one sidebar row may claim to be the current
             // location. `isHomeActive` already derives that from `main`'s
             // occupant rather than the route alone, so it is the honest place
-            // to say it; the region-surface rows say `aria-pressed` instead.
+            // to say it. The Activity row reads the same fact for its own
+            // surface (`ProjectSidebarNav`), and `main` holds one surface, so
+            // at most one of the two is ever current.
             aria-current={isHomeActive ? 'page' : undefined}
             onClick={goHome}
           >
@@ -425,9 +454,9 @@ function ProjectSidebarImpl() {
                   <span className="sidebar__section-label-text">
                     Open chats
                   </span>
-                  <span className="sidebar__nav-chevron" aria-hidden="true">
-                    {sidebarSections.openChatsCollapsed ? '+' : '−'}
-                  </span>
+                  <ArrowDownGlyph
+                    className={`sidebar__nav-chevron disclosure-toggle__caret${sidebarSections.openChatsCollapsed ? '' : ' is-open'}`}
+                  />
                 </button>
                 <button
                   type="button"
@@ -449,7 +478,10 @@ function ProjectSidebarImpl() {
                   pending={null}
                   componentProps={{
                     items: recentTasks,
-                    now: Date.now(),
+                    workFacts: openChatFacts,
+                    now: openChatsNow,
+                    projectAccentBySlug: accentBySlug,
+                    projectIconBySlug: iconBySlug,
                     onActivate: (task) => {
                       openChatsStore.focus({
                         sessionId: chatTaskSessionId(task),
@@ -492,9 +524,9 @@ function ProjectSidebarImpl() {
                   }
                 >
                   <span className="sidebar__section-label-text">Drafts</span>
-                  <span className="sidebar__nav-chevron" aria-hidden="true">
-                    {sidebarSections.draftsCollapsed ? '+' : '−'}
-                  </span>
+                  <ArrowDownGlyph
+                    className={`sidebar__nav-chevron disclosure-toggle__caret${sidebarSections.draftsCollapsed ? '' : ' is-open'}`}
+                  />
                 </button>
                 <button
                   type="button"
@@ -518,7 +550,7 @@ function ProjectSidebarImpl() {
                     }}
                   >
                     <span>{draft.title}</span>
-                    <small>Draft · {draft.preview}</small>
+                    <small>{draft.preview}</small>
                   </button>
                 ))}
               </div>

@@ -360,6 +360,18 @@
   border-radius: 999px;
 }
 
+/* Every expanded row holds the icon's 18px slot, icon or not, so project
+   names start at one x. An icon-less project's slot stays empty; the bar
+   beside it carries the colour. */
+.sidebar__project-icon-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
 .sidebar--collapsed .sidebar__project-accent {
   position: absolute;
   left: 2px;
@@ -373,6 +385,9 @@
 .sidebar__project-btn--active {
   background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
   border-left: 2px solid var(--accent-primary);
+  /* The 2px border comes out of the left padding, so the active row's bar
+     and name stay at the same x as every other row's. */
+  padding-left: 10px;
 }
 
 .sidebar--collapsed .sidebar__project-btn {
@@ -612,11 +627,12 @@
   padding: 3px 8px;
   background: var(--bg-tertiary);
   border: 1px solid transparent;
-  /* --text-tertiary, not --text-muted (#2150). Measured on the light theme,
-     --text-muted (#707782) is 4.33:1 on the chip's own fill -- under the
-     4.5:1 text floor -- and 4.52:1 on the panel. --text-tertiary (#5b626b)
-     is 5.9:1 and 6.2:1. Scoped to the panel's rows rather than darkening
-     --text-muted's 500 consumers. */
+  /* --text-tertiary, not --text-muted (#2150). Measured on the light theme
+     when this was chosen, --text-muted (#707782) was 4.33:1 on the chip's
+     own fill -- under the 4.5:1 text floor -- and 4.52:1 on the panel.
+     @kontourai/ui 1.17 retinted it to #6a707b, which is 4.77:1 and 4.98:1.
+     --text-tertiary (#5b626b) is 5.9:1 and 6.2:1. Scoped to the panel's rows
+     rather than darkening --text-muted's 500 consumers. */
   color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--text-sm);
@@ -694,28 +710,17 @@
   color: var(--text-primary);
 }
 
+/* The current page reads the same on every place row: Home's current
+   treatment (`.sidebar__project-btn--active`) — accent-tinted fill and a
+   left accent bar — so Home and Activity, the panel's two places, cannot
+   look current in two different ways. */
 .sidebar__nav-btn--active {
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
+  border-left: 2px solid var(--accent-primary);
   color: var(--text-primary);
-}
-
-/* #1582 D4: a region-surface row is a toggle, not a location. It wears a
-   trailing "showing" dot and the primary text colour instead of the
-   current-page fill, so the row that IS the current page stays the only one
-   reading as current. Paired with `aria-pressed` on the same derivation, so
-   the mark and the announced state cannot disagree. */
-.sidebar__nav-btn--shown {
-  color: var(--text-primary);
-}
-
-.sidebar__nav-btn--shown::after {
-  content: "";
-  flex: 0 0 auto;
-  margin-left: auto;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-primary);
+  /* As on a current project row: the border comes out of the padding, so a
+     current Activity's icon and label do not move. */
+  padding-left: 10px;
 }
 
 .sidebar__nav-btn[aria-disabled="true"] {
@@ -766,8 +771,13 @@
   white-space: nowrap;
 }
 
+/* The section toggles' caret is the shared disclosure caret
+   (DisclosureToggle.css): rotated closed, upright open. */
 .sidebar__nav-chevron {
   margin-left: auto;
+}
+.sidebar__nav-chevron.disclosure-toggle__caret.is-open {
+  transform: rotate(0deg);
 }
 .sidebar--collapsed .sidebar__nav-chevron {
   display: none;
@@ -881,8 +891,8 @@
   /* #2063: a layout chip is the same navigation chrome, and the floor applies
      to it too. It is sized rather than merely floored — a chip is content-
      width, so `min-height` alone would leave a 44px-tall pill with a tap
-     target narrower than a fingertip on a short name. The row keeps wrapping,
-     so a project with many layouts grows the band instead of overflowing it. */
+     target narrower than a fingertip on a short name. The row stays one line
+     (#2150), so the larger chips scroll sideways instead of growing the band. */
   .sidebar__layout-chip {
     min-height: 44px;
     min-width: 44px;

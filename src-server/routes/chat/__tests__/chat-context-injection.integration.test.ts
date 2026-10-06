@@ -9,9 +9,10 @@
  * event, and the REAL `assembleTurnProvenanceEnvelopes` folds it into the
  * `contextInjection` slot.
  *
- * The assertions are deliberately cross-checked against the string the model
- * actually received (`agent.streamText`'s first argument) rather than against
- * the record's own inputs — a receipt that agrees only with itself is exactly
+ * The assertions are deliberately cross-checked against the input the model
+ * actually receives (`agent.streamText`'s model-input composer applied to the
+ * authored turn it was handed, as a framework applies it — #3112) rather than
+ * against the record's own inputs — a receipt that agrees only with itself is exactly
  * the fabricated claim this slice exists to prevent. Decoupling the record
  * from the injection anywhere along that chain must turn this file red.
  */
@@ -143,6 +144,7 @@ async function dispatchChatTurn(options: {
    */
   shape?: 'text' | 'attachment-only';
   ambientContext?: string;
+  skillExperienceContext?: string;
 }): Promise<{ body: string; modelInput: unknown; authoredInput: unknown }> {
   const conversations = new Map<string, { id: string; title?: string }>();
   const memoryAdapter = {
@@ -160,15 +162,24 @@ async function dispatchChatTurn(options: {
   const ctx = buildCtx({ ...options, memoryAdapter });
 
   let modelInput: unknown = '';
-  const streamText = vi.fn(async (input: unknown) => {
-    modelInput = input;
-    return {
-      fullStream: emptyStream(),
-      text: Promise.resolve(''),
-      usage: Promise.resolve(undefined),
-      finishReason: Promise.resolve('stop'),
-    };
-  });
+  let handedInput: unknown;
+  const streamText = vi.fn(
+    async (
+      input: unknown,
+      streamOptions?: { composeModelInput?: (input: any) => unknown },
+    ) => {
+      handedInput = input;
+      modelInput = streamOptions?.composeModelInput
+        ? streamOptions.composeModelInput(input)
+        : input;
+      return {
+        fullStream: emptyStream(),
+        text: Promise.resolve(''),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+      };
+    },
+  );
   const agent = {
     getMemory: () => null,
     model: { modelId: 'test-model' },
@@ -203,6 +214,9 @@ async function dispatchChatTurn(options: {
       ...(options.ambientContext
         ? { ambientContext: options.ambientContext }
         : {}),
+      ...(options.skillExperienceContext
+        ? { skillExperienceContext: options.skillExperienceContext }
+        : {}),
       restOptions: prepared.options,
       injectContext: prepared.injectContext,
       ragContext: prepared.ragContext,
@@ -215,6 +229,8 @@ async function dispatchChatTurn(options: {
   const response = await app.request('/chat', { method: 'POST' });
   const body = await response.text();
   expect(streamText).toHaveBeenCalledTimes(1);
+  // #3112: the framework is handed the authored turn — what it persists.
+  expect(handedInput).toBe(chatInput);
   return { body, modelInput, authoredInput: chatInput };
 }
 
@@ -429,3 +445,22 @@ describe('per-turn context injection, route → adapter → provenance envelope 
     );
   });
 });
+
+test.each(['text', 'attachment-only'] as const)(
+  'private pinned Skill context reaches the real model composer for %s turns without changing authored input',
+  async (shape) => {
+    const result = await dispatchChatTurn({
+      hit: false,
+      guidelines: false,
+      shape,
+      skillExperienceContext: 'PINNED_DEPENDENCY_SENTINEL',
+    });
+    expect(JSON.stringify(result.modelInput)).toContain(
+      'PINNED_DEPENDENCY_SENTINEL',
+    );
+    expect(JSON.stringify(result.authoredInput)).not.toContain(
+      'PINNED_DEPENDENCY_SENTINEL',
+    );
+    expect(result.body).not.toContain('PINNED_DEPENDENCY_SENTINEL');
+  },
+);

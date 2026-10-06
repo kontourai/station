@@ -1,0 +1,49 @@
+{
+  "path": "docs/guides/commands.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide rewritten and independently reviewed against chat dispatch: source precedence, ACP passthrough, catalog gating, authored versus skill argument rules, expansion, persistence/editor scope and non-recursive sending.",
+
+  "limits": "Synthetic schema/helper and chat-hook evidence, not a live engine/provider execution. Argument validation and literal substitution defects remain in #2764/#2763.",
+
+  "sources": [
+    "packages/contracts/src/agent.ts",
+
+    "schemas/agent.schema.json",
+
+    "src-server/domain/config-loader-agents.ts",
+
+    "src-server/domain/validator.ts",
+
+    "src-server/routes/agents/enriched-agents.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/hooks/useSlashCommandHandler.ts",
+
+    "src-ui/src/hooks/useSlashCommands.ts",
+
+    "src-ui/src/utils/skill-commands.ts",
+
+    "src-ui/src/views/agent-editor/AgentEditorCommandsTab.tsx"
+  ],
+
+  "checks": [
+    "26 catalog/skill-handler tests across two files passed.",
+
+    "Actual SchemaValidator refused the old missing-description example and accepted the corrected one.",
+
+    "The exported skill helper reproduced four dollar replacement patterns. The authored path shares the source mechanism; no real engine was run.",
+
+    "Independent final guide delta accepted, including evidence limits and backlog links.",
+
+    "Reviewed source deltas: Removed unused empty autocomplete callback; static provider command catalog remains, ACP guide was updated accordingly.",
+
+    "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d72f79b08: #2904 changes useActiveChatSessionMessaging only for a full-access refusal (idle rollback with the draft restored, a structured card, an explicit resend without full access). Slash-command source precedence, ACP passthrough, catalog gating, argument, expansion and non-recursive send claims are unaffected. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

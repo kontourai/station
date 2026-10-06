@@ -1,0 +1,33 @@
+{
+  "path": "docs/design/orchestration-decomposition-map.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Both dated decomposition maps preserved; current service composition includes extracted provenance, Flow policy, stop, retirement and smoke owners; current source route added.",
+
+  "limits": "Counts, exact lines, method/field ownership, test gaps and ordering proofs belong to their named August revisions. No new exhaustive event-spine audit or extraction recommendation from historical counts.",
+
+  "sources": [
+    "src-server/services/orchestration/cooperative-stop.ts",
+
+    "src-server/services/orchestration/flow-policy-sidecar.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/turn-provenance-sidecar.ts"
+  ],
+
+  "checks": [
+    "Entire original body read in bounded chunks; inspected named source/caller changes. Historical disposition does not certify all claims.",
+
+    "No new behavior tests for purpose banners and prose corrections; aggregate links/index/MCP/readiness own documentation verification.",
+
+    "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904 added about 400 lines to orchestration-service, including resetFullAccessGrantedBy, the live isFullAccessGrantorCurrent option and grantor stamping in starts. The document's two maps and their line numbers are explicitly dated snapshots, and its current-source route still points at the live service, so no current claim is contradicted. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

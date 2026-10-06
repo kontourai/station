@@ -1,0 +1,7 @@
+{
+  "revision": "b9ed99fffb44db5295c2652b34dfc2adc10e1c83",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed merged bytes: retained optional engine account/credit/model/spending/breakdown/audit types alongside upstream request-abort settlement/openRequestIds behavior from #3081. Pure domain ownership and nullable quota metadata remain accurate; currency uses explicit minor units and no billing or publication claim is added.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

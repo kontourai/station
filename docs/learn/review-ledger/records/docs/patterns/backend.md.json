@@ -1,0 +1,113 @@
+{
+  "path": "docs/patterns/backend.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
+
+  "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"packages/shared/package.json\",\"ours\":{\"digest\":\"dfb51da6f4002814559793d901ace8674805d1fcc84d5efe3aa4ebcb4c794c96\",\"revision\":\"565a005d46e40c313432a0fbe6fa3054a74a5941\"},\"main\":{\"digest\":\"3d498c9980c805fad291b809e3400392dd3c5c29515074c2438f785f4812e69c\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"src-ui/src/platform/PlatformProfileContext.tsx\",\"ours\":{\"digest\":\"726adb901507dc26d08f542e68f3d7e51734080a874356b3111476dbff56c714\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"}},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"docs/ui/responsive-action-surfaces.txt\",\"ours\":{\"digest\":\"e7222ac1eccf9ed8922512f08d6323a1b398d14b51e0b9533a15f1c0c4b9ae0c\",\"revision\":\"2dee75143bca994a270d7038965d1a825bbde516\"},\"main\":{\"digest\":\"79138ba3d68fed1437d2c541c1517dd833788be5369fe9f2f86c1a2b52b5de5e\",\"revision\":\"a47e99c46dd2e877f8b9d0750db41b314f676d49\"}},{\"path\":\"packages/sdk/src/queries.ts\",\"ours\":{\"digest\":\"c074b876d3f3ef8dee821083c1c351c5e9578a3da325e7695ccb1461ddd75578\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"digest\":\"75dcfcf06bb87e23c3b6d8d7b742bb50e235d4f4f4dd2aa069e1d3728ede1b5b\",\"revision\":\"7576509655a6bbef0ef61d5f4645722922b8ec43\"}},{\"path\":\"src-ui/src/main.tsx\",\"ours\":{\"digest\":\"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb\",\"revision\":\"967e08d408de5a4ae0a4106c4b082688f816d2f1\"},\"main\":{\"digest\":\"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86\",\"revision\":\"2b22c2609a75d0f40b77472fe918de3c34094b69\"}},{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"ours\":{\"digest\":\"695ea92f345988962929764a4072cc5056f51cb0d7280f333d242c42ed3314b1\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"}},{\"path\":\"packages/sdk/src/index.ts\",\"ours\":{\"digest\":\"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255\",\"revision\":\"2b22c2609a75d0f40b77472fe918de3c34094b69\"},\"main\":{\"digest\":\"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625\",\"revision\":\"7576509655a6bbef0ef61d5f4645722922b8ec43\"}},{\"path\":\"docs/ui/responsive-surfaces.json\",\"ours\":{\"digest\":\"7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"digest\":\"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6\",\"revision\":\"027c189b201b8f67d786e9843bd00b84cb5475a5\"}},{\"path\":\"src-ui/src/index.css\",\"ours\":{\"digest\":\"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"},\"main\":{\"digest\":\"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889\",\"revision\":\"28ee475ceed3623c147d918bcd6c30d99a49bc00\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"}}]. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-ui/src/platform/PlatformProfileContext.tsx\",\"ours\":{\"digest\":\"726adb901507dc26d08f542e68f3d7e51734080a874356b3111476dbff56c714\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"}},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"ours\":{\"digest\":\"ff18eca46b9725e26dd7245ba08c5b1463491eef5ae4cb0f7b80b785b4d4aced\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"digest\":\"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"}},{\"path\":\"src-ui/src/main.tsx\",\"ours\":{\"digest\":\"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb\",\"revision\":\"967e08d408de5a4ae0a4106c4b082688f816d2f1\"},\"main\":{\"digest\":\"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86\",\"revision\":\"2b22c2609a75d0f40b77472fe918de3c34094b69\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a\",\"revision\":\"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff\"},\"theirs\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}},{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"ours\":{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"digest\":\"9fbb30f033dd9829017631c78a4584d637d8aac85dc00e43394ac374e6200901\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"digest\":\"5188e91b51f45578c8d64d05d71ec69114158ec73af91a69b3de5d316f46e6c8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"digest\":\"9fbb30f033dd9829017631c78a4584d637d8aac85dc00e43394ac374e6200901\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}}]",
+
+  "sources": [
+    "docs/ui/responsive-action-surfaces.txt",
+
+    "docs/ui/responsive-surfaces.json",
+
+    "packages/sdk/src/client/http.ts",
+
+    "packages/sdk/src/index.ts",
+
+    "packages/sdk/src/queries.ts",
+
+    "packages/sdk/src/query-core.ts",
+
+    "packages/sdk/src/query-domains/agentAdmin.ts",
+
+    "packages/sdk/src/queryFactories.ts",
+
+    "packages/shared/package.json",
+
+    "pnpm-lock.yaml",
+
+    "scripts/mobile-css-ratchet.mjs",
+
+    "scripts/responsive-surface-ratchet.mjs",
+
+    "src-server/routes/agents/agents.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/streaming/StreamPipeline.ts",
+
+    "src-server/runtime/streaming/types.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/services/approvals/approval-registry.ts",
+
+    "src-server/services/orchestration/event-bus.ts",
+
+    "src-server/utils/logger.ts",
+
+    "src-ui/src/components/Dialog.tsx",
+
+    "src-ui/src/components/ResponsiveDialogSurface.tsx",
+
+    "src-ui/src/components/header/ThemeToggle.tsx",
+
+    "src-ui/src/hooks/useIsMobile.ts",
+
+    "src-ui/src/hooks/useMobileVisualViewport.ts",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/lib/accent-contrast.ts",
+
+    "src-ui/src/lib/device-settings-store.ts",
+
+    "src-ui/src/main.tsx",
+
+    "src-ui/src/platform/PlatformProfileContext.tsx",
+
+    "src-ui/src/slashCommands/tools.ts",
+
+    "src-ui/src/tokens.css",
+
+    "src-ui/src/utils/logger.ts",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
+  ],
+
+  "checks": [
+    "106 tests across five owner suites plus 13 final documentation-foundations tests passed.",
+
+    "Public UI documentation checked at its recorded upstream revision; installed 1.12.0 public manifest was inspected. The tracked lockfile binds dependency freshness; node_modules is not committed evidence.",
+
+    "Parent read all four revised documents and inspected query defaults, approval timeout and EventBus behavior. Connect publication wording is limited to this checkout.",
+
+    "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged.",
+
+    "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
+
+    "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: pnpm-lock.yaml only removed the root bearing/forage importer entries, which the backend patterns never mention, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds a configureRuntimeSecurity branch in runtime-http.ts that answers 403 insufficient_scope for a recognized but unadmitted credential. The patterns page describes runtime-http plus pairing route policy only as common admission that does not replace object-level checks. It also warns against inferring authentication from '403' in error text. Both statements remain correct. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read to the /api/system read tier in pairing-route-scopes.ts, the SDK exports requestServiceUpdateProgress and useServiceUpdateProgressQuery, and the shared subpaths prebuilt-archive and service-launcher-protocol. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. The doc's claims still hold: one route-scope table that does not replace object-level checks, and explicit shared helper subpaths. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -151,11 +151,11 @@ describe('createLogger — level filtering and the store tee', () => {
     installServerLogSink({ directory });
     const logger = createLogger({ name: 'test-logger', level: 'info' });
     const error = new Error(
-      "ENOENT: no such file or directory, open '/Users/brian/station/private/config.json'",
+      "ENOENT: no such file or directory, open '/Users/me/station/private/config.json'",
     );
     error.stack = [
       error.message,
-      'at loadProvider (/Users/brian/Station Data/private/provider.ts:42:7)',
+      'at loadProvider (/Users/me/Station Data/private/provider.ts:42:7)',
       'at executeEngine (C:\\Station Data\\private\\engine.ts:19:2)',
     ].join('\n');
 
@@ -165,10 +165,8 @@ describe('createLogger — level filtering and the store tee', () => {
     const [line] = readTodayLines(directory);
     expect(line.err.stack).toContain('loadProvider');
     expect(line.err.stack).toContain('executeEngine');
-    expect(line.err.stack).toContain('/Users/brian');
-    expect(line.err.message).toContain(
-      '/Users/brian/station/private/config.json',
-    );
+    expect(line.err.stack).toContain('/Users/me');
+    expect(line.err.message).toContain('/Users/me/station/private/config.json');
   });
 
   it('normalizes a non-object, non-Error context into { value }', async () => {

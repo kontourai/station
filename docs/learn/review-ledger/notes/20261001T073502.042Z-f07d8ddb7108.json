@@ -1,0 +1,7 @@
+{
+  "revision": "f0a064455d997b3467c6dabb42a5e009d583cf02",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-recorded after merging main, on top of main's record. Compared the cited adapter test against main: the only difference is a developer home path in a config-directory fixture swapped for a neutral placeholder, with the literal asserted against it. No assertion logic or covered behaviour changed, and this page quotes neither string, so its claims stand unchanged.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

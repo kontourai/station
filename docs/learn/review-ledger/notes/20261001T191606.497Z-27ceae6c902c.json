@@ -1,0 +1,7 @@
+{
+  "revision": "673fcf80b16b39268d3b29a9f392333f404a889e",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#2947 (guardian allow answers plain calls only; stacked on #3100). session-api.md gained one paragraph in respondToRequest stating that an approval-guardian allow answers a plain Claude call with no request.opened and never an escalation, plan exit or question. The ADR's routing, private-adapter and no-migration decisions do not depend on which requests open; it cites the Session API for the command surface only. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]}
+  ]
+}

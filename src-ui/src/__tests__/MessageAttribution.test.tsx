@@ -17,13 +17,13 @@ describe('MessageAttribution (station#1424)', () => {
       <MessageAttribution
         agent={{ name: 'Release Reviewer' }}
         engine={{ name: 'Claude Code' }}
-        owner={{ id: 'brian', label: 'Brian Anderson' }}
+        owner={{ id: 'casey', label: 'Casey Example' }}
         permissionPosture="read-only-attached"
       />,
     );
     expect(screen.getByText('Release Reviewer')).toBeTruthy();
     expect(screen.getByText('Claude Code')).toBeTruthy();
-    expect(screen.getByText(/via Brian Anderson/)).toBeTruthy();
+    expect(screen.getByText(/via Casey Example/)).toBeTruthy();
     expect(screen.getByText('Read only')).toBeTruthy();
   });
 

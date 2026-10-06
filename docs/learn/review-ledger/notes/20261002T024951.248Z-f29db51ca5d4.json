@@ -1,0 +1,45 @@
+{
+  "revision": "2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/design/inference-fleet.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/design/pnpm-workspace-installation.md"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/design/survey-flow-review.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/dependency-security.md"]},
+
+    {"path":"docs/guides/development.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/repository-knowledge-graph.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/reference/verification-receipts.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["docs/strategy/kontour-integration-surface.md"]},
+
+    {"path":"scripts/__tests__/fixtures/sbom/README.md","note":"Re-record after merging main: the package.json delta since the recorded revision is this PR's added ci:health script only; no guide-named script was renamed or removed and no affected doc claims an exhaustive script inventory.","inputs":["scripts/__tests__/fixtures/sbom/README.md"]}
+  ]
+}

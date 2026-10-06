@@ -200,9 +200,27 @@ async function callBrowser(
 export function registerBrowserTools(registry: StationControlToolRegistry) {
   registry.tool(
     'browser_status',
-    'List the Browser pane sessions you may drive in this Project (url, viewport, who controls it, live viewers), and whether page JavaScript evaluation is allowed.',
-    {},
-    async () => callBrowser('status', {}),
+    'List the Browser pane sessions you may drive in this Project, newest first (url, viewport, who controls it, live viewers), and whether page JavaScript evaluation is allowed. Pass nextCursor back as cursor for the next page; it is null on the last page.',
+    {
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .optional()
+        .describe('Sessions per page, 1 to 20. Default 20.'),
+      cursor: z
+        .string()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe('nextCursor from the previous browser_status page.'),
+    },
+    async (args) =>
+      callBrowser('status', {
+        ...(args.limit !== undefined ? { limit: args.limit } : {}),
+        ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
+      }),
   );
 
   registry.tool(
@@ -237,6 +255,14 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
         ...(args.viewport ? { viewport: VIEWPORT_PRESETS[args.viewport] } : {}),
         visible: args.visible ?? true,
       }),
+  );
+
+  registry.tool(
+    'browser_close',
+    'Close a browser session you opened in this conversation. Refused for a session a person opened, one from another conversation, or one a person or another agent is driving right now.',
+    { browserSessionId: sessionId },
+    async (args) =>
+      callBrowser('close', { browserSessionId: args.browserSessionId }),
   );
 
   registry.tool(

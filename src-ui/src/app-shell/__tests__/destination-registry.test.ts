@@ -85,7 +85,7 @@ describe('DestinationRegistry', () => {
         (destination) => destination.route,
       ),
     );
-    for (const entry of APP_DESTINATION_REGISTRY.getSettingsNav(flags)) {
+    for (const entry of APP_DESTINATION_REGISTRY.getCustomizeNav(flags)) {
       const destination = APP_DESTINATION_REGISTRY.get(entry.id);
       expect(
         paletteRoutes,
@@ -97,14 +97,14 @@ describe('DestinationRegistry', () => {
   // #2144 slice 4 deleted the Manage grid. This is the other half of the same
   // acceptance: every destination that grid used to list must still have a
   // Settings entry point. The inventory is LITERAL, taken from the grid's own
-  // retired test, because deriving it from `getSettingsNav()` would compare
+  // retired test, because deriving it from `getCustomizeNav()` would compare
   // the projection with itself and pass however it changed — which is exactly
   // how a surface disappears from the panel AND from the group that was
   // supposed to hold what left it.
   test('every destination the retired Manage grid listed is still reachable from Settings', () => {
     const flags = new Set([DEVELOPER_TOOLS_FLAG]);
     const settingsRoutes = new Set(
-      APP_DESTINATION_REGISTRY.getSettingsNav(flags).map(
+      APP_DESTINATION_REGISTRY.getCustomizeNav(flags).map(
         (entry) => entry.route,
       ),
     );
@@ -114,13 +114,12 @@ describe('DestinationRegistry', () => {
       // Entered at the section the row names, not the hub root.
       ['connections', '/connections/engines'],
       ['plugins', '/plugins'],
-      ['schedule', '/schedule'],
       ['developer', '/developer'],
     ] as const;
     for (const [id, route] of formerManageRoutes) {
       expect(
         settingsRoutes,
-        `${id} left the Manage grid with no Settings nav row for ${route}`,
+        `${id} left the Manage grid with no Customize nav row for ${route}`,
       ).toContain(route);
     }
     // Registry is the one FOLD (#2144 decision 4): it has no row of its own,
@@ -133,12 +132,12 @@ describe('DestinationRegistry', () => {
     expect(settingsRoutes).toContain('/plugins');
   });
 
-  // #2144 slice 4: the Settings navigation's nav-only rows. A literal
-  // inventory, not a re-read of `getSettingsNav()` — comparing the projection
+  // #2144 slice 4: the Customize navigation's nav-only rows. A literal
+  // inventory, not a re-read of `getCustomizeNav()` — comparing the projection
   // against itself would pass however it changed, including a destination
   // silently losing the only entry point it has left.
-  test('projects the Settings nav-only rows with their overrides resolved', () => {
-    expect(APP_DESTINATION_REGISTRY.getSettingsNav()).toEqual([
+  test('projects the Customize nav-only rows with their overrides resolved', () => {
+    expect(APP_DESTINATION_REGISTRY.getCustomizeNav()).toEqual([
       {
         id: 'agents',
         group: 'set-up',
@@ -169,42 +168,35 @@ describe('DestinationRegistry', () => {
         label: 'Plugins',
         route: '/plugins',
       },
-      {
-        id: 'schedule',
-        group: 'set-up',
-        order: 50,
-        label: 'Schedule',
-        route: '/schedule',
-      },
     ]);
     // Registry is deliberately absent: #2144 decision 4 folds it into Plugins,
     // and it keeps its route, its palette entry and its keywords.
     expect(
-      APP_DESTINATION_REGISTRY.getSettingsNav().map((entry) => entry.id),
+      APP_DESTINATION_REGISTRY.getCustomizeNav().map((entry) => entry.id),
     ).not.toContain('registry');
   });
 
-  test('offers Developer as a Settings nav row only while developer tools are enabled', () => {
+  test('offers Developer as a Customize nav row only while developer tools are enabled', () => {
     // archive#3313: the flag gates ADVERTISEMENT. /developer stays
     // deep-linkable either way, which is why this is a row-level assertion and
     // not a claim about routing.
     expect(
-      APP_DESTINATION_REGISTRY.getSettingsNav().map((entry) => entry.id),
+      APP_DESTINATION_REGISTRY.getCustomizeNav().map((entry) => entry.id),
     ).not.toContain('developer');
     expect(
-      APP_DESTINATION_REGISTRY.getSettingsNav(
+      APP_DESTINATION_REGISTRY.getCustomizeNav(
         new Set([DEVELOPER_TOOLS_FLAG]),
       ).find((entry) => entry.id === 'developer'),
     ).toEqual({
       id: 'developer',
       group: 'this-station',
-      order: 10,
+      order: 100,
       label: 'Developer',
       route: '/developer',
     });
   });
 
-  test('refuses a destination that is both a panel place and a Settings nav entry', () => {
+  test('refuses a destination that is both a panel place and a Customize nav entry', () => {
     expect(() =>
       createDestinationRegistry([
         {
@@ -212,13 +204,13 @@ describe('DestinationRegistry', () => {
           route: '/both',
           label: () => 'Both',
           sidebar: { order: 1 },
-          settingsNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'set-up', order: 1 },
         },
       ]),
-    ).toThrow(/both a panel place and a Settings nav entry/);
+    ).toThrow(/both a panel place and a Customize nav entry/);
   });
 
-  test('refuses a Settings nav entry that is also hidden from nav', () => {
+  test('refuses a Customize nav entry that is also hidden from nav', () => {
     expect(() =>
       createDestinationRegistry([
         {
@@ -226,27 +218,27 @@ describe('DestinationRegistry', () => {
           route: '/hidden',
           label: () => 'Hidden',
           hiddenFromNav: true,
-          settingsNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'set-up', order: 1 },
         },
       ]),
-    ).toThrow(/cannot be hidden from nav and a Settings nav entry/);
+    ).toThrow(/cannot be hidden from nav and a Customize nav entry/);
   });
 
-  test('refuses a relative Settings nav route override', () => {
+  test('refuses a relative Customize nav route override', () => {
     expect(() =>
       createDestinationRegistry([
         {
           id: 'relative',
           route: '/relative',
           label: () => 'Relative',
-          settingsNav: { group: 'set-up', order: 1, route: 'engines' },
+          customizeNav: { group: 'set-up', order: 1, route: 'engines' },
         },
       ]),
-    ).toThrow(/absolute Station route for its Settings nav entry/);
+    ).toThrow(/absolute Station route for its Customize nav entry/);
   });
 
   test('orders a group by `order`, not by declaration order', () => {
-    // The only ordering `getSettingsNav` promises, and the only one its
+    // The only ordering `getCustomizeNav` promises, and the only one its
     // consumer uses: `settingsSectionNavItems` partitions these rows by group,
     // so what has to be right is the sequence WITHIN a group. Declared
     // backwards on purpose — the real inventory happens to declare its rows
@@ -257,38 +249,38 @@ describe('DestinationRegistry', () => {
         id: 'second',
         route: '/second',
         label: () => 'Second',
-        settingsNav: { group: 'set-up', order: 20 },
+        customizeNav: { group: 'set-up', order: 20 },
       },
       {
         id: 'first',
         route: '/first',
         label: () => 'First',
-        settingsNav: { group: 'set-up', order: 10 },
+        customizeNav: { group: 'set-up', order: 10 },
       },
     ]);
-    expect(registry.getSettingsNav().map((entry) => entry.id)).toEqual([
+    expect(registry.getCustomizeNav().map((entry) => entry.id)).toEqual([
       'first',
       'second',
     ]);
   });
 
-  test('refuses two Settings nav entries in one slot, but not across groups', () => {
+  test('refuses two Customize nav entries in one slot, but not across groups', () => {
     expect(() =>
       createDestinationRegistry([
         {
           id: 'one',
           route: '/one',
           label: () => 'One',
-          settingsNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'set-up', order: 1 },
         },
         {
           id: 'two',
           route: '/two',
           label: () => 'Two',
-          settingsNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'set-up', order: 1 },
         },
       ]),
-    ).toThrow(/Duplicate Settings nav destination order: set-up:1/);
+    ).toThrow(/Duplicate Customize nav destination order: set-up:1/);
     // Order is unique within a group, not globally: two groups may each have a
     // first row, and refusing that would make the orders one shared sequence.
     expect(() =>
@@ -297,13 +289,13 @@ describe('DestinationRegistry', () => {
           id: 'one',
           route: '/one',
           label: () => 'One',
-          settingsNav: { group: 'set-up', order: 1 },
+          customizeNav: { group: 'set-up', order: 1 },
         },
         {
           id: 'two',
           route: '/two',
           label: () => 'Two',
-          settingsNav: { group: 'this-station', order: 1 },
+          customizeNav: { group: 'this-station', order: 1 },
         },
       ]),
     ).not.toThrow();
@@ -386,7 +378,7 @@ describe('DestinationRegistry', () => {
         id: 'two',
         route: '/two',
         label: () => 'Two',
-        settingsNav: { group: 'set-up', order: 1 },
+        customizeNav: { group: 'set-up', order: 1 },
       },
     ]);
     const [definition, navDefinition] = registry.getRegistered();
@@ -394,13 +386,13 @@ describe('DestinationRegistry', () => {
     expect(Object.isFrozen(registry.getRegistered())).toBe(true);
     expect(Object.isFrozen(registry.getSidebar())).toBe(true);
     expect(Object.isFrozen(registry.getPalette())).toBe(true);
-    expect(Object.isFrozen(registry.getSettingsNav())).toBe(true);
-    expect(Object.isFrozen(registry.getSettingsNav()[0])).toBe(true);
+    expect(Object.isFrozen(registry.getCustomizeNav())).toBe(true);
+    expect(Object.isFrozen(registry.getCustomizeNav()[0])).toBe(true);
     expect(Object.isFrozen(definition)).toBe(true);
     expect(Object.isFrozen(definition?.keywords)).toBe(true);
     expect(Object.isFrozen(definition?.sidebar)).toBe(true);
     expect(Object.isFrozen(definition?.palette?.params)).toBe(true);
-    expect(Object.isFrozen(navDefinition?.settingsNav)).toBe(true);
+    expect(Object.isFrozen(navDefinition?.customizeNav)).toBe(true);
   });
 
   test.each([

@@ -11,15 +11,15 @@ describe('FileConversationAcknowledgementStore', () => {
     const store = new FileConversationAcknowledgementStore(dataDir);
 
     expect(
-      store.getMany('brian', ['thread-1']).get('thread-1'),
+      store.getMany('casey', ['thread-1']).get('thread-1'),
     ).toBeUndefined();
     store.acknowledge({
-      userId: 'brian',
+      userId: 'casey',
       conversationId: 'thread-1',
       updatedAt: '2026-08-02T20:00:00.000Z',
     });
 
-    expect(store.getMany('brian', ['thread-1']).get('thread-1')).toBe(
+    expect(store.getMany('casey', ['thread-1']).get('thread-1')).toBe(
       '2026-08-02T20:00:00.000Z',
     );
   });
@@ -29,13 +29,13 @@ describe('FileConversationAcknowledgementStore', () => {
     const first = new FileConversationAcknowledgementStore(dataDir);
 
     first.acknowledge({
-      userId: 'brian',
+      userId: 'casey',
       conversationId: 'thread-1',
       updatedAt: '2026-08-02T20:00:00.000Z',
     });
 
     const restarted = new FileConversationAcknowledgementStore(dataDir);
-    expect(restarted.getMany('brian', ['thread-1']).get('thread-1')).toBe(
+    expect(restarted.getMany('casey', ['thread-1']).get('thread-1')).toBe(
       '2026-08-02T20:00:00.000Z',
     );
     expect(
@@ -53,7 +53,7 @@ describe('FileConversationAcknowledgementStore', () => {
         JSON.stringify({
           version: 1,
           acknowledgements: {
-            brian: Object.fromEntries(ids.map((id) => [id, version])),
+            casey: Object.fromEntries(ids.map((id) => [id, version])),
             other: { private: version },
           },
         }),
@@ -62,13 +62,13 @@ describe('FileConversationAcknowledgementStore', () => {
     const store = new FileConversationAcknowledgementStore(dir);
     const read = vi.spyOn(JsonFileStore.prototype, 'read');
     try {
-      const snapshot = store.getMany('brian', [...ids, 'private', 'missing']);
+      const snapshot = store.getMany('casey', [...ids, 'private', 'missing']);
       expect(snapshot.size).toBe(100);
       expect(snapshot.get('private')).toBeUndefined();
       expect(snapshot.get('missing')).toBeUndefined();
       expect(read).toHaveBeenCalledTimes(1);
       write('2026-09-05T01:00:00Z');
-      expect(store.getMany('brian', ids).get(ids[0])).toBe(
+      expect(store.getMany('casey', ids).get(ids[0])).toBe(
         '2026-09-05T01:00:00Z',
       );
       expect(snapshot.get(ids[0])).toBe('2026-09-05T00:00:00Z');
@@ -88,12 +88,12 @@ describe('FileConversationAcknowledgementStore', () => {
     writeFileSync(storePath, corruptBytes, 'utf8');
     const store = new FileConversationAcknowledgementStore(dataDir);
 
-    expect(() => store.getMany('brian', ['thread-1']).get('thread-1')).toThrow(
+    expect(() => store.getMany('casey', ['thread-1']).get('thread-1')).toThrow(
       'JSON store is corrupt',
     );
     expect(() =>
       store.acknowledge({
-        userId: 'brian',
+        userId: 'casey',
         conversationId: 'thread-1',
         updatedAt: '2026-08-02T20:00:00.000Z',
       }),

@@ -1,0 +1,93 @@
+{
+  "path": "docs/guides/build-your-first-plugin.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full304-line original read. Source-reviewed package prerequisites, portable manifest/component/build example, CLI create/init/build/dev/install dispatch, legacy preview and proxy bounds, New plugin Project caller, preview/consent/reconciliation and trusted server-module distinction. Extracted manifest/entrypoint passed actual schema and production/dev build controls. Continuation clarifies that install.ts gates target.source: only automatic active-local/default loopback; explicit loopback API flags and saved localhost selections remain directory-refused.",
+
+  "limits": "Bounded to tutorial claims and examples. No fresh registry installation/publication, dependency-install execution, live dev listener/proxy egress, registry proof command rerun, actual plugin install/approval/reconciliation, server-module activation or provider execution. Server hook example checked against source contract, not executed as an installed extension. Existing tests/commands named by the guide are not claimed newly executed.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/sdk/package.json ours={\"digest\":\"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "config/plugin-scaffold-dependencies.json",
+
+    "packages/cli/src/cli.ts",
+
+    "packages/cli/src/commands/init.ts",
+
+    "packages/cli/src/commands/install.ts",
+
+    "packages/cli/src/dev/http.ts",
+
+    "packages/cli/src/dev/security.ts",
+
+    "packages/cli/src/dev/server.ts",
+
+    "packages/cli/src/dev/watchers.ts",
+
+    "packages/sdk/package.json",
+
+    "packages/shared/package.json",
+
+    "packages/shared/src/agent-plugin-manifest.ts",
+
+    "packages/shared/src/build.ts",
+
+    "packages/shared/src/plugin-scaffold.ts",
+
+    "src-server/routes/plugins/plugin-public-routes.ts",
+
+    "src-server/services/plugins/plugin-grant-reconciliation.ts",
+
+    "src-server/services/plugins/plugin-install-transaction.ts",
+
+    "src-server/services/plugins/plugin-manifest-loader.ts",
+
+    "src-server/services/plugins/plugin-permissions.ts",
+
+    "src-server/services/plugins/plugin-public-server.ts",
+
+    "src-ui/src/views/plugin-management/plugin-scaffold-client.ts",
+
+    "src-ui/src/views/plugin-management/useNewPluginFlow.ts"
+  ],
+
+  "checks": [
+    "Full original document text read; exact inspected and remaining scope retained in HANDOFF.md. Documentation-only change.",
+
+    "Real PluginWorkspacePaneSDKBoundary to SDKAdapter to SDKProvider fixture: 9 tests, exit 0, 4.52s; controlled surrounding providers and no network. Confirms observed default-host gaps, not desired feature support.",
+
+    "Focused existing checks: 91 tests across ConnectionStore, useConnectionStatus, integration-copy parsers and Agent resolver; 4 files, exit 0, 2.64s.",
+
+    "First-plugin guide manifest and entrypoint extracted verbatim: actual schema parser and buildPlugin production/dev controls exit 0; no dependency install or Station installation/activation.",
+
+    "153 TS/TSX/JS/JSON fences parse, exit 0; syntax only. Initial 8 SDK pseudo-signature/multiple-JSX parse failures were corrected or explicitly marked text; retained original failure receipt.",
+
+    "Local paths and rendered anchors validated in396 Markdown files, exit0. Repository/public hygiene and public contract examples exit0; public checks apply only to10 admitted documents, not semantic certification of these5 references.",
+
+    "Frozen staged-document readiness exit0,0 failures/0 warnings, veritas-1790478448046. Commit bdbb325a0c2b735e8b522f4bbcade27fecc46fe7 contains exactly the5 owned Markdown files; worktree clean.",
+
+    "Continuation:64tests across7SDK component/voice/context files, exit0,5.31s;4temporary mounted caller/mock-HTTP observations, exit0,5.75s. The two observed defects are not desired-feature passes.",
+
+    "Continuation:153fences syntax pass; local paths/anchors396documents pass; exactly2docs committed, no runtime changes.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "Reviewed source changes: Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. Typed403 insufficient_scope now has its own Project-creation explanation before worktree-override fallback. No permission grant or change to plugin installation authority. Recursive dependencies now set stagedAsDependency true and pass fetchPluginSource dependency mode matching preview; consent and digest checks retained. Existing documented consent principle unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-ui/src/views/plugin-management/useNewPluginFlow.ts: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
+
+    "Required merge-queue recovery through 421517851: package export maps add opt-in source subpaths; existing package/build and public-entry claims remain. Changed inputs reviewed: packages/sdk/package.json. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: plugin-install-transaction.ts added an excludeGitMetadata option so agent-proposed installs stage without `.git` (#2719/#2840). The tutorial's CLI install, consent and preview claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904's cli.ts change only routes describeCliError through explainFullAccessRefusal for the approval-full-access-not-granted code. Plugin create/init/build/dev/install dispatch and the install target-source gating are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 makes the CLI installer (packages/cli/src/commands/install.ts) send the preview's optional gitMetadata back in its consent. The guide's local-path target rules and its HTTP preview/install outline still hold, and it points to the SDK consent example, which already carries gitMetadata. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 makes getOpenFileMime and isAllowedOpenFilePath in packages/cli/src/dev/http.ts private. Their behavior is unchanged, and the guide names neither function. The plugin dev preview and fetch-proxy bounds are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the plugin guide's /build import and engine claims are unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

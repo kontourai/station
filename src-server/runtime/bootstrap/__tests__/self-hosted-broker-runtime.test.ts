@@ -636,6 +636,42 @@ describe('self-hosted broker runtime lifecycle', () => {
     await expect(runtime.shutdown()).rejects.toThrow('renew failed');
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
+  test.each([5_000, 2_500])(
+    'renews a short remaining lease before a %ims heartbeat can consume it',
+    async (heartbeatMs) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-02T12:55:04.000Z'));
+      const f = fixture();
+      let expiresAt = Date.now() + 5_000;
+      f.connector.register.mockImplementation(async () => {
+        if (f.connector.register.mock.calls.length > 1)
+          await new Promise((resolve) => setTimeout(resolve, 4_000));
+        return { expiresAt };
+      });
+      f.connector.renew.mockImplementation(async () => {
+        expect(Date.now()).toBeLessThan(expiresAt);
+        expiresAt = Date.now() + 60_000;
+        return { expiresAt };
+      });
+      const runtime = new SelfHostedBrokerRuntime({
+        ...f.options,
+        heartbeatMs,
+        renewMs: 10_000,
+      });
+      try {
+        await runtime.start();
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(f.connector.renew).toHaveBeenCalled();
+        expect(f.connector.withdraw).not.toHaveBeenCalled();
+        f.lifetime.abort();
+        await vi.advanceTimersByTimeAsync(4_000);
+        await runtime.shutdown();
+      } finally {
+        f.lifetime.abort();
+        vi.useRealTimers();
+      }
+    },
+  );
   test('an observed lease expiry bounds the next deadline instead of renewing past it', async () => {
     const f = fixture();
     f.connector.register.mockResolvedValueOnce({

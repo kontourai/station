@@ -1,0 +1,27 @@
+{
+  "path": "docs/third-party/provider-icons.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed inline versus static bundled marks, CSS fills, integration icon containment, format/magic/size checks and fallback rendering.",
+
+  "limits": "September 25 upstream asset hashes are historical attribution; upstream files were not fetched again.",
+
+  "sources": [
+    "src-server/services/plugins/integration-icon-assets.ts",
+
+    "src-ui/src/components/icons/BrandIcon.css",
+
+    "src-ui/src/components/icons/BrandIcon.tsx",
+
+    "src-ui/src/components/icons/BrandMarks.tsx"
+  ],
+
+  "checks": [
+    "Focused brand-mark and integration-icon checks passed; local raster limit is 128 KiB and remote/SVG integration assets are refused.",
+
+    "Reviewed integration deltas: src-ui/src/components/icons/BrandIcon.tsx: resolveBrandKey becomes private to the production owner; implementation and actual component/caller unchanged. No current Markdown advertises the removed export. Test changes move assertions to owner output; no new execution receipt inferred."
+  ]
+}

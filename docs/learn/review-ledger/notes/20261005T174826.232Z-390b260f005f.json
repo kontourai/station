@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"#3386 fix round: added attachedSessionsOutsideProjects row. Checked against packages/contracts/src/config.ts, settings-registry.ts (default true), schemas/app.schema.json, attachedSessionsOutsideProjectsEnabled (!== false, unreadable -> false) and its wiring in runtime-initialize.ts; tests in attached-session-repository-attribution.test.ts drive it through a real ConfigLoader, fault-injected.","inputs":["docs/reference/config.md","packages/contracts/src/config.ts","packages/contracts/src/settings-registry.ts","src-server/runtime/bootstrap/runtime-initialize.ts"]}
+  ]
+}

@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   focus: vi.fn(),
   navigate: vi.fn(),
   showSurface: vi.fn(),
+  showSurfacePage: vi.fn(),
   roomDiscoveries: new Map<string, Record<string, unknown>>(),
   roomStreams: new Map<
     string,
@@ -40,6 +41,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../contexts/RegionModelContext', () => ({}));
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => mocks.showSurface,
+  useShowSurfacePage: () => mocks.showSurfacePage,
 }));
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: { focus: mocks.focus },
@@ -90,6 +92,7 @@ beforeEach(() => {
   mocks.focus.mockClear();
   mocks.navigate.mockClear();
   mocks.showSurface.mockClear();
+  mocks.showSurfacePage.mockClear();
   mocks.roomDiscoveries.clear();
   mocks.roomStreams.clear();
   mocks.roomStreamCalls.mockClear();
@@ -161,7 +164,7 @@ describe('ProjectLiveWorkSection', () => {
     render(<ProjectLiveWorkSection slug="station" />);
 
     expect(screen.getByText('Needs you · 1')).toBeTruthy();
-    expect(screen.getByText('Active now · 1')).toBeTruthy();
+    expect(screen.getByText('Running · 1')).toBeTruthy();
     // Identity a reader can act on: the session's own title (never a thread
     // id), whose it is, and what state it is in.
     expect(
@@ -183,9 +186,9 @@ describe('ProjectLiveWorkSection', () => {
    * not only by reading a heading. The lane modifier is what carries the rail
    * colour and the filled-vs-outline state chip in CSS, and the call to action
    * names the difference in one word: a Needs-you row is yours to discharge,
-   * an Active-now row is something to look at.
+   * a Running or Idle row is something to look at.
    */
-  test('marks the two lanes apart beyond their heading text', () => {
+  test('marks the lanes apart beyond their heading text', () => {
     mocks.sessions.push(
       session({
         threadId: 'waiting',
@@ -205,7 +208,7 @@ describe('ProjectLiveWorkSection', () => {
       container.querySelector('.project-page__live-work-lane--needsYou'),
     ).toBeTruthy();
     expect(
-      container.querySelector('.project-page__live-work-lane--activeNow'),
+      container.querySelector('.project-page__live-work-lane--running'),
     ).toBeTruthy();
     expect(screen.getByText('Reply')).toBeTruthy();
     expect(screen.getByText('Open')).toBeTruthy();
@@ -254,12 +257,14 @@ describe('ProjectLiveWorkSection', () => {
   test('no rendered row contradicts the lane heading above it', () => {
     const LANE_VOCABULARY: Record<string, string[]> = {
       needsYou: [
-        'Needs attention',
+        'Needs approval',
+        'Needs answer',
         'Waiting on you',
-        'Review pending',
+        'Interrupted',
         'Blocked',
       ],
-      activeNow: ['Running', 'Ready', 'Queued', "Can't answer here"],
+      running: ['Running'],
+      idle: ['Idle', 'Elsewhere'],
     };
 
     mocks.sessions.push(
@@ -328,11 +333,11 @@ describe('ProjectLiveWorkSection', () => {
       }));
     });
 
-    // Both lanes populated and every session accounted for — a walk over an
+    // Every lane populated and every session accounted for — a walk over an
     // empty render would pass while checking nothing.
     expect(rendered).toHaveLength(6);
     expect(new Set(rendered.map((row) => row.laneId))).toEqual(
-      new Set(['needsYou', 'activeNow']),
+      new Set(['needsYou', 'running', 'idle']),
     );
 
     for (const row of rendered) {
@@ -344,16 +349,16 @@ describe('ProjectLiveWorkSection', () => {
 
     // The three A1 shapes, by the word they used to print.
     expect(
-      screen.getByRole('button', { name: /Attached but idle.*Ready/i }),
+      screen.getByRole('button', { name: /Attached but idle.*Idle/i }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: /Review pending mid-turn.*Needs attention/i,
+        name: /Review pending mid-turn.*Needs approval/i,
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: /Stranded request.*Can't answer here/i,
+        name: /Stranded request.*Elsewhere/i,
       }),
     ).toBeTruthy();
   });
@@ -402,6 +407,40 @@ describe('ProjectLiveWorkSection', () => {
     });
   });
 
+  // A delegated task running on a PAIRED Station: its record names the
+  // peer's agent and conversation, so opening it must not rehydrate a chat
+  // on them, and its Needs-you row invites opening rather than replying here.
+  test('a paired-Station record opens without a chat target and does not invite a reply', () => {
+    mocks.sessions.push(
+      session({
+        threadId: 'peer-delegation:abc',
+        assignedAgentSlug: 'codex',
+        conversationId: 'conv-on-peer',
+        lifecycleState: 'needs_input',
+        pendingReview: true,
+        displayTitle: 'Peer question',
+        delegation: {
+          taskId: 'task:peer',
+          environmentId: 'environment-peer',
+          environmentName: 'Station B',
+          environmentKind: 'peer',
+          targetKind: 'agent',
+          targetId: 'codex',
+        },
+      }),
+    );
+    const { container } = render(<ProjectLiveWorkSection slug="station" />);
+    const cta = container.querySelector('.project-page__live-work-cta');
+    expect(cta?.textContent).toBe('Open');
+    expect(screen.queryByRole('button', { name: 'Chat' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Jump in' }));
+    // A `navigate` action: the thread alone, no conversation or agent to
+    // rehydrate, so the dock reveals Activity rather than opening a chat.
+    expect(mocks.focus).toHaveBeenCalledWith({
+      threadId: 'peer-delegation:abc',
+    });
+  });
+
   test('external history is not presented as live project work', () => {
     mocks.sessions.push(
       session({
@@ -429,7 +468,8 @@ describe('ProjectLiveWorkSection', () => {
 
     render(<ProjectLiveWorkSection slug="station" />);
     fireEvent.click(screen.getByRole('button', { name: 'All activity' }));
-    expect(mocks.showSurface).toHaveBeenCalledWith('activity');
+    expect(mocks.showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(mocks.showSurface).not.toHaveBeenCalled();
     // The retired surface name (archive#3280) renders no second affordance.
     expect(
       screen.queryAllByRole('button', {

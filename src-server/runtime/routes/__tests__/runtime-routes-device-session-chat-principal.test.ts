@@ -1438,13 +1438,50 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(
         (await projectRead(`/api/tasks/${sharedTaskId}/room/history`)).status,
       ).toBe(403);
+      // #3193: the bound guest reads the publication MemberProjectPage gates
+      // history and document on, and sees exactly the shared-work list's
+      // summary. An unshared Task and an unknown id are one uniform 404.
+      const guestList = await projectRead('/api/projects/example/shared-work');
+      const [listedShare] = ((await guestList.json()) as { data: unknown[] })
+        .data;
+      const guestPublication = await projectRead(
+        `/api/projects/example/shared-work/${sharedTaskId}/publication`,
+      );
       expect(
-        (
-          await projectRead(
-            `/api/projects/example/shared-work/${sharedTaskId}/publication`,
-          )
-        ).status,
-      ).toBe(403);
+        guestPublication.status,
+        await guestPublication.clone().text(),
+      ).toBe(200);
+      expect(await guestPublication.json()).toEqual({
+        success: true,
+        data: { kind: 'shared', publication: listedShare },
+      });
+      expect(listedShare).toMatchObject({
+        task: { id: sharedTaskId },
+        shareId: sharedTaskReceipt.data.shareId,
+      });
+      const unsharedTask = await h.taskGraph!.createTask({
+        projectId: h.sharedProject!.id,
+        title: 'Unshared answer',
+      });
+      const guestNotFound = async (taskId: string) => {
+        const response = await projectRead(
+          `/api/projects/example/shared-work/${taskId}/publication`,
+        );
+        return {
+          status: response.status,
+          headers: [...response.headers.entries()].sort(),
+          body: await response.text(),
+        };
+      };
+      const unknownPublication = await guestNotFound('no-such-task');
+      expect(unknownPublication).toMatchObject({
+        status: 404,
+        body: JSON.stringify({
+          success: false,
+          error: 'Shared Task not found',
+        }),
+      });
+      expect(await guestNotFound(unsharedTask.id)).toEqual(unknownPublication);
       expect(
         (
           await h.app.request(
@@ -1470,6 +1507,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           )
         ).status,
       ).toBe(404);
+      expect(await guestNotFound(sharedTaskId)).toEqual(unknownPublication);
       const shared = await projectRead('/api/projects/example');
       expect(shared.status, await shared.clone().text()).toBe(200);
       const sharedBody = await shared.json();

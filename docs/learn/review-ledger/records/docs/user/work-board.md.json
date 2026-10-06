@@ -1,0 +1,43 @@
+{
+  "path": "docs/user/work-board.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Traced pin identity/scope, pointer/keyboard handlers, narrow/coarse-pointer CSS, revision checks, one-snapshot Undo, cache/refresh behavior, and cleanup caller/store boundaries.",
+
+  "limits": "Source and mounted-fixture evidence. No physical touch, real multi-device conflict, visual geometry/contrast, or production performance qualification.",
+
+  "sources": [
+    "packages/sdk/src/query-core.ts",
+
+    "packages/sdk/src/spatial-board.ts",
+
+    "src-server/routes/spatial-board.ts",
+
+    "src-server/services/spatial-board/spatial-board-owner-resolver.ts",
+
+    "src-server/services/spatial-board/spatial-board-store.ts",
+
+    "src-ui/src/lib/queryDefaults.ts",
+
+    "src-ui/src/workspace-panes/SpatialBoardCanvas.tsx",
+
+    "src-ui/src/workspace-panes/SpatialBoardControls.tsx",
+
+    "src-ui/src/workspace-panes/SpatialBoardPins.tsx",
+
+    "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.css",
+
+    "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx"
+  ],
+
+  "checks": [
+    "Independent final source/wording delta accepted.",
+
+    "Work Board/checkpoint selection: 64 tests across 5 files passed, including mounted Board, store and routes.",
+
+    "Reviewed evidence routing through the architecture module to preserve the public user-guide content policy."
+  ]
+}

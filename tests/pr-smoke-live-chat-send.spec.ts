@@ -160,73 +160,30 @@ test.describe('pr-smoke live chat send', () => {
       { timeout: 20_000 },
     );
     await page.goto(baseURL);
-    // The compact header "New chat" icon only mounts inside a project/coding
-    // layout; Home shows a big "Start direct chat" card instead, which is a
-    // one-click path to whatever agent Home suggests, not necessarily the one
-    // seeded here. Dispatch the same global event ChatDock.tsx listens for
-    // everywhere once the shell has mounted.
     await expect(
       page.getByRole('button', { name: 'Station home' }),
     ).toBeVisible({ timeout: 20_000 });
-    // Deterministic settle: wait for one real authenticated round trip to
-    // succeed before touching the picker. On a freshly-navigated page the
-    // SDK's credential-vault hydration is async, and opening a chat and
-    // sending too quickly can race ahead of it — the very first chat POST
-    // then carries no Authorization header and the server correctly (if
-    // confusingly) reports `principal_unresolved`, the exact archive#4518 error
-    // shape, from a client that never actually lost its credential.
     await statusReady;
-    const agentRow = page.locator(
-      `.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`,
-    );
-    // The picker reads the agents list once per mount over a multi-minute
-    // cache, and the mount fetch can land inside the server's post-seed
-    // reconciliation (the seeded agent is committed but the list still
-    // serves its pre-seed snapshot). A reload is the only client-side
-    // invalidation: it rebuilds the query client, so the reopened picker
-    // reads the converged list. Bounded — a server that never converges
-    // still fails loudly below instead of passing on a stale row.
-    let rowRendered = false;
-    for (let attempt = 0; attempt < 3 && !rowRendered; attempt++) {
-      if (attempt > 0) {
-        await page.reload();
-        await expect(
-          page.getByRole('button', { name: 'Station home' }),
-        ).toBeVisible({ timeout: 20_000 });
-        // Re-establish the same authenticated-settle premise as the first
-        // open: vault hydration reruns on reload (see archive#4518 above).
-        await page.waitForResponse(
-          (response) =>
-            response.url().includes('/api/system/status') &&
-            response.status() === 200,
-          { timeout: 20_000 },
-        );
-      }
-      await page.evaluate(() =>
-        window.dispatchEvent(new Event('station:open-new-chat')),
-      );
-      try {
-        await expect(agentRow).toBeVisible({ timeout: 10_000 });
-        rowRendered = true;
-      } catch {
-        // Stale mount fetch; reload and reopen above.
-      }
-    }
-    expect(
-      rowRendered,
-      `picker never rendered ${agentSlug}; the agents list did not converge after reloads`,
-    ).toBe(true);
+    // Home's start composer is the one way to start a chat: choose the
+    // Agent on its chip, then Start sends through the dock.
+    const draft = page.getByRole('form', { name: 'Start work' });
+    await draft.getByRole('button', { name: /^Agent:/ }).click({
+      timeout: 20_000,
+    });
+    const agentRow = page
+      .getByRole('dialog', { name: 'Choose agent' })
+      .locator(`.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`);
+    await expect(agentRow).toBeVisible({ timeout: 20_000 });
     await agentRow.click();
-
-    // The picker leaves the dock exactly as the user last set it — expand it
-    // if it started collapsed (see `ensureChatDockOpen`'s own doc for what
-    // is and is not diagnosed about why).
+    await expect(
+      page.getByRole('dialog', { name: 'Choose agent' }),
+    ).toHaveCount(0);
+    await draft
+      .getByRole('textbox', { name: 'What would you like done?', exact: true })
+      .fill('pr-smoke real send.');
+    expect(chatRequests).toHaveLength(0);
+    await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await ensureChatDockOpen(page);
-
-    const composer = page.getByPlaceholder(/^Type a message/);
-    await expect(composer).toBeVisible({ timeout: 20_000 });
-    await composer.fill('pr-smoke real send.');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
     // This is pr-smoke's own merge-gate spec
     // (retries:0, fail-and-fix) — a bare `expect.poll` here reads a real
     // "Host is at capacity" refusal (a genuine, disclosed shared-host

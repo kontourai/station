@@ -1,0 +1,7 @@
+{
+  "revision": "e713b510c4a610c4c42620e87107c5eac2fcf341",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Checked the S1 desktop section: panel 401 copy for scope, revoke and remove now names station environment access scope/revoke/remove (PairedDevicesPanel.tsx lines ~180, 222, 262) and the static native-host hint no longer claims the host app manages the credential; route/authority claims untouched.","inputs":["docs/design/operator-device-access.md","packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","src-desktop/src/lib.rs","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

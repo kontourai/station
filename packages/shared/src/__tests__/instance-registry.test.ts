@@ -12,11 +12,13 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  claimDesktopSidecar,
+  claimHostOwner,
   findRunning,
+  type InstanceConfig,
   readInstanceRegistry,
   reconcileStaleInstances,
   removeInstance,
+  removeOwnedInstance,
   resolveInstanceRegistryPath,
   updateStatus,
   upsertInstance,
@@ -41,6 +43,20 @@ function unavailableProcessProbe(code?: string): (pid: number) => void {
     if (code) error.code = code;
     throw error;
   };
+}
+
+/** The desktop bridge's sidecar claim shape: the claimant speaks for its pid. */
+function claimDesktopSidecar(
+  id: string,
+  instance: InstanceConfig,
+  home: string,
+): boolean {
+  return claimHostOwner(id, {
+    home,
+    type: 'sidecar',
+    ownerPids: typeof instance.pid === 'number' ? [instance.pid] : [],
+    publish: () => instance,
+  }).won;
 }
 
 afterEach(() => {
@@ -480,12 +496,18 @@ describe('instance registry', () => {
       expect(
         claimDesktopSidecar(
           id,
-          { port: 0, type: 'sidecar', status: 'starting' },
+          { port: 0, type: 'sidecar', status: 'starting', pid: process.pid },
           home,
         ),
       ).toBe(true);
 
-      removeInstance(id, home);
+      // The bridge's release: owner-checked on this desktop's pid.
+      removeOwnedInstance(id, {
+        home,
+        pid: process.pid,
+        ownTypes: ['sidecar'],
+        removeWhenOwnerGone: true,
+      });
 
       expect(readInstanceRegistry(home).instances[id]).toBeUndefined();
     },
@@ -557,6 +579,200 @@ describe('instance registry', () => {
       expect(Object.keys(registry.instances)).toHaveLength(
         2 * iterationsPerChild,
       );
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
+  );
+});
+
+/**
+ * #2961 (ADR 0020 D4): the one host-owner claim, exercised by real processes
+ * with their own pids and birth fingerprints.
+ */
+describe('one host-owner claim across processes (#2961)', () => {
+  const tsx = resolve(
+    import.meta.dirname,
+    '..',
+    '..',
+    '..',
+    '..',
+    'node_modules',
+    'tsx',
+    'dist',
+    'cli.mjs',
+  );
+  const registryModule = resolve(
+    import.meta.dirname,
+    '..',
+    'instance-registry.ts',
+  );
+  const identityModule = resolve(
+    import.meta.dirname,
+    '..',
+    'process-identity.mjs',
+  );
+
+  function ownSidecar(home: string): boolean {
+    return claimHostOwner('desktop-sidecar-new', {
+      home,
+      type: 'sidecar',
+      ownerPids: [process.pid],
+      publish: () => ({
+        port: 0,
+        type: 'sidecar',
+        status: 'starting',
+        pid: process.pid,
+        birth: lookupProcessBirthFingerprint(process.pid) ?? undefined,
+      }),
+    }).won;
+  }
+
+  it(
+    'reclaims a sidecar record left by a SIGKILLed desktop on the next claim',
+    async () => {
+      const home = makeHome();
+      // A real process recorded with its real birth fingerprint, then killed
+      // the way the #2957 packaged run killed a desktop (`kill -9`).
+      const victim = spawn(
+        process.execPath,
+        ['-e', 'setInterval(() => {}, 1000)'],
+        {
+          stdio: 'ignore',
+          windowsHide: true,
+        },
+      );
+      const victimPid = victim.pid!;
+      const birth = lookupProcessBirthFingerprint(victimPid);
+      expect(birth).toBeTruthy();
+      upsertInstance(
+        'desktop-sidecar-old',
+        {
+          port: 38141,
+          type: 'sidecar',
+          status: 'running',
+          pid: victimPid,
+          birth: birth!,
+        },
+        home,
+      );
+      expect(ownSidecar(home)).toBe(false);
+      const exited = new Promise((resolveExit) =>
+        victim.once('exit', resolveExit),
+      );
+      victim.kill('SIGKILL');
+      await exited;
+
+      expect(ownSidecar(home)).toBe(true);
+      expect(Object.keys(readInstanceRegistry(home).instances)).toEqual([
+        'desktop-sidecar-new',
+      ]);
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'admits exactly one of N concurrent sidecar and service claimants',
+    async () => {
+      const home = makeHome();
+      const claimants = [
+        ...[1, 2, 3].map((n) => ({
+          id: `desktop-sidecar-${n}`,
+          type: 'sidecar',
+        })),
+        ...[1, 2, 3].map((n) => ({ id: `service-${n}`, type: 'service' })),
+      ];
+      // What `service install` leaves: installed policy, no live supervisor.
+      for (const claimant of claimants.filter((c) => c.type === 'service')) {
+        upsertInstance(claimant.id, { port: 3242, type: 'service' }, home);
+      }
+      // Each claimant resolves its own identity, reports ready, claims on
+      // "go", and then stays alive (so a won claim remains live) until its
+      // stdin closes. Publishing mirrors the two production claimants.
+      const source = `
+        import { claimHostOwner } from ${JSON.stringify(registryModule)};
+        import { lookupProcessBirthFingerprint } from ${JSON.stringify(identityModule)};
+        const { REGISTRY_HOME: home, CLAIM_ID: id, CLAIM_TYPE: type } = process.env;
+        const birth = lookupProcessBirthFingerprint(process.pid) ?? undefined;
+        process.stdout.write('ready\\n');
+        process.stdin.once('data', () => {
+          const result = claimHostOwner(id, {
+            home, type, ownerPids: [process.pid],
+            publish: (existing) => type === 'sidecar'
+              ? { port: 0, type: 'sidecar', status: 'starting', pid: process.pid, birth }
+              : existing?.type === 'service'
+                ? { ...existing, status: 'starting', pid: process.pid, birth }
+                : null,
+          });
+          process.stdout.write(JSON.stringify({ id, type, ...result }) + '\\n');
+        });
+        process.stdin.on('end', () => process.exit(0));
+      `;
+      const children = claimants.map((claimant) =>
+        spawn(process.execPath, [tsx, '-e', source], {
+          windowsHide: true,
+          env: {
+            ...process.env,
+            REGISTRY_HOME: home,
+            CLAIM_ID: claimant.id,
+            CLAIM_TYPE: claimant.type,
+          },
+        }),
+      );
+      try {
+        const lines = children.map((child) => {
+          let buffered = '';
+          const received: string[] = [];
+          const waiters: Array<() => void> = [];
+          child.stdout.setEncoding('utf8');
+          child.stdout.on('data', (chunk: string) => {
+            buffered += chunk;
+            let newline = buffered.indexOf('\n');
+            while (newline >= 0) {
+              received.push(buffered.slice(0, newline));
+              buffered = buffered.slice(newline + 1);
+              newline = buffered.indexOf('\n');
+              for (const wake of waiters.splice(0)) wake();
+            }
+          });
+          return async (count: number): Promise<string[]> => {
+            while (received.length < count) {
+              await new Promise<void>((wake) => waiters.push(wake));
+            }
+            return received;
+          };
+        });
+        await Promise.all(lines.map((next) => next(1)));
+        for (const child of children) child.stdin.write('go\n');
+        const results = (await Promise.all(lines.map((next) => next(2)))).map(
+          (received) => JSON.parse(received[1]!),
+        );
+
+        const winners = results.filter((result) => result.won);
+        expect(winners).toHaveLength(1);
+        for (const loser of results.filter((result) => !result.won)) {
+          expect(loser).toMatchObject({
+            reason: 'host-owned',
+            owners: [{ id: winners[0].id, type: winners[0].type }],
+          });
+        }
+        // The registry agrees: exactly one live host owner, the winner.
+        const live = Object.entries(readInstanceRegistry(home).instances)
+          .filter(([, entry]) => typeof entry.pid === 'number')
+          .map(([id]) => id);
+        expect(live).toEqual([winners[0].id]);
+      } finally {
+        await Promise.all(
+          children.map((child) => {
+            if (child.exitCode !== null || child.signalCode !== null) {
+              return undefined;
+            }
+            const exited = new Promise((resolveExit) =>
+              child.once('exit', resolveExit),
+            );
+            child.stdin.end();
+            return exited;
+          }),
+        );
+      }
     },
     PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
   );

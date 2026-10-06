@@ -26,6 +26,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
+| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -34,8 +35,11 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
-| [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while Desktop is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
-| [NativeApplicationSignaling](#nativeapplicationsignaling) | Exchange a native offer and answer through host-owned routing credentials, without claiming an application data transport. | `src-desktop/src/native_relay_redemption.rs` |
+| [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while a native renderer is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
+| [Native relay enrollment](#native-relay-enrollment) | Enroll one explicitly approved Device without exposing its credential to the WebView. | `src-desktop/src/native_enrollment_host.rs` |
+| [Native relay link intake](#native-relay-link-intake) | Review untrusted routing intent and keep bound invitation secrets in native custody. | `src-desktop/src/native_relay_link_intake.rs` |
+| [Native relay account and requests](#native-relay-account-and-requests) | Compose selected Device transport with separate person sessions and bounded member reads. | `src-ui/src/platform/native/nativeRelayConnectionOwner.ts` |
+| [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
@@ -51,11 +55,13 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [ExtensionNotificationBindings](#extensionnotificationbindings) | Bind exact observed extension tuples to functional consumers without promoting vendor semantics. | `src-shared/extension-notification-bindings.ts` |
 | [JsonFileMutationAuthority](#jsonfilemutationauthority) | Serialize bounded JSON read/derive/publish work without blocking the server event loop. | `src-server/domain/file-storage-helpers.ts` |
 | [LocalSkillMutationAuthority and SetupImportEffectJournal](#localskillmutationauthority-and-setupimporteffectjournal) | Serialize every local Skill mutation and retain each reviewed import effect through recovery. | `src-server/services/agents/skill-service.ts`, `src-server/services/setup/existing-agent-setup-import.ts` |
+| [SkillExperienceRuntime](#skillexperienceruntime) | Admit one pinned Skill selection at canonical turn boundaries and project immutable Session presentation history. | `src-server/services/orchestration/skill-experience-runtime.ts` |
 | [AgentPluginLoader](#agentpluginloader) | Consume one installed Agent Plugins package without copying portable components or widening failure boundaries. | `src-server/services/plugins/agent-plugin-loader.ts` |
 | [StationHomeArchive](#stationhomearchive) | Validate, back up, and atomically restore one inactive Station home. | `packages/shared/src/station-home-archive.ts` |
 | [StationHomeRecoveryPreflight](#stationhomerecoverypreflight) | Observe bounded recovery metadata without granting mutation or execution authority. | `packages/shared/src/station-home-recovery-preflight.ts` |
 | [ProjectFileTransactions](#projectfiletransactions) | Serialize Project lifecycle and nested record mutations under exact revision capabilities. | `src-server/domain/project-file-transactions.ts` |
 | [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
+| [StationKnowledgeMcpServer](#stationknowledgemcpserver) | Serve scoped read/capture tools separately from platform controls. | `src-server/tools/station-knowledge-mcp-server.ts` |
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
@@ -76,6 +82,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [KnowledgeSourceObservation](#knowledgesourceobservation) | Observe one registered canonical record without bootstrap, repair, or learning authority. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [PluginCompositionModule](#plugincompositionmodule) | Stage and atomically activate scoped, reversible plugin capability graphs. | `src-server/services/plugins/plugin-composition.ts` |
 | [PluginGrantReconciliation](#plugingrantreconciliation) | Converge runtime capability generations after a durable plugin grant change. | `src-server/services/plugins/plugin-grant-reconciliation.ts` |
+| [PluginCommandEffects](#plugincommandeffects) | Admit plugin palette effects for browser documents, one per request, and report withdrawals honestly until each captured effect settles. | `src-server/services/plugins/plugin-command-effects.ts` |
+| [RegistrySourceManager](#registrysourcemanager) | Persist connected catalogs and bind discovery, inspection and acquisition to the exact current source. | `src-server/providers/registries/registry-source-manager.ts` |
 | [RegistrySupplyChainPolicy](#registrysupplychainpolicy) | Verify registry package signatures and prepare exact pins and rollback sources. | `src-server/services/plugins/registry-supply-chain.ts` |
 | [ReviewEvidenceModule](#reviewevidencemodule) | Run independent read-only reviewers over one exact revision range and retain attributable findings without minting a verdict. | `src-server/services/evidence/review-evidence-module.ts` |
 | [VerificationCoordinator](#verificationcoordinator) | Coordinate one provenance-bound verification request through admission, execution, and receipt publication. | `scripts/lib/verification-coordinator.mjs` |
@@ -102,25 +110,92 @@ application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
 
+Operator passkeys are a separate, enrollment-only owner so far (#3257). The
+[enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
+owns the confirm-by-code request and the single-use WebAuthn ceremony, and the
+[registry](../../src-server/services/identity/operator-passkey-registry.ts) owns the
+private SQLite file of public keys. The browser half is mounted on the consent
+listener ([routes](../../src-server/runtime/consent/operator-passkey-enrollment-routes.ts));
+the host half is the [operator-only route set](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts)
+behind `station environment operator passkeys`. Nothing authenticates with an
+enrolled passkey yet.
+
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
 native application peer, an approved account-bound Device and provider session
 verification. Missing browser `Origin` alone never selects native authority.
 The [native Connect transport](../../packages/connect/src/core/nativeApplicationTransport.ts)
 and [SDK client](../../packages/sdk/src/client/application-session-native.ts)
-consume host-supplied trust and signaling/signing interfaces; their existence
-does not wire ordinary Desktop sign-in or the Rust key vault below.
+consume host-supplied trust and structured peer/account operations. The ordinary
+selected native route now composes these owners for separate account sign-in,
+invitation acceptance and bounded member reads. This source integration does not
+establish physical iOS or released Nightly qualification.
 
-The desktop [native account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
+The native [account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
 is a separate foundation. It stores a software P-256 key through the existing
 OS keyring adapter, under an account-proof namespace distinct from broker
 routing keys. Its owner tuple names the app, channel, client instance, Station
 and approved Device; validating that tuple's shape does not establish actual
-Device approval. `lib.rs` includes the module on desktop, but registers no
-renderer IPC for it and has no production sign-in or request caller. It does
-not establish mobile custody or hardware-backed non-exportability. Follow
-[native capability boundaries](../design/native-capabilities.md) before wiring
-this owner into an application flow.
+Device approval. The separate [account operation owner](../../src-desktop/src/native_account_operations.rs)
+registers bounded commands for public-key/challenge preparation, local
+username/password exchange-body preparation, supported GET/HEAD account proofs,
+and fixed invitation-acceptance and session-revocation bodies. The prepared
+context exposes its actual host deadline; the SDK clamps the continuation's
+usable expiry to that deadline and the server's expiry. It derives identity/hashes/JTI/time from the reconciled host owner,
+fences handles/replay/expiry/key identity and exposes no raw signing input.
+The SDK's typed proof-provider path validates and retains the ordered body before
+the Device transport signs its complete bytes. Commands are registered on desktop
+and mobile, and the ordinary selected-route owner uses them. OS-keyring software
+custody does not establish hardware-backed non-exportability; physical iOS and
+process-lifecycle qualification remain separate. Follow the
+[native capability boundaries](../design/native-capabilities.md).
+
+The [Device proof key vault](../../src-desktop/src/native_device_proof_key.rs)
+uses a separate keyring namespace and adds the Device binding ID to its owner.
+Both vaults share a [private custody core](../../src-desktop/src/native_proof_key_core.rs)
+while preserving the account vault's stored format. The native
+[candidate manager](../../src-desktop/src/native_device_binding_candidate.rs)
+persists a provisional owner snapshot and binding ID in a separate private
+Keychain namespace before it creates the Device proof key. The main-window
+`station_native_device_binding_candidate` command joins the selected relay-route
+profile to the separately host-authorized Device profile under one profile-store
+snapshot; both must share its revision, client instance and exact Station
+origin. Approved Station trust, route grant and surface come from the selected
+route; the current paired Device comes from host authority. It returns only the
+public JWK and thumbprint. Reauthorization resumes the same key while the
+profile revision, Station, Device, trust, route and surface remain exact. The
+command does not submit approval, reconcile a receipt, authorize a peer session
+or sign a request; no renderer caller currently consumes it. The native Device
+path also has a [binding sidecar](../../src-server/services/ssh/native-device-proof-binding-service.ts),
+[JWS verifier](../../src-server/services/identity/native-device-proof-verifier.ts),
+[replay store](../../src-server/services/identity/native-device-replay-store.ts)
+and a separate credential-free Request principal. The
+[native runtime factory](../../src-server/runtime/bootstrap/native-device-proof-runtime.ts)
+composes server admission behind explicit opt-in and provider/native connector
+checks. The [binding management routes](../../src-server/routes/system/native-device-proof-binding-routes.ts)
+require current operator credentials and expose historical/current binding
+readback. A separate [Device self-receipt route](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts)
+admits only the owning current ordinary Device bearer. The Desktop
+`station_native_device_binding_self_receipt` command restores its existing
+candidate and reads that fixed endpoint through the native HTTP owner. It
+rechecks owners under the profile/authority locks before recording an
+observation, distinguishes cached history from fresh readback, and retains the
+key on unknown outcomes. The [peer owner](../../src-desktop/src/native_application_peer.rs)
+and account operation owner require a positive observation scoped to the current
+owner/epoch; cached history is not returned as fresh reconciliation.
+Native proofs authorize only the pilot account and Project-read
+surface, with independent account and membership checks. Host peer/Device and
+account proof commands are registered, while ordinary native route selection,
+actual IPC/packaged acceptance and fresh relay-only enrollment remain unqualified; the
+[broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
+owns their integration and acceptance requirements.
+
+The separate [paired-Device custody owner](../../src-desktop/src/native_device_custody.rs)
+captures authenticated pairing identity in an app/channel-bound keyring
+companion and resolves it under current profile authority. Its retirement
+journal permits cleanup retries without restoring credential authority.
+See [native capability boundaries](../design/native-capabilities.md#desktop-paired-device-identity-custody)
+for legacy, crash-recovery and platform qualification limits.
 
 **Intent and Interface.** The public `deployment-authentication` contract lets an
 operator supply a versioned authentication module at startup. Its factory receives the
@@ -194,6 +269,45 @@ synthesized. See [protected application
 dispatch](../design/connection-broker.md#protected-application-dispatch) for lifecycle,
 limits and the remaining encrypted-path acceptance.
 
+## RegistrySourceManager
+
+[The source manager](../../src-server/providers/registries/registry-source-manager.ts)
+composes the existing visible Skill/plugin providers with user-added local
+Skill directories, public GitHub libraries and local/HTTPS Station manifests.
+It persists source configuration and last successful bounded snapshots under
+the Station home. [The configuration reader](../../src-server/providers/registries/registry-source-configuration.ts)
+refuses corrupt/unsupported or nonregular files and bounds the file to 8 MiB
+and retained snapshots to 32. [Installed-state projection](../../src-server/providers/registries/registry-catalog-installed-state.ts)
+uses the current local inventory and source ownership aliases for live and
+offline plugin rows. Manifest providers supply one fresh coherent observation
+for rows, source locations and untrusted publisher claims. A snapshot is discovery evidence; source removal/disable and
+plugin generation replacement/revocation are checked again before publication
+and use. A revoked provider cannot publish its in-flight result or fall back to
+its previously cached rows. Plugin-owned Skill catalogs also use the route's
+existing caller visibility projection, before inspection/acquisition reads.
+Installed-name/conflict projection also withholds provided plugin Skills from
+callers who cannot see the owning legacy or portable Agent Plugin.
+
+[Registry routes](../../src-server/routes/plugins/registry.ts) expose source
+management and source-qualified catalog tuples. The marketplace retains an
+inspected selection through filtering/refresh, preserves equal names, names
+partial/stale sources and returns installed content to the existing Library.
+[SkillService](../../src-server/services/agents/skill-service.ts) sends exactly
+one selected provider through the existing staging/publication owner, records
+its reviewed source/catalog revision and observed package digest, and stages
+updates before replacing the installed tree. Plugin acquisition retains the
+ordinary preview/consent/installer, raw publisher-signed item ID, source key and
+applied trust policy; host source IDs cannot authenticate a publisher.
+
+The public shapes and provider interfaces are in
+[`catalog`](../../packages/contracts/src/catalog.ts). SDK source actions
+invalidate the existing Registry query family. Route tests exercise source
+collision, unavailable sources, revision changes, retained installed packages,
+signed acquisition, caller projection and provider revocation; UI tests cover
+source actions and retained selection. These are local behavioral evidence,
+not hosted marketplace, native device, release or arbitrary private-source
+qualification. Other index formats and credential-bearing URLs are refused.
+
 ## Registry trust policy decisions
 
 [Registry trust policy](../../src-server/services/plugins/registry-trust-policy.ts) owns
@@ -205,6 +319,31 @@ rechecks the candidate under the existing mutation authority. Observations use
 fingerprints, not PEM keys. The applied decision, acquisition receipt, and local
 admission fences are described in [Applied registry trust
 policy](../design/registry-trust-policy.md).
+
+## SkillExperienceRuntime
+
+[SkillExperienceRuntime](../../src-server/services/orchestration/skill-experience-runtime.ts)
+binds explicit foreground selections to the installed source owner and the
+canonical Session turn. The package-content lease/journal and Skill scope owner
+revalidate pinned source/dependencies; source admission wraps actual send, steer
+and accepting request effects. The existing exact turn attribution mechanism
+adds only the bounded retained-snapshot reference to an accepted `turn.started`.
+
+[Immutable snapshots](../../src-server/services/orchestration/skill-experience-snapshots.ts)
+live in the same EventStore. Bounded history follows the existing conversation
+lineage and Session read authorization. A snapshot without a canonical turn is
+not invocation truth; removed sources retain inert history and fail future
+admission. Rich pane actions additionally bind the exact current event and hold
+the current `agents.invoke` grant. Presentation controls and package-defined
+transitions create no second execution lifecycle.
+
+The [contract guide](../reference/skill-experiences.md) links author/schema,
+foreground routes, storage and the independent rich example. Controlled route,
+provider-bound and frame transport evidence lives in
+`src-server/routes/agents/__tests__/skill-experiences.routes.test.ts`,
+`src-ui/src/__tests__/framePaneHost.test.tsx` and
+`packages/sdk/src/__tests__/skill-experience-pane.test.ts`. Those tests do not
+establish a live model, native-device renderer or release receipt.
 
 ## AgentPluginLoader
 
@@ -243,7 +382,14 @@ copied into a Station integration or Skill directory.
 
 **Seam, Implementation, callers, and tests.** Runtime bootstrap composes the loader into
 `SkillService` and `ConfigLoader`; the shared MCP transport consumes the projected cwd
-and headers. Directory/git install validates recognized packages through the same loader
+and headers.
+The Skill routes also expose an inert installed experience inventory. The loader
+uses the existing content lease, yielding digest reads and admission journal to
+bind validated definitions to an exact package incarnation/materialization;
+SkillService applies the current discovered Skill precedence. Neither that
+snapshot nor author capability requirements authorize execution. The controlled
+route proof is `src-server/routes/agents/__tests__/skill-experiences.routes.test.ts`.
+Directory/git install validates recognized packages through the same loader
 while the legacy parser remains an explicit #346 fallback. Behavioral and
 real-child-process evidence lives in `agent-plugin-loader.test.ts`,
 `plugin-install-transaction.test.ts`, and `mcp-v2.test.ts`. **Do not reintroduce:**
@@ -255,7 +401,7 @@ commands/URLs/headers.
 
 **Intent and Interface.** `createDestinationRegistry(definitions)` composes one
 immutable destination inventory. Callers read registered destinations, advertised
-destinations for an explicit flag set, ordered sidebar, Settings-navigation or
+destinations for an explicit flag set, ordered sidebar, Customize-navigation or
 command-palette projections, exact root routes, and the destination owning a
 `NavigationView`. Labels and badges resolve when projected, after locale, branding, and
 live attention facts exist. The built-in application composition is
@@ -263,9 +409,9 @@ live attention facts exist. The built-in application composition is
 
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate
 exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
-order slots. Settings rows have unique order within each group and cannot also be
+order slots. Customize rows have unique order within each group and cannot also be
 sidebar entries or hidden from navigation. Composition and filtering do not invoke
-labels or badges; Settings projection resolves its optional label/route overrides. A
+labels or badges; Customize projection resolves its optional label/route overrides. A
 flag-gated surface stays registered and routable while `getAdvertised` hides it.
 Developer advertisement uses the device-scoped `device:developer-tools` flag; other
 flags can come from server previews. `hiddenFromNav` removes the sidebar affordance;
@@ -276,7 +422,7 @@ palette after static destination projection.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in
 descriptors. `routing.ts` consumes exact routes and semantic management ownership;
-`ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their
+`ProjectSidebarNav`, `CustomizeDialog`, `CommandPalette`, and notification header badge consume their
 ordered projections. Icons are a presentation Adapter keyed by the registry's finite
 icon vocabulary. Future trusted plugin surface contributions must enter at registry
 composition and pass the same validation; there is no mutable global `register()`
@@ -735,31 +881,123 @@ separate.
 
 Desktop clients need to exchange connection offers and answers through a broker
 without exposing routing credentials to their renderer. The native shell's
-[owner](../../src-desktop/src/native_relay_redemption.rs) exposes
-`station_native_relay_application_binding`, `station_native_relay_application_open`
-and `station_native_relay_application_read`. [lib.rs](../../src-desktop/src/lib.rs)
-registers these desktop Tauri commands; the main-window guard restricts their
-caller. They reuse the service behind the existing diagnostic signaling commands.
+[peer owner](../../src-desktop/src/native_application_peer.rs) uses the existing
+[relay custody](../../src-desktop/src/native_relay_redemption.rs) and registers
+prepare/open/read/sign/close commands in [lib.rs](../../src-desktop/src/lib.rs).
+The existing binding command supplies public profile, surface and approved-trust
+metadata. The retained diagnostic signaling path cannot mint peer proof authority.
 
-**Interface and custody.** Each command names a saved profile and its exact
-revision. Opening adds a nonce and bounded offer SDP (the connection's session
-description); reading names an existing
-offer nonce. The host loads the approved Station trust and keyring-held routing
-grant, then rechecks that custody after broker I/O. Callers cannot supply a
-bearer, private key, broker URL or Project authority in these envelopes.
+**Interface and custody.** Prepare names a saved profile and exact revision;
+the host derives current Device/binding/receipt, trust and grant and mints an
+opaque handle and nonce. Open adds only the exact bounded offer SDP; read names
+the handle. Rust verifies Station's signed nonce, connection identity, both SDP
+digests and DTLS fingerprints before accepting the transcript. A verified
+transcript does not establish browser DTLS connectivity or account authority.
+Sign constructs one Device proof for an allowlisted method/path/query and bounded
+body, using current host owners. No caller supplies claims, hashes, signing bytes,
+keys, bearer or a fabricated connected assertion.
 
-**Results and recovery.** Binding returns public host-derived metadata. Opening
-returns expiry; reading can return answer SDP and opaque Station proof. An
-uncertain open may already have created the offer, so retain its nonce and read
-that offer within its window before considering another open.
+**Results and recovery.** The handle exists before network opening, so an
+uncertain open is recovered by reading the same handle. Each peer admits one
+proof; owner/epoch changes, stale transcripts, replay and expiry refuse. The
+client may shorten a read deadline but cannot extend a prior one. Bounded handle
+tracking retires failures, late completions, cancellation, close and expiry.
 
-**Integration boundary.** No ordinary renderer or SDK caller currently invokes
-these commands. They do not create a DataChannel, verify the returned Station
-proof, carry application requests, select a route, sign in or enroll a Device.
-The account proof-key vault remains separate. The browser/Node diagnostic lab
-does not exercise this Tauri interface. Source and service tests do not establish
+**Integration boundary.** The [native adapter](../../src-ui/src/platform/native/nativeApplicationSignalingBridge.ts)
+and [Connect transport](../../packages/connect/src/core/nativeApplicationTransport.ts)
+consume the host lifecycle. Browser RTC remains client-owned; Connect verifies
+the Station proof before applying the answer, then adds the exact Device proof
+through the post-open request hook. Independent structured account operations
+prepare the complete account exchange body before that hook freezes/signs it.
+These opt-in libraries do not select a default route, enroll a Device or bypass
+server account/Project checks. The browser/Node diagnostic lab does not exercise
+this Tauri interface. Source and service tests do not establish
 executed IPC, native keyring behavior or a packaged/device journey. See the
 [native command contract](../design/native-capabilities.md#desktop-application-signaling-commands).
+
+## Native relay enrollment
+
+The [host coordinator](../../src-desktop/src/native_enrollment_host.rs) owns one
+profile-bound enrollment attempt, its OS journal, recipient key, exact Device
+candidate and activation publication. The
+[contract](../../packages/contracts/src/native-relay-enrollment.ts) exposes
+public preparations and opaque operation handles. The
+[UI controller](../../src-ui/src/platform/native/nativeRelayEnrollmentClient.ts)
+and [wizard](../../src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx)
+use fixed host operations through a fresh verified encrypted peer. Network
+cleanup does not cancel a staged or committed enrollment. Explicit cancellation
+retires only the owned attempt. Recovery reads host state; an active transition
+must pass the host's currentness lookup before accepting its profile revision.
+Expired candidates can use a newer routing generation only for signed terminal
+cleanup under the unchanged broker, Station, enrollment, installation and trust.
+The original ceremony remains bound to its old generation; no active or staged
+Device can use this exception.
+
+The [Station service](../../src-server/services/identity/native-relay-enrollment-service.ts)
+requires supported pending account verification and a real operator's approval
+of the exact person/Device candidate. Signed, HPKE-encrypted delivery contains
+the Device credential only. Activation grants neither an account continuation
+nor Project membership. The [native enrollment record](../design/native-relay-enrollment.md)
+traces cryptography, journals, revocation and the evidence boundaries. Combined
+Rust tests and mounted frontend/server composition pass; fresh packaged iOS,
+actual process recovery and two-person public delivery remain unqualified.
+
+## Native relay link intake
+
+The [host intake](../../src-desktop/src/native_relay_link_intake.rs) owns bounded
+invitation custody, public pending handles, cancellation and expiry. The
+[typed envelope](../../packages/contracts/src/native-relay-link.ts) separates a
+public first-contact route intent from an invitation bound to an already
+approved native installation. The application address is an untrusted routing
+hint. Opening a link grants no trust, Device, account, Project or execution
+authority and does not select a Station.
+
+iOS uses a distinct relay scheme and a
+[Station-owned delivery boundary](../../src-desktop/src/native_relay_ios_launch.rs)
+instead of the generic deep-link runtime, which retains its last raw URL. The
+owned boundary captures cold launch options and consumes relay URLs before
+the upstream warm URL parser. Pairing remains a separate journey. Android
+does not register these relay schemes. Existing native candidate comparison,
+explicit trust approval and grant redemption remain the authorization owners;
+cancelled late grants use exact-grant retirement and durable cleanup.
+
+The invitation review has its own React Query client so cold intake can precede
+the main providers. [Native setup refresh hints](../../src-ui/src/platform/native/nativeRelaySetupState.ts)
+notify the mounted [saved Station list](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+when confirmation, redemption, Device activation or cleanup operations settle.
+The hint names only the saved profile. Consumers refresh native profile metadata,
+invalidate that profile’s trust, routing-grant and enrollment-recovery queries,
+and validate fresh host responses; the hint
+contains no credential, approval result or application authority. Closing the
+review does not remount the protected root, and late replies still trigger
+the host-state refresh.
+
+Host and codec tests qualify their recorded source boundaries. The iOS-specific
+callback ABI, installed cold/warm delivery, secret-log inspection and physical
+collaborator journey require separate evidence. See the
+[enrollment design](../design/native-relay-enrollment.md#native-link-intake)
+for those limits.
+
+## Native relay account and requests
+
+The [selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+composes an opaque host Device binding with the
+[application runtime](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
+Each request obtains fresh short-lived ICE and a verified Station peer; there
+is no direct HTTP fallback. Exact supported health, authority and member Project
+reads are admitted before allocation. Operator Workspace resources and writes
+remain unsupported. The CLI does not select these routes as defaults.
+
+The [account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts)
+uses the SDK native continuation client and fixed host proof operations. The
+person session is independent of Device custody. The public account scope
+qualifies query caches and requests by the current selected owner and session;
+account rejection retires that scope without erasing the approved Device.
+Changing the saved route, trust or binding fences prior results. The
+[ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx) mounts this owner
+into ordinary SDK requests and health probes. Its executed composition tests
+mock native IPC and peers; they do not prove an installed client, arbitrary
+provider support or a physical iPhone journey.
 
 ## NativeRelayGrantRenewalSupervisor
 
@@ -771,10 +1009,13 @@ constructor inputs; the currently selected Station does not choose which grants
 are maintained.
 
 **Composition and lifetime.** [ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx)
-constructs it only for Desktop Tauri, starts it from the owning effect and stops
+constructs it for desktop and mobile Tauri, starts it from the owning effect and stops
 it on cleanup. It listens for saved-profile changes, online, focus, pageshow and
 visibility changes. The work pump runs while the renderer is visible; waking
-requests fresh host status. `stop()` removes listeners and timers and invalidates
+requests fresh host status. Visibility is rechecked after asynchronous status
+lookup before a renewal starts. A host RPC already issued may finish after
+hiding; this is foreground scheduling, not background continuity.
+`stop()` removes listeners and timers and invalidates
 route entries. More than 64 saved routes pauses all maintenance and reports a
 route-limit issue, rather than silently maintaining a subset. The saved-route
 view explains that limit.
@@ -880,9 +1121,90 @@ there is no separately verified remote path. Source tests include the
 [scope reader](../../src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts),
 [mounted route composition](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts)
 and [target resolver](../../src-server/services/execution-target/__tests__/execution-target-resolver.test.ts).
+
+**Not only dispatch.** `rename_session`'s
+[route](../../src-server/routes/chat/agent-conversation-title.ts) holds a
+caller to the same rule for a stored conversation, which has no Session record
+to read: it asks `target` for the Project named in the conversation's own
+metadata (global when it names none) and passes that to the shared rule, after
+the owner check (which a bound operator caller skips). A named Project Station cannot read refuses.
+
+**Start-time repeat.** The resolved directory is still a string when the engine
+starts. For a new Session and any caller except a bound operator, the route
+helper also returns its decision as a
+[DispatchCwdAdmission](../../src-server/services/orchestration/dispatch-cwd-admission.ts).
+The dispatch carries it in the start's command context, never in a request
+body or to another Station. `OrchestrationService` runs it when it prepares
+the start and again directly before the adapter call, outside the start
+boundary so a refusal is recorded as a rejected start rather than an uncertain
+one. It decides on the directory the start is bound to: the Session's own
+`cwd`, or, when the Session has none, the directory its ACP connection
+configures (`resolveConnectionDefaultCwd`, wired by
+[runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
+from the config the adapter reads). A directory Station provisioned itself,
+such as a worktree, is not substituted. The admitted canonical path is written
+to the Session's start metadata as `dispatchCanonicalCwd`; a caller-supplied
+value is removed first. Recovery and the credential-profile restart compare
+the re-resolved folder with that record before starting an engine, and a
+continuation child in the same folder inherits it. An adopted attached-session
+child (Continue in Station, #3386) records its resolved folder the same way,
+so its recovery gets the same comparison. The same record binds a
+conversation's follow-up: a `/chat` request whose workspace names only the
+conversation's Project continues it in the recorded folder rather than the
+Project folder ([continuation check](../../src-server/services/execution-target/execution-target-execution.ts), #3429). The refusal reaches the
+dispatch route as an error with a station-control code and becomes a 403.
+The repeat does not hold a directory handle: the adapter resolves the path
+once more when it spawns the process. Conversation forks and non-engine uses
+of the folder are outside it. So is a later start for a Session that carries
+no record, one the operator started or one started before the record existed:
+a constrained caller's follow-up to it gets the route's admission check only,
+not the check before the engine starts. The
+[spawn composition test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-spawn.test.ts)
+drives both dispatch routes into a real `OrchestrationService` with a recording
+engine double, and the
+[runtime wiring test](../../src-server/runtime/bootstrap/__tests__/runtime-initialize-connection-default-cwd.test.ts)
+covers the connection reader; the credential-profile restart has no test.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
+
+## SessionMessageDelivery
+
+An agent that messages another Session must not deliver twice when it retries,
+and must not start a second turn on a Session that is already running one.
+[SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
+is the one place that decides which of those a message becomes, for Station
+Control's `send_to_session` and later for delegation result delivery.
+
+**Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
+decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
+`no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
+pure rule: `auto` steers a running Session and starts an idle one, `start`
+refuses a running one, and `steer` refuses an idle one. The module performs
+nothing itself: the caller supplies the ports for the busy check, a turn start,
+and a receipted steer, each already authorized.
+
+**Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
+`clientInputId` of a steer, so the durable turn claim and the steer receipt
+deduplicate a re-driven delivery. `decided` pins the branch a first attempt took
+(recorded through `recordDecision` before its effect), so a re-drive never turns a
+steer into a start because the turn ended in between. An engine without mid-turn
+input answers the steer as `session_busy`, never as a start.
+
+**Composition and evidence.** The
+[route](../../src-server/routes/orchestration/session-agent-control.ts) checks
+the caller's scope and keys each request in the durable
+[request-key table](../../src-server/services/orchestration/session-control-request-keys.ts)
+(owned by `EventStore`) before it reaches this module. `wait_session` observes
+the same lifecycle fold the steer path reads through
+[SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
+which never acts on the Session. Source tests are the
+[delivery decision table](../../src-server/services/orchestration/__tests__/session-message-delivery.test.ts),
+the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
+and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
+Their presence is not an executed receipt against a real engine. See
+[agent configuration](../guides/self-configuring-agent.md#session-control) for the
+tool-level behavior.
 
 ## ConversationSessionLineage
 
@@ -928,11 +1250,19 @@ room effect fires.
 `isSessionLifecycleStateAtRest` answers "is this session doing anything";
 `sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.
 
+A model change on a Session that never ran a turn also names it for retirement.
+The stop is `OrchestrationService.retireNeverRanSession`, decided under that
+Session's lifecycle lock: it refuses a Session with turn facts, a dispatched or
+active turn, or one that is the conversation's current Session again. A send that
+has resolved the predecessor but not yet called `dispatch` is not visible to it.
+
 A child reservation is not an engine start and carries no caller-controlled workspace,
 owner, tenant, cursor, or transcript fact. Those remain composed by the
 foreground/orchestration seam from the immutable predecessor binding.
 Conversation closure and multi-session event/history aggregation remain outside
-this Module.
+this Module. Readers aggregate through the lineage order it records: the
+conversation event window and the conversation message read
+(`conversationSessionIds`) both cover every Session, oldest first.
 
 **Code and evidence.** `EventStore` composes the
 private SQLite persistence Adapter at startup and while it first persists a
@@ -955,6 +1285,25 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 **Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
 
 **Code and evidence.** `OrchestrationService` composes receipt, session-state, launch-policy, and binding Adapters; orchestration routes and Station Control tools use the public Module. Receipt initialization, dispatch recording, accepted persistence, terminal persistence, and exact readback are total at this Interface: warning observation is best effort and cannot make `execute` reject. Evidence lives in `src-server/services/orchestration/__tests__/session-command-module.test.ts`, `orchestration-service.test.ts`, orchestration route tests, and Station Control tool tests. **Do not reintroduce:** exported callback bags, route-specific start sequencing, an untyped command string, a receipt fault that rejects `execute`, or an automatic retry of `indeterminate`.
+
+### Harness question interaction
+
+`packages/contracts/src/harness-questions.ts` owns the types; the shared
+subpath owns descriptor parsing and complete-batch validation. Provider
+normalization maps Claude AskUserQuestion and Codex requestUserInput into the
+canonical request event. SessionCommandModule validates the current event
+and answer batch before the adapter translates it back to the harness.
+Optional Codex requests carry `blocking: false` through resolution and
+snapshot projection so they do not pause or revive turn progress.
+
+The lazy inline HarnessQuestionRequest captures the scoped SDK transport and
+exact event identity. HarnessQuestionCard owns selection, keyboard use, review
+and submission. Its IndexedDB draft owner keys non-private answers by the
+verified durable authority namespace and exact request; transport epoch
+changes fence the rendered card without discarding that authority's draft.
+Private answers are excluded from drafts and masked in review. This boundary
+does not redact engine history or establish engine acknowledgement.
+
 
 ## SessionLifecycleModule
 
@@ -1000,9 +1349,9 @@ Adopting a discovered read-only engine session may fork a provider child before 
 
 Recovery must distinguish a requested retry, an observed provider turn, and an adopted credential profile. The [recovery ledger](../../src-server/services/orchestration/recovery-ledger.ts) owns dispatch state; the [credential application protocol](../../src-server/services/orchestration/credential-application-ledger.ts) owns the separate profile mutation and its acknowledgement.
 
-**Interface.** `RecoveryLedger` owns recovery arm, immutable projection, due/profile claim, observed provider correlation, terminal/cancel, compensation, and startup reconciliation. A `RecoveryClaim` closes over one dispatch attempt and can replay with correlation, release only before invocation, accept provider evidence, become indeterminate, and prepare a credential application. `prepareCredential` passes the claim-local opaque application key to private `CredentialProfileRecoveryAdapter.stage`; its `ConnectionService` Implementation calls `CredentialApplicationFactory.start` and returns a state-bound `CredentialApplicationHandle` for reserve/stage/settle/ack. This is deliberate dual composition: RecoveryLedger owns dispatch truth while Factory/Handle owns exact credential evidence. The correlation key crosses only the server-owned recovery/connection composition; it is removed from snapshots, route projections, and configuration output.
+**Interface.** `RecoveryLedger` owns recovery arm, immutable projection, due/profile claim (plus the user's immediate claim of a waiting usage-limit stop), observed provider correlation, terminal/cancel, compensation, and startup reconciliation. A `RecoveryClaim` closes over one dispatch attempt and can replay with correlation, release only before invocation, accept provider evidence, become indeterminate, and prepare a credential application. `prepareCredential` passes the claim-local opaque application key to private `CredentialProfileRecoveryAdapter.stage`; its `ConnectionService` Implementation calls `CredentialApplicationFactory.start` and returns a state-bound `CredentialApplicationHandle` for reserve/stage/settle/ack. This is deliberate dual composition: RecoveryLedger owns dispatch truth while Factory/Handle owns exact credential evidence. The correlation key crosses only the server-owned recovery/connection composition; it is removed from snapshots, route projections, and configuration output.
 
-**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns the records it successfully observed or changed. Its current scan wrappers return an empty list on a coordinator exception as well; an empty sweep is therefore not proof that storage has no remaining obligations. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback.
+**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns the records it successfully observed or changed. Its current scan wrappers return an empty list on a coordinator exception as well; an empty sweep is therefore not proof that storage has no remaining obligations. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback. A still-waiting intent (armed, never claimed) can be retired without a dispatch as `manual` or `canceled`, with an `outcomeReason` the projection carries (#3157). Shutdown fences every pending intent except a usage-limit one that only waits for its reset or was left to the user because automatic resume was off; those hold no dispatch, and a restart rebuilds the waiting timer. Only usage-limit intents are gated: when one is due, `SessionRecoveryCoordinator` reads the `usageLimitAutoResume` setting and retires the intent if a newer turn started in the conversation, a request is open, or the Session closed; a newer turn also retires one left to the user. Ordinary timed recovery is unchanged.
 
 **Code and evidence.** `EventStore` composes the private RecoveryLedger and CredentialApplicationFactory/Handle Implementations over SQLite at runtime startup. `SessionRecoveryCoordinator` uses ordinary recovery claims; `CredentialRecoveryModule` receives opaque startup/claim capabilities and the concrete credential Adapter. Real SQLite proof is in `recovery-ledger.test.ts`, `credential-application-ledger.test.ts`, `credential-recovery-module.test.ts`, and `session-recovery-coordinator.test.ts` under `src-server/services/orchestration/__tests__/`. **Do not reintroduce:** `RecoveryDispatchSettlement`, process-local correlation maps, raw attempt IDs, public storage reopen operations, or automatic retry of indeterminate work.
 
@@ -1044,6 +1393,12 @@ Adapters, app/ACP configuration readers, public identity mapping, and clock, the
 `ConnectionInspector` private to its inventory publication path. A non-`inspected`
 outcome rejects publication with an explicit retry-before-publish error; routes receive
 the resulting projection rather than classify inspection facts themselves.
+Engine attribution does not depend on that publication: the inspection is total, so one
+failing Adapter or a timed-out read would erase every connection's engine.
+`listEngineConnectionIdentities` derives each registered connection's `engineId` from the
+Adapter (`engineIdForAdapter`, `'acp'` for ACP connections) through the same public-identity
+resolver, per Adapter, with no probe; the Agent catalog and `/:slug/binding` read it, while
+readiness keeps the live read (#3355).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims
@@ -1073,12 +1428,42 @@ Datum only; they never materialize. Resolution requires one current, non-revoked
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
 
+**Ownership (#3279).** A binding has an owner: `instance` (absent on records written
+before #3279, which keep their behavior), `principal`, or `principal-project`. The
+owner id is an existing human `PrincipalRef.id` from request resolution; a paired
+device without a person, a non-human principal, or a hosted request owns none
+([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
+`create` currently refuses any owner but `instance` (`owner: "self"` on
+`POST /api/secret-bindings` returns a typed 400, "Person-owned secret bindings are not
+available yet."), because no consumer can use one; the rules below govern person-owned
+records that already exist and the future single-principal consumer. List, get, replace, revoke, and integration bind/unbind (including the grant and
+ungrant inside them) take the request principal as viewer. One typed not-found refusal
+covers a missing binding and another person's, and `/api/secret-bindings` returns it as
+the same 404 body on get, replace, revoke, bind, and unbind; request validation that
+runs before the lookup still returns 400 for both. An instance-owned `create` with
+an id already in use is refused, so it reveals that the id exists, including one held
+by an existing person-owned record; that follows from the single global id namespace
+and is accepted for now. A person-owned `create` is refused before the id check, so it
+reveals nothing. A caller without a viewer, including
+stored-env migration, sees and grants only instance bindings. Resolution refuses a
+person-owned binding with `owner_mismatch` unless the invocation names that principal
+(and Project). Stdio MCP children and ACP providers are shared and name none, so
+`grant` refuses a person-owned binding for either consumer (a typed 400, checked after
+the not-found lookup) until a child can serve a single principal; integration bind
+always goes through `grant` for such a binding, even when a grant is already on
+record. New integration env
+references therefore name only instance bindings, and the integration binding
+projection lists every reference, unfiltered, for every caller.
+
 **Seam, Implementation, callers, and tests.** Runtime bootstrap constructs
 `FileSecretBindingAdministration`, retains administration for `/api/secret-bindings`,
 and injects the narrow resolver into MCP establishment. `establishMcpSecretChild()`
 resolves fresh child-only environment values and records success only after
 connection/handshake succeeds; unsupported transports and the built-in station-control
-child refuse authored injection. Changing grants does not erase values already delivered
+child refuse authored injection. Attaching a binding to a command-launching
+server (bind, migrate-stored-env, or replacing a binding already bound to one) takes
+the operator or a device holding `coding:exec` at the route (`routes/secret-bindings.ts`),
+because the value becomes that command's environment. Changing grants does not erase values already delivered
 to a running child. The same store separately implements `resolveForAcpProvider()` for
 exact connection/provider/header grants, consumed by the ACP provider-configuration
 route; that is not generic MCP header injection. The Datum adapter is the contracts
@@ -1125,7 +1510,7 @@ to `'other'`/absent reasons without a decision recorded here.
 **Purpose.** Vendor extension notifications remain opaque until Station has an
 exact handling rule for their `(namespace, type)` tuple. The immutable
 [shared table](../../src-shared/extension-notification-bindings.ts) records that
-rule, the observed adapter variant and a historical observation tag.
+rule, the adapter or protocol variant and an observation or pinned SDK contract tag.
 `extensionNotificationBinding()` returns an exact match or absence. A matching
 namespace prefix, version string or stored capability flag is not a match.
 
@@ -1135,7 +1520,15 @@ same-turn error context for `acp.turn-error-cause`. It still publishes the
 opaque event. The [UI handler](../../src-ui/src/hooks/orchestration/extensionHandlers.ts)
 handles Kiro authentication/compaction, Claude activity and retained task
 history, and engine MCP progress. `acp.host-chrome` entries are intentional
-transcript no-ops, not visible UI implementations. Claude task registry/settled
+transcript no-ops, not visible UI implementations. `transcript.marker` entries
+are derived from the [marker table](../../packages/shared/src/extension-transcript-markers.ts)
+that the [transcript projection](../../packages/shared/src/runtime-event-projection.ts)
+reads: an attached-session source's context compaction or rewind becomes a
+system row with a fixed label, drawn as a quiet line, and the UI handler
+leaves it to the projection. A marker never splits a turn: one that arrives
+during a turn is held until the turn closes and follows its single answer row,
+so the turn keeps its canonical id and answer eligibility. One table entry binds and renders a tuple; the
+label never comes from the engine payload. Claude task registry/settled
 bindings remain for older replay; current child work uses its canonical event.
 Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)
@@ -1148,7 +1541,7 @@ binding says nothing about which canonical event, if any, should replace it.
 
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
-Historical observation tags are evidence pointers, not a fresh provider run.
+Observation and pinned SDK contract tags are evidence pointers, not a fresh provider run.
 Add or remove a tuple together with its actual handler and evidence; do not
 replace exact matching with wildcard vendor routing.
 
@@ -1280,8 +1673,10 @@ other's backup; the traversal and caps below describe `home backup`.
 **Ownership and backup.** [StationHomeLifecycle](../../packages/shared/src/station-home-lifecycle.ts)
 tracks runtime owners by PID and birth identity and gives maintenance exclusive
 ownership against cooperating runtimes. Dead owners can be reclaimed;
-unverifiable owners remain fenced. The lease can represent multiple runtime
-owners, while individual callers can impose stricter same-home policy.
+unverifiable owners remain fenced. Runtime publication makes bounded exact
+birth-probe retries for its own PID before refusing startup; probes of other
+owners do not retry or fall back to PID-only authority. The lease can represent
+multiple runtime owners, while individual callers can impose stricter same-home policy.
 [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts) retains
 its lease through persistence shutdown. CLI wrappers also check lifecycle
 observations for useful offline diagnostics. These checks do not stop an
@@ -1413,6 +1808,23 @@ real Git checkouts, real filesystem publication/faults, conflicts and the HTTP
 surface; `client-project-identity.test.ts` covers the public wire consumer and
 incompatible/changed responses. Physical multi-machine and independent-human
 acceptance remain separate from these tests.
+
+## StationKnowledgeMcpServer
+
+The [Knowledge MCP factory](../../src-server/tools/station-knowledge-mcp-server.ts)
+registers five read/capture tools through the shared caller-policy wrapper.
+Station Control retains index rebuild, migration, and its compatibility search.
+[Runtime routes](../../src-server/runtime/routes/runtime-routes.ts) admit only
+loopback MCP requests with a credential for this server and enforce the Session
+owner’s store access before reading or writing records.
+
+Claude uses a session-bound in-process server. Native agents use the
+[custodied HTTP bridge](../../src-server/runtime/mcp/station-knowledge-native-tools.ts)
+inside the accepted authorized turn, while Codex and ACP use their existing
+wire delivery channels with separate Knowledge credentials. SDK cleanup and
+cancellation bound local waiting; they do not undo a write already admitted by
+the store. See the [Knowledge guide](../guides/knowledge.md#agent-tools) and
+[mounted owner/access evidence](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts).
 
 ## KnowledgeStoreProvider
 
@@ -1633,6 +2045,34 @@ The [route](../../src-server/routes/orchestration/project-task-rooms.ts) emits
 closed browser DTOs; exact-order document events take priority over queued
 presence events without bypassing the final currentness check.
 
+Personal runtime composition also mounts the
+[TaskRoomWorkModule](../../src-server/services/projects/task-room-work-module.ts),
+a separate Station-wide JSON journal for explicit agent requests. It reserves
+an execution identity before existing delegation runs, rechecks Task/Project
+incarnation and requester authority, and never re-invokes a recorded operation.
+The delegation route supplies a private admission that OrchestrationService
+rechecks at provider start and initial-turn effects. The same private admission
+supplies the existing room-execution binding so source seals and pending-work
+joins cover independent room sessions. Known authority loss uses
+clean pre-effect refusal; unknown failures retain uncertainty. The
+[composer](../../src-ui/src/workspace-panes/TaskRoomComposer.tsx) selects exact
+agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
+Ordinary composer messages also use captured transport authority and an expected
+Task incarnation that the history grant rechecks before commit. Request cards
+currently poll the journal read and link to existing execution
+inspection; they are not room-SSE lifecycle events. Invited/public result
+projection and actual-provider acceptance remain unfinished.
+
+Immutable output review uses the same room history, rather than a second
+feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
+validates fresh version targets against retained output and Task/Project identity;
+permanent room identities resolve exact duplicates before output validation.
+A per-room SQLite format fence prevents v2 writes after v3 adoption.
+The [output surface](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
+checks authorized downloaded bytes before offering a human review statement.
+Reviewer acceptance changes no Task or workflow state. Source and focused
+contract evidence do not establish a two-human or installed acceptance journey.
+
 The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered
 synchronously to mounted listeners before the same object enters query-cache
@@ -1795,6 +2235,15 @@ before terminal publication. [Tracking helpers](../../src-server/services/operat
 use stable handoff identities and catch observation-storage failures so those
 failures do not replace the wrapped domain result. The SDK/Activity UI consume
 these browser-safe records, not the private file store.
+
+The [Activity section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
+keeps platform actions separate from filtered sessions: operation records have
+account and optional machine/Session scope, without the Project or client-origin
+attribution those filters need. Its disclosure shows running and attention counts,
+opens for work needing attention, and keeps recent history collapsed separately.
+Terminal operation status owns the outcome text; retained progress does not make
+a succeeded, failed or cancelled operation read as still working. Active
+`reconciliation-required` operations remain visible as needing attention.
 
 [Service tests](../../src-server/services/operations/__tests__/action-operation-service.test.ts),
 [tracker tests](../../src-server/services/operations/__tests__/action-operation-tracker.test.ts)
@@ -2241,6 +2690,14 @@ reintroduce:** grant-route provider mutation, fire-and-forget subscription retir
 completion evidence, unbounded response waits, source-wide provider clearing,
 implementation import outside the content-generation lease, or cleanup that can publish
 after its installation generation was replaced.
+
+## PluginCommandEffects
+
+**Intent and Interface.** A plugin command row in the palette is not authority (kontourai/station#1418). `createPluginCommandEffectAdmission().admit()` admits one argument-free `navigate` or `seed-composer` effect for one browser document and returns a receipt whose effect content Station read from the installed declaration. `PluginCommandEffectService` owns the durable ledger in the Station home (`plugin-command-effects.json`): `recordAdmission`, `settle`, `beginWithdrawal`, `withdrawal`, `listWithdrawals`, `listUncapturedEffects`, `awaitWithdrawal`, `resolveWithdrawal` and `abandonEffect`. Wire shapes, including the operational event's data, live in `@kontourai/station-contracts/plugin-command-effect`.
+
+**Contract.** Linearization points (kontourai/station#1419): LP-A is the atomic ledger append of an `admitted` effect, reached only after visibility (an invisible plugin is refused as absent), then inside the plugin content lock the installed artifact, exact generation, declaration, target and requirements (a session the caller can read; project and task existence), a fresh currentness check, for `plugin-server` commands the grants read lease, and finally the request-window check at the append. LP-W is `beginWithdrawal`, called after an authority change is durable and under the serialization admission of that authority uses: uninstall (including owned-dependency removal and install rollback) and install-over inside the install transaction's content locks, the legacy update route inside its content lock, and `plugin.server` withdrawal after the grants write admissions append inside. A plugin has at most one open withdrawal; a later change joins it, so a withdrawal is never refused for capacity, and a change is never vetoed or rolled back by ledger trouble (it reports `commandEffectsUnavailable`). LP-K is the atomic settlement write: first terminal outcome wins, the same outcome is idempotent, a different one is a counted 409 conflict, and a cancel before any admission is kept, never displaced, until no matching admission can still be accepted. LP-C is a ledger read finding a withdrawal with nothing outstanding. `closed-indeterminate` derives only from the withdrawal's own operator resolution. Request identity, cancels and settlement are scoped to the caller's principal and document key. Bounds refuse growth and never evict outstanding effects or open withdrawals; every write is measured with the writer's own serializer, and a ledger at every bound fits under the growth limit. The audit event follows the ledger commit; a crash between them loses the event, not the record. The ledger lock is always taken last.
+
+**Seam, Implementation, callers, and tests.** `routes/plugins/plugin-command-effect-routes.ts` is the HTTP seam; `plugins.ts` composes it with principal resolution, plugin visibility and the `commandEffects` options `runtime-routes.ts` supplies (hosted-deployment check, the runtime operational-event audit publisher, `createPluginCommandRequirementResolver`). Hosted deployments, and a composition without those options, refuse every route; admission, `resolve` and `abandon` also refuse non-person callers. `plugin-install-transaction.ts`, `plugin-lifecycle-routes.ts`, `plugin-public-routes.ts` and `plugin-host-approval-routes.ts` call `withdrawPluginCommandEffects`; lifecycle, install, registry and grant routes call `settlePluginCommandEffectsForResponse`, and `GET /api/plugins/host-approvals/:id` re-reads the withdrawal from the ledger. The UI uses the built-in palette's page-placement path for region-surface destinations and checks the ordinary navigation guard before route destinations; a blocked route settles `aborted` rather than opening an asynchronous confirmation. Ledger invariants, bounds, coalescing, scoping and fault-injected commits are in `plugin-command-effects.test.ts`; the real withdrawal paths against forced interleavings are in `plugin-command-effect-lifecycle.test.ts`; dependency capture is in `plugin-install-transaction.test.ts` and `plugin-managed-dependencies.test.ts`. **Do not reintroduce:** a palette row or cached intent as effect content, an audit event as the admission record, eviction of outstanding effects or unexpired cancels, a second open withdrawal per plugin, a lifecycle change refused because its withdrawal could not be recorded, a withdrawal reported complete without settlement proof, or a lifecycle response that waits while holding a plugin lock.
 
 ## RegistrySupplyChainPolicy
 
@@ -2700,11 +3157,13 @@ Without a tenant evidence composition, hosted reads can retain the authorized Th
 
 A Task remains a durable work record before and after an engine runs. The [dispatcher](../../src-server/services/projects/task-dispatcher.ts) turns a dispatch intent into an execution attempt; [TaskGraph](../../src-server/services/projects/task-graph-service.ts) retains the Task, reservation, and resulting links. A dispatch receipt is not proof the Task succeeded.
 
-**Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the single execution Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface.
+**Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
 
 **Behavior.** Dispatch accepts task identity and intent rather than a bag of graph/orchestration dependencies. It owns admission, scoped claim, workspace resolution, provider start or a seeded Session, deadline/abort settlement, telemetry, and release. A `dispatched` outcome may contain `outcome: seeded` without an engine start; read the result rather than treating the outer tag as completed execution. A missing task is `not-found`, not a duplicate/idempotency claim. When a provider claim may have succeeded after deadline, the result is indeterminate rather than retryable. TaskGraph graph mutations remain durable. Production composition supplies Project and workflow readers at construction; the constructor itself permits them to be absent, and dependent operations must report unavailable state or omit optional workflow correlation.
 
 **Code and evidence.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.
+
+**Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
 
 The Task dispatcher additionally composes a server-owned room execution
 binding and the existing `SessionTurnBoundaryAuthority`. One durable
@@ -3040,11 +3499,23 @@ already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
 unregistered. Idle host shutdown runs after its last live target closes,
 not merely when nobody watches.
+`browser-live-surfaces.ts` also owns per-generation page tools: a JavaScript
+dialog opened while a person holds the lease is held in
+`ChromiumScreencastProducer` for that person (answered through
+`POST /api/browser/sessions/:id/dialog`, never by an Agent, which is refused
+`dialog-open` meanwhile); dialogs under an Agent or no holder are answered
+automatically, and a held dialog is dismissed when the person's control
+ends. `browser-console-log.ts` keeps a bounded in-memory console per browser
+generation (agent-capable requests read it only under `browserEvaluate`), and
+the registry's `captureScreenshot` serves the pane's screenshot, one capture
+in flight per session.
 
 **Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
 `browser-session-registry.test.ts`, `egress-policy.test.ts`,
-`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`, and
-`BrowserPane.test.tsx`; real-host suites are separate `.real.test.ts` files.
+`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`,
+`browser-pane-page.routes.test.ts`, `BrowserPane.test.tsx` and
+`BrowserPane.pageTools.test.tsx`; real-host suites are separate
+`.real.test.ts` files.
 Synthetic PASS is not browser-version compatibility, hostile-page completeness,
 Windows process-tree cleanup, mobile viewing or release evidence. Keep
 `desktop-cef`/peer-host plans and the ADR's original research distinct from the
@@ -3069,11 +3540,18 @@ one pending frame per viewer, latest-frame replacement, acknowledgments and
 adaptive delivery. Capture starts with the first viewer and stops at zero;
 session lifetime remains with its Browser/Device owner. `control-lease.ts`
 allows one controller: current-epoch human input can preempt an Agent, while
-an Agent cannot preempt a live human. Epoch identifies controller succession;
+an Agent cannot preempt a live human. A person's `keep-alive` lease request
+extends only their own current hold at the current epoch, never claims, and
+is capped by `maxHumanHoldMs` from their last real input. Epoch identifies
+controller succession;
 the separate fence changes on release/expiry as well, so reclaiming cannot
 resurrect old work. The registry serializes and fences input, cancels held
 buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
-It cannot cancel an arbitrary producer effect already in flight.
+A producer may refuse an event for a reason the viewer can act on
+(`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
+page dialog waits for its person), which reaches the viewer as that code
+rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
+already in flight.
 
 **Real adapters and callers.** `browser-live-surfaces.ts` binds each live
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.

@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -13,7 +14,11 @@ import {
   worktreeConflictPreventedTotal,
   worktreeProvisionTotal,
 } from '../../../telemetry/metrics.js';
-import { execGitSync } from '../../../utils/git-exec.js';
+import { execGitSync, spawnGit } from '../../../utils/git-exec.js';
+import {
+  type LiveRepository,
+  RepositoryConfigRefusedError,
+} from '../git-read-repository.js';
 import {
   assertWorktreeMetadataSessionBinding,
   type GitCommandRunner,
@@ -56,6 +61,22 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
   }
   vi.clearAllMocks();
+});
+
+/**
+ * For the tests that script the git runner over a folder that is not a
+ * repository: the guard's answer for an ordinary repository at `folder`,
+ * with no copy of its configuration (the scripted runner reads none).
+ */
+const scriptedRepository = async (folder: string): Promise<LiveRepository> => ({
+  top: folder,
+  gitDir: join(folder, '.git'),
+  commonDir: join(folder, '.git'),
+  repoArgs: [],
+  env: { GIT_COMMON_DIR: join(folder, '.git') },
+  unchanged: async () => true,
+  sameIdentity: async () => true,
+  dispose: async () => undefined,
 });
 
 describe('worktree isolation policy and session binding', () => {
@@ -108,7 +129,7 @@ describe('worktree isolation policy and session binding', () => {
     };
 
     await expect(
-      new WorktreeProvisioningService(runner).provision({
+      new WorktreeProvisioningService(runner, scriptedRepository).provision({
         repoPath: '/nonexistent-repo',
         threadId: 'unsafe-prefix',
         providerKind: 'codex',
@@ -269,7 +290,7 @@ describe('WorktreeProvisioningService', () => {
         throw new Error(`unexpected git call: ${args.join(' ')}`);
       },
     };
-    const service = new WorktreeProvisioningService(runner);
+    const service = new WorktreeProvisioningService(runner, scriptedRepository);
 
     const metadata = await service.provision({
       repoPath,
@@ -318,7 +339,7 @@ describe('WorktreeProvisioningService', () => {
         throw new Error(`unexpected git call: ${args.join(' ')}`);
       },
     };
-    const service = new WorktreeProvisioningService(runner);
+    const service = new WorktreeProvisioningService(runner, scriptedRepository);
 
     const metadata = await service.provision({
       repoPath,
@@ -335,8 +356,6 @@ describe('WorktreeProvisioningService', () => {
     const segment = branch.split('/').at(-1)!;
     expect(metadata?.path).toBe(join(worktreeBaseDir, segment));
     expect(calls.map((call) => call.args.join(' '))).toEqual([
-      `-C ${repoPath} rev-parse --show-toplevel`,
-      `-C ${repoPath} config --show-scope --null --list`,
       `-C ${repoPath} status --porcelain`,
       `-C ${repoPath} rev-parse --verify --quiet refs/heads/${branch}`,
       `-C ${repoPath} worktree add -b ${branch} ${join(
@@ -344,7 +363,7 @@ describe('WorktreeProvisioningService', () => {
         segment,
       )} HEAD`,
     ]);
-    expect(calls[3]?.allowCodes).toEqual([0, 1]);
+    expect(calls[1]?.allowCodes).toEqual([0, 1]);
   });
 
   test('provisions and cleans up an isolated worktree', async () => {
@@ -628,21 +647,90 @@ describe('repository-defined programs (#2411)', () => {
     const runner: GitCommandRunner = {
       async run(args) {
         calls.push(args.join(' '));
-        if (args.includes('--show-toplevel'))
-          return { stdout: `${repoPath}\n`, stderr: '', code: 0 };
-        if (args.includes('config')) throw new Error('bad config line 3');
         throw new Error(`unexpected git call: ${args.join(' ')}`);
       },
     };
+    const unreadable = async () => {
+      throw new RepositoryConfigRefusedError([]);
+    };
 
     await expect(
-      new WorktreeProvisioningService(runner).provision({
+      new WorktreeProvisioningService(runner, unreadable).provision({
         repoPath,
         threadId: 'session-unreadable',
         providerKind: 'codex',
         isolation: { mode: 'worktree' },
       }),
-    ).rejects.toBeInstanceOf(WorktreeRepositoryConfigError);
-    expect(calls.some((call) => call.includes('worktree add'))).toBe(false);
+    ).rejects.toThrow("could not read this repository's configuration");
+    expect(calls).toEqual([]);
+  });
+
+  test('a smudge filter written into the config after Station judged it does not run: the checkout reads only the judged copy', async () => {
+    const repoPath = realpathSync(createRepo());
+    writeFileSync(join(repoPath, '.gitattributes'), '*.txt filter=marker\n');
+    writeFileSync(join(repoPath, 'payload.txt'), 'payload\n');
+    git(repoPath, ['add', '.gitattributes', 'payload.txt']);
+    git(repoPath, ['commit', '-m', 'attributes']);
+    const marker = `${repoPath}.smudge-ran`;
+    const program = `${repoPath}.smudge.sh`;
+    tmpRoots.push(marker, program);
+    writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\ncat\n`, {
+      mode: 0o755,
+    });
+    const configPath = join(repoPath, '.git', 'config');
+    const clean = readFileSync(configPath, 'utf-8');
+    const planted = `${clean}[filter "marker"]\n\tsmudge = ${program}\n`;
+    // The real runner, with the repository's config rewritten in place
+    // just before `worktree add` starts: after the judgement, before git.
+    const runner: GitCommandRunner = {
+      run: (args, options) =>
+        new Promise((resolve, reject) => {
+          if (args.includes('worktree')) writeFileSync(configPath, planted);
+          const child = spawnGit(args, {
+            cwd: options?.cwd,
+            env: options?.env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+          let stderr = '';
+          child.stderr?.setEncoding('utf8');
+          child.stderr?.on('data', (chunk: string) => {
+            stderr += chunk;
+          });
+          child.on('error', reject);
+          child.on('close', (code) =>
+            (options?.allowCodes ?? [0]).includes(code ?? 1)
+              ? resolve({ stdout: '', stderr, code: code ?? 1 })
+              : reject(new Error(`git ${args.join(' ')}: ${stderr}`)),
+          );
+        }),
+    };
+
+    const metadata = await new WorktreeProvisioningService(runner).provision({
+      repoPath,
+      threadId: 'session-rewritten',
+      providerKind: 'codex',
+      isolation: { mode: 'worktree' },
+    });
+
+    expect(readFileSync(configPath, 'utf-8'), 'the rewrite happened').toBe(
+      planted,
+    );
+    expect(existsSync(marker), 'the planted smudge filter ran').toBe(false);
+    expect(
+      metadata?.path && existsSync(join(metadata.path, 'payload.txt')),
+    ).toBe(true);
+    // The new worktree is the repository's own, not the copy's: its `.git`
+    // names the repository's `worktrees` entry, which outlives the copy.
+    expect(readFileSync(join(metadata!.path, '.git'), 'utf-8').trim()).toBe(
+      `gitdir: ${join(repoPath, '.git', 'worktrees', basename(metadata!.path))}`,
+    );
+    expect(
+      git(metadata!.path, ['rev-parse', '--abbrev-ref', 'HEAD']).trim(),
+    ).toBe(metadata!.branch);
+    tmpRoots.push(metadata!.path, join(metadata!.path, '..'));
+    // Control: plain git, reading that config, runs it on a checkout.
+    git(repoPath, ['worktree', 'add', '-q', '--detach', `${repoPath}-plain`]);
+    tmpRoots.push(`${repoPath}-plain`);
+    expect(existsSync(marker), 'control: plain git runs it').toBe(true);
   });
 });

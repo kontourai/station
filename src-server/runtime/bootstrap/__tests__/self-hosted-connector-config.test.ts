@@ -10,18 +10,25 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { serve } from '@hono/node-server';
+import { parseNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
 import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { Hono } from 'hono';
 import { calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { runLabCommand } from '../../../../scripts/lib/local-collaboration-process.mjs';
 import { writeNativeRelayInvitation } from '../../../../scripts/native-relay-invite.js';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
+import {
+  NativeSurfaceOperatorAuthority,
+  NativeSurfaceRegistry,
+} from '../../../services/connections/native-surface-registry.js';
 import {
   createBrokerCredentialBundle,
   SelfHostedBrokerService,
 } from '../../../services/connections/self-hosted-broker-service.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { ConnectionSigningKeyStore } from '../../../services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { SelfHostedBrokerRuntime } from '../self-hosted-broker-runtime.js';
@@ -270,6 +277,110 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
         credentials.connector.secret,
       );
       rmSync(outputPath);
+      const registry = new NativeSurfaceRegistry(
+        setup.home,
+        setup.scope.stationId,
+      );
+      const authority = new NativeSurfaceOperatorAuthority();
+      const tuple = { scope: invitation.scope, surface: invitation.surface };
+      const linked = (name: string, scheme = 'station-relay-dev-keeper') =>
+        writeNativeRelayInvitation([
+          setup.home,
+          setup.configPath,
+          preparePath,
+          join(setup.dir, `${name}.json`),
+          '--link-output',
+          join(setup.dir, `${name}.url`),
+          ...(scheme ? ['--dev-scheme', scheme] : []),
+        ]);
+      try {
+        registry.approve(
+          authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'approve', {
+            ...tuple,
+            scope: {
+              ...tuple.scope,
+              routingGeneration: tuple.scope.routingGeneration + 1,
+            },
+          }),
+        );
+        await expect(linked('foreign-approval')).rejects.toThrow(
+          'native_invitation_link_refused_after_json_written',
+        );
+        expect(
+          readFileSync(join(setup.dir, 'foreign-approval.json'), 'utf8')
+            .length > 0,
+        ).toBe(true);
+        expect(() =>
+          statSync(join(setup.dir, 'foreign-approval.url')),
+        ).toThrow();
+        registry.approve(
+          authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'approve', tuple),
+        );
+        await expect(linked('missing-dev-scheme', '')).rejects.toThrow(
+          'native_invitation_link_refused_after_json_written',
+        );
+        const cli = await runLabCommand(
+          process.execPath,
+          [
+            '--import',
+            'tsx',
+            'scripts/native-relay-invite.ts',
+            setup.home,
+            setup.configPath,
+            preparePath,
+            join(setup.dir, 'approved-link.json'),
+            '--link-output',
+            join(setup.dir, 'approved-link.url'),
+            '--dev-scheme',
+            'station-relay-dev-keeper',
+          ],
+          resolve(import.meta.dirname, '../../../..'),
+        );
+        expect(
+          cli.stdout.trim() === 'STATION_NATIVE_INVITATION_WRITTEN' &&
+            cli.stderr === '',
+        ).toBe(true);
+        const urlPath = join(setup.dir, 'approved-link.url');
+        const url = readFileSync(urlPath, 'utf8').trim();
+        const decoded = parseNativeRelayLink(url, {
+          channel: 'dev',
+          devScheme: 'station-relay-dev-keeper',
+          appIdentifier: prepare.appIdentifier,
+        });
+        expect(decoded.kind).toBe('bound-invitation');
+        expect(
+          decoded.kind === 'bound-invitation' &&
+            decoded.invitation.surface.clientInstanceId ===
+              prepare.clientInstanceId &&
+            decoded.invitation.scope.routingGeneration ===
+              setup.scope.routingGeneration &&
+            decoded.applicationOrigin === 'https://station-client.example',
+        ).toBe(true);
+        expect(statSync(urlPath).mode & 0o777).toBe(0o600);
+        const beforeCollision = issued;
+        await expect(
+          writeNativeRelayInvitation([
+            setup.home,
+            setup.configPath,
+            preparePath,
+            join(setup.dir, 'collision.json'),
+            '--link-output',
+            urlPath,
+            '--dev-scheme',
+            'station-relay-dev-keeper',
+          ]),
+        ).rejects.toThrow('native_invitation_output_exists');
+        expect(issued).toBe(beforeCollision);
+        registry.revoke(
+          authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'revoke', tuple),
+        );
+        await expect(linked('revoked-link')).rejects.toThrow(
+          'native_invitation_link_refused_after_json_written',
+        );
+        expect(() => statSync(join(setup.dir, 'revoked-link.url'))).toThrow();
+      } finally {
+        registry.close();
+      }
       for (const invalid of [
         { ...prepare, stationId: randomUUID() },
         { ...prepare, enrollmentId: randomUUID() },
@@ -284,7 +395,7 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
         writePrivate(preparePath, JSON.stringify(invalid));
         await expect(run()).rejects.toThrow('connector_native_prepare_invalid');
       }
-      expect(issued).toBe(1);
+      expect(issued).toBe(5);
       writePrivate(preparePath, JSON.stringify(prepare));
       tamper = true;
       await expect(run()).rejects.toThrow('broker_response_invalid');
@@ -296,7 +407,7 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
       rotateDuringIssue = false;
       service.withdraw(setup.scope, credentials.connector);
       await expect(run()).rejects.toThrow();
-      expect(issued).toBe(3);
+      expect(issued).toBe(7);
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
@@ -321,6 +432,39 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
     ).toThrow('connector_config_path_not_absolute');
   });
 
+  test('explicit broker-issued TURN mode mounts through the normal connector factory without storing TURN credentials', async () => {
+    const setup = await validSetup({ turn: { source: 'broker' } });
+    const factory = loadSelfHostedBrokerConnectorConfig({
+      homeDir: setup.home,
+      env: { STATION_BROKER_CONFIG_FILE: setup.configPath },
+    });
+    expect(factory).not.toBeNull();
+    const request = vi.spyOn(globalThis, 'fetch');
+    try {
+      const runtime = factory!.selfHostedBrokerConnector.create(
+        fakeApplication(),
+      );
+      expect(runtime).toBeInstanceOf(SelfHostedBrokerRuntime);
+      expect(request).not.toHaveBeenCalled();
+    } finally {
+      request.mockRestore();
+    }
+  });
+  test.each([
+    { source: 'broker', password: 'forbidden-static-mix' },
+    { source: 'arbitrary-issuer' },
+  ])(
+    'refuses mixed or arbitrary dynamic TURN configuration %#',
+    async (turn) => {
+      const setup = await validSetup({ turn });
+      expect(() =>
+        loadSelfHostedBrokerConnectorConfig({
+          homeDir: setup.home,
+          env: { STATION_BROKER_CONFIG_FILE: setup.configPath },
+        }),
+      ).toThrow('connector_config_turn_invalid');
+    },
+  );
   test('valid config loads, defaults apply, factory composes without network', async () => {
     const { home, configPath } = await validSetup();
     // Producer widths agree with the closed schema (22/43).
@@ -495,6 +639,9 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
       env: { STATION_BROKER_CONFIG_FILE: withNative.configPath },
     });
     expect(factory).not.toBeNull();
+    expect(
+      factory!.selfHostedBrokerConnector.nativeApplication?.surface,
+    ).toEqual(surface);
     // The composed runtime must still be the ordinary broker runtime; the
     // native surface is validated here and re-bound against live trust by
     // the runtime composition (covered by the pion runtime native tests).

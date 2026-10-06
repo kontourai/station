@@ -227,6 +227,10 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
         locked={false}
       />,
     );
-    expect(screen.getByText(/No separate accounts are enrolled/i)).toBeTruthy();
+    expect(screen.queryByText(/No separate accounts are enrolled/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More about Account' }));
+    expect(screen.getByRole('tooltip').textContent).toMatch(
+      /No separate accounts are enrolled/i,
+    );
   });
 });

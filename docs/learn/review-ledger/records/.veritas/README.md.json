@@ -1,0 +1,169 @@
+{
+  "path": ".veritas/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Reviewed the approved documentation evidence activation and policy-change attestation; authority settings remain unchanged.",
+
+  "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
+
+  "sources": [
+    ".agents/skills/documentation-audit/SKILL.md",
+
+    ".codex/hooks.json",
+
+    ".githooks/commit-msg",
+
+    ".githooks/pre-push",
+
+    ".github/workflows/ci.yml",
+
+    ".github/workflows/full-regression.yml",
+
+    ".github/workflows/merge-queue-regression.yml",
+
+    ".github/workflows/windows-pr-verification.yml",
+
+    ".veritas/GOVERNANCE.md",
+
+    ".veritas/authority/default.authority-settings.json",
+
+    ".veritas/repo-map.json",
+
+    ".veritas/repo-standards/default.repo-standards.json",
+
+    "docs/guides/documentation.md",
+
+    "docs/plans/documentation-code-audit.md",
+
+    "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
+
+    "scripts/__tests__/docs-index-reachability.test.ts",
+
+    "scripts/__tests__/run-ci-fast.test.ts",
+
+    "scripts/cli-agent-e2e.mjs",
+
+    "scripts/dependency-lifecycle.mjs",
+
+    "scripts/docs-truth-gate-aggregate.mjs",
+
+    "scripts/fast-checks-shard.mjs",
+
+    "scripts/just-interface.mjs",
+
+    "scripts/lib/dependency-lifecycle-policy.mjs",
+
+    "scripts/lib/documentation-review.mjs",
+
+    "scripts/lib/fast-checks-shards.mjs",
+
+    "scripts/prepare-verify-static.mjs",
+
+    "scripts/run-ci-fast.mjs",
+
+    "scripts/run-focused-tests.mjs",
+
+    "scripts/run-local-verification.mjs",
+
+    "scripts/scripts-typecheck-coverage.mjs",
+
+    "scripts/typecheck-aggregate.mjs",
+
+    "scripts/verification-lanes.mjs",
+
+    "scripts/verification-policy-gate.mjs",
+
+    "src-server/__test-utils__/read-json.ts",
+
+    "src-server/__test-utils__/route-test-app.ts",
+
+    "src-server/__test-utils__/sse-helpers.ts",
+
+    "src-server/routes/spatial-board.ts",
+
+    "scripts/lib/git-environment.mjs",
+
+    "scripts/__tests__/prepush-typecheck.test.ts",
+
+    "scripts/lib/documentation-freshness.mjs",
+
+    "scripts/run-repo-scan-suites.mjs",
+
+    "package.json#/scripts/docs:truth:gate",
+
+    "package.json#/scripts/lint:check",
+
+    "package.json#/scripts/veritas:codex-hook:install",
+
+    "package.json#/scripts/veritas:coverage",
+
+    "package.json#/scripts/veritas:readiness",
+
+    "package.json#/scripts/veritas:readiness:diff",
+
+    "package.json#/scripts/veritas:shadow"
+  ],
+
+  "checks": [
+    "focused: PASS 146 tests / 5 files: verification-lanes, verification-policy-gate, just-interface, documentation-foundations, veritas-repo-map",
+
+    "dependencyLifecycleDocs: PASS 1 test / 1 file",
+
+    "verificationPolicy: PASS exit 0, generated owner parity",
+
+    "veritasReadiness: PASS exit 0, 0 failures / 0 warnings; proof:repo-governance, lint:check, verification:policy:gate; protected attestation matches unchanged hashes",
+
+    "Reviewed documentation-only dependency correction: docs/plans/documentation-code-audit.md. The linked owner and purpose remain; no new runtime proof is inferred.",
+
+    "Upstream source review: Reviewed scope selector all versus statics and unchanged fixed invariant list/budget. Current docs distinguish hosted plan/shard/statics aggregator from local whole lane; docsTruth still not fixed invariant.",
+
+    "Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Upstream source review: Delta only removes unused resolveNpmCli re-export; managed lifecycle still imports/uses owner resolver. No prose change needed for bootstrap/security/CI guidance.",
+
+    "Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
+
+    "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
+
+    "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
+
+    "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Advanced only the recorded reviewed upstream revision and named the bounded source deltas; retained historical evidence and coverage baseline.",
+
+    "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change.",
+
+    "Integration source review through d1e0facc2: Merged actual-repository owner checks with reader/snapshot coverage; retired marker-only assertion removed. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: ci.yml added a zsh step and a longer timeout to the fast-checks shards, and package.json dropped bearing/forage. Veritas stays pinned at 1.7.4, and fast-checks still aggregates a plan, four shards and fast-checks-statics, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2914) verification-policy-gate.mjs now also reports validateLaneCatalog errors and unexports E2E_LATEST_GUIDANCE_MARKERS/VERIFICATION_SCHEDULING_SECTION. The README's claims (the gate keeps lane wiring and guidance from drifting; verification-lanes.mjs is the command owner) still hold; prose accurate. Source review is separate from executed test evidence.",
+
+    "Rewrote the documentation-truth freshness description: scoped in ci:fast readiness and pre-push, advisory in the merge queue, on main and in Nightly static verification, reported by the repo-scan job; checked against documentation-freshness.mjs mode selection and run-repo-scan-suites.mjs. The run-ci-fast/verification-policy delta adds five verify:static gates to ci:fast and does not change the readiness call described here.",
+
+    "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
+
+    "Reviewed the fix-round delta: freshness checks now report untracked sources as stale inputs (reportMissing) so the queue stays advisory for removed files, and the guide says the mode follows the event. The scoped/advisory description here still matches documentation-freshness.mjs.",
+
+    "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide; documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The described per-event behavior is unchanged."
+  ]
+}

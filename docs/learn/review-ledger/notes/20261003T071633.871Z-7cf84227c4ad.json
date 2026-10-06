@@ -1,0 +1,7 @@
+{
+  "revision": "7ad03486b8521649247b6a728da71d08780069ac",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed compact themed setup and optional information. Confirm Station and Approve device use the published info icon/tooltip/popover; long explanations are hidden until requested. Required external owner comparison, actions, status/errors and link expiry remain visible. Setup control aliases now inherit published k action, focus, surface, text and status roles in both modes. 43 mounted UI tests and UI typecheck pass; nested Escape regression failed before prevention at the help trigger and passed after. Six native intake tests now exercise short, 24h and no-expiry links. Simulator rendering and physical Nightly remain pending.","inputs":["docs/guides/connections.md"]}
+  ]
+}

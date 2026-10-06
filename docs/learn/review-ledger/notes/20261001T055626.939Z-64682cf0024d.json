@@ -1,0 +1,31 @@
+{
+  "revision": "17f96f535b5e1f8339d821a6b9cff9299f895b0e",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. The ACP chat architecture described here is unaffected.","inputs":["docs/acp-chat-architecture.md"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. The extension-binding decision does not concern permission requests.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. The Claude adapter test gained two pins (a question card keeps its title over the engine's; a denyApprovals child is denied a network-host ask and a sandbox override with no request opened), both matching what the page states.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/guides/acp.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. The guide's ACP permission and plan-exit statements still hold.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/guides/agents.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. The autoApprove never-covers section and its ACP sentence still hold.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/connections.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. No connection, pairing or transport claim is affected.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. The autoApprove examples and delegation claims are unaffected.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/api.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. No documented route or payload is affected.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. No documented command is affected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. No documented contract is affected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. The respondToRequest ACP plan-exit sentence still holds.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. No indexed claim is affected.","inputs":["docs/reference/station-docs.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2932 merge-review follow-up: acp-adapter.ts changed only a comment in requestPermission (it now names SandboxNetworkAccess beside AskUserQuestion as tools the shared needs-person predicate covers); no behaviour changed. The example runs on Station's engine and is unaffected.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

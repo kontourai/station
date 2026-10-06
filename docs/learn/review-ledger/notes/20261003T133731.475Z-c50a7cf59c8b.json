@@ -1,0 +1,7 @@
+{
+  "revision": "c53537e2f86111cd65178dc7744cddbb949f819f",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Qualified the migration-line claim: 574 of #27-#601 carry 'Migrated from the pre-public backlog' (verified over REST); #106 does not. Boundaries #26/#27 and #601/#602 unchanged.","inputs":["AGENTS.md"]}
+  ]
+}

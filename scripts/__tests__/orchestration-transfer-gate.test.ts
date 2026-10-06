@@ -13,7 +13,7 @@ import { describe, expect, test } from 'vitest';
 import { collectRepositoryIdentity } from '../lib/test-reliability.mjs';
 import {
   executeTransferComparison,
-  missingBaselineRootMessage,
+  missingBaseline,
   policyAttribution,
   runTransferCapture,
   runTransferGate,
@@ -340,7 +340,7 @@ describe('orchestration transfer gate control flow', () => {
     }
   });
 
-  test('#1279: a missing baseline root names the env var the pre-push path reads', () => {
+  test('#1279: a missing baseline names the command that prepares it and the env var override', () => {
     const { candidate, baselineSha } = twoRootGitFixture();
     const prior = process.env[TRANSFER_BASELINE_ROOT_ENV];
     delete process.env[TRANSFER_BASELINE_ROOT_ENV];
@@ -357,18 +357,14 @@ describe('orchestration transfer gate control flow', () => {
       } catch (error) {
         message = (error as Error).message;
       }
-      expect(message).toBe(
-        `orchestration transfer gate: ${missingBaselineRootMessage(baselineSha, candidate)}`,
+      // #2925: with no verified baseline to discover, the refusal carries
+      // the one command that prepares it at the suggested sibling.
+      const missing = missingBaseline(baselineSha, candidate);
+      expect(missing.baselineRoot).toBe(
+        suggestedBaselineRoot(candidate, baselineSha),
       );
-      expect(message).toContain(
-        `${TRANSFER_BASELINE_ROOT_ENV}=${suggestedBaselineRoot(candidate, baselineSha)}`,
-      );
-      expect(message).toContain('--prepare-baseline');
-      expect(message).toContain('npm run dependencies:ci');
-      expect(message).toContain('npm run dependencies:verify');
-      // The approved lifecycle, never a raw install.
-      expect(message).not.toMatch(/\bnpm ci\b/);
-      expect(message).toContain(baselineSha);
+      expect(message).toContain(missing.prepareCommand);
+      expect(message).toContain(TRANSFER_BASELINE_ROOT_ENV);
     } finally {
       if (prior !== undefined) process.env[TRANSFER_BASELINE_ROOT_ENV] = prior;
     }

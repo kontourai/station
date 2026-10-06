@@ -1,0 +1,91 @@
+{
+  "path": "docs/reference/skill-experiences.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the complete bounded visual Skill authoring contract against public types, closed schemas, real author build caller, portable parser and SDK-backed Skill identity checks. Source/digest expectations are author declarations, never host provenance or grants. Explicitly separates current author validation from activation, renderer, session persistence, composition and historical-run work.",
+
+  "limits": "Controlled local Node/macOS author-file tests and CLI build only. No installed runtime, model/provider, native/device, hosted schema URI or released-package proof. FIFO controls are POSIX-only and skip Windows; this is not hostile concurrent filesystem isolation or complete transitive Skill dependency discovery.",
+
+  "sources": [
+    "examples/rich-skill-experience/README.md",
+
+    "examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json",
+
+    "examples/visual-skill-experience/plugin.json",
+
+    "examples/visual-skill-experience/skills/stress-test-idea/SKILL.md",
+
+    "packages/contracts/src/agent-plugin.ts",
+
+    "packages/contracts/src/skill-experience.ts",
+
+    "packages/contracts/src/workspace-pane-host-contract.ts",
+
+    "packages/sdk/src/client/skill-experiences.ts",
+
+    "packages/sdk/src/skill-experience-pane.ts",
+
+    "packages/shared/src/__tests__/skill-experience-author.test.ts",
+
+    "packages/shared/src/agent-plugin-manifest.ts",
+
+    "packages/shared/src/build.ts",
+
+    "packages/shared/src/regular-file.ts",
+
+    "packages/shared/src/skill-experience-author.ts",
+
+    "schemas/agent-plugins/io.kontourai.station-1.0.schema.json",
+
+    "schemas/agent-plugins/skill-experience-1.0.schema.json",
+
+    "src-server/__test-utils__/temp-dirs.ts",
+
+    "src-server/routes/agents/__tests__/skill-experiences.routes.test.ts",
+
+    "src-server/routes/agents/skills.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/runtime/conversation/authorized-turn-correlation.ts",
+
+    "src-server/services/agents/skill-service.ts",
+
+    "src-server/services/orchestration/client-origin-propagation.ts",
+
+    "src-server/services/orchestration/skill-experience-model.ts",
+
+    "src-server/services/orchestration/skill-experience-runtime.ts",
+
+    "src-server/services/orchestration/skill-experience-snapshots.ts",
+
+    "src-server/services/plugins/agent-plugin-loader.ts",
+
+    "src-ui/src/components/skill-experiences/SkillExperienceForm.tsx",
+
+    "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/hooks/useChatInput.ts",
+
+    "src-ui/src/lib/foregroundMessageDispatch.ts",
+
+    "src-ui/src/lib/skill-experience-draft.ts",
+
+    "src-ui/src/lib/skill-experience-preview.ts"
+  ],
+
+  "checks": [
+    "Source review of every documented field, bound, compatibility/error boundary and explicit deferred item.",
+
+    "Focused author/build/resource suite:61 tests passed; current author suite:20 tests passed after restoring mutation.",
+
+    "Replacing the nonblocking opener with a correctly imported blocking openSync preserved positive child builds; both FIFO cases failed with ETIMEDOUT while18 other tests passed. Restored committed bytes returned20 green.",
+
+    "Earlier actual source-built CLI validates original data-only example with exit0; shared typecheck, generated-validator freshness and28-example conformance passed."
+  ]
+}

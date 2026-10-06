@@ -1,0 +1,23 @@
+{
+  "revision": "e3fa2cf8c4bdcb7d8438495ff3122028719b5bca",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Delta is a 30-second per-attempt bound on the shared manifest/archive GET in portable-publication.mjs. The decision record's pointer claims (replace last, after a not-regressing check, dry run until the secret exists) are unaffected and still accurate.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Rewrote the newer-version bullet: the host-pointer replace step now re-runs pointer-plan against the manifest downloaded from the pointer release itself and clobbers only on replace (skip-older warns and exits 0, same version with other bytes fails), checked against publish-release.yml and its step-driving tests. Added the job-timeout-as-cancel gap and the 30-second per-attempt GET bound from portable-publication.mjs fetchBytes next to the cancel-during-clobber note.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"publish-release.yml delta is confined to the host-pointer replace step (a re-plan against the pointer release's own bytes before clobbering). The guide's host-stream statements (draft allowlist, gated signing secret, link to release-rings) are unaffected.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"publish-release.yml delta is the stable/preview host-pointer re-plan only; the Nightly workflow is unchanged. The shared fetch now has a 30-second per-attempt bound, which changes no Nightly claim in this guide.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"publish-release.yml delta is confined to the host-pointer job's replace step; no mobile, TestFlight or container publication claim depends on it.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/releasing.md","note":"publish-release.yml delta is confined to the host-pointer job's replace step; integration, landing and promotion claims are unaffected.","inputs":["docs/guides/releasing.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"publish-release.yml delta is confined to the host-pointer job's replace step; no store setup or upload claim depends on it.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"publish-release.yml delta is confined to the host-pointer job's replace step; no listing claim depends on it.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/reference/cli.md","note":"publish-release.yml delta is confined to the host-pointer job's replace step; no CLI command or release-artifact script claim in this reference depends on it.","inputs":["docs/reference/cli.md"]}
+  ]
+}

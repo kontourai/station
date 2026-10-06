@@ -92,7 +92,7 @@ export function UnpairedSampleWorkspace({
                   decisions: 'Decisions',
                   activity: 'Activity',
                   schedule: 'Schedule',
-                  'command-palette': 'Find anything',
+                  'command-palette': 'Customize',
                 }[item.id]
               }
             </Button>
@@ -236,12 +236,12 @@ export function UnpairedSampleWorkspace({
               </p>
             </>
           )}
-          {step.anchor === 'command-palette' && (
+          {step.anchor === 'customize' && (
             <>
-              <p>Jump to a conversation or workspace tool.</p>
+              <p>Choose the agents and tools that power your work.</p>
               <div className="unpaired-sample__fact">
-                <strong>Prepare my weekly research digest</strong>
-                <span>Conversation</span>
+                <strong>Agents · Skills · Engines · Plugins</strong>
+                <span>Available after pairing a Station</span>
               </div>
               <Button onClick={() => setStepIndex(1)}>
                 Open sample Activity

@@ -1,0 +1,81 @@
+{
+  "path": "src-server/services/connections/pion-peer/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed documented Pion linked version/profile/private IPC/channel/queue/cleanup and normal-connector versus lab boundaries. Corrected Go-version admission, message versus IPC size wording, local hash provenance, and channel-local send failures versus peer-fatal diagnostic/IPC failures.",
+
+  "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "packages/contracts/src/self-hosted-broker.ts",
+
+    "scripts/self-hosted-broker.ts",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/native_relay_key_approval.rs",
+
+    "src-desktop/src/native_relay_proof_key.rs",
+
+    "src-desktop/src/native_relay_redemption.rs",
+
+    "src-desktop/src/native_station_key_custody.rs",
+
+    "src-server/routes/connections/self-hosted-broker.ts",
+
+    "src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts",
+
+    "src-server/runtime/bootstrap/self-hosted-broker-runtime.ts",
+
+    "src-server/runtime/bootstrap/self-hosted-connector-config.ts",
+
+    "src-server/services/connections/pion-application-adapter.ts",
+
+    "src-server/services/connections/pion-application-ipc.ts",
+
+    "src-server/services/connections/pion-peer/application.go",
+
+    "src-server/services/connections/pion-peer/go.mod",
+
+    "src-server/services/connections/pion-peer/go.sum",
+
+    "src-server/services/connections/pion-peer/main.go",
+
+    "src-server/services/connections/self-hosted-broker-client.ts",
+
+    "src-server/services/connections/self-hosted-broker-connector.ts",
+
+    "src-server/services/connections/self-hosted-broker-service.ts",
+
+    "src-server/services/infra/process-utils.ts"
+  ],
+
+  "checks": [
+    "Prior accepted evidence, not rerun in this tranche: At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+
+    "REASONED: full document read and remaining documented protocol/admission/recovery claims traced through the listed production owners and callers; existing source hashes matched the prior accepted records before scoped corrections.",
+
+    "EXECUTED: docs links passed 412 Markdown files; reference gate passed 266 maintained documents; MCP check passed 99 shipped topics; safe lab --help output and focused Biome passed.",
+
+    "EXECUTED: docs:truth:gate ran all 13 lanes; 12 passed, foundations had 163 tests pass and one inherited stale ledger failure at .agents/skills/deslop/SKILL.md. No unreviewed metadata was refreshed to conceal it. Root owns combined ledger integration and final check.",
+
+    "EXECUTED: Veritas readiness run veritas-1790532008463: zero failures, one optional verification-policy warning from the retained in-worktree installed-plugin fixture tests. Governance, lint and connected-agent checks passed. Protected standards unchanged.",
+
+    "EXECUTED: current and archive GitHub issue titles checked for 303, 483, 487, 488, 489, 495, 496 and 497. Restored explicit current membership/hosted identity/tenant isolation/acceptance references; retained archive303 reconnect history and archive496 Task history because their titles match. Current488 is closed; its historical implementation link does not prove the independent-human acceptance.",
+
+    "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic.",
+
+    "Required merge-queue recovery through 421517851: reviewed explicit nativeClient opt-in and server-owned native provenance; existing browser/diagnostic paths and physical/deployment evidence limits remain. Changed inputs reviewed: src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts, src-server/runtime/bootstrap/self-hosted-broker-runtime.ts, src-server/runtime/bootstrap/self-hosted-connector-config.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: lib.rs removed the dormant notification watch. self-hosted-broker-client.ts only documents SelfHostedBrokerNativeClient as test/lab scaffolding. The README's Pion, IPC, lab and self-hosted-connector claims do not depend on that native client and remain accurate. Source review is separate from executed test evidence."
+  ]
+}

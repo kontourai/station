@@ -7,6 +7,7 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER,
   parseInteractiveWorkspaceBatchTiming,
 } from '../../../../src-shared/interactive-workspace-performance-timing.js';
+import type { ProjectTaskRoomRuntime } from '../../../services/orchestration/project-task-room-runtime.js';
 import {
   createProjectTaskRoomRoutes,
   createProjectTaskRoomSseDeliveryQueue,
@@ -605,4 +606,50 @@ describe('project task room routes', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(activate).not.toHaveBeenCalled();
   });
+});
+
+test('feedback route preserves exact target identity and rejects client-supplied authority', async () => {
+  const feedback = {
+    target: {
+      outputId: 'output-1',
+      digest: `sha256:${'a'.repeat(64)}`,
+      taskCreatedAt: '2026-10-01T00:00:00.000Z',
+    },
+    review: 'accepted',
+    text: 'I reviewed these bytes.',
+  };
+  const input = {
+    proposalId: 'review-1',
+    occurredAt: '2026-10-03T00:00:00.000Z',
+    ...feedback,
+  };
+  const outputFeedback = vi.fn(async () => ({ kind: 'not-found' as const }));
+  const app = createProjectTaskRoomRoutes({
+    outputFeedback,
+  } as unknown as ProjectTaskRoomRuntime);
+  const send = (body: unknown) =>
+    app.request('/task-1/room/output-feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const response = await send(input);
+  expect(response.status).toBe(404);
+  expect(outputFeedback).toHaveBeenCalledWith(
+    expect.objectContaining({
+      taskId: 'task-1',
+      proposalId: 'review-1',
+      occurredAt: input.occurredAt,
+      feedback: { kind: 'output-feedback', ...feedback },
+    }),
+  );
+  outputFeedback.mockClear();
+  for (const invalid of [
+    { ...input, principal: { kind: 'operator' } },
+    { ...input, target: { ...feedback.target, digest: 'not-a-version' } },
+    { ...input, review: 'task-done' },
+  ]) {
+    expect((await send(invalid)).status).toBe(400);
+  }
+  expect(outputFeedback).not.toHaveBeenCalled();
 });

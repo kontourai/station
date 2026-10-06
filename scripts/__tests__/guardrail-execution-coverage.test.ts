@@ -176,6 +176,7 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'lazy-boundary-ratchet.mjs',
     'scripts/__tests__/lazy-boundary-ratchet.test.ts',
   ],
+  ['button-cap-ratchet.mjs', 'scripts/__tests__/button-cap-ratchet.test.ts'],
   ['lockfile-sync-gate.mjs', 'scripts/__tests__/version-packages-lock.test.ts'],
   ['random-uuid-guard.mjs', 'scripts/__tests__/random-uuid-guard.test.ts'],
   ['repo-docs-hygiene.mjs', 'scripts/__tests__/repo-docs-hygiene.test.ts'],

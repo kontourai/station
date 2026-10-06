@@ -1,0 +1,7 @@
+{
+  "revision": "3badbed61353cad6ff411962569f03361e215104",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"#3112: the manifest change adds a smoke-live spec only; the PR smoke manifest selections (pr-smoke bucket) this page documents are unchanged. No prose change.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

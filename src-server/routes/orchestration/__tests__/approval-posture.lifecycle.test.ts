@@ -17,13 +17,15 @@
  * The hard bar: in no probe is the engine more permissive than the latest
  * decision by server order.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type {
   ApprovalMode,
   ProviderSendTurnInput,
@@ -41,13 +43,19 @@ import type { ProviderAdapterMetadata } from '../../../providers/adapter-shape.j
 import type { FullAccessGrant } from '../../../security/coding-authority.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import {
+  ApprovalInboxNotificationProvider,
+  wireApprovalInboxNotifications,
+} from '../../../services/approvals/approval-inbox.js';
+import {
   type ExecutionSessionBinding,
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { createNotificationRoutes } from '../../operations/notifications.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const OWNER = 'posture-owner';
@@ -70,6 +78,48 @@ class PostureAdapter extends GateTestAdapter {
   };
   readonly starts: ProviderSessionStartInput[] = [];
   readonly turns: ProviderSendTurnInput[] = [];
+  readonly answers: Array<{ requestId: string; decision: string }> = [];
+
+  /** Sessions holding an open request the engine is waiting on. */
+  readonly waiting = new Set<string>();
+
+  override async hasSession(threadId?: string): Promise<boolean> {
+    return threadId !== undefined && this.waiting.has(threadId);
+  }
+
+  /** Holds an answer until released (the race probe). */
+  answerGate: Promise<void> | undefined;
+  /** Whether an answer has reached the engine (and any gate). */
+  answering = false;
+  /**
+   * Resolves once the request's resolution is persisted, so an answer
+   * returns only after the store reads the request as resolved, as a fast
+   * engine's would (the "read before the answer" ordering).
+   */
+  answerSettled:
+    | ((threadId: string, requestId: string) => Promise<void>)
+    | undefined;
+
+  override async respondToRequest(
+    threadId = '',
+    requestId = '',
+    decision = '',
+  ): Promise<void> {
+    this.answering = true;
+    await this.answerGate;
+    this.answers.push({ requestId, decision });
+    this.waiting.delete(threadId);
+    this.events.push({
+      eventId: `${requestId}:resolved`,
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'request.resolved',
+      requestId,
+      status: decision === 'decline' ? 'denied' : 'approved',
+    } as CanonicalRuntimeEvent);
+    await this.answerSettled?.(threadId, requestId);
+  }
 
   override async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
@@ -167,6 +217,13 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
   const adapter = new PostureAdapter();
+  adapter.answerSettled = (threadId, requestId) =>
+    eventually(() => {
+      expect(store.readCurrentRequestEvent(threadId, requestId)).toMatchObject({
+        state: 'found',
+        event: { method: 'request.resolved' },
+      });
+    });
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus,
@@ -379,9 +436,11 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
   };
 
   return {
+    root,
     store,
     service,
     adapter,
+    eventBus,
     /** The composer's first send: `/chat`, optionally carrying a pick. */
     firstSend: (carried?: ApprovalMode, defaultChannel?: ApprovalMode) =>
       composerSend({ message: 'first' }, carried, defaultChannel),
@@ -431,6 +490,44 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     },
     post,
     currentThread,
+    /** The engine opens an approval request on the current session. */
+    async openRequest(requestId: string, payload: Record<string, unknown>) {
+      const threadId = currentThread()!;
+      adapter.waiting.add(threadId);
+      adapter.events.push({
+        eventId: `${requestId}:opened`,
+        provider: adapter.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        requestId,
+        requestType: 'approval',
+        title: `Allow ${String(payload.toolName)}`,
+        payload,
+      } as CanonicalRuntimeEvent);
+      await eventually(() => {
+        expect(store.readCurrentRequestEvent(threadId, requestId).state).toBe(
+          'found',
+        );
+      });
+      return threadId;
+    },
+    decisionEvents: () =>
+      store
+        .conversationSessions(CONVERSATION)
+        .flatMap(({ sessionId }) => store.listEvents(sessionId))
+        .map((row) => row.payload)
+        .filter((payload) => payload.method === 'session.approval-mode-set'),
+    decisions: () =>
+      store
+        .conversationSessions(CONVERSATION)
+        .flatMap(({ sessionId }) => store.listEvents(sessionId))
+        .filter((row) => row.payload.method === 'session.approval-mode-set')
+        .map((row) =>
+          row.payload.method === 'session.approval-mode-set'
+            ? row.payload.approvalMode
+            : undefined,
+        ),
   };
 }
 
@@ -472,6 +569,286 @@ describe('approval posture probe table under server order (#2436)', () => {
     expect(h.adapter.lastTurnPosture()).toBe('ask');
     // A new child Session spawned for that turn, in the recorded posture.
     expect(h.adapter.starts.at(-1)?.modelOptions?.approvalMode).toBe('ask');
+  });
+
+  describe('#2915: an "Auto-accept file edits for this session" answer', () => {
+    const acceptEdits = {
+      type: 'setMode',
+      mode: 'acceptEdits',
+      destination: 'session',
+    };
+    const answer = (
+      h: Harness,
+      threadId: string,
+      requestId: string,
+      decision: string,
+    ) =>
+      h.post('/api/orchestration/commands', {
+        type: 'respondToRequest',
+        threadId,
+        requestId,
+        decision,
+      });
+
+    test('records Auto for the conversation: the next turn keeps it, and picking Ask ends it', async () => {
+      const h = await harness();
+      await h.firstSend('ask');
+      const threadId = await h.openRequest('req-edit', {
+        toolName: 'Edit',
+        toolInput: { file_path: '/work/a/x.ts' },
+        suggestions: [acceptEdits],
+      });
+      const response = await answer(
+        h,
+        threadId,
+        'req-edit',
+        'acceptForSession',
+      );
+      expect(response.status, await response.text()).toBe(200);
+      await eventually(() => {
+        expect(
+          h.store.readCurrentRequestEvent(threadId, 'req-edit'),
+        ).toMatchObject({
+          state: 'found',
+          event: { method: 'request.resolved' },
+        });
+      });
+      expect(h.adapter.answers.at(-1)).toEqual({
+        requestId: 'req-edit',
+        decision: 'acceptForSession',
+      });
+      expect(h.decisions().at(-1)).toBe('auto');
+
+      await h.send();
+      expect(h.adapter.lastTurnPosture()).toBe('auto');
+
+      await h.decide('ask');
+      await h.send();
+      expect(h.adapter.lastTurnPosture()).toBe('ask');
+    });
+
+    test('the recorded Auto carries the answering caller, as a setApprovalMode pick does', async () => {
+      const h = await harness();
+      await h.firstSend();
+      await h.decide('ask');
+      const threadId = await h.openRequest('req-edit', {
+        toolName: 'Edit',
+        toolInput: { file_path: '/work/a/x.ts' },
+        suggestions: [acceptEdits],
+      });
+      const response = await answer(
+        h,
+        threadId,
+        'req-edit',
+        'acceptForSession',
+      );
+      expect(response.status, await response.text()).toBe(200);
+      const [picked, recorded] = h.decisionEvents().slice(-2);
+      expect(picked).toMatchObject({ approvalMode: 'ask' });
+      expect(recorded).toMatchObject({ approvalMode: 'auto' });
+      expect(recorded?.clientOrigin).toBeDefined();
+      expect(recorded?.clientOrigin).toEqual(picked?.clientOrigin);
+      // This harness's operator credential resolves no principal, on either.
+      expect(recorded?.principal).toEqual(picked?.principal);
+    });
+
+    test('the recorded Auto carries the dispatching principal and origin', async () => {
+      const h = await harness();
+      await h.firstSend('ask');
+      const threadId = await h.openRequest('req-edit', {
+        toolName: 'Edit',
+        toolInput: { file_path: '/work/a/x.ts' },
+        suggestions: [acceptEdits],
+      });
+      const principal = humanPrincipal(
+        'github',
+        'posture-owner',
+        'Posture Owner',
+      );
+      const clientOrigin: ClientOrigin = {
+        version: 1,
+        actor: { kind: 'device', deviceId: 'pixel-10' },
+        reported: { version: 1, surface: 'mobile', build: '1' },
+      };
+      await h.service.dispatchWithReceipt(
+        {
+          type: 'respondToRequest',
+          threadId,
+          requestId: 'req-edit',
+          decision: 'acceptForSession',
+        },
+        {
+          userId: OWNER,
+          principal,
+          clientOrigin,
+          approvalModeAuthority: true,
+        },
+      );
+      expect(h.decisionEvents().at(-1)).toMatchObject({
+        approvalMode: 'auto',
+        principal,
+        clientOrigin,
+      });
+    });
+
+    test.each(['ask', 'auto', 'never'] as const)(
+      'a %s decision recorded while the engine takes the answer wins: nothing more is recorded',
+      async (meanwhile) => {
+        const h = await harness();
+        await h.firstSend('ask');
+        const threadId = await h.openRequest('req-edit', {
+          toolName: 'Edit',
+          toolInput: { file_path: '/work/a/x.ts' },
+          suggestions: [acceptEdits],
+        });
+        let release!: () => void;
+        h.adapter.answerGate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const answering = answer(h, threadId, 'req-edit', 'acceptForSession');
+        await eventually(() => expect(h.adapter.answering).toBe(true));
+        await h.decide(meanwhile);
+        release();
+        const response = await answering;
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.decisions()).toEqual(['ask', meanwhile]);
+
+        await h.send();
+        expect(h.adapter.lastTurnPosture()).toBe(meanwhile);
+      },
+    );
+
+    test.each([
+      ['a recorded Ask', 'ask', ['ask']],
+      // A delegated child starts with the default posture applied but no
+      // decision recorded, so no later turn would undo an acceptEdits.
+      ['no recorded decision', undefined, []],
+    ] as const)(
+      'an answer without setApprovalMode authority is a one-call accept, with %s',
+      async (_case, pick, decisions) => {
+        const h = await harness();
+        await h.firstSend(pick);
+        const threadId = await h.openRequest('req-edit', {
+          toolName: 'Edit',
+          toolInput: { file_path: '/work/a/x.ts' },
+          suggestions: [acceptEdits],
+        });
+        // The delegated respond path dispatches with the caller's identity but
+        // not the command route's approval authority.
+        await h.service.dispatchWithReceipt(
+          {
+            type: 'respondToRequest',
+            threadId,
+            requestId: 'req-edit',
+            decision: 'acceptForSession',
+          },
+          { userId: OWNER },
+        );
+        // `accept` forwards no suggestion, so the engine stays in its mode.
+        expect(h.adapter.answers.at(-1)).toEqual({
+          requestId: 'req-edit',
+          decision: 'accept',
+        });
+        expect(h.decisions()).toEqual(decisions);
+      },
+    );
+
+    test('an acceptForSession posted directly to the inbox card is a one-call accept', async () => {
+      const h = await harness();
+      await h.firstSend();
+      // Inside the harness's own temporary root, which afterEach removes.
+      const dir = join(h.root, 'notifications');
+      mkdirSync(dir);
+      const notifications = new NotificationService(h.eventBus, dir, 999_999);
+      const provider = new ApprovalInboxNotificationProvider({
+        approvalRegistry: { has: () => false, resolve: () => false },
+        orchestrationService: h.service,
+      });
+      notifications.addProvider(provider);
+      const unwire = wireApprovalInboxNotifications(
+        h.eventBus,
+        provider,
+        notifications,
+        { debug: vi.fn(), warn: vi.fn() },
+      );
+      await notifications.start();
+      try {
+        await h.openRequest('req-edit', {
+          toolName: 'Edit',
+          toolInput: { file_path: '/work/a/x.ts' },
+          suggestions: [acceptEdits],
+        });
+        let card: { id: string; actions?: Array<{ id: string }> } | undefined;
+        await eventually(async () => {
+          await notifications.drainAsyncDispatch();
+          card = (await notifications.list())[0];
+          expect(card).toBeDefined();
+        });
+        // The card does not offer it; the action id is posted anyway.
+        expect(card?.actions?.map((action) => action.id)).toEqual([
+          'accept',
+          'decline',
+        ]);
+        const routes = new Hono();
+        routes.use('*', async (c, next) => {
+          setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+            credential: 'operator-credential-fixture',
+            authority: 'operator-credential',
+            source: 'bearer',
+          });
+          await next();
+        });
+        routes.route('/', createNotificationRoutes(notifications));
+        const response = await routes.request(
+          `/${card!.id}/action/acceptForSession`,
+          { method: 'POST' },
+        );
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answers.at(-1)).toEqual({
+          requestId: 'req-edit',
+          decision: 'accept',
+        });
+        expect(h.decisions()).toEqual([]);
+      } finally {
+        unwire();
+        await notifications.shutdown();
+      }
+    });
+
+    test('records nothing for any other session answer', async () => {
+      const h = await harness();
+      await h.firstSend('ask');
+      const threadId = await h.openRequest('req-bash', {
+        toolName: 'Bash',
+        toolInput: { command: 'git status' },
+      });
+      const response = await answer(
+        h,
+        threadId,
+        'req-bash',
+        'acceptForSession',
+      );
+      expect(response.status, await response.text()).toBe(200);
+      expect(h.decisions()).toEqual(['ask']);
+    });
+
+    test('never loosens a standing full access into Auto', async () => {
+      const h = await harness();
+      await h.firstSend('never');
+      const threadId = await h.openRequest('req-edit', {
+        toolName: 'Edit',
+        toolInput: { file_path: '/work/a/x.ts' },
+        suggestions: [acceptEdits],
+      });
+      const response = await answer(
+        h,
+        threadId,
+        'req-edit',
+        'acceptForSession',
+      );
+      expect(response.status, await response.text()).toBe(200);
+      expect(h.decisions()).toEqual(['never']);
+    });
   });
 
   test('the command route refuses a posture that is not one', async () => {

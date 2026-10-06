@@ -1,0 +1,7 @@
+{
+  "revision": "ec3929f732cde59411f262f7e5bec489d587a28b",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Reviewed combined reference after merge ec3929f732. PluginComponent now includes command, matching the incoming published plugin contract. The ProjectConfig defaultAgent field and remembered-choice/null-clear prose from the chat-start lane remain present and match packages/contracts/src/project.ts, project HTTP schema and ProjectService persistence. All incoming plugin source anchors and append-only notes are preserved; the old document anchor was retained only during conflict resolution and is now replaced through the supported recorder after reviewing combined prose. No claim of full plugin-effect, live-provider or physical-device qualification.","inputs":["docs/reference/shared.md"]}
+  ]
+}

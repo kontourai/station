@@ -19,6 +19,10 @@ import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { builtinWorkspacePaneName } from './builtinWorkspacePaneCanonical';
 import { projectCompactWorkspacePaneHost } from './compactWorkspacePaneProjection';
+import {
+  WorkspacePaneFailure,
+  type WorkspacePaneFailureContext,
+} from './WorkspacePaneFailure';
 import { WorkspacePaneFrame } from './WorkspacePaneFrame';
 import type {
   WorkspacePaneHostCatalogRequest,
@@ -89,9 +93,13 @@ export interface WorkspacePaneHostTreeProps {
   /**
    * Whether the host's selection is a navigation fact (`?pane=`, a history
    * entry). Default true; a region host passes false — its selection
-   * authority is the region model (see the controller's option).
+   * authority is the region model (see the controller's option); the Coding
+   * navigation stack passes `'explicit'`, whose URL names a pane only when a
+   * user or an open named one; past its wide fold it passes `'replace'`,
+   * where even a named one corrects the entry in place (#3040: a pane
+   * beside Chat is not a page, so Back never steps through panel changes).
    */
-  navigationSelection?: boolean;
+  navigationSelection?: boolean | 'explicit' | 'replace';
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   /** Injectable only at the browser-lock boundary; production uses Web Locks. */
@@ -110,6 +118,13 @@ export interface WorkspacePaneHostTreeProps {
   ): void;
   popOut?: WorkspacePaneHostPopOut;
   onDocumentChange?(document: WorkspacePaneHostDocumentV1): void;
+  /**
+   * The host's persistence standing, for a caller that draws the host
+   * chromeless and so owns where a read-only or contended state is said.
+   */
+  onPersistenceStatusChange?(
+    status: 'owned' | 'contended' | 'unavailable',
+  ): void;
   operationalEventSink?: WorkspacePaneOperationalEventSink;
   operationalEventContext?(
     instance: WorkspacePaneInstance,
@@ -118,6 +133,14 @@ export interface WorkspacePaneHostTreeProps {
   operationalAvailability?(
     instance: WorkspacePaneInstance,
   ): WorkspacePaneAvailability | undefined;
+  /**
+   * What only the pane's owner knows about a failed renderer: the thing
+   * inside it that failed and a way back from it (chromeless and dock
+   * presentations, where the pane's own header is gone with the pane).
+   */
+  paneFailureContext?(
+    instance: WorkspacePaneInstance,
+  ): WorkspacePaneFailureContext | undefined;
 }
 
 const RESIZE_STEP = 0.05;
@@ -172,12 +195,19 @@ export function WorkspacePaneHostTree({
   onDockSlotActionChange,
   popOut,
   onDocumentChange,
+  onPersistenceStatusChange,
   operationalEventSink,
   operationalEventContext,
   operationalAvailability,
+  paneFailureContext,
 }: WorkspacePaneHostTreeProps) {
   const visualViewport = useMobileVisualViewport();
   const compactHostRef = useRef<HTMLElement | null>(null);
+  // Pane-owned failure context, read once per failure by the frame's
+  // boundary and kept per instance (`paneFailureContext`).
+  const failureContextSnapshots = useRef(
+    new Map<string, WorkspacePaneFailureContext | undefined>(),
+  );
   const [compactHeight, setCompactHeight] = useState<number | null>(null);
   useLayoutEffect(() => {
     if (!compact || !compactHostRef.current) {
@@ -225,6 +255,11 @@ export function WorkspacePaneHostTree({
     onDockSlotActionChange?.(controller.replace);
     return () => onDockSlotActionChange?.(null);
   }, [controller.replace, onDockSlotActionChange]);
+  const persistenceStatusSink = useRef(onPersistenceStatusChange);
+  persistenceStatusSink.current = onPersistenceStatusChange;
+  useEffect(() => {
+    persistenceStatusSink.current?.(controller.persistenceStatus);
+  }, [controller.persistenceStatus]);
   const { state, closeConfirmation } = controller;
   const persistenceNotice =
     controller.persistenceStatus === 'owned'
@@ -375,6 +410,27 @@ export function WorkspacePaneHostTree({
     const occupant = paneById.get(state.document.activeInstanceId);
     const failed =
       occupant && controller.state.rendererFailures[occupant.instanceId];
+    // The context captured when this occupant failed (see `onFailure`
+    // below), not a fresh read: the failure screen keeps naming, and acting
+    // on, the thing that failed.
+    const occupantFailureContext = occupant
+      ? failureContextSnapshots.current.get(occupant.instanceId)
+      : undefined;
+    // A pane-supplied Back changes what the pane opens, then remounts it on
+    // that state: the retry is what makes the new state visible.
+    const failureContext: WorkspacePaneFailureContext | undefined =
+      occupant && occupantFailureContext?.back
+        ? {
+            ...occupantFailureContext,
+            back: {
+              label: occupantFailureContext.back.label,
+              onBack: () => {
+                occupantFailureContext.back?.onBack();
+                void controller.retry(occupant.instanceId);
+              },
+            },
+          }
+        : occupantFailureContext;
     const groupId =
       dockGroupId ??
       (state.document.root.type === 'tabs'
@@ -417,18 +473,13 @@ export function WorkspacePaneHostTree({
             // unavailable pane is a message and a message needs a box.
             wrapPanel(
               occupant.instanceId,
-              <section
+              <WorkspacePaneFailure
                 className="workspace-pane-host workspace-pane-host--chromeless-failure"
-                aria-label={`${paneLabel(occupant)} unavailable`}
-              >
-                <p>{paneLabel(occupant)} could not open.</p>
-                <button
-                  type="button"
-                  onClick={() => void controller.retry(occupant.instanceId)}
-                >
-                  Retry pane
-                </button>
-              </section>,
+                paneName={paneLabel(occupant)}
+                detail={controller.rendererFailureDetails[occupant.instanceId]}
+                context={failureContext}
+                onRetry={() => void controller.retry(occupant.instanceId)}
+              />,
             )
           : null}
         {occupant && !failed
@@ -438,8 +489,16 @@ export function WorkspacePaneHostTree({
                 elementless
                 instanceId={occupant.instanceId}
                 paneName={paneLabel(occupant)}
+                readFailureContext={
+                  paneFailureContext
+                    ? () => paneFailureContext(occupant)
+                    : undefined
+                }
                 runtime={runtime}
-                onFailure={controller.fail}
+                onFailure={(instanceId, detail, context) => {
+                  failureContextSnapshots.current.set(instanceId, context);
+                  controller.fail(instanceId, detail);
+                }}
                 onRetry={controller.retry}
               >
                 {renderPane(occupant, CHROMELESS_PANE_PRESENTATION)}

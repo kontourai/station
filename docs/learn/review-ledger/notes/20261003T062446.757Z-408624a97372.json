@@ -1,0 +1,13 @@
+{
+  "revision": "f602e2b638d0d43096df0f6d92f76e2f4ca5101a",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed invitation lifetime change and retained distinction from five-minute pairing offers and enrollment challenges. Native v2 wire fields and fragment custody, public route intent, exact installation binding and separate Device/account/Project approval are unchanged. Operator issuer now defaults to 24h and permits never; focused broker/link tests (67) and native relay tests (89) pass. Fixture physical/Nightly claims remain unverified.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed invitation lifetime change and retained distinction from five-minute pairing offers and enrollment challenges. Native v2 wire fields and fragment custody, public route intent, exact installation binding and separate Device/account/Project approval are unchanged. Operator issuer now defaults to 24h and permits never; focused broker/link tests (67) and native relay tests (89) pass. Fixture physical/Nightly claims remain unverified.","inputs":["docs/reference/connect.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed invitation lifetime change and retained distinction from five-minute pairing offers and enrollment challenges. Native v2 wire fields and fragment custody, public route intent, exact installation binding and separate Device/account/Project approval are unchanged. Operator issuer now defaults to 24h and permits never; focused broker/link tests (67) and native relay tests (89) pass. Fixture physical/Nightly claims remain unverified.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed invitation lifetime change and retained distinction from five-minute pairing offers and enrollment challenges. Native v2 wire fields and fragment custody, public route intent, exact installation binding and separate Device/account/Project approval are unchanged. Operator issuer now defaults to 24h and permits never; focused broker/link tests (67) and native relay tests (89) pass. Fixture physical/Nightly claims remain unverified.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md"]}
+  ]
+}

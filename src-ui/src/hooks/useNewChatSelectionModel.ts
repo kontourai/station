@@ -11,6 +11,7 @@ import {
   useModelPickerCatalogQuery,
   useProjectLayoutQuery,
 } from '@kontourai/station-sdk';
+import type { RefetchOptions } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   buildNewChatModalViewModel,
@@ -23,6 +24,7 @@ import {
 } from '../components/modals/new-chat-modal-utils';
 import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import type { AgentData } from '../contexts/AgentsContext';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
@@ -43,7 +45,7 @@ import type {
   NewChatModelChoice,
   SelectableModel,
 } from '../utils/modelCapabilities';
-import { getLastChosenModelMap } from './lastChosenModel';
+import { useLastChosenModelMap } from './lastChosenModel';
 
 const EMPTY_CONNECTIONS: never[] = [];
 
@@ -67,7 +69,7 @@ export function resolveProviderManagedAgentConnectionId(
   return managedRuntimeId ? engineConnectionId(managedRuntimeId) : undefined;
 }
 
-import { getRecentAgentSlugs } from './useRecentAgents';
+import { getRecentAgentSlugs, useContextAgent } from './useRecentAgents';
 
 export interface ACPSelectionConnection {
   id: string;
@@ -124,13 +126,13 @@ export function acpCatalogModelOptions(
 export function useReconcilingCatalogRefresh(
   catalogState: string | undefined,
   data: unknown,
-  refetch: () => void,
+  refetch: (options?: RefetchOptions) => void,
   delayMs = 1000,
 ): void {
   // biome-ignore lint/correctness/useExhaustiveDependencies: `data` is an identity trigger, not a read — each reconciling response must re-arm exactly one delayed refetch or polling stops after the first fire.
   useEffect(() => {
     if (catalogState !== 'reconciling') return;
-    const timer = setTimeout(() => refetch(), delayMs);
+    const timer = setTimeout(() => refetch({ cancelRefetch: false }), delayMs);
     return () => clearTimeout(timer);
   }, [catalogState, data, refetch, delayMs]);
 }
@@ -181,10 +183,11 @@ export function useNewChatSelectionModel({
       selectedProjectLayout: state.selectedProjectLayout,
     }));
   const appConfig = useConfig();
+  const { namespace } = useAuthorityPersistence();
   const agentCatalog = useAgentsQuery();
   useReconcilingCatalogRefresh(
     agentCatalog.catalogState,
-    agentCatalog.data,
+    agentCatalog.dataUpdatedAt,
     agentCatalog.refetch,
   );
   const projectCatalog = useScopedProjectsQuery();
@@ -262,6 +265,7 @@ export function useNewChatSelectionModel({
       agents?: AgentId[];
       defaultProviderId?: string;
       defaultModel?: string;
+      defaultAgent?: AgentId;
     };
   };
 
@@ -333,10 +337,14 @@ export function useNewChatSelectionModel({
     [modalAgents, providerManagedExecution],
   );
 
-  // Read once per modal mount, matching the "lost on remount" fix for
-  // recent agents — pure resolver/view-model functions stay localStorage-free.
-  const lastChosenModelByBinding = useMemo(() => getLastChosenModelMap(), []);
+  // Read live: a surface that stays mounted (Home) must see a model chosen
+  // in a docked chat meanwhile. The pure resolver/view-model functions stay
+  // localStorage-free.
+  const lastChosenModelByBinding = useLastChosenModelMap();
   const activeChatsSnapshot = activeChatsStore.getSnapshot();
+  // Live, like the Model memory above: a choice remembered on one surface
+  // re-derives the other surface's default Agent.
+  const rememberedAgentSlug = useContextAgent(namespace, selectedContext);
   const viewModel = useMemo(
     () =>
       buildNewChatModalViewModel({
@@ -378,6 +386,16 @@ export function useNewChatSelectionModel({
     modelConnections,
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
+    preferredAgentSlug:
+      rememberedAgentSlug ??
+      getRecentAgentSlugsForContext(
+        activeChatsSnapshot,
+        selectedContext,
+        [],
+      )[0] ??
+      selectedProjectConfig?.defaultAgent ??
+      layout?.defaultAgent,
+
     lastChosenModelByBinding,
   });
   const [modelChoices, setModelChoices] = useState<
@@ -544,6 +562,14 @@ export function useNewChatSelectionModel({
     setupFetching,
     projectCatalogResolved:
       projectCatalog.isSuccess && !projectCatalog.isFetching,
+    /**
+     * True once `defaultSelection` reflects `selectedContext`: always for the
+     * global context, and for a project only after its detail (default
+     * Model, default Agent, Agents filter) has loaded. Until then the default
+     * selection is the global one, which a project chat would not use.
+     */
+    selectedContextResolved:
+      !selectedProjectSlug || selectedProjectQuery.isSuccess,
     setupError,
     refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in

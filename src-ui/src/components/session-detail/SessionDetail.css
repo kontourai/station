@@ -1,0 +1,203 @@
+/* The Station-owned session detail (`MutableSessionDetail`): header identity
+   and actions, the one failure card, the read-only conversation, and the
+   Details disclosure. Base pane geometry (`.sessions-detail`, `__scroll`,
+   the pinned request/compose controls) stays in views/SessionsView.css. */
+
+/* The detail is often hosted in a ~380px dock. The identity keeps a
+   readable measure and the actions wrap under it rather than squeezing the
+   title into a one-word column. */
+.sessions-detail__header {
+  flex-wrap: wrap;
+}
+
+/* A min-width, not a flex-basis: on phones the header stacks as a column,
+   where a basis would become an 18rem HEIGHT. */
+.sessions-detail__identity {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  gap: var(--space-2);
+  min-width: min(100%, 18rem);
+}
+
+/* SessionDetailErrors always mounts its wrapper; with nothing to say it must
+   not take a scroll-region gap. */
+.sessions-detail__errors:empty {
+  display: none;
+}
+
+.sessions-detail__status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Console Kit's `.status` is a card-corner BLOCK (grid, a 4-unit
+   min-width). Beside a title it renders as a compact inline badge — the same
+   treatment `AgentReadinessCell` gives it. */
+.sessions-detail__status.status {
+  display: inline-grid;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+}
+
+.sessions-detail__live-indicator {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.sessions-detail__metadata {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.sessions-detail__metadata summary {
+  cursor: pointer;
+}
+
+.session-transcript__toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding-block: var(--space-2);
+  background: var(--bg-primary);
+}
+
+.sessions-detail__meta-line {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+
+.sessions-detail__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.sessions-detail__actions .button {
+  min-height: 44px;
+}
+
+.session-detail-more__trigger {
+  min-width: 44px;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+/* Surface-popover, not plain popover: Activity is often hosted in the dock,
+   and a menu portalled out of it must outrank the dock layer. */
+.session-detail-more__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--layer-surface-popover) - 1);
+}
+
+.session-detail-more__menu {
+  z-index: var(--layer-surface-popover);
+  min-width: 11rem;
+  box-shadow: var(--shadow-menu);
+}
+
+/* The one failure card: the shared banner plus its Dismiss. */
+.sessions-detail__failure-card {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sessions-detail__failure-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sessions-detail__failure-actions .button {
+  min-height: 44px;
+}
+
+/* The conversation: a record of the session, read in place. */
+.session-transcript {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.session-transcript__message {
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  overflow-wrap: anywhere;
+}
+
+.session-transcript__message--user {
+  background: var(--bg-secondary);
+}
+
+.session-transcript__role {
+  margin: 0 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.sessions-detail__peer-note,
+.session-transcript__working {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+}
+
+/* Details: evidence, identity, linked pull requests and the event log,
+   collapsed until asked for (or opened by an evidence reveal). */
+.sessions-detail__disclosure {
+  min-width: 0;
+  border-top: 1px solid var(--border-primary);
+  padding-top: var(--space-3);
+}
+
+.sessions-detail__disclosure > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.sessions-detail__disclosure-body {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+  padding-top: var(--space-3);
+}
+
+.sessions-detail__session-id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+}
+
+.sessions-detail__session-id code {
+  min-width: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.sessions-detail__session-id .button {
+  min-height: 44px;
+}

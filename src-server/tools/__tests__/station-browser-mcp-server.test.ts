@@ -23,6 +23,7 @@ const registered = (server: McpServer) =>
 
 const BROWSER_TOOLS = [
   'browser_click',
+  'browser_close',
   'browser_evaluate',
   'browser_navigate',
   'browser_open',

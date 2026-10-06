@@ -2,10 +2,10 @@ import { CheckGlyph, MicGlyph } from '../../components/icons/Glyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { usePushNotificationsState } from '../../contexts/PushNotificationsContext';
 import { useVoiceProviderContext } from '../../contexts/VoiceProviderContext';
 import type { BooleanFeatureSetting } from '../../hooks/useFeatureSettings';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
-import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { AgentActivitySetting } from './AgentActivitySetting';
 import { FeatureToggle, SettingsToggle } from './feature-toggle';
 import { NotificationSoundSettings } from './NotificationSoundSettings';
@@ -40,14 +40,16 @@ const FEATURE_META: Array<{
   },
 ];
 
-function NotificationSubscribeButton({ apiBase }: { apiBase: string }) {
-  const { settings } = useFeatureSettings();
-  const notifications = usePushNotifications({
-    enabled: settings.pushNotificationsEnabled,
-    apiBase,
-  });
+function NotificationSubscribeButton() {
+  const notifications = usePushNotificationsState();
 
-  if (!notifications.supported) return null;
+  if (!notifications.supported) {
+    return notifications.error ? (
+      <div className="settings__notif-error" role="alert">
+        {notifications.error}
+      </div>
+    ) : null;
+  }
 
   return (
     <div className="settings__notif-subscribe">
@@ -208,14 +210,14 @@ export function VoiceFeaturesSection() {
       </div>
 
       <span className="form-help settings__form-help-block">
-        Voice service selection and context settings are saved in this browser
-        only. Install plugins to add ElevenLabs or Nova Sonic services.
+        Voice service choices are saved on this device. Message context choices
+        apply until you reload Station. Install plugins to add voice services.
       </span>
     </SettingsSection>
   );
 }
 
-export function NotificationsSection({ apiBase }: { apiBase: string }) {
+export function NotificationsSection() {
   const { navigate } = useNavigation();
   const { settings: featureSettings, toggle: toggleFeature } =
     useFeatureSettings();
@@ -240,9 +242,7 @@ export function NotificationsSection({ apiBase }: { apiBase: string }) {
             </div>
           </div>
         </SettingsToggle>
-        {featureSettings.pushNotificationsEnabled && (
-          <NotificationSubscribeButton apiBase={apiBase} />
-        )}
+        <NotificationSubscribeButton />
         {/* Native (FCM) delivery to the Android app. Independent of the browser
             push switch above, which a WebView cannot use. */}
         <AgentActivitySetting />

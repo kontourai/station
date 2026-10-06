@@ -1,0 +1,27 @@
+{
+  "path": "docs/learn/media/shared-task-document.png",
+
+  "sources": [
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/page-layout.css",
+
+    "src-ui/src/views/TaskWorkspaceView.css",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
+    "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+
+    "src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx",
+
+    "src-ui/src/workspace-panes/TaskRoomEditorPane.tsx"
+  ],
+
+  "reviewNotes": []
+}

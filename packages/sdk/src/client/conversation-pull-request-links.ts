@@ -2,15 +2,24 @@ import type {
   ConversationPullRequestLinksProjection,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
-import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { envelopeError } from './api-error-message';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  readJsonBody,
+} from './http';
 
 type Envelope<T> = { success?: boolean; data?: T; error?: string };
 async function read<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as Envelope<T>;
-  if (!response.ok || !body.success || body.data === undefined)
-    throw new Error(
-      apiErrorMessage(body, 'Conversation pull requests unavailable'),
+  // A refusal whose body is not JSON keeps its status; an unreadable 2xx is
+  // refused the same way, with nothing to return.
+  const body = (await readJsonBody(response)) as Envelope<T> | undefined;
+  if (!response.ok || !body?.success || body.data === undefined)
+    throw envelopeError(
+      response,
+      body,
+      'Conversation pull requests unavailable',
     );
   return body.data;
 }

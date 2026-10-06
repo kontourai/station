@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts/review-evidence';
 import { classifyNodes } from '@kontourai/veritas/engine';
 import { execGit } from '../../utils/git-exec.js';
+import { ownRepositoryGitArgs } from '../projects/git-read-repository.js';
 import {
   type GitReviewRangeInspection,
   inspectGitReviewRange,
@@ -268,8 +269,16 @@ function changesTouchPolicy(changes: readonly ReviewPathChange[]): boolean {
 }
 
 async function revision(root: string, rev: string): Promise<string> {
+  // The trusted policy must come from the Project's own repository, not
+  // from one a `.git` planted in its member-writable folder names.
+  const repository = await ownRepositoryGitArgs(root, root);
   const value = (
-    await execGit(['-C', root, 'rev-parse', '--verify', `${rev}^{commit}`])
+    await execGit([
+      ...repository.args,
+      'rev-parse',
+      '--verify',
+      `${rev}^{commit}`,
+    ])
   ).stdout.trim();
   if (!SHA.test(value)) throw new Error('Trusted policy revision is invalid.');
   return value;
@@ -280,8 +289,9 @@ async function gitShow(
   sha: string,
   path: string,
 ): Promise<string> {
+  const repository = await ownRepositoryGitArgs(root, root);
   return (
-    await execGit(['-C', root, 'show', `${sha}:${path}`], {
+    await execGit([...repository.args, 'show', `${sha}:${path}`], {
       encoding: 'utf8',
       maxBuffer: 4 * 1024 * 1024,
     })

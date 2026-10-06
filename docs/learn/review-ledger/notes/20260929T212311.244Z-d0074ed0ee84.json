@@ -1,0 +1,21 @@
+{
+  "revision": "377c93eba2281f526dfe85304aea1511f72da7a3",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the new fan-out sentence against prepareChangedSelection/supplementalOnlyDeferredPaths in run-changed-verification.mjs and the spawned-script-selection.test.ts case (mixed diff keeps icns.mjs related discovery; ci-fast escalation and an unavailable related path under the same test-full lane still drop all related paths), each fault-injected.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Re-reviewed after run-changed-verification.mjs changed: prepareChangedSelection now keeps related paths other than the deferring ones when every deferred lane comes only from supplemental fan-out deferrals (structured supplementalDeferrals, matched by lane and exact reason); any other deferral still empties them. This page's claims (discovery budget refusal, provisional/deferred never completing, receipt statuses) are unchanged.","inputs":["docs/reference/verification-receipts.md"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Re-reviewed after run-changed-verification.mjs changed: prepareChangedSelection now keeps related paths other than the deferring ones when every deferred lane comes only from supplemental fan-out deferrals (structured supplementalDeferrals, matched by lane and exact reason); any other deferral still empties them. This page's claims (discovery budget refusal, provisional/deferred never completing, receipt statuses) are unchanged.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-reviewed after docs/guides/testing.md changed: the guide only added that a fan-out deferral that is the sole reason for a deferred lane keeps the rest of the diff's related discovery. This page routes to or cites the testing guide by topic and makes no claim about which related paths execute under a deferral, so it still holds.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-reviewed after docs/guides/testing.md changed: the guide only added that a fan-out deferral that is the sole reason for a deferred lane keeps the rest of the diff's related discovery. This page routes to or cites the testing guide by topic and makes no claim about which related paths execute under a deferral, so it still holds.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-reviewed after docs/guides/testing.md changed: the guide only added that a fan-out deferral that is the sole reason for a deferred lane keeps the rest of the diff's related discovery. This page routes to or cites the testing guide by topic and makes no claim about which related paths execute under a deferral, so it still holds.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-reviewed after docs/guides/testing.md changed: the guide only added that a fan-out deferral that is the sole reason for a deferred lane keeps the rest of the diff's related discovery. This page routes to or cites the testing guide by topic and makes no claim about which related paths execute under a deferral, so it still holds.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-reviewed after docs/guides/testing.md changed: the guide only added that a fan-out deferral that is the sole reason for a deferred lane keeps the rest of the diff's related discovery. This page routes to or cites the testing guide by topic and makes no claim about which related paths execute under a deferral, so it still holds.","inputs":["tests/AGENTS.md"]}
+  ]
+}

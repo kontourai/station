@@ -1,4 +1,4 @@
-name: Publish Packages
+name: "Main: Publish packages"
 
 on:
   push:
@@ -33,13 +33,21 @@ permissions:
   contents: write
   pull-requests: write
   id-token: write
+  actions: read
 
 jobs:
+  qualification:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      source_sha: ${{ github.sha }}
+
   publish:
     # Public repository: GitHub-hosted runners are free and are required for
     # npm trusted-publishing provenance (station#683). OIDC still authenticates
     # the publish; no long-lived npm credential exists in this repo.
-    if: github.event_name != 'pull_request'
+    needs: qualification
+    if: ${{ always() && !cancelled() && (github.event_name == 'push' || (github.ref == 'refs/heads/main' && needs.qualification.result == 'success')) }}
     runs-on: ubuntu-latest
     # ci.yml's heavy jobs budget 90; a ceiling that lands inside
     # `changeset publish` produces a partial publish, so keep the headroom.

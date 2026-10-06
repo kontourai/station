@@ -23,6 +23,11 @@ export const APPLICATION_SESSION_NATIVE_CHALLENGE_PATH =
   `${APPLICATION_SESSION_NATIVE_BASE_PATH}/challenge` as const;
 export const APPLICATION_SESSION_NATIVE_EXCHANGE_PATH =
   `${APPLICATION_SESSION_NATIVE_BASE_PATH}/exchange` as const;
+export const APPLICATION_SESSION_NATIVE_REVOKE_PATH =
+  `${APPLICATION_SESSION_NATIVE_BASE_PATH}/revoke` as const;
+export interface NativeApplicationSessionRevocation {
+  readonly revoked: true;
+}
 export const APPLICATION_SESSION_NATIVE_HEADER =
   'X-Station-Native-Account-Continuation' as const;
 export const APPLICATION_SESSION_NATIVE_PROOF_HEADER =

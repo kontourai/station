@@ -1,0 +1,7 @@
+{
+  "revision": "164f4312925c9d5731275b511caa52bbadcaf97f",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"#2936: migrate-review-ledger.mjs now writes one notes file per revision the folded reviews were recorded at, instead of binding them all to HEAD; the fold section's claims are unchanged. Dogfooded folding main's ledger edits (#2929, #2935, #2866) into this branch.","inputs":["docs/guides/documentation.md"]}
+  ]
+}

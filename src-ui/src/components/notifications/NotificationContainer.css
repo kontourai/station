@@ -447,3 +447,23 @@
   border-color: var(--accent-primary);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.24);
 }
+
+.toast-card__diagnostics summary {
+  width: fit-content;
+  padding-block: var(--k-space-2);
+  color: var(--k-text-muted);
+  cursor: pointer;
+  font-size: var(--k-text-xs);
+}
+
+.toast-card__diagnostics summary:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: 2px;
+}
+
+.toast-card__diagnostics .toast-card__detail {
+  max-height: 30dvh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

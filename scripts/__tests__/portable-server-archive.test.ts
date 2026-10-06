@@ -399,6 +399,7 @@ describe('portable archive workflow paths filter', () => {
       '.nvmrc',
       'config/portable-server-node-runtime.json',
       'install.sh',
+      'install.ps1',
       // The ring table and version grammar behind .station-release.json,
       // reached through packages/ where the import walk stops.
       'config/channel-ports.json',

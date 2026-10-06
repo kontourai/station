@@ -72,6 +72,51 @@ describe('TurnProgressTracker', () => {
     expect(projectionChanges).toContain('t1');
   });
 
+  it('reported retries clear older silence while opaque notifications do not', async () => {
+    await tracker.setWindow('t1', 'agent');
+    armTurn('t1', 'turn-1');
+    vi.advanceTimersByTime(PINNED_MS);
+    expect(tracker.read('t1')?.progressSilence).toBeDefined();
+    const base = {
+      eventId: 'retry',
+      provider: 'claude',
+      threadId: 't1',
+      turnId: 'turn-1',
+      createdAt: new Date().toISOString(),
+    };
+    tracker.observe({
+      ...base,
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'unknown/retry',
+      payload: {},
+    });
+    expect(tracker.read('t1')?.progressSilence).toBeDefined();
+    tracker.observe({
+      ...base,
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'api/retry',
+      payload: { attempt: 1, delayMs: 1000 },
+    });
+    expect(tracker.read('t1')?.progressSilence).toBeUndefined();
+    vi.advanceTimersByTime(PINNED_MS);
+    expect(tracker.read('t1')?.progressSilence).toBeDefined();
+    tracker.observe({
+      ...base,
+      provider: 'codex',
+      method: 'runtime.error',
+      severity: 'error',
+      retriable: true,
+      message: 'timeout',
+      createdAt: new Date().toISOString(),
+    });
+    expect(tracker.read('t1')?.progressSilence).toBeUndefined();
+    tracker.observe(event('turn.completed', 't1', 'turn-1'));
+    vi.advanceTimersByTime(PINNED_MS);
+    expect(tracker.read('t1')).toBeUndefined();
+  });
+
   it('forgetThread clears the pinned window — the NEXT session gets the default, not a stale override', async () => {
     await tracker.setWindow('t1', 'agent');
     tracker.forgetThread('t1');

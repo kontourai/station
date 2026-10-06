@@ -1,4 +1,5 @@
 import { ACTIVITY_SURFACE_ID } from '@kontourai/station-contracts/surface-deep-link';
+import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import {
   type LiveActivityParticipant,
   type LiveActivityProjection,
@@ -9,24 +10,13 @@ import { useShowSurface } from '../../contexts/useShowSurface';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { identiconHue } from '../../utils/identicon';
 import { getInitials } from '../../utils/layout';
+import { orchestrationLifecycleLabel } from '../../utils/session-state';
+import { sessionTitle } from '../../utils/sessionDisplay';
 import { PeopleGlyph } from '../icons/Glyph';
 import './ProjectSidebarPresenceTray.css';
 
 /** Faces in the stack before the rest collapse into a "+k". */
 const MAX_AVATARS = 3;
-
-const MESSAGE_NOTE_ID = 'sidebar-presence-message-note';
-
-/**
- * Why the message action is inert, in the user's words. `docs/design/
- * project-membership.md` is explicit that shared-resource admission is
- * incomplete: a second member cannot yet be authorized to read the owner's
- * work, let alone be addressed. #488 owns that admission. Until it lands an
- * enabled button would be a claim Station cannot honour, so the reason is on
- * screen rather than in a tooltip a keyboard user cannot reach.
- */
-const MESSAGE_DISABLED_REASON =
-  'Messaging opens when project membership admission ships. Station cannot address another member yet.';
 
 interface PresenceParticipant {
   readonly key: string;
@@ -216,34 +206,75 @@ function presenceState(
 /**
  * The footer presence tray (#2066, design record D5). An avatar stack and the
  * participant count, opening onto the participants and the agent workers
- * together: participants carry a message action that admission has not
- * unlocked yet, workers carry a follow that opens the same Activity surface
- * `LiveCollaboratorsSection`'s "View session" opens. The record says "people";
- * `roster` records why this says participants instead.
+ * together: workers carry a follow that opens the Activity surface on
+ * that worker's session. The record says "people"; `roster` records why this
+ * says participants instead.
  *
- * It reads the one authority Activity reads — `useLiveActivityQuery`, the
- * `['live-activity']` cache entry — rather than a second copy of it. Two
- * surfaces deriving the same presence from two reads is how they start
- * disagreeing about who is here.
+ * Task-room participants stay separate from ordinary sessions, which use
+ * Activity's authorized inventory and canonical lifecycle classifier.
+ * A task agent also present in that inventory appears once, as a session.
  */
-export function ProjectSidebarPresenceTray() {
+export function ProjectSidebarPresenceTray({
+  onOpenActivity,
+}: {
+  onOpenActivity?: () => void;
+} = {}) {
   const { data, isPending, isError } = useLiveActivityQuery();
+  const sessionsQuery = useOrchestrationSessionsQuery({
+    refetchInterval: 10_000,
+  });
   const showSurface = useShowSurface();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const close = () => setOpen(false);
   const trayRef = useMenuFocus<HTMLDivElement>(open, close);
 
-  const { participants, workers } = roster(data?.participants);
+  const { participants, workers: roomWorkers } = roster(data?.participants);
+  const sessionsRead = sessionsQuery.isError
+    ? 'unanswered'
+    : sessionsQuery.data === undefined
+      ? 'pending'
+      : 'roster';
+  const activeSessions =
+    sessionsRead === 'roster'
+      ? (sessionsQuery.data ?? []).flatMap((session) => {
+          if (session.controlMode === 'read-only-attached') return [];
+          const state = orchestrationLifecycleLabel(session);
+          return state === 'Running' || state === 'Needs attention'
+            ? [{ session, state }]
+            : [];
+        })
+      : [];
+  const inventorySessionIds = new Set(
+    sessionsRead === 'roster'
+      ? (sessionsQuery.data ?? []).map((session) => session.threadId)
+      : [],
+  );
+  const workers = roomWorkers.filter(
+    (worker) => !worker.sessionId || !inventorySessionIds.has(worker.sessionId),
+  );
   const read = presenceRead({ data, isError, isPending });
   // The one gate for the stack, the count and the rows: only a `roster` read
   // is a statement about who is here.
   const available = read === 'roster';
-  const { name, reads } = presenceState(
+  const { name: presenceName, reads } = presenceState(
     read,
     participants.length,
     workers.length,
   );
+  const activitySummary = plural(
+    activeSessions.length,
+    'active session',
+    'active sessions',
+  );
+  const name =
+    activeSessions.length > 0
+      ? available && participants.length === 0 && workers.length === 0
+        ? activitySummary
+        : `${presenceName}; ${activitySummary}`
+      : sessionsRead === 'roster'
+        ? presenceName
+        : `${presenceName}; activity ${sessionsRead === 'pending' ? 'not read yet' : 'unavailable'}`;
   const shown = available ? participants.slice(0, MAX_AVATARS) : [];
   const overflow = available ? participants.length - shown.length : 0;
 
@@ -278,8 +309,10 @@ export function ProjectSidebarPresenceTray() {
         type="button"
         className="sidebar__presence-trigger"
         aria-label={`Who is here: ${name}`}
+        title={name}
         aria-haspopup="dialog"
         aria-expanded={open}
+        data-active={activeSessions.length > 0 || undefined}
         onKeyDown={onEscape}
         onMouseDown={(event) => {
           // A pointer press must not move focus. `useMenuFocus` dismisses the
@@ -343,6 +376,13 @@ export function ProjectSidebarPresenceTray() {
             {participants.length}
           </span>
         )}
+        {(activeSessions.length > 0 || (available && workers.length > 0)) && (
+          <span className="sidebar__presence-work-count" aria-hidden="true">
+            {activeSessions.length > 0
+              ? `${activeSessions.length} active`
+              : plural(workers.length, 'worker', 'workers')}
+          </span>
+        )}
       </button>
       {open && (
         <div
@@ -354,6 +394,41 @@ export function ProjectSidebarPresenceTray() {
           onKeyDown={onEscape}
         >
           <p className="sidebar__presence-reads">{reads}</p>
+          <p className="sidebar__presence-reads">
+            {sessionsRead === 'pending'
+              ? 'Activity has not been read yet.'
+              : sessionsRead === 'unanswered'
+                ? 'Activity is unavailable. Previously read sessions are hidden.'
+                : activeSessions.length > 0
+                  ? activitySummary
+                  : 'No sessions are running or need attention.'}
+          </p>
+          {activeSessions.length > 0 && (
+            <ul className="sidebar__presence-rows" aria-label="Active sessions">
+              {activeSessions.map(({ session, state }) => (
+                <li key={session.threadId} className="sidebar__presence-row">
+                  <span className="sidebar__presence-label">
+                    {sessionTitle(session)}
+                    <span className="sidebar__presence-work">{state}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="sidebar__presence-action"
+                    aria-label={`Follow ${sessionTitle(session)}`}
+                    onClick={() => {
+                      close();
+                      showSurface(ACTIVITY_SURFACE_ID, {
+                        session: session.threadId,
+                      });
+                      onOpenActivity?.();
+                    }}
+                  >
+                    Follow
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           {/* Gated on `available`, not on length: under an error the roster in
               hand is the last good one, and listing it would restate in rows
               exactly the stale claim the summary above refuses to make. */}
@@ -376,18 +451,21 @@ export function ProjectSidebarPresenceTray() {
                   <span className="sidebar__presence-label">
                     {participant.label}
                   </span>
-                  <button
-                    type="button"
-                    className="sidebar__presence-action"
-                    disabled
-                    aria-describedby={MESSAGE_NOTE_ID}
-                  >
-                    Message
-                  </button>
                 </li>
               ))}
             </ul>
           )}
+          <button
+            type="button"
+            className="sidebar__presence-action"
+            onClick={() => {
+              close();
+              showSurface(ACTIVITY_SURFACE_ID);
+              onOpenActivity?.();
+            }}
+          >
+            Open Activity
+          </button>
           {available && workers.length > 0 && (
             <ul
               className="sidebar__presence-rows"
@@ -411,6 +489,7 @@ export function ProjectSidebarPresenceTray() {
                         showSurface(ACTIVITY_SURFACE_ID, {
                           session: worker.sessionId,
                         });
+                        onOpenActivity?.();
                       }}
                     >
                       Follow
@@ -428,11 +507,6 @@ export function ProjectSidebarPresenceTray() {
                 </li>
               ))}
             </ul>
-          )}
-          {available && participants.length > 0 && (
-            <p id={MESSAGE_NOTE_ID} className="sidebar__presence-note">
-              {MESSAGE_DISABLED_REASON}
-            </p>
           )}
         </div>
       )}

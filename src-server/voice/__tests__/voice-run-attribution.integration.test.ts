@@ -150,7 +150,7 @@ describe('Nova correlated voice attribution', () => {
       store.voiceTurnRunReader(),
     );
     await expect(
-      runService.readRun(runId!, { mode: 'personal', userId: 'brian' } as any),
+      runService.readRun(runId!, { mode: 'personal', userId: 'casey' } as any),
     ).resolves.toMatchObject({ runId, source: 'voice', status: 'completed' });
     expect(JSON.stringify(listed)).not.toContain('completion-a');
   });

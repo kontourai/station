@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { cp, readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import {
   assertSafeContextText,
@@ -349,7 +350,15 @@ vi.mock('node:fs', async (importOriginal) => {
     // (`writeJsonDurably`), which stages through a descriptor rather than a
     // path: stub the whole open/fsync/close/rename sequence, not just the
     // rename, or the commit escapes this fixture and writes to real /tmp.
-    openSync: vi.fn(() => 3),
+    // The plugin command effect ledger (kontourai/station#1419) does not
+    // exist in this fixture home. Answer it as absent: the fabricated
+    // descriptor below would send the bounded reader's real `readSync` to
+    // whatever this worker holds at fd 3.
+    openSync: vi.fn((path: unknown) => {
+      if (String(path).endsWith('/plugin-command-effects.json'))
+        throw enoent('open', String(path));
+      return 3;
+    }),
     // `fsyncDirectorySync` fstats the descriptor `openSync` returned. That 3
     // is fabricated, so without this stub the real syscall runs against
     // whatever this worker happens to hold at fd 3 -- the test's outcome
@@ -458,14 +467,16 @@ function setup(runtime?: {
   applyConfigurationMutation: any;
   settleProviderAdapterRetirements: () => Promise<void>;
 }) {
-  return createPluginRoutes(
-    '/tmp/project',
-    logger as any,
-    eventBus as any,
-    {
-      ...runtime,
-      visibility: operatorPluginVisibility('/tmp/project'),
-    } as any,
+  return withOperatorPrincipal(
+    createPluginRoutes(
+      '/tmp/project',
+      logger as any,
+      eventBus as any,
+      {
+        ...runtime,
+        visibility: operatorPluginVisibility('/tmp/project'),
+      } as any,
+    ),
   );
 }
 
@@ -492,18 +503,20 @@ function legacyUpdateApp(
   proposals: { complete: (...args: any[]) => unknown },
   activation: 'applied' | 'pending',
 ) {
-  return createPluginRoutes(
-    '/tmp/project',
-    logger as any,
-    eventBus as any,
-    {
-      applyConfigurationMutation: vi.fn(async (operation) =>
-        operation(vi.fn(), { status: activation }),
-      ),
-      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
-      visibility: operatorPluginVisibility('/tmp/project'),
-      proposals,
-    } as any,
+  return withOperatorPrincipal(
+    createPluginRoutes(
+      '/tmp/project',
+      logger as any,
+      eventBus as any,
+      {
+        applyConfigurationMutation: vi.fn(async (operation) =>
+          operation(vi.fn(), { status: activation }),
+        ),
+        settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+        visibility: operatorPluginVisibility('/tmp/project'),
+        proposals,
+      } as any,
+    ),
   );
 }
 
@@ -1776,6 +1789,11 @@ describe('Plugin Routes', () => {
           hasBundle: true,
           hasSettings: true,
           layout: { slug: 'test-layout', source: 'layout.js' },
+          // A ready row publishes its validated command declarations (none
+          // in this manifest) and the generation a command request echoes:
+          // no managed incarnation in this fixture, so `[null, digest]`.
+          commands: [],
+          installationGeneration: '[null,"sha256:test"]',
           agents: [],
           providers: [{ type: 'test-provider', module: 'provider.js' }],
           links: null,

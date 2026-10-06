@@ -68,4 +68,26 @@ describe('StreamingMessageView working clock', () => {
     expect(screen.getByText('Here is the answer so far.')).toBeTruthy();
     expect(screen.queryByRole('status')).toBeNull();
   });
+
+  test('the clock is the turn\'s, so it says "Working", not the current phase', () => {
+    render(
+      <StreamingMessageView
+        {...baseProps}
+        contentParts={[{ type: 'reasoning', content: 'Considering the gate.' }]}
+        activityHint={{ kind: 'thinking' }}
+        conversationActivity={{
+          conversationId: 'chat-1',
+          asOfSequence: 1,
+          openTurn: {
+            threadId: 'chat-1',
+            turnId: 'turn-1',
+            startedAt: new Date(Date.now() - 419_000).toISOString(),
+          },
+        }}
+      />,
+    );
+    const clock = screen.getByRole('status');
+    expect(clock.textContent).toMatch(/Working for 6:5\d/);
+    expect(clock.textContent).not.toContain('Thinking for');
+  });
 });

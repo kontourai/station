@@ -1,5 +1,6 @@
 import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
 import { describe, expect, it } from 'vitest';
+import { composeWebPushPayload } from '../../notifications/push-payload-composer.js';
 import {
   DEVICE_PAIRING_NOTIFICATION_CATEGORY,
   DevicePairingNotificationProvider,
@@ -46,10 +47,25 @@ describe('device pairing notifications', () => {
     expect(JSON.stringify(notification)).not.toMatch(/approve|grant|confirm/i);
   });
 
-  it('carries enough to find the request without carrying the decision', async () => {
-    const [notification] = await providerFor([request()]).poll();
-    expect(notification.metadata?.requestId).toBe('request-1');
-    expect(notification.metadata?.surface).toBe('connections:pairing');
+  it('opens the exact pending request from a composed push without carrying a decision', async () => {
+    const [pending] = await providerFor([request()]).poll();
+    const now = new Date().toISOString();
+    const composed = composeWebPushPayload({
+      ...pending,
+      id: 'notification-1',
+      source: 'device-pairing',
+      priority: 'high',
+      status: 'delivered',
+      scheduledAt: null,
+      deliveredAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    expect(composed?.payload.url).toBe('/notifications?pairing=request-1');
+    expect(pending.metadata?.navigateTo).toEqual({
+      path: '/notifications?pairing=request-1',
+    });
+    expect(pending.actions ?? []).toEqual([]);
   });
 
   it('ignores a request that is no longer pending', async () => {

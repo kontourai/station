@@ -1,0 +1,39 @@
+{
+  "revision": "91bc09fc0f9f5070edf80ec1090c546667ef63d0",
+
+  "notes": [
+    {"path":"README.md","note":"#2966 delta: CLI reference gained credential-profile commands and runtime app-home resolution moved to a resolver; README makes no connections-profile or app-home claims. No change.","inputs":["README.md"]},
+
+    {"path":"README.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["README.md"]},
+
+    {"path":"README.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["README.md"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change.","inputs":["deploy/gcp-dev/README.md"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["deploy/gcp-dev/README.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change.","inputs":["deploy/public-ingress/README.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["deploy/public-ingress/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#2966 delta: checked for CLI connections, credential-profile and runtime app-home claims; none (proxy mentions are ingress). No change.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"#2966 delta: cli.md/surfaces.ts gained connections profile-env; triage design has no connections-command claims. No change.","inputs":["docs/design/cli-triage.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["docs/design/cli-triage.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["docs/design/cli-triage.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2966 delta only: station-runtime replaced the inline Claude/Codex getAppHomeEnv closures with createCredentialProfileAppHomeEnvResolver (same selection order; adds the profile env overlay; selected-profile failures now fail closed in the adapters). Searched this document for app-home, credential-profile, CLAUDE_CONFIG_DIR/CODEX_HOME, connection env and recovery-selection claims; it makes none, so no prose change.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["docs/reference/env-vars.md"]}
+  ]
+}

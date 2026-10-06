@@ -1,0 +1,7 @@
+{
+  "revision": "68231f2caead4680fb4dfa036d25b1a4a2a836bb",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#3164 merge with origin/main (fac321f9fd): packages/contracts/src/orchestration.ts differs from main only by the authorizedTranscript handoff label. Re-checked this document: it states no seed size, transcript-carry wording or disclosure label text, so its claims remain accurate.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md"]}
+  ]
+}

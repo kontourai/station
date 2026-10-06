@@ -148,6 +148,7 @@ export async function runDevCommand(
   let features: string | undefined;
   let dryRun = false;
   let build = false;
+  let watch = false;
   let cleanHome = false;
   let force = false;
 
@@ -172,6 +173,8 @@ export async function runDevCommand(
       dryRun = true;
     } else if (arg === '--build') {
       build = true;
+    } else if (arg === '--watch') {
+      watch = true;
     } else if (arg === '--clean') {
       cleanHome = true;
     } else if (arg === '--force') {
@@ -205,7 +208,7 @@ export async function runDevCommand(
     stationRoot: resolveStationRoot(env),
   });
 
-  const bindHost = host ?? '0.0.0.0';
+  const bindHost = host ?? (watch ? '127.0.0.1' : '0.0.0.0');
 
   log(
     [
@@ -243,6 +246,7 @@ export async function runDevCommand(
     baseDir: home,
     homeSource: '--base',
     build,
+    ...(watch ? { watch } : {}),
     force,
     ...(features ? { features } : {}),
     // start() defaults an unset host to 0.0.0.0; pass it through only when the

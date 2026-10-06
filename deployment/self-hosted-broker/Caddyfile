@@ -1,0 +1,12 @@
+{
+	admin off
+}
+
+{$BROKER_HOST} {
+	tls /run/tls/fullchain.pem /run/tls/privkey.pem
+	log {
+		output stdout
+		format json
+	}
+	reverse_proxy 127.0.0.1:18765
+}

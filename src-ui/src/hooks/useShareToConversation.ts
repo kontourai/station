@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { showChatPageOrDock } from '../app-shell/chat-placement';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -53,7 +54,7 @@ export function useShareToConversation(apiBase: string) {
       }
 
       navigation.setActiveChat(sessionId);
-      navigation.setDockState(true);
+      showChatPageOrDock(() => navigation.setDockState(true));
 
       return sessionId;
     },

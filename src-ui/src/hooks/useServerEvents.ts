@@ -165,6 +165,10 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   [SERVER_EVENTS.CONFIG_CHANGED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['config'], refetchType: 'none' });
     qc.invalidateQueries({ queryKey: ['agents'], refetchType: 'none' });
+    qc.invalidateQueries({ queryKey: ['trust-bundles'] });
+    qc.invalidateQueries({ queryKey: ['trust-report'] });
+    qc.invalidateQueries({ queryKey: ['task-turn-references'] });
+    qc.invalidateQueries({ queryKey: ['answer-support'] });
   },
   [SERVER_EVENTS.RUNTIME_HEALTH_CHANGED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['connections'] });

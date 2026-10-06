@@ -1,0 +1,23 @@
+{
+  "path": "docs/design/work-plane-composition.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "July shaped composition plan and owner decisions; old inventory/package/publish/hang/slice claims explicitly historical.",
+
+  "limits": "Current Station Board placement and dispatch owners checked only. Sibling releases, published artifacts, cross-runtime round trips, full-suite hang history, and epic completion not verified.",
+
+  "sources": [
+    "src-server/services/projects/task-dispatcher.ts",
+
+    "src-ui/src/views/ConsoleBoardView.tsx"
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Entire original body byte-identical after removing reading banner."
+  ]
+}

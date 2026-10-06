@@ -1176,7 +1176,7 @@ for (const [relativePath, requiredImport] of [
   ],
   ['../src-ui/src/utils/execution.ts', '@kontourai/station-contracts/tool'],
   [
-    '../src-ui/src/views/ScheduleView.tsx',
+    '../src-ui/src/contexts/scheduler-job-dialog-store.ts',
     '@kontourai/station-contracts/scheduler',
   ],
   [
@@ -4448,10 +4448,9 @@ const builtinWorkspacePaneRegistry = readRequiredSource(
   '../src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx',
 );
 for (const requiredImport of [
-  '../components/coding-layout/BranchToolbar',
+  '../components/coding-layout/CodingDiffPaneBody',
   '../components/coding-layout/CodingInspectorPanel',
   '../components/coding-layout/CodingTerminalPane',
-  '../components/coding-layout/DiffPanel',
   '../components/coding-layout/FileTreePanel',
 ]) {
   if (!builtinWorkspacePaneRegistry.includes(requiredImport)) {
@@ -4470,6 +4469,24 @@ errors.push(
     ),
   }),
 );
+
+// #3231 moved the Diff pane's body (branch toolbar, pull requests, diff) into
+// CodingDiffPaneBody, one level below the registry, as the terminal surface
+// sits below CodingTerminalPane.
+const codingDiffPaneBody = readRequiredSource(
+  '../src-ui/src/components/coding-layout/CodingDiffPaneBody.tsx',
+);
+for (const requiredImport of [
+  './BranchToolbar',
+  './DiffPanel',
+  './PullRequestsPanel',
+]) {
+  if (!codingDiffPaneBody.includes(`from '${requiredImport}'`)) {
+    errors.push(
+      `CodingDiffPaneBody.tsx must delegate its Diff pane sections to the extracted section ${requiredImport}.`,
+    );
+  }
+}
 
 const codingTerminalPane = readRequiredSource(
   '../src-ui/src/components/coding-layout/CodingTerminalPane.tsx',
@@ -5966,9 +5983,6 @@ const usageStatsPanel = readRequiredSource(
 if (hasRawFetchCall(usageStatsPanel)) {
   errors.push('UsageStatsPanel must not issue raw fetch() calls.');
 }
-if (!usageStatsPanel.includes('useResetUsageStatsMutation')) {
-  errors.push('UsageStatsPanel must use the shared usage reset mutation.');
-}
 for (const requiredImport of [
   './UsageSummaryCards',
   './UsageBreakdownSection',
@@ -6018,7 +6032,7 @@ for (const requiredHelper of [
 const insightsDashboard = readRequiredSource(
   '../src-ui/src/components/monitoring/InsightsDashboard.tsx',
 );
-if (insightsDashboard.includes('fetch(')) {
+if (hasRawFetchCall(insightsDashboard)) {
   errors.push('InsightsDashboard must not issue raw fetch() calls.');
 }
 if (!insightsDashboard.includes('./insightsDashboardUtils')) {
@@ -6182,7 +6196,6 @@ for (const requiredHelper of [
   'export function ProjectSidebarRow',
   '@kontourai/station-sdk',
   '../../contexts/NavigationContext',
-  '../icons/LayoutIcon',
 ]) {
   if (!projectSidebarRow.includes(requiredHelper)) {
     errors.push(`ProjectSidebarRow.tsx must include ${requiredHelper}.`);

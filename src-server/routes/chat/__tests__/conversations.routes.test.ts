@@ -1698,6 +1698,67 @@ describe('Conversation Routes', () => {
     expect(eventStore.appendConversationForkIfAbsent).toHaveBeenCalledOnce();
   });
 
+  test('fork of a conversation with an oversized stored title succeeds with a bounded seed heading (#3164)', async () => {
+    const source = createMockAdapter();
+    // Rename accepts a title of any length; a stored 8k-emoji title must not
+    // make the seed builder refuse its heading.
+    source.getConversation.mockResolvedValue({
+      id: 'c1',
+      userId: 'agent:default',
+      title: '\u{1F642}'.repeat(8_000),
+      metadata: {},
+    });
+    source.getMessages.mockResolvedValue([
+      { id: 'u1', role: 'user', content: 'first' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'first answer',
+        metadata: { turnId: 'turn-1', answerEligible: true },
+      },
+    ]);
+    const target = createMockAdapter();
+    target.getConversation.mockResolvedValue(null);
+    const eventStore = {
+      appendConversationFork: vi.fn(),
+      appendConversationForkIfAbsent: vi.fn(() => true),
+      readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
+    };
+    const app = createConversationRoutes(
+      new Map([
+        ['default', source],
+        ['codex', target],
+      ]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'fork-user',
+      undefined,
+      undefined,
+      eventStore,
+      () => true,
+    );
+
+    const response = await app.request('/station/conversations/c1/fork', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetAgent: 'codex' }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(200);
+    const heading = (body.data.seed as string).split('\n')[0]!;
+    expect(heading).toContain('\u2026, on station)');
+    expect(Buffer.byteLength(heading, 'utf8')).toBeLessThan(1_000);
+    expect(body.data.seed).toContain('Assistant: first answer');
+    expect(target.addMessages).toHaveBeenCalledOnce();
+  });
+
   test('DELETE /:slug/conversations/:id deletes its owner-scoped derived summary', async () => {
     const adapter = createMockAdapter();
     const adapters = new Map([['default', adapter]]);
@@ -3048,6 +3109,45 @@ describe('Global Conversation Routes', () => {
     );
   });
 
+  // #176: `rename_session` stamps `titleSource: 'agent'`; an inventory that
+  // dropped it would show the title as having no provenance at all.
+  test.each(['user', 'generated', 'provider', 'prompt', 'agent'])(
+    'GET / carries the %s titleSource of a store conversation',
+    async (titleSource) => {
+      const adapter = createMockAdapter();
+      adapter.queryConversations.mockResolvedValue([
+        {
+          id: 'store-1',
+          userId: 'agent:default',
+          resourceId: 'default',
+          title: 'Store Chat',
+          createdAt: '2026-07-20T00:00:00Z',
+          updatedAt: '2026-07-20T00:01:00Z',
+          metadata: { titleSource },
+        },
+      ]);
+      const app = createGlobalConversationRoutes(
+        new Map([['default', adapter]]) as any,
+        { getConversation: vi.fn().mockReturnValue(null) } as any,
+        mockLogger,
+        undefined,
+        {
+          readSessionConversation: vi.fn(),
+          listConversationHistoryPage: vi
+            .fn()
+            .mockResolvedValue({ hasMore: false, items: [] }),
+        },
+        () => 'bound-user',
+      );
+
+      const body = await json(await app.request('/'));
+
+      expect(body.data.items).toEqual([
+        expect.objectContaining({ id: 'store-1', titleSource }),
+      ]);
+    },
+  );
+
   // S2 of archive#1302: the global conversation-inventory endpoint. Folds the
   // orchestration session leg (across every agent) and every registered
   // adapter's file-store conversations, tags each item's `source`, and
@@ -4304,4 +4404,188 @@ describe('Conversation export route (station#1999 S2)', () => {
         expect(target.createConversation).not.toHaveBeenCalled();
     },
   );
+});
+
+// A `[CHAT_ERROR]` failed-turn marker persisted before its text was made
+// outward-safe, in the exact shape the old `chat-lifecycle.ts` writer left in
+// FileMemory (captured from a real session file): the provider's error body,
+// secret included. Stored data is not rewritten, so every read that serves
+// or quotes a transcript must scrub it.
+describe('pre-fix failed-turn marker is never served verbatim', () => {
+  const SECRET = 'sk-live-SECRET-3e2d1c';
+  const preFixMarker = {
+    id: '0ce54880-6903-4b84-b5a8-46f23654145e',
+    role: 'user' as const,
+    parts: [
+      {
+        type: 'text',
+        text: `[SYSTEM_EVENT] [CHAT_ERROR] upstream exploded ${SECRET} leaked detail`,
+      },
+    ],
+    metadata: { timestamp: 1790688973106 },
+  };
+  const safeMarker = {
+    id: 'safe-marker',
+    role: 'user' as const,
+    parts: [
+      {
+        type: 'text',
+        text: '[SYSTEM_EVENT] [CHAT_ERROR] The model provider returned an error (HTTP 500).',
+      },
+    ],
+    metadata: { timestamp: 1790688973107 },
+  };
+  const transcript = [
+    {
+      id: 'u1',
+      role: 'user' as const,
+      parts: [{ type: 'text', text: 'please answer' }],
+      metadata: { timestamp: 1790688973100 },
+    },
+    preFixMarker,
+    safeMarker,
+  ];
+
+  function markerAdapter() {
+    const adapter = createMockAdapter();
+    adapter.getConversation.mockResolvedValue({
+      id: 'c1',
+      userId: 'agent:default',
+      title: 'Failed chat',
+    });
+    adapter.getMessages.mockResolvedValue(transcript);
+    return adapter;
+  }
+
+  test('/messages serves the generic in place of the provider text and keeps a safe marker', async () => {
+    const app = createConversationRoutes(
+      new Map([['default', markerAdapter()]]) as any,
+      mockLogger,
+    );
+    const body = await json(
+      await app.request('/station/conversations/c1/messages'),
+    );
+
+    expect(JSON.stringify(body)).not.toContain(SECRET);
+    expect(JSON.stringify(body)).not.toContain('upstream exploded');
+    const texts = body.data.map(
+      (message: { parts: Array<{ text?: string }> }) => message.parts[0]?.text,
+    );
+    expect(texts).toEqual([
+      'please answer',
+      '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
+      '[SYSTEM_EVENT] [CHAT_ERROR] The model provider returned an error (HTTP 500).',
+    ]);
+  });
+
+  test('/export never contains the provider text', async () => {
+    const app = createConversationRoutes(
+      new Map([['default', markerAdapter()]]) as any,
+      mockLogger,
+    );
+    const res = await app.request('/station/conversations/c1/export');
+    const text = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(text).toContain('The response stream failed.');
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toContain('upstream exploded');
+  });
+
+  test('regenerate-title never quotes the provider text to the title model', async () => {
+    const { generateConversationTitle } = await import(
+      '../chat-title-generation.js'
+    );
+    (generateConversationTitle as any).mockClear();
+    const app = createConversationRoutes(
+      new Map([['default', markerAdapter()]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'agent:default',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {} as any,
+    );
+    const response = await app.request(
+      '/station/conversations/c1/regenerate-title',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(generateConversationTitle).toHaveBeenCalledTimes(1);
+    const prompt = JSON.stringify(
+      (generateConversationTitle as any).mock.calls[0][0].firstUserText,
+    );
+    expect(prompt).toContain('please answer');
+    expect(prompt).not.toContain(SECRET);
+    // Model-bound: the marker is excluded, not merely scrubbed.
+    expect(prompt).not.toContain('CHAT_ERROR');
+  });
+
+  test('summary generation never sends the marker to the summary model, while /messages keeps it scrubbed', async () => {
+    (generateSessionSummary as any).mockClear();
+    const store = {
+      read: vi.fn(async () => null),
+      write: vi.fn(async () => {}),
+      dismiss: vi.fn(async () => {}),
+    };
+    const app = createConversationRoutes(
+      new Map([['default', markerAdapter()]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'agent:default',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {} as any,
+      store as any,
+    );
+
+    const response = await app.request('/station/conversations/c1/summary', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(200);
+    expect(generateSessionSummary).toHaveBeenCalledTimes(1);
+    // Both halves of the actual model input: the messages and the rendered
+    // transcript the real summary source produced (used ahead of messages).
+    const call = (generateSessionSummary as any).mock.calls[0][0];
+    const input = JSON.stringify(call.messages);
+    expect(input).toContain('please answer');
+    expect(input).not.toContain('CHAT_ERROR');
+    expect(input).not.toContain(SECRET);
+    expect(typeof call.transcriptOverride).toBe('string');
+    expect(call.transcriptOverride).toContain('please answer');
+    expect(call.transcriptOverride).not.toContain('CHAT_ERROR');
+    expect(call.transcriptOverride).not.toContain(SECRET);
+    const served = JSON.stringify(
+      await json(await app.request('/station/conversations/c1/messages')),
+    );
+    expect(served).toContain(
+      '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
+    );
+  });
 });

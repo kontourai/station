@@ -1,3 +1,4 @@
+import type { ProjectTaskRoomOutputFeedback } from '@kontourai/station-contracts/project-task-room';
 import {
   type ProjectTaskRoomBrowserLiveSnapshot,
   parseProjectTaskRoomBrowserLiveSnapshot,
@@ -13,6 +14,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { _getApiBase } from '../api';
 import {
   appendProjectTaskRoomHumanMessage,
+  appendProjectTaskRoomOutputFeedback,
   commandProjectTaskRoomLive,
   discoverProjectTaskRoom,
   fetchProjectTaskRoomDocument,
@@ -26,12 +28,22 @@ import {
   subscribeProjectTaskRoomEvents,
 } from '../client/project-task-rooms';
 import { projectTaskRoomQueries } from '../queryFactories';
+import type { TaskRoomWorkRequestScope } from './taskRoomWork';
+
+export { TaskRoomWorkNotSentError } from '../client/task-room-work';
+export {
+  type TaskRoomWorkRequestScope,
+  useSubmitTaskRoomAgentRequestMutation,
+  useTaskRoomAgentOptionsQuery,
+  useTaskRoomAgentRequestsQuery,
+} from './taskRoomWork';
 
 let taskRoomConnectionSequence = 0;
 
 export type { ProjectTaskRoomBrowserLiveSnapshot } from '@kontourai/station-contracts/project-task-room-browser';
 export {
   appendProjectTaskRoomHumanMessage,
+  appendProjectTaskRoomOutputFeedback,
   commandProjectTaskRoomLive,
   discoverProjectTaskRoom,
   fetchProjectTaskRoomDocument,
@@ -130,11 +142,38 @@ export function adoptCommittedProjectTaskRoomDocument(
   return adoption;
 }
 
-export function useProjectTaskRoomDiscoveryQuery(taskId: string) {
+export function useProjectTaskRoomDiscoveryQuery(
+  taskId: string,
+  config?: {
+    requestScope: TaskRoomWorkRequestScope | undefined;
+    taskCreatedAt: string;
+  },
+) {
   return useQuery({
-    queryKey: projectTaskRoomQueries.discovery(taskId).queryKey,
-    enabled: taskId.length > 0,
-    queryFn: async () => discoverProjectTaskRoom(await _getApiBase(), taskId),
+    queryKey: config
+      ? [
+          ...projectTaskRoomQueries.discovery(taskId).queryKey,
+          config.requestScope?.apiBase,
+          config.requestScope?.authorityKey,
+          config.taskCreatedAt,
+        ]
+      : projectTaskRoomQueries.discovery(taskId).queryKey,
+    enabled:
+      taskId.length > 0 && (!config || !!config.requestScope?.isCurrent()),
+    queryFn: async () => {
+      if (config && !config.requestScope?.isCurrent())
+        throw new ProjectTaskRoomProtocolError('Task room connection changed.');
+      const value = await discoverProjectTaskRoom(
+        config?.requestScope?.apiBase ?? (await _getApiBase()),
+        taskId,
+        config?.requestScope
+          ? { requestScope: config.requestScope }
+          : undefined,
+      );
+      if (config && !config.requestScope?.isCurrent())
+        throw new ProjectTaskRoomProtocolError('Task room connection changed.');
+      return value;
+    },
     staleTime: 10_000,
   });
 }
@@ -167,24 +206,89 @@ export function useProjectTaskRoomDocumentQuery(taskId: string) {
     staleTime: 0,
   });
 }
-export function useAppendProjectTaskRoomHumanMessageMutation(taskId: string) {
+export function useAppendProjectTaskRoomHumanMessageMutation(
+  taskId: string,
+  config?: {
+    requestScope: TaskRoomWorkRequestScope | undefined;
+    taskCreatedAt: string;
+  },
+) {
   const client = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: async (input: {
       proposalId: string;
       text: string;
       occurredAt?: string;
-    }) =>
-      appendProjectTaskRoomHumanMessage(await _getApiBase(), {
-        taskId,
-        ...input,
-      }),
+    }) => {
+      const scope = config?.requestScope;
+      if (config && (!scope?.isCurrent() || !config.taskCreatedAt))
+        throw new ProjectTaskRoomProtocolError(
+          'Task message connection or identity is unavailable.',
+        );
+      const apiBase = scope ? scope.apiBase : await _getApiBase();
+      const result = await appendProjectTaskRoomHumanMessage(
+        apiBase,
+        {
+          taskId,
+          ...input,
+          ...(config ? { expectedTaskCreatedAt: config.taskCreatedAt } : {}),
+        },
+        scope ? { requestScope: scope } : undefined,
+      );
+      if (scope && !scope.isCurrent())
+        throw new ProjectTaskRoomProtocolError(
+          'Task message connection changed after sending. Check history before retrying.',
+        );
+      return result;
+    },
     onSuccess: () =>
       client.invalidateQueries({
         queryKey: projectTaskRoomQueries.history(taskId).queryKey,
       }),
   });
 }
+
+export function useAppendProjectTaskRoomOutputFeedbackMutation(
+  taskId: string,
+  taskCreatedAt: string,
+  scope: TaskRoomWorkRequestScope | undefined,
+) {
+  const client = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: async (input: {
+      proposalId: string;
+      occurredAt: string;
+      feedback: ProjectTaskRoomOutputFeedback;
+    }) => {
+      if (
+        !scope?.isCurrent() ||
+        input.feedback.target.taskCreatedAt !== taskCreatedAt
+      )
+        throw new ProjectTaskRoomProtocolError(
+          'Output feedback connection or Task identity is unavailable.',
+        );
+      const result = await appendProjectTaskRoomOutputFeedback(
+        scope.apiBase,
+        { taskId, ...input },
+        { requestScope: scope },
+      );
+      if (!scope.isCurrent())
+        throw new ProjectTaskRoomProtocolError(
+          'Connection changed after sending. Check room history before retrying.',
+        );
+      return result;
+    },
+    onSuccess: () => {
+      if (scope?.isCurrent())
+        return client.invalidateQueries({
+          queryKey: projectTaskRoomQueries.history(taskId).queryKey,
+        });
+    },
+  });
+}
+
 export function usePlanProjectTaskRoomEditMutation(taskId: string) {
   return useMutation({
     mutationFn: async (input: {

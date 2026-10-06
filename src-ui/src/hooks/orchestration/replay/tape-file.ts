@@ -19,6 +19,8 @@ const protocolKeys = new Set([
   'createdAt',
   'recordedAt',
   'mediaType',
+  // The engine's ACP tool kind: a closed vocabulary, not content.
+  'toolKind',
 ]);
 const identityKeys = new Set([
   'id',

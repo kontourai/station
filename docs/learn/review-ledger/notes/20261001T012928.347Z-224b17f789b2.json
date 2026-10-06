@@ -1,0 +1,7 @@
+{
+  "revision": "ce1dff921cfc4c580e38ae66f5d27f32eda7f0ce",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Re-reviewed the loopback-default example after the public deployment choices became explicit; refreshed all bundle source hashes. Compose config, hygiene, and Markdown links pass locally. No remote/public deployment or physical iOS acceptance was run.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

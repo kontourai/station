@@ -1,0 +1,7 @@
+{
+  "revision": "26b51492632d81e2d767e2f4729d214b514403ac",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed built-in integration update/probe delta through ConfigLoader, MCPService and reconnect route. Compare-and-update now sees the same runtime-owned built-in launch definition as reads; projection still strips command/args/env before persistence. Existing API distinctions between saved definition, probe and Agent availability remain accurate. 121 focused tests passed; baseline and restored mutation prove probe regression. Live reconnect proof pending.","inputs":["docs/reference/api.md"]}
+  ]
+}

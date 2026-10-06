@@ -122,9 +122,10 @@ test.describe('Agents pane child work (#2459)', () => {
   test('per chat keeps Claude’s Stop; All shows a CLI delegate and a chatless subagent live, with provenance', async ({
     page,
   }) => {
-    await page.goto(
-      `/projects/dev/layouts/code?chat=${encodeURIComponent(CONVERSATION_ID)}`,
-    );
+    // Home, not the Coding layout: this journey hides the Chat DOCK to prove
+    // the pane alone keeps the read model fresh, and on a wide screen the
+    // Coding layout's Chat is its centre, not a dock (#928 coding stack).
+    await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
     await dismissSetupLauncher(page);
     await openChatRegion(page);
     await waitForMockOrchestrationSse(page);

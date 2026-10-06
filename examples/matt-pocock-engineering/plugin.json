@@ -1,0 +1,42 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "matt-pocock-engineering",
+  "version": "1.0.0",
+  "description": "Station-curated visual introductions to Matt Pocock engineering Skills, pinned to an attributed MIT source revision.",
+  "author": {
+    "name": "Station"
+  },
+  "license": "MIT",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "experiences": [
+        {
+          "version": "1.0",
+          "id": "grill-me",
+          "source": "./io.kontourai.station/experiences/grill-me.json"
+        },
+        {
+          "version": "1.0",
+          "id": "grill-with-docs",
+          "source": "./io.kontourai.station/experiences/grill-with-docs.json"
+        },
+        {
+          "version": "1.0",
+          "id": "to-spec",
+          "source": "./io.kontourai.station/experiences/to-spec.json"
+        },
+        {
+          "version": "1.0",
+          "id": "to-tickets",
+          "source": "./io.kontourai.station/experiences/to-tickets.json"
+        },
+        {
+          "version": "1.0",
+          "id": "implement",
+          "source": "./io.kontourai.station/experiences/implement.json"
+        }
+      ]
+    }
+  }
+}

@@ -474,7 +474,7 @@ function harness(
 
 function pair(
   service: DevicePairingService,
-  name = 'Brian phone',
+  name = 'Casey phone',
   clientInstanceId?: string,
 ) {
   const offer = service.createOffer({
@@ -1459,7 +1459,7 @@ describe('DevicePairingService', () => {
         source: 'same-origin',
         requester: {
           provider: 'tailscale-serve',
-          login: 'brian@example.test',
+          login: 'casey@example.test',
         },
       } as never),
     ).toThrowError(new DevicePairingError('invalid_request'));
@@ -1471,12 +1471,12 @@ describe('DevicePairingService', () => {
         source: 'tailnet',
         requester: {
           provider: 'tailscale-serve',
-          login: 'brian@example.test',
+          login: 'casey@example.test',
         },
       }),
     ).toMatchObject({
       source: 'tailnet',
-      requester: { login: 'brian@example.test' },
+      requester: { login: 'casey@example.test' },
     });
   });
 
@@ -1487,7 +1487,7 @@ describe('DevicePairingService', () => {
     expect(result.environmentId).toBe(ENVIRONMENT_ID);
     expect(service.verifyCredential(result.credential)).toBe(true);
     expect(service.listDevices()).toEqual([
-      expect.objectContaining({ name: 'Brian phone', revokedAt: null }),
+      expect.objectContaining({ name: 'Casey phone', revokedAt: null }),
     ]);
     // A replayed exchange is definitive — the offer was consumed, and no
     // amount of retrying revives it (#2228: the joiner's completion loop
@@ -1606,7 +1606,7 @@ describe('DevicePairingService', () => {
       requesterPosition: 'off-box',
       offerId: offer.offerId,
       proof: offer.challenge,
-      deviceName: 'Brian phone',
+      deviceName: 'Casey phone',
       clientInstanceId: '11111111-1111-4111-8111-111111111111',
     });
     service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
@@ -2153,18 +2153,18 @@ describe('DevicePairingService', () => {
 
     test('identifies a paired device by credential, sharing the timing-safe lookup with verifyCredential', () => {
       const { service } = harness();
-      const paired = pair(service, 'Brian phone').result;
+      const paired = pair(service, 'Casey phone').result;
 
       expect(service.identifyDevice(paired.credential)).toMatchObject({
         id: paired.device.id,
-        name: 'Brian phone',
+        name: 'Casey phone',
       });
       expect(service.identifyDevice('unknown-credential')).toBeNull();
     });
 
     test('never surfaces a push subscription through publicDevice/identifyDevice/listDevices', () => {
       const { service } = harness();
-      const paired = pair(service, 'Brian phone').result;
+      const paired = pair(service, 'Casey phone').result;
       service.setPushSubscription(paired.device.id, subscription());
 
       for (const device of [
@@ -2177,7 +2177,7 @@ describe('DevicePairingService', () => {
 
     test('subscribes, lists for fan-out, and clears idempotently', () => {
       const { service } = harness();
-      const paired = pair(service, 'Brian phone').result;
+      const paired = pair(service, 'Casey phone').result;
 
       expect(service.listPushSubscriptions()).toEqual([]);
 
@@ -2204,7 +2204,7 @@ describe('DevicePairingService', () => {
 
     test('revoking a device explicitly nulls its push subscription and excludes it from fan-out', () => {
       const { homeDir, service } = harness();
-      const paired = pair(service, 'Brian phone').result;
+      const paired = pair(service, 'Casey phone').result;
       service.setPushSubscription(paired.device.id, subscription());
       expect(service.listPushSubscriptions()).toHaveLength(1);
 
@@ -2228,7 +2228,7 @@ describe('DevicePairingService', () => {
 
     test('rejects an invalid subscription shape from a corrupt registry load', () => {
       const { service, homeDir } = harness();
-      pair(service, 'Brian phone');
+      pair(service, 'Casey phone');
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
       raw.devices[0].pushSubscription = { endpoint: 'not-https', keys: {} };
@@ -2247,7 +2247,7 @@ describe('DevicePairingService', () => {
 
     test('rejects unknown registry and device-record fields instead of surfacing hand-edited state', () => {
       const { service, homeDir } = harness();
-      pair(service, 'Brian phone');
+      pair(service, 'Casey phone');
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
       raw.devices[0].untrustedAttribution = 'invented';
@@ -2279,7 +2279,7 @@ describe('DevicePairingService', () => {
 
     test('treats a missing pushSubscription field on an older registry record as null (additive)', () => {
       const { service, homeDir } = harness();
-      pair(service, 'Brian phone');
+      pair(service, 'Casey phone');
       const registryPath = join(homeDir, 'security', 'paired-devices.json');
       const raw = JSON.parse(readFileSync(registryPath, 'utf8'));
       delete raw.devices[0].pushSubscription;
@@ -2639,8 +2639,8 @@ describe('DevicePairingService', () => {
         source: 'tailnet',
         requester: {
           provider: 'tailscale-serve',
-          login: 'brian@example.test',
-          displayName: 'Brian',
+          login: 'casey@example.test',
+          displayName: 'Casey',
         },
       });
       service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
@@ -2653,8 +2653,8 @@ describe('DevicePairingService', () => {
       expect(result.device.source).toBe('tailnet');
       expect(result.device.requester).toEqual({
         provider: 'tailscale-serve',
-        login: 'brian@example.test',
-        displayName: 'Brian',
+        login: 'casey@example.test',
+        displayName: 'Casey',
       });
       // Listed and revocable the same way as any other device — the new
       // fields ride the same registry, not a side channel.
@@ -2664,8 +2664,8 @@ describe('DevicePairingService', () => {
           source: 'tailnet',
           requester: {
             provider: 'tailscale-serve',
-            login: 'brian@example.test',
-            displayName: 'Brian',
+            login: 'casey@example.test',
+            displayName: 'Casey',
           },
         }),
       ]);
@@ -2676,8 +2676,8 @@ describe('DevicePairingService', () => {
       expect(revoked.source).toBe('tailnet');
       expect(revoked.requester).toEqual({
         provider: 'tailscale-serve',
-        login: 'brian@example.test',
-        displayName: 'Brian',
+        login: 'casey@example.test',
+        displayName: 'Casey',
       });
     });
 
@@ -2841,7 +2841,7 @@ describe('confirmRequest approval guard (station#1490)', () => {
     // machine, presenting nothing. Note the grant is the unscoped default —
     // this is also the regression guard for refusing that journey on
     // provenance or scope grounds.
-    const access = accessRequest(service, 'off-box', 'Brian phone');
+    const access = accessRequest(service, 'off-box', 'Casey phone');
 
     expect(
       service.confirmRequest(access.requestId, FLOOR_APPROVAL).status,
@@ -2864,7 +2864,7 @@ describe('confirmRequest approval guard (station#1490)', () => {
     const request = service.requestPairing({
       offerId: offer.offerId,
       proof: offer.challenge,
-      deviceName: 'Brian phone',
+      deviceName: 'Casey phone',
       source: 'pairing-code',
       requesterPosition: 'off-box',
     });

@@ -282,6 +282,8 @@ export interface DeviceSettings {
    * URL param and was never persisted.
    */
   chatFontSize: number | null;
+  /** Return behavior for every keyboard on this device; auto follows the pointer type. */
+  chatReturnBehavior: 'auto' | 'send' | 'newline';
   /**
    * Remembered dock-slot preference. Device placement derives whether this
    * preference is available; a narrow or coarse device never applies an
@@ -349,7 +351,60 @@ export interface DeviceSettings {
    * Never had a prior key: no arrangement record existed before it.
    */
   regionArrangement: RegionArrangementRecord;
+  /**
+   * #3051: the Coding layout's panels, per session. Which tool is open
+   * beside Chat and how wide, whether the Terminal's lower panel is open and
+   * how tall — remembered for each conversation and restored on return, so
+   * a review in one session does not reshape another. Bounded to
+   * `CODING_PANELS_SESSION_BOUND` sessions, the entry touched longest ago
+   * evicted. A session with no entry starts closed. Read through the UI's
+   * `coding-panels-record.ts`, whose parser is also the import validation;
+   * a malformed value is dropped, never a crash.
+   * Never had a prior key: the stack had no side panel before it.
+   */
+  codingPanels: CodingSessionPanelsRecord;
 }
+
+/**
+ * One session's Coding panels. `sideWidth`/`terminalHeight` are `null` until
+ * the reader resized them (the layout's default applies); `at` is when the
+ * entry was last touched, which decides eviction.
+ */
+export interface CodingSessionPanels {
+  /** The pane instance open beside Chat, or null for Chat alone. */
+  side: string | null;
+  sideWidth: number | null;
+  terminalOpen: boolean;
+  terminalHeight: number | null;
+  /**
+   * The inbox as the reader left it BY HAND while a tool was beside Chat
+   * (#3046 round): `null` means no such choice, and the layout may collapse
+   * the inbox itself to keep the transcript its floor and reopen it when the
+   * tool closes; `true`/`false` is the reader's own choice for this session,
+   * which the layout never overrides; `'layout'` records that the layout
+   * folded it, so a reload or a return restores it when the tool closes.
+   */
+  inbox: boolean | 'layout' | null;
+  at: number;
+}
+
+export interface CodingSessionPanelsRecord {
+  version: 1;
+  sessions: Record<string, CodingSessionPanels>;
+}
+
+/**
+ * How many sessions' panels a device remembers. Beyond it the entry touched
+ * longest ago is evicted. Thirty-two covers a working week of conversations
+ * at well under a kilobyte, inside the one envelope every device setting
+ * shares.
+ */
+export const CODING_PANELS_SESSION_BOUND = 32;
+
+export const DEFAULT_CODING_PANELS_RECORD: CodingSessionPanelsRecord = {
+  version: 1,
+  sessions: {},
+};
 
 export interface DeviceSettingDefinition<
   K extends keyof DeviceSettings = keyof DeviceSettings,
@@ -837,6 +892,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: true,
   }),
   defineDeviceSetting({
+    key: 'chatReturnBehavior',
+    scope: 'device',
+    descriptor: { kind: 'enum', values: ['auto', 'send', 'newline'] },
+    label: 'Return in chat',
+    help: 'Automatic adds a line on touch devices and sends on desktop; Shift+Return adds a line and Ctrl/Cmd+Return sends, including attached keyboards.',
+    description:
+      'Choose whether Return sends a message or inserts a new line on this device.',
+    defaultValue: 'auto',
+  }),
+  defineDeviceSetting({
     key: 'chatFontSize',
     scope: 'device',
     descriptor: { kind: 'number', integer: true, min: 10, max: 24 },
@@ -934,6 +999,17 @@ export const DEVICE_SETTINGS_REGISTRY = [
     // from the chat dock's own keys on every load and nothing else survived.
     defaultValue: DEFAULT_REGION_ARRANGEMENT_RECORD,
   }),
+  defineDeviceSetting({
+    key: 'codingPanels',
+    scope: 'device',
+    descriptor: { kind: 'composite' },
+    label: 'Coding panels',
+    help: 'Each conversation reopens with the tool beside Chat, the Terminal, and their sizes as you left them.',
+    description:
+      'Per session in the Coding layout: the tool open beside Chat and its width, the Terminal’s open state and height.',
+    // #3051: new device setting; nothing remembered panels before it.
+    defaultValue: DEFAULT_CODING_PANELS_RECORD,
+  }),
 ] as const satisfies readonly DeviceSettingDefinition[];
 
 /**
@@ -998,6 +1074,7 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
   'chatDockHeight',
   'chatDockWidth',
   'regionArrangement',
+  'codingPanels',
   'dockSlotPlacement',
   'chatDockProjectSlug',
   'inboxOpen',
@@ -1035,6 +1112,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'chatShowReasoning',
   'chatShowToolDetails',
   'chatFontSize',
+  'chatReturnBehavior',
   'hapticsEnabled',
   'openLastStationOnLaunch',
   'developerToolsEnabled',

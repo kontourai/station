@@ -1,0 +1,41 @@
+{
+  "path": "docs/guides/distribution-profiles.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full current guide read: builtin/default/minimal/inline sources, remote declaration limits, lifecycle overrides, inert catalog, installed plugin state, Registry actions and project application.",
+
+  "limits": "Source-only explanation review; no live registry, plugin installation, layout application, or full authority/security audit. Remote adapters not inferred from source declarations.",
+
+  "sources": [
+    "packages/contracts/src/distribution.ts",
+
+    "packages/contracts/src/layout.ts",
+
+    "packages/sdk/src/query-domains/workspaceProjects.ts",
+
+    "src-server/routes/plugins/registry.ts",
+
+    "src-server/routes/projects/projects.ts",
+
+    "src-server/services/plugins/distribution-profile-service.ts",
+
+    "src-ui/src/components/registry/ProjectLayoutCatalog.tsx",
+
+    "src-ui/src/views/RegistryView.tsx",
+
+    "src-ui/src/views/project-settings/LayoutsSection.tsx"
+  ],
+
+  "checks": [
+    "Independent changed-claim source review accepted the recorded document and source bytes; no live operations or new test execution in that review.",
+
+    "Distribution profile and Registry focused suites: 61 tests passed.",
+
+    "Reviewed integration deltas: src-ui/src/components/registry/ProjectLayoutCatalog.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found. src-ui/src/views/project-settings/LayoutsSection.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
+
+    "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

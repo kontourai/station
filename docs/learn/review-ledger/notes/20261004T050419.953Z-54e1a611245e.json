@@ -1,0 +1,7 @@
+{
+  "revision": "7d5d2145f086fbfe8f5aac1842073ab6e7341e6d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"The shipped topics were regenerated from the canonical inputs (docs:mcp:generate): the module-map gained SessionMessageDelivery and the self-configuring-agent guide a Session control section. The document's description of the generator, the topic catalog and its digest checks is unchanged. No prose change.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

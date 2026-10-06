@@ -1,5 +1,10 @@
-import type { RefObject } from 'react';
+import { type ReactNode, type RefObject, useId, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { useLongPress } from '../../hooks/useLongPress';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { CheckGlyph, HomeGlyph } from '../icons/Glyph';
+import { ProjectIcon } from '../icons/ProjectIcon';
+import { PickerCreateAction } from '../PickerCreateAction';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -10,19 +15,16 @@ export interface ChatDockProjectSwitcherSheetProps {
   anchorRef: RefObject<HTMLElement | null>;
   returnFocusTarget?: HTMLElement | null;
   /** The dock's own bound project (the chat's project), not the workspace
-   * currently being viewed — see the row-level "Current" flag below. */
+   * currently being viewed — see the row-level selection check below. */
   boundProjectSlug: string;
   projects: ProjectMetadata[];
   onOpenProject: (projectSlug: string) => void;
   onSwitchProject: (projectSlug: string, projectName: string) => void;
+  onNewProject?: () => void;
   onClose: () => void;
 }
 
-/** Local, not the shared Glyph catalog — same entry-chunk reasoning as
- * `ChatDockMobileHeader`'s ProjectSwitcherGlyph (this sheet is lazy, but the
- * shared catalog is an entry-chunk module and the folder icon is otherwise
- * only reachable from other lazy islands). */
-function OpenProjectGlyph() {
+function SwitchProjectGlyph() {
   return (
     <svg
       width="16"
@@ -35,9 +37,61 @@ function OpenProjectGlyph() {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M2.5 4.5h4l1.3 1.5h5.7v7h-11v-8.5Z" />
-      <path d="M9.5 9.5h3M11 8l1.5 1.5L11 11" />
+      <path d="M2.5 4.5h10M10 2l2.5 2.5L10 7M13.5 11.5h-10M6 9l-2.5 2.5L6 14" />
     </svg>
+  );
+}
+
+function ProjectPickerAction({
+  className,
+  label,
+  description,
+  onActivate,
+  onHelp,
+  children,
+}: {
+  className: string;
+  label: string;
+  description: string;
+  onActivate: () => void;
+  onHelp: (description: string | null) => void;
+  children: ReactNode;
+}) {
+  const descriptionId = useId();
+  const gesture = useLongPress({
+    onLongPress: () => onHelp(description),
+    onClick: (event) => {
+      event.stopPropagation();
+      onActivate();
+    },
+  });
+  return (
+    <>
+      <button
+        {...gesture}
+        type="button"
+        className={className}
+        aria-label={label}
+        aria-describedby={descriptionId}
+        onFocus={(event) => {
+          if (event.currentTarget.matches(':focus-visible'))
+            onHelp(description);
+        }}
+        onBlur={() => onHelp(null)}
+        onPointerEnter={(event) => {
+          if (event.pointerType === 'mouse') onHelp(description);
+        }}
+        onPointerLeave={(event) => {
+          gesture.onPointerLeave(event);
+          if (event.pointerType === 'mouse') onHelp(null);
+        }}
+      >
+        {children}
+      </button>
+      <span id={descriptionId} className="sr-only">
+        {description}
+      </span>
+    </>
   );
 }
 
@@ -63,7 +117,7 @@ function OpenProjectGlyph() {
  * "Open <name>") that navigates to the project's own page and collapses the
  * dock at the `onOpenProject` call site (`ChatDock.handleSelectProject`) so
  * the destination is visible. The bound row is still flagged with
- * `aria-current` and a decorative visual "Current" label, never disabled.
+ * `aria-current` and a decorative selection check, never disabled.
  *
  * No row or button here creates, opens, or moves a chat — starting one in
  * the just-switched project is the New Chat modal's own job (it defaults to
@@ -78,8 +132,14 @@ export function ChatDockProjectSwitcherSheet({
   projects,
   onOpenProject,
   onSwitchProject,
+  onNewProject,
   onClose,
 }: ChatDockProjectSwitcherSheetProps) {
+  const [help, setHelp] = useState<string | null>(null);
+  // The sidebar's allocation, not one over whatever list this sheet is
+  // handed: `projectAccents` is set-aware, so allocating over a different
+  // list would give a project a different colour here than in the sidebar.
+  const accents = useProjectAccents();
   const run = (action: () => void) => {
     onClose();
     action();
@@ -88,7 +148,7 @@ export function ChatDockProjectSwitcherSheet({
   return (
     <ResponsiveDialogSurface
       layer="popover"
-      ariaLabel="Switch project"
+      ariaLabel="Projects"
       onClose={onClose}
       historyMode="entry"
       anchorRef={anchorRef}
@@ -97,7 +157,7 @@ export function ChatDockProjectSwitcherSheet({
       panelClassName="composer-popover-panel chat-dock__project-switcher-panel"
     >
       <ResponsiveDialogHeader
-        title="Switch project"
+        title="Projects"
         closeLabel="Close project switcher"
         onClose={onClose}
       />
@@ -105,7 +165,7 @@ export function ChatDockProjectSwitcherSheet({
         <Empty
           variant="compact"
           label="Nothing here yet"
-          description="This Station has no projects to switch to."
+          description="Use + to create your first project."
         />
       ) : (
         <ul className="chat-dock__project-switcher-list">
@@ -118,54 +178,71 @@ export function ChatDockProjectSwitcherSheet({
                 className={`chat-dock__project-switcher-row${isBound ? ' is-current' : ''}`}
                 aria-current={isBound ? 'true' : undefined}
               >
-                <button
-                  type="button"
+                <ProjectPickerAction
                   className="chat-dock__project-switcher-switch"
-                  aria-label={`Switch to ${name}`}
-                  onClick={() => run(() => onSwitchProject(project.slug, name))}
+                  label={`Switch to ${name}`}
+                  description="Use this project for new chats. Existing chats keep their original project."
+                  onActivate={() =>
+                    run(() => onSwitchProject(project.slug, name))
+                  }
+                  onHelp={setHelp}
                 >
+                  <span
+                    className="chat-dock__project-switcher-icon"
+                    aria-hidden="true"
+                  >
+                    {/* The project's icon, else the sidebar's colour bar. */}
+                    <ProjectIcon
+                      project={project}
+                      size={28}
+                      accent={accents.get(project.slug)}
+                      fallback="bar"
+                      swatchClassName="chat-dock__project-switcher-accent"
+                    />
+                  </span>
                   <span className="chat-dock__project-switcher-name">
                     <span className="chat-dock__project-switcher-label">
                       {name}
                     </span>
-                    {isBound && (
-                      <span
-                        className="chat-dock__project-switcher-current"
-                        aria-hidden="true"
-                      >
-                        Current
-                      </span>
-                    )}
                   </span>
                   <span
-                    className="chat-dock__project-switcher-hint"
+                    className={
+                      isBound
+                        ? 'chat-dock__project-switcher-current'
+                        : 'chat-dock__project-switcher-cue'
+                    }
+                    title={isBound ? 'Selected project' : undefined}
                     aria-hidden="true"
                   >
-                    Switch the dock to this project
+                    {isBound ? <CheckGlyph /> : <SwitchProjectGlyph />}
                   </span>
-                </button>
+                </ProjectPickerAction>
                 <div className="chat-dock__project-switcher-actions">
-                  <button
-                    type="button"
+                  <ProjectPickerAction
                     className="chat-dock__project-switcher-open"
-                    aria-label={`Open ${name}`}
-                    title={`Open ${name}`}
-                    // A sibling of the row action, never its child — the
-                    // icon's click cannot reach the row (#3319 acceptance),
-                    // and stopPropagation keeps that true even if a future
-                    // wrapper adds a row-level handler.
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      run(() => onOpenProject(project.slug));
-                    }}
+                    label={`Open ${name}`}
+                    description="Open this project's workspace. Your current chat stays open."
+                    onActivate={() => run(() => onOpenProject(project.slug))}
+                    onHelp={setHelp}
                   >
-                    <OpenProjectGlyph />
-                  </button>
+                    <HomeGlyph />
+                  </ProjectPickerAction>
                 </div>
               </li>
             );
           })}
         </ul>
+      )}
+      {help && (
+        <p className="chat-dock__project-switcher-help" role="tooltip">
+          {help}
+        </p>
+      )}
+      {onNewProject && (
+        <PickerCreateAction
+          label="New project"
+          onClick={() => run(onNewProject)}
+        />
       )}
     </ResponsiveDialogSurface>
   );

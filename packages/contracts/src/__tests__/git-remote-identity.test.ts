@@ -49,9 +49,9 @@ describe('normalizeGitOrigin — named edge cases (§3.3)', () => {
     // binding layer records the checkout's FULL remote set and matches by
     // set-intersection against a manifest resource's
     // `{ canonicalRemote } ∪ aliases` — this function never merges them.
-    const fork = normalizeGitOrigin('git@github.com:brian/station.git');
+    const fork = normalizeGitOrigin('git@github.com:casey/station.git');
     const upstream = normalizeGitOrigin('git@github.com:kontourai/station.git');
-    expect(fork).toBe('github.com/brian/station');
+    expect(fork).toBe('github.com/casey/station');
     expect(upstream).toBe('github.com/kontourai/station');
     expect(fork).not.toBe(upstream);
   });
@@ -98,11 +98,7 @@ describe('normalizeGitOrigin — file:// and trailing-slash / trailing-.git comb
   // path can never reach a git resource"). A local clone source is a
   // `local-only` resource, not a portable `git` one.
   test.each([
-    [
-      'file:// URL',
-      'file:///Users/brian/dev/station',
-      '/users/brian/dev/station',
-    ],
+    ['file:// URL', 'file:///Users/me/dev/station', '/users/me/dev/station'],
     [
       'trailing slash only',
       'https://github.com/kontourai/station/',

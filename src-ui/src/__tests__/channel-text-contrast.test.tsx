@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { resolve } from 'node:path';
+import { contrastRatio } from '@kontourai/ui/contrast';
 import { chromium } from '@playwright/test';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -8,7 +9,6 @@ import {
   chromiumIsInstalled,
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
-import { hexContrast } from '../lib/branding-theme';
 
 /**
  * #2905: the release channels paint their brand as TEXT — the sidebar channel
@@ -61,12 +61,6 @@ import { TrustPanel } from '../components/trust/TrustPanel';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
-
-/** Same shim as branding-role-cascade.test.ts: the roles @kontourai/ui 1.14 adds. */
-const VENDOR_ROLES_SHIM = `
-:root { --k-action: #5ce0c6; --k-action-contrast: #06080b; --k-focus: #5ce0c6; --k-focus-ring: var(--k-focus); }
-[data-theme="light"] { --k-action: #0e7c64; --k-action-contrast: #ffffff; --k-focus: #0e7c64; --k-focus-ring: var(--k-focus); }
-`;
 
 const AA_TEXT = 4.5;
 /** WCAG 1.4.11 non-text contrast, for the resize grips. */
@@ -300,14 +294,12 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
   async function sample(
     mode: Mode,
     channel: Channel,
-    vendorRoles: boolean,
     inline: Record<string, string> = {},
   ): Promise<Sample[]> {
     const page = await browser.newPage();
     try {
-      const shim = vendorRoles ? `<style>${VENDOR_ROLES_SHIM}</style>` : '';
       await page.setContent(
-        `<!doctype html><html data-theme="${mode}"><head>${shim}<style>${css}</style></head><body>${markup}</body></html>`,
+        `<!doctype html><html data-theme="${mode}"><head><style>${css}</style></head><body>${markup}</body></html>`,
       );
       await page.addScriptTag({ content: MEASURE_HELPERS });
       await page.evaluate(
@@ -373,17 +365,13 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
 
   const cases = (['release', 'dev', 'beta', 'nightly'] as const).flatMap(
     (channel) =>
-      (['dark', 'light'] as const).flatMap((mode) =>
-        [false, true].map(
-          (vendorRoles) => [channel, mode, vendorRoles] as const,
-        ),
-      ),
+      (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
   );
 
   test.each(cases)(
-    'the %s channel in %s mode (vendor roles: %s) paints readable text',
-    async (channel, mode, vendorRoles) => {
-      const samples = await sample(mode, channel, vendorRoles);
+    'the %s channel in %s mode paints readable text',
+    async (channel, mode) => {
+      const samples = await sample(mode, channel);
       expect(samples).toHaveLength(
         channel === 'release' ? TARGETS.length - 1 : TARGETS.length + 1,
       );
@@ -397,7 +385,9 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
       const failing = samples
         .map((entry) => ({
           ...entry,
-          ratio: Number(hexContrast(entry.color, entry.background).toFixed(2)),
+          ratio: Number(
+            contrastRatio(entry.color, entry.background).toFixed(2),
+          ),
         }))
         .filter((entry) => entry.ratio < AA_TEXT);
       expect(failing).toEqual([]);
@@ -412,7 +402,7 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
   ] as const)(
     'in %s mode, identity text follows the brand and links follow the action role',
     async (mode, theme) => {
-      const samples = await sample(mode, 'release', false, {
+      const samples = await sample(mode, 'release', {
         '--k-brand': theme.brand,
         '--k-action': theme.action,
         '--k-action-contrast': theme.onAction,
@@ -433,7 +423,7 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
   // channel's stylesheet retint, including in a channel build.
   test('a white-label theme outranks the nightly retint on every surface', async () => {
     const theme = { brand: '#e08b2f', action: '#7983f4', onAction: '#06080b' };
-    const samples = await sample('dark', 'nightly', false, {
+    const samples = await sample('dark', 'nightly', {
       '--k-brand': theme.brand,
       '--k-action': theme.action,
       '--k-action-contrast': theme.onAction,
@@ -537,7 +527,7 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
       const failing = samples
         .map((entry) => ({
           ...entry,
-          ratio: Number(hexContrast(entry.fill, entry.background).toFixed(2)),
+          ratio: Number(contrastRatio(entry.fill, entry.background).toFixed(2)),
         }))
         .filter((entry) => entry.ratio < NON_TEXT);
       expect(failing).toEqual([]);

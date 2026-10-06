@@ -1,0 +1,9 @@
+{
+  "revision": "98597497420e807ca35e3ac2a99c92cb982bbf18",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Added the actual supervisor admission/readiness owners and opt-in Dockerfile command regression as freshness inputs. Reviewed service.ts run routing, fresh schema before self-claim, unchanged Dockerfile CMD/environment, container healthcheck and capped wait-while-held path. Runtime evidence is recorded separately; no Docker image/public ingress/GCP receipt is implied.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/service-liveness.ts","packages/cli/src/commands/service-run.ts","scripts/__tests__/service-container-command.test.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Added the fresh-home schema owner and service/process regression owners as freshness inputs. Read the real claim/publish/retract path and tests protecting claim-before-start, no-policy admission, bounded waiting/logging, signal-without-foreign-stop and stop-before-readiness-retry. Real Dockerfile command qualification is opt-in and requires a built server/UI; source inspection alone is not a runtime pass.","inputs":["docs/design/instance-registry.md","packages/cli/src/__tests__/service-run.test.ts","scripts/__tests__/service-container-command.test.ts","packages/shared/src/station-home-schema.ts"]}
+  ]
+}

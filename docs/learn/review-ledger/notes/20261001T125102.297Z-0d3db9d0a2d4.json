@@ -1,0 +1,7 @@
+{
+  "revision": "8e9317264183597b211f7c9fbabd0f96fb05a4e6",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed media manifest delta: only the historical Connections image/video evidence qualifiers change; Starter capture assets, original digests/revisions, scenarios and limits are unchanged. Starter guide still describes explicit opt-in work after onboarding; current Home goal entry remains separate.","inputs":["docs/guides/starter-work.md"]}
+  ]
+}

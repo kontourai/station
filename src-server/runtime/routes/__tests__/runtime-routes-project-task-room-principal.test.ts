@@ -13,15 +13,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import type { TaskRoomContextSnapshot } from '@kontourai/station-contracts/task-room-work';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import {
   type RuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 // This composition test exercises the room's own `/api/tasks/*` middleware
@@ -29,9 +38,13 @@ import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../r
 // credential pipeline (device pairing, cookies, proxy attestation) is a
 // separately-covered boundary and only adds unrelated setup here — same
 // rationale as `runtime-routes-hosted-mcp-composition.test.ts`.
-vi.mock('../../bootstrap/runtime-http.js', () => ({
+vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => ({
   configureRuntimeHttp: () => undefined,
   configureRuntimeRouteClassificationGate: () => undefined,
+  // Real: it holds no credential policy, and composition installs it itself.
+  installStationEnvelopeMarker: (
+    await importOriginal<typeof import('../../bootstrap/runtime-http.js')>()
+  ).installStationEnvelopeMarker,
   LOOPBACK_DEVICE_SESSION_COOKIE: 'station-device',
   SECURE_DEVICE_SESSION_COOKIE: '__Host-station-device',
 }));
@@ -114,10 +127,15 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
    * `locality` entirely to model a caller with no verified home-possession
    * authority fact — the case that must fail closed.
    */
-  async function setup(deviceCredential: string, deviceScope = 'pairing-v7') {
+  async function setup(
+    deviceCredential: string,
+    deviceScope = 'pairing-v7',
+    beforeCompose?: (store: EventStore) => void,
+  ) {
     const directory = mkdtempSync(join(tmpdir(), 'station-room-principal-'));
     directories.push(directory);
     const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    beforeCompose?.(store);
     const app = new Hono();
     let caller: RuntimeAuthenticatedRequestPrincipal = {
       credential: 'unset',
@@ -128,11 +146,22 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, caller);
       await next();
     });
+    const taskRecord: TaskRecord = { ...task };
+    const projects = [{ id: task.projectId, slug: 'project' }];
+    let deviceActive = true;
     const environmentSecurityService = deepStub({
       getPublicHandshake: async () => ({ environmentId: 'environment-local' }),
       identifyDevice: (credential: string) =>
-        credential === deviceCredential
+        deviceActive && credential === deviceCredential
           ? { id: 'device-x', name: 'Device X', scope: deviceScope }
+          : undefined,
+      authorizeCredential: (credential: string) =>
+        (deviceActive && credential === deviceCredential) ||
+        credential === 'operator-secret',
+      resolveGrantedScope: (credential: string) =>
+        (deviceActive && credential === deviceCredential) ||
+        credential === 'operator-secret'
+          ? 'orchestration:read orchestration:operate'
           : undefined,
       verifyOperatorCredential: (credential: string) =>
         credential === 'operator-secret',
@@ -167,11 +196,12 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       monitoringEvents: [],
       orchestrationEventStore: store,
       taskGraphService: {
-        readTaskView: (id: string) => (id === task.id ? task : null),
+        readTaskView: (id: string) =>
+          id === taskRecord.id ? taskRecord : null,
         listTasks: () => [],
       },
       projectService: {
-        listProjects: () => [{ id: task.projectId, slug: 'project' }],
+        listProjects: () => projects,
       },
       environmentSecurityService,
     });
@@ -194,6 +224,13 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     return {
       app,
       store,
+      context,
+      directory,
+      taskRecord,
+      projects,
+      setDeviceActive: (active: boolean) => {
+        deviceActive = active;
+      },
       databasePath: join(directory, 'orchestration.sqlite'),
       roomRuntime: result.projectTaskRoomRuntime!,
       setCaller: (next: RuntimeAuthenticatedRequestPrincipal) => {
@@ -201,6 +238,305 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       },
     };
   }
+
+  test('brief capture refuses Task metadata edited during the document read', async () => {
+    const { app, store, roomRuntime, taskRecord, setCaller } =
+      await setup('brief-device');
+    setCaller({
+      credential: 'brief-device',
+      authority: 'device-credential',
+      source: 'bearer',
+    });
+    const fetchContext = () =>
+      Promise.resolve(
+        app.fetch(
+          new Request(
+            `http://station/api/tasks/${taskRecord.id}/room/agent-requests`,
+          ),
+          loopbackEnv(),
+        ),
+      );
+    let release = () => {};
+    let pending: Promise<Response> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const control = await fetchContext();
+      const initial = await readJson<{
+        data: { context: TaskRoomContextSnapshot | null };
+      }>(control);
+      expect(initial.data.context?.title).toBe(taskRecord.title);
+      let enter!: () => void;
+      const entered = new Promise<void>((resolve, reject) => {
+        enter = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        timeout = setTimeout(
+          () => reject(new Error('Document capture was not reached')),
+          5000,
+        );
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const document = roomRuntime.document.bind(roomRuntime);
+      vi.spyOn(roomRuntime, 'document').mockImplementationOnce(
+        async (input) => {
+          const captured = await document(input);
+          enter();
+          await held;
+          return captured;
+        },
+      );
+      pending = fetchContext();
+      await entered;
+      taskRecord.title = 'Edited objective during capture';
+      release();
+      const response = await pending;
+      expect(response.status).toBe(200);
+      expect(
+        (
+          await readJson<{ data: { context: TaskRoomContextSnapshot | null } }>(
+            response,
+          )
+        ).data.context,
+      ).toBeNull();
+    } finally {
+      clearTimeout(timeout);
+      release();
+      await pending?.catch(() => undefined);
+      vi.restoreAllMocks();
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
+  test.each(['revoke', 'replace-task', 'replace-project'] as const)(
+    'request delivery refuses %s while canonical lifecycle reconciliation is awaiting',
+    async (change) => {
+      let revalidatingAgent = false;
+      const fixture = await setup(
+        'request-view-device',
+        'pairing-v7',
+        change === 'replace-project'
+          ? (store) => {
+              const create = store.createProjectTaskRoomHistory.bind(store);
+              vi.spyOn(
+                store,
+                'createProjectTaskRoomHistory',
+              ).mockImplementation((authority) => {
+                const agents = authority.agents;
+                return create({
+                  ...authority,
+                  ...(agents
+                    ? {
+                        agents: {
+                          ...agents,
+                          revalidate: async (receipt) => {
+                            revalidatingAgent =
+                              receipt.capability === 'agent-publish';
+                            try {
+                              return await agents.revalidate(receipt);
+                            } finally {
+                              revalidatingAgent = false;
+                            }
+                          },
+                        },
+                      }
+                    : {}),
+                });
+              });
+            }
+          : undefined,
+      );
+      const {
+        app,
+        store,
+        context,
+        directory,
+        roomRuntime,
+        taskRecord,
+        setCaller,
+        setDeviceActive,
+      } = fixture;
+      setCaller({
+        credential: 'request-view-device',
+        authority: 'device-credential',
+        source: 'bearer',
+      });
+      const service = new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+        eventBus: new EventBus(),
+        eventStore: store,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      Reflect.set(context, 'orchestrationService', service);
+      const work = new TaskRoomWorkModule(
+        join(directory, 'task-room-work.json'),
+      );
+      if (change === 'replace-project') taskRecord.projectId = 'project';
+      const scope = {
+        projectId: fixture.projects[0].id,
+        roomProjectId: taskRecord.projectId,
+        projectSlug: 'project',
+        taskCreatedAt: taskRecord.createdAt,
+        requesterId: 'human:device:device-x',
+      };
+      const submitted = await work.submit(
+        taskRecord.id,
+        scope.requesterId,
+        {
+          operationId: 'view-race',
+          agentId: 'researcher',
+          prompt: 'Private investigation prompt.',
+        },
+        async () => scope,
+        async (sessionId) => {
+          if (change !== 'replace-project') {
+            await store.bindProjectTaskRoomExecution({
+              projectId: taskRecord.projectId,
+              taskId: taskRecord.id,
+              sessionId,
+            });
+            store.upsertSession({
+              provider: 'claude',
+              threadId: sessionId,
+              status: 'ready',
+              createdAt: '2026-10-01T00:00:00.000Z',
+              updatedAt: '2026-10-01T00:00:00.000Z',
+            });
+          }
+          return { sessionId };
+        },
+      );
+      const request = () =>
+        app.fetch(
+          new Request(
+            `http://station/api/tasks/${taskRecord.id}/room/agent-requests`,
+          ),
+          loopbackEnv(),
+        );
+      let inspection: DatabaseSync | undefined;
+      let releaseHeld = () => {};
+      let pending: Promise<Response> | undefined;
+      let entryTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const control = await request();
+        expect(control.status).toBe(200);
+        expect(await control.text()).toContain('Private investigation prompt.');
+        let enter!: () => void, release!: () => void;
+        const entered = new Promise<void>((resolve, reject) => {
+          enter = () => {
+            clearTimeout(entryTimer);
+            resolve();
+          };
+          entryTimer = setTimeout(
+            () => reject(new Error('Reconciliation boundary was not reached')),
+            5000,
+          );
+        });
+        const held = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const read = service.readSession.bind(service);
+        releaseHeld = release;
+        const inspector = new DatabaseSync(fixture.databasePath);
+        inspection = inspector;
+        inspector.exec('PRAGMA busy_timeout=0');
+        if (change === 'replace-project') {
+          if (submitted.kind !== 'recorded') throw new Error('Missing request');
+          await store.bindProjectTaskRoomExecution({
+            projectId: taskRecord.projectId,
+            taskId: taskRecord.id,
+            sessionId: submitted.record.sessionId,
+          });
+          store.upsertSession({
+            provider: 'claude',
+            threadId: submitted.record.sessionId,
+            status: 'ready',
+            createdAt: '2026-10-01T00:00:00.000Z',
+            updatedAt: '2026-10-01T00:00:00.000Z',
+          });
+          const lookup = TaskRoomWorkModule.prototype.readPublicationRequests;
+          vi.spyOn(
+            TaskRoomWorkModule.prototype,
+            'readPublicationRequests',
+          ).mockImplementation(async function (
+            this: TaskRoomWorkModule,
+            input,
+          ) {
+            const records = await lookup.call(this, input);
+            if (revalidatingAgent) {
+              let writerHeld = false;
+              try {
+                inspector.exec('BEGIN IMMEDIATE');
+                inspector.exec('ROLLBACK');
+              } catch (error) {
+                if (
+                  error instanceof Error &&
+                  /database is locked|SQLITE_BUSY/.test(error.message)
+                )
+                  writerHeld = true;
+                else throw error;
+              }
+              if (writerHeld) {
+                enter();
+                await held;
+              }
+            }
+            return records;
+          });
+        } else {
+          vi.spyOn(service, 'readSession').mockImplementationOnce(
+            async (...args) => {
+              enter();
+              await held;
+              return read(...args);
+            },
+          );
+        }
+        pending = Promise.resolve(request());
+        await entered;
+        if (change === 'revoke') setDeviceActive(false);
+        else if (change === 'replace-task')
+          taskRecord.createdAt = '2026-10-01T01:00:00.000Z';
+        else
+          fixture.projects[0] = { id: 'replacement-project', slug: 'project' };
+        release();
+        const response = await pending;
+
+        expect(response.status).toBe(403);
+        const body = await response.text();
+        expect(body).not.toContain('Private investigation prompt.');
+        if (change === 'replace-project') {
+          const primed = new Request(
+            `http://station/api/tasks/${taskRecord.id}/room`,
+          );
+          await app.fetch(primed, loopbackEnv());
+          const history = await roomRuntime.history({
+            taskId: taskRecord.id,
+            request: primed,
+          });
+          if (history.kind !== 'available')
+            throw new Error('History unavailable');
+          expect(
+            history.records.filter(
+              (record) => record.principal.kind === 'agent',
+            ),
+          ).toHaveLength(0);
+        }
+      } finally {
+        clearTimeout(entryTimer);
+        releaseHeld();
+        await pending?.catch(() => undefined);
+        inspection?.close();
+        vi.restoreAllMocks();
+        await roomRuntime.close();
+        await service.shutdown();
+        store.close();
+      }
+    },
+  );
 
   test('device-identified branch resolves operatorId from the stage-2 principal, never getCachedUser().alias', async () => {
     const { app, store, roomRuntime, setCaller } = await setup('device-cred-a');

@@ -29,6 +29,7 @@ import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { ReservedAgentIdentityError } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { ConversationRecord } from '../../domain/storage-adapter.js';
@@ -38,8 +39,6 @@ import {
   loadHostedTenantRegistryFromEnvironment,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
-import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
-import { sanitizeConversationMessagesUIBlockProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import {
@@ -88,6 +87,15 @@ import {
 } from './chat-persistence.js';
 import { generateConversationTitle } from './chat-title-generation.js';
 import {
+  boundedConversationSessionIds,
+  CONVERSATION_LINEAGE_TOO_LONG_REFUSAL,
+  ConversationLineageTooLongError,
+  createConversationMessageReader,
+} from './conversation-message-reader.js';
+
+export { CONVERSATION_READ_MAX_SESSIONS } from './conversation-message-reader.js';
+
+import {
   conversationIntentRevision,
   generateSessionSummary,
   isSessionSummaryFailure,
@@ -134,6 +142,16 @@ function conversationRouteFailure(
   message: string,
   error: unknown,
 ) {
+  if (error instanceof ConversationLineageTooLongError) {
+    return c.json(
+      {
+        success: false,
+        code: error.code,
+        error: CONVERSATION_LINEAGE_TOO_LONG_REFUSAL,
+      },
+      422,
+    );
+  }
   if (error instanceof ReservedAgentIdentityError) {
     return c.json(
       { success: false, code: error.code, error: error.message },
@@ -228,6 +246,18 @@ interface SessionMessageReader {
     authority: SessionReadAuthority,
   ): ConversationMessage[];
   /**
+   * #3112: the conversation's execution Sessions in lineage order (the id
+   * itself when it has none). A follow-up the root Session could not take
+   * runs in a successor, and its turns are stored under that Session's id.
+   */
+  conversationSessionIds?(conversationId: string): readonly string[];
+  /**
+   * #3112: the conversation a successor execution Session continues. A
+   * successor keeps its own file-store record (its turns are stored under
+   * its id), but it is part of that conversation, never one of its own.
+   */
+  successorConversationId?(sessionId: string): string | undefined;
+  /**
    * Fold a native-SDK session's persisted events into engine-agnostic usage
    * totals (archive#1299) — the stats-route counterpart to
    * `readSessionMessages`'s messages-route compatibility path. Optional so a reader
@@ -236,6 +266,11 @@ interface SessionMessageReader {
    */
   readSessionUsage?(
     threadId: string,
+    authority: SessionReadAuthority,
+  ): SessionUsageAggregate;
+  /** #3112: `readSessionUsage` across the conversation's whole lineage. */
+  readConversationUsage?(
+    conversationId: string,
     authority: SessionReadAuthority,
   ): SessionUsageAggregate;
   listConversationHistoryPage(
@@ -453,16 +488,34 @@ async function _listPersonalFileConversationItems(
   memoryAdapters: Map<string, FileMemoryAdapter>,
   userId: string,
   limit: number,
+  lineage?: Pick<SessionMessageReader, 'successorConversationId'>,
 ): Promise<{ items: ConversationListItem[]; hasMore: boolean }> {
   const pages = await Promise.all(
     [...memoryAdapters].map(async ([slug, adapter]) => {
-      const conversations = await adapter.queryConversations({
-        userId,
-        resourceId: slug,
-        orderBy: 'updated_at',
-        orderDirection: 'DESC',
-        limit: limit + 1,
-      });
+      // #3112: a successor Session's record belongs to its conversation, which
+      // is listed under its own id. Read further pages until the page is
+      // full, so filtered successors never shorten it.
+      const conversations: Awaited<
+        ReturnType<FileMemoryAdapter['queryConversations']>
+      > = [];
+      for (let offset = 0; conversations.length <= limit; ) {
+        const batch = await adapter.queryConversations({
+          userId,
+          resourceId: slug,
+          orderBy: 'updated_at',
+          orderDirection: 'DESC',
+          limit: limit + 1,
+          ...(offset > 0 ? { offset } : {}),
+        });
+        conversations.push(
+          ...batch.filter(
+            (conversation) =>
+              lineage?.successorConversationId?.(conversation.id) === undefined,
+          ),
+        );
+        if (batch.length <= limit) break;
+        offset += batch.length;
+      }
       return {
         hasMore: conversations.length > limit,
         items: await Promise.all(
@@ -481,7 +534,8 @@ async function _listPersonalFileConversationItems(
               metadata?.titleSource === 'user' ||
               metadata?.titleSource === 'generated' ||
               metadata?.titleSource === 'provider' ||
-              metadata?.titleSource === 'prompt'
+              metadata?.titleSource === 'prompt' ||
+              metadata?.titleSource === 'agent'
                 ? metadata.titleSource
                 : undefined;
             const messages = await adapter.getMessages(
@@ -631,7 +685,11 @@ export function createConversationRoutes(
     relatedEvidenceObservations: readonly SummaryRelatedEvidenceObservation[] = [],
   ) =>
     summarySource.read({
-      messages,
+      // Model-bound: the summary's messages AND its rendered transcript both
+      // come from here, so the failed-turn marker (a UI record) is excluded
+      // before the source reads. Every summary read (staleness, generation,
+      // pre-write revision check) goes through this one function.
+      messages: excludeChatErrorMarkers(messages),
       ...(window ? { watermark: window.watermark } : {}),
       relatedEvidenceObservations,
       consumedBoundaries: (window?.contextBoundaries ?? [])
@@ -1206,6 +1264,7 @@ export function createConversationRoutes(
               new Map([[runtimeSlug, adapter]]),
               authority.userId,
               pageQuery.data.limit,
+              sessionMessageReader,
             )
           : { items: [], hasMore: false };
       const historyPage = sessionMessageReader
@@ -1354,7 +1413,11 @@ export function createConversationRoutes(
           );
         }
         if (!runtimeContext) throw new Error('Title generation unavailable');
-        const messages = await adapter.getMessages(getUserId(), conversationId);
+        // Model-bound: the title prompt quotes every user message, so the
+        // failed-turn marker (a UI record) is excluded, not just scrubbed.
+        const messages = excludeChatErrorMarkers(
+          await adapter.getMessages(getUserId(), conversationId),
+        );
         const textFor = (role: string) =>
           messages
             .filter((message) => message.role === role)
@@ -1518,129 +1581,15 @@ export function createConversationRoutes(
   });
 
   // Get messages for a conversation
-  /**
-   * archive#1399 fix round 2, B2 (independent review) — the SERVE-boundary
-   * sanitizer wrapper. `readConversationMessages` below is the one unified
-   * read seam, so this is the one place that guarantees every caller (the
-   * `/messages` route, `/export`, fork, summary) sees provenance the SERVER
-   * has actually recomputed — never a `ConversationMessage[]` served
-   * verbatim from the FileMemory store (`memory-adapter-messages.ts`'s
-   * `readStoredMessages`, which serializes and reads back `parts` with no
-   * equivalent write-time seam) nor a stale copy from before this fix
-   * shipped. See `ui-block-provenance.ts`'s `sanitizeConversationMessagesUIBlockProvenance`
-   * docblock for why serve-time sanitization (not only write-time) is
-   * required here.
-   */
-  const sanitizeServedMessages = (
-    messages: ConversationMessage[],
-  ): ConversationMessage[] =>
-    sanitizeConversationMessagesUIBlockProvenance(messages, (message, meta) =>
-      logger.warn(message, meta),
-    );
-
-  /**
-   * The one unified conversation read every engine family flows through:
-   * memory store first (standard userId, then location scan), then the
-   * runtime-event projection for native-SDK sessions. Shared by the
-   * /messages and /export routes so an export always sees exactly what the
-   * chat UI sees. `source` lets each caller record its own metrics.
-   */
-  const readConversationMessages = async (
-    request: Request,
-    slug: string,
-    conversationId: string,
-    resolvedAuthority?: SessionReadAuthority,
-  ): Promise<{
-    messages: ConversationMessage[];
-    source: 'store' | 'orchestration' | 'empty';
-    /**
-     * Why an empty read was empty, for callers that answer the user with it.
-     * Left unset when we did not determine it — either because the read
-     * succeeded, or because nothing here looked (see the hosted branch
-     * below). A caller must not read absent as "we asked and it does not
-     * exist" (archive#3158).
-     */
-    absence?: 'not-found' | 'no-messages';
-  }> => {
-    const runtimeSlug = runtimeAgentKey(slug);
-    const adapter = getAdapter(runtimeSlug);
-    const authority = resolvedAuthority ?? authorityFor(request);
-    const hosted = isHostedSessionReadAuthority(authority);
-
-    // Hosted file conversations have no persisted tenant binding. Do not
-    // scan them as a fallback: an empty result must not reveal whether an
-    // unbound transcript exists. Runtime sessions remain available through
-    // the authority-gated projection below.
-    let messages: ConversationMessage[] = [];
-    let absence: 'not-found' | 'no-messages' | undefined;
-    // #2377 slice B: the memory store serves a transcript by conversation id
-    // alone. A station-control agent reads only a conversation its session's
-    // owner owns (a bound operator caller is not scoped); anyone else's
-    // falls through to the owner-scoped runtime projection below, which
-    // answers as if the store held nothing.
-    const storeReadable =
-      !adapter ||
-      !isPrincipalScopedAgentRequest(request) ||
-      (await adapter.getConversation(conversationId))?.userId ===
-        authority.userId;
-    if (adapter && !hosted && storeReadable) {
-      // archive#4080 follow-up: the conventional-userId-then-
-      // conversation-lookup fallback is the ONE shared definition of "which
-      // store serves this conversation" — see
-      // `conversation-transcript-source.ts`'s own doc.
-      const source =
-        await resolveConversationTranscriptSource<ConversationMessage>(
-          adapter,
-          `agent:${runtimeSlug}`,
-          conversationId,
-        );
-      messages = source.messages;
-      if (!source.occupied) {
-        // The record is the distinction: a record not found means no
-        // conversation by that id, a record whose reads stay empty means
-        // one exists that nothing was ever said in.
-        absence = source.conversationRecordFound ? 'no-messages' : 'not-found';
-      }
-    }
-    if (messages.length > 0) {
-      return { messages: sanitizeServedMessages(messages), source: 'store' };
-    }
-
-    // Native-SDK (Claude/Codex) turns persist as runtime events, not in the
-    // memory store. When the store has nothing, project the session's events
-    // (threadId === conversationId) into the same message shape so these chats
-    // refresh through this one unified read path. Additive: only fires on an
-    // empty store, so ACP/internal conversations are unaffected.
-    if (sessionMessageReader) {
-      const projected = sessionMessageReader.readSessionMessages(
-        conversationId,
-        authority,
-      );
-      if (projected.length > 0) {
-        // Already write-sanitized by `publishCanonicalEvent`'s safe wrapper
-        // — this is a deliberate, cheap, idempotent belt (B2's ruling),
-        // not a second source of truth, and it is what protects a message
-        // projected from an event persisted before this fix round shipped.
-        return {
-          messages: sanitizeServedMessages(projected),
-          source: 'orchestration',
-        };
-      }
-      // The memory store is NOT the store of record for native-SDK
-      // conversations — their turns persist as runtime events. So a null
-      // there means "not in that store", which is true of every Claude Code
-      // and Codex conversation, and it must not be reported as "no such
-      // conversation" once this projection has also been consulted.
-      //
-      // `readSessionMessages` returns [] for both "no such session" and
-      // "the authority denied it", with no existence channel — so once it
-      // has run and found nothing, which absence occurred is genuinely
-      // undetermined. Say that rather than claim the stronger one
-      // (archive#3158 review).
-      if (absence === 'not-found') absence = undefined;
-    }
-    return { messages: [], source: 'empty', absence };
-  };
+  // The one unified read seam (`conversation-message-reader.ts`): every
+  // Session in the conversation's lineage, memory store then the runtime-
+  // event projection per Session, served sanitized.
+  const { readConversationMessages } = createConversationMessageReader({
+    getAdapter,
+    authorityFor,
+    sessionMessageReader,
+    logger,
+  });
 
   const summaryCoordinateFor = (
     authority: SessionReadAuthority,
@@ -2224,9 +2173,15 @@ export function createConversationRoutes(
         logger,
         sessionMessageReader
           ? (threadId: string) =>
-              sessionMessageReader.readSessionUsage?.(threadId, authority)
+              sessionMessageReader.readConversationUsage?.(
+                threadId,
+                authority,
+              ) ?? sessionMessageReader.readSessionUsage?.(threadId, authority)
           : undefined,
         resolveContextWindowTokens,
+        // #3112: the conversation's stats are its whole lineage's, as its
+        // message read is.
+        boundedConversationSessionIds(sessionMessageReader, conversationId),
       );
       const response = parseConversationStatsResponse(data);
       if (!response) throw new Error('Conversation stats response was invalid');
@@ -2254,7 +2209,9 @@ export function createGlobalConversationRoutes(
   _createMemoryAdapter: ((slug: string) => FileMemoryAdapter) | undefined,
   sessionConversationReader: Pick<
     SessionMessageReader,
-    'readSessionConversation' | 'searchSessionMessages'
+    | 'readSessionConversation'
+    | 'searchSessionMessages'
+    | 'successorConversationId'
   > & {
     listConversationHistoryPage(
       authority: SessionReadAuthority,
@@ -2434,6 +2391,7 @@ export function createGlobalConversationRoutes(
             memoryAdapters,
             authority.userId,
             pageQuery.data.limit,
+            sessionConversationReader,
           );
       const byId = new Map(
         [...storePage.items, ...sessionItems].map((item) => [item.id, item]),

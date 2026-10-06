@@ -133,10 +133,14 @@ The declared contributor (`builtin`, `plugin`, or direct `mcp`) of a Pane descri
 _Avoid_: contributor identity branching in host code; provenance stays data
 
 **Coding pane**:
-The built-in `coding` renderer selects the existing dock chat behavior and can
-offer the Browser launcher. Files, diff, terminal, plan, readiness, trust and
-Flow run console are separate registered Pane renderers that a workspace can
-compose; they are not all children of one monolithic Coding pane.
+The built-in `coding` occurrence. It gates the built-in Coding layout's host,
+but that layout no longer places it: its Chat position is the Chat page of the
+layout's navigation stack (`CodingWorkbench`, see
+[placement](../../design/placement.md)). A host that does render the
+occurrence gets `CodingChatPane`: the Chat position's effects and the Browser
+launcher. Files, diff, terminal, plan, readiness, trust and Flow run console
+are separate registered Pane renderers that a workspace can compose; they are
+not all children of one monolithic Coding pane.
 _Avoid_: IDE
 
 **File Preview pane**:
@@ -145,11 +149,21 @@ file. Its versioned state contains Project slug, relative path, optional bounded
 line range, wrap and Markdown mode preferences, and an optional Session `thread`.
 Without a thread it reads the Project checkout; with one, the route resolves
 that readable Session's directory and refuses an unavailable or unauthorized
-Session instead of falling back to the Project directory. Its opaque
+Session instead of falling back to the Project directory. The Session must
+belong to the Project its start recorded, whatever its engine; a read-only
+attached Session records none there and is refused. Its opaque
 instance and state keys never encode a path, and host geometry never contains
 file intent. The host restores it only when the builtin descriptor, renderer,
 provenance, bound Project/source context, and separately validated state all
-match the exact built-in contract.
+match the exact built-in contract. Source is coloured by the shared Shiki
+highlighter (the chat highlight worker) and rendered as text, never markup; the
+2,000-line render cap and any refusal to colour are stated in the pane. Its
+Changes view reads that one file against HEAD through the preview route's own
+path and Session rules (`file-preview/changes`), through the same confined
+repository read as the coding diff (the Project's own repository, a judged
+copy of its config, the output discarded when the repository changed under
+the read; a repository being written answers busy, which the pane offers to
+ask again), and refuses an oversized patch.
 _Avoid_: an editor, browser, native file handle, or renderer supplied by persistence
 
 **Readiness panel**:
@@ -197,9 +211,16 @@ _Avoid_: raw route push for project layout navigation
 - Availability combines rollout, installation/distribution, renderer presence, exact context, permission/configuration, deployment and host facts. The server catalog supplies only facts it owns; the [UI adapter](../../../src-ui/src/workspace-panes/workspacePaneAvailabilityAdapters.ts) adds renderer/native/client-observed facts and reruns the shared resolver. Missing required facts refuse availability. Catalog, add menu, launcher and route share this resolver rather than treating a saved descriptor as permission to render. Plugin visibility is supplied by the server's caller-bound grant policy and cannot be overridden by a plugin declaration.
 - Availability telemetry is a bounded projection: built-in descriptor ID (or the single `contributed` category), state, and reason code only. Instance IDs, contributed raw IDs, paths, URLs, credentials, content, and arbitrary reasons never become metric attributes.
 - A coding workspace composes separate file, diff, terminal, chat and evidence
-  panes through the host. [CodingChatPane](../../../src-ui/src/workspace-panes/CodingChatPane.tsx)
-  selects dock chat behavior and handles its open-preview intent; it does not
-  own all of those renderers or their state.
+  panes. The built-in Coding layout shows Chat on its stack's Chat page and
+  each pane as a drill-in of a chromeless host whose selection is
+  `navigationSelection="explicit"` below the wide fold and `"replace"` past
+  it, where the pane is a side panel beside Chat (#3040); the Chat
+  position's effects (the phone's maximized dock, the File Preview deep
+  link — skipped for the intent the Files pane wrote itself) are
+  `useCodingChatPositionEffects` in
+  [CodingChatPane](../../../src-ui/src/workspace-panes/CodingChatPane.tsx),
+  run by the stack while its Chat page is on screen. Neither owns the pane
+  renderers or their state.
 - File Tree opens File Preview through the provider-neutral Workspace Pane host
   open/focus seam. Preview state is separately bounded and keyed by opaque
   `stateKey`; corrupt and unreferenced interrupted state records are reclaimed

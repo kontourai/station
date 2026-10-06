@@ -1,0 +1,7 @@
+{
+  "revision": "45f47546db95c798a0333e8e164c8ddc4378daf4",
+
+  "notes": [
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed real host active-profile authorization and opened private descriptor custody fences; keeper tests and script/E2E types pass. Public runtime, Pion, main WebView and physical Nightly remain NOT_VERIFIED.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md"]}
+  ]
+}

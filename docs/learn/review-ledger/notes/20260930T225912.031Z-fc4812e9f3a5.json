@@ -1,0 +1,7 @@
+{
+  "revision": "e56b7b6bf847135adcce152d99112d104542d029",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed changed pairing projection URL and AttentionCard delta against Inbox explanation. Pairing notifications now open the exact request on /notifications; approval/gate decisions, dismissal authority and tenant filtering are unchanged. Focused attention suites pass and browser navigation reproduced the exact request. Provider and native push delivery NOT_VERIFIED.","inputs":["docs/guides/agents.md"]}
+  ]
+}

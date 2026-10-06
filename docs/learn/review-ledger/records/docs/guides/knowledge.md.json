@@ -1,0 +1,141 @@
+{
+  "path": "docs/guides/knowledge.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
+
+  "limits": "Local source and fixture/SQLite evidence. No live embedding provider, Neo4j server, external Kit interoperability, physical-device capture, or historical dogfood revalidation. Known model/content identity and provenance gaps remain linked to GitHub.",
+
+  "sources": [
+    "docs/learn/media.json#/captures/6",
+
+    "docs/learn/media.json#/captures/7",
+
+    "docs/learn/media/repository-knowledge-narrow.png",
+
+    "docs/learn/media/repository-knowledge.png",
+
+    "examples/knowledge-library/layout.json",
+
+    "examples/knowledge-library/plugin.json",
+
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
+
+    "examples/knowledge-library/src/RootPicker.tsx",
+
+    "examples/knowledge-library/src/index.tsx",
+
+    "examples/knowledge-library/src/knowledge-library.css",
+
+    "examples/meeting-notes/src/CaptureModal.tsx",
+
+    "packages/contracts/src/knowledge-store.ts",
+
+    "packages/sdk/src/client/knowledge.ts",
+
+    "packages/sdk/src/components/KnowledgeRecall.css",
+
+    "packages/sdk/src/components/KnowledgeRecall.tsx",
+
+    "packages/sdk/src/hooks/knowledge.ts",
+
+    "packages/sdk/src/query-domains/knowledgeStores.ts",
+
+    "src-server/knowledge-index/migrate-pre-index-knowledge.ts",
+
+    "src-server/knowledge-index/sqlite-vec-index-provider.ts",
+
+    "src-server/knowledge-store/adapters/default-store.ts",
+
+    "src-server/knowledge-store/adapters/obsidian-store.ts",
+
+    "src-server/knowledge-store/knowledge-store-provider.ts",
+
+    "src-server/knowledge-store/neo4j-connection.ts",
+
+    "src-server/routes/knowledge/knowledge-index-routes.ts",
+
+    "src-server/routes/knowledge/knowledge-store-routes.ts",
+
+    "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
+
+    "src-server/services/knowledge/knowledge-service.ts",
+
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/page-layout.css",
+
+    "src-ui/src/views/project-settings/KnowledgeSection.tsx",
+
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
+
+    "src-server/tools/station-knowledge-tools.ts",
+
+    "src-server/tools/station-knowledge-mcp-server.ts",
+
+    "src-server/runtime/mcp/station-knowledge-native-tools.ts",
+
+    "src-server/runtime/mcp/__tests__/station-knowledge-native-tools.test.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/runtime/mcp/station-control-in-process.ts",
+
+    "src-server/providers/adapters/station-agent-adapter.ts",
+
+    "src-server/runtime/agents/runtime-default-agent.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
+  ],
+
+  "checks": [
+    "Independent source review and correction delta accepted.",
+
+    "Knowledge focused selection: 156 tests across 13 files passed during this audit; subsequent comment edits emit identical JavaScript.",
+
+    "Knowledge UI/MCP/reader selection: 60 tests across 5 files passed during this audit.",
+
+    "Reviewed the corrected Neo4j README anchor and process-registration prerequisite after the example rewrite.",
+
+    "Reviewed source deltas: Error display uses structured userFacingErrorMessage; personal-root selection and first-root creation behavior remain unchanged.",
+
+    "Reviewed duplicate-ID create refusal under the existing transaction owner. Active and retired records are preserved; actual-route controls passed.",
+
+    "Reviewed physical identity scan and destination occupancy refusal under the existing transaction owner, corruption distinctions and resource bounds. Independent root review caught empty-frontmatter over-refusal; final 24 actual-route cases passed after the bounded correction.",
+
+    "Reviewed create identity documentation; no contract type or runtime behavior changed in this file.",
+
+    "Added bounded physical identity admission for Obsidian creates, explicit unrecoverable path-index limit, preserved ordinary empty-frontmatter notes, and linked graph walkthrough. Current store/index ownership remains unchanged.",
+
+    "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
+
+    "Reviewed integration deltas: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+
+    "Formatter-only change; parsed media metadata is identical.",
+
+    "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+
+    "Reviewed Flow Agents 6.4.0 package files, catalog, manifest, install/update/status callers and separate Station runtime provider composition. The Kit alias and update passed in an isolated local candidate install; installer/catalog bytes match 6.4.0. Pinned upstream links record the distribution source; this does not claim a new registry release or universal compatibility.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Clarified the external Kit directory as a pinned upstream link after the live reference gate correctly rejected it as an absent local path; meaning and caller claims unchanged.",
+
+    "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+
+    "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through e0314c727: neo4j-connection.ts dropped the unused queryNeo4jGraphView stub and connection-type constant but keeps registerNeo4jGraphViewConnection and Neo4jGraphViewConnectionConfig; DELETE /roots/:id now returns 404 'Knowledge root not found' before the conversation-root 403. The guide cites only the retained registration surface and makes no root-delete claim, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

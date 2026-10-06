@@ -57,8 +57,8 @@
  * phone user could not reach the surface that would reconnect them.
  *
  * The cluster is the toolbar's last-resort chrome and holds its size; the
- * brand beside it already truncates (`index.css`'s `.app-toolbar__brand`) and
- * is what absorbs the overflow. `overflow: hidden` is gone with the shrink it
+ * logo/wordmark lockup beside it (`index.css`'s `.app-toolbar__lockup`) is what
+ * absorbs the overflow, by dropping the wordmark out whole. `overflow: hidden` is gone with the shrink it
  * existed to clip — it also clipped nothing useful, since the overflow menu
  * renders in a portal (see `components/header/OverflowMenu.tsx`).
  */
@@ -85,8 +85,8 @@
   gap: 4px;
   /* Fixed-size controls: the fieldset must not pack below their sum, or the
      last control lands under the first connection action (#917). At the coarse
-     widths where that happened, `.app-toolbar__brand` is the shrinking member
-     (index.css `.app-toolbar__brand`). */
+     widths where that happened, `.app-toolbar__lockup` is the shrinking member
+     (index.css `.app-toolbar__lockup`). */
   flex-shrink: 0;
   margin: 0;
   padding: 0;
@@ -180,41 +180,6 @@
 /* #1552 D2's per-surface placement picker (`.region-placement*`) was retired
    by #2143: the toolbar is per REGION again, and a surface's placement is
    its tab's own menu (`.region-tabs__move-menu`, index.css). */
-
-@media (max-width: 480px) {
-  /* station#1630: two declarations lived here that never applied — an
-     `.app-toolbar__icon-btn` padding/font-size pair and an
-     `.app-toolbar__workspace-btn { display: none }` — because the base rules
-     redeclare the same properties LATER at equal specificity, and source
-     order decides a tie. They stated an intent that computed nothing.
-
-     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
-     hiding it was never a change anyone could see and its whole rule set went
-     with it.
-
-     The icon-button pair was deleted rather than moved after the base, and
-     the two halves are not alike. `font-size` only shrinks the glyph, which
-     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
-     min-width FLOOR, and two controls in this row are content-sized past it —
-     the connection chip and the notifications button when it carries a badge.
-     Trimming 8px to 6px gives each of those back 4px, so 8px of a
-     `flex-shrink: 0` row.
-
-     station#1401 has since TAKEN that padding half — the trim lives in the
-     mobile touch block below, where it applies, and it moved the label
-     breakpoint from 382 to 374. The font-size half stayed deleted: it only
-     shrinks the glyph, which is a visible cost with nothing to show for it.
-     So this block's two declarations are still correctly gone, and the row
-     they described is 8px narrower than when they were written.
-
-     This rule is the block's live one: its base sits EARLIER in this sheet,
-     so it wins the tie. A finger needs the same 44px floor the composer
-     controls get; the glyph does not grow. */
-  .app-toolbar__region-btn {
-    width: 44px;
-    height: 44px;
-  }
-}
 
 /* Mobile: overflow menu for secondary actions */
 .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
@@ -362,6 +327,25 @@
   white-space: nowrap;
   font-size: var(--text-base);
   font-weight: 500;
+}
+
+/* A held status dot must reach the name hint rather than WebKit's
+   text-selection callout. Keep scrolling and pinch zoom available. */
+.app-toolbar__conn {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.app-toolbar__conn-tooltip.tooltip {
+  position: fixed;
+  z-index: var(--layer-popover);
+  max-width: calc(100vw - 24px);
+  opacity: 1;
+  visibility: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .app-toolbar__conn-label {
@@ -836,6 +820,18 @@
   color: var(--text-muted);
 }
 
+/* A steer that stopped the running step says so inside its own bubble, on
+   the bubble's accent background. */
+.message__steer-note {
+  margin-top: var(--space-1);
+  /* On a fine pointer the bubble's actions button sits inside its
+     bottom-right corner (`.message__copy-btn`), which is where this last line
+     ends; the same clearance is harmless where the button sits outside. */
+  padding-inline-end: 32px;
+  font-size: var(--text-xs);
+  opacity: 0.85;
+}
+
 .message__thinking {
   display: flex;
   align-items: center;
@@ -863,26 +859,44 @@
    Send off a phone screen. */
 .composer-attachments {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: 0 0 var(--space-2);
   padding: 0;
-  overflow-x: auto;
   list-style: none;
-  scrollbar-width: thin;
+  /* Chips wrap rather than scroll: a sideways scroller hid the second chip's
+     × off a phone's right edge with no cue that more was there. Two rows
+     show; a longer list scrolls vertically inside them. */
+  max-height: calc(2 * 50px + var(--space-2));
+  overflow-y: auto;
 }
 
 .composer-attachments__chip {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   gap: var(--space-1);
   align-items: center;
-  max-width: 220px;
+  max-width: min(260px, 80vw);
   padding: 2px 2px 2px var(--space-1);
   color: var(--text-secondary);
   font-size: var(--text-xs);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
   border-radius: 6px;
+}
+
+.composer-attachments__chip--blocked {
+  border-color: var(--error-text);
+}
+
+/* Name over status, so a long status line never wraps the chip into a
+   four-line column around the thumbnail. */
+.composer-attachments__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .composer-mentions {
@@ -984,8 +998,9 @@
 }
 
 .composer-attachments__thumb {
-  flex: 0 0 auto;
+  flex: 0 0 28px;
   width: 28px;
+  min-width: 28px;
   height: 28px;
   object-fit: cover;
   border-radius: 4px;
@@ -1042,8 +1057,15 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.75rem;
+  overflow: hidden;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer-attachments__chip--blocked .composer-attachments__stage {
+  color: var(--error-text);
 }
 
 .composer-attachments__stage progress {
@@ -1051,7 +1073,8 @@
   block-size: 0.4rem;
 }
 
-.composer-attachments__stage button {
+.composer-attachments__action {
+  flex: 0 0 auto;
   border: 0;
   border-radius: 0.25rem;
   background: transparent;
@@ -1061,6 +1084,7 @@
   color: var(--accent-primary);
   cursor: pointer;
   font: inherit;
+  white-space: nowrap;
   padding: 0.1rem 0.2rem;
 }
 
@@ -1083,15 +1107,6 @@
    the same 44px floor its composer siblings do (WCAG 2.5.5) — a 20px target
    between a thumbnail and the next chip is a mis-tap waiting to happen. The
    button grows; the glyph does not. */
-@media (max-width: 768px), (pointer: coarse) {
-  .composer-attachments__chip {
-    min-height: 44px;
-  }
-  .composer-attachments__remove {
-    width: 44px;
-    height: 44px;
-  }
-}
 
 /* #1552 D4: `.menu-row` is now EVERY menu's row — the dock's placement and More
    menus, the header's overflow, help and profile menus, the Layout picker and
@@ -1111,7 +1126,31 @@
    The class is DOUBLED so this beats index.css's single-class base rule on
    specificity rather than on which sheet the bundler emitted last. */
 @media (max-width: 768px), (pointer: coarse) {
+  .composer-attachments__chip {
+    min-height: 44px;
+  }
+  .composer-attachments__remove {
+    width: 44px;
+    height: 44px;
+  }
+  .composer-attachments__action {
+    min-height: 44px;
+    padding-inline: var(--space-2);
+  }
+  /* Two chips per row on a phone, so two screenshots take one row. */
+  .composer-attachments__chip {
+    max-width: calc(50% - var(--space-1));
+  }
+
   .menu-row.menu-row {
+    min-height: 44px;
+  }
+
+  /* Every "type to narrow this list" field (index.css's
+     `.list-filter-input`): the split-pane list header and the provider
+     picker's modal, which borrows the class outside a split pane (#3061,
+     #3102). The base rule and the phone rule (40px) are single-class too. */
+  .list-filter-input.list-filter-input {
     min-height: 44px;
   }
 
@@ -1121,24 +1160,179 @@
      branch reds that test on its own tip (verified against 8ae038646: the same
      single offending condition, and no other). Same query, same rule, a sheet
      that is allowed to ask the `(pointer: coarse)` question. */
-  .choice-trigger {
+  /* Doubled for the same reason as `.menu-row.menu-row` above: the base
+     `.choice-trigger` rule (index.css, `min-height: 36px`) is one class too,
+     and bundle order let it win — measured 36px on a 390px phone. */
+  .choice-trigger.choice-trigger {
     min-width: 44px;
     min-height: 44px;
   }
 }
 
-.chat-input__attachment-error {
-  position: absolute;
-  right: var(--space-2);
-  bottom: var(--space-1);
-  left: var(--space-2);
-  overflow: hidden;
-  color: var(--error-text);
+/* The draft keeps the height `ChatInputArea`'s resize effect gives it (capped
+   there at 30% of the visual viewport). `.chat-input textarea { flex: 1 }`
+   made its flex basis 0, so it contributed nothing to the composer's natural
+   height and received only leftover space: a three-line draft rendered in
+   ~66px with its third line clipped, while the transcript above kept its
+   room. With a real basis the transcript yields first.
+
+   When the dock is too short for the whole composer (an iPhone SE's half
+   dock, or a failure banner taking room), the DRAFT is the only thing that
+   gives way: every container between it and `.chat-input` may shrink (zero
+   minimums), the draft scrolls inside its own box, and the chips, validation
+   line and controls row do not shrink. The fieldset is not clipped — the
+   mention and command pickers open above it from inside — so the controls
+   row paints its own background over anything that still overflows. */
+.chat-input .chat-input__textarea-wrapper > textarea {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.chat-input .chat-input__capsule,
+.chat-input .chat-input__textarea-wrapper {
+  min-height: 0;
+}
+
+.chat-input .chat-input__textarea-wrapper > :not(textarea),
+.chat-input .chat-controls-row {
+  flex-shrink: 0;
+}
+
+/* A dock too short for the whole composer (see data-composer-priority):
+   the chip strip shows one row and scrolls, so the draft keeps its room. */
+.chat-dock__body[data-composer-priority] .composer-attachments {
+  max-height: 50px;
+}
+
+.chat-input .chat-controls-row {
+  position: relative;
+  background: var(--bg-primary);
+}
+
+/* In a short dock everything above the composer yields before its draft:
+   the failed-session banner (it scrolls; the send notice carries the same
+   failure in full) and the transcript, down to zero. (The stream status line
+   keeps its size: it can hold Stop.)
+   The composer keeps the room `ChatInputArea` reserves for a two-line draft. */
+.chat-dock__body > .chat-dock__session-failure,
+.chat-dock__body > .chat-messages {
+  flex-shrink: 1000;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* No room above the composer (data-composer-priority): the transcript has
+   shrunk to nothing, so the send-failure notice inside it cannot be read; the
+   composer repeats the latest one as a single line. */
+.chat-input__send-failure {
+  display: none;
+  padding: 0 var(--space-2);
   font-size: var(--text-xs);
   line-height: 1.25;
-  text-overflow: ellipsis;
+  color: var(--error-text);
   white-space: nowrap;
-  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-dock__body[data-composer-priority] .chat-input__send-failure {
+  display: block;
+}
+
+/* A send queued to retry by itself is not a failure, but its notice carries the
+   one way to discard it, and that sits in the transcript this same state
+   shrinks to nothing. The composer repeats just the action, in the controls row
+   (already a 44px touch row, so the draft's floor is untouched); the notice's
+   words are its accessible description. The shared `-actions` row rule
+   (index.css) gives the button its 44px floor. */
+.chat-input__queued-retry-actions {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.chat-dock__body[data-composer-priority] .chat-input__queued-retry-actions {
+  display: inline-flex;
+}
+
+.chat-input__queued-retry-actions > button {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The banner steps aside (the composer's own line repeats what failed). The
+   transcript only gives up its padding and shrinks to nothing: it is never
+   taken out of the layout, so a stale reading cannot remove the conversation. */
+.chat-dock__body[data-composer-priority] > .chat-dock__session-failure {
+  display: none;
+}
+
+.chat-dock__body[data-composer-priority] > .chat-messages {
+  padding-block: 0;
+}
+
+/* With no room for the transcript there is nothing to scroll back to, so the
+   transcript's Scroll to bottom control (portaled into the composer's activity
+   row) is not shown, and an activity row left with no status pill takes no
+   height. Under load the transcript can report a scroll while it is still
+   collapsing, and that phantom row pushed the composer below the viewport. */
+.chat-dock__body[data-composer-priority]
+  .chat-input__activity
+  .chat-scroll-to-bottom {
+  display: none;
+}
+
+/* Composer validation and attach-time notes sit in the fieldset's normal
+   flow, BELOW the draft. They were absolutely positioned against the
+   wrapper's bottom edge, which is where the textarea's last line is, so the
+   message printed on top of the user's own text. */
+.chat-input__attachment-error,
+.chat-input__attachment-notice {
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.chat-input__attachment-error {
+  color: var(--error-text);
+}
+
+/* The fix sits at the end of its reason, wrapping as one unit, without its
+   touch target inflating the text's line height. */
+.chat-input__attachment-error:has(.chat-input__blocked-action) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+
+.chat-input__attachment-error .chat-input__blocked-action {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The action's 44px touch floor comes from the shared mobile rule for
+   `__actions` rows (index.css); this only keeps the wrapper inline. */
+.chat-input__blocked-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chat-input__attachment-notice {
+  color: var(--text-secondary);
 }
 
 /* The composer's primary action: one circular, accent-filled target pinned to
@@ -1201,8 +1395,12 @@
    starts; only its fill and glyph change. Always enabled — stopping a running
    turn must not depend on there being text in the input. */
 .chat-input .chat-input__stop-btn {
-  background: var(--error-bg);
-  color: var(--error-text, var(--text-primary));
+  /* The white-carrying danger fill (4.98:1, see the hover note below). The
+     previous tint — `--error-text` on `--error-bg` — was a red square on a
+     dark-red circle that nearly vanished on a phone, where there is no
+     hover to reach the legible state. */
+  background: var(--error-fill);
+  color: white;
 }
 
 .chat-input .chat-input__stop-btn svg {
@@ -1334,6 +1532,39 @@
 }
 
 @media (max-width: 480px) {
+  /* station#1630: two declarations lived here that never applied — an
+     `.app-toolbar__icon-btn` padding/font-size pair and an
+     `.app-toolbar__workspace-btn { display: none }` — because the base rules
+     redeclare the same properties LATER at equal specificity, and source
+     order decides a tie. They stated an intent that computed nothing.
+
+     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
+     hiding it was never a change anyone could see and its whole rule set went
+     with it.
+
+     The icon-button pair was deleted rather than moved after the base, and
+     the two halves are not alike. `font-size` only shrinks the glyph, which
+     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
+     min-width FLOOR, and two controls in this row are content-sized past it —
+     the connection chip and the notifications button when it carries a badge.
+     Trimming 8px to 6px gives each of those back 4px, so 8px of a
+     `flex-shrink: 0` row.
+
+     station#1401 has since TAKEN that padding half — the trim lives in the
+     mobile touch block below, where it applies, and it moved the label
+     breakpoint from 382 to 374. The font-size half stayed deleted: it only
+     shrinks the glyph, which is a visible cost with nothing to show for it.
+     So this block's two declarations are still correctly gone, and the row
+     they described is 8px narrower than when they were written.
+
+     This rule is the block's live one: its base sits EARLIER in this sheet,
+     so it wins the tie. A finger needs the same 44px floor the composer
+     controls get; the glyph does not grow. */
+  .app-toolbar__region-btn {
+    width: 44px;
+    height: 44px;
+  }
+
   /* The footer is a column now, so the narrow-screen decision that these
      controls sit at the reading edge is expressed on the cross axis. It was
      `justify-content: flex-start` while the footer was a row. */
@@ -1786,6 +2017,419 @@
 /* The footer's controls are nested inside their own components, so the
    inventory-wide direct-child 44px floor cannot reach them — apply it
    explicitly on touch viewports. */
+
+/* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
+   and the connection chip's label is what it can give up.
+
+   MEASURED, on a running app in the `error` state ("Can't connect"), which is
+   the state in which reaching Settings matters most. `.app-toolbar__actions` is
+   `flex-shrink: 0` and `.app-toolbar__brand` bottoms out, so the row's left
+   side ends at x=126 and the cluster's own width is viewport-independent: with
+   this chip labelled it measures 259px, putting `Open settings` at x=340..384
+   at EVERY viewport up to 402 (266px and x=348..392 before station#1401's
+   padding trim, in the same `error` state). #1401 released this chip's 116px `min-width`
+   reservation, and that is what keeps 390, 402 and 412 reachable today; what it
+   left behind is the arithmetic below.
+
+   THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
+   112 (this chip — an 85px `max-width` label plus 27px of measured furniture:
+   button padding, the 7px dot, its gap) + 4 + 58 (notifications carrying its
+   widest badge: 34px of button plus a 23.91px badge — that is "99"'s width,
+   which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
+   the budget is ~1px conservative rather than exact. These figures are macOS
+   measurements and glyph metrics differ by platform — the same capped badge is
+   25.34px on a Linux runner, where "+" is wider than a digit rather than
+   narrower — so treat them as this platform's arithmetic. What holds
+   everywhere is that the badge stops growing at the cap (pinned in
+   `HeaderActions.connection-reflow.test.tsx`, in the COUNT rather than in
+   pixels). Its pixel size against this 23.91 allowance is enforced by
+   nothing: the e2e never renders a badge, and at its 360px case the label is
+   suppressed anyway, so the row there sits nowhere near this bound. That gap
+   is station#1721. The two-character worst
+   case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
+   unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
+   settings) = 396px, of which the last control's own CENTRE sits at 374. At
+   374px and below that centre is outside the viewport and
+   `document.elementFromPoint` returns null — unreachable rather than merely
+   clipped, which is the defect.
+
+   station#1401: this bound was 404/382 until the mobile touch block trimmed
+   `.app-toolbar__icon-btn` padding from 8px to 6px. The 44px floor means that
+   trim changes nothing for the glyph-only controls; the two content-sized
+   members each give back 4px, measured in this fixture as chip 105 -> 101 and
+   badged notifications 62 -> 58, cluster content 267 -> 259. So the label now
+   survives eight more pixels of viewport, and 375-382 keeps a state the row
+   used to hide. It does not close #1401's own band — that still needs a
+   control to leave the row — it moves where it starts.
+
+   382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
+   the worst case is a label at the 85px ceiling beside a two-character badge.
+   What was swept live, in the `error` state whose label is 79px and whose
+   badge was one digit, is narrower: that sweep read the `Open settings` centre
+   at x=370 at 360px, resolving to `null`, and station#1401's padding trim
+   moves it 8px left — DERIVED from the trim, not re-swept. What is measured
+   rather than computed is the 375px case in
+   `tests/toolbar-reachability.spec.ts`, which drives the real app at the
+   first width this breakpoint admits. So this breakpoint engages a little above where the swept state
+   alone would need it, which is what a bound is for.
+
+   Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
+   puts Open settings at x=282..326 — inside every viewport down to 326px. The
+   dot still carries the state by SHAPE (archive#3297, which is the channel
+   transient reachability was deliberately given when it stopped bannering), and
+   the accessible name is untouched: `connAccessibleName` is the BUTTON's
+   `aria-label` (HeaderActions.tsx), not this span's text, so a screen reader
+   still reads the full "Manage Stations — Can't connect · Dev Server".
+   `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
+   while staying in the accessibility tree is not coming back.
+
+   Between 375 and 395px the row is still clipped at its right edge while every
+   control keeps its centre (383-403 before station#1401's padding trim): the over-subscription #1401 describes, which needs
+   a control to leave the row rather than a width tweak. Two classes, not one:
+   this block cascades after the breakpoint above and would win a tie on order
+   alone, and a tie decided by order is how the last owner of this cluster's
+   flex behaviour was lost (archive#3766). */
+@media (max-width: 374px) {
+  .app-toolbar__conn .app-toolbar__conn-state {
+    display: none;
+  }
+}
+
+/* Mobile transcripts spend their width on the words. Secondary controls open
+   a sheet from one separate touch target, outside the message bubble. */
+.message-row--compact {
+  gap: 8px;
+}
+/* An answer's trigger goes under the answer, not beside it. Beside it, every
+   answer reserved a 52px column for one 44px button — the text column ended
+   ~85% across a 412px phone — and because the answer was a shrink-to-fit
+   flex item, each row ended wherever its own content did, so rows (and
+   their tool-row chevrons) ended at different widths from one answer to
+   the next. The user's bubble is right-aligned and short; it keeps the
+   side-by-side layout. */
+.message-row--compact:not(.message-row--user) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+.message-row--compact:not(.message-row--user) > .message {
+  /* Exactly the row: not a shrink-to-fit box (`.message.assistant` is
+     `align-self: flex-start`, which let a wide table grow the answer past the
+     screen) and not capped at the base 80%. */
+  align-self: stretch;
+  max-width: none;
+}
+.message-row--compact:not(.message-row--user) > .message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
+  margin-top: -10px;
+}
+.message-meta__time {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+/* A failure a later identical call recovered: history, not a verdict. */
+.tool-call-batch__retried {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+/* Narration a folded turn moved into its sheet, between the calls it was
+   written between: the transcript's own prose, quieter than the answer. */
+.tool-call-batch-sheet__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.tool-call-batch-sheet__note > :first-child {
+  margin-top: 0;
+}
+.tool-call-batch-sheet__note > :last-child {
+  margin-bottom: 0;
+}
+
+/* A long chat title leaves the phone header's project control 40px of content
+   width (measured at 320, 390 and 412px), where it only ever read "New ch… /
+   No …"; there it collapses to its folder glyph, and the button's aria-label
+   still names the project. The shortest title ("Chat") leaves 56px at 320px,
+   where "No pr…" still reads, so the cut sits between the two at 48px. The
+   base header rules live in index.css; these are parent-qualified so source
+   order cannot decide. */
+.chat-dock__mobile-header .chat-dock__mobile-project {
+  container: chat-dock-mobile-project / inline-size;
+}
+.chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+  display: none;
+  color: var(--text-secondary);
+}
+@container chat-dock-mobile-project (max-width: 48px) {
+  .chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+    display: inline-flex;
+  }
+  .chat-dock__mobile-project .chat-dock__mobile-project-lines {
+    display: none;
+  }
+}
+
+/* Phone density: the transcript's own 16px gap separates rows; the base 16px
+   margin on top of it doubled every step. A virtualized transcript positions
+   rows absolutely, where the container gap does not apply, so the margin
+   stays its only spacing there. */
+.message-row--compact {
+  margin-bottom: 0;
+}
+[data-transcript-row] .message-row--compact {
+  margin-bottom: var(--k-space-4);
+}
+/* A thin rule opens each exchange after the first (MessageBubble sets the
+   class on every phone user row but the transcript's first). */
+.message-row--compact.message-row--exchange-start {
+  border-top: var(--k-border-thin) solid var(--k-line);
+  padding-top: var(--k-space-4);
+}
+.message-row--compact .message {
+  padding: 10px 14px;
+}
+.message-row--compact .message.assistant {
+  background: transparent;
+  border: 0;
+  padding: 10px 0;
+}
+.message-details__trigger {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  /* A control, so it must stand off the surface at 3:1 (WCAG 1.4.11);
+     --text-muted read as a faint smudge under each answer. */
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+}
+.message-details__panel {
+  width: min(480px, 100%);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.message-details__body {
+  padding: 16px;
+  overflow-y: auto;
+}
+.message-details__body .turn-footer {
+  flex-direction: column;
+  align-items: stretch;
+}
+.message-details__body .turn-footer__actions {
+  flex-wrap: wrap;
+  opacity: 1;
+  height: auto;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.message-details__body .message__copy-btn,
+.message-details__body .message__rating,
+.message-details__body .message__trace {
+  position: static;
+  opacity: 1;
+}
+
+.chat-stream-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 44px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* #2880: the decision-delivery note can carry two sentences (a refused reply
+   and an unacknowledged one); they stack as lines, not side-by-side columns. */
+.chat-stream-status[data-chat-decision-delivery] {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--k-space-1);
+}
+
+.source-quote-selection {
+  position: fixed;
+  z-index: var(--layer-surface-popover);
+  max-width: min(280px, calc(100vw - 16px));
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 4px;
+}
+.source-quote-selection .button,
+.source-quote-draft .button {
+  min-height: 44px;
+}
+.source-quote-drafts {
+  max-height: 180px;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.source-quote-draft {
+  border: 1px solid var(--border-primary);
+  padding: 8px;
+}
+.source-quote-draft blockquote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  max-height: 70px;
+  overflow: auto;
+}
+.source-quote-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.app-toolbar__station-switcher {
+  position: fixed;
+  z-index: var(--layer-navigation);
+  width: min(280px, calc(100vw - 24px));
+}
+.station-switcher__profiles {
+  max-height: min(52vh, calc(100dvh - 180px));
+  overflow-y: auto;
+}
+.station-switcher__row {
+  min-height: 44px;
+}
+.station-switcher__identity {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.station-switcher__status {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+
+/* The Agent/Model/Mode rail has no fill of its own and sits flush on the
+   transcript's bottom edge, so a line scrolled to that edge was sliced
+   mid-glyph right against the chips and read as text running under them — on
+   a phone and in a desktop dock alike. Fade the transcript out over its own
+   bottom gutter instead: at rest at the bottom only padding is in the fade,
+   and mid-scroll the cut line dissolves before it reaches the rail. A static
+   mask on the scroller, no animation and no blur. */
+.chat-messages {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 16px),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+}
+
+/* Compact actions keep their names reachable by hover, focus and touch hold. */
+.composer-icon-action {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.composer-icon-action .button {
+  min-width: var(--k-space-6);
+  padding: var(--k-space-1);
+}
+.composer-icon-action__label {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: var(--k-z-popover);
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  padding: var(--k-space-2);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text);
+  background: var(--k-panel-raised);
+  font-size: var(--k-text-sm);
+}
+.composer-icon-action:hover .composer-icon-action__label,
+.composer-icon-action:focus-within .composer-icon-action__label,
+.composer-icon-action[data-label-visible] .composer-icon-action__label {
+  visibility: visible;
+}
+.chat-input__send-group {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  flex: 0 0 auto;
+}
+.chat-input__send-mode {
+  min-height: var(--k-space-6);
+  gap: var(--k-space-1);
+}
+
+.chat-input .chat-input__send-btn {
+  width: auto;
+  min-width: 44px;
+  gap: var(--k-space-1);
+  padding: 0 var(--k-space-3);
+  border-radius: var(--k-radius-control);
+  font-size: var(--k-text-sm);
+}
+
+.chat-input .chat-controls-row {
+  flex-wrap: wrap;
+}
+.chat-input__send-group {
+  margin-inline-start: auto;
+}
+.chat-input__mode-option {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  text-align: start;
+}
+
+.chat-input .chat-input__stop-btn {
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel-raised);
+  color: var(--k-negative);
+  margin-inline-end: var(--k-space-1);
+}
+.chat-input .chat-input__stop-btn:hover:not(:disabled) {
+  background: var(--k-negative-soft);
+}
+.chat-input__send-group {
+  gap: 0;
+}
+.chat-input__send-group:has(.chat-input__send-mode) .chat-input__send-btn {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.chat-input__send-mode {
+  height: 44px;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.chat-input__submit-controls {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.chat-input__submit-controls[data-concealed] {
+  visibility: hidden;
+  pointer-events: none;
+}
+.chat-input__mode-slot {
+  display: none;
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .app-toolbar__action--secondary.app-toolbar__action--secondary {
     display: none;
@@ -1798,32 +2442,25 @@
     min-width: 44px;
     min-height: 44px;
     /* station#1401: the 44px above is a floor, so glyph-only controls stay
-       touchable regardless of their padding. The connection chip is slightly
-       wider to fit its persistent Station label. The vertical 6px -> 4px is
+       touchable regardless of their padding. The vertical 6px -> 4px is
        inert for the same reason `min-height` floors it, and the dock's own
        connection chip overrides padding entirely (`index.css`,
        `.chat-dock__mobile-conn`). */
     padding: 4px 6px;
   }
-  /* #2406: the healthy chip names the Station. Reserve that label's width in
-     every state so a connection change cannot move neighboring controls. */
+  /* Keep the status control touchable without spending phone width on its
+     name. Holding the dot reveals the name; tapping opens the Station chooser. */
   .app-toolbar__conn {
     box-sizing: border-box;
-    width: 136px;
-    min-width: 136px;
-    flex: 0 0 136px;
+    width: 44px;
+    min-width: 44px;
+    flex: 0 0 44px;
   }
+  .app-toolbar__conn-label,
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;
   }
-  /* Hide the verbose state/name spans on mobile. Healthy state still shows
-     `Station · <saved name>` in the separately bounded compact label; the
-     fixed 136px reservation keeps neighboring controls still as health
-     changes. The accessible name carries the full status and profile label,
-     while attention states keep their repair/waiting banners and controls.
-     Tapping this control opens the Station manager with the complete saved
-     name in its selected row. */
 
   .composer-popover-overlay {
     justify-content: stretch;
@@ -1933,6 +2570,8 @@
     background: rgba(0, 0, 0, 0.55);
   }
   .mobile-task-switcher__panel {
+    display: flex;
+    flex-direction: column;
     width: min(100%, 520px);
     max-height: calc(var(--responsive-visual-viewport-height) - var(--space-4));
     overflow: auto;
@@ -1949,31 +2588,111 @@
     top: 0;
     z-index: 1;
     background: var(--bg-primary);
-    display: flex;
-    min-height: 52px;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--border-secondary);
+    border-bottom: 1px solid var(--k-line);
   }
-  .mobile-task-switcher__header p,
-  .mobile-task-switcher__header h2 {
-    margin: 0;
-  }
-  .mobile-task-switcher__header p {
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-  .mobile-task-switcher__header h2 {
-    font-size: var(--text-base);
+  .mobile-task-switcher__header .responsive-dialog-header {
+    border-bottom: 0;
   }
   .mobile-task-switcher__list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     display: grid;
-    gap: var(--space-1);
-    padding: var(--space-2);
+    gap: var(--k-space-2);
+    padding: var(--k-space-3);
+  }
+  .mobile-task-switcher__list .inbox-row {
+    --inbox-row-title-size: var(--k-text-lg);
+    --inbox-row-text-size: var(--k-text-md);
+    --inbox-row-line: var(--k-space-5);
+    --inbox-row-pad-block: var(--k-space-3);
+    --inbox-row-pad-inline: var(--k-space-3);
+  }
+  .mobile-task-switcher__list .inbox-row--touch {
+    display: block;
+  }
+  .mobile-task-switcher__list .inbox-row--touch .inbox-row__open {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+    gap: var(--k-space-2);
+  }
+  .mobile-task-switcher__list .inbox-row__meta {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .mobile-task-switcher__list .inbox-row__time {
+    display: none;
+  }
+  .mobile-task-switcher__list
+    .inbox-row__status:not(.inbox-row__status--reason) {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    gap: var(--k-space-1);
+  }
+  .mobile-task-switcher__list
+    .inbox-row__status:not(.inbox-row__status--reason)
+    .inbox-row__detail {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .mobile-task-switcher__list
+    .inbox-row__status:not(.inbox-row__status--reason)
+    > .inbox-row__sep {
+    display: none;
+  }
+  .mobile-task-switcher__list .inbox-row__status--reason,
+  .mobile-task-switcher__list .inbox-row__chips {
+    grid-column: 1 / -1;
+    padding-right: 44px;
+  }
+  .mobile-task-switcher__list .inbox-row__project-context {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: var(--k-space-2);
+    min-width: 0;
+    padding-right: 44px;
+    color: var(--text-secondary);
+    font-size: var(--k-text-md);
+  }
+  .mobile-task-switcher__list .inbox-row__project-context svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  .mobile-task-switcher__list .inbox-row__project-context .inbox-row__project {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-task-switcher__list .inbox-row--touch .inbox-row__actions {
+    position: absolute;
+    right: var(--k-space-2);
+    bottom: var(--k-space-2);
+    top: auto;
+  }
+  .mobile-task-switcher__list .inbox-row__title {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 44px;
+    padding-right: 44px;
+    display: -webkit-box;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .mobile-task-switcher__list .inbox-row--slim .inbox-row__open {
+    min-height: 52px;
+  }
+  .mobile-task-switcher__list .chat-dock-inbox__group-label,
+  .mobile-task-switcher__list .chat-dock-inbox__section-toggle {
+    --work-group-label-size: var(--k-text-md);
   }
   /* Composer two-row stack: at phone width the desktop layout (textarea +
      a right-hand controls column) squeezes the textarea and pushes the
@@ -2069,185 +2788,182 @@
     min-height: 44px;
     min-width: 44px;
   }
+
+  .composer-icon-action .button,
+  .chat-input__send-mode {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .chat-input__send-label,
+  .chat-input__mode-label {
+    display: none;
+  }
+  .chat-input .chat-input__send-btn,
+  .chat-input__send-mode {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+  }
+  .chat-input__mode-slot {
+    display: block;
+    width: 44px;
+    height: 44px;
+  }
 }
 
-/* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
-   and the connection chip's label is what it can give up.
+.chat-input .chat-input__send-btn--active {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+}
 
-   MEASURED, on a running app in the `error` state ("Can't connect"), which is
-   the state in which reaching Settings matters most. `.app-toolbar__actions` is
-   `flex-shrink: 0` and `.app-toolbar__brand` bottoms out, so the row's left
-   side ends at x=126 and the cluster's own width is viewport-independent: with
-   this chip labelled it measures 259px, putting `Open settings` at x=340..384
-   at EVERY viewport up to 402 (266px and x=348..392 before station#1401's
-   padding trim, in the same `error` state). #1401 released this chip's 116px `min-width`
-   reservation, and that is what keeps 390, 402 and 412 reachable today; what it
-   left behind is the arithmetic below.
+.chat-input .chat-input__send-btn--active:hover:not(:disabled) {
+  background: var(--k-action);
+}
 
-   THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
-   112 (this chip — an 85px `max-width` label plus 27px of measured furniture:
-   button padding, the 7px dot, its gap) + 4 + 58 (notifications carrying its
-   widest badge: 34px of button plus a 23.91px badge — that is "99"'s width,
-   which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
-   the budget is ~1px conservative rather than exact. These figures are macOS
-   measurements and glyph metrics differ by platform — the same capped badge is
-   25.34px on a Linux runner, where "+" is wider than a digit rather than
-   narrower — so treat them as this platform's arithmetic. What holds
-   everywhere is that the badge stops growing at the cap (pinned in
-   `HeaderActions.connection-reflow.test.tsx`, in the COUNT rather than in
-   pixels). Its pixel size against this 23.91 allowance is enforced by
-   nothing: the e2e never renders a badge, and at its 360px case the label is
-   suppressed anyway, so the row there sits nowhere near this bound. That gap
-   is station#1721. The two-character worst
-   case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
-   unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
-   settings) = 396px, of which the last control's own CENTRE sits at 374. At
-   374px and below that centre is outside the viewport and
-   `document.elementFromPoint` returns null — unreachable rather than merely
-   clipped, which is the defect.
+.chat-input {
+  container-type: inline-size;
+}
 
-   station#1401: this bound was 404/382 until the mobile touch block trimmed
-   `.app-toolbar__icon-btn` padding from 8px to 6px. The 44px floor means that
-   trim changes nothing for the glyph-only controls; the two content-sized
-   members each give back 4px, measured in this fixture as chip 105 -> 101 and
-   badged notifications 62 -> 58, cluster content 267 -> 259. So the label now
-   survives eight more pixels of viewport, and 375-382 keeps a state the row
-   used to hide. It does not close #1401's own band — that still needs a
-   control to leave the row — it moves where it starts.
+.chat-input .chat-input__meta {
+  display: flex;
+  flex-wrap: wrap;
+  overflow: visible;
+}
 
-   382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
-   the worst case is a label at the 85px ceiling beside a two-character badge.
-   What was swept live, in the `error` state whose label is 79px and whose
-   badge was one digit, is narrower: that sweep read the `Open settings` centre
-   at x=370 at 360px, resolving to `null`, and station#1401's padding trim
-   moves it 8px left — DERIVED from the trim, not re-swept. What is measured
-   rather than computed is the 375px case in
-   `tests/toolbar-reachability.spec.ts`, which drives the real app at the
-   first width this breakpoint admits. So this breakpoint engages a little above where the swept state
-   alone would need it, which is what a bound is for.
+.chat-input__settings {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
 
-   Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
-   puts Open settings at x=282..326 — inside every viewport down to 326px. The
-   dot still carries the state by SHAPE (archive#3297, which is the channel
-   transient reachability was deliberately given when it stopped bannering), and
-   the accessible name is untouched: `connAccessibleName` is the BUTTON's
-   `aria-label` (HeaderActions.tsx), not this span's text, so a screen reader
-   still reads the full "Manage Stations — Can't connect · Dev Server".
-   `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
-   while staying in the accessibility tree is not coming back.
+.chat-input__activity {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
+  min-width: 0;
+  max-width: 100%;
+  margin-inline-start: auto;
+}
 
-   Between 375 and 395px the row is still clipped at its right edge while every
-   control keeps its centre (383-403 before station#1401's padding trim): the over-subscription #1401 describes, which needs
-   a control to leave the row rather than a width tweak. Two classes, not one:
-   this block cascades after the breakpoint above and would win a tie on order
-   alone, and a tie decided by order is how the last owner of this cluster's
-   flex behaviour was lost (archive#3766). */
-@media (max-width: 374px) {
-  .app-toolbar__conn .app-toolbar__conn-state {
+.chat-input__activity .chat-scroll-to-bottom {
+  position: static;
+  flex: 0 0 auto;
+  width: var(--k-space-6);
+  height: var(--k-space-6);
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  box-shadow: none;
+  font-size: var(--k-text-lg);
+}
+
+@container (max-width: 640px) {
+  .chat-input__activity {
+    justify-content: center;
+    order: -1;
+    flex-basis: 100%;
+  }
+
+  .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+    display: none;
+  }
+
+  /* In a dock too short for the transcript the Scroll to bottom button is not
+     shown (see data-composer-priority), so it cannot hold this row open. */
+  .chat-dock__body[data-composer-priority]
+  .chat-input__activity:not(:has(.chat-status-pill)) {
+    display: none;
+  }
+
+  .chat-input__settings {
+    flex-basis: 100%;
+  }
+
+  .chat-input__activity .chat-scroll-to-bottom,
+  .chat-input__activity .chat-status-pill-host .chat-status-pill {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .chat-input__activity .chat-status-pill__details {
+    right: auto;
+    left: 50%;
+    translate: -50% 0;
+  }
+}
+
+@media (max-height: 540px) and (pointer: coarse) {
+  .app__main
+    .chat-dock--bottom
+    .chat-input:has(textarea:focus)
+    > .chat-input__meta:has(.chat-input__activity) {
+    display: flex;
+  }
+
+  .app__main
+    .chat-dock--bottom
+    .chat-input:has(textarea:focus)
+    .chat-input__settings {
     display: none;
   }
 }
 
-/* Mobile transcripts spend their width on the words. Secondary controls open
-   a sheet from one separate touch target, outside the message bubble. */
-.message-row--compact {
-  gap: 8px;
-}
-.message-row--compact .message {
-  padding: 10px 14px;
-}
-.message-row--compact .message.assistant {
-  background: transparent;
-  border: 0;
-  padding: 10px 0;
-}
-.message-details__trigger {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: var(--radius-md);
-}
-.message-details__panel {
-  width: min(480px, 100%);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-}
-.message-details__body {
-  padding: 16px;
-  overflow-y: auto;
-}
-.message-details__body .turn-footer {
-  flex-direction: column;
-  align-items: stretch;
-}
-.message-details__body .turn-footer__actions {
-  flex-wrap: wrap;
-  opacity: 1;
-  height: auto;
-  overflow: visible;
-  pointer-events: auto;
+/* The existing live markers gate motion; settled and approval rows stay still. */
+.tool-call__line:has(.tool-call__pulse),
+.tool-call-batch__summary:has(.tool-call-batch__pulse) {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
 }
 
-.message-details__body .message__copy-btn,
-.message-details__body .message__rating,
-.message-details__body .message__trace {
-  position: static;
-  opacity: 1;
+.tool-call__line .tool-call__pulse,
+.tool-call-batch__summary .tool-call-batch__pulse {
+  display: none;
 }
 
-.chat-stream-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  min-height: 44px;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+.tool-call__line:has(.tool-call__pulse)::after,
+.tool-call-batch__summary:has(.tool-call-batch__pulse)::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 35%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--k-text) 10%, transparent),
+    transparent
+  );
+  animation: tool-call-reflection var(--motion-status-breathe)
+    var(--ease-linear) infinite both;
 }
 
-/* #2880: the decision-delivery note can carry two sentences (a refused reply
-   and an unacknowledged one); they stack as lines, not side-by-side columns. */
-.chat-stream-status[data-chat-decision-delivery] {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: var(--k-space-1);
+@keyframes tool-call-reflection {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(390%);
+  }
 }
 
-.source-quote-selection {
-  position: fixed;
-  z-index: var(--layer-surface-popover);
-  max-width: min(280px, calc(100vw - 16px));
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 4px;
+:root[data-page-hidden] .tool-call__line::after,
+:root[data-page-hidden] .tool-call-batch__summary::after {
+  animation-play-state: paused;
 }
-.source-quote-selection .button,
-.source-quote-draft .button {
-  min-height: 44px;
-}
-.source-quote-drafts {
-  max-height: 180px;
-  overflow: auto;
-  flex-shrink: 0;
-}
-.source-quote-draft {
-  border: 1px solid var(--border-primary);
-  padding: 8px;
-}
-.source-quote-draft blockquote {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  margin: 0;
-  max-height: 70px;
-  overflow: auto;
-}
-.source-quote-text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+
+.chat-input__activity .chat-scroll-to-bottom:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--k-panel-raised);
 }

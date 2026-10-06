@@ -1,0 +1,7 @@
+{
+  "revision": "f0f20e6125e5e41bbb691d806ea3cf866ac15769",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed corrected scope-caption against section persistence tiers. It now accurately distinguishes Station/device ownership while preserving the existing project override selector and save paths. Focused settings tests pass.","inputs":["docs/design/settings-architecture.md"]}
+  ]
+}

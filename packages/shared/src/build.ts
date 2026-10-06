@@ -33,24 +33,12 @@ import {
 import { readPluginManifest } from './parsers.js';
 import { pluginTsconfig } from './plugin-tsconfig.js';
 import { isRegularFileSync } from './regular-file.js';
+import { validateAuthoredSkillExperiences } from './skill-experience-author.js';
 
 const sharedDirectory = dirname(fileURLToPath(import.meta.url));
 
 /**
- * esbuild, loaded only when a plugin is actually built.
- *
- * This used to be a static `import { build } from 'esbuild'`, which meant every
- * consumer of this module paid for esbuild at load time — and, more expensively,
- * at *install* time: esbuild resolves a per-platform native binary from its own
- * package (~9.9 MB unpacked, ~4.2 MB downloaded). `@kontourai/station-cli`
- * inlines this module into its published bundle, so that binary was a hard
- * dependency of a CLI whose ~28 client verbs never build anything.
- *
- * Deferring the import lets the CLI declare esbuild as an *optional peer*: the
- * plugin-authoring verbs (`plugin build`, `plugin dev`, `plugin install`) load
- * it on demand, and everyone else never downloads it. Nothing else changes —
- * `buildPlugin` was always async, so the await is free, and in the server and
- * the monorepo (where esbuild is a real dependency) the import always resolves.
+ * Load esbuild on demand so non-build CLI commands keep it optional.
  */
 let esbuildModule:
   | { build: typeof EsbuildBuild; context: typeof EsbuildContext }
@@ -98,6 +86,7 @@ export const SHARED_EXTERNALS = [
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
   '@kontourai/station-sdk',
+  '@kontourai/station-sdk/agent',
   '@kontourai/station-sdk/client',
   '@kontourai/station-sdk/voice',
   '@kontourai/station-components',
@@ -109,7 +98,7 @@ export const SHARED_EXTERNALS = [
 
 /** esbuild filter regex matching all shared externals */
 export const SHARED_EXTERNALS_REGEX =
-  /^react$|^react\/|^@kontourai\/station-sdk(?:\/(?:client|voice))?$|^@kontourai\/station-components$|^@tanstack\/react-query$|^dompurify$|^debug$|^zod$/;
+  /^react$|^react\/|^@kontourai\/station-sdk(?:\/(?:agent|client|voice))?$|^@kontourai\/station-components$|^@tanstack\/react-query$|^dompurify$|^debug$|^zod$/;
 
 /**
  * Runtime require() shim — maps externals to window.__station_ai_shared.
@@ -183,6 +172,11 @@ export function readPluginBuildManifest(pluginDir: string): PluginManifest {
     throw new Error(
       `Agent Plugin build manifest is invalid: ${reports.find((report) => report.code !== 'unknown-manifest-field')?.message ?? 'unknown validation failure'}`,
     );
+  validateAuthoredSkillExperiences(
+    pluginDir,
+    parsed.manifest,
+    parsed.stationExtension,
+  );
   return {
     name: parsed.manifest.name,
     version: parsed.manifest.version ?? '0.0.0-agent-plugin-unversioned',
@@ -676,7 +670,6 @@ function draftDiagnostics(
         ...(importer?.file ? at(importer.location, importer.file) : {}),
       };
     }
-    const text = rawText;
     const location = message.location ?? undefined;
     const rawFile =
       typeof location?.file === 'string' ? location.file : undefined;
@@ -693,7 +686,7 @@ function draftDiagnostics(
       };
     }
     return {
-      text: bound(scrub(text)),
+      text: bound(scrub(rawText)),
       ...(file ? { file } : {}),
       ...(typeof location?.line === 'number' ? { line: location.line } : {}),
       ...(typeof location?.column === 'number'
@@ -792,14 +785,6 @@ function buildCustomPlugin(pluginDir: string): BuildResult {
  * bundled location sits directly under the repo root and every workspace
  * package is uniformly a `packages/<name>` hop away. `null` when neither
  * shape resolves (package genuinely absent).
- *
- * `ensurePluginDeps`'s `sharedRoot` already needed exactly this two-shape
- * fallback (shape (b) below is the pre-existing logic, unchanged in
- * behavior) — `sdkRoot` previously only checked shape (a), so an
- * installed-from-directory plugin (the bundled-server codepath) that
- * imports `@kontourai/station-sdk` (or a subpath, e.g. `/client`) never got
- * its symlink created there, only under `station plugin build`/`plugin dev`
- * run via source. Both call sites now share this one resolution helper.
  */
 export function resolveWorkspacePackageRoot(
   name: string,
@@ -918,10 +903,6 @@ function linkHostProvidedPackages(pluginDir: string): void {
   const devRoot = resolve(sharedDirectory, '..');
   const sharedRoot =
     resolveWorkspacePackageRoot('shared', devRoot) ??
-    // Never actually null in practice (this module IS `packages/shared`, so
-    // its own root always resolves one way or the other) — kept as a
-    // last-resort literal fallback rather than a non-null assertion, same
-    // as this ternary's own pre-existing (unchanged) shape-(b) fallback.
     resolve(sharedDirectory, '..', 'packages', 'shared');
   const sdkRoot = resolveWorkspacePackageRoot(
     'sdk',

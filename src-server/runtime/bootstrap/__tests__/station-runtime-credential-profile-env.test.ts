@@ -134,12 +134,18 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
     );
 
     await expect(hoisted.claude?.getAppHomeEnv?.('proxy')).resolves.toEqual({
-      ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-      CLAUDE_CONFIG_DIR: credentialProfileAppHomeDir('claude', 'proxy'),
+      profileRef: 'proxy',
+      env: {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        CLAUDE_CONFIG_DIR: credentialProfileAppHomeDir('claude', 'proxy'),
+      },
     });
     await expect(hoisted.codex?.getAppHomeEnv?.('proxy')).resolves.toEqual({
-      OPENAI_BASE_URL: 'http://127.0.0.1:9000',
-      CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy'),
+      profileRef: 'proxy',
+      env: {
+        OPENAI_BASE_URL: 'http://127.0.0.1:9000',
+        CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy'),
+      },
     });
     for (const options of [hoisted.claude, hoisted.codex]) {
       await expect(options?.getAppHomeEnv?.('tampered')).rejects.toBeInstanceOf(

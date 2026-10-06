@@ -70,6 +70,13 @@
       "description": "Deterministic model-tier routing plugin with routing-decision telemetry.",
       "version": "1.0.0",
       "source": "../smart-routing"
+    },
+    {
+      "id": "matt-pocock-engineering",
+      "displayName": "Matt Pocock engineering collection (Station-curated)",
+      "description": "Clarify an idea, review project decisions, write a specification, and approve a work breakdown using attributed pinned Skills. Tools, tracker setup, writes and publication retain the selected agent\u2019s authority.",
+      "version": "1.0.0",
+      "source": "../matt-pocock-engineering"
     }
   ],
   "tools": [

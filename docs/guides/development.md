@@ -99,6 +99,60 @@ Agent and contributor smoke runs should use unique ports and `--temp-home`
 unless the task explicitly needs the selected channel's default runtime home.
 See [release channel ports](release-channel-ports.md) for the canonical map.
 
+### Running a second Station in development mode
+
+To edit Station's own code while a browser workspace shows the change live, run
+a second Station from the checkout with `--watch`. It extends `start` (and so
+`just dev`), because it needs the same instance record, home registry entry,
+readiness waits and `stop`; it is not a separate launcher.
+
+```bash
+just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
+./station stop --instance=hot --home=<the home start printed>
+```
+
+- **Server.** Runs from source under `tsx watch`, so a server edit restarts it.
+  Nothing is built, and `--build` is refused. The reported build SHA is the
+  checkout `HEAD` at launch and does not follow later edits.
+- **UI.** The instance's UI port is the Vite dev server (hot module
+  replacement). It proxies `/api`, `/.well-known`, and the other server mounts
+  the production UI listener forwards (`/agents`, `/events`, `/config`, and so
+  on, one shared list) to that instance's server port, with the same internal
+  attestation, so the UI is same-origin with its API and passes the session
+  gate. The server's allowed origins are not widened: the UI port is already one.
+  The sign-in link printed at start works as for any instance.
+- **File access.** The dev server serves only the UI's import roots
+  (`src-ui`, `src-shared`, the workspace packages' `src`, and `node_modules`)
+  and turns Vite's CORS off, so a page on another localhost port cannot read
+  repo files such as `CLAUDE.md` through `/@fs/`. The UI is same-origin with
+  this server, including in the Tauri shell.
+- **Process identity.** The registered server PID is the `tsx watch` parent,
+  not the node child it restarts; `stop` signals the parent's process tree. A
+  legacy unmanaged record with no captured fingerprint is still trusted by PID
+  alone (the residual accepted in #3253).
+- **Loopback only.** `--watch` binds `127.0.0.1` and refuses another `--host`,
+  as for the root Vite server below. `station open --print` links to the
+  address the instance bound (`127.0.0.1` here), not `localhost`; the two are
+  different origins, so a sign-in link only signs in the origin it names.
+- **Cold start.** The first load after `start --watch` waits on a cold Vite
+  server compiling and optimizing the UI dependency graph, which can take tens
+  of seconds before Home renders. The page is blank or loading until
+  then; later loads and hot updates are fast. Station does not warm the server
+  up, so open the instance's `station open --print` link once and wait.
+- **Distinct home.** A dev instance must use its own Station home
+  (`--temp-home` or `--home`). The browser workspace refuses to load a page
+  served by a listener of the *same* home as a Station listener, so a dev
+  instance on the viewer's home cannot be shown in it.
+- **Port band.** An instance occupies its server port, the next three (terminal,
+  voice, consent) and its UI port. Choose a `--port`/`--ui-port` whose whole
+  band is clear of every other running Station on the host, the normal one
+  included (never 3141 or 3000 for a test).
+- **Polling.** Some hosts (certain bind mounts, network and virtualized
+  filesystems) deliver no native file events, so nothing hot-updates. Set
+  `STATION_DEV_WATCH_POLL=1` to poll instead: Vite uses `usePolling`, and the
+  server runs under `scripts/dev-server-watch.mts` (`tsx watch` cannot poll).
+  Polling costs some CPU; leave it off where native watching works.
+
 The root Vite development command is local-only by default:
 
 ```bash
@@ -326,6 +380,90 @@ last 100 non-merge `origin/main` subjects still pass and that every merge
 subject in the last 3000 commits is exempt or conforming, so a vocabulary
 that stops fitting the repo fails a gate rather than its contributors.
 
+## GitHub automation token
+
+Agent sessions and tools that arm auto-merge, confirm the merge queue or poll
+checks must not spend the owner's personal GitHub quota: during #2886 the
+shared 5,000-per-hour GraphQL limit ran out three times and blocked merges
+for 20 to 40 minutes each time (#2926). Automation uses a dedicated GitHub
+App instead, whose installation tokens carry their own quota.
+`scripts/gh-app-token.mjs` mints one per call:
+
+```bash
+# Read-only by default; workflows is excluded because it permits only write.
+GH_TOKEN=$(node scripts/gh-app-token.mjs) gh api repos/kontourai/station/pulls/<n>
+# Ask for exactly the write scope a call needs; the child gets GH_TOKEN, never your GITHUB_TOKEN.
+node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write,workflows:write -- \
+  gh pr merge <n> --repo kontourai/station --auto
+```
+
+Workflow-changing PRs require `workflows: write` on the installation and on
+the token used to arm them. Updating the App's requested permissions can leave
+an installation awaiting approval; inspect the installed permissions before
+using the grant. Read-only status tokens never request this write-only scope.
+The hosted landing caller requests it for workflow PR admission. After arming,
+it checks the current head once and reports either `queued` or
+`armed_waiting_for_queue`; an armed request is not evidence of enqueueing.
+A successful command that leaves the PR neither armed nor queued fails the
+landing job. Already queued PRs are left alone. No polling or bypass is added.
+
+Each token is scoped to the `station` repository and the requested
+permissions, lives about an hour, and is never cached or written anywhere.
+The helper fails closed (exit 78) and points here when it is not set up. It
+refuses to print a token to a terminal, so a bare run cannot leak one into a
+session transcript; capture it with `$(...)` or run a command after `--`.
+Each refusal starts with a stable reason code, such as
+`gh-app-token: key-in-repository:`.
+
+**Prefer REST for status reads.** `gh pr view`, `gh pr checks` and
+`gh pr status` are GraphQL calls. Read state over REST instead:
+`gh api repos/kontourai/station/pulls/<n>`,
+`gh api repos/kontourai/station/commits/<sha>/check-runs` and
+`gh api repos/kontourai/station/commits/<sha>/status`. The merge queue has no
+REST endpoint, so confirm an armed PR with the single GraphQL query in
+[AGENTS.md](../../AGENTS.md), once, with the app token.
+
+### Setup (owner, once)
+
+1. Create a dedicated app, not the release app. The release app's
+   permissions are broader than arming and reading need. This link pre-fills
+   the minimal permissions and no webhook:
+   `https://github.com/organizations/kontourai/settings/apps/new?name=station-automation&url=https://github.com/kontourai/station&public=false&webhook_active=false&pull_requests=write&contents=write&workflows=write&issues=write&checks=read&statuses=read&actions=read&metadata=read`
+2. Install it on `kontourai` with **Only select repositories**:
+   `kontourai/station`.
+3. Keep the app **off every ruleset bypass list**. It arms auto-merge; the
+   merge queue and required checks must still decide.
+4. Generate a private key, store it in the macOS Keychain, then delete the
+   downloaded file:
+
+   ```bash
+   security add-generic-password -U -s kontourai-station-automation -a <app-id> -w "$(cat station-automation.pem)"
+   rm -P station-automation.pem
+   ```
+
+   The key briefly appears in the process list while that command runs.
+   `security find-generic-password -w` returns a multi-line secret
+   hex-encoded; the helper decodes it in memory.
+5. Point the helper at the app outside the repository, in
+   `~/.config/station/gh-app.json` (or `$STATION_GH_APP_CONFIG`):
+
+   ```json
+   { "appId": "5113898", "installationId": "165937750" }
+   ```
+
+   Environment variables override the file: `STATION_GH_APP_ID`,
+   `STATION_GH_APP_INSTALLATION_ID` (looked up from the app's installation on
+   `kontourai` when absent), `STATION_GH_APP_KEYCHAIN_SERVICE` (default
+   `kontourai-station-automation`), `STATION_GH_APP_KEYCHAIN_ACCOUNT`
+   (default: the app ID) and `STATION_GH_APP_PRIVATE_KEY_PATH`, a key file
+   used instead of the Keychain, for hosts without one. The helper refuses a
+   config or key file inside a repository.
+
+**Rotation.** Generate a new key in the app's settings, replace the Keychain
+item with the same `security add-generic-password -U` command, confirm
+`node scripts/gh-app-token.mjs >/dev/null` exits 0, then delete the old key
+from the app's settings.
+
 ## Verification
 
 Before editing, route the intended paths with `gate:for`. Use the changed
@@ -353,7 +491,7 @@ against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
 verification-policy, lint, governance and typecheck invariants. It is not
 the full static/build chain or full Vitest corpus.
-Hosted CI splits that work: `fast-checks-plan` selects once, four
+Hosted CI splits that work: `fast-checks-plan` selects once, one to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
 The required `fast-checks` result combines job outcomes with exact-plan shard
@@ -364,17 +502,29 @@ GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
-The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-canonical receipt. Nightly and tagged preview and stable promotions bind it to
-one exact source SHA before any artifact build or publication.
-A manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
+Nightly and tagged preview and stable promotions pass one exact source SHA
+to the hosted qualification authority.
+
+The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
+one exact source through every canonical phase and the Android viewport suite.
+`Main: Qualification` runs every six hours and starts a Nightly for the commit it
+qualified at most about once a day. Nightly has no independent schedule; its
+manual dispatch remains available for recovery. The hourly qualification-health
+watchdog reports missed starts, stale success and failed delivery. Nightly
+and tagged Preview/Stable require that qualification, with bounded reuse of
+exact-source evidence. See [the release process](releasing.md) for receipt
+admission, failure repair and promotion.
+A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.
 
-When recording a promotion-level Builder `tests-evidence` claim, use the
-hosted exact-SHA receipt whose command is `npm run full:regression`. Keep
-focused test commands in ordinary delivery evidence; they remain useful
-diagnostics but are not canonical promotion receipts.
+Keep hosted source qualification and local verification receipts separate in
+delivery evidence. Attach the hosted exact-SHA JSON and producer run, retaining
+any original reused-run binding. The hosted `station.source-qualification`
+schema is not a local version-3 verification receipt; consumer compatibility,
+including Builder admission, must be verified through that consumer rather
+than inferred from the attachment. Focused test commands remain diagnostics.
+See [receipt boundaries](../reference/verification-receipts.md#hosted-source-qualification).
 
 Useful focused commands:
 

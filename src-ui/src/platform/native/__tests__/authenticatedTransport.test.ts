@@ -3,6 +3,12 @@ import {
   setNativePairingExchangeTransport,
 } from '@kontourai/station-connect/device-pairing';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
+import {
+  authenticatedFetch,
+  ChatHttpError,
+  sendExecutionMessage,
+  setClientCredentialResolver,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { completeVerifiedPairing } from '../../../../../packages/connect/src/react/pairingCompletion.js';
@@ -58,7 +64,30 @@ describe('native authenticated transport', () => {
     bridge.channels.length = 0;
   });
 
-  afterEach(() => setNativePairingExchangeTransport());
+  afterEach(() => {
+    setNativePairingExchangeTransport();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test.each([204, 205, 304])(
+    'completes an empty HTTP %s response without constructing a forbidden body',
+    async (status) => {
+      bridge.invoke.mockResolvedValue(undefined);
+      const pending = nativeAuthenticatedTransport(
+        'https://station.example.test/api/empty',
+      );
+      await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalled());
+      expect(() =>
+        emit({ type: 'response', status, headers: {}, bodyLength: 0 }),
+      ).not.toThrow();
+      emit({ type: 'end' });
+      const response = await pending;
+      expect(response.status).toBe(status);
+      expect(response.body).toBeNull();
+      await expect(response.text()).resolves.toBe('');
+    },
+  );
 
   test('streams status, safe headers, and chunks without a renderer bearer', async () => {
     const secretCanary = 'native-keyring-secret-canary';
@@ -291,6 +320,200 @@ describe('native authenticated transport', () => {
    * apart from "genuinely unreachable". This asserts the thrown `Error`
    * carries `.code` unchanged from the rejection.
    */
+  const queueRefusal = {
+    code: 'transport_capacity',
+    message:
+      '64/64 waiting; 8/8 ordinary requests active. This request has not been sent.',
+    capacity: {
+      pendingRequests: 64,
+      pendingLimit: 64,
+      activeRequests: 20,
+      activeLimit: 32,
+      originRequests: 8,
+      originRequestLimit: 8,
+      originStreams: 12,
+      originStreamLimit: 12,
+      retryAfterMs: 250,
+      occupants: [
+        {
+          method: 'GET',
+          routeCategory: 'config',
+          ageMs: 30_000,
+          phase: 'receiving-body',
+          stream: false,
+          sameOrigin: true,
+        },
+      ],
+      queueHead: {
+        method: 'GET',
+        routeCategory: 'system',
+        ageMs: 15_000,
+        phase: 'waiting-for-admission',
+        stream: false,
+        sameOrigin: true,
+      },
+    },
+  };
+
+  function startCapacityRefusal() {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request') throw queueRefusal;
+    });
+  }
+
+  test('backs off a pre-dispatch queue refusal and sends the preserved POST when space returns', async () => {
+    startCapacityRefusal();
+    const pending = nativeAuthenticatedTransport(
+      'https://station.example.test/api/orchestration/chat',
+      {
+        method: 'POST',
+        body: 'send once',
+        expectedBindingId: 'captured-binding',
+      } as RequestInit,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(bridge.invoke).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(249);
+    expect(bridge.invoke).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(bridge.invoke).toHaveBeenCalledTimes(2);
+    bridge.invoke.mockImplementation(async () => {
+      emit({ type: 'response', status: 200, headers: {} });
+      emit({ type: 'chunk', bytes: [...new TextEncoder().encode('accepted')] });
+      emit({ type: 'end' });
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    const response = await pending;
+    await expect(response.text()).resolves.toBe('accepted');
+    expect(bridge.invoke).toHaveBeenCalledTimes(3);
+    const attempts = bridge.invoke.mock.calls.map(([, args]) => args.request);
+    expect(attempts[0]).toMatchObject({
+      method: 'POST',
+      body: [...new TextEncoder().encode('send once')],
+      expectedBindingId: 'captured-binding',
+    });
+    expect(attempts[1]).toEqual(attempts[0]);
+    expect(attempts[2]).toEqual(attempts[0]);
+  });
+
+  test('bounds automatic retries and preserves the latest capacity diagnosis', async () => {
+    startCapacityRefusal();
+    const pending = nativeAuthenticatedTransport(
+      'https://station.example.test/api/tasks',
+    );
+    const assertion = expect(pending).rejects.toMatchObject({
+      code: 'transport_capacity',
+      capacity: queueRefusal.capacity,
+      message: expect.stringContaining('after 6 retries'),
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+    expect(bridge.invoke).toHaveBeenCalledTimes(7);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test('cancels during back-off without dispatching again', async () => {
+    startCapacityRefusal();
+    const controller = new AbortController();
+    const pending = nativeAuthenticatedTransport(
+      'https://station.example.test/api/tasks',
+      { signal: controller.signal },
+    );
+    const assertion = expect(pending).rejects.toMatchObject({
+      code: 'cancelled',
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await assertion;
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(
+      bridge.invoke.mock.calls.filter(
+        ([command]) => command === 'station_native_http_request',
+      ),
+    ).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test('rechecks authority after back-off before resending', async () => {
+    startCapacityRefusal();
+    const authorityGuard = vi.fn();
+    const pending = nativeAuthenticatedTransport(
+      'https://station.example.test/api/tasks',
+      { authorityGuard } as RequestInit,
+    );
+    const assertion = expect(pending).rejects.toThrow(
+      'Station selection changed',
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    authorityGuard.mockImplementation(() => {
+      throw new Error('Station selection changed');
+    });
+    await vi.advanceTimersByTimeAsync(250);
+    await assertion;
+    expect(bridge.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    {
+      refusal: { code: 'transport_capacity', message: 'stream allowance full' },
+      init: undefined,
+    },
+    {
+      refusal: {
+        ...queueRefusal,
+        capacity: { ...queueRefusal.capacity, pendingLimit: '64' },
+      },
+      init: undefined,
+    },
+    {
+      refusal: {
+        ...queueRefusal,
+        capacity: { ...queueRefusal.capacity, pendingRequests: 0 },
+      },
+      init: undefined,
+    },
+    { refusal: queueRefusal, init: { livenessProbe: true } as RequestInit },
+    {
+      refusal: queueRefusal,
+      init: { headers: { Accept: 'text/event-stream' } },
+    },
+  ])(
+    'does not replay capacity refusals without a valid ordinary queue admission snapshot: %j',
+    async ({ refusal, init }) => {
+      startCapacityRefusal();
+      bridge.invoke.mockRejectedValue(refusal);
+      await expect(
+        nativeAuthenticatedTransport(
+          'https://station.example.test/api/system/identity',
+          init,
+        ),
+      ).rejects.toMatchObject({ code: 'transport_capacity' });
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(bridge.invoke).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test('never retries a capacity error delivered on an admitted response channel', async () => {
+    startCapacityRefusal();
+    bridge.invoke.mockImplementation(async () =>
+      emit({
+        type: 'error',
+        code: 'transport_capacity',
+        detail: 'admitted channel failure',
+      }),
+    );
+    await expect(
+      nativeAuthenticatedTransport(
+        'https://station.example.test/api/orchestration/chat',
+        { method: 'POST', body: 'possible effect' },
+      ),
+    ).rejects.toMatchObject({ code: 'transport_capacity' });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(bridge.invoke).toHaveBeenCalledTimes(1);
+  });
+
   test('preserves a stale-ACL credential-store refusal from native transport', async () => {
     bridge.invoke.mockImplementation(async (command: string) => {
       if (command === 'station_native_http_request') {
@@ -586,5 +809,124 @@ describe('native authenticated transport', () => {
     expect(setCredential).not.toHaveBeenCalled();
     expect(markDeviceSession).not.toHaveBeenCalled();
     expect(setActiveConnection).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * #3166: Station marks its own JSON answers with `x-station-envelope`, and the
+ * SDK reads that marker to tell a Station refusal from an intermediary's. On
+ * desktop every request goes through this broker, so the marker must survive
+ * the native response and reach the SDK's request seam.
+ */
+describe('Station envelope marker through the native broker (#3166)', () => {
+  // Pinned beside `STATION_ENVELOPE_HEADER` in packages/contracts/src/http.ts.
+  const MARKER = 'x-station-envelope';
+  const REFUSAL = { success: false, error: 'no', code: 'refused' };
+
+  type BrokerReply = {
+    status: number;
+    headers: Record<string, string>;
+    body: unknown;
+  };
+
+  /** Answer each native request with the next reply, as the broker would. */
+  function brokerReplies(replies: BrokerReply[]): void {
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command !== 'station_native_http_request') return;
+      const reply = replies.shift();
+      if (!reply) throw new Error('unexpected native request');
+      queueMicrotask(() => {
+        emit({
+          type: 'response',
+          status: reply.status,
+          headers: reply.headers,
+        });
+        emit({
+          type: 'chunk',
+          bytes: [...new TextEncoder().encode(JSON.stringify(reply.body))],
+        });
+        emit({ type: 'end' });
+      });
+    });
+  }
+
+  /** Route the SDK for `origin` through the real native transport. */
+  function useNativeTransport(origin: string): void {
+    setClientCredentialResolver(() => ({
+      origin,
+      transport: nativeAuthenticatedTransport,
+    }));
+  }
+
+  async function refusalFrom(origin: string): Promise<ChatHttpError> {
+    const error = await sendExecutionMessage(origin, {
+      agentId: 'writer',
+      message: 'hello',
+      idempotencyKey: 'k1',
+    } as never).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ChatHttpError);
+    return error as ChatHttpError;
+  }
+
+  beforeEach(() => {
+    bridge.invoke.mockReset();
+    bridge.channels.length = 0;
+  });
+
+  afterEach(() => {
+    setClientCredentialResolver();
+  });
+
+  test('a marked Station refusal is recognised as Station’s own answer', async () => {
+    // A distinct origin per test: what an origin has sent is process-wide.
+    const origin = 'https://marked-refusal.station.test';
+    useNativeTransport(origin);
+    brokerReplies([
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: { success: true, data: [] },
+      },
+      {
+        status: 403,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: REFUSAL,
+      },
+    ]);
+
+    const answer = await authenticatedFetch(`${origin}/api/anything`);
+    // The seam itself: an origin that never marked falls back to body shape
+    // and would also read as Station's, so the outcome alone proves nothing.
+    expect(answer.headers.get(MARKER)).toBe('1');
+    await answer.json();
+    const error = await refusalFrom(origin);
+
+    expect(error.status).toBe(403);
+    expect(error.stationEnvelope).toBe(true);
+  });
+
+  test('after a marked answer, an unmarked refusal in Station’s shape is not Station’s', async () => {
+    const origin = 'https://intermediary-refusal.station.test';
+    useNativeTransport(origin);
+    brokerReplies([
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: { success: true, data: [] },
+      },
+      {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+        body: REFUSAL,
+      },
+    ]);
+
+    await (await authenticatedFetch(`${origin}/api/anything`)).json();
+    const error = await refusalFrom(origin);
+
+    // Only reachable as `false` if the broker's marker on the first answer
+    // taught the SDK that this origin marks its answers.
+    expect(error.status).toBe(403);
+    expect(error.stationEnvelope).toBe(false);
   });
 });

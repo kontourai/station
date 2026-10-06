@@ -1,0 +1,37 @@
+{
+  "path": "scripts/__tests__/fixtures/changed-verification/README.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "One-sentence fixture marker. scenarios.json names this README as a boundary-selection input; it is not a production feature or executable module.",
+
+  "limits": "Preserved intentionally minimal fixture text. Focused selector tests verify fixture consumption, not global changed-test completeness.",
+
+  "sources": [
+    "scripts/__tests__/changed-verification.test.ts",
+
+    "scripts/__tests__/fixtures/changed-verification/scenarios.json",
+
+    "scripts/run-changed-verification.mjs"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed source changes: Additional hosted selection/shard cases do not change the fixture directory role: named boundaries only, no executable production input. Hosted plan/shard execution reuses the existing resource partition and verdict rules. The fixture README only describes named non-executable selector inputs; no end-to-end or hosted result follows from it.",
+
+    "Reviewed integration deltas: scripts/__tests__/changed-verification.test.ts: Adds exact known changeset/Fallow suite selection and unknown-path controls, plus injected runner completion test. Governing manifest inspected. No broad CI completion inferred from selector fixture.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Shard planning records actual related-discovery duration and its existing cap; no coverage or execution semantics weakened. Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts.",
+
+    "Reviewed landing deltas through 111744681: Deadline tests cover the actual selector CLI over fixtures. The representative full-checkout test retains all assertions but has a 120s child / 125s outer liveness fence; measured checkout overhead exceeded its former 30s cap. Discovery derives timeout after refinement, keeps a 30s reserve and 60s standalone fallback, refuses insufficient/invalid budgets, and removes the deadline from child environments. Malformed CLI environment is refused before a diagnostic; exhausted valid preparation records infrastructure failure. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Integration source review through e0314c727: changed-verification.test.ts only changed the SPAWNED_SCRIPT_EDGES count from 11 to 10. The README's narrow-diff demo and 120-second liveness claims still match the test (timeout: 120_000). The ledger summary calls this a 'one-sentence' marker, but the file is a 15-line explanation; the summary wording, not the README, is stale. Classification review only.",
+
+    "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection Vitest suites to the selection (productLawEvidenceTests) instead of adding a ci-fast lane and escalating. The test delta covers that behavior. The representative narrow-diff demo and the 120_000 ms liveness timeout that the README describes are unchanged. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

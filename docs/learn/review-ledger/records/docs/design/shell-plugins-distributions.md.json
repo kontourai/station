@@ -1,0 +1,57 @@
+{
+  "path": "docs/design/shell-plugins-distributions.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Accepted-direction record of the 2026-09-29 owner decisions (shell kernel, per-install trust, required slots, layout owner x subject, layout contract fields, distribution manifests, public plugins repo) with a source-inspected current-state section, threat notes, open items and a sliced delivery plan.",
+
+  "limits": "Design, not shipped behavior. Current-state claims are source inspection at 2e8ddc0f7; no test executed. The feat/coding-chat-main branch diff was not reviewed. Plugin-to-plugin isolation claims rest on the build shim source, not an executed probe.",
+
+  "sources": [
+    "packages/contracts/src/distribution.ts",
+
+    "packages/contracts/src/layout.ts",
+
+    "packages/contracts/src/project-membership.ts",
+
+    "packages/contracts/src/workspace-home-role.ts",
+
+    "packages/shared/src/build.ts",
+
+    "src-server/routes/plugins/plugin-home-role-routes.ts",
+
+    "src-server/services/plugins/plugin-permissions.ts",
+
+    "src-server/services/plugins/plugin-visibility-service.ts",
+
+    "src-ui/src/app-shell/project-layout-kind.ts",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+
+    "src-ui/src/core/PluginRegistry.ts",
+
+    "src-ui/src/lib/branding-theme.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneRendererSelection.ts",
+
+    "src-server/routes/agents/invoke.ts",
+
+    "src-ui/src/core/remotePluginBundleConsent.ts",
+
+    "src-server/services/approvals/approval-registry.ts",
+
+    "docs/guides/theming.md"
+  ],
+
+  "checks": [
+    "2026-09-29 new record. Current-state claims checked by source inspection at 2e8ddc0f7: LayoutOwner/layoutOwner (no subject field); Board create/rename/promote routes and sidebar (section returns null with zero Boards; only rename calls the update mutation); instance layouts storage-only; plugin-visibility-service grants; manage-extensions owner-only in project-membership.ts; type==='coding' sites in project-layout-kind, ProjectLayoutRenderer, ProjectPage, useChatDockViewModel, LayoutWorkspacePane, workspacePaneDirectRoute, builtinWorkspacePaneCanonical; board-pane/basis-pane private and imported by src-ui; Home role grant via consent listener in plugin-home-role-routes.ts and built-in Home floor in workspace-home-role.ts (its 'NO production caller' docstring is stale); renderer capability selection; executeBundleInline still assigns the shell nonce (PluginRegistry.ts:686), same-origin path nonce-free; grant digest binding in plugin-permissions.ts; globalThis.require shim in packages/shared/src/build.ts; branding provider and branding-theme.ts contrast refusal; DistributionProfile contract and guide. Design proposals are not claims of behavior. No tests executed.",
+
+    "2026-09-29 revision after report-only review of 5aa5a00ce: added 'Tier 2 is the kernel's own realm' with its four consequences and OPEN-11 (approval decisions); checked POST /tool-approval/:approvalId accepts {approved} on the session credential (src-server/routes/agents/invoke.ts, toolApprovalSchema) and the device-local remotePluginBundlesAllowed localStorage store (src-ui/src/core/remotePluginBundleConsent.ts, PluginRegistryGate.tsx:56), which the record now retires in slice d3. Reframed OPEN-2, marked coordinator-proposed defaults as PROPOSED, noted decision 11 supersedes decision 2's no-Home clause, stated default fillers cannot be disabled and their failure enters safe mode, and rewrote the delivery plan (a, b, c, d1-d4, e resolver, f safe mode, g, h, i1-i3, j, k, l, m) with migration steps and common acceptance criteria. Design proposals are not behavior claims; no tests executed.",
+
+    "2026-09-29 delta-review fixes: approval wording now says POST /tool-approval/:approvalId accepts {approved} from any caller holding the requesting session's authority (invoke.ts resolveAuthorized with readAuthorityForRequest and client origin; approval-registry.ts binds to the entry), which tier-2 code holds; d3 acceptance names the persisted remotePluginBundlesAllowedKey localStorage entry. Revision note: the current-state claims were inspected at 2e8ddc0f7; every cited source is byte-identical at 7e020f1fa8e56b768be9d3f8973f237030b81e5c (git diff 2e8ddc0f7 7e020f1fa8e56b768be9d3f8973f237030b81e5c over the recorded sources is empty), which is this record's sourceRevision.",
+
+    "2026-09-29 after merging origin/main at 25e49629d9894a7e601ae2923a53cfe932560dd8: #2952 bumped @kontourai/ui to ^1.16.0 and branding-theme.ts now uses validateBrandOverride from @kontourai/ui/contrast; updated the current-state branding bullet, limit 3 and slice h, and marked OPEN-10 resolved after reading the shipped node_modules/@kontourai/ui/DESIGN.md ('White-label overrides' runtime rejection rule; 'Product color is identity, not status') and contrast/index.js BRAND_SLOT_PROPERTIES (the same five slots). Removed the DESIGN.md limit from this record. Other cited sources byte-identical since 2e8ddc0f7."
+  ]
+}

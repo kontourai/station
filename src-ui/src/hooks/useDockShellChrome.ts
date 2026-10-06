@@ -196,7 +196,8 @@ export interface DockShellChrome {
    * (`DockShell`) so it survives an occupant switch — the exact remount that
    * used to reset a session-derived badge to "No project" (archive#4525
    * Phase 1). Intended callers: an explicit project-switcher pick (archive#4524),
-   * a new chat that carries its own explicit project, and this hook's own
+   * a new chat that carries its own explicit project, a committed workspace
+   * selection through the navigator, and this hook's own
    * project-deletion cleanup below. Never call this merely because the
    * active session is momentarily unknown (a remount, a reconnect race) —
    * that is exactly the reset this binding exists to stop.
@@ -346,8 +347,8 @@ export function useDockShellChrome({
     },
     [setDeviceSetting],
   );
-  // Project-deletion cleanup (archive#4525 acceptance: "only an explicit
-  // picker change (or project deletion)" may change the binding). The Chat
+  // Project-deletion cleanup still requires a positively loaded list.
+  // Explicit workspace navigation now also updates this binding. The Chat
   // shell is the one derived owner of this Chat setting. Other region shells
   // also publish clearance, so that geometry fact cannot identify the writer.
   //
@@ -456,7 +457,23 @@ export function useDockShellChrome({
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
   const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
-  const toolbarHeight = useMemo(() => readToolbarHeight(), []);
+  // The toolbar's height is not a mount-time constant: it can be hidden or not
+  // yet laid out when the dock mounts (a full-screen mobile chat, a route that
+  // shows it later), and a non-maximized full dock sized from that early read
+  // then sits on top of it. Follow the element's own size instead.
+  const [toolbarHeight, setToolbarHeight] = useState(() => readToolbarHeight());
+  useEffect(() => {
+    const toolbar = document.querySelector('.app-toolbar');
+    if (!toolbar || typeof ResizeObserver === 'undefined') return;
+    const sync = () => {
+      const next = readToolbarHeight();
+      setToolbarHeight((current) => (current === next ? current : next));
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
   const collapsedHeight = useMemo(() => {
     void isMobile;
     if (typeof window === 'undefined') return DOCK_COLLAPSED_HEIGHT;

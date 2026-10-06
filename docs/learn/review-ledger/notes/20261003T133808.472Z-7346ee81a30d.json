@@ -1,0 +1,7 @@
+{
+  "revision": "c53537e2f86111cd65178dc7744cddbb949f819f",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"AGENTS.md change only qualifies the issue-migration sentence; this guide makes no issue-numbering claim.","inputs":["docs/guides/code-quality.md"]}
+  ]
+}

@@ -1,0 +1,834 @@
+/* The Coding layout's navigation stack (CodingWorkbench.tsx): a stack bar over
+   two pages that share one grid cell, so the inactive page keeps its size, its
+   scroll and its mounted state while it is hidden. Past the wide fold
+   (`data-mode="panels"`) the second page is a side panel beside Chat and the
+   Terminal a lower panel under both; see the panels block below. */
+.coding-workbench {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.coding-workbench__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The bar is the breadcrumb and nothing else: Inbox / conversation / pane. */
+.coding-workbench__bar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  min-width: 0;
+  /* One 40px bar: the panel heads are the same height, so their titles
+     share a baseline with the breadcrumb (design audit Q6). */
+  min-height: 40px;
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+/* The rail is last in the tab order; this skips to it. Off screen until
+   focused, as a skip link is. */
+.coding-workbench__skip {
+  position: absolute;
+  left: -9999px;
+  z-index: var(--layer-popover);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.coding-workbench__skip:focus-visible {
+  position: static;
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.coding-workbench__crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-md);
+}
+
+.coding-workbench__crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.coding-workbench__crumb + .coding-workbench__crumb::before {
+  content: "/";
+  flex: none;
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.coding-workbench__crumb-link,
+.coding-workbench__crumb-current {
+  overflow: hidden;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coding-workbench__crumb-link {
+  position: relative;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* A 44px-tall target without growing the bar or asking the pointer. */
+.coding-workbench__crumb-link::after {
+  content: "";
+  position: absolute;
+  inset: -12px -2px;
+}
+
+.coding-workbench__crumb-link:hover {
+  background: color-mix(in srgb, var(--k-text) 7%, transparent);
+  color: var(--text-primary);
+}
+
+.coding-workbench__crumb-current {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.coding-workbench__crumb-link:focus-visible,
+.coding-workbench__crumb-current:focus-visible,
+.coding-workbench__rail-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.coding-workbench__bar {
+  gap: var(--space-4);
+  justify-content: space-between;
+}
+
+.coding-workbench__more {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.coding-workbench__more-notice,
+.coding-workbench__notice {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.coding-workbench__notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+  background: color-mix(
+    in srgb,
+    var(--k-caution, var(--accent-yellow)) 10%,
+    transparent
+  );
+}
+
+.coding-workbench__more-menu {
+  position: absolute;
+  z-index: var(--layer-popover);
+  top: calc(100% + var(--space-2));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: var(--space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+}
+
+.coding-workbench__more-item {
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.coding-workbench__more-item:hover,
+.coding-workbench__more-item:focus-visible {
+  background: var(--bg-hover);
+}
+
+/* The drill-ins: a slim icon rail on the trailing edge. Round ghost icons
+   with an accent wash on hover (Contour); the drill-in on screen is a solid
+   accent fill with the on-accent colour, so "where am I" reads at a glance. */
+.coding-workbench__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  flex: none;
+  width: 44px;
+  padding: var(--space-2) 0;
+  border-left: 1px solid var(--border-primary);
+  /* Scrolls: a workspace can hold more panes than a short window shows,
+     and the launcher and "+" at the end must stay reachable. The flyout
+     and the tooltips are drawn on the body (fixed, placed from the item's
+     box), so the scrolling rail clips neither (design audit D1/U12).
+     `contain: size` keeps the items out of the layout's own height: the
+     route wrapper above keeps its automatic minimum (flow routes scroll in
+     `.content-view`), so a rail sized by its items would grow the whole
+     layout past the window and never scroll itself. Contained, it takes
+     the row's height and scrolls inside it. */
+  contain: size;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.coding-workbench__rail::-webkit-scrollbar {
+  display: none;
+}
+
+.coding-workbench__rail-tip-anchor {
+  display: inline-flex;
+  flex: none;
+}
+
+/* The portalled rail tip: the kit's look, but placed by its own style and
+   shown while it exists (the kit shows its sibling tip on hover by CSS). */
+.tooltip.coding-workbench__rail-tip {
+  position: fixed;
+  z-index: var(--layer-popover);
+  margin: 0;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: none;
+}
+
+.coding-workbench__rail-slot {
+  position: relative;
+}
+
+.coding-workbench__rail-item {
+  /* A 44px target on every pointer, drawn as a 32px round icon (the circle
+     is the ::before), so the touch floor needs no pointer query. */
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xl);
+  cursor: pointer;
+}
+
+.coding-workbench__rail-item::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
+.coding-workbench__rail-item:hover {
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-item:hover::before,
+.coding-workbench__rail-item[aria-expanded="true"]::before {
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+}
+
+.coding-workbench__rail-item[aria-current="page"],
+.coding-workbench__rail-item[aria-pressed="true"] {
+  color: var(--text-on-accent);
+}
+
+.coding-workbench__rail-item[aria-current="page"]::before,
+.coding-workbench__rail-item[aria-pressed="true"]::before {
+  background: var(--accent-primary);
+}
+
+.coding-workbench__rail-item[aria-expanded="true"] {
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-count {
+  position: absolute;
+  top: 3px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.coding-workbench__rail-item[aria-current="page"] .coding-workbench__rail-count,
+.coding-workbench__rail-item[aria-pressed="true"]
+  .coding-workbench__rail-count {
+  background: var(--text-on-accent);
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-panel {
+  /* Portalled to the body and placed by the trigger (CodingWorkbench.tsx):
+     an absolute flyout inside the rail was clipped by it (design audit D1). */
+  position: fixed;
+  z-index: var(--layer-popover);
+  width: min(22rem, 70vw);
+  padding: var(--space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+}
+
+/* The pages' room: the row of pages, and (wide) the lower panel under it. */
+.coding-workbench__pages {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* In the stack the two pages share one grid cell, so the inactive page keeps
+   its size, its scroll and its mounted state while it is hidden. */
+.coding-workbench__row {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.coding-workbench__page {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.coding-workbench__panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Panels mode (past the wide fold, `codingPanels.ts`): the row is a flex
+   line, Chat first and the drill-in page as a side panel on its right behind
+   a separator; the Terminal's lower panel sits under both. The widths are the
+   component's (clamped there, written as custom properties); the floors here
+   are the same numbers, so a room too small for both never folds Chat. */
+.coding-workbench[data-mode="panels"] .coding-workbench__row {
+  display: flex;
+  flex-direction: row;
+}
+
+.coding-workbench[data-mode="panels"] .coding-workbench__page--chat {
+  flex: 1 1 0;
+  min-width: 480px;
+}
+
+.coding-workbench[data-mode="panels"] .coding-workbench__page--drill-in {
+  flex: 0 0 auto;
+  width: var(--coding-side-width, 440px);
+  min-width: 320px;
+  max-width: calc(100% - 488px);
+  border-left: 1px solid var(--border-primary);
+}
+
+/* Closed: no box at all (the row is Chat's), still mounted. */
+.coding-workbench[data-mode="panels"]
+  .coding-workbench__row[data-side="closed"]
+  .coding-workbench__page--drill-in {
+  width: 0;
+  min-width: 0;
+  border-left: 0;
+}
+
+.coding-workbench__lower {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  height: var(--coding-lower-height, 280px);
+  min-height: 160px;
+  max-height: calc(100% - 248px);
+  border-top: 1px solid var(--border-primary);
+  overflow: hidden;
+}
+
+.coding-workbench__lower[data-active="false"] {
+  height: 0;
+  min-height: 0;
+  border-top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* A panel's head: its name, its ⋯ when it has one, and a close icon. One
+   40px row with 12px side padding, the title 13px semibold in sentence
+   case, ellipsised; the same row and the same close on every panel, and
+   the bar's own height (design audit Q6/C4). */
+.coding-workbench__panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  min-height: 40px;
+  padding: 0 var(--space-4) 0 var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.coding-workbench__panel-title {
+  /* The title keeps its own width (ellipsised when the room is short); the
+     leading slot after it takes the free space, so a strip there starts
+     right after the name rather than centred in the row. */
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coding-workbench__panel-title:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.coding-workbench__panel-close,
+.coding-workbench__panel-back {
+  width: 32px;
+  height: 32px;
+  font-size: var(--text-md);
+}
+
+.coding-workbench__panel-close::before,
+.coding-workbench__panel-back::before {
+  inset: 0;
+}
+
+.coding-workbench__panel-back {
+  margin-left: calc(-1 * var(--space-2));
+}
+
+/* The separator: an 8px grab strip over the panel's edge whose line brightens
+   on hover, focus and drag. */
+.coding-workbench__separator {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  /* The splitter is a <button>, and the app's base button rule gives every
+     button padding, a border and a hover fill: on an 8px strip that made a
+     26px outlined box — an 18px band between Chat and the side panel, and
+     a small outlined notch at Chat's bottom-left over the Terminal. None of
+     it belongs to a splitter, whose line is its ::before. */
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  touch-action: none;
+}
+
+.coding-workbench__separator:hover {
+  background: transparent;
+}
+
+.coding-workbench__separator::before {
+  content: "";
+  position: absolute;
+  background: transparent;
+}
+
+.coding-workbench__separator--vertical {
+  width: 8px;
+  margin: 0 -4px;
+  cursor: col-resize;
+}
+
+.coding-workbench__separator--vertical::before {
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+}
+
+.coding-workbench__separator--horizontal {
+  /* Across the whole edge it moves, not a stub at its start. */
+  flex: 1 1 auto;
+  height: 8px;
+  margin: -4px 0;
+  cursor: row-resize;
+}
+
+.coding-workbench__separator--horizontal::before {
+  right: 0;
+  left: 0;
+  top: 3px;
+  height: 2px;
+}
+
+.coding-workbench__separator:hover::before,
+.coding-workbench__separator:active::before {
+  background: var(--accent-primary);
+}
+
+/* The focus ring is the strip itself, drawn inside it so it reads as the
+   edge it moves rather than a box beside it. */
+.coding-workbench__separator:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -3px;
+}
+
+/* Hidden, not unmounted and not `display: none`: the page keeps its box, so a
+   transcript's scroll offset and a terminal's measured size survive. `inert`
+   and `aria-hidden` (set in the component) take it out of focus and the
+   accessibility tree; `visibility` takes it out of paint and hit testing. */
+.coding-workbench__page[data-active="false"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Entering page only. A push slides in from the trailing edge, a pop from the
+   leading edge; both fade. Small distance, base duration, the shared easing:
+   a hint of direction, not a flourish. CSS rather than the View Transitions
+   API, which WebKitGTK (the Linux desktop app) does not provide. */
+.coding-workbench__page[data-enter="push"] {
+  animation: coding-stack-enter-push var(--motion-base) var(--ease-out);
+}
+
+.coding-workbench__page[data-enter="pop"] {
+  animation: coding-stack-enter-pop var(--motion-base) var(--ease-out);
+}
+
+@keyframes coding-stack-enter-push {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes coding-stack-enter-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Reduced motion needs no rule of its own here: the global one in
+   tokens.css shortens every animation to 0.01ms and one iteration, and the
+   motion tokens above resolve to 0.01ms under it, so no frame of the slide
+   is seen. */
+
+/* Read by assistive technology, not drawn. */
+.coding-workbench__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.coding-workbench__state {
+  flex: none;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+/* ── One bar (#3046): the breadcrumb, then Chat's own toolbar in two slots
+   beside it, then the drill-in's ⋯ when a drill-in is the page. */
+.coding-workbench__nav {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.coding-workbench__bar-spacer {
+  flex: 1 1 auto;
+}
+
+.coding-workbench__bar-leading,
+.coding-workbench__bar-trailing,
+.coding-workbench__head-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.coding-workbench__bar-leading:empty,
+.coding-workbench__bar-trailing:empty,
+.coding-workbench__head-slot:empty {
+  display: none;
+}
+
+.coding-workbench__head-slot--leading {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+}
+
+/* The slots inherit the bar's quiet: the dock header's own bar chrome does
+   not apply here, and its icon-only verbs sit as 32px ghost buttons. */
+.coding-workbench__bar .chat-dock__tab-actions--icons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.coding-workbench__bar .chat-dock__new--icon {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+}
+
+.coding-workbench__bar .chat-dock__new--icon:hover {
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}
+
+.coding-workbench__bar .chat-dock__new--icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* A pane's controls in the head row: the terminal's strip loses its own dark
+   bar and takes the head's colours; the Files "+" is a 32px target. */
+.coding-workbench__panel-head .coding-layout__terminal-bar--head {
+  height: auto;
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.coding-workbench__panel-head .coding-layout__terminal-tab {
+  color: var(--text-secondary);
+}
+
+.coding-workbench__panel-head .coding-layout__terminal-tab:hover {
+  color: var(--text-primary);
+}
+
+.coding-workbench__panel-head .coding-layout__terminal-tab--active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.coding-workbench__panel-head .coding-layout__terminal-tab-close,
+.coding-workbench__panel-head .coding-layout__terminal-tab-add {
+  color: var(--text-secondary);
+}
+
+.coding-workbench__panel-head .file-tree-panel__action {
+  min-width: 32px;
+  height: 32px;
+  font-size: var(--text-lg);
+}
+
+/* ── The folded inbox's edge: a strip on the Chat column's left edge, a few
+   pixels at rest with a faint rule, widening on hover or focus to show its
+   glyph. Full height, so it is found by the edge, and never narrower than
+   a 44px target. */
+.coding-workbench[data-mode="panels"] .coding-workbench__page--chat {
+  position: relative;
+}
+
+.coding-workbench__inbox-edge-slot {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+}
+
+.coding-workbench__inbox-edge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 6px;
+  min-height: 44px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--border-primary);
+  /* The base button rule's radius would round the rule's ends; a strip on
+     the column's edge is square, like the splitters. */
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  transition: width var(--motion-base) var(--ease-out);
+}
+
+.coding-workbench__inbox-edge-glyph {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  font-size: var(--text-md);
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+.coding-workbench__inbox-edge:hover {
+  width: 24px;
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+}
+
+.coding-workbench__inbox-edge:hover .coding-workbench__inbox-edge-glyph {
+  opacity: 1;
+}
+
+/* Pointer-only (aria-hidden, out of the tab order): no focus styles. */
+/* The count sits at the top of the strip, visible at rest. */
+.coding-workbench__inbox-edge-count {
+  position: absolute;
+  top: var(--space-2);
+  left: 2px;
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+/* The separators' tooltip wrapper is the flex item; the button fills it. */
+.coding-workbench__separator-slot {
+  display: flex;
+  flex: none;
+  position: relative;
+  z-index: 1;
+}
+
+.coding-workbench__separator-slot--vertical {
+  margin: 0 -4px;
+}
+
+.coding-workbench__separator-slot--horizontal {
+  margin: -4px 0;
+}
+
+.coding-workbench__separator-slot .coding-workbench__separator--vertical,
+.coding-workbench__separator-slot .coding-workbench__separator--horizontal {
+  margin: 0;
+}
+
+/* The dock's accent top rule has no meaning under the Coding bar: the bar
+   is the row above the transcript, and a rule that stops at the Chat
+   column read as a tab underline once a panel sat beside it. */
+.coding-workbench__page--chat > .chat-dock,
+.coding-workbench__page--chat > #chat-workspace-pane {
+  border-top: 0;
+}
+
+/* At rest the edge reads as a control: a 3px bar with a small low-emphasis
+   chevron on it (design audit U4). The bar is the neutral border until
+   something asks for the reader, so it is not a fourth accent on a light
+   screen: a Needs-you count tints it with a 60% mix of the accent, and hover
+   or focus draws the full accent. The count badge above is always accent. */
+.coding-workbench__inbox-edge {
+  border-right-width: 3px;
+  border-right-color: var(--border-primary);
+  overflow: visible;
+}
+
+.coding-workbench__inbox-edge--needs-you {
+  border-right-color: color-mix(
+    in srgb,
+    var(--accent-primary) 60%,
+    transparent
+  );
+}
+
+.coding-workbench__inbox-edge-glyph {
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  font-size: var(--text-sm);
+  opacity: 0.55;
+}
+
+.coding-workbench__inbox-edge:hover {
+  border-right-color: var(--accent-primary);
+}
+
+.coding-workbench__inbox-edge:hover .coding-workbench__inbox-edge-glyph {
+  width: 20px;
+  height: 20px;
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  font-size: var(--text-md);
+}

@@ -1,79 +1,161 @@
+/* The pull requests view: the whole pane, quiet rows, one bar. */
 .pull-requests-panel {
-  min-width: 18rem;
-  max-width: 24rem;
-  overflow: auto;
-  border-right: 1px solid var(--border-primary);
-  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0 12px 12px;
 }
-.pull-requests-panel__header,
-.pull-request-card__title-row,
-.pull-request-card__actions {
+
+/* The bar: a state filter at the left, two icons at the right. */
+.pull-requests-panel__bar {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-}
-.pull-requests-panel__header {
   justify-content: space-between;
+  gap: var(--space-4);
+  /* 44px: the choices' and icons' hit areas fit inside the bar. */
+  min-height: 44px;
 }
-.pull-requests-panel__header h2,
-.pull-requests-panel__header p,
-.pull-request-card p {
+
+.pull-requests-panel__filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
   margin: 0;
-}
-.pull-requests-panel__header h2 {
-  font-size: var(--text-sm);
-}
-.pull-requests-panel__header p,
-.pull-request-card p {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-.pull-requests-panel label {
-  display: grid;
-  gap: var(--space-1);
-  font-size: var(--text-xs);
-}
-.pull-requests-panel__list {
-  display: grid;
-  gap: var(--space-3);
-  list-style: none;
-  margin: var(--space-3) 0 0;
+  border: 0;
   padding: 0;
+  min-width: 0;
 }
-.pull-request-card {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+
+/* A choice, not an action: a word that turns accent when it is the one
+   pressed. No border, no fill. */
+.pull-requests-panel__filter-option {
+  position: relative;
+  min-width: 44px;
+  min-height: 28px;
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.pull-request-card__title-row {
-  flex-wrap: wrap;
+
+.pull-requests-panel__filter-option::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: 44px;
+  transform: translate(-50%, -50%);
 }
-.pull-request-card__title-row a {
-  flex: 1;
-  min-width: 10rem;
+
+.pull-requests-panel__filter-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
-.pull-request-card__chip {
+
+.pull-requests-panel__filter-option[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--accent-primary) 12%, transparent);
+  color: var(--accent-primary);
+}
+
+.pull-requests-panel__tools {
+  display: flex;
+  align-items: center;
+  /* 30px icons with 44px hit areas: 14px keeps the areas apart. */
+  gap: 14px;
+  flex: none;
+}
+
+/* The 44px hit area for the 30px icons. */
+.pull-requests-panel__icon {
+  position: relative;
+}
+
+.pull-requests-panel__icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+.pull-requests-panel__label {
+  margin: var(--space-2) 0 0;
   font-size: var(--text-xs);
-  border: 1px solid var(--border-primary);
-  border-radius: 999px;
-  padding: 0 var(--space-2);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
-.pull-request-card__actions {
-  flex-wrap: wrap;
+
+.pull-requests-panel__list {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.pull-request-card__note {
-  line-height: 1.4;
-}
-.pull-request-card pre {
-  white-space: pre-wrap;
+
+.pull-requests-panel__note {
+  margin: 0;
+  padding: var(--space-4) 0;
+  font-size: var(--text-md);
+  color: var(--text-muted);
   overflow-wrap: anywhere;
 }
-@media (max-width: 760px) {
-  .pull-requests-panel {
-    max-width: none;
-    border-right: 0;
-    border-bottom: 1px solid var(--border-primary);
-  }
+
+.pull-requests-panel__note--error {
+  color: var(--error-text);
+}
+
+/* The Diff view's one line: the branch's pull request, as a quiet row. */
+.pull-requests-panel__branch-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: var(--space-2) 12px;
+  border: none;
+  border-bottom: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pull-requests-panel__branch-line:hover {
+  background: var(--bg-hover);
+}
+
+.pull-requests-panel__branch-line-reference {
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pull-requests-panel__branch-line-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.pull-requests-panel__branch-line-arrow {
+  flex: none;
+  color: var(--text-tertiary);
 }

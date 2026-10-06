@@ -326,6 +326,71 @@ describe('live surface routes in the runtime composition', () => {
     await registry.dispose();
   });
 
+  test("a keep-alive from the internal MCP token or a delegation device is refused, and the person's hold is untouched", async () => {
+    const { app, result, delegation } = await setup();
+    const registry = result.liveSurfaceRegistry!;
+    registry.register(new SyntheticLiveSurfaceProducer(SURFACE), {
+      authorize: () => true,
+    });
+    const lease = `/api/live-surfaces/${encodeURIComponent(SURFACE)}/lease`;
+    const claimed = await app.request(
+      lease,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPERATOR_SECRET}`,
+        },
+        body: JSON.stringify({ action: 'claim' }),
+      },
+      REMOTE,
+    );
+    expect(claimed.status).toBe(200);
+    const held = registry.get(SURFACE)!.lease.snapshot();
+    const keepAlive = JSON.stringify({
+      action: 'keep-alive',
+      epoch: held.epoch,
+    });
+
+    const internal = await app.request(
+      lease,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        },
+        body: keepAlive,
+      },
+      LOOPBACK,
+    );
+    expect(internal.status).toBe(403);
+    const delegated = await app.request(
+      lease,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${delegation.credential}`,
+        },
+        body: keepAlive,
+      },
+      REMOTE,
+    );
+    expect(delegated.status).toBe(403);
+    expect(await delegated.json()).toEqual({
+      success: false,
+      code: 'principal-unresolved',
+    });
+    // Neither moved the person's hold.
+    expect(registry.get(SURFACE)!.lease.snapshot()).toMatchObject({
+      holder: held.holder,
+      expiresAt: held.expiresAt,
+    });
+    await registry.dispose();
+  });
+
   test('a browser surface judges the REQUEST: operator by credential, a paired admin by membership through the captured principal (#90)', async () => {
     // Membership that, like the real service, first resolves the caller from
     // the request (`authority.current()`), which reads the request principal

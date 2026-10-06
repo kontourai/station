@@ -12,6 +12,11 @@ vi.mock('../../../contexts/ToastContext', () => ({
       showToast(message, sessionId, duration),
   },
 }));
+const hydrateOpenApprovalToasts = vi.fn().mockResolvedValue(undefined);
+vi.mock('../hydrateOpenApprovalToasts', () => ({
+  hydrateOpenApprovalToasts: (...args: unknown[]) =>
+    hydrateOpenApprovalToasts(...args),
+}));
 vi.mock('../rehydrateChatSession', () => ({
   rehydrateChatSession: (...args: unknown[]) => rehydrateChatSession(...args),
 }));
@@ -98,6 +103,102 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     expect(chats['thread-1'].orchestrationStatus).toBe('idle');
     expect(dismissToast).toHaveBeenCalledWith('stale-toast');
     expect(showToast).toHaveBeenCalledOnce();
+  });
+
+  test('a reload raises a placeholder per open approval and asks for the real toast', async () => {
+    showToast.mockClear();
+    hydrateOpenApprovalToasts.mockClear();
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['req-1'],
+            blockingOpenRequestIds: ['req-1'],
+          },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(showToast).toHaveBeenCalledWith(
+      'Approval waiting for request req-1',
+      'thread-1',
+      0,
+    );
+    await vi.waitFor(() =>
+      expect(hydrateOpenApprovalToasts).toHaveBeenCalled(),
+    );
+    expect(hydrateOpenApprovalToasts).toHaveBeenCalledWith(
+      'http://api',
+      'thread-1',
+      new Map([['req-1', 'new-toast']]),
+    );
+  });
+
+  test('a failed hydration leaves the placeholder and raises no unhandled rejection', async () => {
+    hydrateOpenApprovalToasts.mockClear();
+    hydrateOpenApprovalToasts.mockRejectedValueOnce(
+      new Error('Failed to fetch dynamically imported module'),
+    );
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['req-1'],
+            blockingOpenRequestIds: ['req-1'],
+          },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    await vi.waitFor(() =>
+      expect(hydrateOpenApprovalToasts).toHaveBeenCalled(),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(chats['thread-1'].approvalToasts.get('req-1')).toBe('new-toast');
+  });
+
+  test('reload keeps nonblocking questions out of pending approvals', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['question', 'tool'],
+            blockingOpenRequestIds: ['tool'],
+          },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(chats['thread-1'].pendingApprovals).toEqual(['tool']);
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['question'],
+            blockingOpenRequestIds: [],
+          },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(chats['thread-1'].pendingApprovals).toEqual([]);
+    expect(chats['thread-1'].orchestrationStatus).toBe('idle');
   });
 
   test('a terminal runtime error replaces a stale idle status', () => {

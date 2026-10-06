@@ -4,6 +4,7 @@ import {
   APPLICATION_SESSION_NATIVE_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+  APPLICATION_SESSION_NATIVE_REVOKE_PATH,
   APPLICATION_SESSION_NATIVE_VERSION,
   type ApplicationSessionPublicKey,
   type NativeApplicationSessionChallengeV1,
@@ -14,10 +15,135 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import { isPrincipalRef } from '@kontourai/station-contracts/principal';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import { z } from 'zod/v3';
 import type { ApplicationSessionSigner } from './application-session';
 
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
 const LOCAL_REPLAY_WINDOW = 4096;
+
+export interface NativeLocalAccountCredentials {
+  readonly username: string;
+  readonly password: string;
+}
+export interface NativeAccountOpaqueChallenge {
+  readonly challengeId: string;
+  readonly nonce: string;
+  /** An untrusted expiry hint; the native owner clamps its own lifetime. */
+  readonly expiresAtMs: number;
+}
+export interface NativeAccountOpaqueContinuation {
+  readonly credential: string;
+  readonly nonce: string;
+  readonly expiresAtMs: number;
+}
+export interface NativeAccountExchangePreparation {
+  readonly body: NativeApplicationSessionExchangeV1;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+/** Structured native operations; no JWS input or authority claims cross this seam. */
+export interface NativeApplicationSessionProofProvider {
+  readonly kind: 'station-native-host-proof-provider/v1';
+  /** Actual native preparation deadline; never extended by a later account exchange. */
+  readonly contextExpiresAtMs?: number;
+  readonly publicKey: ApplicationSessionPublicKey;
+  prepareExchange(input: {
+    readonly challenge: NativeAccountOpaqueChallenge;
+    readonly credentials: NativeLocalAccountCredentials;
+  }): Promise<NativeAccountExchangePreparation>;
+  requestHeaders(input: {
+    readonly continuation: NativeAccountOpaqueContinuation;
+    readonly request: {
+      readonly method: 'GET' | 'HEAD';
+      readonly path: string;
+    };
+  }): Promise<Readonly<Record<string, string>>>;
+  prepareRevocation?(input: {
+    readonly continuation: NativeAccountOpaqueContinuation;
+  }): Promise<NativeAccountRevocationPreparation>;
+  prepareInvitationAcceptance?(input: {
+    readonly continuation: NativeAccountOpaqueContinuation;
+    readonly token: string;
+  }): Promise<NativeProjectInvitationAcceptancePreparation>;
+}
+
+export interface NativeAccountRevocationPreparation {
+  readonly body: Readonly<Record<string, never>>;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+export interface NativeProjectInvitationAcceptancePreparation {
+  readonly body: { readonly token: string };
+  readonly headers: Readonly<Record<string, string>>;
+}
+const INVITATION_ACCEPT_PATH = '/api/account-auth/accept-invitation';
+
+const localCredentials = z
+  .object({
+    username: z
+      .string()
+      .min(3)
+      .max(32)
+      .regex(/^[A-Za-z0-9_.-]+$/),
+    password: z.string().min(1).max(128),
+  })
+  .strict();
+const nativeSurface = z
+  .object({
+    kind: z.literal('station-native'),
+    appIdentifier: z.string(),
+    channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
+    clientInstanceId: z.string(),
+    keyThumbprint: z.string(),
+  })
+  .strict();
+const hostClaims = z
+  .object({
+    version: z.literal(APPLICATION_SESSION_NATIVE_VERSION),
+    purpose: z.enum(['exchange', 'request']),
+    aud: z.string(),
+    stationId: z.string(),
+    surface: nativeSurface,
+    deviceId: z.string(),
+    nonce: z.string().regex(OPAQUE),
+    method: z.string(),
+    path: z.string(),
+    credentialHash: z.string().regex(OPAQUE).optional(),
+    challengeIdHash: z.string().regex(OPAQUE).optional(),
+    credentialsHash: z.string().regex(OPAQUE).optional(),
+    jti: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
+    iat: z.number().int().nonnegative(),
+  })
+  .strict();
+const hostExchange = z
+  .object({
+    body: z
+      .object({
+        version: z.literal(APPLICATION_SESSION_NATIVE_VERSION),
+        challengeId: z.string().regex(OPAQUE),
+        credentials: localCredentials,
+        proof: z.string().max(4096),
+      })
+      .strict(),
+    headers: z
+      .object({
+        [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: z.string().max(4096),
+      })
+      .strict(),
+  })
+  .strict();
+const hostRequestHeaders = z
+  .object({
+    [APPLICATION_SESSION_NATIVE_HEADER]: z.string().regex(OPAQUE),
+    [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: z.string().max(4096),
+  })
+  .strict();
+
+function isHostProofProvider(
+  key: ApplicationSessionSigner | NativeApplicationSessionProofProvider,
+): key is NativeApplicationSessionProofProvider {
+  return 'kind' in key && key.kind === 'station-native-host-proof-provider/v1';
+}
 
 export const NATIVE_APPLICATION_SESSION_CHALLENGE_PATH =
   APPLICATION_SESSION_NATIVE_CHALLENGE_PATH;
@@ -64,6 +190,137 @@ function base64url(bytes: Uint8Array): string {
 
 function encode(value: unknown): string {
   return base64url(new TextEncoder().encode(JSON.stringify(value)));
+}
+
+function decodeHostSegment(value: string): Uint8Array<ArrayBuffer> {
+  if (!/^[A-Za-z0-9_-]+$/.test(value))
+    throw new Error('Native host account proof base64url data is invalid.');
+  const bytes = Uint8Array.from(
+    atob(value.replace(/-/g, '+').replace(/_/g, '/')),
+    (character) => character.charCodeAt(0),
+  );
+  if (base64url(bytes) !== value)
+    throw new Error('Native host account proof base64url data is invalid.');
+  return bytes;
+}
+
+async function hashText(value: string) {
+  return base64url(
+    new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
+    ),
+  );
+}
+
+async function verifyHostProof(
+  proof: string,
+  publicKey: ApplicationSessionPublicKey,
+  trust: NativeApplicationSessionTrustSnapshotV1,
+  expected: {
+    purpose: 'exchange' | 'request';
+    nonce: string;
+    method: string;
+    path: string;
+    keyThumbprint: string;
+    credentialHash?: string;
+    challengeIdHash?: string;
+    credentialsHash?: string;
+  },
+) {
+  if (proof.length > 4096)
+    throw new Error('Native host account proof exceeds its bound.');
+  const segments = proof.split('.');
+  if (segments.length !== 3)
+    throw new Error('Native host account proof is invalid.');
+  const [headerPart, payloadPart, signaturePart] = segments;
+  if (!headerPart || !payloadPart || !signaturePart)
+    throw new Error('Native host account proof is invalid.');
+  z.object({
+    alg: z.literal('ES256'),
+    typ: z.literal(APPLICATION_SESSION_NATIVE_PROOF_TYPE),
+  })
+    .strict()
+    .parse(
+      JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(
+          decodeHostSegment(headerPart),
+        ),
+      ),
+    );
+  const claims = hostClaims.parse(
+    JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(
+        decodeHostSegment(payloadPart),
+      ),
+    ),
+  );
+  const key = { ...parsePublicKey(publicKey) };
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    claims.purpose !== expected.purpose ||
+    claims.aud !== trust.audience ||
+    claims.stationId !== trust.stationId ||
+    claims.deviceId !== trust.deviceId ||
+    !sameSurface(claims.surface, trust.surface) ||
+    claims.nonce !== expected.nonce ||
+    claims.method !== expected.method ||
+    claims.path !== expected.path ||
+    claims.credentialHash !== expected.credentialHash ||
+    claims.challengeIdHash !== expected.challengeIdHash ||
+    claims.credentialsHash !== expected.credentialsHash ||
+    claims.iat > now + 5 ||
+    claims.iat < now - 65 ||
+    (await applicationSessionKeyThumbprint(key)) !== expected.keyThumbprint
+  )
+    throw new Error(
+      'Native host account proof does not match the requested operation.',
+    );
+  const signature = decodeHostSegment(signaturePart);
+  const imported = await crypto.subtle.importKey(
+    'jwk',
+    key,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['verify'],
+  );
+  if (
+    signature.byteLength !== 64 ||
+    !(await crypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      imported,
+      signature,
+      new TextEncoder().encode(`${headerPart}.${payloadPart}`),
+    ))
+  )
+    throw new Error('Native host account proof signature is invalid.');
+  return claims;
+}
+
+function localReadRequest(request: {
+  readonly method: string;
+  readonly path: string;
+}): {
+  readonly method: 'GET' | 'HEAD';
+  readonly path: string;
+} {
+  if (request.method !== 'GET' && request.method !== 'HEAD')
+    throw new Error('Native host account proof supports only Project reads.');
+  const path = requestPath(request.path);
+  const pathname = new URL(path, 'https://station.invalid').pathname;
+  if (
+    ![
+      '/.well-known/station/v1',
+      '/api/system/status',
+      '/api/system/identity',
+      '/api/auth/authority',
+      '/api/projects',
+    ].includes(pathname) &&
+    !/^\/api\/projects\/[A-Za-z0-9_-]{1,128}(?:\/shared-work(?:\/[A-Za-z0-9_-]{1,128}\/(?:document|history|publication))?)?$/.test(
+      pathname,
+    )
+  )
+    throw new Error('Native host account proof supports only Project reads.');
+  return Object.freeze({ method: request.method, path });
 }
 
 /** Canonical JSON: recursively sorted object keys, no whitespace. */
@@ -378,17 +635,36 @@ function asCredentials(value: Readonly<Record<string, unknown>>) {
  * provider/Device/Project authority is implemented here.
  */
 export class NativeApplicationSessionClient {
+  private readonly contextExpiresAtMs: number | undefined;
   private readonly consumedChallenges = new Set<string>();
   private readonly issuedJti = new Set<string>();
   constructor(
     private readonly transport: NativeApplicationSessionTransportV1,
     private readonly trust: () => NativeApplicationSessionTrustSnapshotV1,
-    private readonly key: ApplicationSessionSigner,
+    private readonly key:
+      | ApplicationSessionSigner
+      | NativeApplicationSessionProofProvider,
   ) {
     parsePublicKey(key.publicKey);
+    this.contextExpiresAtMs = isHostProofProvider(key)
+      ? key.contextExpiresAtMs
+      : undefined;
+    this.assertContextDeadline();
+  }
+
+  private assertContextDeadline() {
+    const deadline = this.contextExpiresAtMs;
+    if (
+      deadline !== undefined &&
+      (!Number.isSafeInteger(deadline) ||
+        deadline <= Date.now() ||
+        !Number.isFinite(new Date(deadline).getTime()))
+    )
+      throw new Error('Native host account context expired.');
   }
 
   private current() {
+    this.assertContextDeadline();
     const snapshot = this.trust();
     if (snapshot?.kind !== 'station-native')
       throw new Error('Native application session trust is unavailable.');
@@ -455,6 +731,9 @@ export class NativeApplicationSessionClient {
   ): Promise<NativeApplicationSessionContinuationV1> {
     const trust = this.current();
     const checked = asCredentials(credentials);
+    const local = isHostProofProvider(this.key)
+      ? localCredentials.parse(checked)
+      : undefined;
     const challenge = await this.challenge(nowMs);
     this.assertSameTrust(trust);
     this.rememberOnce(
@@ -462,51 +741,111 @@ export class NativeApplicationSessionClient {
       challenge.challengeId,
       'challenge',
     );
-    const credentialsHash = await serializedCredentialsHash(checked);
-    const credentialProof = await createNativeApplicationSessionProof(
-      this.key,
-      trust,
-      {
-        purpose: 'exchange',
-        deviceId: trust.deviceId,
-        nonce: challenge.nonce,
-        method: 'POST',
-        path: NATIVE_APPLICATION_SESSION_EXCHANGE_PATH,
-        credentialsHash,
-        challengeIdHash: base64url(
-          new Uint8Array(
-            await crypto.subtle.digest(
-              'SHA-256',
-              new TextEncoder().encode(challenge.challengeId),
-            ),
+    let body: NativeApplicationSessionExchangeV1;
+    if (isHostProofProvider(this.key)) {
+      if (!local)
+        throw new Error('Native host account credentials are unavailable.');
+      const prepared = await this.key.prepareExchange({
+        challenge: Object.freeze({
+          challengeId: challenge.challengeId,
+          nonce: challenge.nonce,
+          expiresAtMs: Date.parse(challenge.expiresAt),
+        }),
+        credentials: Object.freeze({ ...local }),
+      });
+      const parsed = hostExchange.parse(prepared);
+      if (
+        Object.keys(prepared.body.credentials).join(',') !==
+          'username,password' ||
+        parsed.body.challengeId !== challenge.challengeId ||
+        parsed.body.credentials.username !== local.username ||
+        parsed.body.credentials.password !== local.password ||
+        parsed.headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER] !==
+          parsed.body.proof
+      )
+        throw new Error(
+          'Native host account exchange does not match its prepared body.',
+        );
+      const claims = await verifyHostProof(
+        parsed.body.proof,
+        this.key.publicKey,
+        trust,
+        {
+          purpose: 'exchange',
+          nonce: challenge.nonce,
+          method: 'POST',
+          path: NATIVE_APPLICATION_SESSION_EXCHANGE_PATH,
+          keyThumbprint: challenge.keyThumbprint,
+          challengeIdHash: await hashText(challenge.challengeId),
+          credentialsHash: await serializedCredentialsHash(
+            parsed.body.credentials,
           ),
-        ),
-        expiresAtMs: Date.parse(challenge.expiresAt),
-      },
-      nowMs,
-    );
-    const claims = decodeClaims(credentialProof);
-    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+        },
+      );
+      this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+      body = Object.freeze({
+        ...parsed.body,
+        credentials: Object.freeze({ ...parsed.body.credentials }),
+      });
+      if (new TextEncoder().encode(JSON.stringify(body)).byteLength > 16 * 1024)
+        throw new Error(
+          'Native host account exchange exceeds the channel bound.',
+        );
+    } else {
+      const credentialsHash = await serializedCredentialsHash(checked);
+      const credentialProof = await createNativeApplicationSessionProof(
+        this.key,
+        trust,
+        {
+          purpose: 'exchange',
+          deviceId: trust.deviceId,
+          nonce: challenge.nonce,
+          method: 'POST',
+          path: NATIVE_APPLICATION_SESSION_EXCHANGE_PATH,
+          credentialsHash,
+          challengeIdHash: await hashText(challenge.challengeId),
+          expiresAtMs: Date.parse(challenge.expiresAt),
+        },
+        nowMs,
+      );
+      const claims = decodeClaims(credentialProof);
+      this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+      body = {
+        version: APPLICATION_SESSION_NATIVE_VERSION,
+        challengeId: challenge.challengeId,
+        credentials: { ...checked },
+        proof: credentialProof,
+      };
+    }
     this.assertSameTrust(trust);
-    const body: NativeApplicationSessionExchangeV1 = {
-      version: APPLICATION_SESSION_NATIVE_VERSION,
-      challengeId: challenge.challengeId,
-      credentials: { ...checked },
-      proof: credentialProof,
-    };
     const response = await this.transport.post({
       path: NATIVE_APPLICATION_SESSION_EXCHANGE_PATH,
       headers: {
-        [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: credentialProof,
+        [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: body.proof,
       },
       body,
     });
     this.assertSameTrust(trust);
-    return parseContinuation(
+    const accepted = parseContinuation(
       response,
       trust,
       await applicationSessionKeyThumbprint(this.key.publicKey),
     );
+    const deadline = this.contextExpiresAtMs;
+    if (deadline === undefined) return accepted;
+    if (
+      !Number.isSafeInteger(deadline) ||
+      deadline <= Date.now() ||
+      !Number.isFinite(new Date(deadline).getTime())
+    )
+      throw new Error('Native host account context expired.');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      ...accepted,
+      expiresAt: new Date(
+        Math.min(Date.parse(accepted.expiresAt), deadline),
+      ).toISOString(),
+    });
   }
 
   /**
@@ -514,6 +853,99 @@ export class NativeApplicationSessionClient {
    * transport. Each call mints a fresh one-use JTI and rechecks the trust
    * snapshot and continuation before signing.
    */
+  async prepareInvitationAcceptance(
+    continuation: NativeApplicationSessionContinuationV1,
+    token: string,
+  ): Promise<NativeProjectInvitationAcceptancePreparation> {
+    const trust = this.current();
+    const thumbprint = await applicationSessionKeyThumbprint(
+      this.key.publicKey,
+    );
+    const current = parseContinuation(continuation, trust, thumbprint);
+    if (
+      !OPAQUE.test(token) ||
+      !isHostProofProvider(this.key) ||
+      !this.key.prepareInvitationAcceptance
+    )
+      throw new Error('Native host invitation acceptance is unavailable.');
+    const prepared = await this.key.prepareInvitationAcceptance({
+      continuation: Object.freeze({
+        credential: current.credential,
+        nonce: current.nonce,
+        expiresAtMs: Date.parse(current.expiresAt),
+      }),
+      token,
+    });
+    const body = z
+      .object({ token: z.literal(token) })
+      .strict()
+      .parse(prepared.body);
+    const headers = hostRequestHeaders.parse(prepared.headers);
+    if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
+      throw new Error('Native host account continuation changed.');
+    const claims = await verifyHostProof(
+      headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER],
+      this.key.publicKey,
+      trust,
+      {
+        purpose: 'request',
+        nonce: current.nonce,
+        method: 'POST',
+        path: INVITATION_ACCEPT_PATH,
+        keyThumbprint: current.keyThumbprint,
+        credentialHash: await hashText(current.credential),
+      },
+    );
+    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      body: Object.freeze({ ...body }),
+      headers: Object.freeze({ ...headers }),
+    });
+  }
+
+  async prepareRevocation(
+    continuation: NativeApplicationSessionContinuationV1,
+  ): Promise<NativeAccountRevocationPreparation> {
+    const trust = this.current();
+    const thumbprint = await applicationSessionKeyThumbprint(
+      this.key.publicKey,
+    );
+    const current = parseContinuation(continuation, trust, thumbprint);
+    if (!isHostProofProvider(this.key) || !this.key.prepareRevocation)
+      throw new Error('Native host account revocation is unavailable.');
+    const prepared = await this.key.prepareRevocation({
+      continuation: Object.freeze({
+        credential: current.credential,
+        nonce: current.nonce,
+        expiresAtMs: Date.parse(current.expiresAt),
+      }),
+    });
+    const body = z.object({}).strict().parse(prepared.body);
+    const headers = hostRequestHeaders.parse(prepared.headers);
+    if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
+      throw new Error('Native host account continuation changed.');
+    const claims = await verifyHostProof(
+      headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER],
+      this.key.publicKey,
+      trust,
+      {
+        purpose: 'request',
+        nonce: current.nonce,
+        method: 'POST',
+        path: APPLICATION_SESSION_NATIVE_REVOKE_PATH,
+        keyThumbprint: current.keyThumbprint,
+        credentialHash: await hashText(current.credential),
+      },
+    );
+    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      body: Object.freeze({ ...body }),
+      headers: Object.freeze({ ...headers }),
+    });
+  }
+
   async headers(
     continuation: NativeApplicationSessionContinuationV1,
     request: { readonly method: string; readonly path: string },
@@ -537,6 +969,36 @@ export class NativeApplicationSessionClient {
       })
     )
       throw new Error('Native application session target changed.');
+    if (isHostProofProvider(this.key)) {
+      const headers = hostRequestHeaders.parse(
+        await this.key.requestHeaders({
+          continuation: Object.freeze({
+            credential: current.credential,
+            nonce: current.nonce,
+            expiresAtMs: Date.parse(current.expiresAt),
+          }),
+          request: localReadRequest(request),
+        }),
+      );
+      if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
+        throw new Error('Native host account continuation changed.');
+      const claims = await verifyHostProof(
+        headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER],
+        this.key.publicKey,
+        trust,
+        {
+          purpose: 'request',
+          nonce: current.nonce,
+          method: request.method,
+          path,
+          keyThumbprint: current.keyThumbprint,
+          credentialHash: await hashText(current.credential),
+        },
+      );
+      this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+      this.assertSameTrust(trust);
+      return headers;
+    }
     const proof = await createNativeApplicationSessionProof(
       this.key,
       trust,

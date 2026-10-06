@@ -6,6 +6,7 @@ import {
   deriveLatestPlanArtifactFromMessages,
   type PlanArtifact,
 } from '../../utils/planArtifacts';
+import { ActionRow } from '../ActionRow';
 import { LazyMarkdown } from '../chat/LazyMarkdown';
 import { Empty } from '../state';
 
@@ -299,28 +300,28 @@ export function deriveWorkflowRuntimeStrip(
 ): WorkflowPlanRuntimeStrip | null {
   if ((runtimeState?.pendingApprovals || 0) > 0) {
     return {
-      label: `Approval required (${runtimeState?.pendingApprovals})`,
+      label: `Needs approval (${runtimeState?.pendingApprovals})`,
       tone: 'attention',
       live: true,
     };
   }
   if (runtimeState?.isProcessingStep) {
-    return { label: 'Tool activity running', tone: 'live', live: true };
+    return { label: 'Running · tool', tone: 'live', live: true };
   }
   if (runtimeState?.status === 'awaiting-approval') {
-    return { label: 'Awaiting approval', tone: 'attention', live: true };
+    return { label: 'Needs approval', tone: 'attention', live: true };
   }
   if (
     runtimeState?.status === 'running' ||
     runtimeState?.status === 'sending'
   ) {
-    return { label: 'Engine running', tone: 'live', live: true };
+    return { label: 'Running', tone: 'live', live: true };
   }
   if (
     runtimeState?.status === 'completed' ||
     runtimeState?.status === 'exited'
   ) {
-    return { label: 'Engine complete', tone: 'complete', live: false };
+    return { label: 'Done', tone: 'complete', live: false };
   }
   return null;
 }
@@ -414,45 +415,51 @@ export function WorkflowPlanPanel({
               : 'Plan artifacts appear here as the active coding chat updates.'}
           </p>
         </div>
-        <div className="workflow-plan-panel__actions">
-          <button
-            type="button"
-            className={`workflow-plan-panel__action${
-              copyState === 'failed' ? ' copy-affordance--failed' : ''
-            }`}
-            title={
-              copyState === 'failed'
-                ? 'This browser refused clipboard access — use Save to write the plan to a file instead.'
-                : undefined
-            }
-            onClick={() => {
-              void handleCopy();
-            }}
-            disabled={!artifact}
-          >
-            {copyState === 'copied'
-              ? 'Copied'
-              : copyState === 'failed'
-                ? "Can't copy"
-                : 'Copy'}
-          </button>
-          <button
-            type="button"
-            className="workflow-plan-panel__action"
-            onClick={handleSave}
-            disabled={!artifact}
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            className="workflow-plan-panel__action"
-            onClick={handleExport}
-            disabled={!artifact}
-          >
-            Export
-          </button>
-        </div>
+        {/* #3045: Copy is the action this header is for; the two ways of
+            writing the plan to a file fold into the menu. */}
+        <ActionRow
+          className="workflow-plan-panel__actions"
+          overflowLabel="More plan actions"
+          primary={
+            <button
+              type="button"
+              className={`workflow-plan-panel__action${
+                copyState === 'failed' ? ' copy-affordance--failed' : ''
+              }`}
+              title={
+                copyState === 'failed'
+                  ? 'This browser refused clipboard access — use Save to write the plan to a file instead.'
+                  : undefined
+              }
+              onClick={() => {
+                void handleCopy();
+              }}
+              disabled={!artifact}
+            >
+              {copyState === 'copied'
+                ? 'Copied'
+                : copyState === 'failed'
+                  ? "Can't copy"
+                  : 'Copy'}
+            </button>
+          }
+          overflow={[
+            {
+              key: 'save',
+              label: 'Save',
+              disabled: !artifact,
+              disabledReason: 'No plan yet',
+              onSelect: handleSave,
+            },
+            {
+              key: 'export',
+              label: 'Export',
+              disabled: !artifact,
+              disabledReason: 'No plan yet',
+              onSelect: handleExport,
+            },
+          ]}
+        />
       </div>
 
       {artifact ? (

@@ -565,3 +565,48 @@ test.each([
     });
   },
 );
+
+test('a direct conversation never replays a failed-turn marker to the model', async () => {
+  const SECRET = 'sk-live-SECRET-5f4e3d';
+  const f = await fixture();
+  f.users.set('direct-failed', 'user');
+  // The exact FileMemory shape the old `chat-lifecycle.ts` writer left.
+  f.messages.set('direct-failed', [
+    {
+      id: 'old-user',
+      role: 'user',
+      parts: [{ type: 'text', text: 'please answer' }],
+    },
+    {
+      id: '0ce54880-6903-4b84-b5a8-46f23654145e',
+      role: 'user',
+      parts: [
+        {
+          type: 'text',
+          text: `[SYSTEM_EVENT] [CHAT_ERROR] upstream exploded ${SECRET} leaked detail`,
+        },
+      ],
+      metadata: { timestamp: 1790688973106 },
+    } as UIMessage,
+  ]);
+  const model = new FixtureModel();
+  const agent = await new StrandsFramework().createTempAgent({
+    name: 'display',
+    agentId: 'agent-a',
+    instructions: 'Respond.',
+    model,
+    memoryAdapter: f.adapter,
+  });
+  await consume(
+    await agent.streamText('try again', {
+      conversationId: 'direct-failed',
+      userId: 'user',
+    }),
+  );
+
+  const seen = JSON.stringify(model.inputs[0]);
+  expect(seen).toContain('please answer');
+  // Excluded like the VoltAgent and native-memory paths, not just scrubbed.
+  expect(seen).not.toContain('CHAT_ERROR');
+  expect(seen).not.toContain(SECRET);
+});

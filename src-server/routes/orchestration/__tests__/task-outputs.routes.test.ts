@@ -1,12 +1,22 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
+import { TASK_DECLARED_OUTPUT_KEEP_V1 } from '@kontourai/station-contracts/task-graph';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test } from 'vitest';
-import { TaskOutputModule } from '../../../services/projects/task-output-module.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { SessionOutputsModule } from '../../../services/orchestration/session-outputs-module.js';
+import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import {
+  TaskOutputModule,
+  TaskOutputNotFoundError,
+} from '../../../services/projects/task-output-module.js';
 import { createTaskOutputRoutes } from '../task-outputs.js';
 
 const paths: string[] = [];
+const makeTempDir = trackTempDirs();
 
 function app() {
   const home = mkdtempSync(join(tmpdir(), 'station-task-output-route-home-'));
@@ -17,12 +27,15 @@ function app() {
   writeFileSync(join(workspace, 'report.txt'), 'route snapshot');
   const tasks = {
     readTask: (id: string) =>
-      id === 'task-a' ? { id, projectId: 'project-a' } : null,
+      id === 'task-a'
+        ? { id, projectId: 'project-a', createdAt: '2026-10-01T00:00:00.000Z' }
+        : null,
     readTaskForOpen: async (id: string) =>
       id === 'task-a'
         ? {
             id,
             projectId: 'project-a',
+            createdAt: '2026-10-01T00:00:00.000Z',
             workspaceBinding: {
               availability: 'available' as const,
               workingDirectory: workspace,
@@ -33,7 +46,7 @@ function app() {
   return {
     workspace,
     routes: createTaskOutputRoutes(
-      new TaskOutputModule({ homeDir: home, taskGraphService: tasks as any }),
+      new TaskOutputModule({ homeDir: home, taskGraphService: tasks }),
     ),
   };
 }
@@ -94,6 +107,98 @@ afterEach(() => {
 });
 
 describe('Task Output routes', () => {
+  test.each([false, true])(
+    'declared-file keep fences Task recreation=%s before durable publication',
+    async (recreated) => {
+      const home = makeTempDir('station-output-keep-route-');
+      const workspace = makeTempDir('station-output-keep-source-');
+      const bytes = 'declared route bytes';
+      writeFileSync(join(workspace, 'report.txt'), bytes);
+      const graph = new TaskGraphService(home, {
+        resolveProjectWorkspace: async () => workspace,
+      });
+      const task = await graph.createTask({
+        projectId: 'project-a',
+        title: 'Report',
+      });
+      const outputs = new TaskOutputModule({
+        homeDir: home,
+        taskGraphService: graph,
+      });
+      let incarnation = task.createdAt;
+      const sessions: SessionOutputsModule = {
+        list: async () => {
+          throw new Error('Unexpected listing');
+        },
+        inspect: async () => {
+          throw new Error('Unexpected inspection');
+        },
+        keep: async (input) => {
+          await Promise.resolve();
+          if (recreated) incarnation = '2099-01-01T00:00:00.000Z';
+          try {
+            const kept = await input.outputs.createDeclared(input.taskId, {
+              operationId: input.operationId,
+              title: 'Report',
+              sourceWorkspace: workspace,
+              relativePath: 'report.txt',
+              digest: createHash('sha256').update(bytes).digest('hex'),
+              length: Buffer.byteLength(bytes),
+              fingerprintContext: 'session-a:event-a',
+              isAuthorized: () => input.current() && input.canKeepForTask(),
+            });
+            return {
+              status: 'kept',
+              version: TASK_DECLARED_OUTPUT_KEEP_V1,
+              kind: 'workspace-file',
+              ...kept,
+            };
+          } catch (error) {
+            if (error instanceof TaskOutputNotFoundError)
+              return { status: 'not-found' };
+            throw error;
+          }
+        },
+      };
+      const routes = createTaskOutputRoutes(outputs, {
+        taskGraph: {
+          readTask: (id) => {
+            const value = graph.readTask(id);
+            return value
+              ? {
+                  ...value,
+                  createdAt: incarnation,
+                  workspaceBinding: { workingDirectory: workspace },
+                }
+              : null;
+          },
+          keepDeclaredPullRequest: graph.keepDeclaredPullRequest.bind(graph),
+        },
+        sessionOutputs: sessions,
+        readAuthorityForRequest: () =>
+          sessionReadAuthorityFromRequest('owner', undefined, undefined),
+        canReadSession: () => true,
+        isRequestPrincipalCurrent: () => true,
+        resolveProjectWorkspace: () => workspace,
+      });
+      const response = await routes.request(
+        `/${task.id}/declared-outputs/session-a/event-a/keep`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ operationId: 'keep-a' }),
+        },
+      );
+      expect(response.status).toBe(recreated ? 404 : 201);
+      const records = await outputs.list(task.id);
+      expect(records).toHaveLength(recreated ? 0 : 1);
+      if (!recreated)
+        expect(
+          (await outputs.readContent(task.id, records[0].id)).bytes.toString(),
+        ).toBe(bytes);
+    },
+  );
+
   test('promotes, lists, serves safe headers, and deletes one Task snapshot', async () => {
     const { routes } = app();
     const output = await promote(routes, {

@@ -1,0 +1,13 @@
+{
+  "revision": "d28597b948558f03decf72957db69fa4510b5d93",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-record after main #3107/#3108: docs/reference/session-api.md took main's chat session documentation, packages/shared/src/tool-request-preview.ts main's preview changes, and the manifest the install-ps1 entry. The ask-reason claims this PR documents are untouched by those deltas.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-record after main #3107/#3108: docs/reference/session-api.md took main's chat session documentation, packages/shared/src/tool-request-preview.ts main's preview changes, and the manifest the install-ps1 entry. The ask-reason claims this PR documents are untouched by those deltas.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-record after main #3107/#3108: docs/reference/session-api.md took main's chat session documentation, packages/shared/src/tool-request-preview.ts main's preview changes, and the manifest the install-ps1 entry. The ask-reason claims this PR documents are untouched by those deltas.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-record after main #3107/#3108: docs/reference/session-api.md took main's chat session documentation, packages/shared/src/tool-request-preview.ts main's preview changes, and the manifest the install-ps1 entry. The ask-reason claims this PR documents are untouched by those deltas.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

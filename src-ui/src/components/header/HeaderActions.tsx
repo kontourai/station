@@ -9,9 +9,11 @@ import {
   usePendingPairingApproval,
 } from '@kontourai/station-connect';
 import { useAttentionQuery } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { hasRealSavedConnection } from '../../lib/saved-connections';
 import {
@@ -41,6 +43,11 @@ import type { HeaderHelpPrompt } from './utils';
  * still keeping the chunk out of the entry graph, which is where the saving
  * actually comes from.
  */
+const loadStationSwitcher = () =>
+  import('./StationSwitcherMenu').then((module) => ({
+    default: module.StationSwitcherMenu,
+  }));
+
 const loadNotificationHistory = () =>
   import('../notifications/NotificationHistory').then((m) => ({
     default: m.NotificationHistory,
@@ -93,6 +100,65 @@ interface HeaderActionsProps {
   onViewAllNotifications: () => void;
 }
 
+function ConnectionNameHint({
+  anchor,
+  id,
+  label,
+  onClose,
+}: {
+  anchor: HTMLElement;
+  id: string;
+  label: string;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 12, top: 0 });
+  useLayoutEffect(() => {
+    const box = anchor.getBoundingClientRect();
+    const width = ref.current?.getBoundingClientRect().width ?? 0;
+    setPosition({
+      left: Math.max(
+        12,
+        Math.min(
+          window.innerWidth - width - 12,
+          box.left + box.width / 2 - width / 2,
+        ),
+      ),
+      top: box.bottom + 8,
+    });
+  }, [anchor]);
+  useEffect(() => {
+    const dismissOutside = (event: PointerEvent) => {
+      if (!anchor.contains(event.target as Node)) onClose();
+    };
+    const dismissEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('pointerdown', dismissOutside);
+    document.addEventListener('keydown', dismissEscape);
+    window.addEventListener('scroll', onClose, true);
+    window.addEventListener('resize', onClose);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside);
+      document.removeEventListener('keydown', dismissEscape);
+      window.removeEventListener('scroll', onClose, true);
+      window.removeEventListener('resize', onClose);
+    };
+  }, [anchor, onClose]);
+  return createPortal(
+    <div
+      ref={ref}
+      id={id}
+      role="tooltip"
+      className="tooltip app-toolbar__conn-tooltip"
+      style={position}
+    >
+      {label}
+    </div>,
+    document.body,
+  );
+}
+
 export function HeaderActions({
   currentViewType,
   helpPrompts,
@@ -116,7 +182,10 @@ export function HeaderActions({
   onToggleProfileMenu,
   onViewAllNotifications,
 }: HeaderActionsProps) {
-  const { activeConnection, connections } = useConnections();
+  const { activeConnection, connections, setActiveConnection } =
+    useConnections();
+  const connectionButtonRef = useRef<HTMLButtonElement>(null);
+  const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
   const { apiBase } = useApiBase();
   const {
     status: connStatus,
@@ -253,7 +322,7 @@ export function HeaderActions({
   const connIdentity = isIdle ? undefined : activeConnection?.name;
   // This is the user's saved connection label, not verified server identity.
   const connDisplayLabel = connIdentity
-    ? `Station · ${connIdentity}`
+    ? connIdentity
     : activeConnection?.injectedSource === 'managed-loopback'
       ? 'Local Station'
       : 'Station';
@@ -277,7 +346,7 @@ export function HeaderActions({
   const compactConn = connState === 'connected';
   const connAccessibleName = [
     connState === 'connected'
-      ? `Manage Stations — ${connStateLabel}`
+      ? `Choose Station — ${connStateLabel}`
       : connTitle,
     compactConn ? connDisplayLabel : connIdentity,
   ]
@@ -287,6 +356,35 @@ export function HeaderActions({
   // in the dot and accessible name; every state that needs action retains its
   // visible state/remedy text. The connection manager gives the full chooser
   // and distinguishes the saved display label from host identity.
+
+  const [connectionNameAnchor, setConnectionNameAnchor] =
+    useState<HTMLElement | null>(null);
+  const connectionHintId = useId();
+  const connectionToggle = useMenuTriggerToggle(
+    connectionMenuOpen,
+    () => {
+      setConnectionNameAnchor(null);
+      onCloseHelp();
+      onCloseNotifications();
+      onCloseOverflow();
+      onCloseProfileMenu();
+      if (connections.length === 0) onOpenConnections();
+      else setConnectionMenuOpen(true);
+    },
+    () => setConnectionMenuOpen(false),
+  );
+  const connectionGesture = useLongPress({
+    onLongPress: setConnectionNameAnchor,
+    onClick: (event) => {
+      if (
+        connIndicator !== 'connected' &&
+        connIndicator !== 'needs-credential' &&
+        connIndicator !== 'needs-repair'
+      )
+        connRecheck();
+      connectionToggle.onClick(event);
+    },
+  });
 
   return (
     <div className="app-toolbar__actions">
@@ -310,38 +408,12 @@ export function HeaderActions({
         // coexist. This is how a test names THIS one, mirroring that
         // component's own `chat-dock-mobile-connection`.
         data-testid="app-toolbar-connection"
-        onClick={() => {
-          // archive#3297: transient reachability no longer banners, so the
-          // banner's "Try now" is not there to be pressed. Tapping a failing
-          // indicator means "check again now", and the retry ladder's own
-          // backoff can be up to 10s away. A blocked credential is excluded:
-          // re-probing it can only fail again, and the modal this opens
-          // carries the remedy. Keyed on the coordinator's own state, not on
-          // `connState` — the `idle` downgrade above is presentation.
-          //
-          // archive#4512: `needs-repair` (identity-mismatch) joins the
-          // exclusion for the same reason — the host answered with a
-          // different identity, and re-probing the same address proves
-          // nothing new; re-pairing (in the modal this still opens) is the
-          // only remedy. `awaiting-approval` stays IN the recheck set for a
-          // narrower reason than "recheck can answer it" — it cannot: this
-          // device has no credential to probe with yet, and a health
-          // recheck is not the mechanism that completes a pending exchange
-          // (the separate poll in `pendingPairingCompletion.ts` is). An
-          // extra harmless probe here just isn't worth carving out. What the
-          // tap actually does for this state is `onOpenConnections` below,
-          // which surfaces the pending exchange itself. Whether that surface
-          // should pause the automatic reconciler while it's already open is
-          // a disclosed follow-up, not something this tap changes.
-          if (
-            connIndicator !== 'connected' &&
-            connIndicator !== 'needs-credential' &&
-            connIndicator !== 'needs-repair'
-          ) {
-            connRecheck();
-          }
-          onOpenConnections();
-        }}
+        ref={connectionButtonRef}
+        onMouseDown={connectionToggle.onMouseDown}
+        aria-haspopup="menu"
+        aria-expanded={connectionMenuOpen}
+        {...connectionGesture}
+        aria-describedby={connectionNameAnchor ? connectionHintId : undefined}
         // archive#1094 kept this disambiguation in a `title`, noting the dot
         // "can't distinguish an ordinary reconnect from a blocked
         // (credential-required) one" without expanding its 3-colour contract.
@@ -379,6 +451,33 @@ export function HeaderActions({
           </>
         )}
       </button>
+      {connectionMenuOpen && connectionButtonRef.current && (
+        <LazyBoundary
+          load={loadStationSwitcher}
+          componentProps={{
+            anchor: connectionButtonRef.current,
+            connections,
+            activeConnectionId: activeConnection?.id,
+            activeStatus: connState,
+            activeStatusLabel: connStateLabel,
+            onSelect: async (connection) => {
+              await setActiveConnection(connection.id);
+            },
+            onClose: () => setConnectionMenuOpen(false),
+            onManage: onOpenConnections,
+          }}
+          pending={null}
+        />
+      )}
+      {connectionNameAnchor && (
+        <ConnectionNameHint
+          key={connDisplayLabel}
+          anchor={connectionNameAnchor}
+          id={connectionHintId}
+          label={connDisplayLabel}
+          onClose={() => setConnectionNameAnchor(null)}
+        />
+      )}
 
       <div style={{ position: 'relative' }}>
         <button

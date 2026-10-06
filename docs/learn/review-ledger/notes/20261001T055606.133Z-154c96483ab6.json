@@ -1,0 +1,9 @@
+{
+  "revision": "0bb211923c129f43dbe9802a1008fdfcc482032c",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-recorded after merging main, on top of main's record. Fixture-only delta in the cited resolver test: a developer home path was swapped for a neutral placeholder together with the literals asserted against it. No assertion logic or covered behaviour changed, and this page quotes none of the replaced strings, so its claims stand unchanged.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-recorded after merging main, on top of main's record. Fixture-only delta in the cited resolver test: a developer home path was swapped for a neutral placeholder together with the literals asserted against it. No assertion logic or covered behaviour changed, and this page quotes none of the replaced strings, so its claims stand unchanged.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

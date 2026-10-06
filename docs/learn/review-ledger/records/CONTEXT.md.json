@@ -1,0 +1,53 @@
+{
+  "path": "CONTEXT.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
+
+  "limits": "High-level architecture and ownership review, not independent live execution of every subsystem. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"docs/contexts/workspace-surfaces/CONTEXT.md\",\"ours\":{\"digest\":\"0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"digest\":\"4857d7c6b89854ba2a9f4d135bead55a3f5a9428b50d845f08bbb87ff7c13522\",\"revision\":\"ec83b822f1a70d5c7e708a49d9c04aa88ea2c662\"}},{\"path\":\"docs/glossary.md\",\"ours\":{\"digest\":\"c7d1e5949adcce8b8fd0605b9280cc5f869c72ec9cc4b7b2767db1617b2a4c6a\",\"revision\":\"335893e0b2f5e87d0ccd02115fd0cfa760b215c1\"},\"main\":{\"digest\":\"8253d91c550f19b800501ac200a66a2e3d55a4b4d71cf6febdd2b1b9f3c7e2bc\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"},\"theirs\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"}},{\"path\":\"docs/glossary.md\",\"ours\":{\"path\":\"docs/glossary.md\",\"digest\":\"329ca4c2a839ecbf37e8306421328d7b2ca93748420405867954ad000062ae19\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"},\"theirs\":{\"path\":\"docs/glossary.md\",\"digest\":\"329ca4c2a839ecbf37e8306421328d7b2ca93748420405867954ad000062ae19\",\"revision\":\"a86f7c1d7acef9f4fb2472a3dffce232bc9950b0\"},\"active\":{\"path\":\"docs/glossary.md\",\"digest\":\"329ca4c2a839ecbf37e8306421328d7b2ca93748420405867954ad000062ae19\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"}}]",
+
+  "sources": [
+    "docs/architecture/module-map.md",
+
+    "docs/contexts/agent-runtime/CONTEXT.md",
+
+    "docs/contexts/evidence-governance/CONTEXT.md",
+
+    "docs/contexts/extension-ecosystem/CONTEXT.md",
+
+    "docs/contexts/operations/CONTEXT.md",
+
+    "docs/contexts/workspace-surfaces/CONTEXT.md",
+
+    "docs/glossary.md",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "packages/contracts/src/session-lifecycle.ts",
+
+    "src-server/services/orchestration/flow-policy-sidecar.ts"
+  ],
+
+  "checks": [
+    "Read both complete entry points and followed their affected canonical owners; all 73 module sections have separately recorded claim reviews.",
+
+    "Reviewed full glossary correction: retired normalization, reserved Agent engine selection, optional Task experience limits and public engine routes. Context ownership relationships remain unchanged.",
+
+    "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. docs/glossary.md: Reviewed plain-language scope edits and reserved Agent terminology; no capability or outcome was broadened.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

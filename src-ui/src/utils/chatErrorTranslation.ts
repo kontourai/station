@@ -1,6 +1,7 @@
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -167,13 +168,27 @@ const NOT_LAUNCHABLE_PATTERN = /not (currently )?launchable/i;
  * The code `station-agent-adapter.ts` publishes on the `runtime.error` it
  * emits when the inner `/chat` stream reports `type: 'error'`
  * (`mapStationAgentStreamEvent`). Unlike `ENGINE_TURN_FAILED_CODE`, the
- * message carries no underlying cause — the inner chunk's `errorText` is
- * already the outward-safe generic (`writeSSEError` in
- * `stream-orchestrator.ts`), so there is nothing further to forward — but
- * the event IS marked `retriable: true`, which is what lets the hint below
- * promise a retry honestly instead of hedging.
+ * message never carries provider text — the inner chunk's `errorText` is the
+ * outward-safe generic (`writeSSEError` in `stream-orchestrator.ts`). It is
+ * either the fixed "The response stream failed." or a sentence the adapter
+ * composed from the provider's HTTP status (see
+ * `STATION_AGENT_CLASSIFIED_REASON`). The event IS marked `retriable: true`,
+ * which is what lets the hint below promise a retry honestly.
  */
 const STATION_AGENT_TURN_FAILED_CODE = 'station_agent_turn_failed';
+
+/**
+ * The only non-generic messages the adapter publishes under that code: a
+ * sentence it composed from the model provider's HTTP status alone
+ * (`model-provider-failure.ts`), e.g. "The model provider returned an error
+ * (HTTP 500).", or the unnumbered "The model provider rejected the
+ * credentials." for a refusal Station inferred without a status. Matched
+ * whole and anchored against that fixed vocabulary, so the card quotes that
+ * sentence and nothing else; any other text under the code keeps the
+ * generic copy rather than being shown.
+ */
+const STATION_AGENT_CLASSIFIED_REASON =
+  /^The model provider (rejected the credentials|could not find the model|timed out|rate-limited the request|returned an error|refused the request)(?: \(HTTP [45]\d\d\))?\.$/;
 
 /**
  * archive#3299: the stream ended without a well-formed body — the client
@@ -267,10 +282,11 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *       (`TERMINAL_SESSION_PATTERN`) as a last resort — still evaluated at
  *       this same point, not lower in the function.
  *   -1b. `code` is the station-agent adapter's retriable turn failure
- *       (`station_agent_turn_failed`) -> the inner stream reported an
- *       error whose text is already the outward-safe generic, so there is
- *       no cause to quote; the hint promises a retry because the event
- *       carries `retriable: true`.
+ *       (`station_agent_turn_failed`) -> the body is the adapter's
+ *       status-derived sentence when the message is exactly one, else the
+ *       generic copy; no other text under this code is quoted. The hint
+ *       promises a retry because the event carries `retriable: true`
+ *       (credentials first for a 401/403).
  *   0. Native `transport_*` codes (the FFI contract — see the `switch`).
  *   1. Client-abort-shaped message (prose) -> the response was stopped, not
  *      failed.
@@ -349,6 +365,20 @@ export function translateChatError(
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
       terminalSession: true,
+    };
+  }
+
+  // The engine cannot take the attachments, refused before anything reached
+  // it. Deterministic: sending the same attachments again is refused again,
+  // so this carries no "temporary" hint and callers withhold Retry
+  // (`retryable: false`). The server's sentence names what the engine did not
+  // advertise; the hint names the two things that actually change the answer.
+  if (code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
+    return {
+      title: "This engine can't take these attachments",
+      body: `${text || 'This engine cannot take the attached files.'} Nothing was sent.`,
+      hint: 'Remove the attachments to send your text, or switch to an engine or model that accepts them.',
+      retryable: false,
     };
   }
 
@@ -436,6 +466,24 @@ export function translateChatError(
     };
   }
 
+  // The same status-derived sentence also arrives UNCODED: the failed-turn
+  // marker a direct /chat turn persists (`[CHAT_ERROR] <sentence>`) carries
+  // no code after a reload. Exact match only, so it reads the same either way.
+  const classifiedReason =
+    code === STATION_AGENT_TURN_FAILED_CODE || code === undefined
+      ? STATION_AGENT_CLASSIFIED_REASON.exec(text.trim())
+      : null;
+  if (classifiedReason) {
+    return {
+      title: 'This turn did not complete',
+      body: classifiedReason[0],
+      hint:
+        classifiedReason[1] === 'rejected the credentials'
+          ? "Check the model connection's credentials, then send your message again."
+          : 'Your message was kept — send it again to retry.',
+    };
+  }
+
   if (code === STATION_AGENT_TURN_FAILED_CODE) {
     return {
       title: 'This turn did not complete',
@@ -468,9 +516,9 @@ export function translateChatError(
   switch (code) {
     case 'transport_capacity':
       return {
-        title: 'Station is handling too many requests',
+        title: 'Station connection is busy',
         body: text || 'This Station has too many concurrent requests.',
-        hint: 'Retry your request in a moment.',
+        hint: 'Wait for current requests to finish, then Retry.',
       };
     case 'transport_timeout':
       return {

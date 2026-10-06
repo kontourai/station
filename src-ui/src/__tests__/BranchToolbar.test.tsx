@@ -3,7 +3,7 @@
  */
 
 import type { GitStatusResult } from '@kontourai/station-sdk';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // ── Mutable hook state, reset per test ──────────────────────────────────────
@@ -210,18 +210,70 @@ describe('BranchToolbar', () => {
     );
   });
 
-  test('Commit is disabled when the tree is clean', () => {
+  test('the commit row is absent when the tree is clean', () => {
     state.statusByRoot = { '/repo': makeStatus('main', false) };
     render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
-    const button = screen.getByRole('button', {
-      name: 'Commit changes',
-    }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    // Happy path: a genuinely resolved, genuinely clean tree has nothing to
+    // commit, so the pane shows nothing to commit with — no disabled field,
+    // no disabled button. The tri-state fix must not regress this case.
+    expect(screen.queryByRole('button', { name: 'Commit changes' })).toBeNull();
+    expect(screen.queryByLabelText('Commit message')).toBeNull();
+    // Push stays: the ahead count is what it carries.
+    expect(
+      screen.getByRole('button', { name: 'Push 2 commit(s)' }),
+    ).toBeTruthy();
+  });
+
+  test('showCommit={false} keeps the first row and drops the commit row even on a dirty tree', () => {
+    render(
+      <BranchToolbar
+        projectSlug="acme"
+        workingDir="/repo"
+        showCommit={false}
+      />,
+    );
+    expect(screen.queryByLabelText('Commit message')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Commit changes' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /Current branch: main/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Push 2 commit(s)' }),
+    ).toBeTruthy();
+  });
+
+  test('a commit that empties the tree hands focus to the branch chip, not <body>', () => {
+    commitMutate.mockImplementation(
+      (_input: unknown, opts?: { onSuccess?: () => void }) =>
+        opts?.onSuccess?.(),
+    );
+    const view = render(
+      <BranchToolbar projectSlug="acme" workingDir="/repo" />,
+    );
     const input = screen.getByLabelText('Commit message') as HTMLInputElement;
-    expect(input.disabled).toBe(true);
-    // Happy path: a genuinely resolved, genuinely clean tree still reads as
-    // clean — the tri-state fix must not regress this case.
-    expect(input.placeholder).toBe('Working tree clean');
+    input.focus();
+    fireEvent.change(input, { target: { value: 'Ship it' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Commit changes' }));
+    // The status read comes back clean: the row leaves, focus moves on.
+    state.statusByRoot = { '/repo': makeStatus('main', false) };
+    view.rerender(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
+    expect(screen.queryByLabelText('Commit message')).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: /Current branch: main/ }),
+    );
+  });
+
+  test('Push is an icon that counts the commits ahead, and bare when none', () => {
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
+    const push = screen.getByRole('button', { name: 'Push 2 commit(s)' });
+    // No word on the control: the glyph and the count.
+    expect(push.textContent).toBe('2');
+    expect(push.querySelector('svg')).toBeTruthy();
+    cleanup();
+    state.statusByRoot = { '/repo': { ...makeStatus('main'), ahead: 0 } };
+    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
+    const bare = screen.getByRole('button', { name: 'Push to remote' });
+    expect(bare.textContent).toBe('');
   });
 
   test('a loading git-status query does not claim the tree is clean, and does not disable commit', () => {
@@ -321,14 +373,17 @@ describe('BranchToolbar', () => {
 
   // ── Multi-repo awareness ────────────────────────────────────────────────
 
-  test('single repo renders a static repo label, no switcher dropdown', () => {
+  test('single repo renders no repo chip; the branch chip names the repo in its title', () => {
     render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
-    // The repo label text is present...
-    expect(screen.getByText('repo')).toBeTruthy();
-    //.but there is no "Switch repository" combobox.
+    // Nothing to switch, so no switcher and no static label repeating the
+    // pane's project; the folder is on the branch chip's title.
     expect(
       screen.queryByRole('button', { name: /Switch repository/ }),
     ).toBeNull();
+    expect(screen.queryByText('repo')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /Current branch: main/ }).title,
+    ).toBe('repo · main');
   });
 
   test('multiple repos render a switcher listing names and branches', () => {

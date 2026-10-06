@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Updated the recovery UI labels in the broker guide and checked the corresponding UI owner, host cleanup contract and mounted test. Preview plus confirmation remains explicit; failed observation or storage stays pending; trust, Device approval, account sign-in and Project access remain separate. Focused test passed; installed-shell qualification remains separate.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

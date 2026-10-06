@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   openHeaderSettings,
@@ -26,7 +27,7 @@ async function openAgentDefaults(page: import('@playwright/test').Page) {
   // promoted to its own top-level scope, and is now "Agent runs" — a name for
   // the thing the values apply to rather than for the precedence rule. The
   // leaf DOM id follows the section id (`section-<id>`), so it moved too.
-  await page.getByRole('link', { name: 'Agent runs', exact: true }).click();
+  await page.getByRole('link', { name: 'General', exact: true }).click();
   await page.locator('#section-agent-runs .agent-defaults__panel').waitFor();
 }
 
@@ -120,178 +121,111 @@ test.describe('Settings', () => {
     await goToSettings(page);
   });
 
-  // #2059 (design record D3): the configuration destinations that used to take
-  // rows in the left panel are reached from this page. #2144 slice 4 removed
-  // the separate Manage GRID that held them and made each one a row in the
-  // section navigation itself, so one list answers "what can I change here?".
-  // This is the touch-target half of the contract those panel rows used to
-  // carry — task-first-home.spec.ts owns the drawer's own rows and its footer
-  // — and it lives here because this suite's fixture models the Settings page.
-  //
-  // The labels are the rows a reader sees, not destination ids: Guidance is
-  // listed as 'Skills' and Connections as 'Engines & Models' (#2144 decisions
-  // 1 and 7), and Registry has no row because it folds into Plugins
-  // (decision 4, proven end to end in registry.spec.ts).
-  test('the section navigation lists the moved destinations at a thumb-sized target', async ({
+  test('Customize offers management links at a thumb-sized target', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    const sections = page.getByRole('navigation', {
-      name: 'Settings sections',
-    });
-    await expect(sections).toBeVisible({ timeout: 10_000 });
-    for (const label of [
-      'Agents',
-      'Skills',
-      'Engines & Models',
-      'Plugins',
-      'Schedule',
-    ]) {
-      const entry = sections.getByRole('link', { name: label, exact: true });
+    await page.getByRole('button', { name: 'Toggle menu' }).click();
+    await page.getByRole('button', { name: 'Customize', exact: true }).click();
+    const chooser = page.getByRole('dialog', { name: 'Customize' });
+    for (const label of ['Agents', 'Skills', 'Engines & Models', 'Plugins']) {
+      const entry = chooser.getByRole('link', { name: label, exact: true });
       await expect(entry).toBeVisible();
-      expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await expect
+        .poll(async () => (await entry.boundingBox())?.height ?? 0)
+        .toBeGreaterThanOrEqual(44);
     }
     await expect(
-      sections.getByRole('link', { name: 'Registry', exact: true }),
+      chooser.getByRole('link', { name: 'Registry', exact: true }),
     ).toHaveCount(0);
-    // archive#3313 (Settings IA, option A): Developer is settings-gated and
-    // hidden until enabled on this device. The gate followed the entry out of
-    // the panel; it did not stay behind with the row, and it did not stay
-    // behind with the grid either.
     await expect(
-      sections.getByRole('link', { name: 'Developer', exact: true }),
+      chooser.getByRole('link', { name: 'Developer', exact: true }),
     ).toHaveCount(0);
-    expect(
-      await page.evaluate(() =>
-        Math.max(
-          document.documentElement.scrollWidth,
-          document.body.scrollWidth,
-        ),
-      ),
-    ).toBeLessThanOrEqual(page.viewportSize()!.width);
   });
 
-  // #2144 slice 7: at a fine-pointer desktop width the section navigation is
-  // a vertical rail, and every group heading is on screen without scrolling.
-  // Before this, the strip scrolled sideways at every width and at 1440x900
-  // cut off after the second group heading — three of five groups sat
-  // behind a horizontal scroll nothing announced. The mobile test above
-  // keeps the strip; this pins the other half of the modifier, and both
-  // would go red together if the breakpoint stopped being a complement.
-  test('at desktop width the section navigation is a rail that shows every group', async ({
+  test('desktop Settings has one rail of topics that stay within Settings', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const nav = page.getByRole('navigation', { name: 'Settings sections' });
-    await expect(nav).toBeVisible({ timeout: 10_000 });
+    await expect(nav).toBeVisible();
     expect(
       await nav.evaluate((element) => getComputedStyle(element).flexDirection),
     ).toBe('column');
-    // Nothing hides behind a horizontal scroll inside the rail.
     expect(
       await nav.evaluate(
         (element) => element.scrollWidth <= element.clientWidth,
       ),
     ).toBe(true);
-    const headings = nav.getByRole('heading');
-    expect(await headings.count()).toBeGreaterThanOrEqual(4);
-    const width = page.viewportSize()!.width;
-    for (const heading of await headings.all()) {
-      const box = (await heading.boundingBox())!;
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    await expect(nav.getByRole('link')).toHaveCount(9);
+    for (const link of await nav.getByRole('link').all()) {
+      await expect(link).toHaveAttribute('href', /\/settings\?view=/);
+      const box = (await link.boundingBox())!;
+      expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
     }
   });
 
-  test('a nav-only row leaves Settings for the destination it names', async ({
+  test('Customize opens Plugins and Settings remains easy to return to', async ({
     page,
   }) => {
+    await page.getByRole('button', { name: 'Customize', exact: true }).click();
     await page
-      .getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('dialog', { name: 'Customize' })
       .getByRole('link', { name: 'Plugins', exact: true })
       .click();
     await expect(page).toHaveURL(/\/plugins$/);
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page.locator('#section-agent-runs')).toBeVisible();
   });
 
-  test('page load shows the primary settings sections', async ({ page }) => {
-    for (const title of [
-      'Appearance',
-      'Keyboard shortcuts',
-      'Notifications',
-      'Voice',
-      'Pairing',
-      'My knowledge store',
-      'Diagnostics',
-      'System',
-      'Sources',
-      // The SECTION heading. Its first ROW is "Usage telemetry" (#2182 L8).
-      'Telemetry',
-      'Permissions',
-      'Agent runs',
-    ]) {
-      // `exact`: a substring match lets "Usage telemetry" (a row) satisfy
-      // "Telemetry" (the section), so reverting the section title would stay
-      // green — the one change this assertion exists to catch (#2182 L-f).
-      await expect(
-        page.getByRole('heading', { name: title, exact: true }).first(),
-      ).toBeVisible();
-    }
+  test('page load shows General instead of every setting', async ({ page }) => {
+    await expect(
+      page.getByRole('heading', { name: 'Agent runs', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Permissions', exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('#section-system')).toHaveCount(0);
+    await expect(page.locator('#section-appearance')).toHaveCount(0);
   });
 
-  test('section navigation exposes the settings persistence scopes', async ({
+  test('topic navigation keeps persistence scopes visible beside the controls', async ({
     page,
   }) => {
-    const nav = page.getByRole('navigation', { name: 'Settings sections' });
     await expect(
-      nav.getByRole('link', { name: 'Sources', exact: true }),
+      page.getByText('Saved to this Station.', { exact: true }),
     ).toBeVisible();
+    await page.getByRole('link', { name: 'Appearance', exact: true }).click();
     await expect(
-      nav.getByRole('link', { name: 'Agent runs', exact: true }),
+      page.getByText('Saved to this device.', { exact: true }),
     ).toBeVisible();
-    await expect(
-      nav.getByRole('link', { name: 'Appearance', exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        'Saved to this Station — every client sees the same values.',
-      ),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        'Saved to this Station — what agents may do without asking, what every run gets, and the values a chat, project or agent inherits when it does not name its own.',
-      ),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        'Saved to this device only — these choices won’t follow you to another device.',
-      ),
-    ).toBeVisible();
-
-    // Knowledge sits outside the scope groups; its caption carries the
-    // persistence fact the legend used to state (delivery review M2).
+    await page.getByRole('link', { name: 'My knowledge', exact: true }).click();
     await expect(
       page.getByText(
         'Saved to this Station — available from every device that connects to it.',
+        { exact: true },
       ),
     ).toBeVisible();
-
-    // The old three-card legend must not return (archive#1826).
     await expect(page.getByLabel('Where settings are saved')).toHaveCount(0);
   });
 
   test('section query survives reload and browser history', async ({
     page,
   }) => {
-    await page.getByRole('link', { name: 'System', exact: true }).click();
-    await expect(page).toHaveURL(/[?&]view=system/);
+    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
+    await expect(page).toHaveURL(/[?&]view=advanced/);
     await expect(page.locator('#section-system')).toBeInViewport();
     await page.reload();
     await expect(page.locator('#section-system')).toBeInViewport();
 
-    await page.getByRole('link', { name: 'Agent runs', exact: true }).click();
-    await expect(page).toHaveURL(/[?&]view=agent-runs/);
+    await page.getByRole('link', { name: 'General', exact: true }).click();
+    await expect(page).toHaveURL(/[?&]view=general/);
     await page.goBack();
-    await expect(page).toHaveURL(/[?&]view=system/);
+    await expect(page).toHaveURL(/[?&]view=advanced/);
     await expect(page.locator('#section-system')).toBeInViewport();
   });
 
@@ -302,12 +236,50 @@ test.describe('Settings', () => {
     await page.waitForSelector('.settings__section-nav');
     await expect(page).toHaveURL('/settings?keep=1');
     await expect(
-      page.getByRole('link', { name: 'Overview', exact: true }),
+      page.getByRole('link', { name: 'General', exact: true }),
     ).toHaveAttribute('aria-current', 'location');
     await expect(
-      page.getByRole('heading', { name: 'System', exact: true }),
+      page.getByRole('heading', { name: 'Agent runs', exact: true }),
     ).toBeVisible();
   });
+
+  for (const width of [320, 390]) {
+    test(`keeps the phone frame visible while Settings content scrolls (${width}px)`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto('/settings?view=advanced');
+      await expect(page.locator('#section-system')).toBeInViewport();
+      const frame = page.locator('.app__main');
+      const content = page.locator('.content-view');
+      await expect
+        .poll(() => frame.evaluate((element) => element.scrollTop))
+        .toBe(0);
+      await expect
+        .poll(() =>
+          frame.evaluate((element) => element.getBoundingClientRect().bottom),
+        )
+        .toBeLessThanOrEqual(844.1);
+      await expect(page.locator('.app-toolbar')).toBeInViewport();
+      await expect
+        .poll(() =>
+          content.evaluate(
+            (element) => element.scrollHeight - element.clientHeight,
+          ),
+        )
+        .toBeGreaterThan(0);
+      const before = await content.evaluate((element) => element.scrollTop);
+      await content.hover();
+      await page.mouse.wheel(0, 350);
+      await expect
+        .poll(() => content.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(before);
+      await expect
+        .poll(() => frame.evaluate((element) => element.scrollTop))
+        .toBe(0);
+      await expect(page.locator('.app-toolbar')).toBeInViewport();
+    });
+  }
 
   test('legacy section deep links remain supported', async ({ page }) => {
     await page.goto('/settings?section=knowledge');
@@ -364,7 +336,7 @@ test.describe('Settings', () => {
   test('save persists changes', async ({ page }) => {
     await openAgentDefaults(page);
     const original = await page.inputValue('#systemPrompt');
-    await page.getByRole('link', { name: 'System', exact: true }).click();
+    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
     const originalLogLevel = await page.inputValue('#logLevel');
     const targetLogLevel = originalLogLevel === 'debug' ? 'trace' : 'debug';
     await page.selectOption('#logLevel', targetLogLevel);
@@ -376,14 +348,14 @@ test.describe('Settings', () => {
     ).toBeVisible();
     await saveSettingsAndVerifyPersistence(page, edited, targetLogLevel);
     await page.reload();
-    await page.getByRole('link', { name: 'System', exact: true }).click();
+    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
     await expect(page.locator('#logLevel')).toHaveValue(targetLogLevel);
     await openAgentDefaults(page);
     // Restore the original through the same proven persistence path; the
     // causal readback inside the helper asserts the server again matches the
     // original, so restoration is verified rather than assumed.
     await page.fill('#systemPrompt', original);
-    await page.getByRole('link', { name: 'System', exact: true }).click();
+    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
     await page.selectOption('#logLevel', originalLogLevel);
     await openAgentDefaults(page);
     await saveSettingsAndVerifyPersistence(page, original, originalLogLevel);
@@ -396,7 +368,7 @@ test.describe('Settings', () => {
     const original = await page.inputValue('#systemPrompt');
     const edited = `${original} [partial-save]`;
     await page.fill('#systemPrompt', edited);
-    await page.getByRole('link', { name: 'System', exact: true }).click();
+    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
     const originalLogLevel = await page.inputValue('#logLevel');
     const targetLogLevel = originalLogLevel === 'debug' ? 'trace' : 'debug';
     await page.selectOption('#logLevel', targetLogLevel);
@@ -454,7 +426,7 @@ test.describe('Settings', () => {
   test('reset shows a confirm modal that states what it does and does not touch', async ({
     page,
   }) => {
-    await page.getByRole('link', { name: 'System', exact: true }).click();
+    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
     await page.getByRole('button', { name: 'Reset Station settings' }).click();
     const dialog = page.getByRole('dialog', { name: 'Reset Station settings' });
     await expect(dialog).toBeVisible();
@@ -473,10 +445,9 @@ test.describe('Settings', () => {
   test('Agent runs shows the generic region field', async ({ page }) => {
     await openAgentDefaults(page);
     await expect(
-      page.getByText(
-        'Used when a configured connection requires regional routing, such as built-in cloud services.',
-        { exact: true },
-      ),
+      page.getByText('Region for connections that use regional routing.', {
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
       page.getByLabel('Default Region', { exact: true }),
@@ -501,6 +472,7 @@ test.describe('Settings', () => {
   });
 
   test('theme toggle switches mode', async ({ page }) => {
+    await page.getByRole('link', { name: 'Appearance', exact: true }).click();
     const themeBtn = page.locator('.theme-toggle').first();
     const initialTheme = await page.evaluate(() =>
       document.documentElement.getAttribute('data-theme'),
@@ -559,31 +531,45 @@ test.describe('Settings', () => {
     await row.getByRole('button', { name: 'Restore default' }).click();
   });
 
-  test('mobile layout has horizontal scroll nav and read-only shortcuts', async ({
-    page,
-  }) => {
+  test('mobile section picker stays within Settings', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    const filter = page.getByRole('textbox', { name: 'Filter settings' });
+    const filter = page.getByRole('searchbox', { name: 'Filter settings' });
     await expect(filter).toHaveCSS('font-size', '16px');
     await filter.focus();
     await filter.fill('theme');
     await filter.blur();
     await expect(filter).toHaveCSS('font-size', '16px');
     await filter.fill('');
-    const nav = page.locator('.settings__section-nav');
-    const overflowX = await nav.evaluate(
-      (el) => getComputedStyle(el).overflowX,
-    );
-    expect(overflowX).toBe('auto');
-    await page
-      .getByRole('link', { name: 'Keyboard shortcuts', exact: true })
-      .click();
+    await expect(page.locator('.settings__section-nav')).toBeHidden();
+    const picker = page.getByRole('combobox', { name: 'Settings section' });
+    await expect(picker).toBeVisible();
+    expect((await picker.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await picker.selectOption({ label: 'Notifications & voice' });
+    await expect(page).toHaveURL(/view=alerts/);
+    for (const name of ['Agent notifications', 'Approval requests sound']) {
+      expect(
+        (await page.getByRole('combobox', { name }).boundingBox())!.height,
+      ).toBeGreaterThanOrEqual(44);
+    }
+    await picker.selectOption({ label: 'Keyboard shortcuts' });
+    await expect(page).toHaveURL(/view=keyboard-shortcuts/);
     await expect(
       page.getByText(/Edit them from Station on a computer/i),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Shortcut for Toggle settings' }),
     ).toBeDisabled();
+    await expect(picker.locator('option', { hasText: 'Agents' })).toHaveCount(
+      0,
+    );
+    expect(
+      await page.evaluate(() =>
+        Math.max(
+          document.documentElement.scrollWidth,
+          document.body.scrollWidth,
+        ),
+      ),
+    ).toBeLessThanOrEqual(page.viewportSize()!.width);
   });
 
   test('search filters sections', async ({ page }) => {
@@ -591,10 +577,10 @@ test.describe('Settings', () => {
     await expect(page.locator('#section-appearance')).toBeVisible();
     await expect(page.locator('#section-agent-runs')).not.toBeVisible();
     await expect(page.locator('#section-system')).not.toBeVisible();
-    // Clear restores all
+    // Clear restores General
     await page.fill('.settings__search', '');
     await expect(page.locator('#section-agent-runs')).toBeVisible();
-    await expect(page.locator('#section-system')).toBeVisible();
+    await expect(page.locator('#section-system')).toHaveCount(0);
   });
 
   test('accent color picker applies color', async ({ page }) => {
@@ -655,7 +641,7 @@ test.describe('Settings', () => {
 
   test('notifications switch announces its description', async ({ page }) => {
     await page
-      .getByRole('link', { name: 'Notifications', exact: true })
+      .getByRole('link', { name: 'Notifications & voice', exact: true })
       .click();
     const toggle = page.locator('#section-notifications [role="switch"]');
     await expect(toggle).toHaveAccessibleDescription(

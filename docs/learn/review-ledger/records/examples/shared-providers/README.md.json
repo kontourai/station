@@ -1,0 +1,53 @@
+{
+  "path": "examples/shared-providers/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README claim review through all executable provider modules, manifest and settings factory loader, provider grant/publication and dependency installation/rollback callers, plus actual Profile-page link consumer. Existing placeholder/local unauthenticated/legacy mutation limitations preserved. Corrected achievements link placement rather than implying a general navigation item. No enterprise integration or live registry behavior certified.",
+
+  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.",
+
+  "sources": [
+    "examples/shared-providers/package.json",
+
+    "examples/shared-providers/plugin.json",
+
+    "examples/shared-providers/providers/agent-registry.js",
+
+    "examples/shared-providers/providers/ldap-directory.js",
+
+    "examples/shared-providers/providers/ldap-user.js",
+
+    "examples/shared-providers/providers/npm-registry.js",
+
+    "examples/shared-providers/providers/oauth-auth.js",
+
+    "src-server/providers/plugin-provider-loader.ts",
+
+    "src-server/services/plugins/plugin-install-transaction.ts",
+
+    "src-server/services/plugins/plugin-permissions.ts",
+
+    "src-ui/src/core/PluginRegistry.ts",
+
+    "src-ui/src/pages/ProfilePage.tsx"
+  ],
+
+  "checks": [
+    "Prior receipt, retained without rerun: Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Source+caller review completed at frozen upstream f3954615e / integrated6fa523e4d; prior record source changes inspected before replacing hashes. No moving-main chase.",
+
+    "Executed: static gate chain PASS including26example conformance and zero new a11y violations; docs links PASS415Markdown files; diff whitespace PASS.",
+
+    "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
+
+    "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
+
+    "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+
+    "Integration source review through e0314c727: the only input change is plugin install's excludeGitMetadata option for proposed installs (#2719). The README's provider, grant, dependency-install/rollback and Profile-link claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

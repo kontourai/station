@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
 import { CI_FAST_TIMEOUT_MS } from './verification-lanes.mjs';
 
@@ -331,7 +333,18 @@ export function classifyCiFastCommandResult(result) {
 }
 
 function run(command, args, { cwd, timeout, env }) {
-  const result = spawnSync(command, args, {
+  let invocation = { command, args };
+  if (command === 'npm') {
+    try {
+      invocation = npmInvocation(args, { env });
+    } catch (cause) {
+      throw new CiFastInfrastructureError(
+        `ci:fast npm launcher could not resolve: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      );
+    }
+  }
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd,
     ...(env ? { env } : {}),
     stdio: 'inherit',
@@ -371,6 +384,9 @@ export function runCiFast({
     // `index === 0` names the selector; a statics-only lane has none.
     const index = selector ? position : position + 1;
     const iterationStartedAt = now();
+    // Name the step before it starts: a direct `node` step prints no npm
+    // header, and the reporter attributes a failure to the last boundary.
+    report(ciFastStepMarker(command, args));
     const timeout =
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
     if (timeout <= 0)

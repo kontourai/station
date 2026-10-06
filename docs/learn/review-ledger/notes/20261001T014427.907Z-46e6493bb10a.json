@@ -1,0 +1,9 @@
+{
+  "revision": "76bed9917dc158af93355aaea9705b9168ac7efd",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Tone guidance re-read against station-tones.ts: the new sessionStateTone helper maps the canonical session state to kit tones and callers still render the label; guidance unchanged.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home row re-read: the spec now opens the session detail's Details disclosure before asserting project workflows and sends a delegated follow-up with Send; the row's coverage description is unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

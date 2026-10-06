@@ -13,6 +13,17 @@ import {
 import { basename, join } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import {
+  PORTABLE_SERVER_TARGETS,
+  portableServerArchiveName,
+} from '../../packages/shared/src/portable-server-targets.mjs';
+import {
+  canonicalManifestJson,
+  isHttpsArtifactUrl,
+  validateReleaseManifestPayloadV2,
+  verifyReleaseManifest,
+} from '../../packages/shared/src/release-manifest.mjs';
+import { manifestPointer } from './public-release-locations.mjs';
+import {
   canonicalJson,
   SBOM_ASSETS,
   validateSbomBytes,
@@ -45,6 +56,35 @@ const schemaValidator = new Ajv2020({
     },
   },
 }).compile(schema);
+
+/**
+ * The host stream (#2959): every portable server archive and the unsigned
+ * schema v2 payload release.yml assembled from their descriptors. The signed
+ * manifest is not staged: publish-release.yml signs this payload with the
+ * release key and attaches it, behind the owner's gate.
+ */
+export const HOST_MANIFEST_PAYLOAD_ASSET =
+  'station-server-manifest-payload.json';
+const HOST_ARCHIVE_NAMES = PORTABLE_SERVER_TARGETS.map(
+  portableServerArchiveName,
+);
+const DEFAULT_MANIFEST_KEYS = new URL(
+  '../../config/release-manifest-keys.json',
+  import.meta.url,
+);
+
+function tagChannel(tag) {
+  return tag.includes('-preview.') ? 'preview' : 'stable';
+}
+
+/**
+ * The signed host manifest a published release may carry for its ring. It is
+ * attached after release.yml, so it has no release.yml attestation: its trust
+ * is the pinned release key, which validateReleaseInventory checks.
+ */
+export function signedHostManifestAsset(tag) {
+  return manifestPointer(tagChannel(tag)).manifestAsset;
+}
 
 function fail(message) {
   throw new Error(`Invalid release artifact inventory: ${message}`);
@@ -172,9 +212,11 @@ function ancillaryAssets(tag) {
       role: 'portable-checksum',
     },
     {
-      name: `station-release-ring-${tag.includes('-preview.') ? 'preview' : 'stable'}.json`,
+      name: `station-release-ring-${tagChannel(tag)}.json`,
       role: 'release-ring',
     },
+    ...HOST_ARCHIVE_NAMES.map((name) => ({ name, role: 'host-archive' })),
+    { name: HOST_MANIFEST_PAYLOAD_ASSET, role: 'host-manifest-payload' },
     {
       name: 'station-container-release.json',
       role: 'container-descriptor',
@@ -384,7 +426,7 @@ export function createReleaseInventory({
     tag,
     version: tag.slice(1),
     sourceSha,
-    channel: tag.includes('-preview.') ? 'preview' : 'stable',
+    channel: tagChannel(tag),
     generatedAt,
     dependencyLifecycle,
     container,
@@ -578,6 +620,85 @@ function validateSidecars(inventory, assetsDir) {
     fail('release-ring sidecar does not match inventory metadata');
 }
 
+function readHostJson(file, label) {
+  try {
+    return JSON.parse(readFileSync(regularFile(file, label), 'utf8'));
+  } catch (error) {
+    fail(
+      `cannot parse ${label}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/**
+ * The host payload names exactly this release (ring, version, tag, source)
+ * and exactly the inventoried archive bytes at this release's download path.
+ * When the signed manifest is present it must verify against the pinned key
+ * table for the ring and sign exactly this payload.
+ */
+function validateHostStream(inventory, assetsDir, manifestKeys) {
+  if (!assetsDir) return;
+  const payload = readHostJson(
+    join(assetsDir, HOST_MANIFEST_PAYLOAD_ASSET),
+    HOST_MANIFEST_PAYLOAD_ASSET,
+  );
+  try {
+    validateReleaseManifestPayloadV2(payload, {
+      isAllowedArtifactUrl: isHttpsArtifactUrl,
+    });
+  } catch (error) {
+    fail(
+      `host manifest payload is invalid: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (
+    payload.channel !== inventory.channel ||
+    payload.version !== inventory.version ||
+    payload.releaseTag !== inventory.tag ||
+    payload.sourceSha !== inventory.sourceSha
+  )
+    fail('host manifest payload does not name this release');
+  const archives = new Map(
+    inventory.assets
+      .filter((asset) => asset.role === 'host-archive')
+      .map((asset) => [asset.name, asset]),
+  );
+  if (payload.artifacts.length !== archives.size)
+    fail('host manifest payload does not cover every host archive');
+  for (const artifact of payload.artifacts) {
+    const asset = archives.get(artifact.name);
+    if (!asset || asset.sha256 !== artifact.sha256)
+      fail(`host manifest payload does not sign ${artifact.name}`);
+    if (lstatSync(join(assetsDir, artifact.name)).size !== artifact.size)
+      fail(`host manifest payload has the wrong size for ${artifact.name}`);
+    if (
+      !new URL(artifact.url).pathname.endsWith(
+        `/${inventory.tag}/${artifact.name}`,
+      )
+    )
+      fail(
+        `host manifest payload names ${artifact.name} outside ${inventory.tag}`,
+      );
+  }
+  const signedName = signedHostManifestAsset(inventory.tag);
+  if (!existsSync(join(assetsDir, signedName))) return;
+  const envelope = readHostJson(join(assetsDir, signedName), signedName);
+  let signed;
+  try {
+    signed = verifyReleaseManifest(
+      envelope,
+      JSON.parse(readFileSync(manifestKeys ?? DEFAULT_MANIFEST_KEYS, 'utf8')),
+      { expectedChannel: inventory.channel },
+    );
+  } catch (error) {
+    fail(
+      `${signedName} does not verify: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (canonicalManifestJson(signed) !== canonicalManifestJson(payload))
+    fail(`${signedName} does not sign the staged host manifest payload`);
+}
+
 function validateContainer(inventory, assetsDir, containerDescriptor) {
   validateContainerDescriptor(inventory.container, {
     tag: inventory.tag,
@@ -598,7 +719,7 @@ function validateContainer(inventory, assetsDir, containerDescriptor) {
 
 export function validateReleaseInventory(
   inventory,
-  { assetsDir, updaterPublicKey, containerDescriptor } = {},
+  { assetsDir, updaterPublicKey, containerDescriptor, manifestKeys } = {},
 ) {
   validateSchema(inventory);
   if (inventory.version !== inventory.tag.slice(1))
@@ -632,6 +753,7 @@ export function validateReleaseInventory(
     }
   }
   validateSidecars(inventory, assetsDir);
+  validateHostStream(inventory, assetsDir, manifestKeys);
   validateContainer(inventory, assetsDir, containerDescriptor);
   validateUpdaterPairs(inventory, assetsDir, updaterPublicKey);
   return inventory;
@@ -655,10 +777,21 @@ export function readInventory(file) {
   }
 }
 
-export function assertOnlyExpectedAssets(assetsDir, tag) {
+/**
+ * `allowSignedHostManifest` admits the signed host manifest that
+ * publish-release.yml attaches: validating a draft or a published release,
+ * never release.yml's own assembly, where it must not exist yet.
+ */
+export function assertOnlyExpectedAssets(
+  assetsDir,
+  tag,
+  { allowSignedHostManifest = false } = {},
+) {
   const allowed = new Set(expectedAssets(tag).keys());
   allowed.add('station-release-inventory.json');
   allowed.add('station-release-checksums.txt');
+  // Attached by publish-release.yml; validateReleaseInventory verifies it.
+  if (allowSignedHostManifest) allowed.add(signedHostManifestAsset(tag));
   for (const entry of readdirSync(assetsDir, { withFileTypes: true })) {
     if (!allowed.has(entry.name)) fail(`unexpected asset ${entry.name}`);
     if (entry.isSymbolicLink() || !entry.isFile())

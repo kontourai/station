@@ -1,0 +1,7 @@
+{
+  "revision": "ee5ec5fced4e3eccf8318f60dc782bab0fdaa1c2",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the current integration guide against its authentication routing after the account observation repair and actual main integration. The guide routes deployment identity to deployment-authentication.md and keeps Project membership separate. The composed account-bound-device gate now requires a verified native request principal for the narrow native observation exception; ordinary account-bound Device bearers still require current account authentication. Native-proof route keeper executed 26/26 PASS at ee5ec5fced4e. No integration guide prose change is needed: its public API/SDK/plugin/CLI routing and distinction between existing local deployment contracts and prospective hosted tenant adapters remain accurate. Historical cloud sizing and Marketplace/provider delivery claims were not revalidated; no physical native, provider login, hosted release or Nightly qualification is claimed. This deliberate review covers the retained guide bytes following the merged ledger history; original documentation-truth refusal1791118271086 is preserved separately.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

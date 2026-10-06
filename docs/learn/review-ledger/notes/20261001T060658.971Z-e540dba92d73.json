@@ -1,0 +1,7 @@
+{
+  "revision": "c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#3071 source delta in orchestration-session-state.ts (openRequestIds and run-status open-request filter). Read the manual topics that mention approvals and sessions: they route request behavior to the Session API and state no rule about when a request stops being open. No prose change.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

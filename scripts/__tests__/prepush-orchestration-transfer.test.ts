@@ -9,6 +9,9 @@ import {
 describe('orchestration transfer pre-push scope', () => {
   test('requires the recorder and the full measured runtime closure', () => {
     for (const path of [
+      'scripts/lib/transfer-capture-barrier.ts',
+      'scripts/lib/transfer-capture-progress.ts',
+      'scripts/lib/liveness-scale.mjs',
       'src-server/__test-utils__/http-transfer-recorder.ts',
       'src-server/providers/adapters/station-agent-adapter.ts',
       'src-server/routes/orchestration/orchestration.ts',

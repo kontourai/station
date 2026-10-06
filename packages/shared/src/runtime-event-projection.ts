@@ -1,9 +1,20 @@
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
   ConversationMessage,
   MessagePart,
 } from './conversation-message.js';
+import {
+  EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
+  EXTENSION_TRANSCRIPT_MARKER_TEXT,
+  type ExtensionTranscriptMarkerKind,
+  extensionTranscriptMarker,
+} from './extension-transcript-markers.js';
+import { readHarnessQuestionnaire } from './harness-questions.js';
+import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
 
 function repeatedRuntimeErrorText(message: string, count: number) {
@@ -271,6 +282,8 @@ export function projectRuntimeEventsToMessages(
   // currently active Session for historical turn identity.
   let turnSessionId: string | undefined;
   let turnAnswerEligible = false;
+  /** The open turn's last pre-steer row, owner of last resort. */
+  let preSteerRowIndex: number | undefined;
   const revokedAnswerTurns = new Set<string>();
   // station#1182: `turnReportedModel` is per-turn (set from turn.started/
   // turn.completed metadata); `sessionReportedModel` is the last value seen
@@ -308,13 +321,18 @@ export function projectRuntimeEventsToMessages(
     role: ConversationMessage['role'],
     p: MessagePart[],
     inputKind?: 'steer',
+    /**
+     * The part of a turn produced before a steer. The turn's provenance and
+     * answer eligibility describe the whole turn and stay on its final row.
+     */
+    beforeSteer = false,
   ) => {
     const reportedModel = turnReportedModel ?? sessionReportedModel;
     // station#1410: only an assistant turn that both has an observed turn
     // identity AND reached a terminal event has an envelope. An open or
     // untagged turn carries none rather than a partially-folded one.
     const provenance =
-      role === 'assistant' && turnIdentity
+      role === 'assistant' && !beforeSteer && turnIdentity
         ? envelopesByTurn.get(turnKey(turnSessionId, turnIdentity) ?? '')
         : undefined;
     const metadata = {
@@ -334,7 +352,7 @@ export function projectRuntimeEventsToMessages(
       ...(role === 'assistant' && turnSessionId
         ? { sessionId: turnSessionId }
         : {}),
-      ...(role === 'assistant' && turnAnswerEligible
+      ...(role === 'assistant' && turnAnswerEligible && !beforeSteer
         ? { answerEligible: true }
         : {}),
       ...(provenance ? { provenance } : {}),
@@ -356,7 +374,15 @@ export function projectRuntimeEventsToMessages(
     // otherwise redirect a late result away from the row that shows the call.
     const emittedKey =
       role === 'assistant' ? turnKey(turnSessionId, turnIdentity) : undefined;
-    if (emittedKey && !assistantMessageIndexByTurn.has(emittedKey)) {
+    // A pre-steer segment never owns the turn: the turn is still open, so
+    // its later start-less completions belong to the live buffer, and after
+    // the terminal the row that owns the turn is the one emitted last.
+    if (emittedKey && beforeSteer) preSteerRowIndex = messages.length - 1;
+    if (
+      emittedKey &&
+      !beforeSteer &&
+      !assistantMessageIndexByTurn.has(emittedKey)
+    ) {
       assistantMessageIndexByTurn.set(emittedKey, messages.length - 1);
     }
   };
@@ -374,10 +400,40 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
-  const emitAssistantTurn = () => {
+  /** station#3415: markers that arrived during the open turn. */
+  let heldMarkers: Array<{
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>;
+    marker: ExtensionTranscriptMarkerKind;
+  }> = [];
+
+  /**
+   * True once the open turn's Session exited: no terminal will ever close
+   * that turn, so its held markers are shown after it even though the window
+   * ends with the turn still open (someone quit the engine mid-turn).
+   */
+  let openTurnSessionExited = false;
+
+  /**
+   * `releaseMarkers` is false only for the open turn the window ends on: that
+   * turn has not closed, so its held markers are not shown yet — unless its
+   * Session already exited (`openTurnSessionExited`).
+   */
+  const emitAssistantTurn = (releaseMarkers = true) => {
     flushReasoning();
     flushText();
     if (parts.length > 0) pushMessage('assistant', parts);
+    const closedTurnTimestamp = turnTimestamp;
+    // A turn that produced nothing after its steer still needs an owner row,
+    // or a late event for it would land on whatever turn is open next.
+    const endedKey = turnKey(turnSessionId, turnIdentity);
+    if (
+      endedKey &&
+      preSteerRowIndex !== undefined &&
+      !assistantMessageIndexByTurn.has(endedKey)
+    ) {
+      assistantMessageIndexByTurn.set(endedKey, preSteerRowIndex);
+    }
+    preSteerRowIndex = undefined;
     // station#1558: an unsettled call outlives its turn (a stopped turn's
     // in-flight tool, a backgrounded Task). `toolsByCallId` only ever holds
     // calls with no terminal yet — the terminal branch deletes the slot — so
@@ -401,6 +457,12 @@ export function projectRuntimeEventsToMessages(
     turnSessionId = undefined;
     turnAnswerEligible = false;
     turnAnchorEventId = undefined;
+    const held = heldMarkers;
+    heldMarkers = [];
+    openTurnSessionExited = false;
+    if (releaseMarkers)
+      for (const { ev, marker } of held)
+        pushTranscriptMarker(ev, marker, true, closedTurnTimestamp);
   };
 
   const stamp = (createdAt?: string) => {
@@ -443,6 +505,55 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
+  /**
+   * station#3415: an extension notification the transcript shows as a marker
+   * line (`extension-transcript-markers.ts`). A marker never splits a turn:
+   * the turn stays one assistant row with its canonical id and its answer
+   * eligibility, exactly as without markers. One that arrives between turns
+   * is a row in place; one that arrives during a turn is held and emitted
+   * right after that turn's rows when the turn closes (`emitAssistantTurn`),
+   * labelled as having happened during it. While the turn is open it shows
+   * nothing, so a live marker never moves or remounts the open turn's row.
+   */
+  const pushTranscriptMarker = (
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+    marker: ExtensionTranscriptMarkerKind,
+    duringTurn: boolean,
+    /**
+     * For a held marker, the closed turn's row timestamp: readers that merge
+     * rows by timestamp (the chat dock) then keep the marker after its turn
+     * rather than inside it.
+     */
+    turnRowTimestamp?: number,
+  ) => {
+    const timestamp =
+      turnRowTimestamp ??
+      (ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN);
+    const text = EXTENSION_TRANSCRIPT_MARKER_TEXT[marker];
+    messages.push({
+      id:
+        options.stableIds && ev.eventId
+          ? `${ev.eventId}:transcript-marker`
+          : `proj-${messages.length}`,
+      role: 'system',
+      parts: [
+        {
+          type: EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
+          text: duringTurn ? text.duringTurn : text.betweenTurns,
+        },
+      ],
+      ...(Number.isNaN(timestamp) ? {} : { metadata: { timestamp } }),
+    });
+  };
+  const emitTranscriptMarker = (
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+  ) => {
+    const marker = extensionTranscriptMarker(ev.namespace, ev.type);
+    if (!marker) return;
+    if (turnOpen) heldMarkers.push({ ev, marker });
+    else pushTranscriptMarker(ev, marker, false);
+  };
+
   for (const ev of events) {
     if (
       ev.method === 'turn.completed' ||
@@ -459,9 +570,19 @@ export function projectRuntimeEventsToMessages(
     switch (ev.method) {
       case 'turn.started': {
         if (ev.inputKind === 'steer') {
-          // Same open turn: append the user row and keep buffering the
-          // in-flight assistant. Emitting here would split the answer
-          // around the steer and leave a turn.started with no terminal.
+          // Same open turn, so the turn stays open (no terminal is implied).
+          // What the engine produced BEFORE the steer is emitted as its own
+          // row first: buffering the whole turn put the steer above every
+          // part of it — above the very command it interrupted — so on a long
+          // turn the steer looked like it had never been sent. Tool parts
+          // are shared by reference, so a call settled after the steer still
+          // updates its row here.
+          flushReasoning();
+          flushText();
+          if (parts.length > 0) {
+            pushMessage('assistant', parts, undefined, true);
+            parts = [];
+          }
           turnAnchorEventId = ev.eventId;
           stamp(ev.createdAt);
           const steerParts: MessagePart[] = [];
@@ -481,6 +602,13 @@ export function projectRuntimeEventsToMessages(
           }
           if (steerParts.length > 0) {
             pushMessage('user', steerParts, 'steer');
+            if (ev.steerInterruptedRun) {
+              const steerRow = messages[messages.length - 1]!;
+              steerRow.metadata = {
+                ...steerRow.metadata,
+                steerInterruptedRun: true,
+              };
+            }
           }
           break;
         }
@@ -587,6 +715,7 @@ export function projectRuntimeEventsToMessages(
           if (lateExisting) {
             // Same upsert-by-call-id rule as the ordinary path below.
             if (ev.toolName !== undefined) lateExisting.toolName = ev.toolName;
+            if (ev.toolKind !== undefined) lateExisting.toolKind = ev.toolKind;
             if (ev.arguments !== undefined) lateExisting.args = ev.arguments;
             lateExisting.state = 'call';
             break;
@@ -595,6 +724,7 @@ export function projectRuntimeEventsToMessages(
             type: 'tool-invocation',
             toolCallId: ev.toolCallId,
             toolName: ev.toolName,
+            ...(ev.toolKind !== undefined ? { toolKind: ev.toolKind } : {}),
             args: ev.arguments,
             state: 'call',
           };
@@ -615,6 +745,7 @@ export function projectRuntimeEventsToMessages(
         const existing = toolsByCallId.get(ev.toolCallId);
         if (existing) {
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
+          if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           if (ev.arguments !== undefined) existing.args = ev.arguments;
           if (ev.purpose !== undefined) existing.purpose = ev.purpose;
           existing.state = 'call';
@@ -624,6 +755,7 @@ export function projectRuntimeEventsToMessages(
           type: 'tool-invocation',
           toolCallId: ev.toolCallId,
           toolName: ev.toolName,
+          ...(ev.toolKind !== undefined ? { toolKind: ev.toolKind } : {}),
           args: ev.arguments,
           purpose: ev.purpose,
           state: 'call',
@@ -721,6 +853,7 @@ export function projectRuntimeEventsToMessages(
           ) {
             existing.toolName = ev.toolName;
           }
+          if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
@@ -800,6 +933,7 @@ export function projectRuntimeEventsToMessages(
             toolCallId: ev.toolCallId,
             sourceEventId: ev.eventId,
             toolName: ev.toolName,
+            ...(ev.toolKind !== undefined ? { toolKind: ev.toolKind } : {}),
             purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
@@ -850,6 +984,7 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'request.opened': {
+        if (readHarnessQuestionnaire(ev.payload?.questionnaire)) break;
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
         const toolCallId = ev.payload?.toolCallId;
         // #2316: a request id is answerable only by the session that minted
@@ -890,6 +1025,12 @@ export function projectRuntimeEventsToMessages(
           target.approvalId = ev.requestId;
           target.approvalThreadId = ev.threadId;
           target.approvalEventId = ev.eventId;
+          if (typeof toolName === 'string' && toolName.trim())
+            target.approvalToolName = toolName;
+          else delete target.approvalToolName;
+          target.approvalSessionGrant = toolRequestSessionGrantFromPayload(
+            ev.payload,
+          );
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
           openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
@@ -915,6 +1056,7 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'runtime.error': {
+        if (isDeferredRetriableTurnError(ev)) break;
         turnSessionId ??= ev.threadId;
         // Surface errors inline rather than letting a failed turn render blank.
         turnOpen = true;
@@ -1009,6 +1151,15 @@ export function projectRuntimeEventsToMessages(
         noteModelGeneration(sessionModel, sessionReportedModelFromEvent);
         break;
       }
+      case 'extension.notification':
+        emitTranscriptMarker(ev);
+        break;
+      case 'session.exited':
+        // The turn row itself is unchanged (it is still emitted as it
+        // stands at the end); only its held markers are now owed a place.
+        if (turnOpen && (!turnSessionId || turnSessionId === ev.threadId))
+          openTurnSessionExited = true;
+        break;
       case 'session.state-changed': {
         // station#4080 slice 1 (review round 1, M3): gate on
         // `interruptedTurnBoundary` — a field documented as written ONLY by
@@ -1046,7 +1197,7 @@ export function projectRuntimeEventsToMessages(
     }
   }
 
-  if (turnOpen) emitAssistantTurn();
+  if (turnOpen) emitAssistantTurn(openTurnSessionExited);
   return messages.map((message) => {
     if (
       message.role !== 'assistant' ||

@@ -1,0 +1,28 @@
+.new-chat-action {
+  flex: 0 0 auto;
+  min-height: 44px;
+  gap: var(--k-space-2);
+}
+.new-chat-action svg {
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+  flex: 0 0 auto;
+}
+
+.chat-dock__mobile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
+}
+.chat-dock__mobile-new {
+  width: 44px;
+  min-width: 44px;
+  padding: var(--k-space-2);
+}
+.chat-dock__mobile-new span {
+  display: none;
+}
+.chat-start__inbox-action {
+  align-self: flex-end;
+  margin: var(--k-space-3);
+}

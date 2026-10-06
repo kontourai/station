@@ -20,7 +20,7 @@ for them.
 | `documented-in` | The module has that canonical module-map section. |
 | `references-source` / `references-test` | That exact section references the tracked file. This does not establish a call relationship or a passing test. |
 | `references-document` / `references-decision` | The section links that document or public Station issue/PR. Remote content is not fetched. |
-| `review-dependency` | The whole document's review record names the source, with a digest comparison. This is not per-module claim certification. |
+| `review-dependency` | The whole document's review record names the source. Path-only records export this relationship without judging review history; legacy records include a digest comparison. This is not per-module claim certification. |
 
 The current export includes the atlas's module set, including retained contract
 work. A graph node does not mean that a feature is mounted in production. Read
@@ -44,9 +44,10 @@ the Knowledge store.
 
 The exporter records Git HEAD plus independent hashes of the selected tracked
 working files. Intentional dirty documentation can therefore be explored without
-pretending it belongs to the recorded commit. A changed source dependency is
-visible even when the review ledger still names older bytes. Matching hashes
-do not prove the prose is correct.
+pretending it belongs to the recorded commit. Changed source bytes are
+visible in snapshot observations. Review freshness is derived separately by
+`npm run docs:freshness:check`; this exporter does not judge the Git history.
+Snapshot hashes do not prove the prose is correct.
 
 Each input digest creates a distinct record identity set. Ingestion into a
 dedicated isolated root verifies existing records and preserves earlier snapshots.
@@ -78,6 +79,19 @@ attributes, separately from provider-read provenance. These local fixes were
 not published by this audit. Station still uses its own adapters and public SDK;
 the check imported only the installed Kit's manifest-declared consumer entries,
 not sibling source as Station runtime authority.
+
+On 2026-09-30, [Flow Agents 6.5.0](https://github.com/kontourai/flow-agents/releases/tag/v6.5.0)
+published these Knowledge consumer fixes. Its npm tarball matched the registry's
+integrity metadata, and the checked packaged sources matched the release tag.
+An isolated install passed 30 tests covering the manifest-declared store and
+provider entries, historical YAML compatibility, and malformed-input refusals.
+Updating an installed 6.4.0 Kit to 6.5.0 through the public CLI preserved the
+external test store's canonical bytes, original record provenance, link labels
+and reported matching recorded and observed Kit artifact hashes. This was a
+macOS/Node 24 consumer check, not a new
+live projection-service, model or cross-platform qualification. Registry integrity
+matching was not independent npm attestation verification. Station's own adapters
+and public SDK remain its runtime boundary.
 
 Follow [documentation maintenance](documentation.md) for source review and
 downstream document updates. The graph and any dependency report are review

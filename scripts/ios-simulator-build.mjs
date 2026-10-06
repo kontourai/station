@@ -277,12 +277,17 @@ export function verifyIosSimulator(
     JSON.stringify(
       info.CFBundleURLTypes?.flatMap((item) => item.CFBundleURLSchemes),
     ) !==
-    JSON.stringify(
-      config.plugins['deep-link'].mobile.flatMap((item) => item.scheme),
-    )
+    JSON.stringify([
+      ...config.plugins['deep-link'].mobile.flatMap((item) => item.scheme),
+      ...config.plugins['deep-link'].mobile.flatMap((item) =>
+        item.scheme.map((scheme) =>
+          scheme.replace(/^station-/, 'station-relay-'),
+        ),
+      ),
+    ])
   )
     throw new Error(
-      'Simulator pairing association does not match its development identity.',
+      'Simulator pairing and relay associations do not match its development identity.',
     );
   const embedded = EXTENSIONS.map((spec) => ({
     spec,

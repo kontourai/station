@@ -1,4 +1,5 @@
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
+import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   toolRequestFromPayload,
@@ -13,11 +14,26 @@ import {
  * tool call is waiting" from "the agent asked a question" — rather than the
  * coarser lifecycle flag or the notification's own (pre-scrubbed) copy.
  */
-export function presentOpenRequest(request: RequestOpenedEvent): {
+/** The fields of a `request.opened` event the presentation reads. */
+export type PresentableOpenRequest = Pick<
+  RequestOpenedEvent,
+  'requestType' | 'title' | 'description' | 'payload'
+>;
+
+export function presentOpenRequest(request: PresentableOpenRequest): {
   title: string;
   body?: string;
 } {
   const rawTitle = request.title?.trim() || undefined;
+  const questionnaire = readHarnessQuestionnaire(
+    request.payload?.questionnaire,
+  );
+  if (questionnaire)
+    return presentAskRequest(
+      'The agent asked questions',
+      rawTitle,
+      questionnaire.questions[0].prompt,
+    );
 
   switch (request.requestType) {
     case 'approval':

@@ -28,10 +28,13 @@ import {
 } from '../adapters/codex-adapter-transport.js';
 import { markCodexTurnTerminal } from '../adapters/codex-adapter-types.js';
 import {
-  CredentialProfileEnvUnavailableError,
   createCredentialProfileAppHomeEnvResolver,
 } from '../app-home/credential-profile-env.js';
 import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
+import {
+  CredentialProfileEnvironmentError,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
@@ -518,7 +521,9 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory,
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: `/profiles/${ref}` } : undefined,
+        ref
+          ? { env: { CODEX_HOME: `/profiles/${ref}` }, profileRef: ref }
+          : undefined,
       ),
     });
     const respond = async (process: FakeCodexProcess, usedPercent: number) => {
@@ -596,7 +601,7 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory,
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: '/profile' } : undefined,
+        ref ? { env: { CODEX_HOME: '/profile' }, profileRef: ref } : undefined,
       ),
       quotaCacheTtlMs: 0,
     });
@@ -722,7 +727,9 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory: vi.fn(() => processes.shift()!),
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: `/profiles/${ref}` } : undefined,
+        ref
+          ? { env: { CODEX_HOME: `/profiles/${ref}` }, profileRef: ref }
+          : undefined,
       ),
     });
     const read = adapter.readQuotaSnapshot({
@@ -839,7 +846,10 @@ describe('CodexAdapter', () => {
     const processes = [retired, replacement];
     const adapter = new CodexAdapter({
       processFactory: () => processes.shift()!,
-      getAppHomeEnv: vi.fn(async () => ({ CODEX_HOME: '/profiles/canary' })),
+      getAppHomeEnv: vi.fn(async () => ({
+        env: { CODEX_HOME: '/profiles/canary' },
+        profileRef: null,
+      })),
     });
     await startQuotaSession({
       adapter,
@@ -955,7 +965,9 @@ describe('CodexAdapter', () => {
       now: () => new Date('2026-08-10T12:00:00.000Z'),
       processFactory: vi.fn(() => processes.shift()!),
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: `/profiles/${ref}` } : undefined,
+        ref
+          ? { env: { CODEX_HOME: `/profiles/${ref}` }, profileRef: ref }
+          : undefined,
       ),
     });
     vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
@@ -1063,7 +1075,9 @@ describe('CodexAdapter', () => {
       now: () => new Date('2026-08-10T12:00:00.000Z'),
       processFactory: () => processes.shift()!,
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: `/profiles/${ref}` } : undefined,
+        ref
+          ? { env: { CODEX_HOME: `/profiles/${ref}` }, profileRef: ref }
+          : undefined,
       ),
     });
     vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
@@ -3295,7 +3309,7 @@ describe('CodexAdapter', () => {
           },
         ],
       }),
-    ).rejects.toThrow('Codex supports image attachments here');
+    ).rejects.toThrow('Codex cannot take non-image files');
     expect(
       processHandle.stdin.lines
         .map(parseLine)
@@ -4513,6 +4527,61 @@ describe('CodexAdapter', () => {
     ).rejects.toThrow('This Codex approval request is not open.');
   });
 
+  test('replacement MCP selection disables inherited servers on the thread without writing harness configuration', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+    const started = adapter.startSession({
+      provider: 'codex',
+      threadId: 'replace-tools',
+      cwd: '/tmp/project',
+      agent: {
+        slug: 'helper',
+        toolServerMode: 'replace',
+        toolServers: [
+          {
+            id: 'chosen',
+            transport: 'stdio',
+            command: process.execPath,
+          },
+        ],
+      },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'replace-tools', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    expect(
+      processHandle.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'config/read')?.params,
+    ).toEqual({ cwd: '/tmp/project', includeLayers: false });
+    writeServerMessage(adapter, 'replace-tools', {
+      id: '2',
+      result: { config: { mcp_servers: { inherited: {}, chosen: {} } } },
+    });
+    await flushIo();
+    const request = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(request.params.config).toEqual({
+      'mcp_servers.inherited.enabled': false,
+      'mcp_servers.chosen.enabled': true,
+      'mcp_servers.chosen.disabled_tools': [],
+    });
+    writeServerMessage(adapter, 'replace-tools', {
+      id: '3',
+      result: { thread: { id: 'native-replace-tools' } },
+    });
+    await withTimeout(started, 'replace-tools');
+    expect(
+      processHandle.stdin.lines
+        .map(parseLine)
+        .some((line) => /write/i.test(line.method)),
+    ).toBe(false);
+  });
+
   test('maps a session-level approvalMode to Codex approvalPolicy/sandbox on thread/start, and re-resolves it fresh on each turn/start (#727)', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
@@ -5172,14 +5241,42 @@ describe('CodexAdapter', () => {
   });
 
   describe('#896 wave 2: app-home profile env layering', () => {
+    test('a configured-profile preparation failure blocks a start with no explicit ref', async () => {
+      const processFactory = vi.fn(() => new FakeCodexProcess());
+      const warn = vi.fn();
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => {
+          throw new CredentialProfileEnvironmentError();
+        },
+        logger: { warn },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'codex',
+          threadId: 'configured-profile-failure',
+        }),
+      ).rejects.toThrow(
+        'Credential profile environment could not be prepared.',
+      );
+      expect(processFactory).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     test('uses the server-only credential profile ref for app-home lookup without emitting it in canonical events', async () => {
       processHandle = new FakeCodexProcess();
       const getAppHomeEnv = vi.fn(async (ref?: string) => {
         expect(ref).toBe('canary-profile-ref');
-        return { CODEX_HOME: '/private/station/canary-profile-home' };
+        return {
+          env: { CODEX_HOME: '/private/station/canary-profile-home' },
+          profileRef: 'applied-profile',
+        };
       });
+      const processFactory = vi.fn(
+        (_env?: Record<string, string>) => processHandle!,
+      );
       const adapter = new CodexAdapter({
-        processFactory: () => processHandle!,
+        processFactory,
         getAppHomeEnv,
       });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -5216,6 +5313,12 @@ describe('CodexAdapter', () => {
       expect(getAppHomeEnv).toHaveBeenCalledWith('canary-profile-ref');
       expect(canonicalEvents).not.toContain('canary-profile-ref');
       expect(canonicalEvents).not.toContain('/private/station');
+      expect(configured.metadata.usageAccountKey).toBe(
+        usageCredentialAccountKey('codex', 'applied-profile'),
+      );
+      expect(processFactory.mock.calls[0]?.[0]).toMatchObject({
+        CODEX_HOME: '/private/station/canary-profile-home',
+      });
       await adapter.stopAll();
     });
 
@@ -5252,7 +5355,8 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex',
+          env: { CODEX_HOME: '/station/app-homes/codex' },
+          profileRef: null,
         }),
       } as any);
 
@@ -5297,7 +5401,10 @@ describe('CodexAdapter', () => {
         processFactory,
         getAppHomeEnv: async (requestedRef?: string) => {
           expect(requestedRef).toBe(profileRef);
-          return { CODEX_HOME: profileHome };
+          return {
+            env: { CODEX_HOME: profileHome },
+            profileRef: requestedRef ?? null,
+          };
         },
         mintStationControlMcpAuth: () =>
           `http://127.0.0.1:3141/mcp/station-control?token=${token}`,
@@ -5353,7 +5460,8 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory: () => processHandle!,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex',
+          env: { CODEX_HOME: '/station/app-homes/codex' },
+          profileRef: null,
         }),
       } as any);
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -5478,7 +5586,8 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex',
+          env: { CODEX_HOME: '/station/app-homes/codex' },
+          profileRef: null,
         }),
       } as any);
 
@@ -5511,7 +5620,7 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getConnectionEnv: async () => ({
-          CODEX_HOME: '/Users/brian/.codex_vibe',
+          CODEX_HOME: '/Users/me/.codex_vibe',
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         }),
       } as any);
@@ -5532,7 +5641,7 @@ describe('CodexAdapter', () => {
       await withTimeout(discoveryPromise, 'listModelCatalog');
 
       expect(processFactory).toHaveBeenCalledWith({
-        CODEX_HOME: '/Users/brian/.codex_vibe',
+        CODEX_HOME: '/Users/me/.codex_vibe',
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
       });
     });
@@ -5543,10 +5652,11 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex',
+          env: { CODEX_HOME: '/station/app-homes/codex' },
+          profileRef: null,
         }),
         getConnectionEnv: async () => ({
-          CODEX_HOME: '/Users/brian/.codex_vibe',
+          CODEX_HOME: '/Users/me/.codex_vibe',
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         }),
       } as any);
@@ -5588,7 +5698,7 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getConnectionEnv: async () => ({
-          CODEX_HOME: '/Users/brian/.codex_vibe',
+          CODEX_HOME: '/Users/me/.codex_vibe',
         }),
       } as any);
 
@@ -5614,7 +5724,7 @@ describe('CodexAdapter', () => {
       await withTimeout(startSessionPromise, 'startSession');
 
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/Users/brian/.codex_vibe' },
+        { CODEX_HOME: '/Users/me/.codex_vibe' },
         undefined,
       );
       await adapter.stopAll();
@@ -5625,10 +5735,13 @@ describe('CodexAdapter', () => {
       const processFactory = vi.fn(() => processHandle!);
       const adapter = new CodexAdapter({
         processFactory,
-        getAppHomeEnv: async () => ({ CODEX_HOME: '/profiles/a' }),
+        getAppHomeEnv: async () => ({
+          env: { CODEX_HOME: '/profiles/a' },
+          profileRef: null,
+        }),
         getConnectionEnv: async () => ({
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-          CODEX_HOME: '/Users/brian/.codex_vibe',
+          CODEX_HOME: '/Users/me/.codex_vibe',
         }),
       } as any);
 
@@ -5742,10 +5855,10 @@ describe('CodexAdapter', () => {
             cwd: '/tmp/project',
             modelId: 'gpt-5-codex',
           }),
-        ).rejects.toBeInstanceOf(CredentialProfileEnvUnavailableError);
+        ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
         await expect(
           adapter.readQuotaSnapshot({ connectionId: 'codex' }),
-        ).rejects.toBeInstanceOf(CredentialProfileEnvUnavailableError);
+        ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
         expect(processFactory).not.toHaveBeenCalled();
       });
     });
@@ -6067,7 +6180,10 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
 test('external adoption forks the native thread and records its distinct child before returning', async () => {
   const process = new FakeCodexProcess();
-  const getAppHomeEnv = vi.fn(async () => ({ CODEX_HOME: '/wrong-profile' }));
+  const getAppHomeEnv = vi.fn(async () => ({
+    env: { CODEX_HOME: '/wrong-profile' },
+    profileRef: null,
+  }));
   const adapter = new CodexAdapter({
     processFactory: () => process,
     getAppHomeEnv,

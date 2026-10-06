@@ -1,6 +1,10 @@
 import { APPLICATION_SESSION_BASE_PATH } from '@kontourai/station-contracts/application-session';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
+import {
   RELAY_ENROLLMENT_ACTIVATE_PATH,
   RELAY_ENROLLMENT_BEGIN_PATH,
   RELAY_ENROLLMENT_FINALIZE_PATH,
@@ -33,6 +37,8 @@ export type ReadPionApplicationRequestFacts = (
 
 /** Native authority is supplied by the admitted Pion peer, never an HTTP Origin. */
 export interface VerifiedNativePionApplicationRequestFacts {
+  /** Exact broker offer nonce, captured before any await; never client-reported. */
+  readonly peerNonce: string;
   readonly stationId: string;
   readonly connectionEnrollmentId: string;
   readonly routingGeneration: number;
@@ -167,12 +173,20 @@ function forbiddenHeader(name: string): boolean {
     name.startsWith('tailscale-')
   );
 }
+/**
+ * The ingress's own refusal. It is written outside the Hono app, so the
+ * runtime's marker middleware never sees it; it carries the marker itself,
+ * because it is this Station's answer (#2842).
+ */
 function refusal(status: number, code: string) {
   return Response.json(
     { error: { code } },
     {
       status,
-      headers: { 'Cache-Control': 'no-store' },
+      headers: {
+        'Cache-Control': 'no-store',
+        [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+      },
     },
   );
 }

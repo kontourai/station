@@ -1,0 +1,27 @@
+{
+  "path": "src-server/services/plugins/__fixtures__/agent-plugins-example/skills/migrate-agent-plugin/SKILL.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "Preserves upstream inventory, portable-core/client-extension/compatibility distinctions, additive migration, schema selection, and evidence requirements. Omitted supplementary references are explicitly disclosed. It is test data, not a Station task instruction or current Station support matrix.",
+
+  "limits": "No migration was performed and no cross-client behavior was qualified. Portable schema features such as SSE do not imply Station runtime support. Do not modernize this fixture merely to match current product prose.",
+
+  "sources": [
+    "packages/shared/src/agent-plugin-manifest.ts",
+
+    "src-server/services/plugins/__fixtures__/agent-plugins-example/UPSTREAM.md",
+
+    "src-server/services/plugins/__tests__/agent-plugin-loader.test.ts",
+
+    "src-server/services/plugins/agent-plugin-loader.ts"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+  ]
+}

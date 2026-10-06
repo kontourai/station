@@ -64,6 +64,18 @@ describe('RelayRouteProfileDialog', () => {
 
   test('shows trust only when the separate local record matches and saves no key', async () => {
     renderDialog();
+    const help = screen.getByRole('button', {
+      name: 'About saved connections',
+    });
+    fireEvent.click(help);
+    expect(
+      screen.getByRole('dialog', { name: 'About saved connections' }),
+    ).toBeTruthy();
+    fireEvent.keyDown(help, { key: 'Escape' });
+    expect(
+      screen.queryByRole('dialog', { name: 'About saved connections' }),
+    ).toBeNull();
+    expect(mocks.onClose).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText(/Station application address/), {
       target: { value: 'https://station.example' },
     });

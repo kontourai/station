@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { renderLearningDocument } from './lib/learning-markdown.mjs';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -10,7 +10,7 @@ export function parseTrackedMarkdownFiles(output) {
 }
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
@@ -136,22 +136,36 @@ export async function checkMarkdownLinks(options) {
 }
 
 if (invokedDirectly(import.meta.url)) {
+  // `--json` prints `{ checkedFiles, failures, error }` on stdout, so a
+  // caller (or a test) asserts fields and the exit status rather than the
+  // wording of the human report (#2927).
+  const args = process.argv.slice(2);
+  const json = args.includes('--json');
+  const selected = args.filter((arg) => arg !== '--json');
+  const report = (value) =>
+    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
   try {
-    const selected = process.argv.slice(2);
     const root = process.cwd();
     const files =
       selected.length > 0 ? selected : listTrackedMarkdownFiles(root);
-    await checkMarkdownLinks({
+    const failures = await findBrokenMarkdownLinks({
       files,
       root,
       revision: git(root, ['rev-parse', 'HEAD']).trim(),
       sourceFiles: parseTrackedMarkdownFiles(git(root, ['ls-files', '-z'])),
     });
-    console.log(
-      `Validated local paths and rendered anchors in ${files.length} Markdown files.`,
-    );
+    if (json) report({ checkedFiles: files.length, failures, error: null });
+    else {
+      assertMarkdownLinks(failures);
+      console.log(
+        `Validated local paths and rendered anchors in ${files.length} Markdown files.`,
+      );
+    }
+    if (failures.length > 0) process.exitCode = 1;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    if (json) report({ checkedFiles: null, failures: [], error: message });
+    else console.error(message);
     process.exitCode = 1;
   }
 }

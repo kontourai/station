@@ -186,7 +186,7 @@ function installRecoveryListeners(): void {
  * chatty stream cannot turn this into a refetch loop.
  *
  * #2310: `turn.started` is a boundary too. A session nothing has been sent to
- * reads as a Draft (the server's lineage fold), outside "Active now", and its
+ * reads as a Draft (the server's lineage fold), outside the live lanes, and its
  * first turn is the moment that changes. A refresh that lands inside the
  * throttle window is deferred to the window's end rather than dropped.
  *

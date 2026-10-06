@@ -1,0 +1,75 @@
+{
+  "path": "docs/design/task-room-agent-requests.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Developer implementation contract for personal Task agent requests: persistence, explicit selection, scoped transport, provider/room admission and uncertainty. Implementation is distinct from programme acceptance.",
+
+  "limits": "Review is limited to the described request and message delta. Controlled fixtures exercise real file/HTTP/SQLite/provider boundaries. NOT_VERIFIED: production runtime composition, browser/geometry, actual model, hosted/invited/public/remote/native/device journeys, publication, durable draft reload recovery, multi-recipient assignment, context/brief and curated result delivery. Full programme remains unfinished.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"oursMatch\"}]\n\nAdditional existing main limits (preserved verbatim): Review is limited to the described request and message delta. Controlled fixtures exercise real file/HTTP/SQLite/provider boundaries. NOT_VERIFIED: production runtime composition, browser/geometry, actual model, hosted/invited/public/remote/native/device journeys, publication, durable draft reload recovery, multi-recipient assignment, context/brief and curated result delivery. Full programme remains unfinished.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"a258f06c1515ccdde83e198862ae8efe43d71207\"},\"main\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"active\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/contracts/package.json ours={\"digest\":\"2b52cd05c0425c00020227cb2bcd14ad0ae4efedcc3c02d63ec62655b33ffbef\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"4207a40b79f1ca84ab14d89cbfa7dd56b3f1c95ff20d9b37abd90216969325ca\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"0d013c2d4ed1b569b51a2068a3b1084b1e687f2a3c4ea23f2236871752dd84d4\",\"revision\":\"88a7f8ed59c055ea6ac713120ba6069d33fbb892\"},\"theirs\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e22df1bc0996eb10206565d66054adedb06faa477174abe7f705a31f88c8c183\",\"revision\":\"d9279aaf5f36478cbce5401e427eb674d114967f\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e22df1bc0996eb10206565d66054adedb06faa477174abe7f705a31f88c8c183\",\"revision\":\"d9279aaf5f36478cbce5401e427eb674d114967f\"}},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7d26818fb47194e3a8bfbe9303f48be26207889b7bb84806af0ff1efaacfc34f\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}}]",
+
+  "sources": [
+    "packages/contracts/package.json",
+
+    "packages/contracts/package.json#/exports/.~1task-room-work",
+
+    "packages/contracts/src/task-room-work.ts",
+
+    "packages/sdk/src/__tests__/task-room-work-hooks.test.tsx",
+
+    "packages/sdk/src/__tests__/task-room-work.test.ts",
+
+    "packages/sdk/src/client/project-task-rooms.ts",
+
+    "packages/sdk/src/client/task-room-work.ts",
+
+    "packages/sdk/src/query-domains/projectTaskRooms.ts",
+
+    "packages/sdk/src/query-domains/taskRoomWork.ts",
+
+    "src-server/routes/orchestration/__tests__/task-room-work.routes.test.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/routes/orchestration/project-task-rooms.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-server/services/projects/__tests__/task-room-work-module.test.ts",
+
+    "src-server/services/projects/task-room-context.ts",
+
+    "src-server/services/projects/task-room-work-module.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "src-ui/src/__tests__/TaskRoomComposer.test.tsx",
+
+    "src-ui/src/__tests__/TaskWorkspaceView.test.tsx",
+
+    "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+
+    "src-ui/src/workspace-panes/TaskRoomComposer.css",
+
+    "src-ui/src/workspace-panes/TaskRoomComposer.tsx"
+  ],
+
+  "checks": [
+    "Independent source review through 11ead89b2 resolved retry, transport, room-binding and commit-admission findings; source-only review is separate from execution.",
+
+    "Controlled hook/HTTP + runtime suite passed 62 cases at the scoped-message checkpoint. Final commit-race runtime suite passed 58; the actual transaction race committed the stale message before the final reread fix and refused it afterward.",
+
+    "Independent verifier executed hook/composer/route 10 cases at ee7cb7c44, with no model/browser/team acceptance inference.",
+
+    "New documentation inventory classification only; older receipts retain their original revision and environment."
+  ]
+}

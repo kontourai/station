@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
 import { isLearningSourcePath } from './learning-source-reader.mjs';
+import {
+  bindingDigest,
+  bindingFile,
+  isBindingPath,
+} from './review-binding.mjs';
+import {
+  LEARNING_MEDIA_MANIFEST,
+  reviewError,
+} from './review-ledger-store.mjs';
 
-export const LEARNING_MEDIA_MANIFEST = 'docs/learn/media.json';
+export { LEARNING_MEDIA_MANIFEST };
 
 /** The bytes a capture record vouches for: the capture and its recorded sources. */
 export function captureInputs(capture) {
@@ -9,7 +18,9 @@ export function captureInputs(capture) {
 }
 
 /**
- * @param {any} manifest
+ * @param {any} manifest the joined capture manifest from
+ * `readReviewState` (scripts/lib/review-ledger-store.mjs): media.json
+ * metadata plus each capture's review bindings and notes.
  * @param {Set<string>} tracked
  * @param {(path: string) => Promise<Buffer | Uint8Array | string> | Buffer | Uint8Array | string} read
  * @param {{ requireFresh?: boolean | ((entry: { path: string, inputs: string[] }) => boolean), reportMissing?: boolean }} [options]
@@ -49,9 +60,8 @@ export async function compileLearningMedia(
         ))
     )
       throw new Error(`Invalid capture reviewNotes: ${path}`);
-    for (const key of ['capturedRevision', 'reviewedRevision'])
-      if (!/^[a-f0-9]{40}$/.test(capture[key]))
-        throw new Error(`Invalid capture ${key}: ${path}`);
+    if (!/^[a-f0-9]{40}$/.test(capture.capturedRevision))
+      throw new Error(`Invalid capture capturedRevision: ${path}`);
     if (
       !Array.isArray(capture.sources) ||
       !capture.sources.length ||
@@ -63,30 +73,40 @@ export async function compileLearningMedia(
     const changed = [];
     const seen = new Set();
     for (const source of capture.sources) {
+      const file = bindingFile(source.path);
       if (
-        !isLearningSourcePath(source.path) ||
-        (!reportMissing && !tracked.has(source.path)) ||
+        !isBindingPath(source.path) ||
+        (!reportMissing && !tracked.has(file)) ||
         seen.has(source.path) ||
-        !/^[a-f0-9]{64}$/.test(source.digest)
+        (capture.historyChanges === undefined &&
+          (!/^[a-f0-9]{64}$/.test(source.digest) ||
+            !/^[a-f0-9]{40}$/.test(source.revision)))
       )
         throw new Error(`Invalid capture source: ${path}`);
       seen.add(source.path);
-      if (!tracked.has(source.path)) changed.push(source.path);
+      if (!tracked.has(file)) changed.push(source.path);
       else if (
-        createHash('sha256')
-          .update(await read(source.path))
-          .digest('hex') !== source.digest
+        capture.historyChanges === undefined &&
+        bindingDigest(source.path, await read(file)) !== source.digest
       )
         changed.push(source.path);
     }
+    if (capture.historyChanges !== undefined)
+      changed.splice(
+        0,
+        changed.length,
+        ...new Set([...capture.historyChanges, ...changed]),
+      );
     if (
       changed.length &&
       (typeof requireFresh === 'function'
         ? requireFresh({ path, inputs: captureInputs(capture) })
         : requireFresh)
     )
-      throw new Error(
+      throw reviewError(
+        'needs-refresh',
         `Learning capture needs review: ${path}; changed: ${changed.join(', ')}`,
+        { path, changed },
       );
     const bytes = await read(path);
     const limit = kind === 'image' ? 8 * 1024 * 1024 : 30 * 1024 * 1024;

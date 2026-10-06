@@ -151,7 +151,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
   });
 
   test('persists revocation before changing live state, so failure, retry, and restart agree', () => {
-    const paired = pair('Brian phone').result;
+    const paired = pair('Casey phone').result;
 
     renameFault.armed = true;
     try {
@@ -220,7 +220,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
   });
 
   test('persists activity before changing live state, so failure, retry, and restart agree', () => {
-    const paired = pair('Brian phone').result;
+    const paired = pair('Casey phone').result;
 
     renameFault.armed = true;
     try {
@@ -248,7 +248,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
   test('persists tombstone removal before changing live state', () => {
     // The fourth clone-and-swap replacement path, and the one the chmod
     // tests never covered on any platform.
-    const paired = pair('Brian phone').result;
+    const paired = pair('Casey phone').result;
     service.revokeDevice(paired.device.id, 'operator-credential');
 
     renameFault.armed = true;
@@ -274,7 +274,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
   });
 
   test('persists an approval-authority grant before changing live state', () => {
-    const paired = pair('Brian phone').result;
+    const paired = pair('Casey phone').result;
 
     renameFault.armed = true;
     try {
@@ -307,7 +307,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
   });
 
   test('persists a push subscription, and its removal, before changing live state', () => {
-    const paired = pair('Brian phone').result;
+    const paired = pair('Casey phone').result;
     const subscription = {
       endpoint: 'https://push.example.test/subscription/abc',
       keys: { p256dh: 'p256dh-key-value', auth: 'auth-key-value' },
@@ -349,7 +349,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
   });
 
   test('persists an environment reset before adopting it', () => {
-    const paired = pair('Brian phone').result;
+    const paired = pair('Casey phone').result;
 
     renameFault.armed = true;
     try {
@@ -375,7 +375,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
   });
 
   test('a write fault on the lastUsedAt touch does not break credential verification', () => {
-    const paired = pair('Brian phone').result;
+    const paired = pair('Casey phone').result;
     const lastUsedBeforeFault = service.identifyDevice(
       paired.credential,
     )?.lastUsedAt;
@@ -418,7 +418,7 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     // Without this, every assertion above could pass against a service that
     // never persists anything at all: the fault would be indistinguishable
     // from a no-op writer.
-    const paired = pair('Brian phone').result;
+    const paired = pair('Casey phone').result;
     expect(registryContents()).toContain(paired.device.id);
     const restarted = new DevicePairingService({
       homeDir,

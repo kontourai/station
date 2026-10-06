@@ -1,0 +1,7 @@
+{
+  "revision": "62306ed51dd5dafdf744d3b779a251030f0e8bcb",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed ProjectTaskBoard delta: empty columns retain labeled headings and zero counts without bespoke empty state; intrinsic auto-fit columns respond to available pane width with no page-local media rules. Canonical status grouping and explicit selection/Open Task remain unchanged. Viewport and static ratchet proof have distinct scope.","inputs":["docs/guides/starter-work.md"]}
+  ]
+}

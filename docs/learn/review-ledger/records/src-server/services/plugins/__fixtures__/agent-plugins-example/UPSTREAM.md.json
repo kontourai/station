@@ -1,0 +1,25 @@
+{
+  "path": "src-server/services/plugins/__fixtures__/agent-plugins-example/UPSTREAM.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "plugin.json exactly matches upstream commit 5f3f5084a821aefa792e79500dd8f0462ab83473. A full upstream/local skill diff shows only the documented replacement of three supplementary-reference links by the fixture-scope note.",
+
+  "limits": "The adapted skill intentionally is not byte-identical. Provenance and loader tests do not qualify executing the migration workflow on real client plugins.",
+
+  "sources": [
+    "src-server/services/plugins/__fixtures__/agent-plugins-example/plugin.json",
+
+    "src-server/services/plugins/__fixtures__/agent-plugins-example/skills/migrate-agent-plugin/SKILL.md",
+
+    "src-server/services/plugins/__tests__/agent-plugin-loader.test.ts"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+  ]
+}

@@ -43,3 +43,19 @@ c7b354a90db1e78e1203e2bff4e2bf9e1408fe29:src-desktop/src/native_station_key_cust
 # locations; the current source assembles them from parts. Not credentials.
 66b88eb51bc2a35979ec3a3274eebbbb734ad6f0:src-server/services/remote-stations/__tests__/remote-station-forwarder.test.ts:generic-api-key:14
 66b88eb51bc2a35979ec3a3274eebbbb734ad6f0:src-server/runtime/routes/__tests__/runtime-routes-peer-bearer-unreachable.test.ts:generic-api-key:59
+
+# #3176: owner-attested synthetic public provider identity, not a credential.
+# Exact historical location only; fresh-context control remains detected.
+0814cc6ddb168cff69e5572b185a853540a4f6e0:src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts:generic-api-key:430
+
+# Public typography-label prose in one migrated review note, not a credential.
+# Exact immutable historical fingerprint; future matches remain scanned.
+c1d07db19cb827749835a9ca7d7f0f4c0fdf49a2:docs/learn/review-ledger/notes/20261001T130629.148Z-544c9256a5b7.json:generic-api-key:5
+
+# #3238: owner-confirmed public typography review prose, not a credential.
+# Exact historical fingerprint only; fresh same-path controls remain detected.
+fc181b4eb5829e84839ef38ee0c87707d86005ea:docs/learn/review-ledger/notes/20261001T130629.148Z-f9e91a5db6fe.json:generic-api-key:5
+
+# The comment above an earlier entry on this branch quoted the matched prose
+# itself; pin that one historical location (squash-merged away from main).
+e8515b04d21896ad5fe694da061187bc9ca0a809:.gitleaksignore:generic-api-key:50

@@ -1,0 +1,7 @@
+{
+  "revision": "992f86ee6f5a97b812e0619bf3da38d55368d017",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed changed API reference dependency after current-main merge: private output provenance and incarnation witnesses change personal result storage, not integration deployment or authorization. Canonical API explains migration and separate-lock limits; no integration prose change needed. Five focused suites 265 passed; no deployment/team/public/provider or release proof.","inputs":["docs/reference/api.md"]}
+  ]
+}

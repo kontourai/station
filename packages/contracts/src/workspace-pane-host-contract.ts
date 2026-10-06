@@ -150,7 +150,23 @@ export interface PaneHostFacts {
  * The one host interface, both transports. See the module docblock; member
  * semantics follow the design's capability table.
  */
+/** Optional occurrence-bound Skill interface. The host fixes Session and package identity. */
+export interface PaneSkillExperienceHost {
+  /** JSON encodes the public Session view and optional bounded canonical pendingQuestions. */
+  read(): Promise<{ viewJson: string }>;
+  answer(input: {
+    requestId: string;
+    requestEventId: string;
+    answers: Record<string, { optionIds: string[]; custom?: string }>;
+  }): Promise<void>;
+  continue(input: {
+    experienceId: string;
+    inputs: Record<string, string>;
+  }): Promise<void>;
+}
+
 export interface WorkspacePaneHostContract {
+  skillExperience?: PaneSkillExperienceHost;
   /** Intent: take the user somewhere the shell itself navigates to. */
   navigate(target: PaneNavigationTarget): void;
   /** Intent: show a transient notice; the shell owns budget and chrome. */

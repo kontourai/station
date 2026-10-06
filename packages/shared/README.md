@@ -43,7 +43,7 @@ shell build commands are refused.
 
 The [build implementation](./src/build.ts) owns input/output containment,
 dependency preparation and the exact shared-module allowlist. Root SDK,
-SDK `/client` and `/voice`, React and React Query are among the externalized
+SDK `/agent`, `/client` and `/voice`, React and React Query are among the externalized
 modules; other SDK leaves are not automatically external. Bundles register with
 Station's host runtime. Successful bundling does not install a plugin, approve
 permissions or activate its server contributions.
@@ -66,6 +66,20 @@ bundle, not a watcher. Use that guide for manifest, entrypoint and installation
 steps. Package availability on npm and live plugin activation are separate from
 source/build verification.
 
+Portable packages with visual Skill declarations also use this build path for
+local author validation of referenced definitions and bundled Skill bytes.
+See the [authoring contract](../../docs/reference/skill-experiences.md);
+successful validation does not activate or render an experience.
+
+The browser-safe `/skill-experience-values` leaf validates inert start inputs,
+compares complete installed identities, and derives defaults, role positions and
+input errors. `/skill-experience-reader` adds canonical definition validation for
+inventory/session wire projections. The SDK client imports that reader
+statically and runs it only on a successful feature response; synchronous UI
+hydration retains only bounded display previews.
+Neither helper discovers files, executes Skills, acquires grants or makes cached
+inventory authoritative.
+
 ## Registry authoring Node leaves
 
 Candidate releases containing these exports provide `computePluginTreeDigest(root)`
@@ -86,3 +100,10 @@ trust configuration to the host operator.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+The Node-only `/skill-experience-workflow` subpath supplies bounded local Skill
+library inspection and revision-bound author review. Use the
+[author learning path](../../docs/guides/authoring-skill-experiences.md) for its
+agent proposal and evaluation process. It checks source/package/transcript bytes
+and reviewer assertions; it grants no runtime authority or model/device/release
+qualification.

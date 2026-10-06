@@ -6,7 +6,10 @@
    narrow viewports are covered by construction. */
 .chat-dock-inbox-hover-card {
   position: fixed;
-  z-index: var(--layer-popover);
+  /* The surface-popover layer, not the page popover layer: a row on Home
+     beside a right-docked region opens its card over that region, and the
+     dock (--layer-dock) paints above --layer-popover. */
+  z-index: var(--layer-surface-popover);
   width: 340px;
   max-width: calc(100vw - 16px);
   max-height: min(70vh, 560px);
@@ -54,11 +57,47 @@
   overflow-wrap: anywhere;
 }
 
+/* The Project row's mark: the project's icon, else its colour dot. */
+.chat-dock-inbox-hover-card__project-mark {
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+.chat-dock-inbox-hover-card__project-mark.brand-icon {
+  display: inline-flex;
+  vertical-align: -3px;
+}
+
 .chat-dock-inbox-hover-card__status {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* The row's status word (`workStatus`), with its icon: never colour-only. */
+.chat-dock-inbox-hover-card__status-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 650;
+}
+
+/* The row's four tones (InboxRow.css, C6): accent for act-now, amber for a
+   quiet run, green for in-motion, red for broken. */
+.chat-dock-inbox-hover-card__status-word[data-tone="attention"] {
+  color: var(--accent-primary);
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="caution"] {
+  color: var(--warning-text);
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="active"] {
+  color: var(--success-text);
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="broken"] {
+  color: var(--status-error);
 }
 
 .chat-dock-inbox-hover-card__notice {
@@ -222,4 +261,38 @@
   font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* The same card as a sheet/popover, opened by a touch row's Details action. */
+.chat-dock-inbox-details {
+  width: min(360px, calc(100vw - 16px));
+}
+
+.chat-dock-inbox-details__body {
+  padding: 0 12px 12px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* The row's remaining actions, in the shared menu primitive's groups and
+   rows. Flat here: the sheet is already the raised surface, so the list
+   takes no second border, fill or shadow of its own. */
+.chat-dock-inbox-details__menu {
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-top: 8px;
+}
+
+/* The shared discard button draws its icon as a direct child; give it the
+   16px slot every other row's glyph sits in. */
+.chat-dock-inbox-details__menu .menu-row > svg {
+  width: var(--space-8);
+  height: var(--space-8);
+  flex: 0 0 var(--space-8);
 }

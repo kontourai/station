@@ -1,0 +1,7 @@
+{
+  "revision": "2dceb46beab0a18aa5c649875406491b1ff57dec",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Live creation-navigation repair: reviewed clean-state deferred selection after successful persistence, submitted form/route ownership, frozen authoring controls during save, canonical New/Back/Escape exits, and local existing-new draft reset. Executed 88 focused tests using actual navigation/keyboard providers, deferred successful and rejected creation, and late responses after another skill or replacement draft. Existing Skills prose remains accurate; no broader documentation claims upgraded.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

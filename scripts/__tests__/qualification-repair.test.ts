@@ -1,0 +1,823 @@
+import { execFile, execFileSync } from 'node:child_process';
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createServer } from 'node:http';
+import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  persistentRunnerPolicyFindings,
+  readWorkflowDocuments,
+} from '../actionlint-gate.mjs';
+import { eligibleLanding } from '../landing-automation.mjs';
+import {
+  NO_AGENT_REASON,
+  nextRepairState,
+  QUALIFICATION_GATE_JOB,
+  qualificationConclusion,
+  repairAgent,
+  repairState,
+  validateRepairPaths,
+  validateRepairRun,
+} from '../qualification-repair.mjs';
+
+const exec = promisify(execFile);
+const script = resolve(import.meta.dirname, '../qualification-repair.mjs');
+const makeTempDir = trackTempDirs();
+function fixture() {
+  const root = makeTempDir('station-repair-');
+  const repo = join(root, 'repo');
+  mkdirSync(repo);
+  const git = (...args: string[]) =>
+    execFileSync('git', args, {
+      cwd: repo,
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+  git('init', '-q');
+  git('config', 'user.name', 'Fixture');
+  git('config', 'user.email', 'fixture@example.test');
+  writeFileSync(join(repo, 'source.txt'), 'before\n');
+  git('add', '.');
+  git('commit', '-qm', 'fixture');
+  const sha = git('rev-parse', 'HEAD');
+  execFileSync('git', ['init', '--bare', '-q', join(root, 'remote.git')], {
+    windowsHide: true,
+  });
+  git('remote', 'add', 'origin', join(root, 'remote.git'));
+  git('push', '-q', 'origin', 'HEAD:main');
+  return { root, repo, git, sha };
+}
+const run = {
+  id: 42,
+  head_sha: 'a'.repeat(40),
+  head_branch: 'main',
+  head_repository: { full_name: 'owner/repo' },
+  path: '.github/workflows/main-qualification.yml',
+  event: 'schedule',
+  status: 'completed',
+  conclusion: 'failure',
+  created_at: '2026-10-02T00:00:00Z',
+  run_started_at: '2026-10-02T00:00:00Z',
+};
+
+describe('qualification repair lifecycle', () => {
+  it('claims one sweep, updates repeated failures, rejects stale success, and requires explicit retry', () => {
+    const first = nextRepairState(null, run);
+    expect(first.action).toBe('claim');
+    const next = { ...run, id: 43, run_started_at: '2026-10-02T06:00:00Z' };
+    const repeated = nextRepairState(first.state, next);
+    expect(repeated.action).toBe('update');
+    expect(repeated.state.episode).toBe(42);
+    expect(
+      nextRepairState(repeated.state, { ...run, conclusion: 'success' }).action,
+    ).toBe('stale');
+    expect(
+      nextRepairState(repeated.state, { ...next, conclusion: 'success' })
+        .action,
+    ).toBe('close');
+    expect(nextRepairState(repeated.state, next, { retry: true }).action).toBe(
+      'claim',
+    );
+    expect(
+      repairState(
+        `<!-- station-qualification:${JSON.stringify(repeated.state)} -->`,
+      ),
+    ).toEqual(repeated.state);
+  });
+  it('refuses fork evidence and protected or oversized agent proposals', () => {
+    expect(() => validateRepairRun(run, 'owner/repo')).not.toThrow();
+    for (const change of [
+      { event: 'pull_request' },
+      { head_branch: 'feature' },
+      { head_repository: { full_name: 'fork/repo' } },
+      { path: '.github/workflows/ci.yml' },
+    ])
+      expect(() =>
+        validateRepairRun({ ...run, ...change }, 'owner/repo'),
+      ).toThrow();
+    expect(() => validateRepairPaths(['src-server/fix.ts'])).not.toThrow();
+    for (const path of [
+      '.github/workflows/ci.yml',
+      'scripts/qualification-evidence.mjs',
+      '.veritas/authority/x',
+      'src-ui/AGENTS.md',
+      '../outside',
+    ])
+      expect(() => validateRepairPaths([path])).toThrow();
+    expect(() => validateRepairPaths([])).toThrow();
+    expect(() =>
+      validateRepairPaths(
+        Array.from({ length: 41 }, (_, i) => `src-server/${i}.ts`),
+      ),
+    ).toThrow();
+  });
+  it('requires explicit landing intent and the current same-repository head', () => {
+    const pr = {
+      state: 'open',
+      draft: false,
+      base: { ref: 'main' },
+      head: { sha: run.head_sha, repo: { full_name: 'owner/repo' } },
+      labels: [{ name: 'station-autoland' }],
+      auto_merge: null,
+      mergeable_state: 'clean',
+    };
+    expect(eligibleLanding(pr, run, 'owner/repo')).toBe(true);
+    expect(eligibleLanding({ ...pr, auto_merge: {} }, run, 'owner/repo')).toBe(
+      true,
+    );
+    for (const change of [
+      { labels: [] },
+      { draft: true },
+      { mergeable_state: 'dirty' },
+      { head: { sha: 'b'.repeat(40), repo: { full_name: 'owner/repo' } } },
+    ])
+      expect(eligibleLanding({ ...pr, ...change }, run, 'owner/repo')).toBe(
+        false,
+      );
+  });
+  it('refuses candidate checkout in the privileged landing ingress', () => {
+    const entry = readWorkflowDocuments().find(
+      (item) => item.file === '.github/workflows/landing-automation.yml',
+    );
+    if (!entry) throw new Error('Landing workflow missing');
+    expect(persistentRunnerPolicyFindings([entry])).toEqual([]);
+    const document = structuredClone(entry.document) as {
+      jobs: { arm: { steps: Array<{ with: { ref: string } }> } };
+    };
+    document.jobs.arm.steps[0].with.ref = `\${{ github.event.pull_request.head.sha }}`;
+    expect(
+      persistentRunnerPolicyFindings([{ file: entry.file, document }]),
+    ).toContainEqual(
+      expect.objectContaining({
+        message:
+          'landing automation must retain its exact reviewed trusted-base credential topology',
+      }),
+    );
+  });
+
+  it.runIf(process.platform !== 'win32')(
+    'arms a late-labelled PR only after current-head CI success',
+    async () => {
+      const root = makeTempDir('station-landing-label-');
+      let green = false;
+      let alreadyArmed = false;
+      const pr = {
+        number: 7,
+        state: 'open',
+        draft: false,
+        base: { ref: 'main' },
+        head: { sha: run.head_sha, repo: { full_name: 'owner/repo' } },
+        labels: [{ name: 'station-autoland' }],
+        auto_merge: null,
+      };
+      const server = createServer((req, res) => {
+        res.setHeader('content-type', 'application/json');
+        res.end(
+          JSON.stringify(
+            req.url?.includes('/actions/')
+              ? {
+                  workflow_runs: [
+                    {
+                      ...run,
+                      event: 'pull_request_target',
+                      conclusion: green ? 'success' : 'failure',
+                      created_at: '2026-10-02T06:00:00Z',
+                    },
+                    {
+                      ...run,
+                      event: 'pull_request_target',
+                      conclusion: 'success',
+                    },
+                  ],
+                }
+              : {
+                  ...pr,
+                  auto_merge: alreadyArmed
+                    ? { enabled_by: { login: 'station-automation' } }
+                    : null,
+                },
+          ),
+        );
+      });
+      await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw new Error('No address');
+      const event = join(root, 'event.json');
+      writeFileSync(event, JSON.stringify({ pull_request: { number: 7 } }));
+      const bin = join(root, 'bin');
+      mkdirSync(bin);
+      writeFileSync(
+        join(bin, 'gh'),
+        `#!/bin/sh
+if [ "$1" = api ]; then
+  node -e 'const fs=require("node:fs"); const armed=fs.existsSync(process.env.ARM_MARKER); process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{headRefOid:process.env.QUERY_HEAD || (armed ? process.env.MUTATION_HEAD : process.env.EXPECTED_HEAD),isInMergeQueue:armed && process.env.QUEUE_RESULT === "queued",autoMergeRequest:(armed && process.env.QUEUE_RESULT === "armed") || process.env.PRE_ARMED === "1" ? {enabledAt:"2026-10-05T00:00:00Z"} : null}}}}));'
+else
+  arguments="$*"
+  if [ "$1" != pr ] || [ "$2" != merge ] || [ "$3" != 7 ]; then
+    echo 'unexpected landing command or pull request' >&2
+    exit 1
+  fi
+  shift 3
+  expected=""
+  repository=""
+  automatic=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --repo)
+        shift
+        repository="$1"
+        ;;
+      --auto)
+        automatic=1
+        ;;
+      --match-head-commit)
+        shift
+        expected="$1"
+        ;;
+      *)
+        echo 'unexpected landing option' >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+  if [ "$repository" != owner/repo ] || [ "$automatic" != 1 ]; then
+    echo 'wrong repository or missing auto-merge intent' >&2
+    exit 1
+  fi
+  if [ -n "$expected" ] && [ "$expected" != "$MUTATION_HEAD" ]; then
+    echo 'head changed before arm mutation' >&2
+    exit 1
+  fi
+  printf "%s\n" "$arguments" >> "$ARM_MARKER"
+fi
+`,
+      );
+      chmodSync(join(bin, 'gh'), 0o755);
+      const marker = join(root, 'armed');
+      const env = {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        ARM_MARKER: marker,
+        EXPECTED_HEAD: run.head_sha,
+        MUTATION_HEAD: run.head_sha,
+        QUEUE_RESULT: 'queued',
+        GITHUB_EVENT_PATH: event,
+        GITHUB_REPOSITORY: 'owner/repo',
+        GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+      };
+      const landing = resolve(import.meta.dirname, '../landing-automation.mjs');
+      try {
+        await exec(process.execPath, [landing], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        });
+        expect(() => readFileSync(marker)).toThrow();
+        green = true;
+        await exec(process.execPath, [landing], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        });
+        const initialArms = readFileSync(marker, 'utf8');
+        expect(initialArms.trim().split('\n')).toHaveLength(1);
+        // Already queued is a no-op, not another arming attempt.
+        await exec(process.execPath, [landing], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        });
+        expect(readFileSync(marker, 'utf8')).toBe(initialArms);
+        // The actual stall starts armed, not queued. Fresh arming must still
+        // run once with the reviewed head when an old request already exists.
+        alreadyArmed = true;
+        const stalledMarker = join(root, 'stalled-arm');
+        const repaired = await exec(process.execPath, [landing], {
+          cwd: root,
+          env: { ...env, ARM_MARKER: stalledMarker, PRE_ARMED: '1' },
+          windowsHide: true,
+        });
+        expect(repaired.stdout).toContain('queued');
+        expect(
+          readFileSync(stalledMarker, 'utf8').trim().split('\n'),
+        ).toHaveLength(1);
+        const refusedMarker = join(root, 'refused-arm');
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: {
+              ...env,
+              ARM_MARKER: refusedMarker,
+              QUERY_HEAD: 'b'.repeat(40),
+            },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('changed head');
+        expect(() => readFileSync(refusedMarker)).toThrow();
+        // A push between a good precheck and mutation cannot arm the new head.
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: {
+              ...env,
+              ARM_MARKER: refusedMarker,
+              MUTATION_HEAD: 'b'.repeat(40),
+            },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow();
+        expect(() => readFileSync(refusedMarker)).toThrow();
+
+        // A green CLI exit alone must not claim successful admission.
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: { ...env, QUEUE_RESULT: 'none' },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('neither armed nor queued');
+        const waiting = await exec(process.execPath, [landing], {
+          cwd: root,
+          env: { ...env, QUEUE_RESULT: 'armed' },
+          windowsHide: true,
+        });
+        expect(waiting.stdout).toContain('armed_waiting_for_queue');
+      } finally {
+        await new Promise<void>((done) => server.close(() => done()));
+      }
+    },
+  );
+
+  it('judges a run by its qualification gate when the qualified Nightly made it red', () => {
+    expect(QUALIFICATION_GATE_JOB).toBe(
+      'qualification / Full source qualification',
+    );
+    const gate = (conclusion: string) => ({
+      name: QUALIFICATION_GATE_JOB,
+      conclusion,
+    });
+    const nightlyFailed = {
+      name: 'nightly / 3 · Publish native cohort / Promote',
+      conclusion: 'failure',
+    };
+    for (const conclusion of ['failure', 'cancelled', 'timed_out'])
+      expect(
+        qualificationConclusion({ ...run, conclusion }, [
+          gate('success'),
+          nightlyFailed,
+        ]),
+      ).toBe('success');
+    // A failed, skipped, missing or ambiguous gate keeps the run's verdict.
+    for (const jobs of [
+      [gate('failure'), nightlyFailed],
+      [gate('skipped')],
+      [nightlyFailed],
+      [gate('success'), gate('failure')],
+      // The Nightly's own full-regression gate is not the qualification gate.
+      [
+        {
+          name: 'nightly / 2 · Full regression gate / Full source qualification',
+          conclusion: 'success',
+        },
+      ],
+    ])
+      expect(qualificationConclusion(run, jobs)).toBe('failure');
+  });
+
+  it('opens no repair episode when only the qualified Nightly failed', async () => {
+    const root = makeTempDir('station-repair-nightly-');
+    const writes: string[] = [];
+    const server = createServer(async (req, res) => {
+      for await (const _chunk of req);
+      res.setHeader('content-type', 'application/json');
+      if (req.method !== 'GET') writes.push(`${req.method} ${req.url}`);
+      if (req.url?.includes('/actions/runs/42/jobs')) {
+        res.end(
+          JSON.stringify({
+            total_count: 2,
+            jobs: [
+              { name: QUALIFICATION_GATE_JOB, conclusion: 'success' },
+              {
+                name: 'nightly / 3 · Publish CLI to npm nightly',
+                conclusion: 'failure',
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      if (req.url?.endsWith('/actions/runs/42')) {
+        res.end(JSON.stringify(run));
+        return;
+      }
+      if (req.url?.includes('/issues?')) {
+        res.end('[]');
+        return;
+      }
+      res.writeHead(500);
+      res.end('{}');
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No address');
+    const event = join(root, 'event.json');
+    writeFileSync(event, JSON.stringify({ workflow_run: { id: 42 } }));
+    const output = join(root, 'output');
+    try {
+      await exec(process.execPath, [script, 'prepare'], {
+        cwd: root,
+        env: {
+          ...process.env,
+          GITHUB_REPOSITORY: 'owner/repo',
+          GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          GITHUB_EVENT_PATH: event,
+          GITHUB_OUTPUT: output,
+          GITHUB_RUN_ID: '99',
+          GITHUB_RUN_ATTEMPT: '1',
+        },
+        windowsHide: true,
+      });
+      expect(readFileSync(output, 'utf8')).toBe('claim=false\n');
+      expect(writes).toEqual([]);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+
+  describe('repair agent selector', () => {
+    async function prepareWith(
+      agent: string | undefined,
+      opts: { conclusion?: string; existing?: object } = {},
+    ) {
+      const root = makeTempDir('station-repair-agent-');
+      const writes: Array<{ method: string; url: string; body: any }> = [];
+      const server = createServer(async (req, res) => {
+        let bytes = '';
+        for await (const chunk of req) bytes += chunk;
+        res.setHeader('content-type', 'application/json');
+        if (req.method !== 'GET')
+          writes.push({
+            method: req.method!,
+            url: req.url!,
+            body: bytes ? JSON.parse(bytes) : null,
+          });
+        if (req.url?.includes('/branches/main')) {
+          res.writeHead(503);
+          res.end('{}');
+          return;
+        }
+        if (req.url?.includes('/actions/runs/42/jobs')) {
+          res.end(
+            JSON.stringify({
+              jobs: [{ name: 'corpus', conclusion: 'failure' }],
+            }),
+          );
+          return;
+        }
+        if (req.url?.endsWith('/actions/runs/42')) {
+          res.end(
+            JSON.stringify({
+              ...run,
+              conclusion: opts.conclusion ?? 'failure',
+            }),
+          );
+          return;
+        }
+        if (req.url?.includes('/issues?')) {
+          res.end(JSON.stringify(opts.existing ? [opts.existing] : []));
+          return;
+        }
+        res.end(JSON.stringify({ number: 7, state: 'open' }));
+      });
+      await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw new Error('No address');
+      const event = join(root, 'event.json');
+      writeFileSync(event, JSON.stringify({ workflow_run: { id: 42 } }));
+      const output = join(root, 'output');
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        GITHUB_REPOSITORY: 'owner/repo',
+        GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+        GITHUB_EVENT_PATH: event,
+        GITHUB_OUTPUT: output,
+        GITHUB_RUN_ID: '99',
+        GITHUB_RUN_ATTEMPT: '1',
+      };
+      delete env.QUALIFICATION_REPAIR_AGENT;
+      if (agent !== undefined) env.QUALIFICATION_REPAIR_AGENT = agent;
+      try {
+        const result = await exec(process.execPath, [script, 'prepare'], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        }).then(
+          () => ({ code: 0, stderr: '' }),
+          (error) => ({ code: error.code as number, stderr: error.stderr }),
+        );
+        let out = '';
+        try {
+          out = readFileSync(output, 'utf8');
+        } catch {}
+        return { ...result, out, writes };
+      } finally {
+        await new Promise<void>((done) => server.close(() => done()));
+      }
+    }
+
+    it.each([undefined, '', '  '])(
+      'records needs-owner without a claim or an invented owner when the agent is %j',
+      async (agent) => {
+        const result = await prepareWith(agent);
+        expect(result.code).toBe(0);
+        expect(result.out).toContain('claim=false');
+        expect(result.out).not.toContain('claim=true');
+        expect(result.writes).toHaveLength(1);
+        expect(result.writes[0]).toMatchObject({
+          method: 'POST',
+          url: '/repos/owner/repo/issues',
+        });
+        const body = result.writes[0].body.body as string;
+        expect(repairState(body)?.repairState).toBe('needs-owner');
+        expect(body).toContain(NO_AGENT_REASON);
+        expect(body).not.toContain('Owner: automated qualification repair');
+        expect(body).not.toContain('One bounded sweep');
+      },
+    );
+
+    it('keeps a claimed episode from before the opt-out parked at needs-owner', async () => {
+      const claimed = nextRepairState(null, run).state;
+      const existing = {
+        number: 7,
+        state: 'open',
+        title: 'Main qualification repair',
+        user: { login: 'github-actions[bot]' },
+        body: `<!-- station-qualification:${JSON.stringify(claimed)} -->`,
+      };
+      const result = await prepareWith(undefined, { existing });
+      expect(result.out).toContain('claim=false');
+      expect(result.writes[0].method).toBe('PATCH');
+      expect(repairState(result.writes[0].body.body)?.repairState).toBe(
+        'needs-owner',
+      );
+    });
+
+    it('still closes the issue on green with no agent configured', async () => {
+      const state = nextRepairState(null, run, { agent: false }).state;
+      const result = await prepareWith(undefined, {
+        conclusion: 'success',
+        existing: {
+          number: 7,
+          state: 'open',
+          title: 'Main qualification repair',
+          user: { login: 'github-actions[bot]' },
+          body: `<!-- station-qualification:${JSON.stringify({ ...state, lastStartedAt: '2026-10-01T00:00:00Z' })} -->`,
+        },
+      });
+      expect(result.code).toBe(0);
+      expect(result.writes).toEqual([
+        {
+          method: 'PATCH',
+          url: '/repos/owner/repo/issues/7',
+          body: { state: 'closed', state_reason: 'completed' },
+        },
+      ]);
+    });
+
+    it('claims a repair when the agent is codex', async () => {
+      const result = await prepareWith('codex');
+      // The branches/main stub fails after the claim, as in the settle test.
+      expect(result.out).toContain('claim=true');
+      const body = result.writes[0].body.body as string;
+      expect(repairState(body)?.repairState).toBe('claimed');
+      expect(body).toContain('Owner: automated qualification repair');
+    });
+
+    it('refuses an unknown agent and starts nothing', async () => {
+      for (const agent of ['Codex', 'claude', 'codex,claude']) {
+        const result = await prepareWith(agent);
+        expect(result.code).toBe(1);
+        expect(result.stderr).toContain('Unknown QUALIFICATION_REPAIR_AGENT');
+        expect(result.out).not.toContain('claim=true');
+        expect(result.writes).toEqual([]);
+      }
+    });
+
+    it('resolves the selector and withholds the claim in the state machine', () => {
+      expect(repairAgent(undefined)).toBeNull();
+      expect(repairAgent('')).toBeNull();
+      expect(repairAgent('codex')).toBe('codex');
+      expect(() => repairAgent('other')).toThrow(/Unknown/);
+      const first = nextRepairState(null, run, { agent: false });
+      expect(first.action).toBe('update');
+      expect(first.state.repairState).toBe('needs-owner');
+      expect(
+        nextRepairState(first.state, run, { agent: false, retry: true }).action,
+      ).toBe('update');
+    });
+  });
+
+  it('settles an attempt whose preparation fails after claiming the durable episode', async () => {
+    const root = makeTempDir('station-repair-prepare-');
+    let body = '';
+    const server = createServer(async (req, res) => {
+      let bytes = '';
+      for await (const chunk of req) bytes += chunk;
+      res.setHeader('content-type', 'application/json');
+      if (req.url?.includes('/branches/main')) {
+        res.writeHead(503);
+        res.end('{}');
+        return;
+      }
+      if (req.url?.includes('/actions/runs/42/jobs')) {
+        res.end(
+          JSON.stringify({ jobs: [{ name: 'corpus', conclusion: 'failure' }] }),
+        );
+        return;
+      }
+      if (req.url?.endsWith('/actions/runs/42')) {
+        res.end(JSON.stringify(run));
+        return;
+      }
+      if (req.url?.includes('/issues?')) {
+        res.end('[]');
+        return;
+      }
+      if (bytes) body = JSON.parse(bytes).body || body;
+      res.end(JSON.stringify({ number: 7, state: 'open', body }));
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No address');
+    const event = join(root, 'event.json');
+    writeFileSync(event, JSON.stringify({ workflow_run: { id: 42 } }));
+    const output = join(root, 'output');
+    const env = {
+      ...process.env,
+      GITHUB_REPOSITORY: 'owner/repo',
+      GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+      GITHUB_EVENT_PATH: event,
+      GITHUB_OUTPUT: output,
+      GITHUB_RUN_ID: '99',
+      GITHUB_RUN_ATTEMPT: '1',
+      REPAIR_ISSUE: '7',
+      QUALIFICATION_REPAIR_AGENT: 'codex',
+    };
+    try {
+      await expect(
+        exec(process.execPath, [script, 'prepare'], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        }),
+      ).rejects.toMatchObject({ code: 1 });
+      expect(readFileSync(output, 'utf8')).toContain('claim=true');
+      expect(repairState(body)?.repairState).toBe('claimed');
+      await exec(process.execPath, [script, 'settle'], {
+        cwd: root,
+        env,
+        windowsHide: true,
+      });
+      expect(repairState(body)?.repairState).toBe('needs-owner');
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+
+  it('publishes the actual proposed Git diff to a repair branch and refuses protected changes before push', async () => {
+    const { root, repo, git, sha } = fixture();
+    const posted: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const state = nextRepairState(null, run).state;
+    const issue = {
+      state: 'open',
+      body: `<!-- station-qualification:${JSON.stringify(state)} -->`,
+    };
+    let failPublication = true;
+    const server = createServer(async (req, res) => {
+      let bytes = '';
+      for await (const chunk of req) bytes += chunk;
+      if (bytes) posted.push({ path: req.url || '', body: JSON.parse(bytes) });
+      res.setHeader('content-type', 'application/json');
+      if (failPublication && req.url?.endsWith('/pulls')) {
+        res.writeHead(503);
+        res.end('{}');
+        return;
+      }
+      res.end(
+        JSON.stringify(
+          req.url?.endsWith('/pulls')
+            ? { number: 8, html_url: 'https://github.com/owner/repo/pull/8' }
+            : issue,
+        ),
+      );
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No address');
+    const context = {
+      issue: 7,
+      episode: 42,
+      baseSha: sha,
+      failedSha: run.head_sha,
+      attempt: '99-1',
+      branch: 'repair/qualification-42-99-1',
+      runUrl: 'https://github.com/owner/repo/actions/runs/42',
+    };
+    const contextPath = join(root, 'context.json');
+    writeFileSync(contextPath, JSON.stringify(context));
+    const patch = join(root, 'proposal.patch');
+    const env = {
+      ...process.env,
+      GH_TOKEN: 'fixture-token',
+      ISSUE_TOKEN: 'fixture-issue-token',
+      GITHUB_REPOSITORY: 'owner/repo',
+      GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+      REPAIR_CONTEXT: contextPath,
+      REPAIR_PATCH: patch,
+    };
+    try {
+      mkdirSync(join(repo, 'src-server'));
+      writeFileSync(join(repo, 'src-server/fix.txt'), 'repaired\n');
+      git('add', '--intent-to-add', '.');
+      writeFileSync(patch, `${git('diff', '--binary', 'HEAD')}\n`);
+      git('reset', '-q');
+      rmSync(join(repo, 'src-server'), { recursive: true });
+      await expect(
+        exec(process.execPath, [script, 'publish'], {
+          cwd: repo,
+          env,
+          windowsHide: true,
+        }),
+      ).rejects.toMatchObject({ code: 1 });
+      git('reset', '--hard', sha);
+      failPublication = false;
+      writeFileSync(
+        contextPath,
+        JSON.stringify({
+          ...context,
+          attempt: '100-1',
+          branch: 'repair/qualification-42-100-1',
+        }),
+      );
+      await exec(process.execPath, [script, 'publish'], {
+        cwd: repo,
+        env,
+        windowsHide: true,
+      });
+      const landed = execFileSync(
+        'git',
+        [
+          '--git-dir',
+          join(root, 'remote.git'),
+          'show',
+          'repair/qualification-42-100-1:src-server/fix.txt',
+        ],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      expect(landed).toBe('repaired\n');
+      expect(
+        posted.filter((item) => item.path.endsWith('/pulls')).at(-1)?.body.head,
+      ).toBe('repair/qualification-42-100-1');
+      git('reset', '--hard', sha);
+      mkdirSync(join(repo, '.github'));
+      writeFileSync(join(repo, '.github/unsafe.yml'), 'unsafe\n');
+      git('add', '--intent-to-add', '.');
+      writeFileSync(patch, `${git('diff', '--binary', 'HEAD')}\n`);
+      git('reset', '-q');
+      rmSync(join(repo, '.github'), { recursive: true });
+      const count = posted.length;
+      await expect(
+        exec(process.execPath, [script, 'publish'], {
+          cwd: repo,
+          env,
+          windowsHide: true,
+        }),
+      ).rejects.toMatchObject({ code: 1 });
+      expect(posted).toHaveLength(count);
+      expect(
+        execFileSync(
+          'git',
+          [
+            '--git-dir',
+            join(root, 'remote.git'),
+            'rev-parse',
+            'repair/qualification-42-99-1',
+          ],
+          { encoding: 'utf8', windowsHide: true },
+        ).trim(),
+      ).not.toBe(sha);
+    } finally {
+      await new Promise<void>((done) => server.close(() => done()));
+    }
+  });
+});

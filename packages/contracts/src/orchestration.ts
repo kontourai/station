@@ -3,6 +3,7 @@ import type { AttentionRequestReference } from './attention.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
+import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -19,6 +20,7 @@ import type {
   SessionTransitionReason,
   SessionTransitionSource,
 } from './session-lifecycle.js';
+import type { SkillExperienceIdentityV1 } from './skill-experience.js';
 
 export type {
   AttachedSessionSourceMetadata,
@@ -53,12 +55,41 @@ export type OrchestrationStartSessionInput = Omit<
   'credentialProfileRef' | 'reviewIsolation' | 'confinement'
 >;
 
+/** Public wire discriminant guarantees old servers refuse before any provider effect. */
+export interface ReceiptProtectedSteerCommand {
+  type: 'steerTurnOnce';
+  threadId: string;
+  input: string;
+  turnId?: string;
+  clientInputId: string;
+}
+
+/**
+ * #3386: where the continuation of a conversation that belongs to no project
+ * runs. A conversation a project claims (by folder, or by repository from a
+ * worktree) always continues in its own folder under that project, and
+ * needs no target.
+ *
+ * - `project`: continue it under this project. Station accepts it only when
+ *   the conversation's folder is inside the project's folder or in a genuine
+ *   worktree of the project's repository; it never moves a conversation to
+ *   another folder.
+ * - `own-folder`: continue it as a No project chat confined to its own
+ *   folder. Refused for a folder too broad to confine an agent to (the home
+ *   folder, the filesystem root, and the like).
+ */
+export type AdoptSessionTarget =
+  | { kind: 'project'; projectSlug: string }
+  | { kind: 'own-folder' };
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
       type: 'adoptSession';
       sourceThreadId: string;
       idempotencyKey?: string;
+      /** #3386: where a conversation no project claims continues. */
+      target?: AdoptSessionTarget;
     }
   | { type: 'sendTurn'; input: OrchestrationSendTurnInput }
   | {
@@ -74,14 +105,34 @@ export type OrchestrationCommand =
        */
       clientTurnId?: string;
     }
-  | { type: 'steerTurn'; threadId: string; input: string; turnId?: string }
+  | {
+      /** Read-only receipt lookup; never claims or dispatches an input. */
+      type: 'inspectSteerInput';
+      threadId: string;
+      input: string;
+      turnId?: string;
+      clientInputId: string;
+    }
+  | {
+      type: 'steerTurn';
+      threadId: string;
+      input: string;
+      turnId?: string;
+      clientInputId?: string;
+    }
   | {
       type: 'respondToRequest';
+      /** Frame-origin action: admit this exact current package and its agents.invoke grant. */
+      expectedSkillExperience?: {
+        identity: SkillExperienceIdentityV1;
+        eventId: string;
+      };
       threadId: string;
       requestId: string;
       /** Compare this exact opened event immediately before responding. */
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      answers?: HarnessQuestionAnswers;
     }
   | { type: 'stopSession'; threadId: string }
   | {
@@ -351,6 +402,12 @@ export const PENDING_TURN_INTERRUPT_TTL_MS = 60_000;
 
 export type SteerTurnResult =
   | {
+      /** Delivery may have happened; this input must not be sent again. */
+      outcome: 'indeterminate';
+      threadId: string;
+      clientInputId: string;
+    }
+  | {
       /**
        * The input was enqueued to the live runtime iterable and durably
        * recorded in the transcript. The provider SDK exposes no delivery ack.
@@ -378,7 +435,27 @@ export type SteerTurnResult =
        */
       outcome: 'concurrent-steer';
       threadId: string;
+    }
+  | {
+      /**
+       * #2898: the running turn started unconfined (`host`) and `workspace`
+       * applies now (the full access that unconfined it was revoked). It
+       * finishes as it is, but takes no new instructions; send them as a new
+       * turn, which runs confined. Nothing was delivered. Only a narrowing
+       * refuses: a widening (a recorded `never`) does not.
+       *
+       * Version skew: a UI from before #2898 does not know this outcome; its
+       * `steerRefusalMessage` falls through to a default that returns the
+       * result object, which may be rendered as the message content. UIs
+       * from #2898 on return a plain sentence for any unknown outcome.
+       */
+      outcome: 'confinement-changed';
+      threadId: string;
     };
+
+export type SteerInputInspectionResult =
+  | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
+  | { outcome: 'not-received'; threadId: string; clientInputId: string };
 
 /** Path- and provider-cursor-free response for attached-session adoption. */
 export interface AdoptedSessionResult {
@@ -486,7 +563,51 @@ export interface OrchestrationDelegationContext {
   /** Bounded dispatch prompt used only as the delegator-side Activity label. */
   title?: string;
   mode?: string;
+  /**
+   * The open request the PAIRED Station last reported for this task, on a
+   * delegator-side peer record only (`environmentKind: 'peer'`). Copied from
+   * that Station's own delegated-task status read (`pendingRequest`), which
+   * derives it from its unresolved `request.opened` events; this Station
+   * never derives it. Absent means the last status read reported none, or
+   * no read has observed one yet. `id` names the request ON THE PAIRED
+   * STATION: it is answerable only through
+   * `POST /api/orchestration/delegations/:taskId/respond` with the record's
+   * `environmentId`, never by a local `respondToRequest`.
+   */
+  peerPendingRequest?: OrchestrationPeerPendingRequest;
 }
+
+/** See `OrchestrationDelegationContext.peerPendingRequest`. */
+export interface OrchestrationPeerPendingRequest {
+  id: string;
+  /** The paired Station's `requestType`, when it reported a known one. */
+  type?: CanonicalRequestType;
+  /** The paired Station's request title, bounded. */
+  title?: string;
+  /**
+   * `delegatedInputAnswers`: the request's own `request.opened` event id and
+   * the paired Station's Session it is open on (its `currentSessionId`), so
+   * an answer can be bound to exactly this request. Present only when the
+   * paired Station reported them.
+   */
+  eventId?: string;
+  threadId?: string;
+  /** The question as the paired Station presents it, bounded. */
+  body?: string;
+  /**
+   * The paired Station's own check of THIS Station's credential on the
+   * route that answers the request. Absent when it did not report one (an
+   * older Station).
+   */
+  callerCanRespond?: boolean;
+  /** When this Station observed it on the paired Station's status read. */
+  observedAt: string;
+}
+
+type CanonicalRequestType = Extract<
+  CanonicalRuntimeEvent,
+  { method: 'request.opened' }
+>['requestType'];
 
 /**
  * Server-issued provenance for the input that created or currently drives a
@@ -925,6 +1046,11 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Current terminal runtime error text when the event fold can prove one. */
   lastRuntimeErrorMessage?: string;
+  /**
+   * #3157: that terminal runtime error is a provider usage limit
+   * (`UsageLimitFailureDetails`). Clients hold queued follow-ups on it.
+   */
+  lastRuntimeErrorUsageLimit?: true;
   /** Reason from the latest non-recovery turn abort, when it is terminal. */
   lastTurnAbortReason?: string;
   /** Present only while this process is watching this session's active turn. */
@@ -939,6 +1065,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   currentSessionId?: string;
   /** Authoritative unresolved request ids when this summary carries a reader. */
   openRequestIds?: string[];
+  /** Current requests that suspend progress; absent on older hosts. */
+  blockingOpenRequestIds?: string[];
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
   transitionReason?: SessionTransitionReason;
@@ -1116,6 +1244,15 @@ export interface OrchestrationSessionDetail {
 export type RuntimeEventElisionReason = 'byte_limit' | 'output_limit';
 
 export interface OrchestrationSequencedEvent {
+  /**
+   * The event's position, in the number space of the read that returned it:
+   * - in an event WINDOW (`OrchestrationSessionEventWindow`,
+   *   `OrchestrationConversationEventWindow`) it is the GLOBAL stream
+   *   sequence — the same space as the window's `watermark` and as the live
+   *   SSE frame ids a reader stitches past that watermark;
+   * - in an event PAGE (`OrchestrationSessionEventPage`) it is the per-thread
+   *   sequence, the same space as that page's `nextSequence` cursor.
+   */
   sequence: number;
   event: CanonicalRuntimeEvent;
   /**
@@ -1125,10 +1262,16 @@ export interface OrchestrationSequencedEvent {
   elided?: RuntimeEventElisionReason;
 }
 
+/**
+ * A forward page of ONE thread's events. Unlike the event windows, its
+ * `events[].sequence` and `nextSequence` are the thread's own ordinal
+ * (monotonic within this thread only), not the global stream sequence.
+ */
 export interface OrchestrationSessionEventPage {
   session: OrchestrationSessionSummary;
   events: OrchestrationSequencedEvent[];
   hasMore: boolean;
+  /** Per-thread sequence to resume from. */
   nextSequence: number;
 }
 
@@ -1154,6 +1297,7 @@ export interface OrchestrationConversationStreamBinding {
 export interface OrchestrationSessionEventWindow {
   protocolVersion: 1;
   session: OrchestrationSessionSummary;
+  /** Numbered by GLOBAL stream sequence, the same space as `watermark`. */
   events: OrchestrationSequencedEvent[];
   hasMore: boolean;
   nextCursor?: string;
@@ -1164,7 +1308,9 @@ export interface OrchestrationSessionEventWindow {
 /**
  * Bounded transcript projection for one durable conversation. The contained
  * runtime events retain their exact child-session `threadId`; `sequence` is
- * only the conversation-local ordinal ordering used by the reader.
+ * the GLOBAL stream sequence (stable across the lineage's child sessions and
+ * in the same space as `watermark`), which is what orders events from several
+ * child sessions in one projection.
  */
 export interface OrchestrationConversationEventWindow
   extends OrchestrationSessionEventWindow {
@@ -1219,7 +1365,9 @@ export const CONVERSATION_HANDOFF_DISCLOSURE_LABELS: Readonly<
     string
   >
 > = Object.freeze({
-  authorizedTranscript: 'Conversation transcript',
+  // #3164: the seed carries recent whole messages under a size budget and
+  // tells the new engine how many earlier ones it left out.
+  authorizedTranscript: 'Recent conversation messages, up to a size limit',
   ownerTenantWorkspace: 'Workspace and identity',
   targetAgentModel: 'Selected Agent and model',
   providerNativeCursor: 'Provider-native cursor',
@@ -1383,8 +1531,10 @@ export interface ConversationListItem {
   /**
    * Durable title provenance for mutable store conversations. A UI must ask
    * before replacing a human-owned title; runtime conversations have none.
+   * `agent` is a title a station-control agent set with `rename_session`: it
+   * is not a person's, so any later rename replaces it without asking.
    */
-  titleSource?: 'user' | 'generated' | 'provider' | 'prompt';
+  titleSource?: 'user' | 'generated' | 'provider' | 'prompt' | 'agent';
   /**
    * Carried from the base summary's decoration. Required on this shape too:
    * `useConversationInventoryQuery`'s consumers fold the same

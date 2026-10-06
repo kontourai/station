@@ -8,9 +8,9 @@ import { SshEnvironmentService } from '../ssh-environment-service.js';
 
 const homes: string[] = [];
 const HOST = {
-  alias: 'brian-media',
-  hostname: 'brian-media.internal',
-  user: 'brian',
+  alias: 'home-media',
+  hostname: 'home-media.internal',
+  user: 'casey',
   port: 22,
   identityAgent: 'default' as const,
   proxyJump: null,
@@ -21,10 +21,10 @@ const WORKER = {
   nodeVersion: 'v24.18.0',
   platform: 'linux',
   arch: 'x64',
-  remoteHome: '/home/brian',
-  remoteProjectPath: '/home/brian/dev/github/kontourai/station',
+  remoteHome: '/home/user',
+  remoteProjectPath: '/home/user/dev/github/kontourai/station',
   environmentId: '11111111-1111-4111-8111-111111111111',
-  instanceId: 'brian-media-dogfood',
+  instanceId: 'home-media-dogfood',
   sha: 'a'.repeat(40),
   bootId: '22222222-2222-4222-8222-222222222222',
 };
@@ -78,14 +78,14 @@ describe('SshEnvironmentService', () => {
     });
     await service.initialize();
     const added = await service.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
     });
     const connected = await service.connect(added.profile.id);
     expect(connected.state).toMatchObject({
       phase: 'connected',
       localUrl: 'http://127.0.0.1:45123',
-      instanceId: 'brian-media-dogfood',
+      instanceId: 'home-media-dogfood',
     });
     expect(connected.profile).toMatchObject({
       environmentId: WORKER.environmentId,
@@ -117,7 +117,7 @@ describe('SshEnvironmentService', () => {
     });
     await service.initialize();
     const added = await service.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '/srv/station',
     });
     await service.connect(added.profile.id);
@@ -142,7 +142,7 @@ describe('SshEnvironmentService', () => {
     });
     await service.initialize();
     const added = await service.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '/srv/station',
     });
     const [left, right] = await Promise.all([
@@ -200,7 +200,7 @@ describe('SshEnvironmentService managed launch', () => {
     });
     await service.initialize();
     const added = await service.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
       launchMode: 'managed',
     });
@@ -232,7 +232,7 @@ describe('SshEnvironmentService managed launch', () => {
     });
     await service.initialize();
     const added = await service.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
       launchMode: 'managed',
     });
@@ -271,7 +271,7 @@ describe('SshEnvironmentService managed launch', () => {
     });
     await service.initialize();
     const added = await service.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
       remotePort: 3141,
       launchMode: 'managed',
@@ -299,7 +299,7 @@ describe('SshEnvironmentService managed launch', () => {
     });
     await service.initialize();
     const added = await service.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
     });
     expect(added.profile.launchMode).toBe('attach');
@@ -343,7 +343,7 @@ describe('SshEnvironmentService managed launch', () => {
       });
       await service.initialize();
       const added = await service.add({
-        hostAlias: 'brian-media',
+        hostAlias: 'home-media',
         remoteProjectPath: '~/dev/github/kontourai/station',
         launchMode: 'managed',
       });
@@ -377,7 +377,7 @@ describe('SshEnvironmentService managed launch', () => {
     });
     await service.initialize();
     const added = await service.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
       remotePort: 3141,
       launchMode: 'managed',

@@ -97,7 +97,13 @@ See `src-server/providers/adapters/acp-adapter.ts` and
 
 ### Connection Lifecycle (Connections Hub)
 
-Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, calling `initialize()`/`newSession()`, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity:
+Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, completing `initialize` and opening a session to read its modes and config options, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity.
+
+The probe does not leave a new stored session behind on each run (#3411). Agents that persist sessions would otherwise collect one per probe, about 240 a day per connection. If the agent advertises `session/delete`, the probe deletes its session after reading it. Otherwise, if it advertises `session/resume` or `loadSession`, the background sweep reattaches to the session the probe created earlier.
+
+A reattached session can answer from its own stored state rather than the agent's current defaults. Grok Build, for example, reports the model and reasoning effort saved in the session. The probe therefore mints a fresh session, and reattaches to that one from then on, in four cases: every user-initiated probe (Reconnect, a connection edit, a provider change), a change in the agent name or version reported at `initialize`, a retained session six hours old, and a Station restart or connection re-registration. A changed default can therefore show up to six hours late unless the user presses Reconnect.
+
+Stored sessions now grow by a few a day per connection instead of one per probe. Reattaching still writes to the agent's store: Grok appends about 670 bytes to the session's update log per resume, roughly 160 KB a day per connection, compared with about 30 MB a day before. An agent that advertises none of these methods still gets a new session on every probe, and Station logs a warning once per connection. `session/close` is not used, because it frees runtime resources and does not remove the stored session. Station does not delete sessions that leaked before this change; remove them with the agent's own tooling. The owner is `src-server/services/acp/acp-probe-session.ts`.
 
 | Status | Meaning |
 |---|---|
@@ -114,13 +120,18 @@ This is a deliberate, adapter-inherited scope reduction: per-mode virtual agents
 Advertised session modes are honored on that one agent (station#1945). `ProviderSessionStartInput`/`ProviderSendTurnInput` carry the requested id as `modelOptions.mode`. The adapter prefers `session/set_config_option` when the fresh session advertised a `category: "mode"` config option, and otherwise calls `session/set_mode`. Ids and labels are whatever the agent advertised — Station does not map them onto `ask`/`auto`/`never`. The composer shows that advertised picker when the connection has modes, and shows nothing when it advertised none. Remaining permission-policy gaps (OpenCode HTTP rulesets, engines that never advertise modes, ACP v2 dropping `session/set_mode`, `_meta.permission`) are tracked in station#1944.
 
 The current Agent catalog reports `engineId`, `engineDisplayName` and
-`engineConnectionType` for engine grouping and connection-method display.
+`engineConnectionType` for engine grouping and connection-method display. For an
+ACP-bound Agent `engineId` is always `acp` and `engineConnectionType` is `acp`,
+read from the connection record even when the live inspection fails, so its
+icon keeps its initials.
 `execution.agentConnectionId` is the persisted binding. The Agent ID remains
 independent of how the connection is implemented; do not use a legacy
 `source: 'acp'` discriminator. Model choices and image support depend on the
 connection's current capability observations, not the name of its default Agent.
 
 Image support is **not** carried on the Agent row. It was, as `supportsAttachments`, but no server code ever wrote that field — the composer read `undefined` and refused every image while the adapter declared `image-input` and built real image `ContentBlock`s (station#3344). It is now derived from two places that are actually written: the connection's `capabilities` (the adapter's own declaration, spread from `ACP_ADAPTER_CAPABILITIES`) and, for the per-connection answer, `capabilityInventory.sessionSurfaces.promptImage` — this connection's live `initialize` handshake reporting `agentCapabilities.promptCapabilities.image`.
+
+Both the chat dock and the ACP chat panel read that handshake answer from the engine connection inventory (`useEngineConnectionsQuery`); the model picker's connection projection does not carry it. A reported `false` refuses images at attach time. Images already in the draft are marked on their chips and block Send until they are removed, and when nothing else can be attached the paperclip explains the refusal when tapped. For OpenCode the selected model's own answer is known when available: after a successful handshake Station reads OpenCode's `models --verbose` listing off the request path (the connection's configured binary, argv only, bounded by a timeout and an output cap, launched as an owned child so its whole process group is killed on timeout, cached per connection, cleared on reconnect or removal, and ignored for a connection whose launch settings changed; a failed refresh keeps the last good answers) and publishes `capabilities.imageInput` on each model option in the runtime catalog. `true` shows no note, `false` refuses images before Send with the model named. Until the handshake has answered, or when it answers yes for an engine whose catalog spans several model providers (OpenCode) while the selected model's own image support is unknown (not listed, or the listing failed), the composer still accepts images but shows a note saying what is unconfirmed (`ComposerImageSupport.caveat` from `resolveComposerImageSupport`, `modelSupportVaries`). The adapter checks again at send time. A send carrying images to an engine whose handshake did not advertise image support, or carrying any non-image file, is refused before anything reaches the engine with `attachment_input_unsupported` (`ATTACHMENT_INPUT_UNSUPPORTED_CODE`). The same send would be refused again, so the chat error offers **Remove attachments** instead of Retry, and the client re-reads the engine inventory so the composer shows the engine's answer.
 
 The default exists independently of probe/readiness state. The Agent row carries explicit availability and reason fields; Station never encodes connection kind into the Agent ID.
 
@@ -134,6 +145,14 @@ Sending a message to an ACP-connected agent is identical, from the UI's perspect
 2. The UI posts the Agent through `POST /api/orchestration/chat`; the server resolves the Agent's binding and supplies the ACP adapter with its connection ID — see [`docs/reference/session-api.md`](../reference/session-api.md).
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
+
+The chat composer defaults to Queue while a turn runs. Its Steer mode uses a
+conservative safe-waiting fallback for ACP connections: the current adapters
+provide no confirmed safe execution boundary, so the composer waits for the turn
+to finish. Attachments remain in the draft until then. See the
+[composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
+
+An explicit adapter `steerTurn` command can still steer the open turn. Kiro and Grok receive it through their own extension methods. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -159,12 +178,12 @@ Do not re-document per-field shapes here — read them from the contract file di
 
 ### Extension Rendering
 
-`extension.notification` events carry a namespaced, app-specific payload the canonical contract does not interpret (`namespace`, `type`, `payload: unknown` — ADR-0008: the canonical contract carries no app-specific semantics). Station renders two functional cases from Kiro's `_kiro.dev` namespace as ephemeral system messages in the transcript:
+`extension.notification` events carry a namespaced, app-specific payload the canonical contract does not interpret (`namespace`, `type`, `payload: unknown` — ADR-0008: the canonical contract carries no app-specific semantics). For ACP/Kiro, Station renders two functional cases from Kiro's `_kiro.dev` namespace as ephemeral system messages in the transcript:
 
 - `_kiro.dev/mcp/oauth_request` → a clickable **Open authentication page** link to the supplied URL when an MCP server the engine depends on needs the user to sign in.
 - `_kiro.dev/compaction/status` / `_kiro.dev/clear/status` → a plain status line (`"Context compacted."` / `"History cleared."`).
 
-Any other namespace or type is a no-op as an `extension.notification` transcript render — the canonical event surface intentionally does not grow app-specific rendering beyond these two evidenced, functional cases. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
+Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity and the context-compaction and rewind markers attached-session sources record (drawn by the transcript projection as a quiet line, not an ephemeral message); namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
 
 ### Turn-failure enrichment from a co-reported notification
 
@@ -288,9 +307,13 @@ See `docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-na
 
 When the runtime invokes a tool, the adapter translates the ACP `tool_call` session update into a `tool.started` canonical event, and subsequent `tool_call_update` notifications into `tool.progress`/`tool.completed` events — rendered by the same tool-activity UI every provider uses.
 
+The ACP `kind` the runtime reports (`read`, `edit`, `execute`, `search`, …) rides those events as `toolKind` and is kept across an update that omits it, so the terminal still says what the call was; a value outside the ACP vocabulary is dropped rather than coerced. The chat classifies a row by that kind first. A runtime that reports no programmatic `name` has its human `title` published as `toolName` — for OpenCode's shell tool the whole command line — and the chat shows such a title as written, never humanizing it the way it does an identifier-style name like `shell_exec`.
+
 ### Tool Approval (Runtime → User)
 
-When the runtime needs permission before running a tool, it calls back via `requestPermission`. The adapter emits a `request.opened` canonical event (`requestType: 'permission'`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the ACP `allow_once`/`reject_once` outcome.
+When the runtime needs permission before running a tool, it calls back via `requestPermission`. Station's staged policy, the Agent's `autoApprove` patterns and a session grant can answer a plain call first; none of them, an approval-guardian allow included, answers a plan exit ([delivery boundary](../conformance/tool-policy-delivery.md)). Otherwise the adapter emits a `request.opened` canonical event (`requestType: 'approval'`, carrying the call's `toolCallId`, `rawInput` and ACP `toolKind`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the offered ACP option: `allow_once`, `allow_always` for the session grant, or `reject_once`. When the runtime reports the call's programmatic `name`, the request carries it as `toolName`, Station records its session grant under that name (every later call of that tool is allowed without asking), and the button names it ("Allow write for this session"). Without a name Station records no grant of its own: the decision is the runtime's `allow_always` rule, and the button says only "Allow for this session".
+
+A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
 
 ### File System and Terminal Tools (Station → Runtime)
 
@@ -307,6 +330,11 @@ confined to a Station-spawned child.
 
 Since station#1684 Station can deliver it to an ACP-connected external engine instead, over
 HTTP. The rules, in full:
+
+- **Whole integrations only.** Authored individual-tool selection or integration
+  disablement cannot be enforced through this protocol. Station reports the
+  restricted integration as undelivered (`engine-unsupported`) instead of
+  widening its selection.
 
 - **Gated on the live handshake.** Station delivers it only when *this*
   connection's `initialize` result advertises
@@ -391,12 +419,12 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | ✓ | Clean unique engine-connection identifier; the owned default Agent uses the same text ID in the Agent namespace. |
+| `id` | ✓ | Clean unique engine-connection identifier; the owned default Agent uses the same text ID in the Agent namespace. It may not be an id a native runtime engine already answers to (such as `codex` or `claude`): `POST /acp/connections` and `POST /acp/registry/:id/install` refuse one with a 400 that names the engine already using it, because engine attribution keys on the connection id and would label the native engine's Agents `acp`. A connection stored with such an id before this check still loads; attribution keeps the native engine for that id and the server logs a warning naming it, so delete that connection and add it again under a different id (an update cannot change a connection's id). |
 | `name` | ✓ | Display name shown in the UI. |
 | `command` | ✓ | Executable to spawn. Must be on PATH. |
 | `args` | | Arguments passed to the command. |
 | `icon` | | Emoji or string shown next to the agent name. Defaults to `🔌`. |
-| `cwd` | | Working directory for the subprocess. Defaults to Station's cwd. |
+| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace is scoped by this directory. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
 
 ### Runtime API
@@ -411,6 +439,13 @@ DELETE /acp/connections/:id            Remove and shut down a connection
 POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
 ```
+
+Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
+command for Station to run, so a paired device needs the operator's
+`coding:exec` grant (the operator in person never does); otherwise the route
+answers `403` with `code: 'command-not-granted'` and saves nothing. Renaming or
+toggling a connection, listing, removing and reconnecting keep their ordinary
+tier. Reconnect only re-probes the stored command and cannot change it.
 
 ### SSE Status Events
 

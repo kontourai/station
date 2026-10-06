@@ -59,6 +59,7 @@ vi.mock('../contexts/NavigationContext', () => {
 });
 
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
+import { claimApprovalThreads } from '../components/status/approvalReveal';
 
 describe('NotificationContainer', () => {
   beforeEach(() => {
@@ -91,6 +92,32 @@ describe('NotificationContainer', () => {
       screen.getByRole('button', { name: 'Dismiss notification' }),
     );
     expect(dismissToast).toHaveBeenCalledWith('tool-1');
+  });
+
+  test('keeps diagnostics behind Details and exposes the conversation action as a button', () => {
+    const onNavigate = vi.fn();
+    notifications = [
+      {
+        id: 'turn-failed',
+        type: 'turn-activity',
+        message: 'Turn failed',
+        timestamp: Date.now(),
+        dismissed: false,
+        conversationTitle: 'Repo Chat',
+        metadata: { detail: 'Provider diagnostics with a long error trace' },
+        onNavigate,
+      },
+    ];
+    render(<NotificationContainer />);
+    const detail = screen.getByText(
+      'Provider diagnostics with a long error trace',
+    );
+    const disclosure = detail.closest('details');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(dismissToast).toHaveBeenCalledWith('turn-failed');
   });
 
   test('renders View and routes a notification navigateTo action', () => {
@@ -197,6 +224,174 @@ describe('NotificationContainer', () => {
     expect(
       screen.getByRole('button', { name: 'Allow Bash for this session' }),
     ).toBeTruthy();
+  });
+
+  test("the pill takes the user to the request's own card on screen instead of opening a second copy", () => {
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'OpenCode wants to use cd /tmp && gh api x',
+        type: 'tool-approval',
+        sessionId: 'thread-7',
+        approvalRequestId: 'req-7',
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [
+          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+        ],
+      },
+    ];
+    const scrollIntoView = vi.fn();
+    render(
+      <div>
+        {/* The transcript card for ANOTHER thread's same request id, then
+            this request's own card (as ToolCallDisplay marks them). */}
+        <div
+          className="tool-call"
+          data-approval-thread="thread-other"
+          data-approval-id="req-7"
+        >
+          <button type="button" className="tool-call__approve-btn">
+            Wrong
+          </button>
+        </div>
+        <div
+          className="tool-call"
+          data-approval-thread="thread-7"
+          data-approval-id="req-7"
+          ref={(element) => {
+            if (!element) return;
+            element.scrollIntoView = scrollIntoView;
+            // Laid out (jsdom has no layout): a rendered card has a box.
+            element.getBoundingClientRect = () =>
+              ({ width: 300, height: 40 }) as DOMRect;
+          }}
+        >
+          <button type="button" className="tool-call__approve-btn">
+            Allow Once
+          </button>
+        </div>
+        <NotificationContainer />
+      </div>,
+    );
+
+    const pill = screen.getByRole('button', { name: '1 pending approval' });
+    fireEvent.click(pill);
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(document.activeElement?.textContent).toBe('Allow Once');
+    expect(pill.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('the pill opens the queue when no card for the request is on screen', () => {
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'OpenCode wants to use cd /tmp && gh api x',
+        type: 'tool-approval',
+        sessionId: 'thread-7',
+        approvalRequestId: 'req-7',
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [],
+      },
+    ];
+    render(<NotificationContainer />);
+    const pill = screen.getByRole('button', { name: '1 pending approval' });
+    fireEvent.click(pill);
+    expect(pill.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('with more than one request, the pill opens the queue even when a card is on screen', () => {
+    notifications = [1, 2].map((n) => ({
+      id: `approval-${n}`,
+      message: `Request ${n}`,
+      type: 'tool-approval',
+      sessionId: 'thread-7',
+      approvalRequestId: `req-${n}`,
+      timestamp: Date.now(),
+      dismissed: false,
+      actions: [],
+    }));
+    render(
+      <div>
+        <div
+          className="tool-call"
+          data-approval-thread="thread-7"
+          data-approval-id="req-1"
+          ref={(element) => {
+            if (!element) return;
+            element.getBoundingClientRect = () =>
+              ({ width: 300, height: 40 }) as DOMRect;
+          }}
+        >
+          <button type="button" className="tool-call__approve-btn">
+            Allow Once
+          </button>
+        </div>
+        <NotificationContainer />
+      </div>,
+    );
+    const pill = screen.getByRole('button', { name: '2 pending approvals' });
+    fireEvent.click(pill);
+    expect(pill.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('a card that is mounted but not laid out does not swallow the tap', () => {
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'Request',
+        type: 'tool-approval',
+        sessionId: 'thread-7',
+        approvalRequestId: 'req-7',
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [],
+      },
+    ];
+    render(
+      <div>
+        <div
+          className="tool-call"
+          data-approval-thread="thread-7"
+          data-approval-id="req-7"
+        >
+          <button type="button" className="tool-call__approve-btn">
+            Allow Once
+          </button>
+        </div>
+        <NotificationContainer />
+      </div>,
+    );
+    const pill = screen.getByRole('button', { name: '1 pending approval' });
+    fireEvent.click(pill);
+    expect(pill.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('a chat pane presenting its own approval takes it off the app-wide pill', () => {
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'Request',
+        type: 'tool-approval',
+        sessionId: 'thread-claimed',
+        approvalRequestId: 'req-1',
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [],
+      },
+    ];
+    const release = claimApprovalThreads(['thread-claimed']);
+    const view = render(<NotificationContainer />);
+    expect(
+      screen.queryByRole('button', { name: /pending approval/ }),
+    ).toBeNull();
+    act(() => release());
+    expect(
+      screen.getByRole('button', { name: '1 pending approval' }),
+    ).toBeTruthy();
+    view.unmount();
   });
 
   test('an approval card with no derivable preview renders no empty preview row', () => {

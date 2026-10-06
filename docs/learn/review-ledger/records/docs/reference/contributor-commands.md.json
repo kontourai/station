@@ -1,0 +1,41 @@
+{
+  "path": "docs/reference/contributor-commands.md",
+
+  "kind": "generated",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed generated Unix/Windows convenience recipes and the distinction between local regression and hosted promotion receipts.",
+
+  "limits": "Generated contract or retained release evidence; no new hosted release, live label mutation or platform result is claimed.",
+
+  "sources": [
+    "justfile",
+
+    "scripts/just-interface.mjs",
+
+    "package.json#/scripts/build:android",
+
+    "package.json#/scripts/dependencies:ci",
+
+    "package.json#/scripts/dev:desktop",
+
+    "package.json#/scripts/full:regression",
+
+    "package.json#/scripts/release:static",
+
+    "package.json#/scripts/test:changed",
+
+    "package.json#/scripts/test:focused",
+
+    "package.json#/scripts/verify:static"
+  ],
+
+  "checks": [
+    "Generator and focused recipe checks passed after correcting the full-regression description.",
+
+    "Integration source review through e0314c727: package.json removed only the bearing/forage dependencies, with no script change behind the generated recipes; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

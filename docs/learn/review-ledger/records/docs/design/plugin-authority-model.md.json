@@ -1,0 +1,35 @@
+{
+  "path": "docs/design/plugin-authority-model.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "August threat analysis preserved with current same-origin nonce-free vs cross-origin inline behavior, managed-update installer path, legacy grant rebinding and still-limited derived permissions.",
+
+  "limits": "Not a fresh exploit report, comparison of external products, every contribution authority, or live native/browser/provider isolation audit. Entire original body preserved.",
+
+  "sources": [
+    "src-server/routes/plugins/plugin-lifecycle-routes.ts",
+
+    "src-server/services/plugins/__tests__/plugin-install-consent.test.ts",
+
+    "src-server/services/plugins/__tests__/plugin-permissions.test.ts",
+
+    "src-server/services/plugins/plugin-install-consent.ts",
+
+    "src-server/services/plugins/plugin-permissions.ts",
+
+    "src-ui/src/__tests__/PluginRegistry.csp.test.ts",
+
+    "src-ui/src/core/PluginRegistry.ts"
+  ],
+
+  "checks": [
+    "Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
+
+    "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
+
+    "Reviewed integration deltas: src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged."
+  ]
+}

@@ -289,13 +289,99 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       expect(screen.getByTestId('transcript').textContent).toContain(
         'Saved transcript',
       );
-      expect(screen.queryByText('Loading conversation')).toBeNull();
+      expect(screen.queryByText('Loading chat')).toBeNull();
       expect(screen.queryByText('Loading offline messages')).toBeNull();
     }
 
     expect(transcriptMounts).toHaveBeenCalledTimes(firstTranscriptMounts);
     expect(queueMounts).toHaveBeenCalledTimes(firstQueueMounts);
   });
+  test('a turn ending refreshes the transcript in place, without a loading state', async () => {
+    fetchConversationWindow.mockReset();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        conversationId: 'offline-thread',
+        currentSessionId: 'offline-thread',
+        watermark: 1,
+        hasMore: false,
+        events: [
+          {
+            sequence: 1,
+            event: {
+              eventId: 'turn-1',
+              method: 'turn.started',
+              provider: 'codex',
+              threadId: 'offline-thread',
+              createdAt: '2026-08-13T00:00:00.000Z',
+              prompt: 'Saved transcript',
+            },
+          },
+        ],
+      })
+      // The refetch a finished turn triggers (history revision bump) is
+      // still in flight while the assertions run.
+      .mockReturnValue(new Promise(() => {}));
+    const view = render(dock(session(0)));
+    await screen.findByTestId('transcript');
+    const firstTranscriptMounts = transcriptMounts.mock.calls.length;
+
+    view.rerender(dock(session(1)));
+    await waitFor(() =>
+      expect(fetchConversationWindow).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.getByTestId('transcript').textContent).toContain(
+      'Saved transcript',
+    );
+    // A refresh of a transcript already on screen is not "loading": no
+    // skeleton and no "Start new chat" escape under the finished answer.
+    expect(screen.queryByText('Loading chat')).toBeNull();
+    expect(screen.queryByText('Catching up')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+    expect(transcriptMounts).toHaveBeenCalledTimes(firstTranscriptMounts);
+  });
+
+  test('switching chats never shows the previous chat’s retained transcript', async () => {
+    fetchConversationWindow.mockReset();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        conversationId: 'offline-thread',
+        currentSessionId: 'offline-thread',
+        watermark: 1,
+        hasMore: false,
+        events: [
+          {
+            sequence: 1,
+            event: {
+              eventId: 'turn-1',
+              method: 'turn.started',
+              provider: 'codex',
+              threadId: 'offline-thread',
+              createdAt: '2026-08-13T00:00:00.000Z',
+              prompt: 'Saved transcript',
+            },
+          },
+        ],
+      })
+      // Chat B's first read is still in flight.
+      .mockReturnValue(new Promise(() => {}));
+    const view = render(dock(session(0)));
+    await screen.findByTestId('transcript');
+
+    view.rerender(
+      dock({ ...session(0), id: 'another-thread', title: 'Another chat' }),
+    );
+    await waitFor(() =>
+      expect(fetchConversationWindow).toHaveBeenCalledTimes(2),
+    );
+    // B has never loaded: it is loading, and A's transcript is not B's.
+    expect(await screen.findAllByText('Loading chat')).not.toHaveLength(0);
+    expect(screen.queryByText(/Saved transcript/)).toBeNull();
+  });
+
   test('canSteer derives from capability AND live execution — idle sessions offer no steer', async () => {
     // Server enforcement (typed refusal) is the backstop, but the issue
     // requires the AFFORDANCE to be absent without an active turn: pin the

@@ -1,0 +1,7 @@
+{
+  "revision": "7313e2e5010c88deda8f65df663a7b85c6f7380e",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"scripts/vitest-resource-manifest.mjs changed on this branch only by classifying the new Chromium-owning BrowserPageDialog.touch-target.test.tsx beside the float's touch-target test, which is exactly what this file's child-process rule requires. No prose change.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

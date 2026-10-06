@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
+import { selectCodingPane } from './helpers/coding-stack';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 
 const api = resolveE2EApiBase();
@@ -128,8 +129,7 @@ for (const width of [1280, 390]) {
     });
     for (const path of [`/projects/${slug}/layouts/coding`, directRoute]) {
       await page.goto(path);
-      if (!path.includes('/panes/'))
-        await page.getByRole('tab', { name: 'Files', exact: true }).click();
+      if (!path.includes('/panes/')) await selectCodingPane(page, 'Files');
       const bar = page.getByRole('region', {
         name: 'Workspace actions',
         exact: true,

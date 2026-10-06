@@ -1,0 +1,7 @@
+{
+  "revision": "59e681c03b8cc2e0b58cdf44f91b2efe79ce84c8",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the precise Home browser fixture endpoint and envelope: GET sessions with projectSlug=station returns a BrowserSessionView array, access names canonical p1 and operator standing, browser acquisition is not-ready. Primary Home and engine gates pass; all unexpected routes remain refused.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

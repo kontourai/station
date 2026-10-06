@@ -1,0 +1,15 @@
+{
+  "path": ".changeset/snapshot-runtime-error.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "sources": [],
+
+  "checks": []
+}

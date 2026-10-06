@@ -3,10 +3,20 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px;
+  padding: 12px;
   min-width: 0;
   height: 100%;
   overflow: auto;
+  font-size: var(--text-md);
+}
+/* Section labels at the pane's text size, bold: headings, not titles. */
+.pull-request-review h3 {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.pull-request-review p {
+  margin: 0;
 }
 .pull-request-review__actions {
   display: flex;
@@ -36,13 +46,14 @@
   width: 100%;
 }
 
-.pull-request-review__method {
-  display: grid;
-  gap: 6px;
-  align-self: flex-start;
+/* The live region is always in the flow; empty, it takes no height. */
+.pull-request-review__status {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--text-secondary);
 }
-.pull-request-review__method select {
-  min-height: 44px;
+.pull-request-review__status--live:empty {
+  display: none;
 }
 .pull-request-review__discussion {
   padding-left: 20px;
@@ -51,5 +62,251 @@
   margin-top: 12px;
 }
 .pull-request-review__diff {
+  flex-shrink: 0;
+}
+.pull-request-review__muted {
+  color: var(--text-muted);
+}
+.pull-request-review__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+/* Each row is as tall as its icon's 44px hit area, so the areas of
+   neighbouring rows' links do not overlap. */
+.pull-request-review__checks li {
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pull-request-review__check-name {
+  flex: 1 1 12ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A row's two icons (add to chat, open details): dim at rest, full on the
+   row's hover or focus. Dim rather than hidden, so a finger — which has no
+   hover — still sees them, without a pointer media query of this sheet's
+   own. */
+.pull-request-review__check-tools {
+  display: inline-flex;
+  align-items: center;
+  /* 30px icons with 44px hit areas: 14px keeps the areas apart. */
+  gap: 14px;
+  flex: none;
+  margin-left: auto;
+}
+.pull-request-review__checks li .pull-request-review__check-tool {
+  opacity: 0.45;
+}
+.pull-request-review__checks li:hover .pull-request-review__check-tool,
+.pull-request-review__checks li:focus-within .pull-request-review__check-tool,
+.pull-request-review__checks li .pull-request-review__check-tool:hover,
+.pull-request-review__checks li .pull-request-review__check-tool:focus-visible {
+  opacity: 1;
+}
+/* The state word carries the meaning; the tone only reinforces it. */
+.pull-request-review__check-state {
+  flex: 0 0 auto;
+  min-width: 9ch;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.pull-request-review__check-state--failure {
+  color: var(--error-text);
+}
+.pull-request-review__check-state--success {
+  color: var(--success-text);
+}
+.pull-request-review__check-state--pending {
+  color: var(--warning-text);
+}
+.pull-request-review__mergeability[data-mergeability="conflicting"] {
+  color: var(--error-text);
+  font-weight: 600;
+}
+/* A native disclosure with its own caret: `display: flex` on a summary
+   drops the browser marker, so the glyph is the affordance, in secondary
+   tone, turning when open. The 44px floor holds at every pointer. */
+.pull-request-review__summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.pull-request-review__summary::-webkit-details-marker {
+  display: none;
+}
+.pull-request-review__summary:hover {
+  color: var(--text-primary);
+}
+/* The turn rides the shared motion tokens; tokens.css clamps them under
+   prefers-reduced-motion, so no page-local at-rule is needed. */
+.pull-request-review__caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  transition: transform var(--motion-base) var(--ease-standard);
+}
+details[open] > .pull-request-review__summary .pull-request-review__caret {
+  transform: rotate(90deg);
+}
+/* The head: chips, branches, author, then the quieter identity line. */
+.pull-request-review__head {
+  display: grid;
+  gap: 6px;
+}
+.pull-request-review__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.pull-request-review__meta--secondary {
+  color: var(--text-tertiary);
+}
+.pull-request-review__meta code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+.pull-request-review__meta--secondary code {
+  color: inherit;
+}
+.pull-request-review__branches {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Check counts: small, toned, failures first by source order. */
+.pull-request-review__checks-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.pull-request-review__count {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.pull-request-review__count[data-tone="failure"] {
+  color: var(--error-text);
+}
+.pull-request-review__count[data-tone="pending"] {
+  color: var(--warning-text);
+}
+.pull-request-review__count[data-tone="success"] {
+  color: var(--success-text);
+}
+/* The icon that was just pressed shows a check in the accent for a moment. */
+.pull-request-review__icon[data-added="true"] {
+  color: var(--accent-primary);
+}
+/* Forge comments the diff could not place: each a named group. */
+.pull-request-review__forge-comments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.pull-request-review__forge-comment {
+  padding: 8px 10px;
+  border-left: 2px solid var(--border-secondary);
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+.pull-request-review__forge-comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 30px;
+  font-size: var(--text-sm);
+}
+.pull-request-review__forge-comment-meta .pull-request-review__icon {
+  margin-left: auto;
+}
+.pull-request-review__forge-comment .pull-request-review__body {
+  margin-top: 4px;
+  font-size: var(--text-sm);
+}
+/* One row at every width: back, the title (wrapping its words), and the
+   icons — nothing wraps under anything. */
+.pull-request-review__bar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  /* 14px keeps neighbouring 44px hit areas apart: 30px icon + 14px = 44. */
+  gap: 14px;
+  min-width: 0;
+}
+/* The title keeps at least this much line before the actions wrap under
+   it as one unit (right-aligned), so a phone-width bar is not a one-word
+   column beside a button. */
+.pull-request-review__title {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.pull-request-review__title:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.pull-request-review__bar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+/* 30px icons with a 44px hit area at every width, without a page-local
+   breakpoint (mobile-css-ratchet). */
+.pull-request-review__icon {
+  position: relative;
+  flex-shrink: 0;
+}
+.pull-request-review__icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+.pull-request-review__check-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pull-request-review__check-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
   flex-shrink: 0;
 }

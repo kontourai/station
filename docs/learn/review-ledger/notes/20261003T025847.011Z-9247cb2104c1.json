@@ -1,0 +1,7 @@
+{
+  "revision": "020eb6a14e05313bb66724ec3504e613717e6ed1",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed plugin/CLI author-learning-path and curated catalog additions: ordinary public package path remains consistent with integration guide; no managed service, commercial or published qualification introduced.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "049379d555b0f86e61e15aa6534b4dc3838a3002",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#2932 part 2, re-recorded after merging main's #3089, which added its own entry to vitest-resource-manifest.mjs (this record took main's bindings in the merge). This branch's change to the manifest is one process-heavy entry, src-server/providers/__tests__/claude-code-spawn.sdk.test.ts, where the real Agent SDK launches a Node stand-in for the Claude CLI; both entries are present in the merged file and the manifest's own test passes. That follows this file's rule that new child-process tests are classified in the manifest. The new spawn call in claude-code-spawn.ts passes windowsHide: true, asserted by a test.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

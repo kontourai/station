@@ -1,0 +1,31 @@
+{
+  "path": "examples/docs-snippets/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Checked the guide marker/file comparison and TypeScript project inclusion; syntax/typechecking remain separate from runtime caller behavior.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/docs-snippets/src/plugins-agents-and-chat.tsx",
+
+    "package.json#/scripts/typecheck:examples",
+
+    "scripts/__tests__/docs-snippets.test.ts",
+
+    "scripts/examples-conformance.mjs"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Integration source review through e0314c727: package.json added docs:impact, fast-checks shard, portable-server and install-script scripts and dropped bearing/forage. `typecheck:examples` still compiles examples/docs-snippets/tsconfig.json, scripts/__tests__/docs-snippets.test.ts exists, and the plugins.md compile-checked marker and 'Agents & Chat' anchor still resolve. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

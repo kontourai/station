@@ -1,0 +1,33 @@
+{
+  "path": "docs/design/pane-host-contract.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Pane-host design and extraction history, routed to the implemented shared contract and both adapters.",
+
+  "limits": "Owner/caller wiring checked, not every payload clone-safety property, bridge refusal, same-artifact compatibility, install trust prompt, or iframe threat-model claim.",
+
+  "sources": [
+    "packages/contracts/src/workspace-pane-host-contract.ts",
+
+    "packages/sdk/src/index.ts",
+
+    "src-ui/src/components/plugins/PluginFrameHost.tsx",
+
+    "src-ui/src/components/plugins/framePaneHost.tsx",
+
+    "src-ui/src/workspace-panes/inProcessPaneHost.tsx",
+
+    "src-ui/src/components/plugins/plugin-frame-runtime.ts"
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Entire original body byte-identical after removing reading banner.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery only; pane host contract claims unaffected; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

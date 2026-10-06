@@ -15,6 +15,7 @@ import { PageRow } from '../../components/PageRow';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import { Toggle } from '../../components/Toggle';
 import type { RegistryRowComponentProps } from './registry-row-types';
+import { SettingDescription } from './SettingDescription';
 
 export function ApprovalGuardianEditor({
   definition,
@@ -39,7 +40,7 @@ export function ApprovalGuardianEditor({
             </InfoTip>
           </>
         }
-        description={definition.description}
+        description={<SettingDescription definition={definition} />}
         status={<ProvenanceBadge provenance={provenance} />}
         control={
           <Toggle

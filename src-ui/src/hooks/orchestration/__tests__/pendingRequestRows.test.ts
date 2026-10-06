@@ -83,3 +83,60 @@ describe('unansweredApprovalRequests', () => {
     expect(unansweredApprovalRequests([], [], 'turn-open')).toEqual([]);
   });
 });
+
+test('a nonblocking question remains answerable after turn completion until the engine closes it', () => {
+  const opened: CanonicalRuntimeEvent = {
+    provider: 'codex',
+    threadId: 'async-thread',
+    createdAt: '2026-09-29T10:00:00Z',
+    method: 'request.opened',
+    eventId: 'async-open',
+    requestId: 'async-q',
+    requestType: 'approval',
+    title: 'Question',
+    blocking: false,
+    payload: {
+      questionnaire: {
+        questions: [
+          {
+            id: 'q',
+            header: 'Question',
+            prompt: 'Which?',
+            options: [],
+            multiple: false,
+            allowCustom: true,
+            secret: false,
+          },
+        ],
+      },
+    },
+  };
+  const completed: CanonicalRuntimeEvent = {
+    provider: 'codex',
+    threadId: 'async-thread',
+    createdAt: '2026-09-29T10:00:01Z',
+    method: 'turn.completed',
+    eventId: 'async-done',
+    turnId: 'async-turn',
+  };
+  expect(unansweredApprovalRequests([], [opened, completed])).toHaveLength(1);
+  expect(
+    unansweredApprovalRequests(
+      [],
+      [
+        opened,
+        completed,
+        {
+          provider: 'codex',
+          threadId: 'async-thread',
+          createdAt: '2026-09-29T10:00:02Z',
+          method: 'request.resolved',
+          eventId: 'async-close',
+          requestId: 'async-q',
+          status: 'cancelled',
+          blocking: false,
+        },
+      ],
+    ),
+  ).toHaveLength(0);
+});

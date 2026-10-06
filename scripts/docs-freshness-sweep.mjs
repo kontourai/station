@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { documentationCatchUp } from './documentation-impact.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { checkDocumentationFreshness } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -36,7 +37,7 @@ export function buildFreshnessReport({
     `<!-- ${MARKER} stale=${staleCount} revision=${revision} -->`,
     `# ${SWEEP_ISSUE_TITLE}`,
     '',
-    `Swept \`main\` at ${revision} (${generatedAt}). Pull requests must re-review records their own diff makes stale; these entries went stale through a combination of merges or before scoped freshness existed. Review each changed input against the recorded revision, then record it with \`npm run docs:review:record -- <path> --note "<what you checked>"\`. See [Maintaining documentation](../blob/main/docs/guides/documentation.md#keep-reviews-fresh).`,
+    `Swept \`main\` at ${revision} (${generatedAt}). Pull requests must re-review records their own diff makes stale; these entries went stale through a combination of merges or before scoped freshness existed. Review each changed input against its recorded revision (\`npm run docs:review:record -- --show-delta <path>\` prints the diff), then record it with \`npm run docs:review:record -- <path> --note "<what you checked>"\`. See [Maintaining documentation](../blob/main/docs/guides/documentation.md#keep-reviews-fresh).`,
     '',
     `Stale reviews: ${staleReviews.length}. Stale captures: ${staleCaptures.length}. Removed review coverage: ${removedDependencies.length}. Unmapped changed paths since the coverage baseline: ${unmappedCount} (see \`npm run docs:impact -- --catch-up\`).`,
     '',
@@ -44,7 +45,7 @@ export function buildFreshnessReport({
   const lines = [
     ...staleReviews.map(
       (review) =>
-        `- [ ] review \`${review.path}\` (reviewed ${review.reviewSourceRevision.slice(0, 12)}): ${review.changedInputs.map((input) => `\`${input}\``).join(', ')}`,
+        `- [ ] review \`${review.path}\`: ${review.changedInputs.map((input) => `\`${input}\` (reviewed ${String(review.reviewedRevisions?.[input]).slice(0, 12)})`).join(', ')}`,
     ),
     ...staleCaptures.map(
       (capture) =>
@@ -80,7 +81,7 @@ export function reportStaleCount(report) {
 }
 
 function runGh(args) {
-  return execFileSync('gh', args, {
+  return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],

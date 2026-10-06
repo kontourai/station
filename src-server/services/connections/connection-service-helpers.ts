@@ -1,4 +1,5 @@
 import type {
+  ACPConnectionConfig,
   ACPProviderInfo,
   ACPProviderRoutingStatus,
   ACPStatusValue,
@@ -35,7 +36,6 @@ import type {
   ProviderAdapterShape,
 } from '../../providers/adapter-shape.js';
 import { getProviderAdapterRegistrationProvenance } from '../../providers/adapter-shape.js';
-
 import {
   normalizeCredentialProfileRegistry,
   projectCredentialProfileRegistry,
@@ -46,6 +46,7 @@ import {
   providerCatalogModelCount,
   providerCatalogOps,
 } from '../../telemetry/metrics.js';
+import { openCodeModelImageInput } from '../acp/opencode-model-capabilities.js';
 import {
   sanitizeConnectionConfigHome,
   sanitizeConnectionEnvMap,
@@ -288,6 +289,12 @@ export function sanitizeRuntimeConfig(
     // Precedence (configHome wins over useAppHome; a selected credential
     // profile wins over both) is documented on AgentConnectionSettings.config
     // and enforced at spawn assembly, not here.
+    if (
+      typeof config.proxyConnectionId === 'string' &&
+      config.proxyConnectionId.trim()
+    ) {
+      sanitized.proxyConnectionId = config.proxyConnectionId.trim();
+    }
     const env = sanitizeConnectionEnvMap(config.env);
     if (Object.keys(env).length > 0) sanitized.env = env;
     const configHome = sanitizeConnectionConfigHome(config.configHome);
@@ -783,6 +790,12 @@ export function projectControlPlaneObservation(
   };
 }
 
+function imageInputCapability(
+  imageInput: boolean | undefined,
+): { capabilities: { imageInput: boolean } } | Record<string, never> {
+  return imageInput === undefined ? {} : { capabilities: { imageInput } };
+}
+
 /**
  * archive#3054: project an ACP connection's live model catalog into the
  * RuntimeCatalogStatus every other engine connection already carries. The
@@ -794,6 +807,8 @@ export function projectControlPlaneObservation(
  */
 export function acpRuntimeCatalogStatus(
   liveStatus: ACPConnectionStatus | undefined,
+  /** The connection's current configuration, to reject a stale per-model cache. */
+  config?: ACPConnectionConfig,
 ): RuntimeCatalogStatus {
   const modelOption = liveStatus?.configOptions?.find(
     (option) => option.category === 'model',
@@ -809,6 +824,11 @@ export function acpRuntimeCatalogStatus(
               id: entry.value,
               name: entry.name ?? entry.value,
               originalId: entry.value,
+              // OpenCode's per-model image input, read from the cache the
+              // post-handshake listing fills. Memory only; never spawns here.
+              ...imageInputCapability(
+                openCodeModelImageInput(liveStatus?.id, entry.value, config),
+              ),
             },
           ]
         : [],

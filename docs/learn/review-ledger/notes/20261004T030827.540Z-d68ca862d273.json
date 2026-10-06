@@ -1,0 +1,7 @@
+{
+  "revision": "992f86ee6f5a97b812e0619bf3da38d55368d017",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Combined output fence/provenance reviewed after current-main merge: route captures Task creation identity; file and PR witnesses recheck admission; new private outputs retain incarnation and admitted Session declaration identity while public v1 omits both. Real SQLite SELECT now includes declaration_id. Legacy deletion barriers remain conservative; separate output/TaskGraph locks are not atomic. Five focused output/route/SQLite suites passed 265 tests at 992f86ee6f. Feedback, invited/public acceptance, provider-generated artifacts and release remain unverified.","inputs":["docs/reference/api.md"]}
+  ]
+}

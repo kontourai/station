@@ -33,7 +33,7 @@ describe('provider chat attachments', () => {
     ]);
 
     expect(() => rejectFileAttachments('Codex', decoded)).toThrow(
-      'Attach an image or paste the file contents as text',
+      "Codex cannot take non-image files. Paste the file's text into the message instead.",
     );
   });
 });

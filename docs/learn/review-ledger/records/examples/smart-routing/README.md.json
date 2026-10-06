@@ -1,0 +1,23 @@
+{
+  "path": "examples/smart-routing/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full pure helper and HTTP registration reviewed; executed documented input and corrected actual budget-intent reason. Explicit-tier precedence, optional host telemetry and no model launch clarified.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/smart-routing/plugin.json",
+
+    "examples/smart-routing/plugin.mjs",
+
+    "src-server/routes/plugins/plugin-public-routes.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+  ]
+}

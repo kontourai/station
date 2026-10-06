@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { selectCodingPane } from './helpers/coding-stack';
 import {
   dismissSetupLauncher,
   seedOrchestrationRoutes,
@@ -19,7 +20,7 @@ async function seedFlowNotConfigured(page: Page) {
 }
 
 async function openTrustTab(page: Page) {
-  await page.getByRole('tab', { name: 'Trust' }).click();
+  await selectCodingPane(page, 'Trust');
 }
 
 const BUNDLES = [

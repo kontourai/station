@@ -1,0 +1,39 @@
+{
+  "revision": "0368881dcab562767c4127b5bee0ebb6356449f3",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"activity-list lane: glossary gained Activity and delegated Run entries. This map only links the glossary and names contexts; it makes no claim about Activity's grouping, filters or run folding, so no prose change.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"activity-list fix round: glossary Activity/Run entries rewritten generically (no lane labels) and to describe the run pull-up. The map only links the glossary; no claim here changes.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"CONTEXT.md","note":"activity-list lane: re-read Work surfaces. It names Activity as a Surface that occupies a region, which is unchanged (the list's grouping, filters and row menu changed, not its placement). Glossary additions do not alter any claim here; no prose change.","inputs":["CONTEXT.md"]},
+
+    {"path":"CONTEXT.md","note":"activity-list fix round: re-read Work surfaces; Activity is still a Surface occupying a region. Glossary rewording does not change any claim here.","inputs":["CONTEXT.md"]},
+
+    {"path":"docs/design/placement.md","note":"activity-list fix round: chat.css changed only by doubling the .choice-trigger coarse-pointer floor selector (specificity over the base rule). placement.md makes no claim about that selector; no prose change.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"activity-list lane: D5 said Activity renders LiveCollaboratorsSection; Activity no longer mounts it, so the sentence now names the component and says the footer tray shows presence. The retained 'time-ordered stream as Activity's direction' matches the new dated history sub-sections.","inputs":["docs/design/shell-ownership-and-boards.md"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"activity-list fix round: LiveCollaboratorsSection was deleted; D5 now names the live-activity projection (useLiveActivityQuery) the tray reads, and that Activity renders no collaborator section.","inputs":["docs/design/shell-ownership-and-boards.md"]},
+
+    {"path":"docs/glossary.md","note":"activity-list lane: added Activity (state lanes via partitionSessionLanes/partitionHomeWorkItems, dated history sub-sections, Kind/Project/Started-from as filters, status is not proof of the work) and Run (root plus subtasks joined only by recorded parent link, per run-groups.ts). Checked against SessionsView.tsx, activity-list-model.ts and run-groups.ts.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/glossary.md","note":"activity-list fix round: Activity entry no longer names today's lane labels (a sibling branch renames them) and states the one exception to 'rows never contradict headings' — a delegated run renders in its most urgent member's lane and its label says so. Run entry: the board summarises subtasks only. Checked against SessionsView.tsx and RunBoardSummary.tsx.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"activity-list lane: added an ActivityFilterBar exception entry to responsive-action-surfaces.txt following the rule stated here (record action surfaces; exception when no surface fixture). The guide's rules and ratchet description are unchanged and accurate.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"activity-list fix round: inventory removed LiveCollaboratorsSection and DelegatedTaskCoordinator (deleted) and added SessionsView row actions and RunBoardSummary as exceptions using .responsive-surface-actions; the guide's rules are unchanged and accurate.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"activity-list lane: the only change on this dependency is one new inventory line for the Activity filter bar; theming.md only points at the responsive guide and makes no claim about individual inventory entries. No prose change.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/guides/theming.md","note":"activity-list fix round: only inventory lines changed; theming.md makes no claim about individual entries.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"activity-list lane: dependency changed by one new UI inventory line (Activity filter bar). Nothing in the backend patterns describes action-surface inventory entries; no prose change.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"activity-list fix round: only UI inventory lines changed; no backend-pattern claim affected.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"activity-list lane: one new inventory line for the Activity filter bar, which reuses .choice-trigger and .responsive-surface-actions as the styling section recommends. The section's guidance is unchanged and accurate; no prose change.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"activity-list fix round: new inventory lines reuse the shared .responsive-surface-actions and .choice-trigger styles as the styling section recommends; no prose change.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

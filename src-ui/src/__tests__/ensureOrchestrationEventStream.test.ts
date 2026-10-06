@@ -430,7 +430,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
-  // #2310: a Draft (nothing ever sent) sits outside "Active now". Its first
+  // #2310: a Draft (nothing ever sent) sits outside the live lanes. Its first
   // `turn.started` is the only moment that changes, so it must re-read the
   // projection — and a first turn that lands inside the throttle window of
   // some other session's terminal event must be deferred, not dropped, or the

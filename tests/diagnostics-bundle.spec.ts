@@ -92,7 +92,7 @@ test.describe('Diagnostics bundle', () => {
       }),
     );
 
-    await page.goto('/settings');
+    await page.goto('/settings?view=diagnostics');
     const downloadPromise = page.waitForEvent('download');
     await page
       .getByRole('button', { name: 'Download diagnostics bundle' })
@@ -125,7 +125,7 @@ test.describe('Diagnostics bundle', () => {
       });
     });
 
-    await page.goto('/settings');
+    await page.goto('/settings?view=diagnostics');
     await page
       .getByRole('button', { name: 'Download diagnostics bundle' })
       .click();

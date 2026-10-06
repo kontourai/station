@@ -241,7 +241,8 @@ test('restored Codex state adopts the current Claude child without carrying mode
     input: 'Keep this unsent follow-up',
     queuedMessages: ['Queued follow-up'],
     sessionAutoApprove: ['shell'],
-    pendingApprovals: [],
+    pendingApprovals: ['old-approval'],
+    answeredApprovals: ['old-approval'],
     unacknowledgedDecisions: [
       { requestId: 'old-request', reason: 'no-acknowledgement' as const },
     ],
@@ -270,6 +271,8 @@ test('restored Codex state adopts the current Claude child without carrying mode
     requestedProviderOptions: {},
     providerOptions: {},
     sessionAutoApprove: [],
+    pendingApprovals: [],
+    answeredApprovals: [],
     unacknowledgedDecisions: [],
     input: 'Keep this unsent follow-up',
     queuedMessages: ['Queued follow-up'],

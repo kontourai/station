@@ -1,4 +1,7 @@
-import type { InstallResult } from '@kontourai/station-contracts/catalog';
+import type {
+  InstallResult,
+  RegistrySource,
+} from '@kontourai/station-contracts/catalog';
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
 import type { PluginInstallResult } from '@kontourai/station-contracts/plugin';
@@ -217,3 +220,47 @@ export async function requestRegistryLayoutAction({
 
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch, readEnvelopeOrThrow } from '../client/http';
+
+export interface RegistrySourceAction {
+  action: 'add' | 'enable' | 'disable' | 'remove' | 'refresh';
+  id?: string;
+  source?: {
+    displayName: string;
+    adapter: 'manifest' | 'directory' | 'github';
+    location: string;
+  };
+}
+
+export function fetchRegistrySources(): Promise<RegistrySource[]> {
+  return requestCatalog('/api/registry/sources');
+}
+
+export function requestRegistrySourceAction(
+  input: RegistrySourceAction,
+): Promise<RegistrySource | undefined> {
+  const path =
+    input.action === 'add'
+      ? '/api/registry/sources'
+      : `/api/registry/sources/${encodeURIComponent(input.id ?? '')}${input.action === 'refresh' ? '/refresh' : ''}`;
+  return requestCatalog(path, {
+    method:
+      input.action === 'remove'
+        ? 'DELETE'
+        : input.action === 'enable' || input.action === 'disable'
+          ? 'PATCH'
+          : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:
+      input.action === 'add'
+        ? JSON.stringify(input.source)
+        : input.action === 'enable' || input.action === 'disable'
+          ? JSON.stringify({ enabled: input.action === 'enable' })
+          : undefined,
+  });
+}
+
+export function fetchRegistrySkillContent(id: string): Promise<string> {
+  return requestCatalog(
+    `/api/registry/skills/${encodeURIComponent(id)}/content`,
+  );
+}

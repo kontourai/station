@@ -1,0 +1,23 @@
+{
+  "path": "docs/acp-chat-architecture.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Historical ACP chat proposal, explicitly routed to current ACP guide and adapter. Retained phases and status tables describe the original design.",
+
+  "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
+
+  "sources": [
+    "docs/guides/acp.md",
+
+    "src-server/providers/adapters/acp-adapter.ts"
+  ],
+
+  "checks": [
+    "Read the full record and checked the current owner or local validation route.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts and stamps it on request.resolved. The document's historical banner, which says ACP execution is a per-thread process lifecycle in the ACP adapter, is unaffected. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

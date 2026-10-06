@@ -6,6 +6,10 @@ import type {
   ApprovedStationConnectionTrust,
   StationConnectionProofBinding,
 } from '@kontourai/station-contracts/connection-proof';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerScopeV1,
@@ -14,10 +18,21 @@ import {
   connectionDescriptionDigest,
   createStationConnectionProofVerifier,
 } from '@kontourai/station-shared/connection-proof';
-import { createNativeV2PionApplicationAdapter } from '../../services/connections/native-v2-pion-application-adapter.js';
+import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import {
+  createNativeV2PionApplicationAdapter,
+  createResolvedNativeV2PionApplicationAdapter,
+} from '../../services/connections/native-v2-pion-application-adapter.js';
 import { startPionApplicationAdapter } from '../../services/connections/pion-application-adapter.js';
+import {
+  capturePionTurn,
+  type PionTurnSource,
+} from '../../services/connections/relay-ice-consumer.js';
 import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-broker-client.js';
-import type { BrokerNativeOfferAdapter } from '../../services/connections/self-hosted-broker-connector.js';
+import type {
+  BrokerNativeOfferAdapter,
+  BrokerNativeOfferResolver,
+} from '../../services/connections/self-hosted-broker-connector.js';
 import { SelfHostedBrokerConnector } from '../../services/connections/self-hosted-broker-connector.js';
 import type { BrokerCredential } from '../../services/connections/self-hosted-broker-service.js';
 import type {
@@ -65,7 +80,9 @@ export interface SelfHostedBrokerPionRuntimeInput {
   executable: string;
   certificatePem: string;
   privateKeyPem: string;
-  turn: { url: string; username: string; password: string };
+  turn:
+    | { url: string; username: string; password: string }
+    | { source: 'broker' };
   trust: {
     current(): ApprovedStationConnectionTrust | null;
     isCurrent(value: ApprovedStationConnectionTrust): boolean;
@@ -80,7 +97,8 @@ export interface SelfHostedBrokerPionRuntimeInput {
   /** Explicit opt-in native application lane; absent means never composed,
    * never polled, and no native offers are ever answered. */
   native?: {
-    surface: SelfHostedBrokerNativeClientSurfaceV2;
+    surface?: SelfHostedBrokerNativeClientSurfaceV2;
+    registry?: NativeSurfaceRegistry;
     /** Live owned native peer ceiling; default 4, hard-capped at 32. */
     maxPeers?: number;
   };
@@ -142,7 +160,7 @@ export function createSelfHostedBrokerPionRuntime(
   const executable = input.executable;
   const certificatePem = input.certificatePem;
   const privateKeyPem = input.privateKeyPem;
-  const turn = Object.freeze(structuredClone(input.turn));
+  const configuredTurn = Object.freeze(structuredClone(input.turn));
   const trustOwner = input.trust;
   const issuerOwner = input.issuer;
   const candidateIssuer = input.candidateIssuer;
@@ -259,6 +277,13 @@ export function createSelfHostedBrokerPionRuntime(
     };
   }
 
+  // These refusals are written outside the Hono app, so the runtime's marker
+  // middleware never sees them; they carry the marker themselves (#2842).
+  const OWN_REFUSAL_HEADERS = Object.freeze({
+    'Cache-Control': 'no-store',
+    [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+  });
+
   // Request dispatch gated against the peer's captured descriptor (outgoing
   // application-data direction alongside the channel send/subscribe gates).
   function gatedFetchFor(entry: PeerEntry): VirtualApplication {
@@ -273,7 +298,7 @@ export function createSelfHostedBrokerPionRuntime(
           retirePeer(entry);
           return Response.json(
             { error: { code: 'broker_trust_retired' } },
-            { status: 503, headers: { 'Cache-Control': 'no-store' } },
+            { status: 503, headers: OWN_REFUSAL_HEADERS },
           );
         }
         if (
@@ -283,7 +308,7 @@ export function createSelfHostedBrokerPionRuntime(
         )
           return Response.json(
             { error: { code: 'broker_application_origin_forbidden' } },
-            { status: 403, headers: { 'Cache-Control': 'no-store' } },
+            { status: 403, headers: OWN_REFUSAL_HEADERS },
           );
         verifiedPionRequests.set(
           request,
@@ -313,10 +338,19 @@ export function createSelfHostedBrokerPionRuntime(
   // Explicit opt-in native application lane. Composition happens exactly
   // once against the SAME VirtualApplication, trust owner, and issuer as the
   // browser path; there is no separate authority and no fabricated Origin.
+  const client = new SelfHostedBrokerClient(brokerOrigin, scope, credential);
+  const turn: PionTurnSource =
+    'source' in configuredTurn
+      ? Object.freeze({
+          source: 'broker' as const,
+          capture: (signal: AbortSignal) => client.iceConfiguration(signal),
+        })
+      : configuredTurn;
   const nativeConfig = input.native;
-  let nativeOwned: ReturnType<
-    typeof createNativeV2PionApplicationAdapter
-  > | null = null;
+  let nativeOwned:
+    | ReturnType<typeof createNativeV2PionApplicationAdapter>
+    | ReturnType<typeof createResolvedNativeV2PionApplicationAdapter>
+    | null = null;
   let nativeMaxPeers = 0;
   let nativeClaims = 0;
   let closeNative: (() => Promise<void>) | undefined;
@@ -330,8 +364,7 @@ export function createSelfHostedBrokerPionRuntime(
       throw new Error('broker_runtime_native_peer_limit_invalid');
     const createNativeAdapter =
       dependencies.createNativeAdapter ?? createNativeV2PionApplicationAdapter;
-    nativeOwned = createNativeAdapter({
-      surface: nativeConfig.surface,
+    const adapterInput = {
       applicationOrigin,
       application,
       executable,
@@ -340,30 +373,80 @@ export function createSelfHostedBrokerPionRuntime(
       turn,
       trust: trustOwner,
       issuer: issuerOwner,
-    });
-    closeNative = () => nativeOwned!.close();
+    };
+    if (nativeConfig.registry) {
+      nativeOwned = createResolvedNativeV2PionApplicationAdapter(
+        { ...adapterInput, registry: nativeConfig.registry },
+        {
+          startAdapter: dependencies.startAdapter,
+          serve: serveApplicationChannel,
+        },
+      );
+    } else {
+      if (!nativeConfig.surface)
+        throw new Error('broker_runtime_native_surface_missing');
+      nativeOwned = createNativeAdapter({
+        ...adapterInput,
+        surface: nativeConfig.surface,
+      });
+    }
+    closeNative = async () => {
+      await nativeOwned!.close();
+      nativeConfig.registry?.close();
+    };
   }
   // Capacity-wrapped native adapter: a live owned native peer (plus in-flight
   // admissions) counts against the explicit ceiling; at capacity the runtime
   // simply does not poll the native lane, so offers are left queued for a
   // later tick instead of failing the whole broker lifecycle.
-  const nativeAdapter: BrokerNativeOfferAdapter | undefined = nativeOwned
-    ? {
-        surface: nativeOwned.adapter.surface,
-        answer: async (offer, approved, signal) => {
-          if (nativeOwned!.activePeerCount + nativeClaims >= nativeMaxPeers)
-            throw new Error('broker_runtime_native_peer_capacity');
-          nativeClaims += 1;
+  let nativeAdapter:
+    | BrokerNativeOfferAdapter
+    | BrokerNativeOfferResolver
+    | undefined;
+  if (nativeOwned) {
+    const ownedAdapter = nativeOwned.adapter;
+    const capacity = () => {
+      if (nativeOwned!.activePeerCount + nativeClaims >= nativeMaxPeers)
+        throw new Error('broker_runtime_native_peer_capacity');
+    };
+    if ('approvedSurfaces' in ownedAdapter) {
+      nativeAdapter = {
+        approvedSurfaces: () => ownedAdapter.approvedSurfaces(),
+        answer: async (offer, approved, signal, admission) => {
+          capacity();
+          nativeClaims++;
           try {
-            return await nativeOwned!.adapter.answer(offer, approved, signal);
+            return await ownedAdapter.answer(
+              offer,
+              approved,
+              signal,
+              admission,
+            );
           } finally {
-            nativeClaims -= 1;
+            nativeClaims--;
           }
         },
-      }
-    : undefined;
+      };
+    } else {
+      nativeAdapter = {
+        surface: ownedAdapter.surface,
+        answer: async (
+          offer: Parameters<BrokerNativeOfferAdapter['answer']>[0],
+          approved: ApprovedStationConnectionTrust,
+          signal: AbortSignal,
+        ) => {
+          capacity();
+          nativeClaims++;
+          try {
+            return await ownedAdapter.answer(offer, approved, signal);
+          } finally {
+            nativeClaims--;
+          }
+        },
+      };
+    }
+  }
 
-  const client = new SelfHostedBrokerClient(brokerOrigin, scope, credential);
   const connector = new SelfHostedBrokerConnector(
     scope,
     client,
@@ -390,6 +473,15 @@ export function createSelfHostedBrokerPionRuntime(
         signal.throwIfAborted();
         if (!trustOwner.isCurrent(captured))
           throw new Error('broker_runtime_trust_retired');
+        const peerTurn = await capturePionTurn(
+          turn,
+          scope,
+          signal,
+          maxPeerLifetimeMs,
+        );
+        signal.throwIfAborted();
+        if (!trustOwner.isCurrent(captured))
+          throw new Error('broker_runtime_trust_retired');
         adapter = await dependencies.startAdapter({
           executable,
           profile: 'application',
@@ -397,7 +489,7 @@ export function createSelfHostedBrokerPionRuntime(
           offer: { type: 'offer', sdp: offer.offerSdp },
           certificatePem,
           privateKeyPem,
-          turn,
+          ...peerTurn,
           accept: (channel) => {
             const current: Adapter | undefined = adapter;
             const entry =
@@ -447,7 +539,6 @@ export function createSelfHostedBrokerPionRuntime(
             entry.serverCloses.add(closeServer);
           },
           signal,
-          maxLifetimeMs: maxPeerLifetimeMs,
         });
         if (!trustOwner.isCurrent(captured))
           throw new Error('broker_runtime_trust_retired');

@@ -6,6 +6,7 @@
  * performs I/O or imports `readline`/`node:tty`/`node:http`/`fetch`.
  */
 import { normalizeRequestAnswerability } from '@kontourai/station-contracts/orchestration';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type {
   FlowRunSnapshotInput,
   OperateApproval,
@@ -53,6 +54,11 @@ export function derivePendingApprovalsForSession(
       .filter((id): id is string => typeof id === 'string'),
   );
 
+  // #3071: a request its turn's abort settled is not pending either. The
+  // shared fold the server applies, so this pane and the server's own view
+  // cannot disagree about a log they both hold.
+  const settledRequestIds = requestIdsSettledByTurnAbort(events);
+
   const pending: OperateApproval[] = [];
   for (const event of events) {
     if (event.method !== 'request.opened') {
@@ -60,7 +66,11 @@ export function derivePendingApprovalsForSession(
     }
     const requestId =
       typeof event.requestId === 'string' ? event.requestId : undefined;
-    if (!requestId || resolvedRequestIds.has(requestId)) {
+    if (
+      !requestId ||
+      resolvedRequestIds.has(requestId) ||
+      settledRequestIds.has(requestId)
+    ) {
       continue;
     }
     const payload =
@@ -76,6 +86,10 @@ export function derivePendingApprovalsForSession(
       requestId,
       requestType:
         typeof event.requestType === 'string' ? event.requestType : 'unknown',
+      ...(typeof event.eventId === 'string'
+        ? { requestEventId: event.eventId }
+        : {}),
+      ...(payload?.questionnaire !== undefined ? { isQuestion: true } : {}),
       title: typeof event.title === 'string' ? event.title : '',
       toolName:
         typeof payload?.toolName === 'string' ? payload.toolName : undefined,

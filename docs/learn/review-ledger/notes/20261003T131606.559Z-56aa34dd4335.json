@@ -1,0 +1,7 @@
+{
+  "revision": "6b192b274917a32f36ef47a142936a368e44247e",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"AGENTS.md change is limited to the issue-reference section; this guide makes no issue-numbering claim (grep for archive/550 empty). No prose change needed.","inputs":["docs/guides/code-quality.md"]}
+  ]
+}

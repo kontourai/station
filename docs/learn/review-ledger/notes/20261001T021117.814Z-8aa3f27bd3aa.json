@@ -1,0 +1,13 @@
+{
+  "revision": "1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"activity-nav: added the place-row rule (sidebar/palette/Home View Activity open Activity in main via useShowSurfacePage = showSurface with region main; aria-current derived from main occupant at /; contextual producers and chord unchanged; defaultRegion stays right; no history entry for a Home/Activity swap at /) and corrected the leaving-main note (sidebar row makes it the page again). Traced ProjectSidebarNav, CommandPalette, HomeSurface, RegionModelContext.showSurface/openSurfaceInRegion target branch and phone overChat guard.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/placement.md","note":"activity-nav round 2: place-row rule now covers Project 'All activity', the phone un-maximize on a main landing (RegionModelContext commit, bottomOnly or isMobile, also Home), ending a phone layer that shows the same pane via its restore, the transient remembered dock region for the chord return (cleared by explicit placement, lost on reload), and the no-history-entry accepted gap with its phone Back consequence. Traced commit, openSurfaceInRegion target branch, toggleSurface, restorePhoneLayer.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/placement.md","note":"activity-nav round 3: main-landing dock restore now applies on every device (desktop side maximize hides .main-content, bottom takes its row), lastDockMaximized memory preserved via pendingDockMemoryRef, remembered dock region also used by the first unplaced reveal after Home, layer-open Back consequence (pre-layer entry, Chat re-maximized over the page) and the guard-skip rationale. Traced commit, openSurfaceInRegion no-target branch, mirror effect memory write.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/placement.md","note":"Narrowed the page-open un-maximize claim to the paths that actually go through commit (showSurface / the model's open); placeSurface (Move to Main, Layout picker) does not restore a maximized region — stated as an existing gap. Verified against RegionModelContext commit and RegionPaneHost Move to Main.","inputs":["docs/design/placement.md"]}
+  ]
+}

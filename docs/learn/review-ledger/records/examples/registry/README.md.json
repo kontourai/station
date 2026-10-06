@@ -1,0 +1,35 @@
+{
+  "path": "examples/registry/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Both manifests, default resolution and CLI/server installation callers inspected. Catalog presence and no declared dependencies no longer imply successful installation; missing consent linked #2809.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/registry/default.json",
+
+    "examples/registry/manifest.json",
+
+    "packages/cli/src/commands/install-registry.ts",
+
+    "packages/cli/src/commands/install.ts",
+
+    "src-server/providers/registries/default-registry.ts",
+
+    "src-server/routes/plugins/registry.ts",
+
+    "src-server/services/plugins/plugin-install-consent.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Reviewed source changes: Read the complete current CLI registry owner. Catalog listing no longer guesses installed state from local aliases/files; it directs installed-state reads to the running Station. Example catalog resolution and the separately tracked preview-consent gap remain.",
+
+    "Integration source review through abfc7a889: #2864 changes only the plugin install command (install.ts), not `registry install`. The statement that `registry install <id>` submits no preview consent (#2809) still holds. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

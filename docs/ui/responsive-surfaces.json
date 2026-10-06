@@ -161,8 +161,8 @@
     {
       "path": "src-ui/src/components/modals/SkillRunModal.tsx",
       "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+      "contract": "Dialog",
+      "evidence": "src-ui/src/__tests__/SkillRunModal.test.tsx; shared Dialog chrome and footer actions are covered by src-ui/src/__tests__/Dialog.chrome.test.tsx"
     },
     {
       "path": "src-ui/src/components/modals/UserDetailModal.tsx",
@@ -249,6 +249,11 @@
       "path": "src-ui/src/views/project-page/ProjectKnowledgeViewerModal.tsx",
       "strategy": "covered",
       "evidence": "responsive-surface-panel adoption; contained long-content scroll"
+    },
+    {
+      "path": "src-ui/src/workspace-panes/browser-pane/BrowserConsoleDrawer.tsx",
+      "strategy": "covered",
+      "evidence": "#90 Browser console drawer: an in-flow panel under the live view (not an overlay), so it needs no dialog contract. src-ui/src/workspace-panes/browser-pane/__tests__/BrowserPane.pageTools.test.tsx (\"the console drawer\") opens it from the toolbar, filters by level, clears, and covers the reopen generation. Its header buttons are shared Button variant=\"icon\" controls sized by --browser-pane-control, which the pane raises to 44px under data-coarse / data-narrow (set from the shared pointer and mobile hooks). Those are jsdom derivation assertions; nothing measures the rendered boxes at 390px yet."
     },
     {
       "path": "src-ui/src/workspace-panes/device/DeviceToolsDrawer.tsx",

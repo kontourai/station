@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the new start/resume section against NewChatModal, ChatDock pendingGoalSend, shared NewChatAction, and InboxRow callers. Agent/model choice stays unsent; temporary setup retains the draft; touch titles allow two lines; mobile header, switcher and desktop inbox share creation action. Existing continuation, approval, status, transcript and pane ownership remain unchanged. Browser measured mobile controls at 320 and 412px with no horizontal overflow; no physical keyboard/device evidence.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

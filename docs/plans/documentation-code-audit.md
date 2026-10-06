@@ -72,7 +72,7 @@ explanation; correction; remaining limitation. Also inspect inbound links,
 duplicated explanations, glossary consistency, diagram edges, failure paths,
 and external prerequisites.
 
-The [review ledger](../learn/review-ledger.json) records each inspected file's
+The [review ledger](../learn/review-ledger/) records each inspected file's
 purpose, review scope, source revision, supporting code/tests, and limits.
 Classification is separate from source review. Current explanations have
 documented-claim reviews; historical records, proposals, policies and fixtures

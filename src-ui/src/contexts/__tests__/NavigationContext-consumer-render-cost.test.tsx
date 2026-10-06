@@ -100,13 +100,20 @@ vi.mock('../AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../ActiveChatsContext', () => ({ useAllActiveChats: () => ({}) }));
 vi.mock('../open-chats-store', () => ({
   useOpenChats: () => [],
+  useOpenChatInbox: () => ({
+    items: [],
+    currentSessionIdByConversation: new Map(),
+  }),
   openChatsStore: {
     focus: vi.fn(),
     openCollection: vi.fn(),
     registerNavigation: () => vi.fn(),
   },
 }));
-vi.mock('../useShowSurface', () => ({ useShowSurface: () => vi.fn() }));
+vi.mock('../useShowSurface', () => ({
+  useShowSurface: () => vi.fn(),
+  useShowSurfacePage: () => vi.fn(),
+}));
 vi.mock('../RegionModelContext', () => ({
   useRegionModelOptional: () => null,
 }));

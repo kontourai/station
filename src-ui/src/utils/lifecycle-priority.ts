@@ -1,9 +1,9 @@
 /**
  * Canonical status-priority ranking for `HomeWorkItem.lifecycleLabel`
- * (archive#1100) — single source of truth shared by the Home list's
- * merge layer (`home-view-model.ts`'s `mergeHomeWorkItems`, which resolves a
- * winning label when a chat/orchestration pair carries two different ones)
- * and `LifecycleStatusChip`'s chip-rendering decision. Extracted verbatim
+ * (archive#1100) — the source of truth for the Home list's merge layer
+ * (`home-view-model.ts`'s `mergeHomeWorkItems`, which resolves a winning
+ * label when a chat/orchestration pair carries two different ones).
+ * Extracted verbatim
  * from `home-view-model.ts`'s former private `moreImportantLifecycle` —
  * this file changes no ranking behavior, only where it lives.
  *
@@ -49,14 +49,13 @@ export type HomeLifecycleLabel = (typeof HOME_LIFECYCLE_LABELS)[number];
  * above `Completed`: it has not finished, and nothing here can act on it. An
  * earlier version of this comment claimed the renumbering was what stopped a
  * dead session "pinning the top of Home" — review caught that as a claim
- * about a mechanism this file does not have. The genuine top-slot fix is
- * `delegatedTaskPriority` (`utils/sessionDisplay.ts`), which IS an ordering
- * and does feed `prioritizedDelegatedTasks`. What the ranking here actually
- * buys is that a merged chat+orchestration row cannot show "Needs attention"
- * for a request nothing can answer.
+ * about a mechanism this file does not have. (The top-slot fix was a
+ * separate rank for the delegated-work card, removed with that card.) What
+ * the ranking here buys is that a merged chat+orchestration row cannot show
+ * "Needs attention" for a request nothing can answer.
  *
- * Nothing is removed from any list under either mechanism, so the row and
- * its basis stay readable (annotate, never filter).
+ * Nothing is removed from any list by it, so the row and its basis stay
+ * readable (annotate, never filter).
  */
 export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
   'Needs attention': 7,
@@ -75,51 +74,9 @@ export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
   Completed: 0,
 };
 
-/**
- * The user's wording for a lifecycle label, for surfaces that render the
- * label as text rather than through `LifecycleStatusChip`.
- *
- * Every other member of this union is already the user's word — "Running",
- * "Needs attention", "Ready". `'Unanswerable'` is not: it is this system's
- * term for "no path exists in the serving process", and archive#1783 leaked
- * it verbatim to two surfaces (the chat-dock inbox chip, the mobile task
- * switcher's `Current · …` line) purely because the label set is shared.
- * The chip family has always translated (`Running` → "Active", `Completed`
- * → "Done"); this is the same translation for the surfaces that do not use
- * a chip, so one term cannot appear two ways.
- */
-export function lifecycleLabelText(label: HomeLifecycleLabel): string {
-  return label === 'Unanswerable' ? "Can't answer here" : label;
-}
-
 export function moreImportantLifecycle(
   left: HomeLifecycleLabel,
   right: HomeLifecycleLabel,
 ): HomeLifecycleLabel {
   return LIFECYCLE_PRIORITY[right] > LIFECYCLE_PRIORITY[left] ? right : left;
 }
-
-/**
- * Lifecycle labels `LifecycleStatusChip` renders a colored chip for (the
- * act-now/in-motion/neutral-done three-meaning color discipline documented
- * there). Not a numeric-priority threshold over `LIFECYCLE_PRIORITY` —
- * `Completed` is priority 0 (least important) but still renders the neutral
- * "Done" chip, while the higher-priority `Current`/`Ready`/`Recent` render
- * no chip at all.
- */
-export const LIFECYCLE_CHIP_LABELS = new Set<HomeLifecycleLabel>([
-  'Needs attention',
-  'Failed',
-  'Stopped',
-  'Running',
-  'Completed',
-  // archive#1783: chipped so the row says WHY it dropped down the list —
-  // silently demoting it and rendering nothing would be de-prioritization
-  // without the fact, which is the filtering ADR 0012 forbids wearing a
-  // different hat. The chip renders in the neutral treatment, not a fourth
-  // colour meaning: nothing is broken and nothing needs acting on.
-  'Unanswerable',
-  // #2310: chipped because a Draft sits outside "Active now", and a row that
-  // moved without saying why reads as lost work. Neutral treatment again.
-  'Draft',
-]);

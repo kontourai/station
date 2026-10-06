@@ -665,6 +665,9 @@ export function ProviderSettingsView({
               type="button"
               className="editor-btn editor-btn--primary"
               onClick={handleSave}
+              aria-describedby={
+                isNew ? 'provider-create-disclosure' : undefined
+              }
               disabled={
                 saveMutation.isPending ||
                 !form.name ||

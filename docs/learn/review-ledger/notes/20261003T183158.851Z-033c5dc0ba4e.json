@@ -1,0 +1,7 @@
+{
+  "revision": "483d772e419dc6622b7d52be2b731842d07ae99e",
+
+  "notes": [
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed native link intake claims against the iOS intake controller, contract validator, native custody receiver, and shared Tauri event helper. The cold and warm delivery sequence and all trust, cancellation, evidence, and NOT_VERIFIED limits remain accurate; only the event subscription helper changed.","inputs":["docs/design/native-relay-enrollment.md","src-desktop/src/native_relay_redemption.rs","src-ui/src/platform/native/nativeRelayLinkAdapter.ts","src-ui/src/views/native-relay/NativeRelayMemberShell.tsx"]}
+  ]
+}

@@ -46,6 +46,127 @@ describe('useComposerAttachments', () => {
 
   afterEach(() => vi.useRealTimers());
 
+  test('an image staged before the engine refused images blocks Send with the refusal', () => {
+    const image: FileAttachment = {
+      id: 'shot',
+      name: 'shot.png',
+      type: 'image/png',
+      size: 5,
+      data: 'data:image/png;base64,aGVsbG8=',
+    };
+    const stage: ComposerAttachmentStageSnapshot = {
+      clientAttachmentId: 'shot',
+      name: 'shot.png',
+      mimeType: 'image/png',
+      size: 5,
+      state: 'complete',
+      progress: 1,
+      delivery: 'staged',
+    };
+    const render = (capabilities: {
+      images: boolean;
+      files: boolean;
+      imageRefusal?: string;
+      imageCaveat?: string;
+    }) =>
+      renderHook(() =>
+        useComposerAttachments({
+          apiBase: 'http://station.test',
+          ownerKey: 'grok',
+          attachments: [image],
+          stages: [stage],
+          capabilities,
+          onAddAttachments: vi.fn(),
+          onStagesChange: vi.fn(),
+        }),
+      ).result.current;
+
+    const refused = render({
+      images: false,
+      files: false,
+      imageRefusal: 'Grok Build reported that it cannot accept images.',
+    });
+    expect(refused.sendBlockedReason).toBe(
+      'Grok Build reported that it cannot accept images.',
+    );
+    expect(refused.attachmentNotice).toBeUndefined();
+
+    const unconfirmed = render({
+      images: true,
+      files: false,
+      imageCaveat: 'Grok Build has not reported whether it accepts images yet.',
+    });
+    expect(unconfirmed.sendBlockedReason).toBeUndefined();
+    expect(unconfirmed.attachmentNotice).toBe(
+      'Grok Build has not reported whether it accepts images yet.',
+    );
+  });
+
+  // The queue reports the capacity refusal and then rejects with the SDK's
+  // coded error; the hook's own catch used to turn it back into `retryable`,
+  // so Retry spun on a login that could never get another stage.
+  test('a full staging capacity stays a failed, explained stage', async () => {
+    let stages: ComposerAttachmentStageSnapshot[] = [];
+    const selected: FileAttachment[] = [];
+    const capacity = Object.assign(
+      new Error('Attachment staging capacity is full.'),
+      { status: 409, code: 'stage_capacity' },
+    );
+    // What the real queue throws after reporting the stage: a codeless
+    // aggregate (attachment-staging-queue.ts).
+    const aggregate = new AggregateError(
+      [capacity],
+      'One or more attachment stages did not complete.',
+    );
+    stageComposerAttachments.mockImplementationOnce(
+      async (_api, files, _signal, update) => {
+        update({
+          clientAttachmentId: files[0].id,
+          state: 'failed',
+          progress: 0,
+          error: capacity.message,
+          capacityFull: true,
+        });
+        throw aggregate;
+      },
+    );
+    readChatAttachmentFiles.mockResolvedValueOnce({
+      attachments: [attachment('sixth')],
+      errors: [],
+    });
+    const hook = renderHook(() =>
+      useComposerAttachments({
+        apiBase: 'http://station.test',
+        ownerKey: 'full',
+        attachments: selected,
+        stages,
+        getCurrentAttachments: () => selected,
+        getCurrentStages: () => stages,
+        capabilities: { images: true, files: true },
+        onAddAttachments: (files) => selected.push(...files),
+        onStagesChange: (value) => {
+          stages = value;
+        },
+      }),
+    );
+    await act(async () => {
+      await hook.result.current.selectFiles([new File(['hello'], 'x.txt')]);
+    });
+    await waitFor(() =>
+      expect(stages).toMatchObject([
+        { clientAttachmentId: 'sixth', state: 'failed', capacityFull: true },
+      ]),
+    );
+    hook.rerender();
+    expect(hook.result.current.sendBlockedReason).toMatch(
+      /Upload limit reached: 5 unsent uploads at a time/,
+    );
+    // The composer hides the block line (and its Remove action) behind any
+    // attachment error, so the generic aggregate sentence must not be one.
+    expect(hook.result.current.error).toBeNull();
+    expect(stages[0]?.error).toBe('Attachment staging capacity is full.');
+  });
+
   test('late upload progress stays with its original chat after the selected composer changes', async () => {
     const records: Record<string, ComposerAttachmentStageSnapshot[]> = {
       a: [],
@@ -501,7 +622,7 @@ describe('useComposerAttachments', () => {
     rerender({ hookStages: stages });
 
     expect(result.current.sendBlockedReason).toBe(
-      'Retry or remove every attachment marked for retry before sending.',
+      'An upload did not finish. Retry it or remove it before sending.',
     );
     expect(stageComposerAttachments).not.toHaveBeenCalled();
     expect(file.data).toBe('data:text/plain;base64,aGVsbG8=');

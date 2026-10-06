@@ -1,0 +1,7 @@
+{
+  "revision": "e56b7b6bf847135adcce152d99112d104542d029",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed settings navigation delta and scope captions against SettingsView. The mobile picker derives existing advertised destinations, and canonical navigate still owns unsaved-route handling. Existing settings persistence/scoping design remains accurate. Executed focused settings suites and mobile/desktop E2E; provider and physical-device behavior NOT_VERIFIED.","inputs":["docs/design/settings-architecture.md"]}
+  ]
+}

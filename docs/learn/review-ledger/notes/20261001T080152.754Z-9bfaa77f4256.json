@@ -1,0 +1,9 @@
+{
+  "revision": "e949589811d0f726ec20b26d6549e4e0dcdb86ce",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Picker type-contract correction only: shared Empty requires a label; the zero-query state now supplies Nothing available. UI scoped typecheck passes after this fix. Filtering, recipients, uncertainty, authority and request behavior are unchanged; no new visual/live acceptance claimed.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Picker type-contract correction only: shared Empty requires a label; the zero-query state now supplies Nothing available. UI scoped typecheck passes after this fix. Filtering, recipients, uncertainty, authority and request behavior are unchanged; no new visual/live acceptance claimed.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { NEEDS_MAINTAINER, NEEDS_REPORTER } from './lifecycle-labels.mjs';
 
@@ -13,6 +14,7 @@ export const EXPECTED_LABEL_NAMES = Object.freeze([
   'P2',
   'P3',
   'acceptance-needed',
+  'advisory-review',
   'agent:claimed',
   'blocked',
   'bug',
@@ -36,6 +38,7 @@ export const EXPECTED_LABEL_NAMES = Object.freeze([
   'stage:preview',
   'stage:source',
   'stage:stable',
+  'station-autoland',
   'wontfix',
 ]);
 export const RETIRED_LABELS = Object.freeze([
@@ -201,7 +204,7 @@ function main(argv = process.argv.slice(2)) {
   }
   assertReconcileAuthority(argv);
   const live = JSON.parse(
-    execFileSync(
+    execFileSyncBounded(
       'gh',
       ['api', '--paginate', `repos/${REPOSITORY}/labels?per_page=100`],
       { encoding: 'utf8' },

@@ -1,0 +1,85 @@
+{
+  "path": "docs/user/native-recovery.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed all public recovery claims against native readiness and renderer-mount callers, 30-second epoch/activation handling, retry-before-restart, home-reset refusal, four-respawn limit, service-versus-sidecar controls and pinned log retention. Actual CLI dispatch distinguishes local checkout prerequisites from packaged target discovery/credential/service observations.",
+
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "packages/cli/src/cli.ts",
+
+    "packages/cli/src/commands/lifecycle-doctor.ts",
+
+    "packages/cli/src/commands/service.ts",
+
+    "packages/cli/src/commands/target-command.ts",
+
+    "scripts/ios-simulator-build.mjs",
+
+    "scripts/run-tauri-shell-e2e.mjs",
+
+    "src-desktop/Cargo.lock",
+
+    "src-desktop/src/bundled_server_state.rs",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/startup_readiness.rs",
+
+    "src-server/index.ts",
+
+    "src-server/runtime/bootstrap/readiness-handshake.ts",
+
+    "src-ui/src/main.tsx",
+
+    "src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx",
+
+    "src-ui/src/platform/native/rendererLiveness.tsx",
+
+    "tests/tauri-shell/plugin-host-security.e2e.ts",
+
+    "src-ui/src/platform/native/NativeRelayEntryBoundary.tsx"
+  ],
+
+  "checks": [
+    "Prior review receipt (not rerun here): 27 tests across four structural/renderer-mock/Node/doc files passed.",
+
+    "Prior review receipt (not rerun here): macOS native context: 10 checks, no failures or skips; availability is not execution.",
+
+    "Prior review receipt (not rerun here): Current/archive GitHub identities checked; native logging correction changes only comments.",
+
+    "Prior review receipt (not rerun here): Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Prior review receipt (not rerun here): The public recovery steps still match native page/ticket plus separate renderer mount, 30-second epoch, ticket reprobe before owned restart, service recovery surface, four automatic respawns and log threshold. Removed unused renderer proof replaced by actual mount reporter and its real main.tsx caller. No native startup, dialog, device or closed-parent proof added.",
+
+    "Prior review receipt (not rerun here): 2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
+
+    "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
+
+    "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
+
+    "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
+
+    "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
+
+    "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
+
+    "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through e0314c727: service.ts gained archive-kind service units and PATH/node-dir resolution (#2867). lib.rs removed the dormant notification watch. isBrokenPipeError became module-private. Service-status-versus-sidecar, readiness/respawn, log retention and EPIPE NOT_VERIFIED claims are still accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 changes cli.ts only by importing `explainFullAccessRefusal` and trying it first in `describeCliError`. The CLI dispatch the recovery page relies on, for local checkout prerequisites versus packaged target discovery, credential and service observations, is unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) only makes parseTsxVersion private in lifecycle-doctor.ts, and the doctor still calls it. The documented recovery, doctor and CLI dispatch behavior is the same. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds an `update` field and line to `station service status` for launcher-run archives; rendererLiveness.test.tsx (#2919) adds per-desktop-platform mount-commit cases; the doc's status/identity and renderer-mount claims and its NOT_VERIFIED rows are unchanged in meaning; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

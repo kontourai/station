@@ -82,7 +82,7 @@
  * ancestry refusal, or three failed attempts (each named loudly).
  */
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,6 +90,7 @@ import {
   DEPLOY_LEDGER_JSON_PATH,
   DEPLOY_LEDGER_MD_PATH,
 } from '../deploy-ledger.mjs';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import { invokedDirectly } from './module-entry.mjs';
 
 export const LEDGER_COMMIT_MAX_ATTEMPTS = 3;
@@ -113,7 +114,7 @@ function runGit(args, { repoRoot, env, allowFailure = false }) {
     ).toString('base64')}`;
   }
   try {
-    return execFileSync('git', args, {
+    return execFileSyncBounded('git', args, {
       cwd: repoRoot,
       encoding: 'utf8',
       env: gitEnv,

@@ -1,6 +1,9 @@
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { describe, expect, test } from 'vitest';
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { resolveCodexMcpServers } from '../adapters/codex-mcp-passthrough.js';
 
 function toolServer(
@@ -16,6 +19,44 @@ function toolServer(
 }
 
 describe('resolveCodexMcpServers', () => {
+  test('delivers Knowledge with its own URL and refuses missing Knowledge auth', () => {
+    const knowledge = toolServer({
+      id: 'station-knowledge',
+      command: 'node',
+      args: [builtinStationKnowledgeServerPath()],
+      allowedTools: [],
+    });
+    const missing = resolveCodexMcpServers(
+      [knowledge],
+      'http://127.0.0.1:41031/mcp/station-control?token=control',
+    );
+    expect(missing.deliveredIds).toEqual([]);
+    const result = resolveCodexMcpServers(
+      [knowledge],
+      undefined,
+      'http://127.0.0.1:41031/mcp/station-knowledge?token=knowledge',
+    );
+    expect(result.deliveredIds).toEqual(['station-knowledge']);
+    expect(result.configArgs).toContain(
+      'mcp_servers.station-knowledge.enabled_tools=[]',
+    );
+    expect(result.configArgs.join(' ')).not.toContain('station-control');
+  });
+
+  test('delivers exact and empty tool selections to Codex', () => {
+    for (const allowedTools of [['read'], []]) {
+      const result = resolveCodexMcpServers([
+        toolServer({ allowedTools, disabledTools: ['write'] }),
+      ]);
+      expect(result.configArgs).toContain(
+        `mcp_servers.weather.enabled_tools=[${allowedTools.map((name) => `"${name}"`).join(', ')}]`,
+      );
+      expect(result.configArgs).toContain(
+        'mcp_servers.weather.disabled_tools=["write"]',
+      );
+    }
+  });
+
   test('maps a stdio tool server to -c mcp_servers.<id>.command/.args config args', () => {
     const result = resolveCodexMcpServers([toolServer()]);
     expect(result.skipped).toEqual([]);

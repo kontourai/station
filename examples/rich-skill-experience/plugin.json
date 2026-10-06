@@ -1,0 +1,51 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "rich-skill-experience",
+  "version": "1.1.0",
+  "description": "Independent isolated pane for an original adaptive interview Skill.",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "experiences": [
+        {
+          "version": "1.0",
+          "id": "stress-test-idea",
+          "source": "./io.kontourai.station/experiences/stress-test-idea.json"
+        }
+      ],
+      "entrypoint": "./src/index.ts",
+      "permissions": ["agents.invoke"],
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Arich-skill-experience:interview:review",
+          "name": "Interview review",
+          "rendererId": "renderer:plugin%3Arich-skill-experience:plugin-component:interview-review",
+          "renderer": {
+            "kind": "plugin-component",
+            "name": "interview-review"
+          },
+          "placement": {
+            "supportedRegions": ["primary"],
+            "preferredRegion": "primary"
+          },
+          "modes": [
+            {
+              "id": "default",
+              "contextRequirement": {
+                "project": true
+              }
+            }
+          ],
+          "provenance": {
+            "origin": "plugin",
+            "pluginId": "rich-skill-experience"
+          },
+          "lifecycle": {
+            "stage": "stable"
+          }
+        }
+      ]
+    }
+  }
+}

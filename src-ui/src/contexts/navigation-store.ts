@@ -15,6 +15,7 @@ import {
   parseOpenFilePreviewIntent,
   serializeOpenFilePreviewIntent,
 } from '../workspace-panes/openFilePreviewIntent';
+import { MAIN_PAGE_HISTORY_KEY } from './main-page-history';
 import { parseSurfaceDeepLink } from './surface-deep-link';
 
 /** An exact temporary return location, owned and restored by this navigator. */
@@ -52,6 +53,13 @@ export type NavigationState = {
   activeWorkspacePaneScope: string | null;
   /** One exact, route-owned File Preview request. Consumers clear it after host admission. */
   openFilePreviewIntent: OpenFilePreviewIntent | null;
+  /**
+   * Who wrote the current preview intent: `pane` when the Files pane wrote
+   * it for its own row (it opens its own preview, so no position should
+   * open another), `link` for everything else — a transcript link, a
+   * session panel's file, a shared or reloaded URL (#3040 round 4).
+   */
+  openFilePreviewIntentFrom: 'pane' | 'link';
   /** One exact shell-owned surface reveal request. The region model clears it after adoption. */
   surfaceIntent: SurfaceDeepLinkIntent | null;
   isDockOpen: boolean;
@@ -64,6 +72,21 @@ const LAST_PROJECT_KEY = 'lastProject';
 export const LAST_PROJECT_LAYOUT_KEY = 'lastProjectLayout';
 const LAYOUT_TAB_MEMORY_KEY = 'station-layout-tabs';
 const NAVIGATION_INDEX_KEY = '__stationNavigationIndex';
+/**
+ * How many history entries' locations the store remembers (`entryLocations`).
+ * Enough for any Back/Forward control to answer "is the adjacent entry one of
+ * mine?"; bounded so a long session does not grow it without limit.
+ */
+const MAX_REMEMBERED_ENTRY_LOCATIONS = 64;
+
+/**
+ * The navigation entry a history state belongs to. A same-URL layer pushed by
+ * copying the state it lands on (a dialog's Back marker) carries the index of
+ * the entry beneath it, so two states with one index are one entry.
+ */
+export function navigationEntryIndex(value: unknown): number | undefined {
+  return historyIndex(value);
+}
 
 function historyIndex(value: unknown): number | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -100,6 +123,7 @@ function getDefaultNavigationState(): NavigationState {
     activeWorkspacePane: null,
     activeWorkspacePaneScope: null,
     openFilePreviewIntent: null,
+    openFilePreviewIntentFrom: 'link',
     surfaceIntent: null,
     isDockOpen: false,
     isDockMaximized: false,
@@ -188,6 +212,19 @@ function closedDockNeverMaximized(
   return params.dock === null ? { ...params, maximize: null } : params;
 }
 
+function sameOpenFilePreviewIntent(
+  a: OpenFilePreviewIntent | null,
+  b: OpenFilePreviewIntent | null,
+): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.projectSlug === b.projectSlug &&
+    a.path === b.path &&
+    a.lineRange?.start === b.lineRange?.start &&
+    a.lineRange?.end === b.lineRange?.end
+  );
+}
+
 class NavigationStore {
   private state!: NavigationState;
   private listeners = new Set<() => void>();
@@ -200,6 +237,38 @@ class NavigationStore {
   private restoringPop = false;
   private replayingPop = false;
   private pendingPopDelta: number | undefined;
+  /**
+   * True from the moment a guarded traversal is being travelled back
+   * (`history.go(-delta)`) until that bounce lands. The entry the browser is
+   * on meanwhile is one the user has not been admitted to: a `popstate`
+   * listener that acts on an entry's state must not act on this one.
+   */
+  get traversalAwaitsGuard(): boolean {
+    return this.restoringPop;
+  }
+  private departedHistoryIndex = 0;
+  /**
+   * The navigation index of the entry the traversal being handled LEFT. The
+   * store's index is the live entry's at every moment — `navigate`, a
+   * collapsed dialog layer's adoption and each traversal all move it — so
+   * this is read at the top of the handler, before the landing moves it. A
+   * listener registered after the store's compares it with the landed
+   * entry's index to tell a move between entries from a move within one (a
+   * dialog layer shares the index of the entry beneath it).
+   */
+  get traversalDepartedIndex(): number {
+    return this.departedHistoryIndex;
+  }
+  /**
+   * The location of each history entry this page load has observed, keyed by
+   * the store's own entry index. The browser exposes only the CURRENT entry's
+   * URL, so an in-app Back/Forward control that must know whether the
+   * adjacent entry belongs to its own view (`adjacentLocation`) can only ask
+   * the store that wrote the entries. Bounded (`MAX_REMEMBERED_ENTRY_LOCATIONS`,
+   * farthest from the current entry evicted first) and in memory only: after
+   * a reload the neighbours are unknown, which callers treat as "not mine".
+   */
+  private readonly entryLocations = new Map<number, NavigationLocation>();
   private readonly navigationGuardOwners = new Map<symbol, string>();
   /** Whether any registered guard protects `owner`'s content (it is dirty). */
   hasNavigationGuard(owner: string): boolean {
@@ -268,6 +337,9 @@ class NavigationStore {
           window.location.href,
         );
       }
+      // The first commit above ran before the index was known.
+      this.entryLocations.clear();
+      this.rememberEntryLocation();
       window.addEventListener('popstate', this.handlePopState);
       // This store owns navigation indices; `dialog-history` owns the dialog
       // layer. Installed rather than called because the dependency runs that
@@ -303,6 +375,43 @@ class NavigationStore {
     this.navigationHref = href;
     this.state = state;
     if (state.isDockMaximized) this.lastDockMaximized = true;
+    this.rememberEntryLocation();
+  }
+
+  private rememberEntryLocation() {
+    if (typeof window === 'undefined') return;
+    this.entryLocations.set(this.historyIndex, {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    });
+    while (this.entryLocations.size > MAX_REMEMBERED_ENTRY_LOCATIONS) {
+      let farthest: number | undefined;
+      for (const index of this.entryLocations.keys()) {
+        if (
+          farthest === undefined ||
+          Math.abs(index - this.historyIndex) >
+            Math.abs(farthest - this.historyIndex)
+        )
+          farthest = index;
+      }
+      if (farthest === undefined) break;
+      this.entryLocations.delete(farthest);
+    }
+  }
+
+  /** The store's index for the current history entry (monotonic per push). */
+  getHistoryIndex(): number {
+    return this.historyIndex;
+  }
+
+  /**
+   * The location of the entry `delta` steps from the current one, when this
+   * page load has observed it; null when it has not (a reload, an entry
+   * another origin wrote, or nothing there). A push truncates the forward
+   * entries, so a forward neighbour is only ever one this store still owns.
+   */
+  adjacentLocation(delta: -1 | 1): NavigationLocation | null {
+    return this.entryLocations.get(this.historyIndex + delta) ?? null;
   }
 
   /**
@@ -330,6 +439,7 @@ class NavigationStore {
   };
 
   private handlePopState = (event: PopStateEvent) => {
+    this.departedHistoryIndex = this.historyIndex;
     const targetIndex = historyIndex(event.state);
     if (targetIndex !== undefined && targetIndex !== this.historyIndex)
       this.navigationGeneration = {};
@@ -418,6 +528,12 @@ class NavigationStore {
       return;
     }
 
+    // A same-URL traversal between two entries of this store's own (`main`'s
+    // page entries, #2986) is still a move along the stack: without this the
+    // index stays on the entry left, and the next guarded Back computes its
+    // restore delta from the wrong place. A dialog layer shares the index of
+    // the entry beneath it, so for that traversal this assigns what it had.
+    if (targetIndex !== undefined) this.historyIndex = targetIndex;
     this.commitState(newState);
   };
 
@@ -466,6 +582,7 @@ class NavigationStore {
       }
     }
 
+    const previewIntent = parseOpenFilePreviewIntent(selectedProject, params);
     return {
       pathname,
       selectedAgent,
@@ -489,10 +606,20 @@ class NavigationStore {
           ? scope
           : null;
       })(),
-      openFilePreviewIntent: parseOpenFilePreviewIntent(
-        selectedProject,
-        params,
-      ),
+      openFilePreviewIntent: previewIntent,
+      // A writer names itself for the parse its write causes, and the name
+      // stays with that intent through later parses that keep it (a pane
+      // selection written beside it); a new or re-read intent (a popstate,
+      // a reload) is a link's.
+      openFilePreviewIntentFrom:
+        this.nextPreviewIntentFrom ??
+        (this.state &&
+        sameOpenFilePreviewIntent(
+          this.state.openFilePreviewIntent,
+          previewIntent,
+        )
+          ? this.state.openFilePreviewIntentFrom
+          : 'link'),
       surfaceIntent: parseSurfaceDeepLink(params),
       isDockOpen: params.get('dock') === 'open',
       isDockMaximized: params.get('maximize') === 'true',
@@ -543,6 +670,26 @@ class NavigationStore {
         this.historyIndex = nextIndex;
       },
     };
+  }
+
+  /**
+   * A synchronous read for a caller that must not open the async
+   * confirm-and-continue flow `navigate()` runs when a guard is registered
+   * for the SAME target (kontourai/station#1418, #1419: a plugin-command
+   * navigation settles `aborted` with a notice instead of prompting, so the
+   * local effect stays one synchronous step).
+   *
+   * Shares the exact predicate `navigate()` itself uses to decide whether to
+   * consult guards at all, extracted here so the two cannot drift (#1418/
+   * #1419 review, MEDIUM: a caller that asked "is any guard registered,
+   * anywhere" over-aborted for a same-pathname target navigate() would have
+   * let straight through, and for a `showSurface` destination navigate()
+   * never even runs for).
+   */
+  wouldNavigationGuardBlock(pathname: string): boolean {
+    if (this.navigationGuards.size === 0) return false;
+    const target = parseNavigationTarget(pathname, window.location.href);
+    return target.pathname !== window.location.pathname;
   }
 
   /**
@@ -695,17 +842,20 @@ class NavigationStore {
       .catch(() => false);
   }
 
-  navigate(pathname: string, params?: Record<string, string | null>) {
+  navigate(
+    pathname: string,
+    params?: Record<string, string | null>,
+    options?: { preserveChatProjectDefault?: boolean },
+  ) {
     const target = parseNavigationTarget(pathname, window.location.href);
     if (
       !this.navigationGuardBypass &&
-      target.pathname !== window.location.pathname &&
-      this.navigationGuards.size > 0
+      this.wouldNavigationGuardBlock(pathname)
     ) {
       this.runNavigationGuards(() => {
         this.navigationGuardBypass = true;
         try {
-          this.navigate(pathname, params);
+          this.navigate(pathname, params, options);
         } finally {
           this.navigationGuardBypass = false;
         }
@@ -802,9 +952,27 @@ class NavigationStore {
     // cleanup treat the destination as its own marker and immediately Back
     // out of the navigation (observed from New Chat's Connect repair).
     delete nextHistoryState[DIALOG_HISTORY_KEY];
+    // Likewise `main`'s page stamp: it says what the entry being LEFT showed.
+    // The region model stamps the destination itself when it is `/`.
+    delete nextHistoryState[MAIN_PAGE_HISTORY_KEY];
     window.history.pushState(nextHistoryState, '', url.toString());
     this.historyIndex = nextIndex;
-    this.commitState(this.parseUrl(), true);
+    // A push discards every forward entry the browser held.
+    for (const index of [...this.entryLocations.keys()])
+      if (index > nextIndex) this.entryLocations.delete(index);
+    const next = this.parseUrl();
+    const previousProject = this.state.selectedProject;
+    this.commitState(next, true);
+    if (
+      !options?.preserveChatProjectDefault &&
+      next.selectedProject &&
+      (next.selectedProject !== previousProject ||
+        (target.pathname === `/projects/${next.selectedProject}` &&
+          !target.search &&
+          !params))
+    ) {
+      deviceSettingsStore.set('chatDockProjectSlug', next.selectedProject);
+    }
     this.notify();
     window.dispatchEvent(new PopStateEvent('popstate'));
     this.isNavigating = false;
@@ -896,10 +1064,18 @@ class NavigationStore {
     this.navigate(`/projects/${slug}`);
   }
 
+  /** See `NavigationState.openFilePreviewIntentFrom`; null outside `setLayout`. */
+  private nextPreviewIntentFrom: 'pane' | 'link' | null = null;
+
   setLayout(
     projectSlug: string,
     layoutSlug: string,
-    options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+    options?: {
+      openFilePreviewIntent?: OpenFilePreviewIntent;
+      /** The Files pane's own row write; absent for any other writer. */
+      from?: 'pane';
+      preserveChatProjectDefault?: boolean;
+    },
   ) {
     this.lastProject = projectSlug;
     this.lastProjectLayout = layoutSlug;
@@ -914,7 +1090,8 @@ class NavigationStore {
       : null;
     // A plain layout switch clears every File Preview query field. The routed
     // Project identity is authoritative, so a mismatched intent is not emitted.
-    this.navigate(rememberedTab ? `${base}/${rememberedTab}` : base, {
+    const pathname = rememberedTab ? `${base}/${rememberedTab}` : base;
+    const previewFields = {
       previewPath:
         options?.openFilePreviewIntent?.projectSlug === projectSlug
           ? (previewParams?.previewPath ?? null)
@@ -927,7 +1104,38 @@ class NavigationStore {
         options?.openFilePreviewIntent?.projectSlug === projectSlug
           ? (previewParams?.previewLineEnd ?? null)
           : null,
-    });
+    };
+    // Choosing a file in the layout already on screen is a row selection,
+    // not a page: the fields are written in place. The page change, where
+    // there is one, is the pane host's own selection write — a pushed
+    // drill-in below the Coding layout's wide fold, a replaced side panel
+    // past it (#3040) — and a selection that also pushed here made Back step
+    // through the chosen file before the pane it opened.
+    this.nextPreviewIntentFrom = options?.openFilePreviewIntent
+      ? (options.from ?? 'link')
+      : null;
+    try {
+      if (
+        options?.openFilePreviewIntent &&
+        pathname === window.location.pathname
+      ) {
+        this.updateParams(previewFields);
+        // The same intent written again by another writer changes no URL
+        // field, only whose intent it is.
+        const from = options.from ?? 'link';
+        if (
+          this.state.openFilePreviewIntent &&
+          this.state.openFilePreviewIntentFrom !== from
+        ) {
+          this.state = { ...this.state, openFilePreviewIntentFrom: from };
+          this.notify();
+        }
+        return;
+      }
+      this.navigate(pathname, previewFields, options);
+    } finally {
+      this.nextPreviewIntentFrom = null;
+    }
   }
 
   setConversation(id: string | null) {

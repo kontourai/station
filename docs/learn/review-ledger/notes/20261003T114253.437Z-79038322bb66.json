@@ -1,0 +1,7 @@
+{
+  "revision": "5fbf250d4a967a71b0d5e6544d6680cc66797735",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed removal of two unused UI-local forwarding exports after code-health refusal. SkillExperiencePanel, NewChatModal and messaging import defaults/input errors from the canonical shared values leaf; the rendered Form continues to own bounded scalar fields and supervised attachment-role choices. This component is not a public SDK entrypoint. No form behavior, cached intent, source validation, permissions or execution path changed. Controlled two-file owner evidence passed118cases; measured normalized and raw initial UI gzip sizes exactly matched frozen dbc. Real browser/native receipts keep their dbc source binding; this is an export-only final delta.","inputs":["docs/reference/skill-experiences.md"]}
+  ]
+}

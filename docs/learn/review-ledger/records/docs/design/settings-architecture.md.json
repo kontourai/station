@@ -1,0 +1,29 @@
+{
+  "path": "docs/design/settings-architecture.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Read the full design, separating the dated problem inventory/target slices from current implementation. Checked registry descriptors, three Project overrides, provenance-only GET scope, independent Save writes, device migration ownership and canonical reveal behavior. Corrected the inert Knowledge flag claim and replaced the obsolete example with an actual registry entry.",
+
+  "limits": "Historical comparative research and slice acceptance remain dated; the target model is not a claim that every setting, migration or physical-platform interaction was exercised anew.",
+
+  "sources": [
+    "src-ui/src/views/settings/settings-pages.ts"
+  ],
+
+  "checks": [
+    "Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
+
+    "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
+
+    "Reviewed source changes: Knowledge flag help now states its actual missing-root creation behavior; default and visibility unchanged. Bootstrap, registry and generator tests passed (41 tests). Hidden-field generated settings bytes unchanged. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
+
+    "Current registry/route/save owners inspected, with prior settings deep-link and configuration fixture results retained in their canonical records.",
+
+    "Reviewed integration deltas: src-ui/src/views/settings/settings-catalog.ts: Removed test-only visibleCatalogIds helper; actual Settings catalog and palette projection are unchanged; tests now own their expected-ID fixture.",
+
+    "Integration source review through d72f79b08: #2904 added a `defaultApprovalMode` row to config.md, covering its full-access authority and the 403 approval-full-access-not-granted refusal. The CLI's parseFullEnvelope in config.ts now keeps the envelope code, status and details. The config route returns fullAccessRefusal(). The design does not describe defaultApprovalMode or refusal shapes. Its dated problem inventory, including the #175 'config set bypasses the route' item that line 309 records as closed, is still correctly framed as history. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "d319716f502c6cc59248a5dc82d3bb68643f1765",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed RegionPaneHost.project fixture at d319716f50: Project navigation intentionally sets the default chat Project, so the test now restores the deleted saved binding after the route transition. It still mounts Terminal beside no Chat through the real region/navigation/device stores, verifies route-Project fallback, and verifies that reading the fallback does not mutate the stale binding. Maintained owner suites passed24/24, including discard through the mobile details sheet and composer reply helper controls. The placement design contract remains unchanged; no new physical geometry or native receipt is claimed.","inputs":["docs/design/placement.md"]}
+  ]
+}

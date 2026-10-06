@@ -1,0 +1,29 @@
+{
+  "path": "docs/design/motion.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Motion grammar and structural enforcement with historical evidence; exact reduced-motion duration and three-declaration/two-file exception scope corrected.",
+
+  "limits": "No fresh latency/screenshot/computed-motion/device proof; structural ratchet is not visual or accessibility certification.",
+
+  "sources": [
+    "scripts/motion-contract-baseline.json",
+
+    "scripts/motion-contract-ratchet.mjs",
+
+    "src-ui/src/components/notifications/NotificationHistory.css",
+
+    "src-ui/src/components/voice/VoicePill.css",
+
+    "src-ui/src/tokens.css"
+  ],
+
+  "checks": [
+    "Full body read; bounded actual-owner/caller inspection. Purpose classification, not whole-document semantic certification.",
+
+    "Detailed exception rationale and all recorded route/screenshot evidence preserved."
+  ]
+}

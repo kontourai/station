@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-read the wide-fold and audit-round sections against the merged tree: ProjectLayoutRenderer (replace selection, Browser ordinal), ChatDock (Needs-you publication), navigation-store (in-place preview write, writer marker, preserveChatProjectDefault merged in), device-settings contract/store (codingPanels record), workspacePaneHostController (replace mode), and FilePreviewPane's head-slot treatment, which the audit-round bullet now describes as built rather than left for #3115.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/contexts/navigation-store.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

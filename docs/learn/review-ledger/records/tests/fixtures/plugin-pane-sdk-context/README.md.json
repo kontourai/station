@@ -1,0 +1,27 @@
+{
+  "path": "tests/fixtures/plugin-pane-sdk-context/README.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "Manifest declares the test-only Pane without global actions/default Agent/execution authority. Renderer reads public Agent/navigation/toast/plugin identity contexts. The owning E2E source uses real preview-consent-install helpers and direct/placed Project occurrences; it does not migrate examples.",
+
+  "limits": "The installed browser journey was source-inspected, not executed in this audit. No first-party example migration, physical device proof, provider execution, or completed issue status is inferred.",
+
+  "sources": [
+    "tests/fixtures/plugin-pane-sdk-context/plugin.json",
+
+    "tests/fixtures/plugin-pane-sdk-context/src/index.tsx",
+
+    "tests/helpers/install-plugin.ts",
+
+    "tests/plugin-pane-sdk-context.spec.ts"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+  ]
+}

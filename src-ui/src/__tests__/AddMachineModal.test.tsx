@@ -143,7 +143,9 @@ describe('AddMachineModal', () => {
     expect(screen.getByLabelText(/Station application address/)).toBeTruthy();
     expect(screen.getByLabelText(/Broker address/)).toBeTruthy();
     expect(
-      screen.getByText(/The profile stores no broker credential/),
+      screen.getByText(
+        'Save connection details. Access is approved separately.',
+      ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Save route' })).toBeTruthy();
   });

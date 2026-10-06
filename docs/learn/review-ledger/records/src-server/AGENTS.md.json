@@ -1,0 +1,57 @@
+{
+  "path": "src-server/AGENTS.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Routes to module-map/development/testing owners. Preserves route/domain boundaries, logger and Windows launch requirements, request-local batching, and yielding installed-package integrity observations. The current integrity owner serializes scans and joins only a queued observation starting after arrival.",
+
+  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. Flow artifact-root and batch advice is a routing/invariant classification, not a fresh whole-request performance measurement. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"},\"theirs\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"}},{\"path\":\"docs/guides/testing.md\",\"ours\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"53af26e5853101d07b3c331f1ce1bca2ca6e5c19555f7d0045cca9a9483b052b\",\"revision\":\"26c576127006fc775278e3da2eea0ab23bc9e90c\"},\"theirs\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"902de42cb6b02cd3d60c995390eefb4bd41aa87db1856af4cb6b24216dfdda05\",\"revision\":\"b0584a1db91f7155b3b0f2714d6ad46e43767531\"},\"active\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"902de42cb6b02cd3d60c995390eefb4bd41aa87db1856af4cb6b24216dfdda05\",\"revision\":\"b0584a1db91f7155b3b0f2714d6ad46e43767531\"}}]",
+
+  "sources": [
+    "docs/architecture/module-map.md",
+
+    "docs/guides/development.md",
+
+    "docs/guides/testing.md",
+
+    "src-server/services/evidence/workflow-sidecar-service.ts",
+
+    "src-server/services/plugins/plugin-content-integrity.ts"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged.",
+
+    "Reviewed Browser/Device owner additions and links; existing instruction routing and earlier bounded claims remain intact.",
+
+    "Reviewed the architecture rewrite and added shortcut owner as routing dependencies; existing bounded purpose/claims preserved.",
+
+    "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
+
+    "Reviewed source changes: All73 documented module sections were reviewed against implementation and real callers; instruction files still use this map as their source route. Reviewed frozen upstream portable/channel/native setup changes and current owned commands; server instruction links remain current. Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner. Independent plugin acquisition delta review distinguished plain-copy Git-metadata filtering from the unchanged tree-digest encoding; yielding content checks remain the server instruction contract.",
+
+    "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged. Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map removed the CollaborativeEditorPane and PluginForegroundRuns entries. This policy file routes to the module map generally and names neither module, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "The development guide delta only names two more ci:fast invariant groups; the linked development guidance this file routes to is otherwise unchanged."
+  ]
+}

@@ -132,7 +132,7 @@ describe('tool call toasts', () => {
     },
   );
 
-  test('a failed tool call raises one toast naming the tool and the reason', () => {
+  test('a failed tool call does not raise a toast', () => {
     startTurn('turn-1');
     emit({
       method: 'tool.completed',
@@ -143,9 +143,7 @@ describe('tool call toasts', () => {
       status: 'error',
       error: 'Permission denied',
     });
-    expect(toastCards()).toHaveLength(1);
-    expect(screen.getByText('Dev Agent failed shell exec')).toBeTruthy();
-    expect(screen.getByText('Permission denied')).toBeTruthy();
+    expect(toastCards()).toHaveLength(0);
   });
 });
 
@@ -161,7 +159,7 @@ describe('end-of-turn toasts', () => {
     const snippet = screen.getByText(/^Done I renamed loginUser to signIn/);
     expect(snippet.textContent?.length).toBeLessThanOrEqual(100);
     expect(snippet.textContent?.endsWith('…')).toBe(true);
-    expect(screen.getByText('“Refactor auth”')).toBeTruthy();
+    expect(screen.getByText('Refactor auth')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(navigationStore.getSnapshot().activeChat).toBe(BG);

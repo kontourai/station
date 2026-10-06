@@ -1,6 +1,9 @@
 import type { CommandRunner, ServiceRegistration } from './service.js';
 import { LAUNCHD_INTERACTIVE_PROCESS_TYPE } from './service-launchd.js';
-import { WINDOWS_INTERACTIVE_TASK_PRIORITY } from './service-windows.js';
+import {
+  WINDOWS_TASK_SETTINGS_EXPECTED,
+  windowsTaskSettingsObservation,
+} from './service-windows.js';
 import {
   encodePowerShellCommand,
   windowsSystemUtilityPath,
@@ -207,7 +210,11 @@ function windowsSchedulingPolicy(
   registration: ServiceRegistration,
   run: CommandRunner,
 ): ServiceSchedulingPolicy {
-  const expected = `Priority=${WINDOWS_INTERACTIVE_TASK_PRIORITY}`;
+  // Priority, execution time limit, battery rules and restart-on-failure are
+  // all set after
+  // `schtasks /Create` (#2970). A task registered by an earlier version keeps
+  // Task Scheduler's defaults until it is reinstalled, so report it stale.
+  const expected = WINDOWS_TASK_SETTINGS_EXPECTED;
   if (!registration.taskName) {
     return unknown(
       expected,
@@ -218,7 +225,7 @@ function windowsSchedulingPolicy(
     JSON.stringify({ taskName: registration.taskName }),
     'utf8',
   ).toString('base64');
-  const program = `$ErrorActionPreference = 'Stop'; $request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json; $task = Get-ScheduledTask -TaskName $request.taskName.TrimStart('\\') -TaskPath '\\'; [int]$task.Settings.Priority`;
+  const program = `$ErrorActionPreference = 'Stop'; $request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json; $task = Get-ScheduledTask -TaskName $request.taskName.TrimStart('\\') -TaskPath '\\'; ${windowsTaskSettingsObservation('$task.Settings')}`;
   const result = run(windowsSystemUtilityPath('powershell'), [
     '-NoProfile',
     '-NonInteractive',
@@ -231,14 +238,18 @@ function windowsSchedulingPolicy(
       result.error?.message ?? result.stderr?.trim() ?? `exit ${result.status}`,
     );
   }
-  const priority = result.stdout?.match(/^\s*(\d+)\s*$/u)?.[1];
-  if (priority === undefined) {
+  const observed = result.stdout?.trim();
+  if (
+    observed === undefined ||
+    !/^Priority=\d+, ExecutionTimeLimit=\S*, RestartCount=\d+, RestartInterval=\S*, DisallowStartIfOnBatteries=(?:True|False), StopIfGoingOnBatteries=(?:True|False)$/u.test(
+      observed,
+    )
+  ) {
     return unknown(
       expected,
-      new Error('Task Scheduler priority could not be parsed'),
+      new Error('Task Scheduler settings could not be parsed'),
     );
   }
-  const observed = `Priority=${priority}`;
   return {
     expected,
     observed,

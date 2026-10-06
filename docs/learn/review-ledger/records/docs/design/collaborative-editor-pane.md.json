@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/collaborative-editor-pane.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Historical design for the deleted pure collaborative editor controller (#2900), marked not shipped. Only the server-owned editing capability remains current; the shipped Task path is ProjectTaskRoom.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "sources": [
+    "src-server/domain/shared-working-state-editing.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
+    "src-ui/src/workspace-panes/TaskRoomEditorPane.tsx"
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
+
+    "Reviewed integration deltas: Completed controller contract and current Task caller review, preserving bounds, privacy, watch/follow and contradiction handling; distinguished retained pure controller from removed React renderer. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+
+    "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through e0314c727: batch 66 (#2900) deleted src-shared/collaborative-editor-pane.ts and its test, and this branch's e0314c727 already retitled the page 'not shipped'. Added an explicit statement that the body records the deleted controller's design and that only the server editing capability is current. Corrected the retained-capability sentence to the real `transformSelection` behavior (maps the selection into the projected text, `unavailable` on a stale revision) instead of controller `displayText` coordinates. Source review is separate from executed test evidence."
+  ]
+}

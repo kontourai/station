@@ -1,3 +1,8 @@
+import type {
+  SkillExperienceDefinitionV1,
+  SkillExperienceIdentityV1,
+  SkillExperienceInventoryV1,
+} from '@kontourai/station-contracts/skill-experience';
 import { errorMessage } from '../../utils/error-message.js';
 import type { PluginActivationComposition } from '../plugins/plugin-activation-composition.js';
 /**
@@ -454,6 +459,77 @@ export class SkillPublicationIndeterminateError extends Error {
 }
 
 export class SkillService {
+  private experienceExecution = false;
+  enableExperienceExecution(): void {
+    this.experienceExecution = Boolean(this.experienceSource);
+  }
+  private readonly experienceSource?: <T>(
+    identity: SkillExperienceIdentityV1,
+    effect: (
+      definition: SkillExperienceDefinitionV1,
+      content: string,
+    ) => Promise<T>,
+    permission?: 'agents.invoke',
+  ) => Promise<T>;
+  async withSkillExperience<T>(
+    identity: SkillExperienceIdentityV1,
+    effect: (
+      definition: SkillExperienceDefinitionV1,
+      content: string,
+    ) => Promise<T>,
+    permission?: 'agents.invoke',
+  ): Promise<T> {
+    if (
+      !this.experienceSource ||
+      !(await this.listSkillExperiences()).experiences.some((entry) =>
+        Object.keys(entry.identity).every(
+          (key) =>
+            entry.identity[key as keyof SkillExperienceIdentityV1] ===
+            identity[key as keyof SkillExperienceIdentityV1],
+        ),
+      )
+    )
+      throw new Error(
+        'The selected Skill experience is unavailable in the current scope.',
+      );
+    return this.experienceSource(identity, effect, permission);
+  }
+  private readonly experienceInventory?: () => Promise<SkillExperienceInventoryV1>;
+
+  async listSkillExperiences(): Promise<SkillExperienceInventoryV1> {
+    const inventory = (await this.experienceInventory?.()) ?? {
+      experiences: [],
+      diagnostics: [],
+    };
+    const experiences = inventory.experiences.filter((entry) => {
+      const matches = entry.definition.skills.every((skill) => {
+        const registered = this.registry.get(skill.name);
+        const source = this.canonicalSourceFor(registered?.location);
+        return (
+          source?.label === `agent-plugin:${entry.identity.pluginId}` &&
+          source.version === entry.identity.pluginVersion &&
+          source.packageRevision?.incarnation === entry.identity.incarnation &&
+          source.packageRevision.materialization ===
+            entry.identity.materialization &&
+          source.packageRevision.contentDigest === entry.identity.contentDigest
+        );
+      });
+      if (!matches)
+        inventory.diagnostics.push({
+          pluginId: entry.identity.pluginId,
+          code: 'unavailable',
+          message: `${entry.definition.title}: a required bundled Skill is unavailable or overridden in the current scope.`,
+        });
+      return matches;
+    });
+    return {
+      experiences,
+      diagnostics: inventory.diagnostics,
+      ...(this.experienceExecution
+        ? { executionContract: '1.0' as const }
+        : {}),
+    };
+  }
   private registry = new Map<string, RegisteredSkill>();
   /** Read-only package-contributed skill roots (e.g. flow-agents, S3). */
   private readonly canonicalSourceProvider: (
@@ -517,6 +593,8 @@ export class SkillService {
             composition?: PluginActivationComposition,
           ) => CanonicalSkillSource[]);
       usage?: SkillUsageService;
+      experienceSource?: SkillService['experienceSource'];
+      experienceInventory?: () => Promise<SkillExperienceInventoryV1>;
       /**
        * Plugin-contributed command skills, scanned IN PLACE as read-only
        * entries. Absent means only the on-disk roots are discovered.
@@ -533,6 +611,8 @@ export class SkillService {
       >;
     } = {},
   ) {
+    this.experienceInventory = options.experienceInventory;
+    this.experienceSource = options.experienceSource;
     const canonicalSources = options.canonicalSources;
     this.canonicalSourceProvider =
       typeof canonicalSources === 'function'
@@ -2326,22 +2406,93 @@ export class SkillService {
     name: string,
     projectHomeDir: string,
     projectSlug?: string,
+    expectedInstalledRevision?: string,
+    canUseSource?: (
+      source: import('@kontourai/station-contracts/catalog').RegistrySource,
+    ) => boolean,
   ): Promise<{ success: boolean; message: string }> {
     skillOps.add(1, { operation: 'install' });
-    const { getSkillRegistryProviders } = await import(
-      '../../providers/registries/registry.js'
+    const {
+      readRegistryCatalogSelection,
+      registrySourceManager,
+      RegistryCatalogRefusal,
+    } = await import('../../providers/registries/registry-source-manager.js');
+    const selection = readRegistryCatalogSelection(name);
+    if (selection) {
+      if (selection.kind !== 'skills')
+        throw new Error('Selected catalog item is not a skill.');
+      const manager = registrySourceManager(projectHomeDir);
+      const source = manager
+        .list()
+        .find((source) => source.id === selection.sourceId);
+      if (source && canUseSource?.(source) === false)
+        throw new RegistryCatalogRefusal(
+          'source-forbidden',
+          'Selected marketplace is not available to this caller.',
+        );
+      const resolved = await manager.resolve(name);
+      if (canUseSource?.(resolved.entry.source) === false)
+        throw new RegistryCatalogRefusal(
+          'source-forbidden',
+          'Selected marketplace is not available to this caller.',
+        );
+      return installSkillFromRegistry({
+        name: selection.itemId,
+        projectHomeDir,
+        projectSlug,
+        configLoader: this.configLoader,
+        providers: [
+          {
+            provider: resolved.entry
+              .provider as import('../../providers/provider-interfaces.js').ISkillRegistryProvider,
+          },
+        ],
+        selected: {
+          catalog: selection,
+          source:
+            resolved.item.source ??
+            resolved.entry.source.location ??
+            resolved.entry.source.displayName,
+          packageRevision: resolved.item.packageRevision,
+          item: resolved.item,
+          assertCurrent: async () => {
+            if (canUseSource?.(resolved.entry.source) === false)
+              throw new RegistryCatalogRefusal(
+                'source-forbidden',
+                'Selected marketplace is not available to this caller.',
+              );
+            await manager.resolve(name);
+            if (canUseSource?.(resolved.entry.source) === false)
+              throw new RegistryCatalogRefusal(
+                'source-forbidden',
+                'Selected marketplace is not available to this caller.',
+              );
+          },
+        },
+        expectedInstalledRevision,
+        rediscover: async () =>
+          this.rediscoverAfterWrite(projectHomeDir, projectSlug),
+      });
+    }
+    const manager = registrySourceManager(projectHomeDir);
+    const matches = (await manager.catalog('skills', canUseSource)).filter(
+      (item) => item.catalog?.itemId === name,
     );
-    // `installSkillFromRegistry` owns the capability itself.  Do not add an
-    // outer lock here: file capabilities are non-reentrant by design.
-    return installSkillFromRegistry({
-      name,
+    if (matches.length !== 1)
+      return {
+        success: false,
+        message:
+          matches.length > 1
+            ? 'Skill name is present in multiple marketplaces. Select its source before installing.'
+            : 'No available marketplace contains this skill.',
+      };
+    return this.installSkill(
+      matches[0]!.id,
       projectHomeDir,
       projectSlug,
-      configLoader: this.configLoader,
-      providers: getSkillRegistryProviders(),
-      rediscover: async () =>
-        this.rediscoverAfterWrite(projectHomeDir, projectSlug),
-    });
+      expectedInstalledRevision,
+      canUseSource,
+    );
   }
 
   async removeSkill(

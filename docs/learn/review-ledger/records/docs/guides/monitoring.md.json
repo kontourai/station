@@ -1,0 +1,99 @@
+{
+  "path": "docs/guides/monitoring.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
+
+  "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
+
+  "sources": [
+    "pnpm-lock.yaml",
+
+    "scripts/generate-metric-reference.mjs",
+
+    "src-server/index.ts",
+
+    "src-server/monitoring/emitter.ts",
+
+    "src-server/monitoring/schema.ts",
+
+    "src-server/routes/chat/chat-lifecycle.ts",
+
+    "src-server/routes/operations/insights.ts",
+
+    "src-server/routes/operations/monitoring.ts",
+
+    "src-server/runtime/conversation/runtime-event-log.ts",
+
+    "src-server/runtime/streaming/handlers/MetadataHandler.ts",
+
+    "src-server/services/orchestration/orchestration-monitoring-bridge.ts",
+
+    "src-server/services/projects/project-resource-shadow-record.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry.ts",
+
+    "src-server/telemetry/metrics.ts",
+
+    "src-server/utils/pricing.ts",
+
+    "src-shared/monitoring-keys.ts",
+
+    "src-ui/src/pages/ProfilePage.tsx",
+
+    "src-ui/src/components/profile/StationPeoplePanel.tsx",
+
+    "src-ui/src/components/usage-stats/UsageRollupPanel.tsx",
+
+    "src-ui/src/components/usage-stats/UsageStatsPanel.tsx",
+
+    "src-ui/src/components/ActivityTimeline.tsx",
+
+    "packages/sdk/src/query-domains/analytics.ts",
+
+    "packages/sdk/src/query-domains/devicePairingRequests.ts",
+
+    "src-server/analytics/usage-aggregator.ts",
+
+    "src-server/analytics/usage-aggregator-state.ts",
+
+    "packages/shared/src/usage-fold.ts",
+
+    "packages/shared/src/usage-rollup.ts",
+
+    "src-server/providers/adapters/muse-serve-session.ts",
+
+    "src-server/providers/__tests__/muse-serve-adapter.test.ts",
+
+    "src-server/providers/sessions/claude-transcript-session-source.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-ui/src/pages/ProfilePage.css",
+
+    "src-ui/src/components/badges/AchievementsBadge.tsx",
+
+    "src-ui/src/components/badges/AchievementsBadge.test.tsx"
+  ],
+
+  "checks": [
+    "Independent source/content review; 108 existing tests across six files passed.",
+
+    "Primary-chat failure span and pre-provider counter probes caught bounded defects (#2752, #2755).",
+
+    "All 28 prior rendered anchors preserved.",
+
+    "Three telemetry/monitoring/Insights comment cleanups transpile to identical JavaScript.",
+
+    "Verified eight historical issue identities against current/archive GitHub records; retained prior heading anchor and corrected retired ACP terminology.",
+
+    "Reviewed source deltas: Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
+
+    "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes and removed the createInstallationIdHash seam. The resource attributes are unchanged (service.installation.id from the persisted otel-installation-id hash, os.type), and the header now says import order is insufficient. pnpm-lock only dropped bearing/forage. Resource-attribute and async-startup prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

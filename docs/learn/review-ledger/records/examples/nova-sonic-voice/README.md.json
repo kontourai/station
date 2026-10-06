@@ -1,0 +1,25 @@
+{
+  "path": "examples/nova-sonic-voice/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide and relay/activation read; corrected 426/503/501 branches and separate provider instances. Model placeholders are not a qualified Sonic configuration.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/nova-sonic-voice/plugin.json",
+
+    "examples/nova-sonic-voice/plugin.mjs",
+
+    "examples/nova-sonic-voice/src/NovaSonicProvider.ts",
+
+    "examples/nova-sonic-voice/src/index.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+  ]
+}

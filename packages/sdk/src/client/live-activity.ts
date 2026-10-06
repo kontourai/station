@@ -3,13 +3,30 @@ import {
   type LiveActivityProjection,
   parseLiveActivityProjection,
 } from '@kontourai/station-contracts/live-activity';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import { authenticatedFetch } from './http';
 import { rethrowDeadline } from './request-deadline';
 
 export class LiveActivityProtocolError extends Error {
-  constructor(message: string) {
-    super(message);
+  /**
+   * Set only when Station refused the request (#2708): the answer's status,
+   * machine `code`, `details` and `Retry-After`. A malformed or unreadable
+   * response leaves them absent.
+   */
+  readonly status?: number;
+  readonly code?: string;
+  readonly details?: unknown;
+  readonly retryAfterMs?: number;
+
+  constructor(failure: string | StationHttpError) {
+    super(typeof failure === 'string' ? failure : failure.message);
     this.name = 'LiveActivityProtocolError';
+    if (typeof failure === 'string') return;
+    this.status = failure.status;
+    if (failure.code !== undefined) this.code = failure.code;
+    if (failure.details !== undefined) this.details = failure.details;
+    if (failure.retryAfterMs !== undefined)
+      this.retryAfterMs = failure.retryAfterMs;
   }
 }
 
@@ -37,10 +54,14 @@ export async function fetchLiveActivity(
     !body ||
     typeof body !== 'object' ||
     (body as { success?: unknown }).success !== true
-  )
+  ) {
+    // The sentence stays this client's own; the refusal's status and `code`
+    // ride on the error (#2708).
+    const message = `Live activity request failed (${response.status})`;
     throw new LiveActivityProtocolError(
-      `Live activity request failed (${response.status})`,
+      envelopeError(response, body, message, { message }),
     );
+  }
   const projection = parseLiveActivityProjection(
     (body as { data?: unknown }).data,
   );

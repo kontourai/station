@@ -1,0 +1,192 @@
+name: "Main: Qualification repair"
+
+on:
+  workflow_run:
+    workflows: ["Main: Qualification"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Completed canonical main qualification run
+        required: true
+        type: string
+      retry:
+        description: Explicitly authorize another bounded attempt for the active episode
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-repair
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.head_repository.full_name == github.repository &&
+           github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    outputs:
+      claim: ${{ steps.prepare.outputs.claim }}
+      issue: ${{ steps.prepare.outputs.issue }}
+      base_sha: ${{ steps.prepare.outputs.base_sha }}
+      branch: ${{ steps.prepare.outputs.branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - id: prepare
+        name: Reconcile one durable repair episode
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN: ${{ inputs.run_id }}
+          RETRY: ${{ inputs.retry }}
+          # Unset/empty: no automated agent (episode is needs-owner). `codex` opts in.
+          QUALIFICATION_REPAIR_AGENT: ${{ vars.QUALIFICATION_REPAIR_AGENT }}
+        run: node scripts/qualification-repair.mjs prepare
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.prepare.outputs.claim == 'true'
+        with:
+          name: qualification-repair-context
+          path: |
+            repair-context.json
+            qualification-failures.log
+          if-no-files-found: error
+          retention-days: 30
+
+  repair:
+    needs: prepare
+    if: needs.prepare.outputs.claim == 'true' && vars.QUALIFICATION_REPAIR_AGENT == 'codex'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          path: repository
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create isolated repair worktree
+        env:
+          REPAIR_BRANCH: ${{ needs.prepare.outputs.branch }}
+        run: git -C repository worktree add ../station-worktrees/repair -b "$REPAIR_BRANCH" HEAD
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qualification-repair-context
+          path: station-worktrees/repair
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: repository/.nvmrc
+          package-manager-cache: false
+      - name: Prepare inert managed dependencies
+        working-directory: station-worktrees/repair
+        run: npm run dependencies:ci
+        timeout-minutes: 15
+      - name: Repair collected failures once
+        uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e
+        timeout-minutes: 40
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          working-directory: station-worktrees/repair
+          prompt-file: repository/.github/codex/qualification-repair.md
+          output-file: qualification-repair-report.md
+          codex-version: '0.156.0'
+          model: ${{ vars.QUALIFICATION_REPAIR_MODEL || 'gpt-6-sol' }}
+          effort: high
+          permission-profile: ':workspace'
+          safety-strategy: drop-sudo
+          allow-bots: true
+          codex-args: '["--ephemeral"]'
+      - name: Capture proposed diff
+        working-directory: station-worktrees/repair
+        run: |
+          rm -f repair-context.json qualification-failures.log
+          git add --intent-to-add -- .
+          git diff --binary HEAD > "$RUNNER_TEMP/qualification-repair.patch"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-repair-proposal
+          path: |
+            ${{ runner.temp }}/qualification-repair.patch
+            qualification-repair-report.md
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: [prepare, repair]
+    if: needs.repair.result == 'success'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: policy
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          persist-credentials: false
+          path: candidate
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qualification-repair-context
+          path: context
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qualification-repair-proposal
+          path: proposal
+      # Mint only after the agent job ends. The app token triggers ordinary PR CI.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: token
+        with:
+          app-id: ${{ vars.STATION_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.STATION_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: station
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Validate proposal and open repair PR
+        working-directory: candidate
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          ISSUE_TOKEN: ${{ github.token }}
+          REPAIR_CONTEXT: ../context/repair-context.json
+          REPAIR_PATCH: ../proposal/qualification-repair.patch
+        run: node ../policy/scripts/qualification-repair.mjs publish
+
+  settle:
+    needs: [prepare, repair, publish]
+    if: always() && needs.prepare.outputs.claim == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record any incomplete attempt without relaunching
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPAIR_ISSUE: ${{ needs.prepare.outputs.issue }}
+        run: node scripts/qualification-repair.mjs settle

@@ -77,7 +77,10 @@ export function rejectFileAttachments(
   );
   if (unsupported) {
     throw new Error(
-      `${providerName} supports image attachments here, but not ${unsupported.attachment.name}. Attach an image or paste the file contents as text.`,
+      // Canned (#1796 pattern): the user's file name is not interpolated —
+      // this text reaches a Markdown surface — and it claims nothing about
+      // images, which the same engine may also refuse.
+      `${providerName} cannot take non-image files. Paste the file's text into the message instead.`,
     );
   }
 }

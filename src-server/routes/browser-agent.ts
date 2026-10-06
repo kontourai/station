@@ -43,6 +43,7 @@ export interface BrowserAgentRoutesDeps {
     BrowserAutomation,
     | 'status'
     | 'open'
+    | 'close'
     | 'navigate'
     | 'resize'
     | 'snapshot'
@@ -139,13 +140,26 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
     const id = body.browserSessionId;
 
     switch (c.req.param('operation')) {
-      case 'status':
+      case 'status': {
+        if (body.limit !== undefined && typeof body.limit !== 'number')
+          return c.json(invalid('limit must be a number.'));
+        if (body.cursor !== undefined && typeof body.cursor !== 'string')
+          return c.json(invalid('cursor must be a string.'));
+        const page = await automation.status(authority, {
+          ...(body.limit !== undefined ? { limit: body.limit as number } : {}),
+          ...(body.cursor !== undefined
+            ? { cursor: body.cursor as string }
+            : {}),
+        });
+        if (!page.ok) return c.json(page);
         return c.json({
           ok: true,
           browser: deps.browserReady() ? 'ready' : 'not-ready',
           evaluateAllowed: deps.settings.evaluateAllowed(authority.projectId),
-          sessions: await automation.status(authority),
+          sessions: page.sessions,
+          nextCursor: page.nextCursor,
         });
+      }
       case 'open': {
         if (!deps.browserReady())
           return c.json({
@@ -173,6 +187,14 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
           // bring a pane forward (the float-over-chat lane owns that). Every
           // session is listed in the Browser pane with its history (D6)
           // either way, so no answer here claims it was shown.
+          session: sessionView(result.session, deps.surfaceIdFor),
+        });
+      }
+      case 'close': {
+        const result = await automation.close(authority, id);
+        if (!result.ok) return c.json(result);
+        return c.json({
+          ok: true,
           session: sessionView(result.session, deps.surfaceIdFor),
         });
       }

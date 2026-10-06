@@ -1,0 +1,47 @@
+{
+  "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Decision text unchanged. A dated #2957 addendum records packaged-build runs of nightly 0.1.11-nightly.2463.2 against the NOT_VERIFIED list: signed and notarized macOS items executed, unsigned Windows NSIS partly executed, MSI/Linux/AppImage and real reboot NOT_VERIFIED. It also records findings: Windows readiness and watchdog timings, stale sidecar entries after abrupt death, and shared roots without saved metadata refusing first launch.",
+
+  "limits": "Addendum claims rest on the author's unpublished run logs, re-checked by an independent verifier on macOS (artifact identity, signing, source constants, one clean-home launch). Single runs: no Finder/Dock or Explorer launch proof, no real reboot, no Windows service, tray, or observed UI, and no MSI, Linux, or AppImage artifact. The Windows installer was unsigned. Historic review counts and behavioral receipts are retained, not re-proven.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "docs/design/instance-registry.md",
+
+    "docs/guides/native-shell-verification.md",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/service_state.rs",
+
+    "src-server/runtime/bootstrap/supervised-parent-watchdog.ts"
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Reviewed documentation-only dependency correction: docs/design/instance-registry.md. The linked owner and purpose remain; no new runtime proof is inferred.",
+
+    "Accepted unchanged after current lib/service_state delta. New state/ root admission protects prebuilt lifecycle bookkeeping and admits profile genesis; formatting and notification/relay composition do not change sidecar registry ownership. Packaged service action still requires manifest Node+tsx+CLI paths, canRunInBackground false. Watchdog 15/20-second and ADR NOT_VERIFIED limits retained. Linked native guide now accurately splits native proof and renderer mount.",
+
+    "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
+
+    "Reviewed source changes: Reviewed newly documented prebuilt-archive lifecycle state separately from source-checkout state and the shared per-home registry; service callers now carry the same home.",
+
+    "Reviewed integration deltas: src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta. docs/design/instance-registry.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed schema/read/publish/lock and production producer/consumer claim review. Distinguished minimal optional metadata validation, adoption/protected-type ordering, atomic rename versus writer locking and post-rename failure, Windows ACL/fsync limits and exact two-child test scope. Corrected Desktop service ownership reporting without automatic attachment; retained separate CLI state and conservative liveness boundaries. docs/guides/native-shell-verification.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
+
+    "Landing review through d0d9d33f7: Qualified archive upgrade behavior without changing home-scoped shared registry or per-instance state ownership. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through e0314c727: lib.rs removed the dormant notification_watch commands and state and added a rustls TLS test. service_action in service_state.rs is still checkout/tsx-bound and the sidecar/watchdog decisions are untouched; ADR accurate. Source review is separate from executed test evidence."
+  ]
+}

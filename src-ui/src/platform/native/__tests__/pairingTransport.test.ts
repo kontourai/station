@@ -17,37 +17,41 @@ const input = {
 };
 
 describe('native pairing transport', () => {
-  test('forwards only the exact device-approved development origin', async () => {
-    const endpoint = 'http://100.77.142.114:3492';
-    const getItem = vi.fn((key: string) =>
-      key === `station-http-development:${endpoint}` ? 'allowed' : null,
-    );
-    vi.stubGlobal('localStorage', { getItem });
-    bridge.invoke.mockResolvedValue({ ok: true });
-    try {
-      await nativePairingExchangeTransport({ ...input, endpoint });
-      expect(bridge.invoke).toHaveBeenLastCalledWith(
-        'station_native_pairing_exchange',
-        expect.objectContaining({
-          request: expect.objectContaining({ developmentHttpOrigin: endpoint }),
-        }),
+  test.each(['http://100.77.142.114:3492', 'http://localhost:4591'])(
+    'forwards only the exact device-approved development origin %s',
+    async (endpoint) => {
+      const getItem = vi.fn((key: string) =>
+        key === `station-http-development:${endpoint}` ? 'allowed' : null,
       );
-      await nativePairingExchangeTransport({
-        ...input,
-        endpoint: 'http://other:3492',
-      });
-      expect(bridge.invoke).toHaveBeenLastCalledWith(
-        'station_native_pairing_exchange',
-        expect.objectContaining({
-          request: expect.objectContaining({
-            developmentHttpOrigin: undefined,
+      vi.stubGlobal('localStorage', { getItem });
+      bridge.invoke.mockResolvedValue({ ok: true });
+      try {
+        await nativePairingExchangeTransport({ ...input, endpoint });
+        expect(bridge.invoke).toHaveBeenLastCalledWith(
+          'station_native_pairing_exchange',
+          expect.objectContaining({
+            request: expect.objectContaining({
+              developmentHttpOrigin: endpoint,
+            }),
           }),
-        }),
-      );
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
+        );
+        await nativePairingExchangeTransport({
+          ...input,
+          endpoint: 'http://other:3492',
+        });
+        expect(bridge.invoke).toHaveBeenLastCalledWith(
+          'station_native_pairing_exchange',
+          expect.objectContaining({
+            request: expect.objectContaining({
+              developmentHttpOrigin: undefined,
+            }),
+          }),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
   beforeEach(() => bridge.invoke.mockReset());
 
   test('returns only the sanitized handle and host-allocated reference', async () => {

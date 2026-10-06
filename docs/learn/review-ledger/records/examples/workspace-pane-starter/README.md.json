@@ -1,0 +1,23 @@
+{
+  "path": "examples/workspace-pane-starter/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full descriptor/README reviewed for renderer, provenance, placement and required integration/tool identities. Linked sessions-reader blocker #2785; descriptor conformance is not live panel proof.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/station-sessions-mcp/server.mjs",
+
+    "examples/workspace-pane-starter/plugin.json",
+
+    "scripts/__tests__/examples-conformance.test.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+  ]
+}

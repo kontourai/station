@@ -1,0 +1,33 @@
+{
+  "path": "examples/elevenlabs-voice/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide, activation, server token request and actual legacy STT/TTS callers reviewed. Qualified provider mismatch, missing concrete smoke transport, key configuration and activation ownership; linked #2784.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/elevenlabs-voice/plugin.json",
+
+    "examples/elevenlabs-voice/plugin.mjs",
+
+    "examples/elevenlabs-voice/src/ElevenLabsSTTProvider.ts",
+
+    "examples/elevenlabs-voice/src/ElevenLabsTTSProvider.ts",
+
+    "examples/elevenlabs-voice/src/index.ts",
+
+    "scripts/voice-realtime-live-smoke.mjs",
+
+    "src-ui/src/core/PluginRegistry.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Empty catch formatted after narration removal; seven example source edits retained identical executable output."
+  ]
+}

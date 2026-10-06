@@ -134,6 +134,9 @@ export {
   useRegistryItemsQuery,
   useRegistryLayoutActionMutation,
   useRegistrySkillActionMutation,
+  useRegistrySkillContentQuery,
+  useRegistrySourceActionMutation,
+  useRegistrySourcesQuery,
   useSaveIntegrationMutation,
   useSetIntegrationEnabledMutation,
   useSetIntegrationRenderPermissionMutation,
@@ -202,6 +205,7 @@ export {
   fetchVoicePort,
   forkConversation,
   type InterruptOrchestrationDelegatedTaskInput,
+  inspectOrchestrationSteerInput,
   interruptOrchestrationDelegatedTask,
   interruptOrchestrationTurn,
   isProvablyNotSent,
@@ -242,12 +246,14 @@ export {
   unregisterNativePush,
   unsubscribePushNotifications,
   useAcknowledgeConversationMutation,
+  useChildWorkTranscriptQuery,
   useCodingDiffQuery,
   useCodingFileContentQuery,
   useCodingFilesQuery,
   useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useConversationsQuery,
+  useConversationUsageTreeQuery,
   useCreateCodingFileMutation,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,
@@ -462,6 +468,7 @@ export {
 export {
   adoptCommittedProjectTaskRoomDocument,
   appendProjectTaskRoomHumanMessage,
+  appendProjectTaskRoomOutputFeedback,
   commandProjectTaskRoomLive,
   discoverProjectTaskRoom,
   fetchProjectTaskRoomDocument,
@@ -483,7 +490,10 @@ export {
   refetchAuthoritativeProjectTaskRoomDocument,
   submitProjectTaskRoomBatch,
   subscribeProjectTaskRoomEvents,
+  TaskRoomWorkNotSentError,
+  type TaskRoomWorkRequestScope,
   useAppendProjectTaskRoomHumanMessageMutation,
+  useAppendProjectTaskRoomOutputFeedbackMutation,
   useCommandProjectTaskRoomLiveMutation,
   usePlanProjectTaskRoomEditMutation,
   useProjectTaskRoomDiscoveryQuery,
@@ -491,6 +501,9 @@ export {
   useProjectTaskRoomHistoryQuery,
   useProjectTaskRoomStream,
   useSubmitProjectTaskRoomBatchMutation,
+  useSubmitTaskRoomAgentRequestMutation,
+  useTaskRoomAgentOptionsQuery,
+  useTaskRoomAgentRequestsQuery,
 } from './query-domains/projectTaskRooms';
 export {
   approveProposedChange,
@@ -537,6 +550,10 @@ export type {
   SetupImportPreview,
   SetupImportReceipt,
 } from './query-domains/setupImports';
+export {
+  useSkillExperienceInventoryQuery,
+  useSkillExperienceSessionQuery,
+} from './query-domains/skillExperiences';
 export type {
   SkillImportFile,
   SkillImportResult,

@@ -115,21 +115,6 @@
   color: var(--error-text);
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  /* Queued steer controls must remain comfortably tappable on mobile. */
-  .queued-message {
-    gap: var(--space-1);
-  }
-
-  .queued-message__btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 40px;
-    min-height: 40px;
-  }
-}
-
 /* the reason a queued follow-up is still queued, rendered with
    the message it is holding back rather than only as a transient notice. */
 .queued-messages__failure {
@@ -139,6 +124,17 @@
   padding: 4px 8px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* #3157: a normal wait on a provider usage limit, not an error. It shares the
+   failure row's layout but reads as a quiet note. */
+.queued-messages__hold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--k-text-muted, var(--text-secondary));
 }
 
 .queued-messages__failure-text {
@@ -159,4 +155,123 @@
   margin-left: auto;
   text-transform: none;
   letter-spacing: normal;
+}
+
+.queued-messages--pending .queued-message__status {
+  display: block;
+  color: var(--k-text-muted);
+  font-size: var(--text-sm);
+  white-space: normal;
+}
+
+.queued-messages--pending .queued-message__status {
+  margin-top: var(--k-space-1);
+  line-height: var(--k-leading-normal);
+}
+.queued-messages--pending .queued-message__btn {
+  border-radius: var(--k-radius-control);
+}
+.queued-messages--pending .queued-message__btn:hover:not(:disabled),
+.queued-messages--pending .queued-message__btn:focus-visible {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  opacity: 1;
+}
+.queued-messages--pending .queued-message__btn:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.queued-messages--pending .queued-message__utilities {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-inline-start: auto;
+}
+
+.queued-messages--pending {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.queued-messages--pending .queued-messages__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: var(--k-space-6);
+  padding: var(--k-space-1) var(--k-space-2);
+  border: none;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+.queued-messages--pending .queued-messages__toggle:hover,
+.queued-messages--pending .queued-messages__toggle:focus-visible {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+.queued-messages--pending .queued-messages__toggle:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.queued-messages--pending
+  .queued-messages__toggle[aria-expanded="true"]
+  > :last-child {
+  transform: rotate(180deg);
+}
+.queued-messages--pending .queued-messages__attention {
+  color: var(--k-caution);
+  font-size: var(--k-text-xs);
+}
+.queued-messages--pending .queued-messages__content {
+  padding: var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+}
+.queued-messages--pending .queued-messages__content[hidden] {
+  display: none;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Queued steer controls must remain comfortably tappable on mobile. */
+  .queued-message {
+    gap: var(--space-1);
+  }
+
+  .queued-message__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .queued-messages--pending .queued-messages__list {
+    max-height: min(35dvh, 24rem);
+  }
+  .queued-messages--pending .queued-message {
+    flex-wrap: wrap;
+    padding: var(--k-space-2);
+  }
+  .queued-messages--pending .queued-message__text {
+    flex: 1 0 calc(100% - var(--k-space-5));
+  }
+  .queued-messages--pending .queued-message__btn {
+    font-size: var(--k-text-sm);
+    opacity: 1;
+  }
+
+  .queued-messages--pending .queued-message {
+    align-items: flex-start;
+  }
+  .queued-messages--pending .queued-message__order {
+    padding-top: var(--k-space-1);
+  }
+
+  .queued-messages--pending .queued-messages__toggle {
+    min-height: 44px;
+  }
 }

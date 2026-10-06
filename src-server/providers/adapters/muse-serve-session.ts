@@ -1294,7 +1294,12 @@ export class MuseServeSession {
     const signature = approvalSubjectSignature(params);
     if (signature) pending.subjectSignature = signature;
     const turnId = readString(params.turnId);
-    if (turnId && this.turns.has(turnId)) pending.turnId = turnId;
+    // #3071: only a request the turn itself is waiting on names the turn. A
+    // workflow subagent's does not, whatever turn id its origin reports: a
+    // turn's abort settles the requests that name it, and a subagent's unit
+    // of work is not the turn.
+    if (!subagentId && turnId && this.turns.has(turnId))
+      pending.turnId = turnId;
     this.updateApproval(pending, params);
     this.approvals.set(approvalId, pending);
     if (escalatedBefore) {
@@ -1395,7 +1400,10 @@ export class MuseServeSession {
         )
       : [];
     const turnId = readString(params.turnId);
-    const ownTurn = turnId && this.turns.has(turnId) ? turnId : undefined;
+    const ownTurn =
+      !pending.subagentId && turnId && this.turns.has(turnId)
+        ? turnId
+        : undefined;
     const expiresAt = new Date(
       this.deps.now().getTime() + this.deps.approvalTimeoutMs,
     ).toISOString();

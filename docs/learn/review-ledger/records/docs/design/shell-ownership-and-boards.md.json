@@ -1,0 +1,39 @@
+{
+  "path": "docs/design/shell-ownership-and-boards.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Accepted ownership/Board design with staged implementation history and current personal-Board owner routing.",
+
+  "limits": "Personal route/service/view/sidebar lineage checked. Shared Boards, all promotion rules, Review placement, presence, plugin visibility, and cross-device persistence not comprehensively audited.",
+
+  "sources": [
+    "packages/contracts/src/layout.ts",
+
+    "src-server/routes/me/personal-layouts.ts",
+
+    "src-server/services/layouts/personal-layout-service.ts",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+
+    "src-ui/src/views/PersonalBoardView.tsx",
+
+    "src-ui/src/components/session-detail/useSessionTranscriptScroll.ts",
+
+    "src-ui/src/contexts/chat-drafts-store.ts"
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Entire original body byte-identical after removing reading banner.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

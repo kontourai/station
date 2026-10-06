@@ -71,6 +71,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-bottom: 8px;
 }
 
@@ -95,6 +96,11 @@
   align-items: center;
   gap: 4px;
   width: 100%;
+  /* A long name truncates (below) rather than widening the row past the
+     panel, where overflow: hidden would let a scroll-into-view shift the
+     whole panel sideways. */
+  min-width: 0;
+  max-width: 100%;
   padding: 3px 8px;
   padding-left: calc(8px + var(--depth, 0) * 12px);
   font-size: 12px;
@@ -130,6 +136,8 @@
 }
 
 .file-tree-row__name {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

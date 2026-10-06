@@ -1,0 +1,83 @@
+{
+  "path": "docs/design/channel-home-authority.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed full documented-claim review, building on the nine-guide controller review: paired identity/preparation/advance and private control authority, guarded durable SQLite, room source seals, snapshot digests, session-start/task-dispatch barriers and completed-dispatch recovery. Current narrower operations remain distinct from required distributed leases, target activation, cross-host writer fencing and provider continuation. No prose correction required.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/design/channel-home-authority.md\",\"ours\":{\"digest\":\"aa39bc064688fccf3f629a6e580045609975fd690762a8fae41393f8eb0ffeed\",\"revision\":\"495d7cda0df2abf2d64ed377d3dcbf1ebc238169\"},\"main\":{\"digest\":\"ec8920fcb32e04182559991d3301afec584a03478e9772ee33ebc90af05281a8\",\"revision\":\"4775195c62ee67b1c20882a1561a4578b8db017f\"}},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"digest\":\"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a\",\"revision\":\"0bf65df71b04f48768c1f5bdb16db77e361a3177\"},\"main\":{\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"packages/contracts/src/environment-security.ts\",\"ours\":{\"digest\":\"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"main\":{\"digest\":\"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486\",\"revision\":\"91d79c3f0ce9ca5ae304e4248b67b6189103016e\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"},\"main\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}}]",
+
+  "sources": [
+    "packages/contracts/src/environment-security.ts",
+
+    "src-server/routes/environments/home-authority-routes.ts",
+
+    "src-server/runtime/bootstrap/personal-home-authority-database.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/execution-target/execution-target-execution.ts",
+
+    "src-server/services/orchestration/completed-task-dispatch-recovery.ts",
+
+    "src-server/services/orchestration/home-transfer-room-binding.ts",
+
+    "src-server/services/orchestration/home-transfer-room-probe.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/paired-home-transfer-authority.ts",
+
+    "src-server/services/orchestration/planned-home-admission-reconciliation.ts",
+
+    "src-server/services/orchestration/planned-home-admission-schema.ts",
+
+    "src-server/services/orchestration/planned-home-admission-store.ts",
+
+    "src-server/services/orchestration/planned-home-control-room-write-adapter.ts",
+
+    "src-server/services/orchestration/planned-home-control-room-write-identity.ts",
+
+    "src-server/services/orchestration/planned-home-control-room-write-receipt-verifier.ts",
+
+    "src-server/services/orchestration/planned-home-control-session-authority.ts",
+
+    "src-server/services/orchestration/planned-home-control-session-schema.ts",
+
+    "src-server/services/orchestration/planned-home-transfer-coordinator.ts",
+
+    "src-server/services/orchestration/planned-home-transfer-store.ts",
+
+    "src-server/services/orchestration/project-task-room-history-worker.ts",
+
+    "src-server/services/orchestration/project-task-room-history.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-server/services/orchestration/remote-home-transfer-coordinator.ts",
+
+    "src-server/services/orchestration/session-turn-boundary.ts",
+
+    "src-server/services/projects/task-dispatcher.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904 added scope descriptions and the revocation report type to environment-security. The runtime-routes changes are a middleware that binds full-access refusal identity, plus revoke and scope-change responses that include the full-access reset. It added deviceHoldsScope to device-pairing-service and the approval-posture grantor and reset logic to orchestration-service. None of these touch the home-authority channel/transfer routes, the transfer-scoped credentials, the SQLite decision guards, the room seals or the session-start/task-dispatch barriers. The new access:manage description ('held only by older default grants') matches the doc's historical-scope wording. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential to runtime-routes.ts. As a result, an ordinary Device credential on operator-only peer registration now gets 403 insufficient_scope at ingress instead of 401 (home-authority-routes.test.ts updated). This is consistent with the document's 403-for-insufficient-authority mapping. It does not change the operator-only offer/registration path or the other route statuses. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

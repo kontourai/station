@@ -1,0 +1,7 @@
+{
+  "revision": "3ff57bc91496fd66f7b97eb67df16f6d49bd7ed5",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"ProjectPage.css delta only changes the working-directory path line (display:block, comment wording). starter-work.md describes starter Task launch, identity and recovery and makes no claim about the Project header path styling, so no claim is affected. Reasoned from the diff, no check executed.","inputs":["src-ui/src/views/ProjectPage.css"]}
+  ]
+}

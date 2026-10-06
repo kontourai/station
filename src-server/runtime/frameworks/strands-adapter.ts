@@ -27,6 +27,7 @@ import {
   Agent as StrandsAgent,
 } from '@strands-agents/sdk';
 import type { StorageAdapter } from '@voltagent/core';
+import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   currentScheduledPrincipal,
@@ -52,6 +53,7 @@ import type {
   IStreamChunk,
   IStreamResult,
   ITool,
+  ModelInputComposer,
   ToolCallDenial,
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
@@ -253,8 +255,13 @@ class StrandsAgentWrapper implements IAgent {
           return false;
         }
       };
+      // Replayed to the model: the failed-turn marker is excluded exactly
+      // as the VoltAgent prompt view and native-memory history exclude it
+      // (it is a UI record, and a pre-fix one may hold provider text).
       messages = original
-        ? await adapter.getMessages(userId, conversationId)
+        ? excludeChatErrorMarkers(
+            await adapter.getMessages(userId, conversationId),
+          )
         : [];
       if (!(await isCurrent()))
         throw new Error('Direct Strands conversation ownership changed.');
@@ -314,6 +321,15 @@ class StrandsAgentWrapper implements IAgent {
   async streamText(input: string, _options?: any): Promise<IStreamResult> {
     const owned = await this.nativeInvocation(_options);
     if (owned) return owned.streamText(input, _options);
+    // #3112 known gap: Strands keeps the prompt it is handed as the user
+    // message its memory sync persists, and has no model-only seam here, so
+    // the composed context is applied up front and stored with the turn.
+    const composeModelInput = (
+      _options as { composeModelInput?: ModelInputComposer } | undefined
+    )?.composeModelInput;
+    const modelInput = composeModelInput
+      ? (composeModelInput(input) as string)
+      : input;
     // Per-request identity is WeakMap-bound to this invocation's state object
     // identity (never stored in the tool-writable bag, never a shared mutable
     // object — archive#1834 rounds 3-4); see invocationOptions.
@@ -348,7 +364,7 @@ class StrandsAgentWrapper implements IAgent {
 
         const _emittedStart = false;
         let emittedTextStart = false;
-        const stream = agent.stream(input, invokeOptions);
+        const stream = agent.stream(modelInput, invokeOptions);
 
         self._lastStreamUsage = null;
 

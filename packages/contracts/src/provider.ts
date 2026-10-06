@@ -245,12 +245,38 @@ export const STATION_CONFINEMENT_GRANTOR_METADATA_KEY =
   'stationConfinementGrantor';
 
 /**
+ * #3323: how Station came by the delegation context a dispatch route stamped
+ * on the session it started (or on a paired-Station dispatch record):
+ *
+ * - `caller-derived`: from the verified station-control caller's own session
+ *   records (`createRequestDelegationResolver`).
+ * - `runtime-attested`: a claim Station's own runtime attested
+ *   (`delegation-attestation.ts`), e.g. its own engine's pooled child.
+ * - `direct-claim`: passed through from a request outside this Station's
+ *   process (a peer Station, an operator, device or hosted-user credential),
+ *   which this Station cannot verify.
+ *
+ * Absent on a session no dispatch route started with a context. Reserved: a
+ * caller-supplied value is stripped before the route's own value is written.
+ */
+export const DELEGATION_PROVENANCE_METADATA_KEY = 'stationDelegationProvenance';
+
+export type DelegationProvenance =
+  | 'caller-derived'
+  | 'runtime-attested'
+  | 'direct-claim';
+
+/**
  * Complete set of orchestration evidence fields a public caller may never
  * provide. Keep this list aligned with session-summary model projections:
  * launch plan, typed receipt, requested/effective selector and options, and
  * independently reported identity are all server- or adapter-derived facts.
  */
+export const SKILL_EXPERIENCE_METADATA_KEY = 'stationSkillExperience' as const;
+
 export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
+  'usageAccountKey',
+  SKILL_EXPERIENCE_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
@@ -269,6 +295,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
+  DELEGATION_PROVENANCE_METADATA_KEY,
 ] as const;
 
 /**
@@ -791,6 +818,16 @@ export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
 /**
+ * A send refused before any engine effect because the bound engine cannot
+ * take the attached input (an ACP engine whose `initialize` handshake did not
+ * advertise `promptCapabilities.image`, or a file the engine only accepts as
+ * an image). Deterministic, NOT retryable: the same send with the same
+ * attachments is refused the same way, so clients must not offer a blind
+ * retry — the user has to remove the attachments or pick another engine.
+ */
+export const ATTACHMENT_INPUT_UNSUPPORTED_CODE = 'attachment_input_unsupported';
+
+/**
  * Whether Station owns an orchestration session or only follows it.
  *
  * Older persisted sessions omit this field and are treated as station-owned
@@ -840,6 +877,10 @@ export interface ResolvedAgentToolServer {
   command?: string;
   args?: string[];
   endpoint?: string;
+  /** Exact MCP names selected for this server; absent means all. */
+  allowedTools?: string[];
+  disabledTools?: string[];
+  toolNames?: string[];
 }
 
 export interface ResolvedAgentSkill {
@@ -860,6 +901,8 @@ export interface ResolvedAgentDefinition {
   /** Real on-disk agent slug — never a synthetic `__agent:`/`__acp:` id. */
   slug: string;
   toolServers?: ResolvedAgentToolServer[];
+  toolServerMode?: 'add' | 'replace';
+  toolServerLoading?: 'on-demand' | 'always';
   skills?: ResolvedAgentSkill[];
   /**
    * #895 wave B: the agent's authored prompt for delivery to an external
@@ -1128,6 +1171,8 @@ export interface ProviderSendTurnInput {
 }
 
 export interface ProviderSession {
+  /** Safe route captured from the configuration used to launch this session. */
+  modelRoute?: { connectionId: string; label: string; endpoint: string };
   provider: EngineId;
   threadId: string;
   /**

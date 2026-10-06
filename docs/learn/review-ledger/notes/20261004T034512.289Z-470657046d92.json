@@ -1,0 +1,7 @@
+{
+  "revision": "498122e093cd04ec3539e91c3311d03002df3e36",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked against #3170/#3127: no claim of a single-ready-agent direct New or of 'No output for' wording; New always opens the picker.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/home/HomeChatStartForm.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/modals/useNewChatSetupReturn.ts","src-ui/src/components/scheduler/JobFormModal.tsx","src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]}
+  ]
+}

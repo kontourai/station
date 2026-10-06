@@ -328,12 +328,12 @@ describe('describeDeviceProvenance (station#1878 slice 1)', () => {
           source: 'tailnet',
           requester: {
             provider: 'tailscale-serve',
-            login: 'brian@example.test',
-            displayName: 'Brian',
+            login: 'casey@example.test',
+            displayName: 'Casey',
           },
         }),
       ),
-    ).toBe('Tailnet · Brian');
+    ).toBe('Tailnet · Casey');
   });
 
   it('falls back to the login when no display name was verified', () => {
@@ -343,11 +343,11 @@ describe('describeDeviceProvenance (station#1878 slice 1)', () => {
           source: 'tailnet',
           requester: {
             provider: 'tailscale-serve',
-            login: 'brian@example.test',
+            login: 'casey@example.test',
           },
         }),
       ),
-    ).toBe('Tailnet · brian@example.test');
+    ).toBe('Tailnet · casey@example.test');
   });
 });
 

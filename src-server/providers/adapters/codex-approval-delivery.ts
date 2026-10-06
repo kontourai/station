@@ -71,6 +71,18 @@ export function refuseCodexApprovalReply(
         Object.keys(result).length === 1
         ? undefined
         : 'the reply does not carry a decision Codex accepts';
+    case 'item/tool/requestUserInput':
+      return Object.keys(result).length === 1 &&
+        isPlainObject(result.answers) &&
+        Object.values(result.answers).every(
+          (answer) =>
+            isPlainObject(answer) &&
+            Object.keys(answer).length === 1 &&
+            Array.isArray(answer.answers) &&
+            answer.answers.every((value) => typeof value === 'string'),
+        )
+        ? undefined
+        : 'the reply does not carry question answers Codex accepts';
     case 'item/permissions/requestApproval':
       return isPlainObject(result.permissions) &&
         typeof result.scope === 'string' &&

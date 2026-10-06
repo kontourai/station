@@ -46,7 +46,7 @@ export interface EnrolmentCommand {
   args: string[];
   /**
    * Applied ON TOP of the caller's environment. It is only ever the engine's
-   * config-home override — Station never injects credentials here.
+   * config-home and secure-store overrides — Station never injects credentials here.
    */
   env: Record<string, string>;
   /** Shown to the user before anything runs. Never a silent spawn. */
@@ -92,7 +92,10 @@ export function enrolmentHomeEnv(
   profileDir: string,
 ): Record<string, string> {
   return engine === 'claude'
-    ? { CLAUDE_CONFIG_DIR: profileDir }
+    ? {
+        CLAUDE_CONFIG_DIR: profileDir,
+        CLAUDE_SECURESTORAGE_CONFIG_DIR: profileDir,
+      }
     : { CODEX_HOME: profileDir };
 }
 
@@ -228,6 +231,7 @@ export async function verifyEnrolment(
   engine: EnrolmentEngine,
   profileDir: string,
   deps: EnrolmentDeps = defaultEnrolmentDeps(),
+  homeEnv: Record<string, string> = enrolmentHomeEnv(engine, profileDir),
 ): Promise<EnrolmentVerification> {
   const [command, args] =
     engine === 'claude'
@@ -238,7 +242,7 @@ export async function verifyEnrolment(
       command as string,
       args as string[],
       {
-        env: { ...deps.env, ...enrolmentHomeEnv(engine, profileDir) },
+        env: { ...deps.env, ...homeEnv },
         timeout: STATUS_TIMEOUT_MS,
         windowsHide: true,
       },

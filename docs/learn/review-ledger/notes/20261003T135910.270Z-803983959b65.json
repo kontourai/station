@@ -1,0 +1,7 @@
+{
+  "revision": "cde061c4f07a24ed6e82d9291915c9e95f51be1d",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Upstream merge moved packages/contracts/src/device-settings.ts; this branch's change there is the codingPanels record, not a starter-work key. No prose change.","inputs":["packages/contracts/src/device-settings.ts","src-server/providers/adapters/claude-adapter.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

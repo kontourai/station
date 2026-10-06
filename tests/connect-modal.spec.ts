@@ -3,7 +3,7 @@
  *
  * Opens the app, seeds localStorage with a connection, verifies:
  *  - the connection chip appears in the header
- *  - clicking it opens the modal
+ *  - its chooser opens the manager through Manage Stations
  *  - adding a new connection via the form works
  *  - switching active connection updates the chip label
  *  - editing a connection works
@@ -11,7 +11,7 @@
  *  - discover panel renders
  *  - status dot states render correctly
  */
-import { expect, type Locator, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { requireE2EOperatorCredential } from './helpers/e2e-operator-credential';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
@@ -32,6 +32,32 @@ async function openConnectionActionsMenu(scope: Locator, name: string) {
     .getByRole('button', { name: `More actions for ${name}`, exact: true })
     .click();
   return scope.getByRole('menu', { name: `Actions for ${name}` });
+}
+
+async function openStationManager(page: Page) {
+  await page.getByTestId('app-toolbar-connection').click();
+  const chooser = page.getByRole('menu', {
+    name: 'Choose Station',
+    exact: true,
+  });
+  await expect(chooser).toBeVisible();
+  await chooser
+    .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('dialog')
+      .getByRole('heading', { name: 'Stations', exact: true }),
+  ).toBeVisible();
+}
+
+async function openConnectionEditor(dialog: Locator, name: string) {
+  await dialog
+    .getByRole('button', { name: `View details for ${name}`, exact: true })
+    .click();
+  await dialog
+    .getByRole('button', { name: 'Edit Station', exact: true })
+    .click();
 }
 
 const STATUS_READY = JSON.stringify({
@@ -141,18 +167,12 @@ test.describe('Connection Manager Modal', () => {
     );
     await page.goto('/');
     // Wait for the connection chip to appear in the header
-    await expect(
-      // archive#3311 made the connection control self-describing: its
-      // accessible name now carries the state and the connection identity
-      // ("Manage Stations — Connected · <name>"), so this matches by prefix.
-      // The bare string is still the control’s `title` (archive#3297).
-      page.getByRole('button', { name: /^Manage Stations/ }),
-    ).toBeVisible({
+    await expect(page.getByTestId('app-toolbar-connection')).toBeVisible({
       timeout: 10000,
     });
     await expect(
-      page.getByRole('button', { name: /^Manage Stations.*Dev Server/ }),
-    ).toBeVisible();
+      page.getByTestId('app-toolbar-connection'),
+    ).toHaveAccessibleName(/Dev Server/);
     await expect(
       page.getByRole('status').filter({
         hasText: 'Loading connection recovery…',
@@ -161,27 +181,28 @@ test.describe('Connection Manager Modal', () => {
     await dismissSetupLauncher(page);
   });
 
-  test('clicking the chip opens the connection modal', async ({ page }) => {
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+  test('the chip chooser opens the connection manager', async ({ page }) => {
+    await openStationManager(page);
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
     // The existing connection should appear in the modal list. A row's name
     // renders in two nested elements (`.station-connect-row__name-line` and
     // its child `.station-connect-row__name`, station#994), so `div`
     // `hasText` matches both and is a strict-mode violation — the row's own
-    // `Select <name>` control is a stable, unique handle instead.
+    // details control is a stable, unique handle instead.
     await expect(
-      page
-        .getByRole('dialog')
-        .getByRole('button', { name: 'Select Dev Server', exact: true }),
+      page.getByRole('dialog').getByRole('button', {
+        name: 'View details for Dev Server',
+        exact: true,
+      }),
     ).toBeVisible();
   });
 
   test('traps keyboard focus, closes with Escape, and restores its trigger', async ({
     page,
   }) => {
-    const trigger = page.getByRole('button', { name: /^Manage Stations/ });
+    const trigger = page.getByTestId('app-toolbar-connection');
     await trigger.focus();
-    await trigger.click();
+    await openStationManager(page);
     const dialog = page.getByRole('dialog');
     const close = dialog.getByRole('button', { name: 'Close Station manager' });
     await expect(close).toBeFocused();
@@ -270,7 +291,7 @@ test.describe('Connection Manager Modal', () => {
       });
     });
 
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     await page
       .getByRole('dialog')
       .getByRole('button', { name: 'Add a Station address' })
@@ -310,9 +331,7 @@ test.describe('Connection Manager Modal', () => {
 
     // Chip should update to the new active connection after dismissal.
     await expect(
-      page
-        .getByRole('button', { name: /^Manage Stations/ })
-        .getByText('Office'),
+      page.getByTestId('app-toolbar-connection').getByText('Office'),
     ).toBeVisible();
   });
 
@@ -320,7 +339,7 @@ test.describe('Connection Manager Modal', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     await page
       .getByRole('dialog')
       .getByRole('button', { name: 'Add a Station address' })
@@ -359,7 +378,7 @@ test.describe('Connection Manager Modal', () => {
     expect(after.width).toBeCloseTo(before.width, 1);
   });
 
-  test('resolves exactly one "Manage Stations" control at 390px, collapsed and maximized (#1048)', async ({
+  test('keeps one Station chooser on the page and one manager action in fullscreen chat at 390px (#1048)', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -370,9 +389,7 @@ test.describe('Connection Manager Modal', () => {
     // user lands in on a fresh load, not an edge case. Before #1048 the app
     // toolbar's `app-toolbar-connection` and the dock header's
     // `chat-dock-mobile-connection` both rendered here and both matched.
-    await expect(
-      page.getByRole('button', { name: /^Manage Stations/ }),
-    ).toHaveCount(1);
+    await expect(page.getByTestId('app-toolbar-connection')).toHaveCount(1);
 
     // Fullscreen keeps message context primary. Station management moves into
     // the mobile chat actions sheet, where exactly one control remains reachable.
@@ -434,7 +451,7 @@ test.describe('Connection Manager Modal', () => {
         }),
     );
     // Add a second connection via the UI
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     await page
       .getByRole('dialog')
       .getByRole('button', { name: 'Add a Station address' })
@@ -458,24 +475,30 @@ test.describe('Connection Manager Modal', () => {
       .getByRole('button', { name: 'Back' })
       .click();
 
-    // Modal is still open on the list panel — click the Dev Server row to switch back
-    // Make Remote the active Station first, so switching back is observable:
-    // a chip that already named Dev Server would satisfy the final assertion
-    // without any switch happening.
-    await page
-      .getByRole('button', { name: 'Select Remote', exact: true })
-      .click();
+    // Adding selected Remote; prove that state before switching back, so an
+    // unchanged Dev Server connection cannot satisfy the final assertion.
+    await expect(
+      page
+        .getByRole('dialog')
+        .locator('.station-connect-row')
+        .filter({ hasText: 'Remote' }),
+    ).toContainText('Current ·');
     await page
       .getByRole('dialog')
       .getByRole('button', { name: 'Close Station manager' })
       .click();
     await expect(
-      page.getByRole('button', { name: /^Manage Stations.*Remote/ }),
-    ).toBeVisible();
+      page.getByTestId('app-toolbar-connection'),
+    ).toHaveAccessibleName(/Remote/);
 
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     await page
-      .getByRole('button', { name: 'Select Dev Server', exact: true })
+      .getByRole('dialog')
+      .getByRole('button', { name: 'View details for Dev Server', exact: true })
+      .click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Switch to Dev Server', exact: true })
       .click();
     await page
       .getByRole('dialog')
@@ -484,25 +507,23 @@ test.describe('Connection Manager Modal', () => {
 
     // The chip names Dev Server again.
     await expect(
-      page.getByRole('button', { name: /^Manage Stations.*Dev Server/ }),
-    ).toBeVisible();
+      page.getByTestId('app-toolbar-connection'),
+    ).toHaveAccessibleName(/Dev Server/);
   });
 
   test('can edit a connection', async ({ page }) => {
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
     const dialog = page.getByRole('dialog');
 
-    // Edit/Check reachability/Forget live behind the row's "More actions"
-    // overflow menu, not standalone title-attributed buttons
-    // (ConnectionListPanel.tsx station#4512 review M6).
-    await (await openConnectionActionsMenu(dialog, 'Dev Server'))
-      .getByRole('menuitem', { name: 'Edit Station', exact: true })
-      .click();
+    // Inspecting the saved row exposes its explicit Edit action.
+    await openConnectionEditor(dialog, 'Dev Server');
 
     // Edit form should appear with pre-filled values
-    const nameInput = page.getByPlaceholder('Name');
-    const _urlInput = page.getByPlaceholder(/192\.168/);
+    const nameInput = dialog.getByRole('textbox', {
+      name: 'Station name',
+      exact: true,
+    });
     await expect(nameInput).toBeVisible();
     await expect(nameInput).toHaveValue('Dev Server');
 
@@ -510,11 +531,14 @@ test.describe('Connection Manager Modal', () => {
     await nameInput.fill('Home Lab');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 
-    // Updated name should appear. The row's `Select <name>` control is a
+    // Updated name should appear. The row's details control is a
     // stable handle — a bare `div` `hasText` match is ambiguous (station#994
     // nests the name in two elements) and one DOM change from breaking.
     await expect(
-      dialog.getByRole('button', { name: 'Select Home Lab', exact: true }),
+      dialog.getByRole('button', {
+        name: 'View details for Home Lab',
+        exact: true,
+      }),
     ).toBeVisible();
   });
 
@@ -534,7 +558,7 @@ test.describe('Connection Manager Modal', () => {
         },
       });
     });
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Add a Station address' }).click();
     await page.getByPlaceholder('Name (optional)').fill('Desktop proof');
@@ -556,9 +580,7 @@ test.describe('Connection Manager Modal', () => {
       'data-copied-address',
       address,
     );
-    await (await openConnectionActionsMenu(dialog, 'Desktop proof'))
-      .getByRole('menuitem', { name: 'Edit Station', exact: true })
-      .click();
+    await openConnectionEditor(dialog, 'Desktop proof');
     await expect(
       dialog.getByRole('textbox', { name: 'Station address', exact: true }),
     ).toHaveValue(address);
@@ -568,7 +590,7 @@ test.describe('Connection Manager Modal', () => {
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(
       dialog.getByRole('button', {
-        name: 'Select Renamed desktop',
+        name: 'View details for Renamed desktop',
         exact: true,
       }),
     ).toBeVisible();
@@ -580,7 +602,7 @@ test.describe('Connection Manager Modal', () => {
 
   test('can remove a connection', async ({ page }) => {
     // Add a second connection via the UI so we have something to remove
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     await page
       .getByRole('dialog')
       .getByRole('button', { name: 'Add a Station address' })
@@ -618,7 +640,7 @@ test.describe('Connection Manager Modal', () => {
   });
 
   test('modal closes when clicking the backdrop', async ({ page }) => {
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
 
     // Click the dark overlay (outside the modal card)
@@ -707,11 +729,11 @@ test.describe('Connection Manager Modal', () => {
     await expect(revoke).toBeVisible();
   });
 
-  test('checking a reachable Station turns its row dot green and connected', async ({
+  test('the manager reflects current healthy status and offers a reachability check', async ({
     page,
   }) => {
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
-    // The row reports the manager's own check, not the header's, so run it.
+    await openStationManager(page);
+    // Current status comes from the host; the explicit check remains usable.
     await (
       await openConnectionActionsMenu(page.getByRole('dialog'), 'Dev Server')
     )
@@ -747,9 +769,7 @@ test.describe('Connection Manager Modal', () => {
       }),
     ).toHaveCount(0, { timeout: 10_000 });
 
-    // archive#3311: the state moved from the title attribute into visible
-    // text, so the accessible name is now "Manage Stations — <state>…".
-    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await openStationManager(page);
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
     // archive#198: the correct same-origin default is the page's OWN origin (the UI
     // port Playwright actually navigated to via baseURL/PW_BASE_URL), not

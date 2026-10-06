@@ -1,0 +1,252 @@
+.engine-account-overview {
+  display: grid;
+  gap: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  padding: clamp(0.75rem, 2vw, 1rem);
+  margin: 1rem 0;
+  color: var(--k-text);
+  background: var(--k-panel);
+  font-family: var(--k-font-ui);
+  font-size: var(--k-text-md);
+  line-height: 1.5;
+}
+.engine-account-overview h3 {
+  margin: 0;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+.engine-account-overview small {
+  display: block;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: 1.5;
+}
+.engine-account-overview__toolbar,
+.engine-account-overview__account,
+.engine-account-overview__activity-heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.engine-account-overview label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: var(--k-text-sm);
+}
+.engine-account-overview input,
+.engine-account-overview select {
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--k-line-strong);
+  border-radius: 6px;
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  padding: 0.4rem 0.65rem;
+  font: inherit;
+}
+.engine-account-overview input:focus-visible,
+.engine-account-overview select:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.engine-account-overview__toolbar label {
+  flex: 1 1 15rem;
+  min-width: 0;
+}
+.engine-account-overview__actions,
+.engine-account-overview__add,
+.engine-account-overview__login-actions,
+.engine-account-overview__login form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.engine-account-overview__plan {
+  margin-left: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.engine-account-overview__limits,
+.engine-account-overview__activity {
+  display: grid;
+  gap: 0.7rem;
+  border-top: 1px solid var(--k-line);
+  padding-top: 1rem;
+}
+.engine-account-overview__limit {
+  display: grid;
+  gap: 0.3rem;
+}
+.engine-account-overview__limit > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--k-text-md);
+}
+.engine-account-overview meter {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--k-action);
+}
+.engine-account-overview__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+.engine-account-overview__metrics > div {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.engine-account-overview__metrics span {
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.engine-account-overview__metrics strong {
+  font-size: var(--k-text-xl);
+  overflow-wrap: anywhere;
+}
+.engine-account-overview figure {
+  margin: 0;
+}
+.engine-account-overview figcaption {
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  margin-bottom: 0.5rem;
+}
+.engine-account-overview__chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 80px;
+}
+.engine-account-overview__chart > span {
+  flex: 1;
+  min-width: 2px;
+
+  background: var(--k-action);
+  border-radius: 3px 3px 0 0;
+}
+.engine-account-overview__chart > span[data-unreported] {
+  background: var(--k-line-strong);
+}
+
+.engine-account-overview__axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  margin-top: 0.35rem;
+}
+.engine-account-overview__activity-heading [aria-pressed="true"] {
+  border-color: var(--k-action);
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+}
+
+.engine-account-overview fieldset {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.engine-account-overview__login {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.engine-account-overview details {
+  border-top: 1px solid var(--k-line);
+}
+.engine-account-overview summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+.engine-account-overview summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.engine-account-overview__facts {
+  margin: 0;
+  display: grid;
+  gap: var(--k-space-2);
+}
+.engine-account-overview__facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  justify-content: space-between;
+}
+.engine-account-overview__facts dt {
+  color: var(--k-text-muted);
+}
+.engine-account-overview__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+.engine-account-overview__limit strong {
+  font-size: var(--k-text-xl);
+}
+.engine-account-overview__limit > div {
+  align-items: baseline;
+}
+
+.engine-account-overview meter::-webkit-meter-bar {
+  background: var(--k-line-strong);
+  border: 0;
+}
+.engine-account-overview meter::-webkit-meter-optimum-value {
+  background: var(--k-action);
+}
+.engine-account-overview meter::-moz-meter-bar {
+  background: var(--k-action);
+}
+
+.engine-account-overview__history-table {
+  overflow-x: auto;
+}
+.engine-account-overview table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--k-text-sm);
+}
+.engine-account-overview th,
+.engine-account-overview td {
+  text-align: left;
+  padding: var(--k-space-2);
+  border-bottom: 1px solid var(--k-line);
+}
+.engine-account-overview caption {
+  text-align: left;
+  color: var(--k-text-muted);
+}
+.engine-account-overview [aria-pressed="true"] {
+  border-color: var(--k-action);
+}
+
+.engine-account-overview__history-chart {
+  width: 100%;
+  height: 80px;
+  display: block;
+}
+.engine-account-overview__history-chart rect {
+  fill: var(--k-action);
+}
+.engine-account-overview__history-chart rect[data-unreported] {
+  fill: var(--k-line-strong);
+}
+.engine-account-overview__history-table {
+  max-height: 24rem;
+}

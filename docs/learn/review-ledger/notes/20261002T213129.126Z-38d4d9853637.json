@@ -1,0 +1,11 @@
+{
+  "revision": "6e24321d7adb31ca8814f3fd32290c6491b0014a",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the updated entry-point placement and immutable registry: Customize replaces Settings setup links, Schedule is a place, historical decisions retain their original context. Existing routes, guarded navigation and attention ownership remain unchanged.","inputs":["docs/design/shell-ownership-and-boards.md"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Reviewed page-frame-registry delta: Settings retains its title and narrow frame; only the redundant subtitle is removed. The documented header owner and route framing contracts are unchanged. Browser preview checked in both themes and at 390px.","inputs":["docs/design/shell-skeletons.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Inspected generated topic delta and generator output: navigation explanations now describe Customize and settings topics. Static bundled content, stable topic IDs, no runtime filesystem/network access and credential-free documentation serving remain unchanged.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

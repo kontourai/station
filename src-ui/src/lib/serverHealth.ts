@@ -9,6 +9,10 @@ import {
 } from '@kontourai/station-connect';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { authenticatedFetch } from '@kontourai/station-sdk';
+import {
+  beginClientProtocolObservation,
+  clientProtocolHeaders,
+} from '@kontourai/station-shared/client-protocol';
 import { isBlockingCompatibility } from './compatibilityLoader';
 import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
@@ -20,6 +24,12 @@ type HealthRoute =
       isCurrent(): boolean;
       clientOrigin: string;
       credential?: string;
+    }
+  | {
+      kind: 'native-relay';
+      transport: typeof fetch;
+      identityTransport?: typeof fetch;
+      isCurrent(): boolean;
     }
   | { kind: 'reject' }
   | null;
@@ -71,6 +81,10 @@ async function healthFetch(
     return Promise.reject(new Error('Station broker route is not ready'));
   if (route?.kind === 'reject')
     return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'native-relay') {
+    if (!route.isCurrent()) throw new Error('Station route is retired');
+    return route.transport(url, init);
+  }
   if (route?.kind === 'relay') {
     if (!route.isCurrent())
       return Promise.reject(new Error('Station route is retired'));
@@ -105,6 +119,16 @@ async function stationAuthenticatedFetch(
     return Promise.reject(new Error('Station broker route is not ready'));
   if (route?.kind === 'reject')
     return Promise.reject(new Error('Station route is not ready'));
+  if (route?.kind === 'native-relay') {
+    if (!route.identityTransport || !route.isCurrent())
+      throw Object.assign(
+        new Error('Native application authority is not ready'),
+        {
+          code: 'station_application_authority_required',
+        },
+      );
+    return route.identityTransport(url, init);
+  }
   if (route?.kind === 'relay') {
     if (!route.identityTransport || !route.isCurrent()) {
       return Promise.reject(
@@ -119,6 +143,8 @@ async function stationAuthenticatedFetch(
       headers: {
         ...Object.fromEntries(new Headers(init?.headers)),
         Origin: route.clientOrigin,
+        // A relay route is not a browser fetch, so no preflight governs it.
+        ...clientProtocolHeaders(url, true),
         ...(credential && !new Headers(init?.headers).has('Authorization')
           ? { Authorization: `Bearer ${credential}` }
           : {}),
@@ -130,6 +156,7 @@ async function stationAuthenticatedFetch(
     ...init,
     headers: {
       ...(init?.headers ?? {}),
+      ...clientProtocolHeaders(url),
       Authorization: `Bearer ${credential}`,
     },
   });
@@ -254,6 +281,7 @@ export async function probeServerConnection(
   // identity read is a Station that is slow to give this device a turn — the
   // address demonstrably answers — not one that cannot be reached.
   let handshakeAnswered = false;
+  const observeProtocol = beginClientProtocolObservation(url);
   try {
     const handshakeResponse = await healthFetch(
       new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
@@ -316,6 +344,8 @@ export async function probeServerConnection(
     ) {
       return { ok: false, reason: 'identity-mismatch' };
     }
+    // Only a verified handshake restores cross-origin header acceptance.
+    observeProtocol(handshake.compatibility);
     handshakeAnswered = true;
     const identityResponse = await stationAuthenticatedFetch(
       new URL('/api/system/identity', url),

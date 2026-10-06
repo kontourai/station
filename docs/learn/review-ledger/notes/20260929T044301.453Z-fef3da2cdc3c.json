@@ -1,0 +1,13 @@
+{
+  "revision": "85a274ea50926a039ee0d352742f9491a843529d",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Merge review through 85a274ea5: both sides rebound scripts/vitest-resource-manifest.mjs; main's #2937 adds SessionPullRequestConflictChip.pushurl.test.tsx to PROCESS_HEAVY_VITEST_FILES, which follows this file's rule that child-process tests are classified in that manifest, so the prose is accurate. Source review is separate from executed test evidence.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Merge review through 85a274ea5: this change's only docs/learn/media.json edit removes the capture review fields (reviewedRevision, sources, reviewNotes), which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Merge review through 85a274ea5: this change's only docs/learn/media.json edit removes the capture review fields (reviewedRevision, sources, reviewNotes), which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Merge review through 85a274ea5: this change's only docs/learn/media.json edit removes the capture review fields (reviewedRevision, sources, reviewNotes), which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence.","inputs":["examples/knowledge-library/README.md"]}
+  ]
+}

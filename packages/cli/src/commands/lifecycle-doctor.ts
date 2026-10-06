@@ -311,7 +311,7 @@ function buildFixCommands(input: {
       fixes.push({
         label: 'Save detected Ollama as a model connection',
         command:
-          'station connections create --data \'{"id":"ollama-local","type":"ollama","enabled":true,"capabilities":["llm"],"config":{"baseUrl":"http://127.0.0.1:11434"}}\'',
+          'station connections create --data \'{"id":"ollama-local","kind":"model","type":"ollama","name":"Ollama","enabled":true,"capabilities":["llm"],"config":{"baseUrl":"http://127.0.0.1:11434"}}\'',
         reason:
           'Ollama is reachable, but no enabled chat-capable connection is saved.',
       });
@@ -319,7 +319,7 @@ function buildFixCommands(input: {
       fixes.push({
         label: 'Save Bedrock as a model connection',
         command:
-          'station connections create --data \'{"id":"bedrock-default","type":"bedrock","enabled":true,"capabilities":["llm"],"config":{}}\'',
+          'station connections create --data \'{"id":"bedrock-default","kind":"model","type":"bedrock","name":"Amazon Bedrock","enabled":true,"capabilities":["llm"],"config":{}}\'',
         reason:
           'AWS credentials are present, but no enabled Bedrock chat connection is saved.',
       });

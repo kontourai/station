@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"#3071 review-fix round. Changed inputs: contracts.md (openRequestIds/pendingReview leave out a request settled by its turn's abort). Searched this page for respondToRequest, request.opened/request.resolved, expectedRequestEventId, approvals/operate request listing, the inventory decision status and shared export subpaths: it makes no statement those deltas change (subpath mentions are general guidance, not an enumeration). No prose change; the page's other claims were not re-reviewed.","inputs":["packages/contracts/AGENTS.md"]}
+  ]
+}

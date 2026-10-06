@@ -1,0 +1,55 @@
+{
+  "path": "docs/guides/ecosystem-packaging.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Installer adds generated ring/key tables, Nightly public-manifest-only and coexistence admission; current CLI now uses incompatible platform-array v2. Guide now names both v2 consumers and delivery-integration limit. Workflow source delta adds shared manifest/target/key/channel path triggers; still fixture dry-run with explicitly configured publication commands.",
+
+  "limits": "No installer, Homebrew, native launch, hosted workflow, publication, current release, production key custody, or external protection settings verified. Fixture flow is not production evidence.",
+
+  "sources": [
+    ".github/workflows/ecosystem-packaging.yml",
+
+    ".github/workflows/portable-server-archives.yml",
+
+    "install.sh",
+
+    "packages/shared/src/portable-server-targets.mjs",
+
+    "packages/shared/src/release-manifest.mjs",
+
+    "packaging/homebrew/README.md",
+
+    "packaging/manifest/README.md",
+
+    "scripts/__tests__/release-manifest-vectors.test.ts",
+
+    "scripts/ecosystem-manifest.mjs",
+
+    "scripts/ecosystem-publish-boundary.sh",
+
+    "scripts/exercise-ecosystem-packaging-dry-run.sh",
+
+    "scripts/install-script-generated.mjs"
+  ],
+
+  "checks": [
+    "Independent changed-claim source review accepted the recorded document and source bytes; no live operations or new test execution in that review.",
+
+    "Installer adds generated ring/key tables, Nightly public-manifest-only and coexistence admission; current CLI now uses incompatible platform-array v2. Guide now names both v2 consumers and delivery-integration limit. Workflow source delta adds shared manifest/target/key/channel path triggers; still fixture dry-run with explicitly configured publication commands.",
+
+    "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
+
+    "Reviewed integration deltas: .github/workflows/portable-server-archives.yml: Adds diagnostics and stop-hint helpers to both workflow path filters; build/smoke matrix and publication authority unchanged. Native release guide already distinguishes qualification from publication.",
+
+    "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Retained v1-only cask behavior and clarified that current consumers refuse the former source-v2 shape. Updated current platform-v2 consumers, explicit former-v2 refusal and same-version cross-layout exception. Homebrew still requires v1 application artifacts. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Integration source review through e0314c727: install.sh now switches archive services that run the install root's current (stop, switch, restart, identity rollback), records and reuses install ports, and validates port values. The guide makes no service or port claim and sends upgrade, rollback and service limits to release-channel-ports.md, so its own prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) adds stage-only mode and the launcher-service handoff to install.sh. The guide's manifest-path selection, v1/v2 schema and host-archive selection claims still hold, and it defers upgrade and service limits to the archive install contract; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

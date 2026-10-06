@@ -26,6 +26,7 @@ import type {
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_VISIBILITY_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
@@ -37,6 +38,8 @@ import {
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { canonicalPath } from '../../utils/path-containment.js';
+import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
@@ -71,6 +74,7 @@ async function provisionProjectWorktree(
 }
 
 export interface ForegroundMessageInput {
+  skillExperience?: SkillExperienceStartInputV1;
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
@@ -120,6 +124,13 @@ export interface ForegroundMessageInput {
    * `OrchestrationService` lets the session run `host` only with it.
    */
   fullAccessGrant?: FullAccessGrant | null;
+  /**
+   * #2873: set only by the dispatch route that starts a new session for a
+   * scoped station-control caller. It rides the start's dispatch context,
+   * where `OrchestrationService` runs the scope decision again beside the
+   * engine spawn.
+   */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
   /** Resolved at the HTTP/auth seam; not accepted by public JSON schemas. */
   clientOrigin?: ClientOrigin;
   /**
@@ -275,6 +286,12 @@ export interface ExecutionSessionBinding {
   userId?: string;
   projectSlug?: string;
   cwd?: string;
+  /**
+   * #3429: the canonical folder the server admitted this conversation into
+   * (`dispatchCanonicalCwd`): an adopted attached conversation's own folder,
+   * or a scoped dispatch's. Never caller-supplied.
+   */
+  admittedCwd?: string;
   workspaceIsolation?: WorkspaceIsolationConfig;
   worktree?: WorktreeSessionMetadata;
 }
@@ -373,7 +390,14 @@ export interface ExecutionTargetExecutionDependencies
     transcriptSeed?: string;
     /** Explicit one-shot context policy, never inferred from a restart. */
     contextBoundary?: ConversationContextBoundaryProjection;
+    /** A never-ran predecessor to stop once this start succeeds. */
+    retirePredecessorSessionId?: string;
   }>;
+  /** Best-effort teardown of a retired predecessor's engine process. */
+  retireSession?: (
+    access: EnvironmentAccess,
+    sessionId: string,
+  ) => Promise<void>;
   claimConversationContextBoundaryColdStart?: (
     access: EnvironmentAccess,
     boundaryId: string,
@@ -545,7 +569,15 @@ export async function executeForegroundMessage(
     );
   }
   if (binding) {
-    validateContinuationWorkspace(binding, resolved.workspace);
+    validateContinuationWorkspace(
+      binding,
+      resolved.workspace,
+      // #3429: the request named its project and nothing more (the dock's
+      // follow-up), so it asks to continue the conversation where it is.
+      input.target.workspace?.kind === 'project' &&
+        input.target.workspace.cwd === undefined &&
+        input.target.workspace.workspaceIsolation === undefined,
+    );
   }
   const preparedHandoff = requestedHandoff
     ? await deps.prepareConversationHandoff?.(resolved.access, {
@@ -958,6 +990,20 @@ export async function executeForegroundMessage(
       }
       throw error;
     }
+    if (continuation?.retirePredecessorSessionId) {
+      // Detached: a stop waits on the predecessor's engine teardown (and any
+      // in-flight start), and the user's send must not wait on that. The
+      // successor is already running, so a predecessor that stays resident
+      // until the idle park is a cost, not a reason to fail or delay the send.
+      const predecessorId = continuation.retirePredecessorSessionId;
+      void Promise.resolve()
+        .then(() => deps.retireSession?.(resolved.access, predecessorId))
+        .catch((error: unknown) => {
+          const message = `Could not stop the never-used predecessor session: ${errorMessage(error)}`;
+          logger.warn(message, { sessionId: predecessorId });
+          deps.warn?.(message, { sessionId: predecessorId });
+        });
+    }
   }
   const effectiveClientTurnId = requestedHandoff
     ? `handoff:${createHash('sha256')
@@ -1059,6 +1105,7 @@ const defaultWorktreeFinalizer =
 function validateContinuationWorkspace(
   binding: ExecutionSessionBinding,
   workspace: ResolvedWorkspaceTarget | undefined,
+  projectOnly = false,
 ): void {
   const requestedIsolation =
     workspace?.kind === 'project'
@@ -1091,6 +1138,36 @@ function validateContinuationWorkspace(
       'continuation_workspace_unbound',
       'This conversation was started without a workspace, so it cannot be continued inside one. Continue it as it is, or start a new chat in this workspace.',
     );
+  }
+  // #3429: a conversation the server admitted into a verified folder (an
+  // adopted attached conversation: the project folder, a folder inside it,
+  // or a worktree of its repository) is bound to that folder. A request that
+  // names only the conversation's project continues it there, in the folder
+  // and isolation it already has; it never moves it to the project root. A
+  // request naming a folder or an isolation still meets the exact checks
+  // below.
+  if (
+    workspace?.kind === 'project' &&
+    projectOnly &&
+    binding.admittedCwd !== undefined &&
+    !binding.worktree
+  ) {
+    if (binding.projectSlug !== workspace.projectSlug)
+      throw new ContinuationWorkspaceError(
+        'continuation_workspace_different_project',
+        'This conversation belongs to a different project.',
+      );
+    // `admittedCwd` is already canonical; the bound folder must still
+    // resolve to exactly it (a folder swapped for a link does not).
+    if (
+      binding.cwd === undefined ||
+      canonicalPathOrUndefined(binding.cwd) !== binding.admittedCwd
+    )
+      throw new ContinuationWorkspaceError(
+        'continuation_workspace_direct_mismatch',
+        'This conversation belongs to a different workspace directory.',
+      );
+    return;
   }
   if (workspace?.kind === 'project' && !originalIsolation) {
     throw new Error(
@@ -1180,6 +1257,14 @@ function validateContinuationWorkspace(
       'continuation_workspace_direct_mismatch',
       'This conversation belongs to a different workspace directory.',
     );
+  }
+}
+
+function canonicalPathOrUndefined(path: string): string | undefined {
+  try {
+    return canonicalPath(path);
+  } catch {
+    return undefined;
   }
 }
 

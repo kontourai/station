@@ -1,0 +1,35 @@
+{
+  "path": "examples/getting-started-starter/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide and components read; corrected nonexistent per-call manifest flag and installation bypass; inspected host action identity and explicit dock-only UI.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/getting-started-starter/layout.json",
+
+    "examples/getting-started-starter/plugin.json",
+
+    "examples/getting-started-starter/src/index.tsx",
+
+    "packages/cli/src/cli.ts",
+
+    "packages/cli/src/commands/install.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "Integration source review through d72f79b08: in cli.ts, #2904 only adds the full-access refusal rendering to describeCliError. The Starter guide's commands, manifest handling, host action identity and dock-only UI claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's preview-then-install flow for the starter directory is unchanged, and it makes no claim about git metadata. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e464b7065: added that `station registry install getting-started-starter` installs this static starter once `./station registry ./examples/registry/manifest.json` selects the local catalog. The plugin declares no executable or lifecycle contribution (the refusal case #2809 records), and the CLI's default catalog is the GitHub registry, hence the selection step. Source review is separate from executed test evidence."
+  ]
+}

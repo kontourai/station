@@ -1,0 +1,161 @@
+{
+  "path": "docs/reference/shared.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed current documented-claim review, including compatibility declarations, legacy JSON readers, integration copier admission/rollback, build externals/containment/preparation, host lazy namespace publication and actual CLI/install callers. Reused earlier MCP/notification review after inspecting the only source delta (two package export additions). Clarified unchecked JSON/path inputs, Agent parse failures, specific credential-key rejection, skipped nondirectories, and page-level shared-runtime readiness. API/config review supplies adjacent provider/status/Project producer boundaries. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
+
+  "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/reference/shared.md\",\"ours\":{\"digest\":\"19270961b8cd9ec650fb3d6dc6acc279030b0bdbbfebf99ad484b5d12d3eb82a\",\"revision\":\"8924149a7e6ef1356fc078c9a387c6a60ada429a\"},\"theirs\":{\"digest\":\"19270961b8cd9ec650fb3d6dc6acc279030b0bdbbfebf99ad484b5d12d3eb82a\",\"revision\":\"0a88fa4ab8652b115efd550e116d183aaa3fff8e\"},\"active\":{\"digest\":\"19270961b8cd9ec650fb3d6dc6acc279030b0bdbbfebf99ad484b5d12d3eb82a\",\"revision\":\"8924149a7e6ef1356fc078c9a387c6a60ada429a\"}},{\"path\":\"packages/contracts/src/agent.ts\",\"ours\":{\"path\":\"packages/contracts/src/agent.ts\",\"digest\":\"dd5ef7e0a65205266bb5ac648b0c6dd4aa66fcd9741fdea63267afe2e257e11c\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"packages/contracts/src/agent.ts\",\"digest\":\"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c\",\"revision\":\"c2c67c2f25d565ea97d757b370f2bbf942a9588b\"},\"active\":{\"path\":\"packages/contracts/src/agent.ts\",\"digest\":\"dd5ef7e0a65205266bb5ac648b0c6dd4aa66fcd9741fdea63267afe2e257e11c\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}},{\"path\":\"packages/contracts/src/config.ts\",\"ours\":{\"path\":\"packages/contracts/src/config.ts\",\"digest\":\"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31\",\"revision\":\"d6a3158c22a62d9530592c6366a1624790ee9401\"},\"theirs\":{\"path\":\"packages/contracts/src/config.ts\",\"digest\":\"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"},\"active\":{\"path\":\"packages/contracts/src/config.ts\",\"digest\":\"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31\",\"revision\":\"d6a3158c22a62d9530592c6366a1624790ee9401\"}},{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"ours\":{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"digest\":\"ae47957678b93b3b6b1e930522ab619c8473dfc3fe90830251914a27ef2fa849\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"digest\":\"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1\",\"revision\":\"c2c67c2f25d565ea97d757b370f2bbf942a9588b\"},\"active\":{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"digest\":\"ae47957678b93b3b6b1e930522ab619c8473dfc3fe90830251914a27ef2fa849\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/reference/shared.md\",\"ours\":{\"digest\":\"19270961b8cd9ec650fb3d6dc6acc279030b0bdbbfebf99ad484b5d12d3eb82a\",\"revision\":\"8924149a7e6ef1356fc078c9a387c6a60ada429a\"},\"theirs\":{\"digest\":\"972645b56f6537f563d637933e4234f02dc62165d3a5f6f21863de4412232a00\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"digest\":\"972645b56f6537f563d637933e4234f02dc62165d3a5f6f21863de4412232a00\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}},{\"path\":\"packages/contracts/src/agent.ts\",\"ours\":{\"path\":\"packages/contracts/src/agent.ts\",\"digest\":\"dd5ef7e0a65205266bb5ac648b0c6dd4aa66fcd9741fdea63267afe2e257e11c\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"packages/contracts/src/agent.ts\",\"digest\":\"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c\",\"revision\":\"423cbe55b9e35e4cd8954fd441cb9f3c69740d66\"},\"active\":{\"path\":\"packages/contracts/src/agent.ts\",\"digest\":\"dd5ef7e0a65205266bb5ac648b0c6dd4aa66fcd9741fdea63267afe2e257e11c\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}},{\"path\":\"packages/contracts/src/plugin.ts\",\"ours\":{\"path\":\"packages/contracts/src/plugin.ts\",\"digest\":\"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"theirs\":{\"path\":\"packages/contracts/src/plugin.ts\",\"digest\":\"792d8276a237a79dbace80dc8171a578448b45bb720df125d674b1030207da30\",\"revision\":\"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d\"},\"active\":{\"path\":\"packages/contracts/src/plugin.ts\",\"digest\":\"792d8276a237a79dbace80dc8171a578448b45bb720df125d674b1030207da30\",\"revision\":\"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d\"}},{\"path\":\"packages/contracts/src/provider.ts\",\"ours\":{\"path\":\"packages/contracts/src/provider.ts\",\"digest\":\"25c46032a72149b0639d08a0bc84ed6553d44a2b83ec7215acb403d6bea220fb\",\"revision\":\"8924149a7e6ef1356fc078c9a387c6a60ada429a\"},\"theirs\":{\"path\":\"packages/contracts/src/provider.ts\",\"digest\":\"25c46032a72149b0639d08a0bc84ed6553d44a2b83ec7215acb403d6bea220fb\",\"revision\":\"0961c433764c39dd7998c9418b9c157b6547292b\"},\"active\":{\"path\":\"packages/contracts/src/provider.ts\",\"digest\":\"25c46032a72149b0639d08a0bc84ed6553d44a2b83ec7215acb403d6bea220fb\",\"revision\":\"8924149a7e6ef1356fc078c9a387c6a60ada429a\"}},{\"path\":\"packages/shared/src/build.ts\",\"ours\":{\"path\":\"packages/shared/src/build.ts\",\"digest\":\"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630\",\"revision\":\"1e6450e0caa47975d33f505a1348bdc01ae1382e\"},\"theirs\":{\"path\":\"packages/shared/src/build.ts\",\"digest\":\"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783\",\"revision\":\"e78cdc9c00d09b69f333e1609821d8fa70bce58c\"},\"active\":{\"path\":\"packages/shared/src/build.ts\",\"digest\":\"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783\",\"revision\":\"e78cdc9c00d09b69f333e1609821d8fa70bce58c\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a\",\"revision\":\"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff\"},\"theirs\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}},{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"ours\":{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"digest\":\"ae47957678b93b3b6b1e930522ab619c8473dfc3fe90830251914a27ef2fa849\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"digest\":\"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1\",\"revision\":\"aadb5aa183a58e97344d13b8c5f34f92a7d78a94\"},\"active\":{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"digest\":\"ae47957678b93b3b6b1e930522ab619c8473dfc3fe90830251914a27ef2fa849\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}},{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"ours\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61\",\"revision\":\"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa\"},\"theirs\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}}]",
+
+  "sources": [
+    "docs/design/mcp-ui-host.md",
+
+    "packages/cli/src/commands/build.ts",
+
+    "packages/cli/src/dev/http.ts",
+
+    "packages/cli/src/dev/mcp.ts",
+
+    "packages/contracts/src/agent-identity.ts",
+
+    "packages/contracts/src/agent.ts",
+
+    "packages/contracts/src/auth.ts",
+
+    "packages/contracts/src/catalog.ts",
+
+    "packages/contracts/src/config.ts",
+
+    "packages/contracts/src/knowledge.ts",
+
+    "packages/contracts/src/layout.ts",
+
+    "packages/contracts/src/notification.ts",
+
+    "packages/contracts/src/plugin.ts",
+
+    "packages/contracts/src/project.ts",
+
+    "packages/contracts/src/provider.ts",
+
+    "packages/contracts/src/runtime.ts",
+
+    "packages/contracts/src/scheduler.ts",
+
+    "packages/contracts/src/tool.ts",
+
+    "packages/sdk/src/api-agent-runtime.ts",
+
+    "packages/shared/package.json",
+
+    "packages/shared/src/__tests__/build.test.ts",
+
+    "packages/shared/src/__tests__/parsers.test.ts",
+
+    "packages/shared/src/__tests__/plugin-build.test.ts",
+
+    "packages/shared/src/agent-plugin-manifest.ts",
+
+    "packages/shared/src/build.ts",
+
+    "packages/shared/src/git.ts",
+
+    "packages/shared/src/harness-questions.ts",
+
+    "packages/shared/src/index.ts",
+
+    "packages/shared/src/mcp-connection.ts",
+
+    "packages/shared/src/mcp-local-custody.ts",
+
+    "packages/shared/src/mcp-ui-csp.ts",
+
+    "packages/shared/src/mcp.ts",
+
+    "packages/shared/src/notification-envelope.ts",
+
+    "packages/shared/src/parsers.ts",
+
+    "packages/shared/src/skill-experience-author.ts",
+
+    "packages/shared/src/types.ts",
+
+    "pnpm-lock.yaml",
+
+    "src-server/routes/agents/invoke-agent.ts",
+
+    "src-server/routes/plugins/plugin-bundles.ts",
+
+    "src-server/routes/system/auth.ts",
+
+    "src-server/routes/system/system-status-routes.ts",
+
+    "src-server/runtime/mcp/mcp-apps-metadata.ts",
+
+    "src-server/runtime/mcp/mcp-manager.ts",
+
+    "src-server/runtime/mcp/mcp-ui-frame-server.ts",
+
+    "src-server/runtime/mcp/mcp-ui-resolver.ts",
+
+    "src-server/services/notifications/notification-service.ts",
+
+    "src-server/services/plugins/plugin-install-transaction.ts",
+
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
+
+    "src-ui/src/components/notifications/NotificationEnvelopeControls.tsx",
+
+    "src-ui/src/core/PluginRegistry.ts",
+
+    "src-ui/src/core/pluginSharedRuntime.ts"
+  ],
+
+  "checks": [
+    "Full original document text read; exact inspected and remaining scope retained in HANDOFF.md. Documentation-only change.",
+
+    "Real PluginWorkspacePaneSDKBoundary to SDKAdapter to SDKProvider fixture: 9 tests, exit 0, 4.52s; controlled surrounding providers and no network. Confirms observed default-host gaps, not desired feature support.",
+
+    "Focused existing checks: 91 tests across ConnectionStore, useConnectionStatus, integration-copy parsers and Agent resolver; 4 files, exit 0, 2.64s.",
+
+    "First-plugin guide manifest and entrypoint extracted verbatim: actual schema parser and buildPlugin production/dev controls exit 0; no dependency install or Station installation/activation.",
+
+    "153 TS/TSX/JS/JSON fences parse, exit 0; syntax only. Initial 8 SDK pseudo-signature/multiple-JSX parse failures were corrected or explicitly marked text; retained original failure receipt.",
+
+    "Local paths and rendered anchors validated in396 Markdown files, exit0. Repository/public hygiene and public contract examples exit0; public checks apply only to10 admitted documents, not semantic certification of these5 references.",
+
+    "Frozen staged-document readiness exit0,0 failures/0 warnings, veritas-1790478448046. Commit bdbb325a0c2b735e8b522f4bbcade27fecc46fe7 contains exactly the5 owned Markdown files; worktree clean.",
+
+    "Continuation2026-09-27:339 tests/11 files passed (24.56s), covering Muse adapter/serve, quota classifiers and connected delegation, supervision projection, watchdog/tracker/window, conversation stats and native-push routes; controlled fixtures, not live provider/device evidence.",
+
+    "Continuation2026-09-27:134 tests/4 files passed (4.64s), covering shared MCPv2/local-custody and notification envelope/service. Existing2099 notification fixture emitted TimeoutOverflowWarning; retained as diagnostic candidate, not ignored as proof of scheduler correctness.",
+
+    "Continuation2026-09-27:153 fence syntax checks and396 Markdown local links/anchors passed; frozen readiness veritas-1790515593355 passed0failures0warnings. Exactly2Markdown files committed; no runtime/shared-ledger/protected mutation.",
+
+    "Final helper tranche:27 tests/3 files PASS,3.67s. Expected containment-refusal fixture errors retained.",
+
+    "Final four-document bytes:407 Markdown paths/anchors PASS;154 reference/example syntax fences PASS;git diff --check PASS. Veritas1790527733697:0 failures0 warnings. Three owned documentation-only commits; no runtime edits or external writes.",
+
+    "Removed orphaned compatibility comment after source search confirmed the execution-mode normalization helper is absent; type declarations unchanged.",
+
+    "Source-reviewed policy-construction and host callers; synthetic intercepted Chromium probe is not live remote exfiltration or broad containment proof.",
+
+    "Reviewed integration deltas: Added bounded MCP policy distinction between scheme filtering and complete source-expression/containment validation; retained prior public API review. packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: pnpm-lock.yaml dropped the bearing/forage root entries, and plugin install gained an excludeGitMetadata option that stages proposed installs without .git entries. The documented compatibility, copier, build and MCP contracts are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds `STATION_CONFINEMENT_GRANTOR_METADATA_KEY` ('stationConfinementGrantor') to packages/contracts/src/provider.ts and to `RESERVED_ORCHESTRATION_METADATA_KEYS`. The shared reference does not document provider.ts confinement or reserved metadata keys, and none of its compatibility, copier, build or host-namespace claims depend on them. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes getOpenFileMime and isAllowedOpenFilePath private in packages/cli/src/dev/http.ts. The open-file route still uses them, with the same behavior. The document does not name them as exports. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 adds the ./prebuilt-archive and ./service-launcher-protocol .ts subpaths to the packages/shared export map. #2914 stops re-exporting isDistinctFrameOrigin from MCPToolUIFrame and un-exports mcpUiToolCallDecision. The doc's 'mostly .ts with a few .mjs' export-map description and the mcp-ui-csp claims still hold; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+
+    "Structural reconciliation of plugin-command branch and origin/main 84fb656cf0. Both prior bindings preserved here; this is not semantic approval of merged bytes. Conflicting historical anchors: [{\"field\":\"document\",\"branch\":{\"digest\":\"972645b56f6537f563d637933e4234f02dc62165d3a5f6f21863de4412232a00\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"digest\":\"19270961b8cd9ec650fb3d6dc6acc279030b0bdbbfebf99ad484b5d12d3eb82a\",\"revision\":\"0a88fa4ab8652b115efd550e116d183aaa3fff8e\"}},{\"field\":\"source\",\"path\":\"packages/contracts/src/agent.ts\",\"branch\":{\"path\":\"packages/contracts/src/agent.ts\",\"digest\":\"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c\",\"revision\":\"423cbe55b9e35e4cd8954fd441cb9f3c69740d66\"},\"main\":{\"path\":\"packages/contracts/src/agent.ts\",\"digest\":\"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c\",\"revision\":\"c2c67c2f25d565ea97d757b370f2bbf942a9588b\"}},{\"field\":\"source\",\"path\":\"packages/contracts/src/config.ts\",\"branch\":{\"path\":\"packages/contracts/src/config.ts\",\"digest\":\"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31\",\"revision\":\"d6a3158c22a62d9530592c6366a1624790ee9401\"},\"main\":{\"path\":\"packages/contracts/src/config.ts\",\"digest\":\"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"}},{\"field\":\"source\",\"path\":\"packages/contracts/src/plugin.ts\",\"branch\":{\"path\":\"packages/contracts/src/plugin.ts\",\"digest\":\"792d8276a237a79dbace80dc8171a578448b45bb720df125d674b1030207da30\",\"revision\":\"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d\"},\"main\":{\"path\":\"packages/contracts/src/plugin.ts\",\"digest\":\"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"}},{\"field\":\"source\",\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"branch\":{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"digest\":\"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1\",\"revision\":\"aadb5aa183a58e97344d13b8c5f34f92a7d78a94\"},\"main\":{\"path\":\"src-server/runtime/mcp/mcp-manager.ts\",\"digest\":\"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1\",\"revision\":\"c2c67c2f25d565ea97d757b370f2bbf942a9588b\"}},{\"field\":\"source\",\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"branch\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61\",\"revision\":\"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa\"}}]"
+  ]
+}

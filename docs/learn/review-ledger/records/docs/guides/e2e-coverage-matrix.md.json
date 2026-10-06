@@ -1,0 +1,33 @@
+{
+  "path": "docs/guides/e2e-coverage-matrix.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
+
+  "limits": "No new Playwright run, browser/native/physical Android receipt, live account or provider journey, current coverage percentage or complete surface tier qualification. Spec assertions include fixtures and intercepted requests. Manifest membership and runnable ownership do not establish a passed execution or exhaustive behavioral coverage.",
+
+  "sources": [
+    "tests/task-first-home.spec.ts"
+  ],
+
+  "checks": [
+    "Source/caller review on 2026-09-27 completed for the whole document, separating implemented behavior, policy requirements and historical evidence. Current root document bytes at 45fcdd5230b0b5e5028e469864ab70693e6088b0 matched the lane before this prose correction; reviewed implementation remains the frozen 6fa523e4d5b5a265a9e545edcbba6f5602193bef integration.",
+
+    "EXECUTED: git diff --check passed. No production behavior changed. No new live audit, hosted job, browser suite, dependency installation, cloud deployment or price refresh was run for this tranche.",
+
+    "NOT_EXECUTED: gate:for could not spawn its shell (EAGAIN, host process capacity); retained the failure and avoided process-heavy verification. Parent owns final combined documentation/readiness checks. Existing tests were inspected for their actual assertions and limits, not reported as newly executed.",
+
+    "Integration source review through d1e0facc2: Reviewed browser-spec pruning and repaired actions/positive controls; registry.spec.ts remains after the duplicate install spec was removed. Coverage descriptions retain fixture and execution limits. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: package.json removed only the @kontourai/bearing and @kontourai/forage dependencies, with no script or e2e lane change; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: in runtime-initialize, #2904 only wires isFullAccessGrantorCurrent (environmentSecurityService.deviceHoldsFullAccess) into OrchestrationService. That does not change Starter clean-install telemetry and discovery isolation, bucket scheduling or manifest ownership. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) deleted tests/plugin-system.spec.ts and tests/plugin-dependency-lifecycle.spec.ts and removed them from tests/e2e-manifest.mjs. The commit gives plugin-pane-sdk-context, minimal-workspace-example and bundled-plugin-registry-lifecycle ownership of installed-plugin pane rendering. The same commits added tests/authenticated-request-canary.spec.ts (smoke-live), refactored run-e2e-suite.mjs evidence retention into settleStartedE2ERun, dropped plugin-update's update-banner test and monitoring's redaction assertion, and changed the agents-editor-gates/readiness-board rationale. None of these other changes alter the matrix's claims. Corrected the Plugins row: removed plugin-system, added the three owning specs, and changed 'installed layout loading' to 'installed plugin panes rendering'. The ledger may want to add tests/plugin-pane-sdk-context.spec.ts, tests/minimal-workspace-example.spec.ts and tests/bundled-plugin-registry-lifecycle.spec.ts as sources. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

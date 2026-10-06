@@ -17,6 +17,7 @@ import {
 } from '../projects/task-graph-service.js';
 import {
   TaskOutputConflictError,
+  type TaskOutputDeclarationSource,
   TaskOutputDeletedOperationError,
   type TaskOutputModule,
   TaskOutputUnavailableError,
@@ -602,7 +603,15 @@ export function createSessionOutputsModule(input: {
               }
             : { status: 'not-found' };
         }
+        const declaredBy: TaskOutputDeclarationSource = {
+          sessionId: request.sessionId,
+          eventId: request.eventId,
+          turnId: candidate.turnId,
+          toolCallId: candidate.toolCallId,
+          declarationId: row.declarationId,
+        };
         const kept = await request.outputs.createDeclared(request.taskId, {
+          declaredBy,
           operationId: request.operationId,
           title: candidate.label ?? basename(descriptor.relativePath),
           sourceWorkspace: root,

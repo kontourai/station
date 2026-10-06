@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, platform as hostPlatform } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import { readPnpmLock } from './lib/pnpm-lockfile.mjs';
 
 const GUIDES_URL = 'https://v2.tauri.app/_llms-txt/guides.txt';
@@ -119,7 +120,7 @@ function readJson(path) {
 }
 
 function checkCommand(id, command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const result = spawnSyncBounded(command, args, {
     cwd: options.cwd,
     encoding: 'utf8',
     timeout: options.timeout ?? 10_000,
@@ -255,13 +256,17 @@ function gitGeneratedState(root, relativePath) {
 }
 
 function collectChecks(root) {
-  const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const tauriBin = join(
-    root,
-    'node_modules',
-    '.bin',
-    process.platform === 'win32' ? 'tauri.cmd' : 'tauri',
-  );
+  let npm;
+  let npmResolutionError;
+  try {
+    npm = npmInvocation(['--version']);
+  } catch (error) {
+    npmResolutionError = error instanceof Error ? error.message : String(error);
+  }
+  const windows = process.platform === 'win32';
+  const tauriBin = windows
+    ? join(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js')
+    : join(root, 'node_modules', '.bin', 'tauri');
   const androidRoot = process.env.ANDROID_SDK_ROOT ?? process.env.ANDROID_HOME;
   const adb = firstExisting([
     androidRoot &&
@@ -285,7 +290,14 @@ function collectChecks(root) {
   ]);
   const checks = {
     node: checkCommand('node', process.execPath, ['--version']),
-    npm: checkCommand('npm', npmBin, ['--version']),
+    npm: npm
+      ? checkCommand('npm', npm.command, npm.args)
+      : {
+          id: 'npm',
+          status: 'failed',
+          reason: npmResolutionError,
+          command: 'npm',
+        },
     rustc: checkCommand('rustc', 'rustc', ['--version']),
     cargo: checkCommand('cargo', 'cargo', ['--version']),
     rustTargets: checkCommand(
@@ -296,7 +308,19 @@ function collectChecks(root) {
         parse: (output) => output.split('\n').filter(Boolean).sort(),
       },
     ),
-    tauriCli: checkCommand('tauri-cli', tauriBin, ['--version']),
+    tauriCli:
+      windows && !existsSync(tauriBin)
+        ? {
+            id: 'tauri-cli',
+            status: 'skipped',
+            reason: 'command-not-found',
+            command: tauriBin,
+          }
+        : checkCommand(
+            'tauri-cli',
+            windows ? process.execPath : tauriBin,
+            windows ? [tauriBin, '--version'] : ['--version'],
+          ),
     java: checkCommand('java', 'java', ['-version']),
     adb: checkCommand('adb', adb ?? 'adb', ['devices', '-l'], {
       parse: parseAdbDevices,

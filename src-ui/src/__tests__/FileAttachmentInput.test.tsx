@@ -34,4 +34,31 @@ describe('FileAttachmentInput accessibility', () => {
     fireEvent.click(button);
     expect(openPicker).toHaveBeenCalledOnce();
   });
+
+  test('an engine that refused images explains itself on tap instead of sitting disabled', () => {
+    const onUnavailable = vi.fn();
+    const { container } = render(
+      <FileAttachmentInput
+        attachments={[]}
+        onFilesSelected={vi.fn()}
+        onRemove={vi.fn()}
+        onClearAll={vi.fn()}
+        disabled
+        supportsImages={false}
+        supportsFiles={false}
+        unavailableReason="Grok Build reported that it cannot accept images."
+        onUnavailable={onUnavailable}
+      />,
+    );
+    const input = container.querySelector('input[type="file"]');
+    const openPicker = vi.fn();
+    Object.defineProperty(input, 'click', { value: openPicker });
+    const button = screen.getByRole('button', { name: 'Attach files' });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(button);
+    expect(onUnavailable).toHaveBeenCalledWith(
+      'Grok Build reported that it cannot accept images.',
+    );
+    expect(openPicker).not.toHaveBeenCalled();
+  });
 });

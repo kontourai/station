@@ -1,3 +1,4 @@
+import { useConnections } from '@kontourai/station-connect';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
@@ -63,6 +64,13 @@ const loadProjectPluginStartGate = () =>
 
 export function ProjectPage({ slug }: { slug: string }) {
   const projectQuery = useScopedProjectPageViewQuery(slug);
+  const { captureCredentialEvidence, isCredentialEvidenceCurrent } =
+    useConnections();
+  const evidence = captureCredentialEvidence();
+  const selectedNativeRelay = Boolean(
+    evidence?.nativeBrokerRoute && isCredentialEvidenceCurrent(evidence),
+  );
+  const { navigate } = useNavigation();
   const [projectRetrySeq, bumpProjectRetry] = useReducer(
     (n: number) => n + 1,
     0,
@@ -74,6 +82,23 @@ export function ProjectPage({ slug }: { slug: string }) {
   const requestScope = projectQuery.requestScope;
 
   if (!requestScope?.isCurrent()) {
+    if (selectedNativeRelay) {
+      return (
+        <div className="project-page">
+          <div className="project-page__inner">
+            <ErrorState
+              title="Sign in to this Station account"
+              description="A native relay route is selected. Sign in to its Station account before opening shared Projects."
+              action={
+                <Button onClick={() => navigate('/connections/computers')}>
+                  Open Station connections
+                </Button>
+              }
+            />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="project-page">
         <div className="project-page__inner">
@@ -148,6 +173,19 @@ export function ProjectPage({ slug }: { slug: string }) {
         project={projectQuery.data as MemberProjectView}
         requestScope={requestScope}
       />
+    );
+  }
+
+  if (selectedNativeRelay) {
+    return (
+      <div className="project-page">
+        <div className="project-page__inner">
+          <ErrorState
+            title="This Project is not shared with this account"
+            description="Native relay accounts can open Projects shared with them. Ask a Station operator to share this Project; operator configuration is unavailable through this route."
+          />
+        </div>
+      </div>
     );
   }
 

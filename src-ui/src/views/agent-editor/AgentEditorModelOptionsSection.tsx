@@ -76,6 +76,7 @@ export function AgentEditorModelOptionsSection({
           options={models}
           placeholder="Model id"
           hint="Leave blank to use the engine's own default."
+          hintPlacement="tooltip"
           onChange={(modelId) =>
             setForm((current) => ({ ...current, modelId }))
           }

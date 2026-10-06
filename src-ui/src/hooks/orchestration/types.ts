@@ -54,6 +54,8 @@ export type OrchestrationSnapshotPayload = {
     displayTitle?: string;
     lastEventMethod?: CanonicalRuntimeEvent['method'];
     lastRuntimeErrorMessage?: string;
+    /** #3157: the terminal runtime error is a provider usage limit. */
+    lastRuntimeErrorUsageLimit?: true;
     lastTurnAbortReason?: string;
     /**
      * #2309: the activity of the conversation this row's session belongs
@@ -63,6 +65,7 @@ export type OrchestrationSnapshotPayload = {
     conversationActivity?: ConversationTurnActivity;
     /** Current unresolved request ids; present even when empty. */
     openRequestIds?: string[];
+    blockingOpenRequestIds?: string[];
     /**
      * #2303: the durable conversation this execution thread belongs to — the
      * root for the root row AND for every `<root>:session:<uuid>`

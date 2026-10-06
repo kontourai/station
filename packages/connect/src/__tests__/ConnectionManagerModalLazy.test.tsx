@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
 import type { StorageAdapter } from '../core/types';
@@ -22,7 +23,7 @@ function memoryAdapter(): StorageAdapter {
   };
 }
 
-function renderModal(isOpen: boolean) {
+function renderModal(isOpen: boolean, listFooterContent?: ReactNode) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
   store.add('Remote Station', 'https://station.example.test');
   return render(
@@ -31,6 +32,7 @@ function renderModal(isOpen: boolean) {
         isOpen={isOpen}
         onClose={vi.fn()}
         checkHealth={vi.fn(async () => false)}
+        listFooterContent={listFooterContent}
       />
     </ConnectionsProvider>,
   );
@@ -47,7 +49,10 @@ afterEach(() => {
 // the modal opens.
 describe('ConnectionManagerModal lazy body', () => {
   it('renders nothing at all while closed', () => {
-    const { container } = renderModal(false);
+    const { container } = renderModal(
+      false,
+      <button type="button">Host route setup</button>,
+    );
     expect(container.innerHTML).toBe('');
   });
 
@@ -73,7 +78,7 @@ describe('ConnectionManagerModal lazy body', () => {
     // whatever load the host is under — removing the race rather than
     // widening the window it was losing.
     await import('../react/ConnectionManagerModalContent');
-    renderModal(true);
+    renderModal(true, <button type="button">Host route setup</button>);
 
     expect(
       await screen.findByRole('button', { name: 'Paired devices' }),
@@ -87,5 +92,37 @@ describe('ConnectionManagerModal lazy body', () => {
     expect(
       screen.getByRole('button', { name: 'Close Station manager' }),
     ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Host route setup' }),
+    ).toBeTruthy();
   });
+});
+
+it('uses the host live status for the selected row without inventing an in-progress check', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ requests: [] })),
+  );
+  await import('../react/ConnectionManagerModalContent');
+  const store = new ConnectionStore({ storage: memoryAdapter() });
+  const current = store.add('Current Station', 'https://current.example.test');
+  store.add('Another Station', 'https://other.example.test');
+  const health = vi.fn(async () => false);
+  render(
+    <ConnectionsProvider store={store}>
+      <ConnectionManagerModal
+        isOpen
+        onClose={vi.fn()}
+        checkHealth={health}
+        activeHealth={{
+          connectionId: current.id,
+          status: 'connected',
+          reason: null,
+        }}
+      />
+    </ConnectionsProvider>,
+  );
+  expect(await screen.findByText('Current · Connected')).toBeTruthy();
+  expect(screen.getByText('Not checked')).toBeTruthy();
+  expect(health).not.toHaveBeenCalled();
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the ProjectTasksSection delta and new ProjectTaskBoard/TasksLayout callers: recorded-status grouping, explicit selection/Open Task, manual refresh, unchanged Starter correlation and dispatch, unchanged read-only provider rows. Reviewed TaskWorkspaceView brief/room ordering and collapsed metadata. Focused UI proof covers 76 cases; provider/mobile/release and full shared-work program remain unverified.","inputs":["docs/guides/starter-work.md"]}
+  ]
+}

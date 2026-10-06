@@ -137,7 +137,7 @@ Current command availability, with background in the [CLI product design](../des
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
 | Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request` | yes | yes |
-| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
+| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
 | Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
 
@@ -218,7 +218,9 @@ What it does, in order:
    (`@kontourai/station-shared/instance-registry`) and confirms it with a
    `GET /api/system/instance` probe.
 2. Mints a **one-time local UI-bootstrap token** (station#1991) and opens your
-   browser at `http://localhost:<ui-port>#station-ui-bootstrap=<token>`.
+   browser at `http://<host>:<ui-port>#station-ui-bootstrap=<token>`, where
+   `<host>` is the host the instance recorded at start, or `localhost` for a
+   wildcard bind or an entry with no recorded host.
    The page redeems the token for a device-session cookie and strips it from
    the URL immediately — see
    [local-bootstrap-token.md](../design/local-bootstrap-token.md). The token
@@ -290,7 +292,11 @@ platform-v2 archives on macOS/Linux. Those install under
 build. Verification can download a pinned Node.js when neither the host nor
 an installed archive supplies one. See the
 [archive install contract](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
-for prerequisites, retention and service limits.
+for prerequisites, retention and service limits. On Windows, `install.ps1`
+installs the `station-server-win32-x64.zip` archive from a signed public
+manifest the same way, with a `current` junction and a `station.cmd`
+launcher; see
+[Windows archive installs](../guides/release-channel-ports.md#windows-archive-installs).
 
 ```bash
 # Pin a release; rerun the ordinary command later to upgrade.
@@ -352,7 +358,7 @@ parent directories or infer a target from repository contents.
 
 The default Station applies to every command that talks to a Station API,
 including `environment` verbs. Host-side verbs that must run against the local
-Station (`environment access list|approve|deny`) still require a loopback
+Station (`environment access list|approve|deny`, `environment operator passkeys`) still require a loopback
 target — pass the selected channel's loopback `--api-base` explicitly when a
 remote Station is your default. `--station=<name>` also works for these
 verbs, but only for a saved Station whose endpoint is loopback AND that
@@ -604,6 +610,12 @@ browser this command cannot open, such as a simulator or another profile. Each
 link is single use, and minting one replaces any earlier unspent link, including
 the one `station start` printed (#2612). Without `--print`, the command never
 prints the token.
+
+The link names the host the instance's UI listener bound, as recorded in the
+registry at start (`127.0.0.1` for `start --watch`, which is loopback-only). A
+wildcard bind (`0.0.0.0`, `::`) or an entry that recorded no host keeps
+`localhost`. The host matters because the sign-in a link completes belongs to
+that origin: `localhost` and `127.0.0.1` do not share it.
 
 It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require
@@ -858,6 +870,13 @@ the CLI. Chat currently uses that process directory rather than the preserved
 `STATION_INVOKED_CWD`; an invocation from another repository can therefore use
 the Station checkout. For directory-based work, pass an explicit target-visible
 `--cwd`. This is a current caller limitation, not a Project authorization grant.
+
+With `--on=<environment>` and neither `--project` nor `--cwd`, a new chat sends
+no workspace, because this machine's directory means nothing on another Station.
+A directory workspace (the default for the current Station, or `--cwd`, or
+`station delegate --project-path`/`--cwd`) needs the operator's credential or a
+device holding the `coding:exec` grant; a paired device without it is refused with
+`working-directory-not-granted` and nothing starts. `--project` needs no grant.
 
 On continuation, the current caller omits workspace selection: `--project`
 and `--cwd` have no effect and are not warned about. The Conversation keeps its
@@ -1321,6 +1340,18 @@ every thread for `--agent`'s provider when `--thread` is omitted) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
+A request is pending when it has no `request.resolved`, was not
+[settled by its turn's abort](session-api.md#respondtorequest), and, when the
+session summary carries `openRequestIds`, is still listed there. Each row
+carries `requestEventId`, the `request.opened` event it was read from.
+`respond` looks the request up first and, for an approval or permission this
+Station still lists, sends that id as `expectedRequestEventId`, so the server
+answers the request that was listed and refuses one that changed. A question
+(a request carrying a questionnaire) is never bound this way, so the server
+still refuses to close one that was not inspected. A request the lookup does
+not find is posted without the id and the server decides; nothing is refused
+client-side.
+
 ```
 station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
@@ -1378,6 +1409,12 @@ history), `GET /api/orchestration/sessions/:threadId/flow-run`
 /api/orchestration/sessions/:threadId/builder-run` (`getSessionBuilderRun`,
 archive#189 S4), plus a separate fleet-routing receipt read. This does not
 continuously refresh every owner projection.
+
+The approvals pane lists a `request.opened` with no `request.resolved` that
+was not [settled by its turn's abort](session-api.md#respondtorequest), by the
+same shared rule the server applies, over the events this screen holds. A
+keypress decision on an approval or permission that is not a question is
+sent with the listed request's event id as `expectedRequestEventId`.
 
 The GATES pane renders the Builder run as its own row, never merged into the
 Flow-run lines above it: they are two different runs with independent
@@ -1538,6 +1575,10 @@ to mask an inherited value. `profile-upsert` refuses an `env` field.
 with the offending variable names when the saved overlay breaks the rules;
 `recovery` does not. See
 [credential profile env overlays](../guides/connections.md#give-a-credential-profile-its-own-routing).
+`create`, `update` and `delete` print the resolved target to stderr
+(`Target: station=… endpoint=… source=…`) before the request, because the
+default target can be a saved remote Station. `create` refuses an `id` that
+already names a Model connection on that Station; use `update` instead.
 
 ### `flow`
 
@@ -1554,7 +1595,8 @@ station flow report <project> <runId> [--api-base=<url>]
 ```
 
 `attach-command` runs the command **server-side in the project workspace**
-(same trust level as scheduler jobs and tool servers) and attaches the output
+(same trust level as scheduler jobs and tool servers, and a paired device needs the
+operator's `coding:exec` grant: `command-not-granted` otherwise) and attaches the output
 tail as claim evidence: exit 0 attaches the claim with status `assumed` — a
 passing command is a claim, not verification, and Surface downgrades
 `verified` without backing evidence; a non-zero exit or timeout attaches
@@ -1777,16 +1819,23 @@ station service uninstall [--instance=<name>] [--home=<dir>] [--base=<dir>] [--p
 station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]...
 ```
 
-`run` is the foreground supervisor. It runs the server and UI in the current
-process and does not return, so it is the process an external supervisor
-wraps rather than a command that registers one: the installed systemd unit,
-the launchd plist, and this repository's container image all invoke it. Use it
-directly when the host has no service manager to register with — a container,
-or any Linux without a systemd user session — where `service install` fails by
-design (see the backend table below). It is not a replacement for
-`station start`, which builds if needed and launches both processes detached;
-`run` deliberately stays in the foreground so its supervisor owns the
-lifecycle.
+`run` is the foreground supervisor used by installed OS units and containers.
+It takes the same atomic home claim before starting Station. With no installed
+policy, it creates a service owner record with its PID and birth fingerprint;
+existing installed policy is preserved. A conflicting live owner keeps the
+supervisor alive without running Station. It polls at 5, 10, 20, then at most
+30-second intervals, logging only refusal-reason changes, and claims and starts
+when the owner is gone. Unreadable registry state exits nonzero. Lost ownership
+at readiness stops Station before returning to the same wait. Install still
+writes policy and a live installer reservation before starting the backend,
+restoring prior policy if backend startup fails.
+
+The container image's existing `service run` invocation self-claims a fresh
+home without a policy-registration step. Direct `command-station.js` is still
+unfenced and must not be described as exclusive ownership when sharing a
+writable home.
+`station start` remains the detached lifecycle command with its separate
+shared-home checks and overrides.
 
 The default service uses the selected channel's runtime home and generated
 server/UI ports (`~/.station/instances/stable`, `18141`, and `18000` for
@@ -1919,8 +1968,8 @@ origins on an `origins` line.
 | --- | --- | --- | --- |
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
-| Windows | Task Scheduler task, `ONLOGON`, `LIMITED` | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
-| No service manager (container, or Linux without a systemd user session) | none — supervise `station service run` yourself | whenever its supervisor starts it | the supervisor's own stdout/stderr |
+| Windows | Task Scheduler task, `ONLOGON`, `LIMITED`, no time limit, no battery rules | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
+| No service manager (container, or Linux without a systemd user session) | foreground `service run` with an atomic home claim | when invoked after winning the claim; waits while another live owner holds the home | supervisor stdout/stderr and `<STATION_HOME>/logs/<instance>.log` |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
 server/UI identity endpoints. `--json` emits the same data for automation. An
@@ -1965,6 +2014,26 @@ On Windows Station verifies the scheduled task owner, wrapper command, and
 limited run level before start, stop, replacement, or deletion; a conflicting
 task fails closed.
 
+`schtasks /Create` leaves a task with Task Scheduler's defaults: a 72-hour
+execution time limit, and battery rules that keep the task from starting on
+battery and stop it when a laptop unplugs. Install therefore sets, through
+`Set-ScheduledTask`, priority 5, no execution time limit (`PT0S`), both battery
+rules off, and the scheduler's restart settings (every minute, the shortest
+interval, up to 255 times). It reads all six back and refuses the install,
+restoring the previous registration or removing the new one, if any of them
+did not persist. Unlike the macOS (`KeepAlive`) and Linux (`Restart=always`)
+units, the Windows task does not relaunch a service that exits: Task
+Scheduler's restart settings apply to a task it could not start, and a wrapper
+that exits non-zero is left stopped until the next logon or `service start`.
+`service status` (and `station upgrade`) read the same six values on a
+`scheduling` line: a task registered by an earlier version reports `stale`
+with the reinstall command, and `healthy` is false until it is reinstalled.
+So on an existing Windows install `service status` exits 1 after this change
+until `station service install` is run again; the service itself keeps
+running, and `station upgrade` only prints the advisory. A task whose settings
+were changed by hand is reported `stale` the same way, and a reinstall
+overwrites them.
+
 On Linux, installation requires a working systemd user manager and verified
 linger. Station runs `loginctl enable-linger <uid>` when needed and fails the
 install if the command is unavailable, denied by administrator policy, or does
@@ -2007,7 +2076,7 @@ release-specific and must not contain the Station home.
 Start the application server and UI. Builds automatically on first run if `dist-server/` or `dist-ui/` are missing.
 
 ```
-station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
+station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
 ```
 
 | Flag | Default | Description |
@@ -2019,6 +2088,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
 | `--build` | — | Force rebuild before starting (even if dist exists) |
+| `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
 | `--temp-home` | — | Create and use a temporary home under the system temp directory |
@@ -2105,7 +2175,7 @@ stays valid across restarts. It does not fork the start logic — it derives the
 ports/instance/home, then runs the same path as [`start`](#start).
 
 ```
-station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force] [--features=<flags>] [--dry-run]
+station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--features=<flags>] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -2113,6 +2183,7 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--port-offset=<n>` | derived | Force an exact offset (`0`-`500`), overriding the derivation. `--port-offset=0` is valid and yields the base ports `39140`/`40140` (just below the derived `39141`-`39640` band). |
 | `--host=<address>` | `0.0.0.0` | Bind address; the default is a wildcard so a phone or LAN/tailnet client can reach the stable URL |
 | `--build` | — | Force a rebuild before starting |
+| `--watch` | — | Hot-reload mode, as `station start --watch` |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
 | `--features=<flags>` | — | Comma-separated feature flags |
@@ -2170,12 +2241,18 @@ station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
 station environment offer [--tailscale] [--tailscale-serve-port=<port>]
+station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
 station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
 station environment access scopes [--json]
+station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
 station environment list [--api-base=<url>]
@@ -2253,6 +2330,18 @@ station environment peers remove <environment-id>
   it; re-running changes nothing already reset. A paired remote CLI cannot run
   these verbs: they refuse a non-loopback target before reading any
   credential.
+- `access revoke` and `access remove` finish what the Paired devices panel
+  cannot do from a native host app (#3256), on the same host-only channel and
+  with the same device selector as `access scope` (id, unique id prefix, or
+  exact name; an ambiguous one is refused). `access revoke` ends a live
+  device's access immediately, closes its terminal and voice connections, and
+  resets to Ask what its full access had granted, printing the same report as
+  `--remove approval:full-access`; the device can pair again later. `access
+  remove` deletes the record of an already-revoked device; a device that is
+  still paired is refused (revoke it first). Both name the device before
+  acting and fail unless Station's answer names that same device as revoked.
+  Neither can be undone, so an interactive run asks first, and a run with no
+  terminal is refused before Station is contacted unless it passes `--force`.
 - `environment peers` manages the **outbound** peer-credential store: the
   credentials this Station presents when it delegates to another Station, as
   opposed to the inbound device credentials `access`/pairing issues. `peers add`
@@ -2329,7 +2418,10 @@ the installer without a Git checkout or pre-stop action. Installed plugins are p
 From a prebuilt server archive (`station-server-<os>-<arch>`) that `install.sh`
 installed (the version `<install root>/current` names), `upgrade` validates the
 install state, provenance, ownership marker and active link, then re-runs that
-version's installer with the recorded release manifest. Public-manifest
+version's installer with the recorded release manifest. On Windows the
+installer is the version's `install.ps1`, run through the system Windows
+PowerShell, and the install root's ACL (current user only) is checked in place
+of POSIX mode bits; a Windows service is not switched yet (#2675 W3). Public-manifest
 installs record the URL in schema-4 state; an explicit
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. The installer keeps the ports
 the install recorded: the CLI's own `STATION_SERVER_PORT`/`STATION_UI_PORT`
@@ -2384,9 +2476,10 @@ station fresh --force --allow-default-home-clean
 
 ### `home verify`
 
-Run an integrity check over the SQLite stores this home owns
-(`data/orchestration.sqlite` and `scheduler/scheduler.sqlite`) and report each
-one. The stores are opened read-only, so this is safe to run while Station is
+Run an integrity check over `data/orchestration.sqlite` and
+`scheduler/scheduler.sqlite` and report each one. This command does not inspect
+the home's other authentication, membership, native replay or Knowledge stores.
+The stores are opened read-only, so this is safe to run while Station is
 up -- it is the only `home` action that does not require the home to be idle.
 
 ```
@@ -2419,7 +2512,11 @@ is covered by this command, not by that schedule.
 
 Create an offline, content-hashed backup of one Station home. Every Station
 using that home must be stopped. SQLite stores are checkpointed and integrity
-checked before copy for selected `*.sqlite` files; symlinks in included content,
+checked before copy for every included `*.sqlite` file, a database named by the
+[home store registry](../../packages/shared/src/station-home-store-registry.ts),
+or a file with an existing SQLite WAL. This includes
+`security/native-device-proof-replay.sqlite` and `knowledge-index/index.db`;
+WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
@@ -2927,6 +3024,12 @@ station plugin list
 Request removal by manifest name through the server's lifecycle owner. Managed
 contributions are retired there; retained data and pending cleanup are separate
 dispositions. The CLI prints completion only after an accepted success response.
+When that response carries the plugin's own `commandEffects` withdrawal with a
+status other than `completed` (Station answers 202 until captured palette
+command effects settle), the CLI appends the outstanding count, status and
+withdrawal id; with `commandEffectsUnavailable` it says completion cannot be
+confirmed. The removal has already committed in both cases. A dependency's
+`dependencyCommandEffects` are not summarized.
 
 ```
 station plugin remove <name>
@@ -2950,7 +3053,7 @@ station plugin info my-plugin
 
 ### `plugin update <name>`
 
-Update an installed plugin through the running Station server. The server resolves its source, rebuilds it, and applies registry and runtime changes as one lifecycle operation.
+Update an installed plugin through the running Station server. The server resolves its source, rebuilds it, and applies registry and runtime changes as one lifecycle operation. Its success message carries the same command-effect note as `plugin remove`.
 
 ```
 station plugin update <name>
@@ -3009,6 +3112,20 @@ station plugin create my-provider --template=provider
 
 `station plugin dev` previews legacy layout tabs only; it does not render
 `workspacePanes`. Install the scaffold to see its Pane.
+
+### `plugin experience inspect|review`
+
+Inspect a pinned local Skill library, then review an authored ordinary plugin
+against its source/package digests, source spans, gap dispositions and retained
+evaluation transcripts. These commands read local files and grant no execution
+or installation authority. See the [author learning path](../guides/authoring-skill-experiences.md)
+for the receipt contract and evidence limits.
+
+```bash
+station plugin experience inspect /path/to/library --entries=my-skill
+station plugin experience review /path/to/plugin --library=/path/to/library --entries=my-skill
+station plugin experience review /path/to/plugin --library=/path/to/library --entries=my-skill --receipt=/path/to/review.json
+```
 
 ### `plugin build`
 
@@ -3085,7 +3202,7 @@ Findings are evidence input only and do not approve, reject, satisfy a gate, or 
 
 When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs.
 
-`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
+`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 

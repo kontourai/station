@@ -1,0 +1,7 @@
+{
+  "revision": "42811285ef04d069daf576d46253ac833573f848",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed Agent-scoped setup attention title. Notification producer, payload, category, audience and delivery code are unchanged; existing Web Push claims remain accurate without new OS receipt.","inputs":["docs/guides/web-push-notifications.md"]}
+  ]
+}

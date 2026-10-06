@@ -1,7 +1,9 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
-import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
+  inspectOrchestrationSteerInput,
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
@@ -21,11 +23,15 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
-import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
+import {
+  drainQueuedMessageOnTurnCompleted,
+  sendPendingMessageNow,
+} from '../../hooks/orchestration/queueDrain';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
 import { useChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
@@ -46,13 +52,13 @@ import {
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
-import { queueSendNowOffered } from '../../utils/conversation-activity';
 import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
 import {
   isSessionExecutionActive,
+  isTurnStreamLive,
   sessionAdapterSupportsSteering,
 } from '../../utils/execution';
 import type {
@@ -64,12 +70,16 @@ import {
   ownerAttributionFromStation,
 } from '../../utils/ownerAttribution';
 import {
+  sessionFailureNote,
   sessionFailureText,
   transcriptCarriesFailureText,
+  transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
+import { Button } from '../Button';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
-import { ChatInputArea } from '../chat/ChatInputArea';
+import type { ChatInputArea } from '../chat/ChatInputArea';
+import { ComposerStopButton } from '../chat/ComposerStopButton';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
@@ -86,6 +96,54 @@ import {
   resolveRetryAttachments,
   retryAttachmentsFromParts,
 } from './retry-attachments';
+import { UsageLimitBanner } from './UsageLimitBanner';
+import { useChatStatusPill } from './useChatStatusPill';
+
+const loadChatInputArea = () =>
+  import('../chat/ChatInputArea').then((module) => ({
+    default: module.ChatInputArea,
+  }));
+
+function DeferredChatInputArea(
+  props: React.ComponentProps<typeof ChatInputArea>,
+) {
+  const pendingControls = (
+    <div className="chat-controls-row">
+      <div className="chat-input__activity" ref={props.activityRef}>
+        {props.activity}
+      </div>
+      <span className="chat-controls-row__spacer" />
+      {props.turnInFlight && (
+        <ComposerStopButton
+          onCancel={props.onCancel}
+          stopPending={props.stopPending}
+        />
+      )}
+    </div>
+  );
+  return (
+    <LazyBoundary
+      load={loadChatInputArea}
+      componentProps={props}
+      pending={
+        <div className="chat-input">
+          <SkeletonList count={2} label="Loading composer" />
+          {pendingControls}
+        </div>
+      }
+      unavailable={(retry) => (
+        <div className="chat-input">
+          <ErrorState
+            title="Could not load the composer"
+            description="Your draft is retained. Retry to continue writing."
+            action={<Button onClick={retry}>Retry composer</Button>}
+          />
+          {pendingControls}
+        </div>
+      )}
+    />
+  );
+}
 
 const loadChatMessageList = () =>
   import('../chat/ChatMessageList').then(({ ChatMessageList }) => ({
@@ -150,6 +208,9 @@ const BANNER_LINK_BUTTON_STYLE: React.CSSProperties = {
   padding: 0,
 };
 
+/** D3: see `ChatDockBodyProps.loadingEscapeDelayMs`. */
+const LOADING_ESCAPE_DELAY_MS = 6_000;
+
 interface ChatDockBodyProps {
   activeSession: ChatSession;
   workingDirectory?: string | null;
@@ -197,6 +258,13 @@ interface ChatDockBodyProps {
   ) => void | Promise<void>;
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
+  /**
+   * D3 (design round 2026-10): how long a load runs before the "Start new
+   * chat" escape joins the skeleton. One state at a time: a load that is
+   * going to land shows a skeleton and nothing else; the escape is for a
+   * load that has stopped looking like one. Tests set it to 0.
+   */
+  loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
@@ -242,6 +310,95 @@ export function findPrecedingUserTurn(
   return null;
 }
 
+/**
+ * The newest SEND-FAILURE notice as one plain line (its bold title row), for the
+ * composer to repeat while a short dock hides the transcript.
+ *
+ * Only a notice that says why a send did not go counts (`sendFailure`): the
+ * transcript's other ephemeral lines — slash-command output, model or mode
+ * changes, stop and status notes — are not what the composer is asking about,
+ * and showing one there reads as a failure that did not happen. A failure is
+ * also stale once a LATER message was accepted: the newest non-ephemeral user
+ * message after it (the transcript is timestamp-ordered, and a refused send's
+ * optimistic bubble is rolled back, so one that follows is a send that took)
+ * clears it.
+ */
+export function latestSendFailureLine(
+  messages: readonly {
+    role: string;
+    content: string;
+    ephemeral?: boolean;
+    sendFailure?: boolean;
+  }[],
+) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.ephemeral) {
+      if (!message.sendFailure) continue;
+      return noticeLine(message.content);
+    }
+    if (message.role === 'user') return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The newest "queued to retry" notice, for the composer to carry while a short
+ * dock hides the transcript that holds it. It is a queued send, not a failure,
+ * so `latestSendFailureLine` never repeats it; its action (Discard) is what the
+ * composer must keep reachable. Like a failure it is stale once a LATER message
+ * was accepted; `queued` (the chat still waits on its retry) ends it too, since
+ * the notice itself is left in the transcript after the retry settles.
+ */
+export function latestQueuedRetryNotice<
+  Message extends {
+    role: string;
+    content: string;
+    ephemeral?: boolean;
+    queuedRetry?: boolean;
+    action?: { label: string; handler: () => void };
+  },
+>(messages: readonly Message[], queued: boolean) {
+  if (!queued) return undefined;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.ephemeral) {
+      if (!message.queuedRetry || !message.action) continue;
+      const line = noticeLine(message.content);
+      return line ? { line, action: message.action } : undefined;
+    }
+    if (message.role === 'user') return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The chat's ephemeral messages once the queue panel's "x" has discarded a
+ * queued turn: only the queued-retry notices go, and only when no queued turn
+ * is left for them to explain. Undefined when nothing changes, so a send
+ * failure or a command's output survives the discard.
+ */
+export function ephemeralAfterQueueDiscard<Message extends object>(
+  ephemeral: readonly Message[],
+  remaining: number,
+) {
+  if (remaining > 0) return undefined;
+  const kept = ephemeral.filter(
+    (message) => !(message as { queuedRetry?: boolean }).queuedRetry,
+  );
+  return kept.length === ephemeral.length ? undefined : kept;
+}
+
+function noticeLine(content: string) {
+  if (!content) return undefined;
+  const line = content
+    .replace(/^\[SYSTEM_EVENT\]\s*/, '')
+    .split('\n', 1)[0]
+    ?.replace(/\*\*/g, '')
+    .trim();
+  return line || undefined;
+}
+
 export function ChatDockBody({
   activeSession,
   workingDirectory,
@@ -270,9 +427,12 @@ export function ChatDockBody({
   onOpenBackgroundTasks,
   onNewChat,
   onRetryConversationOpen,
+  loadingEscapeDelayMs = LOADING_ESCAPE_DELAY_MS,
   onForkFromTurn,
   setShowStatsPanel,
 }: ChatDockBodyProps) {
+  const [scrollControlsTarget, setScrollControlsTarget] =
+    useState<HTMLDivElement | null>(null);
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const mentionRequestScope = useHostRequestAuthorityScope();
@@ -335,19 +495,24 @@ export function ChatDockBody({
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
+  // Live chat status shares the composer rail; replay keeps its recorded rows.
+  const { pill: statusPill, statusInPill } = useChatStatusPill({
+    activeSession,
+    streamStatus,
+    turnLive: isTurnStreamLive(activeSession),
+    enabled: !activeSession.replay,
+  });
   /*
    * One transitional state for the whole conversation, from the two things
    * that are actually still in flight after a reload: the conversation-open
    * point-read (`resolvingOpen`, seeded by `hydrateActiveChats` for every
    * persisted chat with a conversation id) and the transcript's first read
    * (`settled`). Before #1582 E3/B6 these produced a red "is read-only" alert,
-   * an empty "Start a conversation" placeholder and a second red line under
+   * an empty "Start a chat" placeholder and a second red line under
    * the composer — three contradictory claims about a healthy conversation.
    */
-  const conversationLoading =
-    resolvingOpen ||
-    transcript.catchingUp ||
-    (transcript.enabled && !transcript.settled);
+  const transcriptPending =
+    transcript.catchingUp || (transcript.enabled && !transcript.settled);
   /*
    * station#2530 review 2: `transcript.catchingUp` legitimately blanks
    * `transcript.messages` for BACKGROUND refetches too — a revision bump
@@ -377,9 +542,36 @@ export function ChatDockBody({
   const displayedTranscriptMessages =
     transcript.messages.length > 0
       ? transcript.messages
-      : transcript.catchingUp
+      : transcriptPending
         ? stickyTranscriptRef.current.messages
         : transcript.messages;
+  /*
+   * Loading is the FIRST read of this session's transcript, not every refetch
+   * after it. A turn ending bumps the history revision (and can re-key the
+   * window when the conversation id lands), and that refetch is a background
+   * refresh of a transcript already on screen: counting it flashed a
+   * "Loading chat" skeleton and a "Start new chat" escape under the
+   * finished answer on every turn. Once this session has shown messages, a
+   * pending refetch keeps showing them and claims nothing is loading.
+   */
+  const transcriptLoaded = stickyTranscriptRef.current.messages.length > 0;
+  const conversationLoading =
+    resolvingOpen || (transcriptPending && !transcriptLoaded);
+  // D3: the escape joins the skeleton only once a load has run long; a load
+  // that lands in the ordinary second or two shows one state, the skeleton.
+  const [loadingLong, setLoadingLong] = useState(false);
+  useEffect(() => {
+    if (!conversationLoading) {
+      setLoadingLong(false);
+      return;
+    }
+    if (loadingEscapeDelayMs <= 0) {
+      setLoadingLong(true);
+      return;
+    }
+    const timer = setTimeout(() => setLoadingLong(true), loadingEscapeDelayMs);
+    return () => clearTimeout(timer);
+  }, [conversationLoading, loadingEscapeDelayMs]);
   /*
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
@@ -486,10 +678,16 @@ export function ChatDockBody({
    */
   const bannerFailureText =
     failureText !== null &&
-    transcriptCarriesFailureText(renderedSession.messages, [
+    (transcriptCarriesFailureText(renderedSession.messages, [
       failureText,
       translateChatError({ message: failureText }).body,
-    ])
+    ]) ||
+      // A session whose sends never took has no turns; any visible failure
+      // card in its transcript is that refusal, in its own words.
+      (activeOrchestrationSession !== null &&
+        activeOrchestrationSession !== undefined &&
+        isFirstSendFailure(activeOrchestrationSession) &&
+        transcriptShowsFailureSurface(renderedSession.messages)))
       ? null
       : failureText;
   const historyFailure =
@@ -593,14 +791,13 @@ export function ChatDockBody({
       queueOnBusy: true,
     });
   }, [getComposedContext, chatInput]);
+  const nativeSteering = sessionAdapterSupportsSteering(
+    activeSession.agentConnectionId,
+    [],
+    activeSession.orchestrationProvider,
+  );
   const busyFollowUp =
-    isTurnInFlight(activeSession) &&
-    sessionAdapterSupportsSteering(
-      activeSession.agentConnectionId,
-      [],
-      activeSession.orchestrationProvider,
-    ) &&
-    chatInput.attachments.length === 0
+    isTurnInFlight(activeSession) && chatInput.attachments.length === 0
       ? 'steer'
       : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
@@ -641,6 +838,21 @@ export function ChatDockBody({
     new Set(),
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
+  const sendFailureNotice = latestSendFailureLine(activeSession.messages);
+  const queuedRetry = latestQueuedRetryNotice(
+    activeSession.messages,
+    activeSession.status === 'queued',
+  );
+  const queuedRetryNotice = queuedRetry
+    ? {
+        text: queuedRetry.line,
+        // What the transcript's own action does: run it, then drop the notice.
+        onDiscard: () => {
+          queuedRetry.action.handler();
+          clearEphemeralMessages(activeSession.id);
+        },
+      }
+    : undefined;
 
   // Every "New chat" affordance funnels rejections here: a typed
   // NewChatUnavailableError (the chat never started) surfaces bare, anything
@@ -821,8 +1033,14 @@ export function ChatDockBody({
         // `terminalSession` keep the New-chat-only treatment. Auth/login
         // failures set `retryable: false` — Send again would hit the same
         // expired session.
+        // #3112: `idx` indexes the list `ChatMessageList` renders — the
+        // transcript projection when it is enabled — so the user turn is read
+        // from that same list. The stored `activeSession.messages` is a
+        // different list; the same index there landed on a Station agent's
+        // stored copy of the model-facing input (ambient context prefix and
+        // all), which Send again then resent as if typed.
         const retryTurn = chatErrorMatch
-          ? findPrecedingUserTurn(activeSession.messages, idx)
+          ? findPrecedingUserTurn(renderedSession.messages, idx)
           : null;
         // A start Station could not confirm may have created the session;
         // a resend then collides with it ("thread … already has an active
@@ -880,7 +1098,7 @@ export function ChatDockBody({
       removingMessages,
       activeSession.id,
       activeSession.replay,
-      activeSession.messages,
+      renderedSession.messages,
       chatInput.input,
       clearEphemeralMessages,
       handleDismissEphemeral,
@@ -907,12 +1125,12 @@ export function ChatDockBody({
         displayedTranscriptMessages.length > 0 &&
         historyFailureNotice}
       {sessionRecordPending && (
-        <SkeletonList count={1} label="Reading this session's record" />
+        <SkeletonList count={1} label="Reading this chat's record" />
       )}
       {sessionRecordUnreadable && (
         <ErrorState
-          title="Could not read this Station's session records"
-          description="The chat below is what this browser still holds. Retry to find out whether the session is still there."
+          title="Could not read this Station's chat records"
+          description="The chat below is what this browser still holds. Retry to find out whether the chat is still there."
           action={
             onRetryOrchestrationSessions ? (
               <button
@@ -964,7 +1182,7 @@ export function ChatDockBody({
           {historyFailureNotice ??
             (conversationLoading ? (
               /*
-               * "Start a conversation" is a CLAIM that this chat has none, and
+               * "Start a chat" is a CLAIM that this chat has none, and
                * a transcript read that has not landed has established nothing.
                * It rendered here for ~1.7s on every reload of a conversation
                * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
@@ -972,11 +1190,7 @@ export function ChatDockBody({
                */
               <SkeletonList
                 count={4}
-                label={
-                  transcript.catchingUp
-                    ? 'Catching up conversation'
-                    : 'Loading conversation'
-                }
+                label={transcript.catchingUp ? 'Catching up' : 'Loading chat'}
               />
             ) : (
               <ChatEmptyState
@@ -989,12 +1203,13 @@ export function ChatDockBody({
       {displayedTranscriptMessages.length > 0 && (
         <LazyBoundary
           load={loadChatMessageList}
-          pending={<SkeletonList count={4} label="Loading conversation" />}
+          pending={<SkeletonList count={4} label="Loading chat" />}
           componentProps={{
             activeSession: renderedSession,
             suppressStreamingRow: transcript.openTurnProjected,
             fontSize: chatFontSize,
             layoutHeight: dockHeight,
+            scrollControlsTarget,
             showReasoning,
             showToolDetails,
             renderOverride,
@@ -1006,7 +1221,9 @@ export function ChatDockBody({
             approvalEvents: transcript.enabled ? transcript.events : undefined,
             approvalEventsSettled: transcript.settled,
             historyLoading: transcript.loading,
-            suppressActivity: Boolean(streamStatus),
+            // The status pill owns turn activity for a live chat.
+            suppressActivity: statusInPill || Boolean(streamStatus),
+            statusShownElsewhere: statusInPill,
             // #2309: the stall notice below presents the silence (with its
             // Stop action); the streaming row does not repeat it.
             progressSilenceShownElsewhere: Boolean(
@@ -1032,7 +1249,7 @@ export function ChatDockBody({
           }}
         />
       )}
-      {streamStatus && (
+      {streamStatus && !statusInPill && streamStatus.kind !== 'restored' && (
         <div
           className="chat-stream-status"
           role="status"
@@ -1069,8 +1286,8 @@ export function ChatDockBody({
           ) && (
             <span>
               Your decision is recorded, but Station did not send it because the
-              engine would not accept that reply. The engine is still waiting
-              for an answer.
+              engine would not accept that reply. The engine still needs an
+              answer.
             </span>
           )}
           {activeSession.unacknowledgedDecisions?.some(
@@ -1100,7 +1317,18 @@ export function ChatDockBody({
           componentProps={{
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
+            metadata: activeSession.queuedMessageMetadata,
+            waitingForTools: activeSession.streamingMessage?.contentParts?.some(
+              (part) =>
+                part.type === 'tool-invocation' && part.state === 'running',
+            ),
+            sendNowPending:
+              activeSession.queueSendNowPending ||
+              activeSession.queueDrainSettling,
+            onSendMessageNow: (messageId: string) =>
+              sendPendingMessageNow(apiBase, activeSession.id, messageId),
             failure: activeSession.queuedMessageFailure,
+            heldByUsageLimit: activeSession.usageLimitStopped === true,
             // UX audit T3: the automatic drain only fires on a later
             // `turn.completed`/`runtime.error`. A follow-up refused for a
             // reason the user has since fixed (a workspace binding, a paused
@@ -1114,23 +1342,81 @@ export function ChatDockBody({
                 // #2309: an explicit request; not held back by the record.
                 true,
               ),
-            onSendNow: queueSendNowOffered(activeSession)
-              ? () =>
-                  drainQueuedMessageOnTurnCompleted(
-                    apiBase,
-                    activeSession.id,
-                    true,
-                    true,
-                  )
-              : undefined,
             canSteer:
-              isExecutionActive &&
-              !!activeSession.orchestrationProvider &&
-              ENGINE_CAPABILITY_MATRICES[activeSession.orchestrationProvider]
-                ?.midTurnSteer === true,
-            onSteer: async (message: string) => {
+              Boolean(
+                isExecutionActive ||
+                  activeSession.queuedMessageMetadata?.some(
+                    (entry) => !!entry.delivery,
+                  ),
+              ) &&
+              sessionAdapterSupportsSteering(
+                activeSession.agentConnectionId,
+                [],
+                activeSession.orchestrationProvider,
+              ),
+            onPendingSettled: () => {
+              const latest = activeChatsStore.getSnapshot()[activeSession.id];
+              if (
+                latest &&
+                latest.orchestrationStatus !== 'aborted' &&
+                !isTurnInFlight(latest)
+              )
+                drainQueuedMessageOnTurnCompleted(apiBase, activeSession.id);
+            },
+            onSteer: async (message: string, clientInputId?: string) => {
+              const latest = activeChatsStore.getSnapshot()[activeSession.id];
+              if (
+                !latest ||
+                latest.queueSendNowPending ||
+                latest.queueDrainSettling
+              )
+                return false;
+              if (!clientInputId) {
+                addEphemeralMessage(activeSession.id, {
+                  role: 'system',
+                  content:
+                    'This pending message has no delivery identity. Keep it queued or reopen the conversation before steering.',
+                });
+                return false;
+              }
+              const metadataIndex =
+                latest.queuedMessageMetadata?.findIndex(
+                  (entry) => entry.id === clientInputId,
+                ) ?? -1;
+              const metadata = latest.queuedMessageMetadata?.[metadataIndex];
+              if (
+                !metadata ||
+                latest.queuedMessages[metadataIndex] !== message
+              ) {
+                addEphemeralMessage(activeSession.id, {
+                  role: 'system',
+                  content:
+                    'This pending message changed. Review the current queue before steering it.',
+                });
+                return false;
+              }
+              activeChatsStore.updateChat(activeSession.id, {
+                queueSendNowPending: true,
+              });
+              const retireConfirmedById = () => {
+                const current =
+                  activeChatsStore.getSnapshot()[activeSession.id];
+                const index =
+                  current?.queuedMessageMetadata?.findIndex(
+                    (entry) => entry.id === clientInputId,
+                  ) ?? -1;
+                if (!current || index < 0) return;
+                activeChatsStore.updateChat(activeSession.id, {
+                  queuedMessages: current.queuedMessages.filter(
+                    (_, position) => position !== index,
+                  ),
+                  queuedMessageMetadata: current.queuedMessageMetadata?.filter(
+                    (_, position) => position !== index,
+                  ),
+                });
+              };
               try {
-                const result = await steerOrchestrationTurn({
+                const steeringInput = {
                   // Steering is a command on the live execution Session. The
                   // tab id remains the durable conversation identity after a
                   // continuation child becomes current.
@@ -1138,24 +1424,158 @@ export function ChatDockBody({
                   // #2309: the server's open turn names the exact lineage
                   // child and turn; the local stamp is the older-server path.
                   threadId:
+                    (metadata?.delivery ? metadata.steerThreadId : undefined) ??
                     activeSession.conversationActivity?.openTurn?.threadId ??
                     activeSession.currentSessionId ??
                     activeSession.id,
                   text: message,
+                  clientInputId,
                   turnId:
-                    activeSession.conversationActivity?.openTurn?.turnId ??
-                    activeSession.openTurnId,
+                    metadata?.delivery && metadata.steerThreadId !== undefined
+                      ? metadata.steerTurnId
+                      : (activeSession.conversationActivity?.openTurn?.turnId ??
+                        activeSession.openTurnId),
                   apiBase,
+                };
+                if (metadata?.delivery) {
+                  const inspection = await inspectOrchestrationSteerInput({
+                    ...steeringInput,
+                    clientInputId,
+                  });
+                  if (inspection.outcome === 'steered') {
+                    retireConfirmedById();
+                    addEphemeralMessage(activeSession.id, {
+                      role: 'system',
+                      content: 'Steering sent.',
+                    });
+                    return true;
+                  }
+                  if (inspection.outcome !== 'not-received') {
+                    const held =
+                      activeChatsStore.getSnapshot()[activeSession.id];
+                    activeChatsStore.updateChat(activeSession.id, {
+                      queuedMessageMetadata: held?.queuedMessageMetadata?.map(
+                        (entry) =>
+                          entry.id === clientInputId
+                            ? { ...entry, delivery: 'indeterminate' }
+                            : entry,
+                      ),
+                    });
+                    addEphemeralMessage(activeSession.id, {
+                      role: 'system',
+                      content:
+                        'Steering delivery is still unconfirmed. Your message remains held.',
+                    });
+                    return false;
+                  }
+                }
+                const prepared =
+                  activeChatsStore.getSnapshot()[activeSession.id];
+                const preparedIndex =
+                  prepared?.queuedMessageMetadata?.findIndex(
+                    (entry) => entry.id === clientInputId,
+                  ) ?? -1;
+                if (
+                  !prepared ||
+                  preparedIndex < 0 ||
+                  prepared.queuedMessages[preparedIndex] !== message
+                )
+                  return false;
+                activeChatsStore.updateChat(activeSession.id, {
+                  ...(prepared.queuedMessageFailure?.code ===
+                  'steering-save-failed'
+                    ? { queuedMessageFailure: undefined }
+                    : {}),
+                  queuedMessageMetadata: prepared.queuedMessageMetadata?.map(
+                    (entry) =>
+                      entry.id === clientInputId
+                        ? {
+                            ...entry,
+                            delivery: 'steering',
+                            mode: 'steer',
+                            steerThreadId: steeringInput.threadId,
+                            steerTurnId: steeringInput.turnId,
+                          }
+                        : entry,
+                  ),
                 });
-                if (result.outcome === 'steered') return true;
+                if (!activeChatsStore.flushPendingSave()) {
+                  const held = activeChatsStore.getSnapshot()[activeSession.id];
+                  activeChatsStore.updateChat(activeSession.id, {
+                    queuedMessageMetadata: held?.queuedMessageMetadata?.map(
+                      (entry) =>
+                        entry.id === clientInputId
+                          ? { ...entry, delivery: 'indeterminate' }
+                          : entry,
+                    ),
+                    queuedMessageFailure: {
+                      code: 'steering-save-failed',
+                      message:
+                        'Could not save pending steering. It was not sent; your message remains held.',
+                      at: Date.now(),
+                    },
+                  });
+                  return false;
+                }
+                const result = await steerOrchestrationTurn(steeringInput);
+                if (result.outcome === 'steered') {
+                  retireConfirmedById();
+                  addEphemeralMessage(activeSession.id, {
+                    role: 'system',
+                    content: 'Steering sent.',
+                  });
+                  return true;
+                }
+                if (result.outcome === 'indeterminate') {
+                  const held = activeChatsStore.getSnapshot()[activeSession.id];
+                  activeChatsStore.updateChat(activeSession.id, {
+                    queuedMessageMetadata: held?.queuedMessageMetadata?.map(
+                      (entry) =>
+                        entry.id === clientInputId
+                          ? { ...entry, delivery: 'indeterminate' }
+                          : entry,
+                    ),
+                  });
+                  return false;
+                }
+                const refused =
+                  activeChatsStore.getSnapshot()[activeSession.id];
+                activeChatsStore.updateChat(activeSession.id, {
+                  queuedMessageMetadata: refused?.queuedMessageMetadata?.map(
+                    (entry) =>
+                      entry.id === clientInputId
+                        ? {
+                            ...entry,
+                            delivery: undefined,
+                            steerThreadId: undefined,
+                            steerTurnId: undefined,
+                          }
+                        : entry,
+                  ),
+                });
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
+                  sendFailure: true,
                   content: steerRefusalMessage(result),
                 });
-              } catch (error) {
+              } catch {
+                const held = activeChatsStore.getSnapshot()[activeSession.id];
+                activeChatsStore.updateChat(activeSession.id, {
+                  queuedMessageMetadata: held?.queuedMessageMetadata?.map(
+                    (entry) =>
+                      entry.id === clientInputId
+                        ? { ...entry, delivery: 'indeterminate' }
+                        : entry,
+                  ),
+                });
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
-                  content: `Could not send steer: ${error instanceof Error ? error.message : String(error)}`,
+                  content:
+                    'Station could not confirm steering delivery. Your message remains held.',
+                });
+              } finally {
+                activeChatsStore.updateChat(activeSession.id, {
+                  queueSendNowPending: false,
                 });
               }
               return false;
@@ -1178,6 +1598,17 @@ export function ChatDockBody({
             turns: activeSession.outboundQueuedTurns,
             messages: renderedSession.messages,
             onError: (error: string) => surfaceRecoveryFailure(error),
+            // The "x" discards the same queued turn as the notice's Discard;
+            // once none is left, the notice has nothing to explain.
+            onDiscarded: (remaining: number) => {
+              const kept = ephemeralAfterQueueDiscard(
+                ephemeralMessages,
+                remaining,
+              );
+              if (!kept) return;
+              if (kept.length === 0) clearEphemeralMessages(activeSession.id);
+              else updateChat(activeSession.id, { ephemeralMessages: kept });
+            },
             onRetry: async (clientTurnId: string) => {
               try {
                 const { outboundDispatch } = await import(
@@ -1222,7 +1653,15 @@ export function ChatDockBody({
         failureText={bannerFailureText}
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
-        note="You can send a message to try to continue this session."
+        note={sessionFailureNote(activeOrchestrationSession)}
+      />
+      {/* #3157: the limited conversation's own banner, from the server's
+          recovery projection; it re-reads with each snapshot update. */}
+      <UsageLimitBanner
+        apiBase={apiBase}
+        scope={mentionRequestScope}
+        session={activeSession}
+        summary={activeOrchestrationSession}
       />
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (
@@ -1317,7 +1756,7 @@ export function ChatDockBody({
         (delta-review M1).
       */}
       {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        <SkeletonBlock count={1} label="Loading conversation" />
+        <SkeletonBlock count={1} label="Loading chat" />
       ) : null}
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's
@@ -1330,7 +1769,7 @@ export function ChatDockBody({
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && !recoveryOpen ? (
+      {conversationLoading && loadingLong && !recoveryOpen ? (
         <div className="session-history-controls">
           {onNewChat ? (
             <button
@@ -1387,7 +1826,7 @@ export function ChatDockBody({
       {busyOpen && !isTurnInFlight(activeSession) ? (
         <div className="session-history-controls" role="status">
           <span>
-            Still waiting on the active turn. If it already finished, check
+            Waiting for the active turn to finish. If it already has, check
             again to send.
           </span>
           {onRetryConversationOpen ? (
@@ -1414,35 +1853,45 @@ export function ChatDockBody({
         `isTurnInFlight` gates it so a stale projection read after the turn
         settled cannot claim a live stall.
       */}
-      {turnProgressSilence && isTurnInFlight(activeSession) && (
-        <div
-          role="status"
-          data-testid="chat-dock-turn-stall-notice"
-          style={{
-            padding: '8px 12px',
-            margin: '0 12px 8px',
-            background: 'var(--bg-warning, var(--bg-secondary))',
-            border: '1px solid var(--border-warning, var(--border-primary))',
-            borderRadius: '6px',
-            fontSize: '0.85em',
-            color: 'var(--text-muted)',
-          }}
-        >
-          <strong>The engine appears stalled.</strong>{' '}
-          <ProgressSilenceObservation observation={turnProgressSilence} />
-          {'. '}
-          You can wait, or{' '}
-          <button
-            type="button"
-            onClick={() => void chatInput.handleCancel()}
-            disabled={!!activeSession.stopPending}
-            style={BANNER_LINK_BUTTON_STYLE}
+      {turnProgressSilence &&
+        isTurnInFlight(activeSession) &&
+        activeSession.activityHint?.kind !== 'retrying' && (
+          <div
+            role="status"
+            data-testid="chat-dock-turn-stall-notice"
+            style={{
+              padding: '8px 12px',
+              margin: '0 12px 8px',
+              background: 'var(--bg-warning, var(--bg-secondary))',
+              border: '1px solid var(--border-warning, var(--border-primary))',
+              borderRadius: '6px',
+              fontSize: '0.85em',
+              color: 'var(--text-muted)',
+            }}
           >
-            stop this turn
-          </button>
-          .
-        </div>
-      )}
+            <ProgressSilenceObservation
+              observation={turnProgressSilence}
+              engineName={
+                agent?.engineDisplayName ??
+                acpConnections.find(
+                  (connection) =>
+                    connection.id === activeSession.agentConnectionId,
+                )?.name ??
+                engineDisplayLabel(turnProgressSilence.provider) ??
+                'the agent'
+              }
+            />
+            {'. '}
+            <button
+              type="button"
+              onClick={() => void chatInput.handleCancel()}
+              disabled={!!activeSession.stopPending}
+              style={BANNER_LINK_BUTTON_STYLE}
+            >
+              Stop this turn
+            </button>
+          </div>
+        )}
       {activeSession.replay?.mode === 'timeline' ? (
         <LazyBoundary
           load={loadConversationTimeline}
@@ -1488,11 +1937,15 @@ export function ChatDockBody({
               }
             />
           )}
-          <ChatInputArea
+          <DeferredChatInputArea
+            activity={statusPill}
+            activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}
             draftText={chatInput.quotedDraftText}
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
+            sendFailureNotice={sendFailureNotice}
+            queuedRetryNotice={queuedRetryNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}
@@ -1506,6 +1959,7 @@ export function ChatDockBody({
             isSending={isExecutionActive}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
+            busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleQueueFollowUp}
             stopPending={!!activeSession.stopPending}
             modelSupportsAttachments={modelSupportsAttachments}
@@ -1540,9 +1994,14 @@ export function ChatDockBody({
                 ? undefined
                 : secondaryActions
             }
-            agentLabel={
-              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
-            }
+            agentLabel={[
+              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug,
+              activeOrchestrationSession?.modelRoute
+                ? `via ${activeOrchestrationSession.modelRoute.label}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
             onOpenAgentHandoff={
               onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
             }
@@ -1568,6 +2027,10 @@ export function ChatDockBody({
             selectAttachmentFiles={chatInput.selectAttachmentFiles}
             attachmentError={chatInput.attachmentError}
             attachmentStages={chatInput.attachmentStages}
+            attachmentNotice={chatInput.attachmentNotice}
+            attachUnavailableReason={chatInput.attachUnavailableReason}
+            onAttachUnavailable={chatInput.setAttachmentError}
+            removalUnblocksSend={chatInput.removalUnblocksSend}
             sendBlockedReason={
               recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'

@@ -22,6 +22,7 @@ import {
   projectCompactWorkspacePaneHost,
   visibleWorkspacePaneHostInstanceIds,
 } from './compactWorkspacePaneProjection';
+import type { WorkspacePaneFailureDetail } from './WorkspacePaneFailure';
 import type {
   WorkspacePaneHostOpenPlacement,
   WorkspacePaneHostOpenPreparation,
@@ -38,6 +39,8 @@ import {
 } from './workspacePaneHostLease';
 import {
   readWorkspacePaneHostSelection,
+  replaceWorkspacePaneHostSelection,
+  workspacePaneHostSelectionIsNamed,
   writeWorkspacePaneHostSelection,
 } from './workspacePaneHostNavigation';
 import {
@@ -88,8 +91,16 @@ interface WorkspacePaneHostControllerOptions {
    * cannot leave — and never reads it, so a popstate that changes `?pane=`
    * cannot pull the host away from the model and start the write loop that
    * pushed three entries for one placement (2a review, HIGH).
+   *
+   * `'explicit'` (the Coding layout's navigation stack): the URL names a pane
+   * only when someone NAMED one — a select or an open. The host's own
+   * reconciliation (a catalog-driven restore, the successor a close selects,
+   * a split or maximize) keeps an existing `?pane=` for this host current but
+   * never creates one, because in that host the ABSENCE of `?pane=` is a page
+   * of its own (the Chat page) and a catalog refresh must not navigate the
+   * reader away from it. Reads are the same as `true`.
    */
-  navigationSelection?: boolean;
+  navigationSelection?: boolean | 'explicit' | 'replace';
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   lockManager?: WorkspacePaneHostLockManager | null;
@@ -127,7 +138,16 @@ export interface WorkspacePaneHostController {
   reorder(instanceId: WorkspacePaneInstanceId, toIndex: number): void;
   collapse(splitId: string, collapsed: 'first' | 'second' | undefined): void;
   maximize(instanceId: WorkspacePaneInstanceId | undefined): void;
-  fail(instanceId: WorkspacePaneInstanceId): void;
+  fail(
+    instanceId: WorkspacePaneInstanceId,
+    detail?: WorkspacePaneFailureDetail,
+  ): void;
+  /**
+   * What each failed renderer threw, by instance id — display-only, beside
+   * the reducer's `rendererFailures` (which stays the authority on WHETHER a
+   * pane failed). Absent for a failure that carried no error.
+   */
+  rendererFailureDetails: Readonly<Record<string, WorkspacePaneFailureDetail>>;
   retry(instanceId: WorkspacePaneInstanceId): Promise<boolean>;
   /** Replaces the sole ambient-slot occupant through this host's persistence lease. */
   replace(instance: WorkspacePaneInstance): boolean;
@@ -168,6 +188,9 @@ export function useWorkspacePaneHostController({
   const [closeConfirmation, setCloseConfirmation] =
     useState<WorkspacePaneHostController['closeConfirmation']>(null);
   const [authorityCleanupRevision, setAuthorityCleanupRevision] = useState(0);
+  const [rendererFailureDetails, setRendererFailureDetails] = useState<
+    Readonly<Record<string, WorkspacePaneFailureDetail>>
+  >({});
   const [persistenceStatus, setPersistenceStatus] =
     useState<WorkspacePaneHostPersistenceStatus>('unavailable');
   const navigationSnapshot = useSyncExternalStore(
@@ -181,9 +204,21 @@ export function useWorkspacePaneHostController({
     (
       document: WorkspacePaneHostDocumentV1,
       instanceId: WorkspacePaneInstanceId | null,
+      cause: 'named' | 'reconciled' = 'reconciled',
     ) => {
-      if (navigationSelection)
-        writeWorkspacePaneHostSelection(document, instanceId);
+      if (!navigationSelection) return;
+      if (navigationSelection !== true && cause === 'reconciled') {
+        if (workspacePaneHostSelectionIsNamed(document))
+          replaceWorkspacePaneHostSelection(document, instanceId);
+        return;
+      }
+      // `replace`: a named open or tab choice corrects the entry in place
+      // too (#3040 — a tool beside Chat is never a page of its own).
+      if (navigationSelection === 'replace') {
+        replaceWorkspacePaneHostSelection(document, instanceId);
+        return;
+      }
+      writeWorkspacePaneHostSelection(document, instanceId);
     },
     [navigationSelection],
   );
@@ -651,7 +686,7 @@ export function useWorkspacePaneHostController({
   const select = useCallback(
     (instanceId: WorkspacePaneInstanceId) => {
       dispatch({ type: 'select', instanceId });
-      writeSelection(stateRef.current.document, instanceId);
+      writeSelection(stateRef.current.document, instanceId, 'named');
     },
     [writeSelection],
   );
@@ -702,7 +737,7 @@ export function useWorkspacePaneHostController({
       if (!prepared.ok) return workspacePaneOpenRefused(prepared.reason);
       stateRef.current = prepared.state;
       dispatch(action);
-      writeSelection(prepared.state.document, instance.instanceId);
+      writeSelection(prepared.state.document, instance.instanceId, 'named');
       emitOperationalEvent(instance, 'opened');
       return WORKSPACE_PANE_OPENED;
     },
@@ -838,7 +873,16 @@ export function useWorkspacePaneHostController({
     [hasPersistenceLease, writeSelection],
   );
   const fail = useCallback(
-    (instanceId: WorkspacePaneInstanceId) => {
+    (
+      instanceId: WorkspacePaneInstanceId,
+      detail?: WorkspacePaneFailureDetail,
+    ) => {
+      if (detail) {
+        setRendererFailureDetails((current) => ({
+          ...current,
+          [instanceId]: detail,
+        }));
+      }
       dispatch({ type: 'renderer-failed', instanceId, code: 'render-crash' });
       const instance = stateRef.current.document.instances.find(
         (candidate) => candidate.instanceId === instanceId,
@@ -923,6 +967,7 @@ export function useWorkspacePaneHostController({
       applyHostAction({ type: 'collapse', splitId, collapsed }),
     maximize: (instanceId) => applyHostAction({ type: 'maximize', instanceId }),
     fail,
+    rendererFailureDetails,
     retry,
     replace,
     open,

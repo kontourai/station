@@ -10,11 +10,18 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useNotificationHistory, useToast } from '../../contexts/ToastContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import {
+  focusRenderedApprovalCard,
+  getApprovalClaims,
+  OPEN_APPROVAL_QUEUE_EVENT,
+  subscribeApprovalClaims,
+} from '../status/approvalReveal';
 import './NotificationContainer.css';
 import {
   buildToastStackLayout,
@@ -72,6 +79,18 @@ function ToastCard({
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
   const shortcut = getSessionShortcut(notification.sessionId);
+  const message = notification.message.trim();
+  const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
+  const headline =
+    firstLine.length > 160 ? `${firstLine.slice(0, 157)}…` : firstLine;
+  const details = [
+    headline !== message ? message : undefined,
+    notification.metadata?.detail
+      ? String(notification.metadata.detail)
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const activate = (event?: ReactMouseEvent | ReactKeyboardEvent) => {
     if (!clickable || !onActivate) return;
@@ -132,7 +151,7 @@ function ToastCard({
               {formatTimestamp(notification.timestamp)}
             </time>
           </div>
-          <div className="toast-card__message">{notification.message}</div>
+          <div className="toast-card__message">{headline}</div>
           {/*
             #1545: which command, or which file, the call will touch — so the
             operator is deciding about that rather than about the word "Bash".
@@ -145,25 +164,19 @@ function ToastCard({
               {notification.toolPreview}
             </div>
           ) : null}
-          {notification.metadata?.detail ? (
-            <div className="toast-card__detail">
-              {String(notification.metadata.detail)}
-            </div>
+          {details ? (
+            <details
+              className="toast-card__diagnostics"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <summary>Details</summary>
+              <div className="toast-card__detail">{details}</div>
+            </details>
           ) : null}
           {notification.conversationTitle && notification.onNavigate && (
             <div className="toast-card__conversation">
-              <span>in</span>
-              <button
-                type="button"
-                className="toast-card__link"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  notification.onNavigate?.();
-                  dismissToast(notification.id);
-                }}
-              >
-                “{notification.conversationTitle}”
-              </button>
+              <span>{notification.conversationTitle}</span>
               {shortcut && (
                 <kbd className="toast-card__shortcut">{shortcut}</kbd>
               )}
@@ -207,6 +220,24 @@ function ToastCard({
           ))}
         </div>
       )}
+
+      {notification.onNavigate &&
+        !notification.actions?.length &&
+        !isPairing && (
+          <div className="toast-card__actions">
+            <button
+              type="button"
+              className="toast-card__action toast-card__action--primary"
+              onClick={(event) => {
+                event.stopPropagation();
+                notification.onNavigate?.();
+                dismissToast(notification.id);
+              }}
+            >
+              Open chat
+            </button>
+          </div>
+        )}
 
       {isPairing && !notification.actions && (
         <div className="toast-card__actions">
@@ -286,9 +317,40 @@ export function NotificationContainer() {
   }, []);
 
   const activeNotifications = history.filter((item) => !item.dismissed);
-  const approvals = activeNotifications.filter(
+  const allApprovals = activeNotifications.filter(
     (item) => item.type === 'tool-approval' || item.type === 'pairing-request',
   );
+  // A chat pane presenting its own approval in its status pill claims its
+  // threads; the queue does not float a second copy of those over the pane.
+  // Asked to open from that pill (its card could not be brought on screen),
+  // the queue lists everything.
+  const claimedThreads = useSyncExternalStore(
+    subscribeApprovalClaims,
+    getApprovalClaims,
+    getApprovalClaims,
+  );
+  const [showAllApprovals, setShowAllApprovals] = useState(false);
+  const unclaimedApprovals = allApprovals.filter(
+    (item) => !item.sessionId || !claimedThreads.has(item.sessionId),
+  );
+  const approvals =
+    showAllApprovals && approvalQueueOpen ? allApprovals : unclaimedApprovals;
+  useEffect(() => {
+    const open = () => {
+      returnFocusRef.current = captureReturnFocus(
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null,
+      );
+      setShowAllApprovals(true);
+      setApprovalQueueOpen(true);
+    };
+    window.addEventListener(OPEN_APPROVAL_QUEUE_EVENT, open);
+    return () => window.removeEventListener(OPEN_APPROVAL_QUEUE_EVENT, open);
+  }, []);
+  useEffect(() => {
+    if (!approvalQueueOpen) setShowAllApprovals(false);
+  }, [approvalQueueOpen]);
   const transientNotifications = activeNotifications.filter(
     (item) => item.type !== 'tool-approval' && item.type !== 'pairing-request',
   );
@@ -471,6 +533,18 @@ export function NotificationContainer() {
                 closeApprovalQueue();
                 return;
               }
+              // One request whose own card is on screen: go there rather than
+              // open a second copy of the same decision. More than one, or a
+              // card that is not actually rendered: the queue lists them all.
+              const only = approvals.length === 1 ? approvals[0] : undefined;
+              if (
+                only?.approvalRequestId &&
+                focusRenderedApprovalCard({
+                  requestId: only.approvalRequestId,
+                  threadId: only.sessionId,
+                })
+              )
+                return;
               returnFocusRef.current = captureReturnFocus(
                 approvalQueueTriggerRef.current,
               );

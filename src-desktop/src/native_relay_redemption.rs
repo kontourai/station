@@ -9,9 +9,10 @@
 
 use crate::native_relay_proof_key::{
     NativeBrokerRedemptionChallenge, NativeBrokerRedemptionInvitation, NativeBrokerRequestBody,
-    NativeBrokerRequestIdentity, NativeBrokerRequestProofChallenge, NativeProofKeyChannel,
-    NativeProofKeyOwner, NativeProofKeyPublicMetadata, NativeRelayProofKeyVault, P256PublicJwk,
-    ProofKeyError,
+    NativeBrokerRequestIdentity, NativeBrokerRequestProofChallenge,
+    NativeInvitationObservationChallenge, NativeProofKeyChannel, NativeProofKeyOwner,
+    NativeProofKeyPublicMetadata, NativeRelayProofKeyVault, NativeSupersededScopeObservation,
+    P256PublicJwk, ProofKeyError, SUPERSEDED_SCOPE_OBSERVE_PATH,
 };
 use crate::native_station_key_custody::{
     CandidateError, LockedTrustProfileSnapshot, NativeStationTrustStore,
@@ -33,11 +34,13 @@ use std::io::Write;
 #[cfg(test)]
 use std::net::TcpListener;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(test)]
 use std::sync::Arc;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use tauri::AppHandle;
+use tauri::Manager;
 use zeroize::Zeroizing;
 
 const REDEEM_PATH: &str = "/broker/v1/native/grants/redeem";
@@ -45,12 +48,28 @@ const OPEN_PATH: &str = "/broker/v1/native/connections/open";
 const READ_PATH: &str = "/broker/v1/native/connections/read";
 const RETIRE_PATH: &str = "/broker/v1/native/grants/retire";
 const RENEW_PATH: &str = "/broker/v1/native/grants/renew";
+const ICE_CONFIGURATION_PATH: &str = "/broker/v1/native/ice/configuration";
 const NATIVE_INVITATION_VERSION: &str = "station-broker-native-route-invitation/v2";
 const NATIVE_GRANT_VERSION: &str = "station-broker-native-client-grant/v2";
 const NATIVE_RETIRE_VERSION: &str = "station-broker-native-grant-retire/v2";
 const NATIVE_RENEW_VERSION: &str = "station-broker-native-grant-renew/v2";
 const NATIVE_RENEWED_VERSION: &str = "station-broker-native-grant-renewed/v2";
-const MAX_INVITATION_AGE_MS: u64 = 5 * 60 * 1000;
+const NATIVE_DEVICE_SELF_RECEIPT_ERROR_VERSION: &str =
+    "station-native-device-proof-self-receipt-error/v1";
+static NATIVE_DEVICE_RECEIPT_OPERATION: Mutex<()> = Mutex::new(());
+
+fn try_native_device_receipt_operation() -> Result<MutexGuard<'static, ()>, String> {
+    NATIVE_DEVICE_RECEIPT_OPERATION
+        .try_lock()
+        .map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => {
+                "Station is already checking a Device binding receipt".to_owned()
+            }
+            std::sync::TryLockError::Poisoned(_) => {
+                "Station Device receipt reconciliation is unavailable".to_owned()
+            }
+        })
+}
 const MAX_GRANT_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 const NATIVE_GRANT_RENEWAL_GRACE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 const NATIVE_GRANT_RENEWAL_EARLY_WINDOW_MS: u64 = 12 * 60 * 60 * 1000;
@@ -104,7 +123,7 @@ pub(crate) fn with_native_relay_route_operation_lock<T>(
     operation()
 }
 
-type RedemptionResult<T> = Result<T, NativeRedemptionError>;
+pub(crate) type RedemptionResult<T> = Result<T, NativeRedemptionError>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,8 +170,7 @@ impl From<NativeRedemptionError> for NativeGrantStoreFailure {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(tag = "status", rename_all = "camelCase")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeGrantCleanupDisposition {
     NotAttempted,
     Complete,
@@ -161,6 +179,31 @@ pub(crate) enum NativeGrantCleanupDisposition {
         broker_retire_failed: bool,
         custody_failed: bool,
     },
+}
+
+impl Serialize for NativeGrantCleanupDisposition {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        match self {
+            Self::NotAttempted => serializer.serialize_str("notAttempted"),
+            Self::Complete => serializer.serialize_str("complete"),
+            Self::Pending {
+                local_revoke_failed,
+                broker_retire_failed,
+                custody_failed,
+            } => {
+                let mut value = serializer.serialize_map(Some(4))?;
+                value.serialize_entry("status", "pending")?;
+                value.serialize_entry("localRevokeFailed", local_revoke_failed)?;
+                value.serialize_entry("brokerRetireFailed", broker_retire_failed)?;
+                value.serialize_entry("custodyFailed", custody_failed)?;
+                value.end()
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -309,6 +352,7 @@ pub(crate) trait NativeRedemptionContextProvider: Send + Sync {
 /// trust-store seam.
 pub(crate) struct AppNativeRedemptionContextProvider {
     app: AppHandle,
+    existing_route: bool,
 }
 
 fn with_locked_saved_relay_profile<T>(
@@ -317,6 +361,38 @@ fn with_locked_saved_relay_profile<T>(
     operation: impl FnOnce(
         NativeRelayProfileSnapshot,
         LockedTrustProfileSnapshot,
+    ) -> RedemptionResult<T>,
+) -> RedemptionResult<T> {
+    with_locked_saved_relay_profile_store(
+        app,
+        profile_name,
+        |profile, locked_snapshot, _store, _path| operation(profile, locked_snapshot),
+    )
+}
+
+fn with_locked_saved_relay_profile_store<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    operation: impl FnOnce(
+        NativeRelayProfileSnapshot,
+        LockedTrustProfileSnapshot,
+        &super::CredentialProfileStore,
+        &std::path::Path,
+    ) -> RedemptionResult<T>,
+) -> RedemptionResult<T> {
+    with_locked_saved_enrollment_profile_store(app, profile_name, None, false, operation)
+}
+
+fn with_locked_saved_enrollment_profile_store<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    enrollment_reference: Option<&super::NativeCredentialReference>,
+    allow_published_profile: bool,
+    operation: impl FnOnce(
+        NativeRelayProfileSnapshot,
+        LockedTrustProfileSnapshot,
+        &super::CredentialProfileStore,
+        &std::path::Path,
     ) -> RedemptionResult<T>,
 ) -> RedemptionResult<T> {
     let path =
@@ -336,7 +412,22 @@ fn with_locked_saved_relay_profile<T>(
         "dev" => NativeProofKeyChannel::Dev,
         _ => return Err(NativeRedemptionError::InvalidProfile),
     };
-    let profile = snapshot_from_saved_profile(&store, profile_name, &app_identifier, channel)?;
+    let published_reference = if allow_published_profile {
+        store
+            .profiles
+            .iter()
+            .find(|profile| profile.name.eq_ignore_ascii_case(profile_name))
+            .and_then(|profile| profile.credential_ref.as_ref())
+    } else {
+        None
+    };
+    let profile = snapshot_from_owned_enrollment_profile(
+        &store,
+        profile_name,
+        &app_identifier,
+        channel,
+        enrollment_reference.or(published_reference),
+    )?;
     let binding = TrustProfileBinding {
         profile_owner_id: profile.profile_name.clone(),
         app_identifier: profile.app_identifier.clone(),
@@ -352,12 +443,25 @@ fn with_locked_saved_relay_profile<T>(
             binding,
             revision: profile.revision,
         },
+        &store,
+        &path,
     )
 }
 
 impl AppNativeRedemptionContextProvider {
     pub(crate) fn new(app: AppHandle) -> Self {
-        Self { app }
+        Self {
+            app,
+            existing_route: false,
+        }
+    }
+
+    // Existing grant custody survives Device publication; it grants no account or Device authority.
+    fn for_existing_route(app: AppHandle) -> Self {
+        Self {
+            app,
+            existing_route: true,
+        }
     }
 }
 
@@ -367,21 +471,27 @@ impl NativeRedemptionContextProvider for AppNativeRedemptionContextProvider {
         profile_name: &str,
         operation: impl FnOnce(NativeRedemptionContext) -> RedemptionResult<T>,
     ) -> RedemptionResult<T> {
-        with_locked_saved_relay_profile(&self.app, profile_name, |profile, locked_snapshot| {
-            let mut trust_store = NativeStationTrustStore::system();
-            let approved = trust_store
-                .approved_descriptor_for_locked_profile(&locked_snapshot)
-                .map_err(|error| match error {
-                    crate::native_station_key_custody::CandidateError::TrustStore => {
-                        NativeRedemptionError::StationTrustUnavailable
-                    }
-                    _ => NativeRedemptionError::StationTrustRequired,
-                })?;
-            operation(NativeRedemptionContext {
-                station_trust: approved_station_trust(&profile, approved)?,
-                profile,
-            })
-        })
+        with_locked_saved_enrollment_profile_store(
+            &self.app,
+            profile_name,
+            None,
+            self.existing_route,
+            |profile, locked_snapshot, _, _| {
+                let mut trust_store = NativeStationTrustStore::system();
+                let approved = trust_store
+                    .approved_descriptor_for_locked_profile(&locked_snapshot)
+                    .map_err(|error| match error {
+                        crate::native_station_key_custody::CandidateError::TrustStore => {
+                            NativeRedemptionError::StationTrustUnavailable
+                        }
+                        _ => NativeRedemptionError::StationTrustRequired,
+                    })?;
+                operation(NativeRedemptionContext {
+                    station_trust: approved_station_trust(&profile, approved)?,
+                    profile,
+                })
+            },
+        )
     }
 }
 
@@ -412,33 +522,39 @@ fn approved_station_trust(
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct NativeRelayInvitationV2 {
-    version: String,
-    broker_origin: String,
-    scope: NativeRelayScopeV2,
-    station_signing_key_id: String,
-    station_signing_generation: u64,
-    surface: NativeRelayClientSurfaceV2,
-    invitation_id: String,
+    pub(crate) version: String,
+    pub(crate) broker_origin: String,
+    pub(crate) scope: NativeRelayScopeV2,
+    pub(crate) station_signing_key_id: String,
+    pub(crate) station_signing_generation: u64,
+    pub(crate) surface: NativeRelayClientSurfaceV2,
+    pub(crate) invitation_id: String,
     invitation_secret: SecretText,
-    expires_at: u64,
+    pub(crate) expires_at: u64,
+}
+
+impl NativeRelayInvitationV2 {
+    pub(crate) fn link_secret_valid(&self) -> bool {
+        valid_opaque(self.invitation_secret.expose()) && valid_safe_id(&self.invitation_id)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct NativeRelayScopeV2 {
-    station_id: String,
-    enrollment_id: String,
-    routing_generation: u64,
+pub(crate) struct NativeRelayScopeV2 {
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: String,
+    pub(crate) routing_generation: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct NativeRelayClientSurfaceV2 {
-    kind: String,
-    app_identifier: String,
-    channel: String,
-    client_instance_id: String,
-    key_thumbprint: String,
+pub(crate) struct NativeRelayClientSurfaceV2 {
+    pub(crate) kind: String,
+    pub(crate) app_identifier: String,
+    pub(crate) channel: String,
+    pub(crate) client_instance_id: String,
+    pub(crate) key_thumbprint: String,
 }
 
 struct SecretText(Zeroizing<String>);
@@ -571,14 +687,25 @@ struct StoredNativeRelayGrantV2Ref<'a> {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) enum NativeCleanupRemoteBasis {
+    IndividualGrantRetired,
+    SupersededGenerationObserved {
+        observation: NativeSupersededScopeObservation,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct NativeGrantCleanupIndexEntry {
-    cleanup_id: String,
-    route: NativeRelayGrantRoute,
+    pub(crate) cleanup_id: String,
+    pub(crate) route: NativeRelayGrantRoute,
     grant_secret_digest: String,
     staged_at: u64,
     record_present: bool,
     broker_retired: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    remote_basis: Option<NativeCleanupRemoteBasis>,
     local_cleanup_required: bool,
     local_cleanup_complete: bool,
 }
@@ -641,8 +768,8 @@ struct StoredNativeGrantCleanupV2Ref<'a> {
 }
 
 pub(crate) struct NativeGrantCleanupPending {
-    entry: NativeGrantCleanupIndexEntry,
-    grant: NativeRelayClientGrantV2,
+    pub(crate) entry: NativeGrantCleanupIndexEntry,
+    pub(crate) grant: NativeRelayClientGrantV2,
     durable_cleanup_record: bool,
 }
 
@@ -667,7 +794,7 @@ pub(crate) struct NativeRelayGrantState {
 }
 
 impl NativeRelayGrantState {
-    fn for_saved_profile(
+    pub(crate) fn for_saved_profile(
         profile: &NativeRelayProfileSnapshot,
         grants: Vec<NativeRelayGrantStatusItem>,
         cleanups: Vec<NativeRelayGrantCleanupStatus>,
@@ -681,6 +808,22 @@ impl NativeRelayGrantState {
             cleanups,
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NativeRelayRecoveryOutcome {
+    route: NativeRelayGrantRoute,
+    remote_basis: Option<NativeCleanupRemoteBasis>,
+    local_cleanup_complete: bool,
+    failure: Option<NativeRedemptionError>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NativeRelayRecoveryResult {
+    pub(crate) state: NativeRelayGrantState,
+    pub(crate) outcomes: Vec<NativeRelayRecoveryOutcome>,
 }
 
 /// Tagged, secret-free response to an invite-redemption command. Domain
@@ -744,6 +887,13 @@ pub(crate) trait NativeGrantCustody: Send + Sync {
         &self,
         owner: &NativeProofKeyOwner,
         cleanup_id: &str,
+    ) -> RedemptionResult<()>;
+    fn record_recovery_basis(
+        &self,
+        owner: &NativeProofKeyOwner,
+        cleanup_id: &str,
+        grant: &NativeRelayClientGrantV2,
+        basis: NativeCleanupRemoteBasis,
     ) -> RedemptionResult<()>;
     fn mark_local_cleanup_complete(
         &self,
@@ -1397,7 +1547,7 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         stage_native_grant_cleanup_locked(&mut *backend, owner, grant, local_cleanup_required, now)
     }
 
-    fn load_cleanup(
+    pub(crate) fn load_cleanup(
         &self,
         owner: &NativeProofKeyOwner,
         cleanup_id: &str,
@@ -1482,7 +1632,7 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         }))
     }
 
-    fn pending_cleanups(
+    pub(crate) fn pending_cleanups(
         &self,
         owner: &NativeProofKeyOwner,
     ) -> RedemptionResult<Vec<NativeGrantCleanupIndexEntry>> {
@@ -1510,6 +1660,51 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
             .map_err(|_| NativeRedemptionError::GrantStore)?;
         update_cleanup_state(&mut *backend, owner, cleanup_id, |entry| {
             entry.broker_retired = true;
+            entry.remote_basis = Some(NativeCleanupRemoteBasis::IndividualGrantRetired);
+            Ok(())
+        })
+    }
+
+    pub(crate) fn record_recovery_basis(
+        &self,
+        owner: &NativeProofKeyOwner,
+        cleanup_id: &str,
+        grant: &NativeRelayClientGrantV2,
+        basis: NativeCleanupRemoteBasis,
+    ) -> RedemptionResult<()> {
+        let _global = NATIVE_GRANT_VAULT_LOCK
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let mut backend = self
+            .backend
+            .lock()
+            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let route = native_route_for_grant(grant);
+        if let NativeCleanupRemoteBasis::SupersededGenerationObserved { observation } = &basis {
+            if !valid_scope_observation(observation, &route) {
+                return Err(NativeRedemptionError::GrantInvalid);
+            }
+        }
+        let binding = NativeRelayGrantBinding {
+            owner: owner.clone(),
+            route: route.clone(),
+        };
+        if let Some(encoded) = backend.get(&native_grant_account(&binding)?)? {
+            let stored: StoredNativeRelayGrantV2 =
+                serde_json::from_str(&encoded).map_err(|_| NativeRedemptionError::GrantStore)?;
+            if stored.binding != binding || !same_native_grant(&stored.grant, grant) {
+                return Err(NativeRedemptionError::StaleProfile);
+            }
+        }
+        update_cleanup_state(&mut *backend, owner, cleanup_id, |entry| {
+            if entry.route != route
+                || entry.grant_secret_digest != native_grant_secret_digest(grant)
+            {
+                return Err(NativeRedemptionError::GrantInvalid);
+            }
+            entry.broker_retired =
+                matches!(basis, NativeCleanupRemoteBasis::IndividualGrantRetired);
+            entry.remote_basis = Some(basis);
             Ok(())
         })
     }
@@ -1553,7 +1748,8 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
         else {
             return Ok(());
         };
-        if !entry.broker_retired || !entry.local_cleanup_complete {
+        if (!entry.broker_retired && entry.remote_basis.is_none()) || !entry.local_cleanup_complete
+        {
             return Err(NativeRedemptionError::GrantStore);
         }
         let account = native_grant_cleanup_record_account(owner, cleanup_id)?;
@@ -1636,6 +1832,16 @@ impl<B: NativeGrantBackend> NativeGrantCustody for NativeRelayGrantVault<B> {
         NativeRelayGrantVault::mark_broker_retired(self, owner, cleanup_id)
     }
 
+    fn record_recovery_basis(
+        &self,
+        owner: &NativeProofKeyOwner,
+        cleanup_id: &str,
+        grant: &NativeRelayClientGrantV2,
+        basis: NativeCleanupRemoteBasis,
+    ) -> RedemptionResult<()> {
+        NativeRelayGrantVault::record_recovery_basis(self, owner, cleanup_id, grant, basis)
+    }
+
     fn mark_local_cleanup_complete(
         &self,
         owner: &NativeProofKeyOwner,
@@ -1694,8 +1900,11 @@ pub(crate) struct OsNativeGrantBackend;
 impl NativeGrantBackend for OsNativeGrantBackend {
     fn get(&mut self, account: &str) -> RedemptionResult<Option<Zeroizing<String>>> {
         super::initialize_credential_store().map_err(|_| NativeRedemptionError::GrantStore)?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|_| NativeRedemptionError::GrantStore)?;
         match entry.get_password() {
             Ok(value) => Ok(Some(Zeroizing::new(value))),
             Err(keyring_core::Error::NoEntry) => Ok(None),
@@ -1705,8 +1914,11 @@ impl NativeGrantBackend for OsNativeGrantBackend {
 
     fn set(&mut self, account: &str, value: &str) -> RedemptionResult<()> {
         super::initialize_credential_store().map_err(|_| NativeRedemptionError::GrantStore)?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|_| NativeRedemptionError::GrantStore)?;
         entry
             .set_password(value)
             .map_err(|_| NativeRedemptionError::GrantStore)
@@ -1714,8 +1926,11 @@ impl NativeGrantBackend for OsNativeGrantBackend {
 
     fn delete(&mut self, account: &str) -> RedemptionResult<()> {
         super::initialize_credential_store().map_err(|_| NativeRedemptionError::GrantStore)?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|_| NativeRedemptionError::GrantStore)?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
             Err(_) => Err(NativeRedemptionError::GrantStore),
@@ -1734,7 +1949,7 @@ pub(crate) fn retry_pending_cleanup_for_app(app: &AppHandle) -> RedemptionResult
     let channel = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
     let grants = native_relay_grant_vault();
     let owners = grants.registered_cleanup_owners(&app_identifier, channel)?;
-    let context = AppNativeRedemptionContextProvider::new(app.clone());
+    let context = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let service = NativeRelayRedemptionService::new(
@@ -2081,6 +2296,24 @@ fn native_grant_cleanup_record_account(
     ))
 }
 
+fn valid_scope_observation(
+    observation: &NativeSupersededScopeObservation,
+    route: &NativeRelayGrantRoute,
+) -> bool {
+    observation.version == "station-broker-native-superseded-scope-observed/v1"
+        && observation.disposition == "superseded-generation-not-admitted"
+        && valid_opaque(&observation.request_nonce)
+        && URL_SAFE_NO_PAD
+            .decode(&observation.request_nonce)
+            .is_ok_and(|bytes| {
+                bytes.len() == 32 && URL_SAFE_NO_PAD.encode(bytes) == observation.request_nonce
+            })
+        && observation.scope.station_id == route.station_id
+        && observation.scope.enrollment_id == route.enrollment_id
+        && observation.scope.routing_generation == route.routing_generation
+        && observation.lease_revision <= JS_SAFE_INTEGER_MAX
+}
+
 fn valid_cleanup_route(route: &NativeRelayGrantRoute) -> bool {
     canonical_broker_origin(&route.broker_origin)
         && valid_uuid(&route.station_id)
@@ -2111,9 +2344,20 @@ fn read_native_grant_cleanup_index(
                 || !valid_opaque(&entry.grant_secret_digest)
                 || entry.staged_at > JS_SAFE_INTEGER_MAX
                 || !ids.insert(entry.cleanup_id.as_str())
+                || entry
+                    .remote_basis
+                    .as_ref()
+                    .is_some_and(|basis| match basis {
+                        NativeCleanupRemoteBasis::IndividualGrantRetired => !entry.broker_retired,
+                        NativeCleanupRemoteBasis::SupersededGenerationObserved { observation } => {
+                            entry.broker_retired
+                                || !valid_scope_observation(observation, &entry.route)
+                        }
+                    })
                 || (entry.local_cleanup_required
                     && entry.local_cleanup_complete
-                    && !entry.broker_retired)
+                    && !entry.broker_retired
+                    && entry.remote_basis.is_none())
                 || (!entry.local_cleanup_required && !entry.local_cleanup_complete)
         })
     {
@@ -2215,6 +2459,7 @@ fn stage_native_grant_cleanup_locked(
         staged_at: now,
         record_present: false,
         broker_retired: false,
+        remote_basis: None,
         local_cleanup_required,
         local_cleanup_complete: !local_cleanup_required,
     };
@@ -2484,6 +2729,96 @@ impl NativeBrokerTransport for UreqNativeBrokerTransport {
     }
 }
 
+pub(crate) fn observe_superseded_scope(
+    keys: &NativeRelayProofKeyVault,
+    owner: &NativeProofKeyOwner,
+    invitation: &NativeRelayInvitationV2,
+    grant: &NativeRelayClientGrantV2,
+    now: u64,
+) -> RedemptionResult<NativeSupersededScopeObservation> {
+    if !older_grant_matches_invitation(owner, grant, invitation) {
+        return Err(NativeRedemptionError::GrantInvalid);
+    }
+    let public = keys
+        .restore(owner)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    let input = NativeBrokerRedemptionInvitation {
+        broker_origin: invitation.broker_origin.clone(),
+        station_id: invitation.scope.station_id.clone(),
+        enrollment_id: invitation.scope.enrollment_id.clone(),
+        routing_generation: invitation.scope.routing_generation,
+        station_signing_key_id: invitation.station_signing_key_id.clone(),
+        station_signing_generation: invitation.station_signing_generation,
+        app_identifier: invitation.surface.app_identifier.clone(),
+        invitation_id: invitation.invitation_id.clone(),
+        invitation_secret: Zeroizing::new(invitation.invitation_secret.expose().to_owned()),
+        expires_at: invitation.expires_at,
+    };
+    let challenge = NativeInvitationObservationChallenge::from_invitation(
+        owner,
+        &public,
+        &input,
+        grant.scope.routing_generation,
+        now / 1000,
+    )
+    .map_err(|_| NativeRedemptionError::InvitationInvalid)?;
+    let signature = keys
+        .sign_invitation_observation_es256_p1363(owner, &challenge)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    let proof = challenge
+        .compact_jws(&signature)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    let target = format!(
+        "{}{}",
+        invitation.broker_origin, SUPERSEDED_SCOPE_OBSERVE_PATH
+    );
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .max_redirects(0)
+        .timeout_global(Some(Duration::from_secs(10)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut response = agent
+        .post(&target)
+        .header("Content-Type", "application/json")
+        .header(
+            "Authorization",
+            &format!("Bearer {}", invitation.invitation_secret.expose()),
+        )
+        .header("X-Broker-Credential-Id", &invitation.invitation_id)
+        .header("X-Station-Native-Proof", &proof)
+        .send(challenge.body())
+        .map_err(|_| NativeRedemptionError::BrokerTransport)?;
+    if response.status().as_u16() != 200 {
+        return Err(NativeRedemptionError::BrokerRejected);
+    }
+    let mut bytes = Zeroizing::new(Vec::new());
+    response
+        .body_mut()
+        .as_reader()
+        .take(4097)
+        .read_to_end(&mut bytes)
+        .map_err(|_| NativeRedemptionError::BrokerTransport)?;
+    challenge
+        .validate_response(&bytes)
+        .map_err(|_| NativeRedemptionError::BrokerRejected)
+}
+
+fn older_grant_matches_invitation(
+    owner: &NativeProofKeyOwner,
+    grant: &NativeRelayClientGrantV2,
+    invitation: &NativeRelayInvitationV2,
+) -> bool {
+    grant.broker_origin == invitation.broker_origin
+        && grant.scope.station_id == invitation.scope.station_id
+        && grant.scope.enrollment_id == invitation.scope.enrollment_id
+        && grant.scope.routing_generation < invitation.scope.routing_generation
+        && grant.surface == invitation.surface
+        && grant.surface.app_identifier == owner.app_identifier()
+        && grant.surface.channel == owner.channel_label()
+        && grant.surface.client_instance_id == owner.client_instance_id()
+}
+
 impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
     fn send_fixed_request(
         &self,
@@ -2502,7 +2837,15 @@ impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
             return Err(NativeRedemptionError::GrantInvalid);
         }
         let path = challenge.path();
-        if !matches!(path, OPEN_PATH | READ_PATH | RETIRE_PATH | RENEW_PATH) {
+        let response_limit = if path == ICE_CONFIGURATION_PATH {
+            16 * 1024
+        } else {
+            MAX_RESPONSE_BYTES
+        };
+        if !matches!(
+            path,
+            OPEN_PATH | READ_PATH | RETIRE_PATH | RENEW_PATH | ICE_CONFIGURATION_PATH
+        ) {
             return Err(NativeRedemptionError::GrantInvalid);
         }
         let base = url::Url::parse(&grant.broker_origin)
@@ -2539,7 +2882,7 @@ impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
             if read == 0 {
                 break;
             }
-            if body.len().saturating_add(read) > MAX_RESPONSE_BYTES {
+            if body.len().saturating_add(read) > response_limit {
                 return Err(NativeRedemptionError::BrokerTransport);
             }
             body.extend_from_slice(&chunk[..read]);
@@ -2593,7 +2936,7 @@ fn profile_matches_owner(
         && profile.client_instance_id == owner.client_instance_id()
 }
 
-fn validate_invitation_and_trust(
+pub(crate) fn validate_invitation_and_trust(
     context: &NativeRedemptionContext,
     invitation: &NativeRelayInvitationV2,
     now: u64,
@@ -2616,7 +2959,7 @@ fn validate_invitation_and_trust(
         || !valid_safe_id(&invitation.invitation_id)
         || !valid_opaque(invitation.invitation_secret.expose())
         || invitation.expires_at <= now
-        || invitation.expires_at > now.saturating_add(MAX_INVITATION_AGE_MS)
+        || invitation.expires_at > JS_SAFE_INTEGER_MAX
         || invitation.surface.kind != "station-native"
         || invitation.surface.app_identifier != profile.app_identifier
         || invitation.surface.channel != profile.channel.keyring_label()
@@ -2901,6 +3244,42 @@ fn is_contract_loopback(url: &url::Url) -> bool {
     }
 }
 
+fn snapshot_from_owned_enrollment_profile(
+    store: &super::CredentialProfileStore,
+    profile_name: &str,
+    app_identifier: &str,
+    channel: NativeProofKeyChannel,
+    reference: Option<&super::NativeCredentialReference>,
+) -> RedemptionResult<NativeRelayProfileSnapshot> {
+    let Some(reference) = reference else {
+        return snapshot_from_saved_profile(store, profile_name, app_identifier, channel);
+    };
+    let mut route_store = store.clone();
+    let profile = route_store
+        .profiles
+        .iter_mut()
+        .find(|profile| profile.name.eq_ignore_ascii_case(profile_name))
+        .ok_or(NativeRedemptionError::InvalidProfile)?;
+    if profile.credential_ref.is_some() {
+        if profile.credential_ref.as_ref() != Some(reference)
+            || !matches!(
+                profile.configuration_state.as_str(),
+                "requires-auth" | "configured"
+            )
+            || profile
+                .relay_route
+                .as_ref()
+                .map(|route| route.station_id.as_str())
+                != profile._environment_id.as_deref()
+        {
+            return Err(NativeRedemptionError::InvalidProfile);
+        }
+        profile.credential_ref = None;
+        profile.configuration_state = "unconfigured".into();
+    }
+    snapshot_from_saved_profile(&route_store, profile_name, app_identifier, channel)
+}
+
 pub(crate) fn snapshot_from_saved_profile(
     store: &super::CredentialProfileStore,
     profile_name: &str,
@@ -3064,7 +3443,7 @@ pub(crate) fn retry_staged_profile_route_cleanup(
     app: &AppHandle,
     staged_routes: &[(NativeProofKeyOwner, Vec<NativeRelayGrantCleanupStatus>)],
 ) {
-    let context = AppNativeRedemptionContextProvider::new(app.clone());
+    let context = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let grants = native_relay_grant_vault();
@@ -3138,6 +3517,82 @@ mod tests {
     const STATION_ID: &str = "11111111-1111-4111-8111-111111111111";
     const ENROLLMENT_ID: &str = "22222222-2222-4222-8222-222222222222";
     const INSTANCE_ID: &str = "33333333-3333-4333-8333-333333333333";
+
+    #[test]
+    fn enrollment_route_survives_only_its_owned_profile_publication() {
+        let reference = super::super::NativeCredentialReference {
+            kind: "station-bearer".into(),
+            id: format!("native-enrollment:{}", uuid::Uuid::new_v4()),
+        };
+        let fresh = serde_json::json!({
+            "schemaVersion": 1, "revision": 1, "defaultProfile": null, "projectProfiles": {},
+            "profiles": [{"schemaVersion": 1, "name": "relay", "endpoint": "https://station.example",
+                "relayRoute": {"brokerOrigin": "https://broker.example", "stationId": STATION_ID,
+                    "enrollmentId": ENROLLMENT_ID}, "clientInstanceId": INSTANCE_ID,
+                "setupSource": "manual", "configurationState": "unconfigured", "createdAt": 1, "updatedAt": 1}]
+        }).to_string();
+        let store = super::super::parse_station_profile_store(&fresh).unwrap();
+        let original = snapshot_from_saved_profile(
+            &store,
+            "relay",
+            "io.kontourai.station.dev.instance",
+            NativeProofKeyChannel::Dev,
+        )
+        .unwrap();
+        for state in ["requires-auth", "configured"] {
+            let published = super::super::native_enrollment_next_store(
+                &store,
+                "relay",
+                &reference,
+                STATION_ID,
+                INSTANCE_ID,
+                state,
+            )
+            .unwrap();
+            let published = super::super::parse_station_profile_store(&published).unwrap();
+            assert!(snapshot_from_saved_profile(
+                &published,
+                "relay",
+                "io.kontourai.station.dev.instance",
+                NativeProofKeyChannel::Dev
+            )
+            .is_err());
+            let route = snapshot_from_owned_enrollment_profile(
+                &published,
+                "relay",
+                "io.kontourai.station.dev.instance",
+                NativeProofKeyChannel::Dev,
+                Some(&reference),
+            )
+            .unwrap();
+            assert_eq!(route.station_id, original.station_id);
+            assert_eq!(route.enrollment_id, original.enrollment_id);
+            assert_eq!(route.client_instance_id, original.client_instance_id);
+            assert_eq!(route.revision, published.revision);
+            let foreign = super::super::NativeCredentialReference {
+                kind: reference.kind.clone(),
+                id: format!("native-enrollment:{}", uuid::Uuid::new_v4()),
+            };
+            assert!(snapshot_from_owned_enrollment_profile(
+                &published,
+                "relay",
+                "io.kontourai.station.dev.instance",
+                NativeProofKeyChannel::Dev,
+                Some(&foreign)
+            )
+            .is_err());
+            let mut replaced = published.clone();
+            replaced.profiles[0]._environment_id = Some(ENROLLMENT_ID.into());
+            assert!(snapshot_from_owned_enrollment_profile(
+                &replaced,
+                "relay",
+                "io.kontourai.station.dev.instance",
+                NativeProofKeyChannel::Dev,
+                Some(&reference)
+            )
+            .is_err());
+        }
+    }
 
     struct MemoryAuthority(Mutex<NativeRedemptionContext>);
 
@@ -3294,6 +3749,498 @@ mod tests {
                 status: 200,
                 body: Zeroizing::new(serde_json::to_vec(&receipt).unwrap()),
             })
+        }
+    }
+
+    #[test]
+    fn explicit_recovery_uses_distinct_durable_scope_basis_and_preserves_individual_retirement() {
+        for individual in [false, true] {
+            let mut prepared = prepared("https://broker.example".into(), 7);
+            let grants = stored_signal_grant_until(
+                &prepared,
+                if individual {
+                    NOW + 1_000
+                } else {
+                    NOW + 3_600_000
+                },
+            );
+            let mut foreign = sample_grant(&prepared, NOW + 3_600_000);
+            foreign.scope.station_id = "44444444-4444-4444-8444-444444444444".into();
+            foreign.credential.id = "F".repeat(22);
+            grants.store(&prepared.owner, &foreign, NOW).unwrap();
+            prepared.invitation.scope.routing_generation = if individual { 9 } else { 10 };
+            let cancelled = AtomicBool::new(false);
+            let gate = Mutex::new(());
+            let normal = SuccessfulRetirement;
+            let failed = NeverTransport(AtomicBool::new(false));
+            let observe = |_: &NativeProofKeyOwner,
+                           grant: &NativeRelayClientGrantV2|
+             -> RedemptionResult<NativeSupersededScopeObservation> {
+                assert!(
+                    !individual,
+                    "same-generation retirement must not use observation"
+                );
+                assert!(!grants.pending_cleanups(&prepared.owner).unwrap().is_empty());
+                Ok(NativeSupersededScopeObservation {
+                    version: "station-broker-native-superseded-scope-observed/v1".into(),
+                    request_nonce: "A".repeat(43),
+                    scope: crate::native_relay_proof_key::NativeObservedScope {
+                        station_id: grant.scope.station_id.clone(),
+                        enrollment_id: grant.scope.enrollment_id.clone(),
+                        routing_generation: grant.scope.routing_generation,
+                    },
+                    disposition: "superseded-generation-not-admitted".into(),
+                    lease_revision: 2,
+                })
+            };
+            let outcomes = if individual {
+                NativeRelayRedemptionService::new(
+                    prepared.authority.as_ref(),
+                    &prepared.proof_keys,
+                    &normal,
+                    &grants,
+                    || NOW + 2_000,
+                )
+                .recover_link_cleanup(
+                    "Local",
+                    7,
+                    &prepared.invitation,
+                    observe,
+                    (&cancelled, &gate),
+                )
+                .unwrap()
+            } else {
+                NativeRelayRedemptionService::new(
+                    prepared.authority.as_ref(),
+                    &prepared.proof_keys,
+                    &failed,
+                    &grants,
+                    || NOW + 2_000,
+                )
+                .recover_link_cleanup(
+                    "Local",
+                    7,
+                    &prepared.invitation,
+                    observe,
+                    (&cancelled, &gate),
+                )
+                .unwrap()
+            };
+            assert_eq!(outcomes.len(), 1);
+            assert!(outcomes[0].local_cleanup_complete);
+            assert_eq!(
+                matches!(
+                    outcomes[0].remote_basis,
+                    Some(NativeCleanupRemoteBasis::IndividualGrantRetired)
+                ),
+                individual
+            );
+            assert!(grants.pending_cleanups(&prepared.owner).unwrap().is_empty());
+            assert!(grants
+                .metadata_for_profile_route(
+                    &prepared.owner,
+                    "https://broker.example",
+                    STATION_ID,
+                    ENROLLMENT_ID,
+                    NOW
+                )
+                .unwrap()
+                .is_empty());
+            assert_eq!(
+                grants
+                    .metadata_for_profile_route(
+                        &prepared.owner,
+                        "https://broker.example",
+                        &foreign.scope.station_id,
+                        ENROLLMENT_ID,
+                        NOW
+                    )
+                    .unwrap()
+                    .len(),
+                1
+            );
+            assert_eq!(prepared.authority.0.lock().unwrap().profile.revision, 7);
+            assert_eq!(
+                prepared.authority.0.lock().unwrap().station_trust.status,
+                NativeStationTrustStatus::Approved
+            );
+        }
+    }
+
+    struct ReplacedProofKey<'a> {
+        original: &'a crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault,
+        replacement: NativeProofKeyPublicMetadata,
+        changed: AtomicBool,
+    }
+    impl NativeProofKeyOperations for ReplacedProofKey<'_> {
+        fn restore(
+            &self,
+            owner: &NativeProofKeyOwner,
+        ) -> Result<NativeProofKeyPublicMetadata, ProofKeyError> {
+            if self.changed.load(Ordering::Acquire) {
+                Ok(self.replacement.clone())
+            } else {
+                self.original.restore(owner)
+            }
+        }
+        fn sign(
+            &self,
+            owner: &NativeProofKeyOwner,
+            challenge: &NativeBrokerRedemptionChallenge,
+        ) -> Result<Vec<u8>, ProofKeyError> {
+            self.original.sign_es256_p1363(owner, challenge)
+        }
+        fn sign_native_request(
+            &self,
+            owner: &NativeProofKeyOwner,
+            challenge: &NativeBrokerRequestProofChallenge,
+        ) -> Result<Vec<u8>, ProofKeyError> {
+            self.original
+                .sign_native_request_es256_p1363(owner, challenge)
+        }
+    }
+
+    #[test]
+    fn recovery_rechecks_profile_key_cancellation_and_exact_vault_after_observation() {
+        for refusal in [
+            "profile",
+            "key",
+            "cancel",
+            "replacement",
+            "journal",
+            "delete",
+            "unsupported",
+            "foreign-observation",
+        ] {
+            let mut prepared = prepared("https://broker.example".into(), 7);
+            let grants = stored_signal_grant(&prepared);
+            let original_binding = NativeRelayGrantBinding {
+                owner: prepared.owner.clone(),
+                route: native_route_for_grant(&sample_grant(&prepared, NOW + 3_600_000)),
+            };
+            prepared.invitation.scope.routing_generation = 10;
+            let cancelled = AtomicBool::new(false);
+            let gate = Mutex::new(());
+            let transport = NeverTransport(AtomicBool::new(false));
+            let replacement_vault =
+                crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault::new();
+            let keys = ReplacedProofKey {
+                original: &prepared.proof_keys,
+                replacement: replacement_vault.create(&prepared.owner).unwrap(),
+                changed: AtomicBool::new(false),
+            };
+            let outcomes = NativeRelayRedemptionService::new(
+                prepared.authority.as_ref(),
+                &keys,
+                &transport,
+                &grants,
+                || NOW,
+            )
+            .recover_link_cleanup(
+                "Local",
+                7,
+                &prepared.invitation,
+                |_, grant| {
+                    if refusal == "profile" {
+                        prepared.authority.0.lock().unwrap().profile.revision += 1;
+                    }
+                    if refusal == "key" {
+                        keys.changed.store(true, Ordering::Release);
+                    }
+                    if refusal == "cancel" {
+                        cancelled.store(true, Ordering::Release);
+                    }
+                    if refusal == "replacement" {
+                        let mut replacement = sample_grant(&prepared, NOW + 3_600_000);
+                        replacement.scope = grant.scope.clone();
+                        replacement.credential.secret = SecretText(Zeroizing::new("R".repeat(43)));
+                        let binding = NativeRelayGrantBinding {
+                            owner: prepared.owner.clone(),
+                            route: native_route_for_grant(&replacement),
+                        };
+                        let encoded = serde_json::to_string(&StoredNativeRelayGrantV2Ref {
+                            schema_version: 1,
+                            binding: binding.clone(),
+                            grant: &replacement,
+                            renewal_intent: None,
+                        })
+                        .unwrap();
+                        grants
+                            .backend
+                            .lock()
+                            .unwrap()
+                            .shared
+                            .lock()
+                            .unwrap()
+                            .values
+                            .insert(native_grant_account(&binding).unwrap(), encoded);
+                    }
+                    if refusal == "journal" {
+                        let backend = grants.backend.lock().unwrap();
+                        let mut shared = backend.shared.lock().unwrap();
+                        shared.fail_set_number = Some(shared.sets + 1);
+                    }
+                    if refusal == "delete" {
+                        let backend = grants.backend.lock().unwrap();
+                        let mut shared = backend.shared.lock().unwrap();
+                        shared.fail_delete_number = Some(shared.deletes + 1);
+                    }
+                    if refusal == "unsupported" {
+                        return Err(NativeRedemptionError::BrokerRejected);
+                    }
+                    Ok(NativeSupersededScopeObservation {
+                        version: "station-broker-native-superseded-scope-observed/v1".into(),
+                        request_nonce: "A".repeat(43),
+                        scope: crate::native_relay_proof_key::NativeObservedScope {
+                            station_id: if refusal == "foreign-observation" {
+                                "44444444-4444-4444-8444-444444444444".into()
+                            } else {
+                                grant.scope.station_id.clone()
+                            },
+                            enrollment_id: grant.scope.enrollment_id.clone(),
+                            routing_generation: grant.scope.routing_generation,
+                        },
+                        disposition: "superseded-generation-not-admitted".into(),
+                        lease_revision: 2,
+                    })
+                },
+                (&cancelled, &gate),
+            )
+            .unwrap();
+            assert!(!outcomes[0].local_cleanup_complete, "{refusal}");
+            assert!(outcomes[0].failure.is_some(), "{refusal}");
+            assert!(!grants.pending_cleanups(&prepared.owner).unwrap().is_empty());
+            assert!(
+                grants
+                    .backend
+                    .lock()
+                    .unwrap()
+                    .get(&native_grant_account(&original_binding).unwrap())
+                    .unwrap()
+                    .is_some(),
+                "{refusal}"
+            );
+            if refusal == "replacement" {
+                let stored = grants
+                    .backend
+                    .lock()
+                    .unwrap()
+                    .get(&native_grant_account(&original_binding).unwrap())
+                    .unwrap()
+                    .unwrap();
+                let stored: StoredNativeRelayGrantV2 = serde_json::from_str(&stored).unwrap();
+                assert_eq!(stored.grant.credential.secret.expose(), "R".repeat(43));
+            }
+            if refusal == "delete" {
+                let pending = grants.pending_cleanups(&prepared.owner).unwrap();
+                assert!(!pending[0].broker_retired);
+                assert!(matches!(
+                    pending[0].remote_basis,
+                    Some(NativeCleanupRemoteBasis::SupersededGenerationObserved { .. })
+                ));
+                let backend = grants.backend.lock().unwrap().clone();
+                backend.shared.lock().unwrap().fail_delete_number = None;
+                let restarted = NativeRelayGrantVault::new(backend);
+                transport.0.store(false, Ordering::Release);
+                NativeRelayRedemptionService::new(
+                    prepared.authority.as_ref(),
+                    &keys,
+                    &transport,
+                    &restarted,
+                    || NOW,
+                )
+                .retry_pending_cleanup(&prepared.owner, &pending[0].cleanup_id)
+                .unwrap();
+                assert!(!transport.0.load(Ordering::Acquire));
+                assert!(restarted
+                    .pending_cleanups(&prepared.owner)
+                    .unwrap()
+                    .is_empty());
+            }
+        }
+    }
+
+    struct BlockingRecoveryRestore<'a> {
+        original: &'a crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault,
+        calls: std::sync::atomic::AtomicUsize,
+        reached: Sender<()>,
+        release: Mutex<Receiver<()>>,
+    }
+    impl NativeProofKeyOperations for BlockingRecoveryRestore<'_> {
+        fn restore(
+            &self,
+            owner: &NativeProofKeyOwner,
+        ) -> Result<NativeProofKeyPublicMetadata, ProofKeyError> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 1 {
+                self.reached.send(()).map_err(|_| ProofKeyError::Store)?;
+                self.release
+                    .lock()
+                    .map_err(|_| ProofKeyError::Store)?
+                    .recv_timeout(Duration::from_secs(3))
+                    .map_err(|_| ProofKeyError::Store)?;
+            }
+            self.original.restore(owner)
+        }
+        fn sign(
+            &self,
+            owner: &NativeProofKeyOwner,
+            challenge: &NativeBrokerRedemptionChallenge,
+        ) -> Result<Vec<u8>, ProofKeyError> {
+            self.original.sign_es256_p1363(owner, challenge)
+        }
+        fn sign_native_request(
+            &self,
+            owner: &NativeProofKeyOwner,
+            challenge: &NativeBrokerRequestProofChallenge,
+        ) -> Result<Vec<u8>, ProofKeyError> {
+            self.original
+                .sign_native_request_es256_p1363(owner, challenge)
+        }
+    }
+
+    #[test]
+    fn pending_replacement_during_blocking_restore_refuses_old_journal_deletion_and_success() {
+        let mut prepared = prepared("https://broker.example".into(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let binding = NativeRelayGrantBinding {
+            owner: prepared.owner.clone(),
+            route: native_route_for_grant(&sample_grant(&prepared, NOW + 3_600_000)),
+        };
+        prepared.invitation.scope.routing_generation = 10;
+        let (reached_tx, reached_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let keys = BlockingRecoveryRestore {
+            original: &prepared.proof_keys,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            reached: reached_tx,
+            release: Mutex::new(release_rx),
+        };
+        let cancelled = AtomicBool::new(false);
+        let gate = Mutex::new(());
+        let transport = NeverTransport(AtomicBool::new(false));
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                NativeRelayRedemptionService::new(
+                    prepared.authority.as_ref(),
+                    &keys,
+                    &transport,
+                    &grants,
+                    || NOW,
+                )
+                .recover_link_cleanup(
+                    "Local",
+                    7,
+                    &prepared.invitation,
+                    |_, grant| {
+                        Ok(NativeSupersededScopeObservation {
+                            version: "station-broker-native-superseded-scope-observed/v1".into(),
+                            request_nonce: "A".repeat(43),
+                            scope: crate::native_relay_proof_key::NativeObservedScope {
+                                station_id: grant.scope.station_id.clone(),
+                                enrollment_id: grant.scope.enrollment_id.clone(),
+                                routing_generation: grant.scope.routing_generation,
+                            },
+                            disposition: "superseded-generation-not-admitted".into(),
+                            lease_revision: 1,
+                        })
+                    },
+                    (&cancelled, &gate),
+                )
+            });
+            reached_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+            let replacement_commit = gate
+                .try_lock()
+                .expect("pending replacement must remain nonblocking during key restore");
+            cancelled.store(true, Ordering::Release);
+            drop(replacement_commit);
+            release_tx.send(()).unwrap();
+            let outcomes = worker.join().unwrap().unwrap();
+            assert!(!outcomes[0].local_cleanup_complete);
+            assert_eq!(
+                outcomes[0].failure,
+                Some(NativeRedemptionError::StaleProfile)
+            );
+            let pending = grants.pending_cleanups(&prepared.owner).unwrap();
+            assert!(pending[0].remote_basis.is_none());
+            assert!(!pending[0].broker_retired);
+            assert!(grants
+                .backend
+                .lock()
+                .unwrap()
+                .get(&native_grant_account(&binding).unwrap())
+                .unwrap()
+                .is_some());
+        });
+    }
+
+    #[test]
+    fn same_route_pending_cleanup_refuses_before_request_gate_and_http_but_foreign_cleanup_does_not(
+    ) {
+        for foreign in [false, true] {
+            let prepared = prepared("https://broker.example".into(), 7);
+            let grants = stored_signal_grant(&prepared);
+            let mut grant = sample_grant(&prepared, NOW + 3_600_000);
+            if foreign {
+                grant.scope.station_id = "44444444-4444-4444-8444-444444444444".into();
+                grant.credential.id = "F".repeat(22);
+                grants.store(&prepared.owner, &grant, NOW).unwrap();
+            }
+            grants
+                .stage_cleanup(&prepared.owner, &grant, true, NOW)
+                .unwrap();
+            let transport = NeverTransport(AtomicBool::new(false));
+            let consumed = AtomicBool::new(false);
+            let failure = NativeRelayRedemptionService::new(
+                prepared.authority.as_ref(),
+                &prepared.proof_keys,
+                &transport,
+                &grants,
+                || NOW,
+            )
+            .redeem_with_request_gate("Local", 7, prepared.invitation, None, || {
+                consumed.store(true, Ordering::Release);
+                Ok(())
+            })
+            .unwrap_err();
+            assert_eq!(transport.0.load(Ordering::Acquire), foreign);
+            assert_eq!(consumed.load(Ordering::Acquire), foreign);
+            assert_eq!(
+                failure.primary,
+                if foreign {
+                    NativeRedemptionError::BrokerTransport
+                } else {
+                    NativeRedemptionError::GrantStore
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn equal_and_future_generation_failures_remain_pending_without_observation() {
+        for current in [8, 9] {
+            let mut prepared = prepared("https://broker.example".into(), 7);
+            let grants = stored_signal_grant(&prepared);
+            prepared.invitation.scope.routing_generation = current;
+            let transport = NeverTransport(AtomicBool::new(false));
+            let cancelled = AtomicBool::new(false);
+            let gate = Mutex::new(());
+            let outcomes = NativeRelayRedemptionService::new(
+                prepared.authority.as_ref(),
+                &prepared.proof_keys,
+                &transport,
+                &grants,
+                || NOW,
+            )
+            .recover_link_cleanup(
+                "Local",
+                7,
+                &prepared.invitation,
+                |_, _| panic!("equal/future scope must not be observed"),
+                (&cancelled, &gate),
+            )
+            .unwrap();
+            assert!(!outcomes[0].local_cleanup_complete);
+            assert!(outcomes[0].remote_basis.is_none());
         }
     }
 
@@ -3463,6 +4410,147 @@ mod tests {
             assert!(
                 lib.contains(&format!("        {command},")),
                 "signaling command not registered in lib.rs: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn device_candidate_ipc_is_native_registered_and_keeps_the_main_window_guard() {
+        let lib = include_str!("lib.rs");
+        assert!(lib.contains("native_relay_redemption::station_native_device_binding_candidate,"));
+        let mobile_handlers = lib
+            .split("#[cfg(mobile)]\n    let builder = builder.invoke_handler")
+            .nth(1)
+            .expect("the mobile handler exists")
+            .split("]);")
+            .next()
+            .expect("the mobile handler is bounded");
+        assert!(mobile_handlers.contains("station_native_device_binding_candidate"));
+
+        let command_file = include_str!("native_relay_redemption.rs");
+        let command_start = command_file
+            .find("pub(crate) async fn station_native_device_binding_candidate(")
+            .expect("the candidate command is defined");
+        let command_body = &command_file[command_start..];
+        assert!(command_body
+            .split("\n#[tauri::command")
+            .next()
+            .expect("the command body is bounded")
+            .contains("require_main_app_window(&window, &app)"));
+    }
+
+    #[test]
+    fn device_receipt_ipc_is_native_registered_and_cached_status_is_not_fresh() {
+        let lib = include_str!("lib.rs");
+        assert!(
+            lib.contains("native_relay_redemption::station_native_device_binding_self_receipt,")
+        );
+        let mobile_handlers = lib
+            .split("#[cfg(mobile)]\n    let builder = builder.invoke_handler")
+            .nth(1)
+            .expect("the mobile handler exists")
+            .split("]);")
+            .next()
+            .expect("the mobile handler is bounded");
+        assert!(mobile_handlers.contains("station_native_device_binding_self_receipt"));
+
+        let status = cached_receipt_status(Some(
+            crate::native_device_binding_candidate::NativeDeviceReceiptObservationV1 {
+                status:
+                    crate::native_device_binding_candidate::NativeDeviceReceiptObservation::Current,
+                observed_at_ms: 1_800_000_000_000,
+            },
+        ))
+        .unwrap();
+        assert_eq!(
+            status.status,
+            crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatus::PreviouslyConfirmedCurrent
+        );
+        assert_eq!(
+            status.source,
+            crate::native_device_binding_candidate::NativeDeviceReceiptStatusSource::CachedObservation
+        );
+        assert_eq!(status.observed_at_ms, 1_800_000_000_000);
+        assert!(status.receipt.is_none());
+        assert!(cached_receipt_status(Some(
+            crate::native_device_binding_candidate::NativeDeviceReceiptObservationV1 {
+                status: crate::native_device_binding_candidate::NativeDeviceReceiptObservation::Unavailable,
+                observed_at_ms: 1_800_000_000_000,
+            },
+        ))
+        .is_none());
+    }
+
+    #[test]
+    fn device_receipt_target_is_derived_from_the_exact_station_and_candidate_id() {
+        assert_eq!(
+            native_device_self_receipt_url(
+                "https://station.example.test",
+                "11111111-1111-4111-8111-111111111111"
+            )
+            .unwrap(),
+            "https://station.example.test/api/auth/native-device-bindings/11111111-1111-4111-8111-111111111111/receipt"
+        );
+        assert!(native_device_self_receipt_url(
+            "https://user@station.example.test",
+            "11111111-1111-4111-8111-111111111111"
+        )
+        .is_err());
+        assert!(native_device_self_receipt_url(
+            "https://station.example.test",
+            "../../other-route"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn receipt_single_flight_refuses_a_second_operation_without_waiting() {
+        let current = try_native_device_receipt_operation().unwrap();
+        let started = std::time::Instant::now();
+        let refusal = try_native_device_receipt_operation()
+            .expect_err("the active receipt read owns the process single-flight");
+        assert_eq!(
+            refusal,
+            "Station is already checking a Device binding receipt"
+        );
+        assert!(started.elapsed() < Duration::from_millis(100));
+        drop(current);
+        assert!(try_native_device_receipt_operation().is_ok());
+    }
+
+    #[test]
+    fn receipt_404_requires_the_exact_versioned_closed_not_found_envelope() {
+        let valid = serde_json::json!({
+            "error": {
+                "version": "station-native-device-proof-self-receipt-error/v1",
+                "code": "not_found",
+            }
+        });
+        assert_eq!(
+            exact_native_self_receipt_error(&serde_json::to_vec(&valid).unwrap()),
+            Some(NativeDeviceSelfReceiptErrorCode::NotFound)
+        );
+
+        for invalid in [
+            serde_json::json!({ "error": { "code": "not_found" } }),
+            serde_json::json!({
+                "error": {
+                    "version": "station-native-device-proof-self-receipt-error/v1",
+                    "code": "not_found",
+                    "extra": true,
+                }
+            }),
+            serde_json::json!({
+                "error": {
+                    "version": "station-native-device-proof-self-receipt-error/v1",
+                    "code": "not_found",
+                },
+                "extra": true,
+            }),
+        ] {
+            assert_eq!(
+                exact_native_self_receipt_error(&serde_json::to_vec(&invalid).unwrap()),
+                None
             );
         }
     }
@@ -4142,6 +5230,12 @@ mod tests {
         .unwrap()
     }
 
+    fn write_native_retire_receipt(socket: &mut std::net::TcpStream, status: u16) {
+        let receipt = br#"{"version":"station-broker-native-grant-retire/v2","retired":true}"#;
+        write!(socket, "HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", receipt.len()).unwrap();
+        socket.write_all(receipt).unwrap();
+    }
+
     fn read_request(socket: &mut std::net::TcpStream) -> Vec<u8> {
         socket
             .set_read_timeout(Some(Duration::from_secs(3)))
@@ -4474,6 +5568,172 @@ mod tests {
             .metadata(&prepared.owner, &metadata.route, NOW)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn supersession_after_actual_grant_record_write_quarantines_and_compensates_that_grant() {
+        struct BlockedGrantWrite {
+            inner: MemoryNativeGrantBackend,
+            reached: Sender<()>,
+            resume: Receiver<()>,
+            blocked_once: bool,
+        }
+        impl NativeGrantBackend for BlockedGrantWrite {
+            fn get(&mut self, account: &str) -> RedemptionResult<Option<Zeroizing<String>>> {
+                self.inner.get(account)
+            }
+            fn set(&mut self, account: &str, value: &str) -> RedemptionResult<()> {
+                self.inner.set(account, value)?;
+                if !self.blocked_once && account.starts_with(GRANT_ACCOUNT_PREFIX) {
+                    self.blocked_once = true;
+                    self.reached
+                        .send(())
+                        .map_err(|_| NativeRedemptionError::GrantStore)?;
+                    self.resume
+                        .recv_timeout(Duration::from_secs(2))
+                        .map_err(|_| NativeRedemptionError::GrantStore)?;
+                }
+                Ok(())
+            }
+            fn delete(&mut self, account: &str) -> RedemptionResult<()> {
+                self.inner.delete(account)
+            }
+        }
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let prepared = prepared(origin, 7);
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let request = read_request(&mut socket);
+            let (_, body) = request_header_body(&request);
+            let grant = grant_body(body, NOW + 3_600_000);
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", grant.len()).unwrap();
+            socket.write_all(&grant).unwrap();
+            drop(socket);
+            let (mut socket, _) = listener.accept().unwrap();
+            let request = read_request(&mut socket);
+            let (header, _) = request_header_body(&request);
+            assert!(String::from_utf8_lossy(header)
+                .starts_with("POST /broker/v1/native/grants/retire HTTP/1.1"));
+            write_native_retire_receipt(&mut socket, 200);
+        });
+        let (reached_tx, reached_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let backend = MemoryNativeGrantBackend::default();
+        let grants = NativeRelayGrantVault::new(BlockedGrantWrite {
+            inner: backend.clone(),
+            reached: reached_tx,
+            resume: resume_rx,
+            blocked_once: false,
+        });
+        let transport = UreqNativeBrokerTransport::new();
+        let service = NativeRelayRedemptionService::new(
+            prepared.authority.as_ref(),
+            &prepared.proof_keys,
+            &transport,
+            &grants,
+            || NOW,
+        );
+        let cancelled = AtomicBool::new(false);
+        let gate = Mutex::new(());
+        let failure = std::thread::scope(|scope| {
+            let redeem = scope.spawn(|| {
+                service.redeem_with_cancellation(
+                    "Local",
+                    7,
+                    prepared.invitation,
+                    Some((&cancelled, &gate)),
+                )
+            });
+            reached_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("the actual grant record was written before supersession");
+            cancelled.store(true, Ordering::Release);
+            resume_tx.send(()).unwrap();
+            redeem.join().unwrap().unwrap_err()
+        });
+        assert_eq!(failure.primary, NativeRedemptionError::StaleProfile);
+        assert_eq!(failure.cleanup, NativeGrantCleanupDisposition::Complete);
+        assert!(grants
+            .metadata_for_context(&prepared.owner, &prepared.authority.0.lock().unwrap(), NOW)
+            .unwrap()
+            .is_empty());
+        assert!(grants.pending_cleanups(&prepared.owner).unwrap().is_empty());
+        assert!(!backend
+            .shared
+            .lock()
+            .unwrap()
+            .values
+            .keys()
+            .any(|account| account.starts_with(GRANT_ACCOUNT_PREFIX)));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn cancelled_link_redemption_retires_late_broker_grant_without_activating_it() {
+        for retire_status in [200, 503] {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let prepared = prepared(origin, 7);
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let cancel_at_response = cancelled.clone();
+            let server = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                let redeem = read_request(&mut socket);
+                let (_, body) = request_header_body(&redeem);
+                let grant = grant_body(body, NOW + 3_600_000);
+                cancel_at_response.store(true, Ordering::Release);
+                write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", grant.len()).unwrap();
+                socket.write_all(&grant).unwrap();
+                drop(socket);
+                let (mut socket, _) = listener.accept().unwrap();
+                let retire = read_request(&mut socket);
+                let (header, _) = request_header_body(&retire);
+                assert!(String::from_utf8_lossy(header)
+                    .starts_with("POST /broker/v1/native/grants/retire HTTP/1.1"));
+                write_native_retire_receipt(&mut socket, retire_status);
+            });
+            let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+            let transport = UreqNativeBrokerTransport::new();
+            let service = service(
+                &prepared.authority,
+                &prepared.proof_keys,
+                &transport,
+                &grants,
+            );
+            let gate = Mutex::new(());
+            let failure = service
+                .redeem_with_cancellation(
+                    "Local",
+                    7,
+                    prepared.invitation,
+                    Some((&cancelled, &gate)),
+                )
+                .unwrap_err();
+            assert_eq!(failure.primary, NativeRedemptionError::StaleProfile);
+            assert!(grants
+                .metadata_for_context(&prepared.owner, &prepared.authority.0.lock().unwrap(), NOW)
+                .unwrap()
+                .is_empty());
+            if retire_status == 200 {
+                assert_eq!(failure.cleanup, NativeGrantCleanupDisposition::Complete);
+                assert!(failure.recovery.is_none());
+            } else {
+                assert_eq!(
+                    failure.cleanup,
+                    NativeGrantCleanupDisposition::Pending {
+                        local_revoke_failed: false,
+                        broker_retire_failed: true,
+                        custody_failed: false
+                    }
+                );
+                assert_eq!(
+                    failure.recovery.as_ref().unwrap().credential_status,
+                    NativeGrantRecoveryCredentialStatus::DurablePending
+                );
+            }
+            server.join().unwrap();
+        }
     }
 
     #[test]
@@ -5069,6 +6329,23 @@ mod tests {
         assert_eq!(wire["status"], "failed");
         assert_eq!(wire["failure"]["primary"], "grantStore");
         assert_eq!(wire["failure"]["cleanup"]["status"], "pending");
+        assert_eq!(
+            wire["failure"]["cleanup"],
+            serde_json::json!({
+                "status": "pending",
+                "localRevokeFailed": false,
+                "brokerRetireFailed": true,
+                "custodyFailed": false,
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(NativeGrantCleanupDisposition::Complete).unwrap(),
+            serde_json::json!("complete")
+        );
+        assert_eq!(
+            serde_json::to_value(NativeGrantCleanupDisposition::NotAttempted).unwrap(),
+            serde_json::json!("notAttempted")
+        );
         assert_eq!(wire["failure"]["recovery"]["stationId"], STATION_ID);
         assert_eq!(wire["failure"]["recovery"]["grantId"], "G".repeat(22));
         assert!(!encoded.contains(&"S".repeat(43)));
@@ -5630,6 +6907,97 @@ mod tests {
             },
             expires_at,
         }
+    }
+
+    #[test]
+    fn candidate_producer_binds_the_current_profile_device_and_route_before_manager_custody() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let mut context = prepared.authority.0.lock().unwrap().clone();
+        let station_owner = NativeProofKeyOwner::new(
+            "io.kontourai.station",
+            NativeProofKeyChannel::Stable,
+            "88888888-8888-4888-8888-888888888888",
+        )
+        .unwrap();
+        let station_keys = crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault::new();
+        let station_public = station_keys.create(&station_owner).unwrap();
+        context.station_trust.signing_key = station_public.jwk().clone();
+        let mut grant = sample_grant(&prepared, NOW + 3_600_000);
+        grant.station_signing_key_id = station_signing_key_id(station_public.jwk());
+        assert_ne!(grant.station_signing_key_id, grant.surface.key_thumbprint);
+        let identity = crate::native_device_custody::CurrentDeviceIdentity {
+            device_id: "55555555-5555-4555-8555-555555555555".into(),
+            device_kind: "device".into(),
+            binding_id: "66666666-6666-4666-8666-666666666666".into(),
+            profile_revision: 7,
+        };
+        let authority = device_candidate_authority_from_current_owners(
+            &context.profile,
+            &context.station_trust,
+            &identity,
+            "Paired Device Profile",
+            INSTANCE_ID,
+            &context.profile.station_endpoint,
+            STATION_ID,
+            &grant,
+        )
+        .unwrap();
+        let candidate_backend = crate::native_proof_key_core::MemorySecretBackend::default();
+        let manager =
+            crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::new(
+                candidate_backend,
+            );
+        let keys = crate::native_device_proof_key::MemoryNativeDeviceProofKeyVault::new();
+        let candidate =
+            serde_json::to_value(manager.candidate(&authority, &keys).unwrap()).unwrap();
+        assert_eq!(candidate["stationId"], STATION_ID);
+        assert_eq!(candidate["deviceId"], identity.device_id);
+        assert_eq!(
+            candidate["surface"]["keyThumbprint"],
+            grant.surface.key_thumbprint
+        );
+        assert_eq!(candidate["surface"]["clientInstanceId"], INSTANCE_ID);
+
+        let mut transitioned = identity.clone();
+        transitioned.device_id = "77777777-7777-4777-8777-777777777777".into();
+        let next_authority = device_candidate_authority_from_current_owners(
+            &context.profile,
+            &context.station_trust,
+            &transitioned,
+            "Paired Device Profile",
+            INSTANCE_ID,
+            &context.profile.station_endpoint,
+            STATION_ID,
+            &grant,
+        )
+        .unwrap();
+        assert!(manager.candidate(&next_authority, &keys).is_err());
+
+        assert!(device_candidate_authority_from_current_owners(
+            &context.profile,
+            &context.station_trust,
+            &identity,
+            "Paired Device Profile",
+            INSTANCE_ID,
+            &context.profile.station_endpoint,
+            "99999999-9999-4999-8999-999999999999",
+            &grant,
+        )
+        .is_err());
+
+        let mut stale = identity;
+        stale.profile_revision += 1;
+        assert!(device_candidate_authority_from_current_owners(
+            &context.profile,
+            &context.station_trust,
+            &stale,
+            "Paired Device Profile",
+            INSTANCE_ID,
+            &context.profile.station_endpoint,
+            STATION_ID,
+            &grant,
+        )
+        .is_err());
     }
 
     #[test]
@@ -6457,7 +7825,10 @@ where
                 NativeRedemptionError::GrantMissing,
             ));
         };
-        if grant.is_none() && entry.broker_retired && entry.local_cleanup_complete {
+        if grant.is_none()
+            && (entry.broker_retired || entry.remote_basis.is_some())
+            && entry.local_cleanup_complete
+        {
             return self
                 .grants
                 .finish_cleanup(owner, cleanup_id)
@@ -6471,7 +7842,7 @@ where
                 NativeRedemptionError::GrantInvalid,
             ));
         }
-        if !entry.broker_retired {
+        if !entry.broker_retired && entry.remote_basis.is_none() {
             self.retire_pending_grant(owner, grant)
                 .map_err(NativeGrantCleanupAttemptFailure::broker)?;
             self.grants
@@ -6491,12 +7862,187 @@ where
             .map_err(NativeGrantCleanupAttemptFailure::custody)
     }
 
+    pub(crate) fn recover_link_cleanup(
+        &self,
+        profile_name: &str,
+        expected_revision: u64,
+        invitation: &NativeRelayInvitationV2,
+        observe: impl Fn(
+            &NativeProofKeyOwner,
+            &NativeRelayClientGrantV2,
+        ) -> RedemptionResult<NativeSupersededScopeObservation>,
+        cancellation: (&AtomicBool, &Mutex<()>),
+    ) -> RedemptionResult<Vec<NativeRelayRecoveryOutcome>> {
+        let _route_guard = native_relay_route_operation_guard()?;
+        let before = self
+            .context_provider
+            .with_current_context(profile_name, |context| {
+                if context.profile.revision != expected_revision
+                    || cancellation.0.load(Ordering::Acquire)
+                {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                validate_invitation_and_trust(&context, invitation, (self.now)(), None)?;
+                Ok(context)
+            })?;
+        let owner = NativeProofKeyOwner::new(
+            &before.profile.app_identifier,
+            before.profile.channel,
+            &before.profile.client_instance_id,
+        )
+        .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+        let public = self
+            .proof_keys
+            .restore(&owner)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        validate_invitation_and_trust(&before, invitation, (self.now)(), Some(&public))?;
+        let staged = self
+            .context_provider
+            .with_current_context(profile_name, |current| {
+                if current != before || cancellation.0.load(Ordering::Acquire) {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                self.grants
+                    .stage_context_cleanup(&owner, &current, (self.now)())
+            })?;
+        let mut outcomes = Vec::new();
+        for entry in staged.into_iter().take(MAX_BACKGROUND_CLEANUP_RETRIES) {
+            let Some(pending) = self.grants.load_cleanup(&owner, &entry.cleanup_id)? else {
+                outcomes.push(NativeRelayRecoveryOutcome {
+                    route: entry.route,
+                    remote_basis: None,
+                    local_cleanup_complete: false,
+                    failure: Some(NativeRedemptionError::GrantStore),
+                });
+                continue;
+            };
+            let basis = pending
+                .entry
+                .remote_basis
+                .clone()
+                .or(if pending.entry.broker_retired {
+                    Some(NativeCleanupRemoteBasis::IndividualGrantRetired)
+                } else {
+                    None
+                });
+            let remote = match basis {
+                Some(basis) => Ok(basis),
+                None => match self.retire_pending_grant(&owner, &pending.grant) {
+                    Ok(()) => Ok(NativeCleanupRemoteBasis::IndividualGrantRetired),
+                    Err(_)
+                        if older_grant_matches_invitation(&owner, &pending.grant, invitation) =>
+                    {
+                        observe(&owner, &pending.grant).map(|observation| {
+                            NativeCleanupRemoteBasis::SupersededGenerationObserved { observation }
+                        })
+                    }
+                    Err(error) => Err(error),
+                },
+            };
+            let recovered = remote.and_then(|basis| {
+                // Keyring reads can block. Pending replacement remains free to
+                // cancel this attempt until the short destructive commit.
+                let fresh = self
+                    .proof_keys
+                    .restore(&owner)
+                    .map_err(|_| NativeRedemptionError::ProofKey)?;
+                let _commit = cancellation
+                    .1
+                    .lock()
+                    .map_err(|_| NativeRedemptionError::GrantStore)?;
+                self.context_provider
+                    .with_current_context(profile_name, |current| {
+                        if current != before
+                            || current.profile.revision != expected_revision
+                            || cancellation.0.load(Ordering::Acquire)
+                        {
+                            return Err(NativeRedemptionError::StaleProfile);
+                        }
+                        validate_invitation_and_trust(
+                            &current,
+                            invitation,
+                            (self.now)(),
+                            Some(&public),
+                        )?;
+                        if fresh != public {
+                            return Err(NativeRedemptionError::ProofKey);
+                        }
+                        self.grants.record_recovery_basis(
+                            &owner,
+                            &entry.cleanup_id,
+                            &pending.grant,
+                            basis.clone(),
+                        )?;
+                        self.retry_pending_cleanup(&owner, &entry.cleanup_id)?;
+                        Ok(basis)
+                    })
+            });
+            let recorded_basis = if let Ok(basis) = &recovered {
+                Some(basis.clone())
+            } else {
+                self.grants
+                    .pending_cleanups(&owner)?
+                    .into_iter()
+                    .find(|pending| pending.cleanup_id == entry.cleanup_id)
+                    .and_then(|pending| {
+                        pending.remote_basis.or(if pending.broker_retired {
+                            Some(NativeCleanupRemoteBasis::IndividualGrantRetired)
+                        } else {
+                            None
+                        })
+                    })
+            };
+            outcomes.push(NativeRelayRecoveryOutcome {
+                route: entry.route,
+                local_cleanup_complete: recovered.is_ok(),
+                remote_basis: recorded_basis,
+                failure: recovered.err(),
+            });
+        }
+        Ok(outcomes)
+    }
+
     pub(crate) fn redeem(
         &self,
         profile_name: &str,
         expected_profile_revision: u64,
         invitation: NativeRelayInvitationV2,
     ) -> Result<NativeRelayGrantMetadata, NativeRedemptionFailure> {
+        self.redeem_with_cancellation(profile_name, expected_profile_revision, invitation, None)
+    }
+
+    pub(crate) fn redeem_with_cancellation(
+        &self,
+        profile_name: &str,
+        expected_profile_revision: u64,
+        invitation: NativeRelayInvitationV2,
+        cancellation: Option<(&AtomicBool, &Mutex<()>)>,
+    ) -> Result<NativeRelayGrantMetadata, NativeRedemptionFailure> {
+        self.redeem_with_request_gate(
+            profile_name,
+            expected_profile_revision,
+            invitation,
+            cancellation,
+            || Ok(()),
+        )
+    }
+
+    pub(crate) fn redeem_with_request_gate(
+        &self,
+        profile_name: &str,
+        expected_profile_revision: u64,
+        invitation: NativeRelayInvitationV2,
+        cancellation: Option<(&AtomicBool, &Mutex<()>)>,
+        before_request: impl FnOnce() -> RedemptionResult<()>,
+    ) -> Result<NativeRelayGrantMetadata, NativeRedemptionFailure> {
+        let check_cancelled = || {
+            if cancellation.is_some_and(|(cancelled, _)| cancelled.load(Ordering::Acquire)) {
+                Err(NativeRedemptionError::StaleProfile)
+            } else {
+                Ok(())
+            }
+        };
+        check_cancelled()?;
         let _route_operation_guard =
             native_relay_route_operation_guard().map_err(NativeRedemptionFailure::from)?;
         let before = self
@@ -6517,6 +8063,20 @@ where
             &before.profile.client_instance_id,
         )
         .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+        let unresolved_cleanup = self
+            .grants
+            .pending_cleanups(&owner)?
+            .into_iter()
+            .any(|entry| {
+                entry.route.broker_origin == before.profile.broker_origin
+                    && entry.route.station_id == before.profile.station_id
+                    && entry.route.enrollment_id == before.profile.enrollment_id
+                    && (!entry.broker_retired
+                        || (entry.local_cleanup_required && !entry.local_cleanup_complete))
+            });
+        if unresolved_cleanup {
+            return Err(NativeRedemptionError::GrantStore.into());
+        }
         // Persist the secret-free owner identity before any broker can issue
         // a credential. Every post-request compensation path can then be
         // discovered after a profile edit or process restart.
@@ -6573,6 +8133,8 @@ where
                 validate_profile_context(&current)?;
                 validate_invitation_and_trust(&current, &invitation, (self.now)(), Some(&public))
             })?;
+        check_cancelled()?;
+        before_request()?;
         let response = self
             .http
             .redeem(&before.profile.broker_origin, &request_body)?;
@@ -6588,6 +8150,16 @@ where
         let commit_result = self
             .context_provider
             .with_current_context(profile_name, |current| {
+                // Cancel and grant commit share this fence. Network I/O never
+                // holds it, so cancellation can reject a late broker reply.
+                let _commit_guard = match cancellation {
+                    Some((_, gate)) => Some(
+                        gate.lock()
+                            .map_err(|_| NativeRedemptionError::StaleProfile)?,
+                    ),
+                    None => None,
+                };
+                check_cancelled()?;
                 if current != before || current.profile.revision != expected_profile_revision {
                     return Err(NativeRedemptionError::StaleProfile);
                 }
@@ -6608,6 +8180,7 @@ where
                 if metadata.route != route {
                     return Err(NativeRedemptionError::GrantInvalid);
                 }
+                check_cancelled()?;
                 Ok(metadata)
             });
         if let Err(primary) = commit_result {
@@ -6729,34 +8302,709 @@ pub(crate) async fn station_native_relay_grant_status(
     }
     tauri::async_runtime::spawn_blocking(move || {
         let grants = native_relay_grant_vault();
-        with_locked_saved_relay_profile(&app, &profile_name, |profile, _locked_snapshot| {
-            let owner = NativeProofKeyOwner::new(
+        with_locked_saved_enrollment_profile_store(
+            &app,
+            &profile_name,
+            None,
+            true,
+            |profile, _locked_snapshot, _, _| {
+                let owner = NativeProofKeyOwner::new(
+                    &profile.app_identifier,
+                    profile.channel,
+                    &profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                Ok(NativeRelayGrantState::for_saved_profile(
+                    &profile,
+                    grants.metadata_for_profile_route(
+                        &owner,
+                        &profile.broker_origin,
+                        &profile.station_id,
+                        &profile.enrollment_id,
+                        native_now_ms_or_zero(),
+                    )?,
+                    grants.cleanup_statuses_for_profile_route(
+                        &owner,
+                        &profile.broker_origin,
+                        &profile.station_id,
+                        &profile.enrollment_id,
+                    )?,
+                ))
+            },
+        )
+        .map_err(|_| "Station could not read native relay grant status.".to_owned())
+    })
+    .await
+    .map_err(|_| "Station could not read native relay grant status.".to_owned())?
+}
+
+/// Creates or resumes one host-owned provisional Device binding candidate.
+/// The renderer selects only a saved profile and expected revision; all
+/// Station, Device, route, surface and key-owner fields come from current
+/// locked host snapshots. This command does no approval, receipt
+/// reconciliation, peer-session work, or signing.
+fn device_candidate_authority_from_current_owners(
+    profile: &NativeRelayProfileSnapshot,
+    station_trust: &ApprovedNativeStationTrust,
+    identity: &crate::native_device_custody::CurrentDeviceIdentity,
+    active_profile_name: &str,
+    client_instance_id: &str,
+    exact_origin: &str,
+    environment_id: &str,
+    grant: &NativeRelayClientGrantV2,
+) -> Result<crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority, String> {
+    if active_profile_name.is_empty()
+        || active_profile_name.len() > 256
+        || identity.profile_revision != profile.revision
+        || client_instance_id != profile.client_instance_id
+        || exact_origin != profile.station_endpoint
+        || environment_id != profile.station_id
+        || identity.device_kind != "device"
+        || station_trust.status != NativeStationTrustStatus::Approved
+        || station_trust.station_id != profile.station_id
+        || station_trust.enrollment_id != profile.enrollment_id
+        || station_trust.station_endpoint != profile.station_endpoint
+        || grant.broker_origin != profile.broker_origin
+        || grant.scope.station_id != profile.station_id
+        || grant.scope.enrollment_id != profile.enrollment_id
+        || grant.surface.kind != "station-native"
+        || grant.surface.app_identifier != profile.app_identifier
+        || grant.surface.channel != profile.channel.keyring_label()
+        || grant.surface.client_instance_id != profile.client_instance_id
+        || grant.station_signing_generation != station_trust.generation
+        || station_signing_key_id(&station_trust.signing_key) != grant.station_signing_key_id
+    {
+        return Err("The current Device candidate owners do not agree".into());
+    }
+    let route = native_route_for_grant(grant);
+    Ok(crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority::from_current_owners(
+        profile.profile_name.clone(),
+        profile.revision,
+        station_trust.revision,
+        identity.binding_id.clone(),
+        profile.app_identifier.clone(),
+        profile.channel,
+        profile.client_instance_id.clone(),
+        profile.station_id.clone(),
+        identity.device_id.clone(),
+        crate::native_device_binding_candidate::NativeDeviceBindingSurfaceV1::from_current_route(
+            grant.surface.kind.clone(),
+            grant.surface.app_identifier.clone(),
+            grant.surface.channel.clone(),
+            grant.surface.client_instance_id.clone(),
+            grant.surface.key_thumbprint.clone(),
+        ),
+        crate::native_device_binding_candidate::NativeDeviceBindingRouteV1::from_current_route(
+            route.broker_origin,
+            route.station_id,
+            route.enrollment_id,
+            route.routing_generation,
+            route.grant_id,
+        ),
+    ))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_device_binding_candidate(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<crate::native_device_binding_candidate::NativeDeviceBindingCandidateV1, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if profile_name.is_empty()
+        || profile_name.len() > 256
+        || expected_profile_revision == 0
+        || expected_profile_revision > JS_SAFE_INTEGER_MAX
+    {
+        return Err("The selected Device candidate profile is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        with_locked_saved_relay_profile_store(
+            &app,
+            &profile_name,
+            |profile, locked_snapshot, store, path| {
+                if profile.revision != expected_profile_revision {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                let mut trust_store = NativeStationTrustStore::system();
+                let approved = trust_store
+                    .approved_descriptor_for_locked_profile(&locked_snapshot)
+                    .map_err(|error| match error {
+                        CandidateError::TrustStore => {
+                            NativeRedemptionError::StationTrustUnavailable
+                        }
+                        _ => NativeRedemptionError::StationTrustRequired,
+                    })?;
+                let station_trust = approved_station_trust(&profile, approved)?;
+                let context = NativeRedemptionContext {
+                    profile: profile.clone(),
+                    station_trust: station_trust.clone(),
+                };
+                let relay_owner = NativeProofKeyOwner::new(
+                    &profile.app_identifier,
+                    profile.channel,
+                    &profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                let grants = native_relay_grant_vault();
+                let grant = grants
+                    .load_request_grant(&relay_owner, &context, native_now_ms_or_zero(), false)?
+                    .grant;
+
+                let candidate = super::with_active_device_identity_in_locked_profile(
+                    &app,
+                    store,
+                    path,
+                    |identity, active_profile_name, client_instance_id, exact_origin, environment_id| {
+                        let authority = device_candidate_authority_from_current_owners(
+                            &profile,
+                            &station_trust,
+                            identity,
+                            active_profile_name,
+                            client_instance_id,
+                            exact_origin,
+                            environment_id,
+                            &grant,
+                        )?;
+                        let manager =
+                            crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::system();
+                        let keys = crate::native_device_proof_key::NativeDeviceProofKeyVault::new();
+                        let candidate = manager
+                            .candidate(&authority, &keys)
+                            .map_err(|_| "Station could not create the Device candidate key".to_owned())?;
+                        let current_grant = grants
+                            .load_request_grant(
+                                &relay_owner,
+                                &context,
+                                native_now_ms_or_zero(),
+                                false,
+                            )
+                            .map_err(|_| "The approved route changed during Device candidate creation".to_owned())?
+                            .grant;
+                        if !same_native_grant(&current_grant, &grant) {
+                            return Err("The approved route changed during Device candidate creation".into());
+                        }
+                        let current_approved = NativeStationTrustStore::system()
+                            .approved_descriptor_for_locked_profile(&locked_snapshot)
+                            .map_err(|_| "Station trust changed during Device candidate creation".to_owned())?;
+                        if approved_station_trust(&profile, current_approved)
+                            .map_err(|_| "Station trust changed during Device candidate creation".to_owned())?
+                            != station_trust
+                        {
+                            return Err("Station trust changed during Device candidate creation".into());
+                        }
+                        Ok(candidate)
+                    },
+                )
+                .map_err(|_| NativeRedemptionError::StaleProfile)?;
+                Ok(candidate)
+            },
+        )
+        .map_err(|_| "Station could not create the Device binding candidate.".to_owned())
+    })
+    .await
+    .map_err(|_| "Station could not create the Device binding candidate.".to_owned())?
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeDeviceSelfReceiptEnvelope {
+    data: crate::native_device_binding_candidate::NativeDeviceProofSelfReceiptV1,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeDeviceSelfReceiptErrorEnvelope {
+    error: NativeDeviceSelfReceiptErrorV1,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeDeviceSelfReceiptErrorV1 {
+    version: String,
+    code: NativeDeviceSelfReceiptErrorCode,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum NativeDeviceSelfReceiptErrorCode {
+    NotFound,
+    DeviceRequired,
+    InvalidRequest,
+    Unavailable,
+}
+
+fn exact_native_self_receipt_error(body: &[u8]) -> Option<NativeDeviceSelfReceiptErrorCode> {
+    let envelope: NativeDeviceSelfReceiptErrorEnvelope = serde_json::from_slice(body).ok()?;
+    (envelope.error.version == NATIVE_DEVICE_SELF_RECEIPT_ERROR_VERSION)
+        .then_some(envelope.error.code)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NativeDeviceReceiptCapture {
+    pub(crate) authority:
+        crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority,
+    pub(crate) candidate: crate::native_device_binding_candidate::NativeDeviceBindingCandidateV1,
+    pub(crate) station_origin: String,
+    pub(crate) context: NativeRedemptionContext,
+    pub(crate) grant_digest: String,
+    pub(crate) grant_expires_at: u64,
+}
+
+pub(crate) fn with_existing_native_device_candidate<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+    operation: impl FnOnce(NativeDeviceReceiptCapture) -> Result<T, String>,
+) -> Result<T, String> {
+    with_current_native_device_candidate(
+        app,
+        profile_name,
+        expected_profile_revision,
+        None,
+        |authority, manager, keys| manager.existing_candidate(authority, keys),
+        operation,
+    )
+}
+
+pub(crate) fn with_owned_enrollment_device_candidate<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+    reference: &super::NativeCredentialReference,
+    operation: impl FnOnce(NativeDeviceReceiptCapture) -> Result<T, String>,
+) -> Result<T, String> {
+    with_current_native_device_candidate(
+        app,
+        profile_name,
+        expected_profile_revision,
+        Some(reference),
+        |authority, manager, keys| manager.existing_candidate(authority, keys),
+        operation,
+    )
+}
+
+pub(crate) fn adopt_authenticated_native_enrollment(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+    authenticated: &crate::native_enrollment_host::AuthenticatedEnrollmentActivation,
+) -> Result<(), String> {
+    with_current_native_device_candidate(
+        app,
+        profile_name,
+        expected_profile_revision,
+        Some(authenticated.reference()),
+        |authority, manager, keys| {
+            manager.adopt_authenticated_enrollment(authority, authenticated, keys)
+        },
+        |_| Ok(()),
+    )
+}
+
+fn with_current_native_device_candidate<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+    enrollment_reference: Option<&super::NativeCredentialReference>,
+    candidate_operation: impl FnOnce(
+        &crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority,
+        &crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager<
+            crate::native_proof_key_core::KeyringSecretBackend,
+        >,
+        &crate::native_device_proof_key::NativeDeviceProofKeyVault,
+    ) -> Result<
+        crate::native_device_binding_candidate::NativeDeviceBindingCandidateV1,
+        String,
+    >,
+    operation: impl FnOnce(NativeDeviceReceiptCapture) -> Result<T, String>,
+) -> Result<T, String> {
+    let result = with_locked_saved_enrollment_profile_store(
+        app,
+        profile_name,
+        enrollment_reference,
+        true,
+        |profile, locked_snapshot, store, path| {
+            if profile.revision != expected_profile_revision {
+                return Err(NativeRedemptionError::StaleProfile);
+            }
+            let mut trust_store = NativeStationTrustStore::system();
+            let approved = trust_store
+                .approved_descriptor_for_locked_profile(&locked_snapshot)
+                .map_err(|error| match error {
+                    CandidateError::TrustStore => NativeRedemptionError::StationTrustUnavailable,
+                    _ => NativeRedemptionError::StationTrustRequired,
+                })?;
+            let station_trust = approved_station_trust(&profile, approved)?;
+            let context = NativeRedemptionContext {
+                profile: profile.clone(),
+                station_trust: station_trust.clone(),
+            };
+            let relay_owner = NativeProofKeyOwner::new(
                 &profile.app_identifier,
                 profile.channel,
                 &profile.client_instance_id,
             )
             .map_err(|_| NativeRedemptionError::InvalidProfile)?;
-            Ok(NativeRelayGrantState::for_saved_profile(
-                &profile,
-                grants.metadata_for_profile_route(
-                    &owner,
-                    &profile.broker_origin,
-                    &profile.station_id,
-                    &profile.enrollment_id,
-                    native_now_ms_or_zero(),
-                )?,
-                grants.cleanup_statuses_for_profile_route(
-                    &owner,
-                    &profile.broker_origin,
-                    &profile.station_id,
-                    &profile.enrollment_id,
-                )?,
-            ))
-        })
-        .map_err(|_| "Station could not read native relay grant status.".to_owned())
+            let grants = native_relay_grant_vault();
+            let grant = grants
+                .load_request_grant(&relay_owner, &context, native_now_ms_or_zero(), false)?
+                .grant;
+
+            super::with_active_device_identity_in_locked_profile(
+                app,
+                store,
+                path,
+                |identity, active_profile_name, client_instance_id, exact_origin, environment_id| {
+                    let authority = device_candidate_authority_from_current_owners(
+                        &profile,
+                        &station_trust,
+                        identity,
+                        active_profile_name,
+                        client_instance_id,
+                        exact_origin,
+                        environment_id,
+                        &grant,
+                    )?;
+                    let manager = crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::system();
+                    let keys = crate::native_device_proof_key::NativeDeviceProofKeyVault::new();
+                    let candidate = candidate_operation(&authority, &manager, &keys)?;
+                    let current_grant = grants
+                        .load_request_grant(
+                            &relay_owner,
+                            &context,
+                            native_now_ms_or_zero(),
+                            false,
+                        )
+                        .map_err(|_| "The approved route changed during receipt lookup".to_owned())?
+                        .grant;
+                    if !same_native_grant(&current_grant, &grant) {
+                        return Err("The approved route changed during receipt lookup".into());
+                    }
+                    let current_approved = NativeStationTrustStore::system()
+                        .approved_descriptor_for_locked_profile(&locked_snapshot)
+                        .map_err(|_| "Station trust changed during receipt lookup".to_owned())?;
+                    if approved_station_trust(&profile, current_approved)
+                        .map_err(|_| "Station trust changed during receipt lookup".to_owned())?
+                        != station_trust
+                    {
+                        return Err("Station trust changed during receipt lookup".into());
+                    }
+                    Ok(operation(NativeDeviceReceiptCapture {
+                        authority,
+                        candidate,
+                        station_origin: profile.station_endpoint.clone(),
+                        context: context.clone(),
+                        grant_digest: URL_SAFE_NO_PAD.encode(ring::digest::digest(
+                            &ring::digest::SHA256,
+                            &Zeroizing::new(serde_json::to_vec(&grant).map_err(|_| "The current route is unavailable".to_owned())?),
+                        )),
+                        grant_expires_at: grant.expires_at,
+                    }))
+                },
+            )
+            .map_err(|_| NativeRedemptionError::StaleProfile)
+        },
+    )
+    .map_err(|_| "Station could not verify the current Device candidate owner".to_owned())?;
+    result.map_err(|_| "Station could not verify the current Device candidate owner".to_owned())
+}
+
+fn capture_existing_native_device_candidate(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+) -> Result<NativeDeviceReceiptCapture, String> {
+    with_existing_native_device_candidate(app, profile_name, expected_profile_revision, Ok)
+}
+
+fn native_device_self_receipt_url(origin: &str, binding_id: &str) -> Result<String, String> {
+    let canonical_v4 = uuid::Uuid::parse_str(binding_id)
+        .ok()
+        .is_some_and(|id| id.to_string() == binding_id && id.get_version_num() == 4);
+    if !crate::exact_origin(origin)
+        .map(|resolved| resolved == origin)
+        .unwrap_or(false)
+        || !canonical_v4
+    {
+        return Err("The current Station receipt target is invalid".into());
+    }
+    Ok(format!(
+        "{origin}/api/auth/native-device-bindings/{binding_id}/receipt"
+    ))
+}
+
+fn is_native_receipt_transport_failure(code: &str) -> bool {
+    code.starts_with("transport_") || code == "transport" || code == "response_timeout"
+}
+
+fn cached_receipt_status(
+    observation: Option<crate::native_device_binding_candidate::NativeDeviceReceiptObservationV1>,
+) -> Option<crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1> {
+    use crate::native_device_binding_candidate::{
+        NativeDeviceBindingSelfReceiptStatus as PublicStatus,
+        NativeDeviceBindingSelfReceiptStatusV1, NativeDeviceReceiptObservation as Observation,
+        NativeDeviceReceiptStatusSource as Source,
+    };
+    let observation = observation?;
+    let status = match observation.status {
+        Observation::Current => PublicStatus::PreviouslyConfirmedCurrent,
+        Observation::NotCurrent => PublicStatus::NotCurrent,
+        Observation::NotFound => PublicStatus::NotFound,
+        Observation::Unavailable => return None,
+    };
+    Some(NativeDeviceBindingSelfReceiptStatusV1::new(
+        status,
+        Source::CachedObservation,
+        observation.observed_at_ms,
+        None,
+    ))
+}
+
+fn station_native_device_binding_self_receipt_blocking(
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1, String>
+{
+    use crate::native_device_binding_candidate::{
+        NativeDeviceBindingSelfReceiptStatus as PublicStatus,
+        NativeDeviceReceiptObservation as Observation, NativeDeviceReceiptStatusSource as Source,
+    };
+    // Do not let older in-flight reads overwrite a later revocation or 404.
+    // The single-flight guard is independent of profile/authority locks, which
+    // are released for HTTP and reacquired only for finalization.
+    let _receipt_operation = try_native_device_receipt_operation()?;
+    let before =
+        capture_existing_native_device_candidate(&app, &profile_name, expected_profile_revision)?;
+    let manager =
+        crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::system();
+    let prior = manager.receipt_observation(&before.authority, &before.candidate)?;
+    let host_epoch = before.authority.device_authorization_epoch().to_owned();
+    let url =
+        native_device_self_receipt_url(&before.station_origin, before.candidate.binding_id())?;
+    let authority = app
+        .try_state::<super::NativeProfileAuthority>()
+        .ok_or_else(|| "Station native authority is unavailable".to_owned())?
+        .inner()
+        .clone();
+    let cancellations = app
+        .try_state::<super::NativeHttpCancellation>()
+        .ok_or_else(|| "Station native HTTP is unavailable".to_owned())?
+        .inner()
+        .clone();
+    let request = super::NativeHttpRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        url,
+        method: "GET".to_owned(),
+        headers: std::collections::HashMap::new(),
+        body: None,
+        expected_binding_id: Some(host_epoch.clone()),
+        liveness_probe: false,
+    };
+    let mut collector = super::NativeReceiptMessageCollector::default();
+    let body_deadline = std::time::Instant::now() + super::NATIVE_DEVICE_SELF_RECEIPT_BODY_DEADLINE;
+    let transport_result = super::station_native_http_request_to_sink_blocking(
+        app.clone(),
+        authority,
+        cancellations,
+        request,
+        &mut collector,
+        Some(body_deadline),
+    );
+
+    // Keep both owner locks held through response validation and the durable
+    // observation write. Releasing them after this re-resolution would let a
+    // reauthorization race the Keychain write or the status returned to IPC.
+    with_existing_native_device_candidate(&app, &profile_name, expected_profile_revision, |after| {
+        if before.authority != after.authority
+            || before.candidate != after.candidate
+            || before.station_origin != after.station_origin
+            || before.authority.device_authorization_epoch() != host_epoch
+        {
+            return Err("The current Device candidate owner changed during receipt lookup".into());
+        }
+        let now = native_now_ms()?;
+        if now == 0 || now > 9_007_199_254_740_991 {
+            return Err("The local receipt clock is outside its supported range".into());
+        }
+        if transport_result.is_err() {
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station could not confirm the Device binding receipt".into());
+        }
+        let (status, body) = match collector.finish() {
+            Ok(response) => response,
+            Err(code) if is_native_receipt_transport_failure(code) => {
+                if let Some(status) = cached_receipt_status(prior) {
+                    return Ok(status);
+                }
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::Unavailable,
+                    now,
+                )?;
+                return Err("Station could not confirm the Device binding receipt".into());
+            }
+            Err(_) => {
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::Unavailable,
+                    now,
+                )?;
+                return Err("Station returned an invalid Device binding receipt".into());
+            }
+        };
+        if std::str::from_utf8(&body).is_err() {
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station returned an invalid Device binding receipt".into());
+        }
+        if status == 404 {
+            if exact_native_self_receipt_error(&body)
+                == Some(NativeDeviceSelfReceiptErrorCode::NotFound)
+            {
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::NotFound,
+                    now,
+                )?;
+                return Ok(
+                        crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1::new(
+                            PublicStatus::NotFound,
+                            Source::StationReceipt,
+                            now,
+                            None,
+                        ),
+                    );
+            }
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station returned an invalid Device binding receipt".into());
+        }
+        if status == 503 {
+            if exact_native_self_receipt_error(&body)
+                == Some(NativeDeviceSelfReceiptErrorCode::Unavailable)
+            {
+                if let Some(status) = cached_receipt_status(prior) {
+                    return Ok(status);
+                }
+            }
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station could not confirm the Device binding receipt".into());
+        }
+        if status != 200 {
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station could not confirm the Device binding receipt".into());
+        }
+        let envelope: NativeDeviceSelfReceiptEnvelope = match serde_json::from_slice(&body) {
+            Ok(envelope) => envelope,
+            Err(_) => {
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::Unavailable,
+                    now,
+                )?;
+                return Err("Station returned an invalid Device binding receipt".into());
+            }
+        };
+        let observation = match after.candidate.validate_self_receipt(&envelope.data) {
+            Ok(observation) => observation,
+            Err(_) => {
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::Unavailable,
+                    now,
+                )?;
+                return Err("Station returned an invalid Device binding receipt".into());
+            }
+        };
+        manager.record_receipt_observation(
+            &after.authority,
+            &after.candidate,
+            &host_epoch,
+            observation,
+            now,
+        )?;
+        let public_status = if observation == Observation::Current {
+            PublicStatus::Current
+        } else {
+            PublicStatus::NotCurrent
+        };
+        Ok(
+            crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1::new(
+                public_status,
+                Source::StationReceipt,
+                now,
+                Some(envelope.data),
+            ),
+        )
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_device_binding_self_receipt(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1, String>
+{
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if profile_name.is_empty()
+        || profile_name.len() > 256
+        || expected_profile_revision == 0
+        || expected_profile_revision > JS_SAFE_INTEGER_MAX
+    {
+        return Err("The selected Device receipt profile is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        station_native_device_binding_self_receipt_blocking(
+            app,
+            profile_name,
+            expected_profile_revision,
+        )
     })
     .await
-    .map_err(|_| "Station could not read native relay grant status.".to_owned())?
+    .map_err(|_| "Station could not confirm the Device binding receipt".to_owned())?
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -6774,34 +9022,40 @@ pub(crate) async fn station_native_relay_grant_revoke(
         let grants = native_relay_grant_vault();
         let (owner, broker_origin, station_id, enrollment_id, staged) =
             with_native_relay_route_operation_lock(|| {
-                with_locked_saved_relay_profile(&app, &profile_name, |profile, _| {
-                    if profile.revision != expected_profile_revision {
-                        return Err(NativeRedemptionError::StaleProfile);
-                    }
-                    let owner = NativeProofKeyOwner::new(
-                        &profile.app_identifier,
-                        profile.channel,
-                        &profile.client_instance_id,
-                    )
-                    .map_err(|_| NativeRedemptionError::InvalidProfile)?;
-                    let staged = grants.stage_removed_profile_route_cleanup(
-                        &owner,
-                        &profile.broker_origin,
-                        &profile.station_id,
-                        &profile.enrollment_id,
-                        native_now_ms_or_zero(),
-                    )?;
-                    Ok((
-                        owner,
-                        profile.broker_origin.clone(),
-                        profile.station_id.clone(),
-                        profile.enrollment_id.clone(),
-                        staged,
-                    ))
-                })
+                with_locked_saved_enrollment_profile_store(
+                    &app,
+                    &profile_name,
+                    None,
+                    true,
+                    |profile, _, _, _| {
+                        if profile.revision != expected_profile_revision {
+                            return Err(NativeRedemptionError::StaleProfile);
+                        }
+                        let owner = NativeProofKeyOwner::new(
+                            &profile.app_identifier,
+                            profile.channel,
+                            &profile.client_instance_id,
+                        )
+                        .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                        let staged = grants.stage_removed_profile_route_cleanup(
+                            &owner,
+                            &profile.broker_origin,
+                            &profile.station_id,
+                            &profile.enrollment_id,
+                            native_now_ms_or_zero(),
+                        )?;
+                        Ok((
+                            owner,
+                            profile.broker_origin.clone(),
+                            profile.station_id.clone(),
+                            profile.enrollment_id.clone(),
+                            staged,
+                        ))
+                    },
+                )
                 .map_err(|_| "Station could not stage native relay grant revocation.".to_owned())
             })?;
-        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let context = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
         let proof_keys = NativeRelayProofKeyVault::new();
         let http = UreqNativeBrokerTransport::new();
         let service = NativeRelayRedemptionService::new(
@@ -6853,7 +9107,7 @@ pub(crate) async fn station_native_relay_grant_renew(
     }
     tauri::async_runtime::spawn_blocking(move || {
         with_native_relay_route_operation_lock(|| {
-            let context = AppNativeRedemptionContextProvider::new(app);
+            let context = AppNativeRedemptionContextProvider::for_existing_route(app);
             let proof_keys = NativeRelayProofKeyVault::new();
             let http = UreqNativeBrokerTransport::new();
             let grants = native_relay_grant_vault();
@@ -6920,7 +9174,7 @@ pub(crate) async fn station_native_relay_grant_cleanup_retry(
         if matching.len() != 1 {
             return Err("The native relay cleanup is unavailable or ambiguous.".to_owned());
         }
-        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let context = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
         let proof_keys = NativeRelayProofKeyVault::new();
         let http = UreqNativeBrokerTransport::new();
         let service = NativeRelayRedemptionService::new(
@@ -6996,11 +9250,142 @@ pub(crate) async fn station_native_relay_signal_diagnostic_read(
 /// Shared host path for the diagnostic and application signaling commands.
 /// Both names resolve the saved profile, approved Station trust, and the
 /// keyring-held grant in the host; the renderer never supplies custody.
+#[derive(Clone, Eq, PartialEq)]
+pub(crate) struct NativeEnrollmentRouteCapture {
+    pub(crate) context: NativeRedemptionContext,
+    pub(crate) scope: crate::native_enrollment::NativeEnrollmentScope,
+    pub(crate) surface: crate::native_enrollment::NativeEnrollmentSurface,
+    pub(crate) grant_digest: String,
+    pub(crate) grant_id: String,
+    pub(crate) grant_expires_at: u64,
+}
+
+/// Route custody only: no paired Device or account identity is derived here.
+pub(crate) fn with_current_native_enrollment_route<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    profile_revision: u64,
+    operation: impl FnOnce(NativeEnrollmentRouteCapture) -> Result<T, String>,
+) -> Result<T, String> {
+    with_owned_native_enrollment_route(app, profile_name, profile_revision, None, operation)
+}
+
+pub(crate) fn with_owned_native_enrollment_route<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    profile_revision: u64,
+    reference: Option<&super::NativeCredentialReference>,
+    operation: impl FnOnce(NativeEnrollmentRouteCapture) -> Result<T, String>,
+) -> Result<T, String> {
+    let grants = native_relay_grant_vault();
+    let now = native_now_ms().map_err(|_| "native_enrollment_route_refused".to_owned())?;
+    with_locked_saved_enrollment_profile_store(
+        app,
+        profile_name,
+        reference,
+        false,
+        |profile, locked, _, _| {
+            let approved = NativeStationTrustStore::system()
+                .approved_descriptor_for_locked_profile(&locked)
+                .map_err(|_| NativeRedemptionError::StationTrustRequired)?;
+            let context = NativeRedemptionContext {
+                station_trust: approved_station_trust(&profile, approved)?,
+                profile,
+            };
+            validate_profile_context(&context)?;
+            if context.profile.revision != profile_revision {
+                return Err(NativeRedemptionError::StaleProfile);
+            }
+            let owner = NativeProofKeyOwner::new(
+                &context.profile.app_identifier,
+                context.profile.channel,
+                &context.profile.client_instance_id,
+            )
+            .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+            let record = grants.load_request_grant(&owner, &context, now, false)?;
+            let grant = &record.grant;
+            let digest_bytes = Zeroizing::new(
+                serde_json::to_vec(grant).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+            );
+            let capture = NativeEnrollmentRouteCapture {
+                context: context.clone(),
+                scope: crate::native_enrollment::NativeEnrollmentScope {
+                    station_id: grant.scope.station_id.clone(),
+                    enrollment_id: grant.scope.enrollment_id.clone(),
+                    routing_generation: grant.scope.routing_generation,
+                },
+                surface: crate::native_enrollment::NativeEnrollmentSurface {
+                    kind: grant.surface.kind.clone(),
+                    app_identifier: grant.surface.app_identifier.clone(),
+                    channel: grant.surface.channel.clone(),
+                    client_instance_id: grant.surface.client_instance_id.clone(),
+                    key_thumbprint: grant.surface.key_thumbprint.clone(),
+                },
+                grant_digest: URL_SAFE_NO_PAD
+                    .encode(ring::digest::digest(&ring::digest::SHA256, &digest_bytes)),
+                grant_id: grant.credential.id.clone(),
+                grant_expires_at: grant.expires_at,
+            };
+            Ok(operation(capture))
+        },
+    )
+    .map_err(|_| "native_enrollment_route_refused".to_owned())?
+}
+
+pub(crate) fn read_native_relay_ice_configuration(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+) -> RedemptionResult<crate::native_relay_ice::NativeRelayIceConfiguration> {
+    let contexts = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
+    let proof_keys = NativeRelayProofKeyVault::new();
+    let http = UreqNativeBrokerTransport {
+        timeout: Duration::from_secs(10),
+    };
+    let grants = native_relay_grant_vault();
+    let service = NativeRelaySignalService::new(
+        &contexts,
+        &proof_keys,
+        &http,
+        &grants,
+        native_now_ms_or_zero,
+    );
+    let (context, owner, grant) =
+        service.load_current_grant(profile_name, expected_profile_revision)?;
+    let challenge = NativeBrokerRequestProofChallenge::from_request(
+        native_request_identity(&grant),
+        NativeBrokerRequestBody::IceConfiguration,
+        native_now_ms_or_zero() / 1000,
+    )
+    .map_err(|_| NativeRedemptionError::GrantInvalid)?;
+    let signature = proof_keys
+        .sign_native_request(&owner, &challenge)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    let compact = challenge
+        .compact_jws(&signature)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    service.recheck_current_grant(profile_name, &context, &owner, &grant)?;
+    let response = http.send_fixed_request(&grant, &challenge, &compact);
+    service.recheck_current_grant(profile_name, &context, &owner, &grant)?;
+    let response = response?;
+    if response.status != 200 || response.body.len() > 16 * 1024 {
+        return Err(NativeRedemptionError::BrokerRejected);
+    }
+    crate::native_relay_ice::parse_native_relay_ice_configuration(
+        &response.body,
+        &serde_json::to_value(&grant.scope).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+        &serde_json::to_value(&grant.surface).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+        native_now_ms_or_zero(),
+        grant.expires_at,
+    )
+    .map_err(|_| NativeRedemptionError::BrokerRejected)
+}
+
 fn run_native_relay_binding_request(
     app: AppHandle,
     request: NativeRelayDiagnosticBindingInput,
 ) -> Result<NativeRelayDiagnosticBinding, String> {
-    let contexts = AppNativeRedemptionContextProvider::new(app);
+    let contexts = AppNativeRedemptionContextProvider::for_existing_route(app);
     let grants = native_relay_grant_vault();
     let now = native_now_ms().map_err(|_| "Station could not verify native relay state.")?;
     contexts
@@ -7027,35 +9412,55 @@ fn run_native_relay_signal_open_request(
     app: AppHandle,
     request: NativeRelaySignalDiagnosticOpenInput,
 ) -> Result<NativeRelaySignalOpened, String> {
-    let context = AppNativeRedemptionContextProvider::new(app);
-    let proof_keys = NativeRelayProofKeyVault::new();
-    let http = UreqNativeBrokerTransport::new();
-    let grants = native_relay_grant_vault();
-    NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
-        .open(&NativeRelaySignalOpenRequest {
+    native_application_signal_open(
+        app,
+        NativeRelaySignalOpenRequest {
             profile_name: request.profile_name,
             expected_profile_revision: request.expected_profile_revision,
             nonce: request.nonce,
             offer_sdp: request.offer_sdp,
-        })
-        .map_err(map_signal_diagnostic_error)
+        },
+    )
+    .map_err(map_signal_diagnostic_error)
+}
+
+pub(crate) fn native_application_signal_open(
+    app: AppHandle,
+    request: NativeRelaySignalOpenRequest,
+) -> RedemptionResult<NativeRelaySignalOpened> {
+    let context = AppNativeRedemptionContextProvider::for_existing_route(app);
+    let proof_keys = NativeRelayProofKeyVault::new();
+    let http = UreqNativeBrokerTransport::new();
+    let grants = native_relay_grant_vault();
+    NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
+        .open(&request)
 }
 
 fn run_native_relay_signal_read_request(
     app: AppHandle,
     request: NativeRelaySignalDiagnosticReadInput,
 ) -> Result<NativeRelaySignalAnswer, String> {
-    let context = AppNativeRedemptionContextProvider::new(app);
+    native_application_signal_read(
+        app,
+        NativeRelaySignalReadRequest {
+            profile_name: request.profile_name,
+            expected_profile_revision: request.expected_profile_revision,
+            nonce: request.nonce,
+        },
+    )
+    .map_err(map_signal_diagnostic_error)
+}
+
+pub(crate) fn native_application_signal_read(
+    app: AppHandle,
+    request: NativeRelaySignalReadRequest,
+) -> RedemptionResult<NativeRelaySignalAnswer> {
+    let context = AppNativeRedemptionContextProvider::for_existing_route(app);
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let grants = native_relay_grant_vault();
     NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
-        .read(&NativeRelaySignalReadRequest {
-            profile_name: request.profile_name,
-            expected_profile_revision: request.expected_profile_revision,
-            nonce: request.nonce,
-        })
-        .map_err(map_signal_diagnostic_error)
+        .read(&request)
 }
 
 /// Validates the shared signaling-command input envelope and binds it to the
@@ -7092,6 +9497,26 @@ pub(crate) async fn station_native_relay_application_binding(
     tauri::async_runtime::spawn_blocking(move || run_native_relay_binding_request(app, request))
         .await
         .map_err(|_| "Station could not verify native relay application trust.".to_owned())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_enrollment_binding(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<NativeRelayDiagnosticBinding, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    let request = NativeRelayDiagnosticBindingInput {
+        profile_name,
+        expected_profile_revision,
+    };
+    if validate_native_relay_binding_input(&request).is_err() {
+        return Err("native_enrollment_binding_invalid".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || run_native_relay_binding_request(app, request))
+        .await
+        .map_err(|_| "native_enrollment_binding_refused".to_owned())?
 }
 
 #[tauri::command(rename_all = "camelCase")]

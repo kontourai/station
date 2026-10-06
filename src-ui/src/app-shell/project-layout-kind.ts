@@ -103,3 +103,31 @@ export function rendersChatWorkspaceLayout(
 ): boolean {
   return resolveProjectLayoutRendererKind(layout) === 'chat';
 }
+
+/**
+ * Where a layout route puts Station's one Chat controller, decided at render
+ * time from the same facts the renderer dispatches on, so App (which suspends
+ * the ambient `chat` surface) and the layout (which mounts Chat) can never
+ * disagree for a frame and mount two controllers.
+ *
+ * - `viewport`: the Station-owned Chat layout owns the whole view; App mounts
+ *   no region shells at all.
+ * - `center`: the built-in Coding host puts Chat in its own centre (the Chat
+ *   page of its navigation stack). The ambient `chat` surface is SUSPENDED —
+ *   not moved — while the other region panes keep rendering.
+ * - `none`: Chat stays wherever the region model placed it. That includes a
+ *   bottom-only device (a phone or any coarse/narrow viewport) on the Coding
+ *   layout, whose Chat is the maximized dock, and any plugin or withheld
+ *   layout that merely carries the word `coding` or `chat`.
+ */
+export type LayoutChatPlacement = 'viewport' | 'center' | 'none';
+
+export function resolveLayoutChatPlacement(
+  layout: ProjectLayoutRendererFacts | null | undefined,
+  { bottomOnly }: { bottomOnly: boolean },
+): LayoutChatPlacement {
+  const kind = resolveProjectLayoutRendererKind(layout);
+  if (kind === 'chat') return 'viewport';
+  if (kind === 'coding' && !bottomOnly) return 'center';
+  return 'none';
+}

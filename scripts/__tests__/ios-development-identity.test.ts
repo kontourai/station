@@ -324,7 +324,10 @@ function archivedFixture({
     CFBundleIdentifier: id,
     CFBundleExecutable: 'Station Dev',
     CFBundleSupportedPlatforms: ['iPhoneSimulator'],
-    CFBundleURLTypes: [{ CFBundleURLSchemes: ['station-dev-instance'] }],
+    CFBundleURLTypes: [
+      { CFBundleURLSchemes: ['station-dev-instance'] },
+      { CFBundleURLSchemes: ['station-relay-dev-instance'] },
+    ],
   };
   let platform = 'platform IOSSIMULATOR';
   const run = vi.fn((command: string, args: string[]) => {
@@ -369,11 +372,32 @@ function archivedFixture({
     setPlatform: (value: string) => {
       platform = value;
     },
+    setLinkSchemes: (schemes: string[]) => {
+      info.CFBundleURLTypes = schemes.map((scheme) => ({
+        CFBundleURLSchemes: [scheme],
+      }));
+    },
   };
 }
 
 const codesignCalls = (run: ReturnType<typeof archivedFixture>['run']) =>
   run.mock.calls.filter(([command]) => command === 'codesign');
+
+test('simulator verification rejects a missing relay association or an association for another channel', () => {
+  for (const schemes of [
+    ['station-dev-instance'],
+    ['station-dev-instance', 'station-relay-nightly'],
+  ]) {
+    const f = archivedFixture();
+    f.setLinkSchemes(schemes);
+    expect(() =>
+      verifyIosSimulator(f.archive, { root: f.root, run: f.run }),
+    ).toThrow(
+      'Simulator pairing and relay associations do not match its development identity.',
+    );
+    expect(codesignCalls(f.run)).toHaveLength(0);
+  }
+});
 
 test('verification checks an embedded Live Activity extension and seals it before the app', () => {
   const f = archivedFixture({ widget: {} });

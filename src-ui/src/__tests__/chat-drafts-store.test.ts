@@ -19,22 +19,54 @@ describe('chatDraftsStore', () => {
     vi.restoreAllMocks();
   });
 
-  test('survives a reload-like fresh read and clears after send', async () => {
+  test('chat and Station-scoped Activity drafts survive fresh reads and clear after send', async () => {
     chatDraftsStore.set('session-a', 'unsent message');
+    chatDraftsStore.setActivityDraft(
+      'https://station-a.example',
+      'same-session',
+      'A follow-up',
+    );
+    chatDraftsStore.setActivityDraft(
+      'https://station-b.example',
+      'same-session',
+      'B follow-up',
+    );
     vi.resetModules();
     const { chatDraftsStore: reloaded } = await import(
       '../contexts/chat-drafts-store'
     );
     expect(reloaded.get('session-a')).toBe('unsent message');
+    expect(
+      reloaded.getActivityDraft('https://station-a.example', 'same-session'),
+    ).toBe('A follow-up');
+    expect(
+      reloaded.getActivityDraft('https://station-b.example', 'same-session'),
+    ).toBe('B follow-up');
+    expect(Object.keys(reloaded.getSnapshot())).toEqual(['session-a']);
 
     reloaded.clear('session-a');
+    reloaded.clearActivityDraft('https://station-a.example', 'same-session');
     vi.resetModules();
     const { chatDraftsStore: afterSend } = await import(
       '../contexts/chat-drafts-store'
     );
     expect(afterSend.get('session-a')).toBe('');
+    expect(
+      afterSend.getActivityDraft('https://station-a.example', 'same-session'),
+    ).toBe('');
+    expect(
+      afterSend.getActivityDraft('https://station-b.example', 'same-session'),
+    ).toBe('B follow-up');
     // The statically imported instance still holds the draft in memory.
     chatDraftsStore.clear('session-a');
+    chatDraftsStore.clearActivityDraft(
+      'https://station-a.example',
+      'same-session',
+    );
+    chatDraftsStore.clearActivityDraft(
+      'https://station-b.example',
+      'same-session',
+    );
   });
 
   test('keeps at most twenty newest session drafts', () => {
@@ -105,6 +137,38 @@ describe('chatDraftsStore', () => {
     );
     expect(draft.unreadableImageNames).toEqual(['image-0.png']);
     expect(draft.droppedImageNames).toEqual(['image-5.png']);
+  });
+
+  // A reload into a newer build reads whatever an older one wrote. One
+  // attachment entry in another shape used to reach the composer and throw
+  // inside render (`type.startsWith`), taking the chat pane down with it.
+  test('drops portable draft attachments that are not the shape the composer reads', async () => {
+    localStorage.setItem(
+      'station:chat-drafts:v1',
+      JSON.stringify({
+        sessions: {},
+        portable: [
+          {
+            id: 'p1',
+            name: 'old build',
+            text: 'kept',
+            createdAt: 1,
+            attachments: [image('good.png'), { name: 'bad.png' }, 'x', null],
+            droppedImageNames: ['a.png', 5],
+            unreadableImageNames: [{}],
+          },
+        ],
+      }),
+    );
+    vi.resetModules();
+    const { chatDraftsStore: reloaded } = await import(
+      '../contexts/chat-drafts-store'
+    );
+    const [draft] = reloaded.getPortableSnapshot();
+    expect(draft?.text).toBe('kept');
+    expect(draft?.attachments).toEqual([image('good.png')]);
+    expect(draft?.droppedImageNames).toEqual(['a.png']);
+    expect(draft?.unreadableImageNames).toEqual([]);
   });
 
   test('caps portable drafts at twenty in newest-first order', async () => {

@@ -1,0 +1,27 @@
+{
+  "path": "schemas/agent-plugins/1.0.0/UPSTREAM.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Both local schemas match the documented SHA-256 values and pinned upstream commit ff8ab5e392cc87bd88d87c060815a87490e51003 byte-for-byte. The loader reads local schema files and caches validators; generation consumes those same vendored files.",
+
+  "limits": "The claim about website serving on 2026-09-03 is retained as historical provenance, not independently reconstructed from a website archive. No future schema compatibility is implied.",
+
+  "sources": [
+    "schemas/agent-plugins/1.0.0/mcp.schema.json",
+
+    "schemas/agent-plugins/1.0.0/plugin.schema.json",
+
+    "scripts/generate-agent-plugin-validators.mjs",
+
+    "src-server/services/plugins/agent-plugin-loader.ts"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+  ]
+}

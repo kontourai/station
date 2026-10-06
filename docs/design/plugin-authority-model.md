@@ -13,6 +13,16 @@
 > This dated comparison is not a current exploit report or a fresh audit of
 > every contribution, framework, or external product mentioned below.
 
+> **Amended 2026-09-29.** [shell-plugins-distributions.md](shell-plugins-distributions.md)
+> records owner answers to open question 2 below. Install trust is per install
+> and pinned to publisher key plus content digest. Kontour-signed plugins start
+> in-process and unsigned plugins start sandboxed. The default for
+> publisher-signed plugins is a proposal pending the owner. An update from a
+> different key, or one requesting new capabilities, re-prompts; that is the
+> record's answer to "updates launder consent". The record keeps this note's
+> threat findings as open items rather than treating them as resolved, and it
+> states that in-process (tier 2) code runs with the kernel's own authority.
+
 Status: design note, 2026-08-25. Written while shaping station#4220 (one plugin
 format, user-chosen runtime) and station#4190 (dogfood the iframe tier).
 
@@ -136,8 +146,10 @@ from `POST /api/plugins/preview`, so a caller can preview, echo the digest and
 the permission set into `/install`, and install with no operator in the loop.
 That is not only browser-resident plugin code — a server-side agent with a
 shell tool, a paired device, and an exported CLI credential all qualify, and
-none of them needs a browser. Nothing in an HTTP request can attest that a
-person answered. What the gate is worth is that the product's own path is now
+none of them needs a browser. (A paired device additionally needs the
+operator's `coding:exec` grant since the install, update and recover routes took
+the command-authority check; the operator's own credential and a shell are
+unchanged.) Nothing in an HTTP request can attest that a person answered. What the gate is worth is that the product's own path is now
 honest, and that an install which skipped the question is distinguishable from
 one that did not.
 

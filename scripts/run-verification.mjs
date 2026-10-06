@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   coordinateVerification,
@@ -136,6 +137,29 @@ export function boundedControlResult(result) {
         // cause to qualify. The receipt keeps the durable record either way.
       },
     };
+  if (
+    result?.request &&
+    result?.lane &&
+    typeof result.canonicalReceipt === 'string'
+  ) {
+    const status = boundedControlResult(result.status);
+    const omittedLiveCount =
+      (status?.omittedLiveCount ?? 0) + (status?.jobs?.length ?? 0);
+    return {
+      request: result.request,
+      canonicalReceipt: result.canonicalReceipt,
+      lane: { id: result.lane.id, command: result.lane.command },
+      status: {
+        capacity: status?.capacity,
+        usedWeight: status?.usedWeight,
+        waiting: status?.waiting,
+        staleCount: status?.staleCount,
+        finishedCount: status?.finishedCount,
+        ...(omittedLiveCount > 0 ? { omittedLiveCount } : {}),
+        truncated: omittedLiveCount > 0,
+      },
+    };
+  }
   if (Array.isArray(result?.jobs)) {
     const live = result.jobs
       .filter((job) => job?.live === true)
@@ -611,6 +635,7 @@ export async function runVerificationCli(
 }
 
 async function main() {
+  await ensureLivenessScale();
   process.exitCode = await runVerificationCli(process.argv.slice(2));
 }
 

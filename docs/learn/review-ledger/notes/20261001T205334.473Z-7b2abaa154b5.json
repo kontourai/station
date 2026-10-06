@@ -1,0 +1,23 @@
+{
+  "revision": "165153a5d2aa67f117f7ff9c7eb3b36481b9119f",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"docs/reference/contracts.md adds a paragraph on the review snapshot's optional `checks` and `reviewComments` observations (pull-request-provider.ts, pull-request-review.ts and its test); this document introduces no vocabulary or routing that conflicts with it, and its prose is unchanged.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"docs/reference/contracts.md adds a paragraph on the review snapshot's optional `checks` and `reviewComments` observations (pull-request-provider.ts, pull-request-review.ts and its test); this document introduces no vocabulary or routing that conflicts with it, and its prose is unchanged.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"docs/reference/contracts.md adds a paragraph on the review snapshot's optional `checks` and `reviewComments` observations (pull-request-provider.ts, pull-request-review.ts and its test); this document introduces no vocabulary or routing that conflicts with it, and its prose is unchanged.","inputs":["packages/contracts/AGENTS.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"docs/ui/responsive-action-surfaces.txt changes one line: the PullRequestReviewPanel entry now describes its quiet bar (icon back, title, icon refresh, open-on-forge icon with 44px hit areas, external-link icons on checks rows); this guide's rules are unchanged.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"docs/ui/responsive-action-surfaces.txt changes one line: the PullRequestReviewPanel entry now describes its quiet bar (icon back, title, icon refresh, open-on-forge icon with 44px hit areas, external-link icons on checks rows); this guide's rules are unchanged.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"docs/ui/responsive-action-surfaces.txt changes one line: the PullRequestReviewPanel entry now describes its quiet bar (icon back, title, icon refresh, open-on-forge icon with 44px hit areas, external-link icons on checks rows); this guide's rules are unchanged.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"docs/ui/responsive-action-surfaces.txt changes one line: the PullRequestReviewPanel entry now describes its quiet bar (icon back, title, icon refresh, open-on-forge icon with 44px hit areas, external-link icons on checks rows); this guide's rules are unchanged.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the paragraph on the review snapshot's `checks` and `reviewComments` as observations: absent means unobserved, `partial` when an entry cannot be classified or the list is truncated, `line` null once the forge no longer maps a comment, neither an empty list standing in for none; a gh that cannot report statusCheckRollup makes checks `unavailable`. Checked against pull-request-provider.ts, pull-request-review.ts and pull-request-review.test.ts.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"pull-request-review.ts (server) adds the checks and inline-comment observations and the old-gh checks degradation; no SDK API heading here changes (the SDK's getPullRequestReview carries the snapshot type as before).","inputs":["docs/reference/sdk.md"]}
+  ]
+}

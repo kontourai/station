@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -10,6 +10,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -80,6 +81,55 @@ function plainGit(cwd: string, args: string[], input?: string): string {
   } catch {
     return '';
   }
+}
+
+/** Plain git without blocking this process, so a listener here can accept. */
+function plainGitAsync(
+  cwd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = {},
+): Promise<void> {
+  return new Promise((resolve) => {
+    execFile(
+      'git',
+      args,
+      {
+        cwd,
+        env: { ...plainEnv(), ...env },
+        timeout: 20_000,
+        windowsHide: true,
+      },
+      () => resolve(),
+    );
+  });
+}
+
+/**
+ * A repository that declares itself a partial clone of `port` on this
+ * machine, with the committed README's blob missing and a credential helper
+ * that creates `marker`: any read of that blob makes plain git fetch it,
+ * which runs the helper and connects.
+ */
+function plantPartialClone(port: number, marker: string): string {
+  const repo = initRepo();
+  const blob = plainGit(repo, ['rev-parse', 'HEAD:README.md']).trim();
+  writeFileSync(join(repo, 'README.md'), '# edited\n');
+  rmSync(join(repo, '.git', 'objects', blob.slice(0, 2), blob.slice(2)));
+  for (const [key, value] of [
+    ['core.repositoryformatversion', '1'],
+    ['extensions.partialClone', 'origin'],
+    ['remote.origin.promisor', 'true'],
+    ['remote.origin.url', `https://u@127.0.0.1:${port}/x.git`],
+    // Ask for credentials before the first request, as a server's 401 would.
+    ['http.proactiveAuth', 'basic'],
+    [
+      'credential.helper',
+      `!touch '${marker}'; echo username=u; echo password=p`,
+    ],
+  ]) {
+    plainGit(repo, ['config', key, value]);
+  }
+  return repo;
 }
 
 /** The call's outcome (its value or its error), or 'hung' after 10s. */
@@ -294,6 +344,204 @@ describe.skipIf(process.platform === 'win32')(
       await expect(
         execGit(['rev-parse', '--is-bare-repository'], { cwd: bare }),
       ).rejects.toThrow(/cannot use bare repository/);
+    });
+
+    describe('a planted partial clone with a missing object', () => {
+      let server: Server;
+      let port: number;
+      let connections: number;
+      let marker: string;
+      let repo: string;
+
+      beforeEach(async () => {
+        connections = 0;
+        server = createServer((socket) => {
+          connections += 1;
+          socket.destroy();
+        });
+        await new Promise<void>((resolve) =>
+          server.listen(0, '127.0.0.1', resolve),
+        );
+        port = (server.address() as { port: number }).port;
+        marker = join(sandbox(), 'helper-ran');
+        repo = plantPartialClone(port, marker);
+        return () =>
+          new Promise<void>((resolve) => server.close(() => resolve()));
+      });
+
+      /** Lets a connection git made reach the listener's callback. */
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+
+      test('control: plain git diff runs the helper and connects', async () => {
+        await plainGitAsync(repo, ['diff']);
+        await settle();
+        expect(existsSync(marker), 'the planted helper ran').toBe(true);
+        expect(
+          connections,
+          'git connected to the planted address',
+        ).toBeGreaterThan(0);
+      });
+
+      test.each([
+        [
+          'GIT_ALLOW_PROTOCOL naming no transport',
+          { GIT_ALLOW_PROTOCOL: 'none' },
+        ],
+        [
+          'a command-scope credential.helper=',
+          {
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: 'credential.helper',
+            GIT_CONFIG_VALUE_0: '',
+          },
+        ],
+      ])('each layer alone stops plain git: %s', async (_name, env) => {
+        await plainGitAsync(repo, ['diff'], env);
+        await settle();
+        expect(existsSync(marker)).toBe(false);
+        expect(connections).toBe(0);
+      });
+
+      test.each([
+        [['diff']],
+        [['status', '--porcelain']],
+        [['log', '-p', '-1']],
+        [['show', 'HEAD:README.md']],
+        [['cat-file', '-p', 'HEAD:README.md']],
+        [['checkout', '--', 'README.md']],
+      ])('execGit %j neither runs the helper nor connects', async (args) => {
+        // Bounded by the runner itself: should a change ever let git start
+        // the fetch, the process group is killed and this fails, rather
+        // than a fetch outliving the test.
+        expect(
+          await settledWithin(execGit(args, { cwd: repo, timeout: 8_000 })),
+        ).not.toBe('hung');
+        await settle();
+        expect(existsSync(marker)).toBe(false);
+        expect(connections).toBe(0);
+      });
+
+      test('execGitSync and spawnGit neither run the helper nor connect', async () => {
+        try {
+          execGitSync(['show', 'HEAD:README.md'], {
+            cwd: repo,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: 8_000,
+          });
+        } catch {
+          // The object is missing; failing is the expected outcome.
+        }
+        await new Promise((resolve) => {
+          const child = spawnGit(['diff'], { cwd: repo, stdio: 'ignore' });
+          const stop = setTimeout(() => child.kill('SIGKILL'), 8_000);
+          child.on('close', () => {
+            clearTimeout(stop);
+            resolve(undefined);
+          });
+        });
+        await settle();
+        expect(existsSync(marker)).toBe(false);
+        expect(connections).toBe(0);
+      });
+    });
+
+    test("a repository's diff programs (diff.external, a driver's command and textconv) run on no command that prints a diff", async () => {
+      const repo = initRepo();
+      const marker = join(sandbox(), 'diff-program-ran');
+      const script = markerScript(repo, marker);
+      writeFileSync(join(repo, '.gitattributes'), '*.md diff=planted\n');
+      plainGit(repo, ['add', '-A']);
+      plainGit(repo, ['commit', '-q', '-m', 'attributes']);
+      writeFileSync(join(repo, 'README.md'), '# edited\n');
+      plainGit(repo, ['commit', '-q', '-am', 'edit']);
+      writeFileSync(join(repo, 'README.md'), '# edited again\n');
+      for (const key of [
+        'diff.external',
+        'diff.planted.command',
+        'diff.planted.textconv',
+      ]) {
+        plainGit(repo, ['config', key, script]);
+      }
+      plainGit(repo, ['diff']);
+      expect(existsSync(marker), 'control: plain git runs the plant').toBe(
+        true,
+      );
+      rmSync(marker, { force: true });
+      plainGit(repo, ['config', '--unset', 'diff.external']);
+      plainGit(repo, ['log', '-p', '-1']);
+      expect(existsSync(marker), 'control: a textconv runs on log -p').toBe(
+        true,
+      );
+      rmSync(marker, { force: true });
+      plainGit(repo, ['config', 'diff.external', script]);
+
+      for (const args of [
+        ['diff'],
+        ['diff', 'HEAD~1', 'HEAD'],
+        ['diff-index', '-p', 'HEAD'],
+        ['log', '-p', '-2'],
+        ['show', 'HEAD'],
+      ]) {
+        await settledWithin(execGit(args, { cwd: repo }));
+        expect(existsSync(marker), `after ${args.join(' ')}`).toBe(false);
+      }
+    });
+
+    test('a nested repository is not entered even when the parent asks for its diff or log, and a changed one is not reported', async () => {
+      const parent = initRepo();
+      const nested = join(parent, 'sub');
+      mkdirSync(nested);
+      plainGit(nested, ['init', '-q', '-b', 'main']);
+      writeFileSync(join(nested, 'f.txt'), 'one\n');
+      plainGit(nested, ['add', '-A']);
+      plainGit(nested, ['commit', '-q', '-m', 'one']);
+      const recorded = plainGit(nested, ['rev-parse', 'HEAD']).trim();
+      writeFileSync(join(nested, 'f.txt'), 'two\n');
+      plainGit(nested, ['commit', '-q', '-am', 'two']);
+      plainGit(parent, [
+        'update-index',
+        '--add',
+        '--cacheinfo',
+        `160000,${recorded},sub`,
+      ]);
+      plainGit(parent, ['commit', '-q', '-m', 'record sub']);
+      const marker = join(sandbox(), 'nested-program-ran');
+      plainGit(nested, [
+        'config',
+        'diff.external',
+        markerScript(nested, marker),
+      ]);
+
+      for (const mode of ['diff', 'log']) {
+        plainGit(parent, ['config', 'diff.submodule', mode]);
+        if (mode === 'diff') {
+          plainGit(parent, ['diff']);
+          expect(
+            existsSync(marker),
+            'control: plain git runs the nested program',
+          ).toBe(true);
+          rmSync(marker, { force: true });
+        } else {
+          expect(
+            plainGit(parent, ['diff']),
+            'control: plain git prints the nested commits',
+          ).toContain('two');
+        }
+        for (const args of [
+          ['diff'],
+          ['status', '--porcelain'],
+          ['log', '-p'],
+        ]) {
+          const result = (await settledWithin(
+            execGit(args, { cwd: parent }),
+          )) as { stdout?: string };
+          expect(result.stdout ?? '').not.toMatch(/Submodule sub|two/);
+          expect(existsSync(marker), `after ${args.join(' ')}`).toBe(false);
+        }
+        expect(
+          (await execGit(['status', '--porcelain'], { cwd: parent })).stdout,
+        ).toBe('');
+      }
     });
 
     test('credential helpers: a repo-local helper never runs, and the operator helpers run in plain git order', async () => {

@@ -67,6 +67,13 @@ describe('extension notification bindings', () => {
       },
       {
         namespace: 'claude-code',
+        type: 'api/retry',
+        consumer: 'ui.claude.api-retry',
+        observedAgainst: ['claude-adapter'],
+        evidence: 'claude-sdk-api-retry-contract',
+      },
+      {
+        namespace: 'claude-code',
         type: 'thinking/tokens',
         consumer: 'ui.claude.thinking-tokens',
         observedAgainst: ['claude-adapter'],
@@ -183,6 +190,28 @@ describe('extension notification bindings', () => {
         consumer: 'ui.engine.mcp-status',
         observedAgainst: ['xai-acp'],
         evidence: 'station#1935-runtime-observation',
+      },
+      // station#3415: derived from the transcript projection's marker table.
+      {
+        namespace: 'codex-rollout',
+        type: 'context-compacted',
+        consumer: 'transcript.marker',
+        observedAgainst: ['codex-rollout-session-source'],
+        evidence: 'station-session-source-emitter',
+      },
+      {
+        namespace: 'grok-session',
+        type: 'context-compacted',
+        consumer: 'transcript.marker',
+        observedAgainst: ['grok-session-source'],
+        evidence: 'station-session-source-emitter',
+      },
+      {
+        namespace: 'grok-session',
+        type: 'conversation-rewound',
+        consumer: 'transcript.marker',
+        observedAgainst: ['grok-session-source'],
+        evidence: 'station-session-source-emitter',
       },
     ]);
   });

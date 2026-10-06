@@ -59,8 +59,8 @@
  * already conforms.
  */
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
@@ -377,7 +377,10 @@ function rangeArgs(range) {
 }
 
 function git(args) {
-  return execFileSync('git', args, { encoding: 'utf8', windowsHide: true });
+  return execFileSyncBounded('git', args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
 }
 
 function resolveBaseRef() {

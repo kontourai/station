@@ -115,4 +115,35 @@ describe('MessageBubble user-turn recovery (#2216)', () => {
       model: undefined,
     });
   });
+
+  test('a steer that stopped the running step says so in its bubble', () => {
+    const props = {
+      idx: 0,
+      activeSession: session as never,
+      agents: [],
+      chatFontSize: 14,
+      showReasoning: false,
+      showToolDetails: false,
+      onCopy: () => {},
+    };
+    const { rerender } = render(
+      <MessageBubble
+        {...props}
+        msg={{
+          role: 'user',
+          content: 'Still going?',
+          steerInterruptedRun: true,
+        }}
+      />,
+    );
+    expect(
+      screen.getByText('Sent by stopping the step that was running'),
+    ).toBeTruthy();
+    rerender(
+      <MessageBubble {...props} msg={{ role: 'user', content: 'Plain' }} />,
+    );
+    expect(
+      screen.queryByText('Sent by stopping the step that was running'),
+    ).toBeNull();
+  });
 });

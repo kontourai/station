@@ -1,6 +1,7 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
   ENGINE_CAPABILITY_MATRICES,
+  type ModelImageSupport,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
@@ -384,6 +385,25 @@ export function runtimeCatalogVisibleModels(
 }
 
 /**
+ * What the connection's own runtime catalog says about `modelId`'s image
+ * input. `imageInput: true` is `'yes'`, `false` is `'no'`, and an absent
+ * answer (no row, no capability, or a non-boolean) stays `'unknown'`: the
+ * runtime not reporting a modality is not a statement that it is missing.
+ */
+export function catalogModelImageSupport(
+  runtimeConnection: AgentConnectionView | ConnectionConfig | null | undefined,
+  modelId: string | undefined,
+): ModelImageSupport {
+  if (!modelId) return 'unknown';
+  const imageInput = runtimeCatalogVisibleModels(runtimeConnection).find(
+    (model) => model.id === modelId,
+  )?.capabilities?.imageInput;
+  if (imageInput === true) return 'yes';
+  if (imageInput === false) return 'no';
+  return 'unknown';
+}
+
+/**
  * archive#1003: reads a connection's canonical engine identity
  * (`config.engineId`). Missing identity remains unknown; deprecated metadata
  * is not normalized at read time.
@@ -569,14 +589,21 @@ type SessionExecutionActivity = SessionExecutionSummary & {
  * Whether a running turn can take more user input on the engine's live
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
  * Authority is the capability matrix, not a connection `capabilities`
- * string — Claude, Codex (`turn/steer`), and ACP (native method or
- * cancel+reprompt) are true. Muse and Station queue until `turn.completed`.
+ * string. Claude and Codex expose additive steering. ACP is held because
+ * its matrix also admits cancel+reprompt, without a session-native receipt.
  */
 export function sessionAdapterSupportsSteering(
   agentConnectionId?: string | null,
   agentConnections: ConnectionConfig[] = [],
   orchestrationProvider?: string | null,
 ): boolean {
+  const connection = agentConnectionId
+    ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
+    : undefined;
+  // ACP's matrix also permits interruptive cancel-and-reprompt. It is not
+  // evidence of an additive input channel on this particular session.
+  if (orchestrationProvider === 'acp' || connection?.type === 'acp')
+    return false;
   if (
     orchestrationProvider &&
     orchestrationProvider in ENGINE_CAPABILITY_MATRICES
@@ -585,9 +612,6 @@ export function sessionAdapterSupportsSteering(
       ENGINE_CAPABILITY_MATRICES[orchestrationProvider].midTurnSteer === true
     );
   }
-  const connection = agentConnectionId
-    ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
-    : undefined;
   return (
     resolveEngineCapabilityMatrix(agentConnectionId, connection)
       .midTurnSteer === true

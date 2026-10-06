@@ -42,6 +42,7 @@ import {
   parseCoreArgs,
   printFetched,
   printJson,
+  printResolvedTarget,
   requestJson,
   requirePositional,
   resolveApiBase,
@@ -284,6 +285,15 @@ function getNamespaceBase(project: string, namespace?: string) {
   return `/api/projects/${encodedProject}/knowledge`;
 }
 
+/**
+ * A connection write lands on whichever Station the target chain resolved,
+ * which may be a saved remote default rather than the machine at hand. Name it
+ * on stderr (stdout stays the JSON result); `--verbose` already printed it.
+ */
+function announceMutationTarget(parsed: ParsedCoreArgs): void {
+  if (parsed.flags.verbose !== true) printResolvedTarget();
+}
+
 async function runConnectionsCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
@@ -309,6 +319,7 @@ async function runConnectionsCommand(args: string[]) {
     }
     case 'create': {
       const body = await loadJsonPayload(parsed);
+      announceMutationTarget(parsed);
       await requestAndPrint(apiBase, '/api/connections', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -318,6 +329,7 @@ async function runConnectionsCommand(args: string[]) {
     case 'update': {
       const id = requirePositional(parsed, 1, 'connection id');
       const body = await loadJsonPayload(parsed);
+      announceMutationTarget(parsed);
       await requestAndPrint(
         apiBase,
         `/api/connections/${encodeURIComponent(id)}`,
@@ -330,6 +342,7 @@ async function runConnectionsCommand(args: string[]) {
     }
     case 'delete': {
       const id = requirePositional(parsed, 1, 'connection id');
+      announceMutationTarget(parsed);
       await requestAndPrint(
         apiBase,
         `/api/connections/${encodeURIComponent(id)}`,

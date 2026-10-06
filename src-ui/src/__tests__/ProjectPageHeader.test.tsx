@@ -65,23 +65,42 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
     renderHeader();
 
     const parent = document.querySelector(
-      '.project-page__dir-parent-text',
+      '.project-page__dir-parent',
     ) as HTMLElement;
     const leaf = document.querySelector(
       '.project-page__dir-leaf',
     ) as HTMLElement;
     expect(parent.textContent).toBe('/Users/me/dev/github/');
     expect(leaf.textContent).toBe('station');
-    // The bidi isolate that keeps `~`/`/` from reordering under the parent's
-    // rtl start-ellipsis (archive#304) — same contract as the chat dock split.
-    expect(parent.getAttribute('dir')).toBe('ltr');
+    // The bidi isolate that keeps `~`/`/` from reordering under the line's
+    // rtl start-ellipsis (archive#304); parent and leaf both sit inside it.
+    const isolate = document.querySelector(
+      '.project-page__dir-path-text',
+    ) as HTMLElement;
+    expect(isolate.getAttribute('dir')).toBe('ltr');
+    expect(isolate.textContent).toBe('/Users/me/dev/github/station');
+  });
+
+  test('the edit button names the path it edits, and the cut line offers it whole (#2799)', () => {
+    renderHeader();
+
+    // The visible line may be cut at its start; its aria-label replaces the
+    // text, so the path has to be in the name for a screen reader to hear it.
+    const editButton = screen.getByRole('button', {
+      name: 'Edit working directory /Users/me/dev/github/station',
+    });
+    expect(
+      editButton
+        .querySelector('.project-page__dir-path')
+        ?.getAttribute('title'),
+    ).toBe('/Users/me/dev/github/station');
   });
 
   test('edit affordance is rendered, not hover-revealed, and opens the editor', () => {
     const props = renderHeader();
 
     const editButton = screen.getByRole('button', {
-      name: 'Edit working directory',
+      name: 'Edit working directory /Users/me/dev/github/station',
     });
     expect(editButton.querySelector('.project-page__dir-edit-icon')).not.toBe(
       null,
@@ -138,7 +157,7 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
     expect(
       document.querySelector('.project-page__dir-copy-status')?.textContent,
     ).toBe(
-      'This browser refused clipboard access. Select the path to copy it manually.',
+      'This browser refused clipboard access. Click the path to edit it, then copy it from the field.',
     );
     // The haptic is a second success channel — no confirmation buzz for
     // something that did not happen.
@@ -218,5 +237,34 @@ describe('ProjectPageHeader folder refusal (#2412 review)', () => {
   test('no refusal, no alert', () => {
     renderEditing();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('the header draws the project icon', () => {
+  test('a stored image is drawn beside the name; a refused value falls back to initials', () => {
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    const first = renderHeader({
+      project: {
+        name: 'Station',
+        icon: image,
+        workingDirectory: '/Users/me/dev/github/station',
+      },
+    });
+    const identity = document.querySelector('.project-page__identity');
+    expect(identity?.querySelector('img')?.getAttribute('src')).toBe(image);
+    first.unmount();
+
+    renderHeader({
+      project: {
+        name: 'Station',
+        icon: 'https://example.com/logo.png',
+        workingDirectory: '/Users/me/dev/github/station',
+      },
+    });
+    const fallback = document.querySelector('.project-page__identity');
+    expect(fallback?.querySelector('img')).toBeNull();
+    expect(fallback?.querySelector('.brand-icon__initials')?.textContent).toBe(
+      'ST',
+    );
   });
 });

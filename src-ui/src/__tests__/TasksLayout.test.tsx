@@ -39,6 +39,7 @@ test('adapts the existing project task surface instead of creating a task model'
       slug: 'demo',
       projectWorkingDirectory: '/workspace/demo',
       agents: ['planner'],
+      presentation: 'board',
     }),
   );
 });

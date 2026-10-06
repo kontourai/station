@@ -14,7 +14,10 @@ import {
 } from '../../analytics/usage-rollup-service.js';
 import type { PeerCredential } from '../../services/peers/peer-credential-store.js';
 import { analyticsOps } from '../../telemetry/metrics.js';
-import { errorMessage } from '../schemas/schemas.js';
+import {
+  credentialProfileRefSchema,
+  errorMessage,
+} from '../schemas/schemas.js';
 
 export function createAnalyticsRoutes(
   usageAggregator: UsageAggregator | undefined,
@@ -34,7 +37,7 @@ export function createAnalyticsRoutes(
         );
       }
       analyticsOps.add(1, { op: 'get_usage' });
-      const stats = await usageAggregator.loadStats();
+      const stats = await usageAggregator.readStats();
       const from = c.req.query('from');
       const to = c.req.query('to');
       if (from || to) {
@@ -93,6 +96,25 @@ export function createAnalyticsRoutes(
       );
     }
     const groupBy = c.req.query('groupBy');
+    const provider = c.req.query('provider');
+    const profileQuery = c.req.query('credentialProfileRef');
+    if (
+      profileQuery !== undefined &&
+      (!provider ||
+        (profileQuery !== '' &&
+          !credentialProfileRefSchema.safeParse(profileQuery).success))
+    )
+      return c.json(
+        { success: false, error: 'Invalid engine account filter.' },
+        400,
+      );
+    const credentialProfileRef =
+      profileQuery === undefined ? undefined : profileQuery || null;
+    if (provider !== undefined && !['claude', 'codex'].includes(provider))
+      return c.json(
+        { success: false, error: 'Unsupported engine usage filter.' },
+        400,
+      );
     const allowed = new Set([
       'provider',
       'model',
@@ -179,6 +201,8 @@ export function createAnalyticsRoutes(
         {
           from,
           to,
+          provider,
+          credentialProfileRef,
           groupBy: groupBy as
             | 'provider'
             | 'model'

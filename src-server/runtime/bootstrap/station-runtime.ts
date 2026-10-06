@@ -2,6 +2,9 @@ import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-c
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
+import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
   type LoadedDeploymentAuthentication,
@@ -14,6 +17,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
@@ -31,8 +35,16 @@ import {
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
+import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
+import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  createNativeDeviceProofRuntime,
+  type NativeApplicationConnectorConfiguration,
+  type NativeDeviceProofRuntime,
+  nativeDeviceProofPilotEnabled,
+} from './native-device-proof-runtime.js';
 import { orchestrationUsageRefFor } from './orchestration-usage-ref.js';
 import { parseSecureDeviceSessionCookie } from './runtime-http.js';
 /**
@@ -109,8 +121,8 @@ import { makeUnattendedGrantResolver } from '../../services/agents/unattended-gr
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
-import { connectionSpawnEnv } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import {
@@ -119,6 +131,10 @@ import {
   VirtualApplicationIngress,
 } from '../../services/connections/virtual-application.js';
 import { ConsentChannelService } from '../../services/consent/consent-channel.js';
+import {
+  parseTrustedConsentOrigin,
+  TRUSTED_CONSENT_ORIGIN_ENV,
+} from '../../services/consent/consent-origin.js';
 import { AssignmentClaimService } from '../../services/evidence/assignment-claim-service.js';
 import type { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
@@ -127,6 +143,8 @@ import {
   type FeaturePreviewSelector,
 } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
+import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
+import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
@@ -454,9 +472,11 @@ import {
 import { readVerifiedPionApplicationRequest } from './self-hosted-broker-pion-runtime.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
+  BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
   stationControlSpawnEnv,
   stationDocsRuntimeIdentity,
+  stationKnowledgeRuntimeIdentity,
 } from './station-control-runtime-env.js';
 import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js';
 import { startStoreIntegrityVerification } from './store-integrity-verification.js';
@@ -483,6 +503,8 @@ export interface StationRuntimeOptions {
   };
   /** Explicit self-hosted routing composition; requires virtualApplication. */
   selfHostedBrokerConnector?: {
+    /** Validated native application lane actually selected by the trusted connector factory. */
+    nativeApplication?: NativeApplicationConnectorConfiguration;
     create(application: VirtualApplication): {
       start(): Promise<void>;
       shutdown(): Promise<void>;
@@ -529,6 +551,14 @@ export class StationRuntime {
   private applicationSessions?: ReturnType<
     typeof createApplicationSessionRuntime
   >;
+  /**
+   * #2893 opt-in native Device request-proof pilot. Composed only behind an
+   * explicit opt-in AND a supported provider/session capability; any
+   * unsupported configuration fails closed at startup.
+   */
+  private nativeDeviceProofPilot?: NativeDeviceProofRuntime;
+  private nativeRelayEnrollment?: NativeRelayEnrollmentService;
+  private nativeSurfaceRegistry?: NativeSurfaceRegistry;
   private relayEnrollment?: Awaited<
     ReturnType<typeof createRelayEnrollmentRuntime>
   >;
@@ -722,6 +752,7 @@ export class StationRuntime {
   private approvalRegistry: ApprovalRegistry;
   private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
   private readonly codexRolloutSource = new CodexRolloutSessionSource();
+  private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
     resolveSourceHome: (affinity) =>
@@ -776,11 +807,12 @@ export class StationRuntime {
     // byte-identical spawn env. Lazy-captured posture identical to
     // `getAppHomeEnv` above: only invoked at spawn time, well after
     // construction.
-    getConnectionEnv: async () => {
-      const appConfig = await this.configLoader.loadAppConfig();
-      return connectionSpawnEnv(
-        appConfig.agentConnections?.claude?.config,
+    getConnectionLaunch: async () => {
+      const config = await this.configLoader.loadAppConfig();
+      return engineProxyLaunch(
         'claude',
+        config.agentConnections?.claude?.config,
+        this.providerService.listProviderConnections(),
       );
     },
     // Station#1157 review fix (MEDIUM): the built-in station-control MCP
@@ -850,11 +882,12 @@ export class StationRuntime {
     // station#2072: codex counterpart of claudeAdapter's getConnectionEnv
     // closure above — same sanitization, same lazy capture, `CODEX_HOME`
     // as the config-home key.
-    getConnectionEnv: async () => {
-      const appConfig = await this.configLoader.loadAppConfig();
-      return connectionSpawnEnv(
-        appConfig.agentConnections?.codex?.config,
+    getConnectionLaunch: async () => {
+      const config = await this.configLoader.loadAppConfig();
+      return engineProxyLaunch(
         'codex',
+        config.agentConnections?.codex?.config,
+        this.providerService.listProviderConnections(),
       );
     },
     // archive#1195: the wire-safe substitution for the built-in
@@ -866,14 +899,34 @@ export class StationRuntime {
     // constructor body (same lazy-capture posture as
     // `getStationControlEnv` above), but this closure is only invoked at
     // `startSession` time, well after construction completes.
-    mintStationControlMcpAuth: (threadId: string, tenantExecutionContext) => {
+    mintStationControlMcpAuth: (
+      threadId: string,
+      tenantExecutionContext,
+      allowedTools,
+    ) => {
       const { token } = mintStationControlMcpToken(
         threadId,
         'url-token',
         undefined,
         tenantExecutionContext,
+        allowedTools,
       );
       return buildStationControlMcpUrl(this.port, token);
+    },
+    mintStationKnowledgeMcpAuth: (
+      threadId,
+      tenantExecutionContext,
+      allowedTools,
+    ) => {
+      const { token } = mintStationControlMcpToken(
+        threadId,
+        'url-token',
+        undefined,
+        tenantExecutionContext,
+        allowedTools,
+        'station-knowledge',
+      );
+      return buildStationControlMcpUrl(this.port, token, 'station-knowledge');
     },
     revokeStationControlMcpAuth: (threadId: string) =>
       revokeStationControlMcpToken(threadId),
@@ -1003,8 +1056,19 @@ export class StationRuntime {
   // (transaction store + truthful availability state) exists from
   // construction so routes can consult it even when the listener never
   // binds; the listener itself starts during initialize.
-  public readonly consentChannel = new ConsentChannelService();
+  // A malformed STATION_TRUSTED_CONSENT_ORIGIN throws here, refusing startup.
+  public readonly consentChannel = new ConsentChannelService({
+    trustedOrigin: parseTrustedConsentOrigin(
+      process.env[TRUSTED_CONSENT_ORIGIN_ENV],
+    ),
+  });
   private consentListener: ConsentListener | null = null;
+  // #3257 (S2b): the operator passkey enrollment ceremony. The registry file is
+  // created only when a ceremony actually begins (which needs
+  // STATION_TRUSTED_CONSENT_ORIGIN), so a Station that never enrolls a passkey
+  // never creates the database; it is closed with the other private stores.
+  private operatorPasskeyRegistry?: LazyOperatorPasskeyRegistry;
+  private operatorPasskeys?: OperatorPasskeyEnrollmentService;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
@@ -1174,6 +1238,10 @@ export class StationRuntime {
       this.configLoader.registerBuiltinIntegrationRuntimeIdentity(
         BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
         () => stationDocsRuntimeIdentity(),
+      );
+      this.configLoader.registerBuiltinIntegrationRuntimeIdentity(
+        BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
+        () => stationKnowledgeRuntimeIdentity(this.port),
       );
       this.orchestrationDatabasePath = orchestrationDatabasePath;
       this.orchestrationEventStore = openedEventStore = new EventStore(
@@ -1434,9 +1502,15 @@ export class StationRuntime {
           .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
           .then(async (detail) => {
             if (!detail) return;
-            const task = this.taskGraphService
-              .listTasks()
-              .find((candidate) => candidate.sessionId === sessionId);
+            const binding =
+              this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+                sessionId,
+              );
+            const task = binding
+              ? this.taskGraphService.readTaskView(binding.taskId)
+              : this.taskGraphService
+                  .listTasks()
+                  .find((candidate) => candidate.sessionId === sessionId);
             if (task && event.provider) {
               // Fold the persisted canonical stream through the one lifecycle
               // classifier used by every other Station projection. Exit
@@ -1454,6 +1528,7 @@ export class StationRuntime {
                 sessionId,
                 provider: event.provider,
                 outcome,
+                occurredAt: detail.session.updatedAt,
               });
             }
             const metadata = worktreeMetadataFromEvents(
@@ -3245,7 +3320,8 @@ export class StationRuntime {
         )
       : undefined;
     this.virtualApplication = virtualApplication;
-    const inFlight = this.runInitialize();
+    const nativeProofFlag = process.env.STATION_NATIVE_DEVICE_PROOF_PILOT;
+    const inFlight = this.runInitialize(nativeProofFlag);
     this.initializeInFlight = inFlight;
     try {
       await inFlight;
@@ -3269,14 +3345,45 @@ export class StationRuntime {
       }
     } catch (error) {
       virtualApplication?.stop();
-      try {
-        await this.retireSelfHostedBroker();
-      } catch (cleanupError) {
+      const cleanupErrors: unknown[] = [];
+      const retire = async (operation: () => void | Promise<void>) => {
+        try {
+          await operation();
+        } catch (cause) {
+          cleanupErrors.push(cause);
+        }
+      };
+      await retire(async () => {
+        await this.nativeRelayEnrollment?.close();
+        this.nativeRelayEnrollment = undefined;
+        this.nativeSurfaceRegistry?.close();
+        this.nativeSurfaceRegistry = undefined;
+      });
+      await retire(() => {
+        this.nativeDeviceProofPilot?.close();
+        this.nativeDeviceProofPilot = undefined;
+      });
+      if (nativeProofFlag !== undefined && nativeProofFlag !== '0') {
+        await retire(() => {
+          this.applicationSessions?.close();
+          this.applicationSessions = undefined;
+        });
+        await retire(async () => {
+          await this.deploymentAuthentication?.service.close();
+          this.deploymentAuthentication = undefined;
+          this.localAccounts = undefined;
+        });
+        await retire(() => {
+          this.projectMembership?.close();
+          this.projectMembership = undefined;
+        });
+      }
+      await retire(() => this.retireSelfHostedBroker());
+      if (cleanupErrors.length)
         throw new AggregateError(
-          [error, cleanupError],
+          [error, ...cleanupErrors],
           'Runtime startup cleanup was incomplete.',
         );
-      }
       throw error;
     } finally {
       if (this.initializeInFlight === inFlight) {
@@ -3285,7 +3392,14 @@ export class StationRuntime {
     }
   }
 
-  private async runInitialize(): Promise<void> {
+  private async runInitialize(
+    nativeProofFlag: string | undefined,
+  ): Promise<void> {
+    const nativeProofEnabled = nativeDeviceProofPilotEnabled(nativeProofFlag);
+    if (!nativeProofEnabled && this.nativeDeviceProofPilot) {
+      this.nativeDeviceProofPilot.close();
+      this.nativeDeviceProofPilot = undefined;
+    }
     // A failed attempt retains its exact readers until both owners prove
     // retirement. No replacement Orchestration or listener is constructed first.
     await this.retireFailedSearch();
@@ -3326,6 +3440,72 @@ export class StationRuntime {
         },
       );
     }
+    if (nativeProofEnabled && !this.nativeDeviceProofPilot) {
+      this.nativeDeviceProofPilot = createNativeDeviceProofRuntime({
+        flag: nativeProofFlag,
+        homeDir: this.configLoader.getProjectHomeDir(),
+        stationId: identity.environmentId,
+        authentication: this.deploymentAuthentication?.service,
+        virtualApplicationOrigin: this.virtualApplicationConfiguration?.origin,
+        nativeApplication:
+          this.selfHostedBrokerConfiguration?.nativeApplication,
+        pairing: this.environmentSecurityService.devicePairing,
+      });
+    }
+    const freshNativeFlag = process.env.STATION_NATIVE_ENROLLMENT_PILOT;
+    if (
+      freshNativeFlag !== undefined &&
+      freshNativeFlag !== '0' &&
+      freshNativeFlag !== '1'
+    )
+      throw new Error('STATION_NATIVE_ENROLLMENT_PILOT must be 0 or 1.');
+    if (freshNativeFlag === '1' && !this.nativeRelayEnrollment) {
+      if (
+        !nativeProofEnabled ||
+        !this.nativeDeviceProofPilot ||
+        !this.deploymentAuthentication?.service.pendingEnrollmentCapabilities()
+          .available ||
+        !this.virtualApplicationConfiguration ||
+        !this.selfHostedBrokerConfiguration?.nativeApplication
+      )
+        throw new Error(
+          'Native enrollment requires the native Device pilot, a configured relay and a supported pending account provider.',
+        );
+      this.nativeSurfaceRegistry ??= new NativeSurfaceRegistry(
+        this.configLoader.getProjectHomeDir(),
+        identity.environmentId,
+      );
+      const journal = new NativeRelayEnrollmentJournal(
+        join(
+          this.configLoader.getProjectHomeDir(),
+          'authentication',
+          'native-relay-enrollment.sqlite',
+        ),
+        identity.environmentId,
+      );
+      const service = new NativeRelayEnrollmentService({
+        stationId: identity.environmentId,
+        origin: this.virtualApplicationConfiguration.origin,
+        registry: this.nativeSurfaceRegistry,
+        journal,
+        pairing: this.environmentSecurityService.devicePairing,
+        bindings: this.nativeDeviceProofPilot.bindings,
+        authentication: this.deploymentAuthentication.service,
+        signing: new ConnectionSigningKeyStore(
+          this.configLoader.getProjectHomeDir(),
+        ),
+        operatorSecurity: this.environmentSecurityService,
+      });
+      try {
+        await service.recoverBeforeAdmission();
+        this.nativeRelayEnrollment = service;
+      } catch (error) {
+        await service.close();
+        throw error;
+      }
+    } else if (this.nativeRelayEnrollment) {
+      await this.nativeRelayEnrollment.recoverBeforeAdmission();
+    }
     if (this.deploymentAuthentication && !this.applicationSessions) {
       this.applicationSessions = createApplicationSessionRuntime(
         this.configLoader.getProjectHomeDir(),
@@ -3363,6 +3543,13 @@ export class StationRuntime {
             ),
         },
         readVerifiedNativeVirtualApplicationRequest,
+        this.nativeDeviceProofPilot
+          ? (request: Request) => {
+              const current =
+                this.nativeDeviceProofPilot?.authority.resolveCurrent(request);
+              return current ? { device: current.device } : undefined;
+            }
+          : undefined,
       );
     }
     if (!this.relayEnrollment) {
@@ -3417,6 +3604,8 @@ export class StationRuntime {
           attachedSessionSources: [
             this.claudeTranscriptSource,
             this.codexRolloutSource,
+            new GrokSessionSource({ logger: this.logger }),
+            this.openCodeSessionSource,
           ],
           port: this.port,
           host: this.host,
@@ -3905,6 +4094,33 @@ export class StationRuntime {
    * refusal — and never degrades open. This deliberately does NOT copy the
    * MCP frame proxy's silent `resolve(null)` optional-degrade shape.
    */
+  /**
+   * The enrollment service, or undefined where it must not exist (hosted
+   * tenants, D11). Opening the store is deferred to first use, and a store
+   * that cannot open privately fails that call closed; it never blocks startup.
+   */
+  private getOperatorPasskeys(): OperatorPasskeyEnrollmentService | undefined {
+    if (this.operatorPasskeys) return this.operatorPasskeys;
+    if (isHostedTenantExecutionRequired()) return undefined;
+    this.operatorPasskeyRegistry = new LazyOperatorPasskeyRegistry(
+      this.configLoader.getProjectHomeDir(),
+    );
+    this.operatorPasskeys = new OperatorPasskeyEnrollmentService({
+      registry: this.operatorPasskeyRegistry,
+      origin: this.consentChannel.trustedOrigin,
+      resolveDevice: (deviceId) => {
+        const device = this.environmentSecurityService.devicePairing
+          .listDevices()
+          .find((item) => item.id === deviceId);
+        return device && device.revokedAt === null
+          ? { scope: device.scope }
+          : null;
+      },
+      logger: this.logger,
+    });
+    return this.operatorPasskeys;
+  }
+
   private async startConsentListenerOrReport(): Promise<void> {
     if (isHostedTenantExecutionRequired()) {
       // Same posture as the terminal listener above: hosted ingress is
@@ -3936,6 +4152,7 @@ export class StationRuntime {
         channel: this.consentChannel,
         credentials: this.environmentSecurityService,
         logger: this.logger,
+        passkeys: this.getOperatorPasskeys(),
       }),
       port,
       host: this.host,
@@ -3989,9 +4206,20 @@ export class StationRuntime {
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
+      ...(this.nativeDeviceProofPilot
+        ? {
+            nativeDeviceProofBindings: this.nativeDeviceProofPilot.bindings,
+            nativeDeviceProofPilot: {
+              ...this.nativeDeviceProofPilot.configuration,
+              authority: this.nativeDeviceProofPilot.authority,
+            },
+          }
+        : {}),
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       applicationSessions: this.applicationSessions,
+      nativeRelayEnrollment: this.nativeRelayEnrollment,
+      nativeSurfaceRegistry: this.nativeSurfaceRegistry,
       relayEnrollment: this.relayEnrollment,
       app,
       logger: this.logger,
@@ -3999,6 +4227,7 @@ export class StationRuntime {
       environmentSecurityService: this.environmentSecurityService,
       approvalRegistry: this.approvalRegistry,
       consentChannel: this.consentChannel,
+      operatorPasskeys: this.getOperatorPasskeys(),
       appConfig: this.appConfig,
       // Delta2 review H2: `appConfig` above is captured once, here, while
       // `this.appConfig` is REPLACED by every configuration reload
@@ -4036,6 +4265,7 @@ export class StationRuntime {
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,
+      operationalEventPublisher: this.operationalEventPublisher,
       pluginInstallationHost: this.pluginInstallationHost,
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
@@ -4495,6 +4725,8 @@ export class StationRuntime {
     void this.retireSelfHostedBroker();
     this.virtualApplicationLifetime?.abort();
     this.virtualApplication?.stop();
+    this.nativeDeviceProofPilot?.close();
+    this.nativeDeviceProofPilot = undefined;
 
     this.searchAdmissionStopped = true;
     this.runtimeSearch?.stop();
@@ -4553,6 +4785,14 @@ export class StationRuntime {
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
     try {
+      await this.nativeRelayEnrollment?.close();
+      this.nativeRelayEnrollment = undefined;
+      this.nativeSurfaceRegistry?.close();
+      this.nativeSurfaceRegistry = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
       this.relayEnrollment?.close();
       this.relayEnrollment = undefined;
     } catch (error) {
@@ -4561,6 +4801,13 @@ export class StationRuntime {
     try {
       this.applicationSessions?.close();
       this.applicationSessions = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.operatorPasskeyRegistry?.close();
+      this.operatorPasskeyRegistry = undefined;
+      this.operatorPasskeys = undefined;
     } catch (error) {
       failures.push(error);
     }

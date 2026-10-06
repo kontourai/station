@@ -402,6 +402,8 @@ function treeFootprint(root) {
  *   install.sh              the installer that installed this version, which
  *                           `station upgrade` and the documented uninstall
  *                           (`<install root>/current/install.sh uninstall`) run
+ *   install.ps1             Windows archives only: the Windows installer
+ *                           (#2675 slice W), carried for the same reason
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
  *   runtime/                the pinned, digest-verified official Node.js
  *   .station-prebuilt-archive  tells the CLI there is nothing to build
@@ -464,6 +466,10 @@ async function stagePortableServerTree({
   // version that verifies the next one is the installed one (#2675).
   cpSync(join(projectRoot, 'install.sh'), join(stageRoot, 'install.sh'));
   chmodSync(join(stageRoot, 'install.sh'), 0o755);
+  // A Windows install is made, staged and upgraded by install.ps1 instead
+  // (#2675 slice W), so the Windows archive carries that installer too.
+  if (target.platform === 'win32')
+    cpSync(join(projectRoot, 'install.ps1'), join(stageRoot, 'install.ps1'));
   writeFileSync(
     join(stageRoot, '.station-release.json'),
     `${JSON.stringify(release, null, 2)}\n`,

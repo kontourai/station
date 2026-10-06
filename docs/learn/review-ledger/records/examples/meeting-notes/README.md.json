@@ -1,0 +1,59 @@
+{
+  "path": "examples/meeting-notes/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete README: capture/upload and raw create, requested compile schema and response field validation, separate compiled-record write and provenance link, pending-edit races, graph invalidation limit, default all-relevant-roots Ask scope and indexed excerpt/source distinction, disabled SDK live capture, and process-local Neo4j setup.",
+
+  "limits": "EXECUTED PASS: public plugin build and fixture-based capture/compile/Ask/graph tests. No live model, microphone, dual-adapter installed capture journey or Neo4j qualification; two live Neo4j tests skipped. Source-linked compilation does not verify input equality with the saved raw record.",
+
+  "sources": [
+    "examples/meeting-notes/layout.json",
+
+    "examples/meeting-notes/plugin.json",
+
+    "examples/meeting-notes/src/AskPane.tsx",
+
+    "examples/meeting-notes/src/CaptureModal.tsx",
+
+    "examples/meeting-notes/src/GraphPane.tsx",
+
+    "examples/meeting-notes/src/compile.ts",
+
+    "examples/meeting-notes/src/roots.ts",
+
+    "packages/sdk/src/api-agent-runtime.ts",
+
+    "packages/sdk/src/client/knowledge.ts",
+
+    "packages/sdk/src/components/KnowledgeRecall.css",
+
+    "packages/sdk/src/components/KnowledgeRecall.tsx",
+
+    "packages/sdk/src/query-domains/knowledgeStores.ts",
+
+    "packages/shared/src/knowledge-root-identity.ts",
+
+    "src-server/knowledge-store/neo4j-connection.ts",
+
+    "src-server/knowledge-store/neo4j-graph-sync.ts",
+
+    "src-server/routes/knowledge/knowledge-index-routes.ts",
+
+    "src-server/routes/knowledge/knowledge-record-routes.ts",
+
+    "src-server/routes/knowledge/neo4j-graph-routes.ts"
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Integration source review through e0314c727: neo4j-connection.ts deleted the unused query stub and connection-type constant. The README's claims (process-local registration, TCP-only probe, graph routes without a production registration caller, env-guarded live tests) still hold, so the prose is accurate. Source review is separate from executed test evidence; no tests were run."
+  ]
+}

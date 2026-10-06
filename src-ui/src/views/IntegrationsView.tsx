@@ -181,7 +181,7 @@ export function IntegrationsView({
 
   const reconnectMutation = useReconnectIntegrationMutation({
     onSuccess: () => {
-      setMessage({ type: 'success', text: 'Reconnecting…' });
+      setMessage({ type: 'success', text: 'Connection check completed.' });
     },
     onError: (error) =>
       setMessage({ type: 'error', text: userFacingErrorMessage(error) }),

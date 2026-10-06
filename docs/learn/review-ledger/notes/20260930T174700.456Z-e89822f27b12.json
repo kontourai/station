@@ -1,0 +1,9 @@
+{
+  "revision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+
+  "notes": [
+    {"path":"docs/design/station-peer-pairing.md","note":"Merge review (origin/main into #2915/#2916): station-control-delegation.ts changed only on main, bounding delegated request titles in code points with an ellipsis. The design's claims about peer delegation credentials (including that a peer can enumerate session summaries and titles) and its line-cited remote respond/interrupt calls are unaffected; titles are still carried, only bounded. Classification unchanged.","inputs":["docs/design/station-peer-pairing.md"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main updated its C2b resolution note; this branch's delegated-answer handling does not change peer credentials or the forwarder. Classification unchanged.","inputs":["docs/design/station-peer-pairing.md"]}
+  ]
+}

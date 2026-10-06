@@ -35,15 +35,26 @@
  * non-2xx `{success:false,error}` body's `error` text is preserved instead
  * of being replaced with a generic status message.
  */
-import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
+import type { ChildWorkTranscriptPage } from '@kontourai/station-contracts/child-work';
+import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type {
+  AdoptedSessionResult,
+  SteerInputInspectionResult,
+  SteerTurnResult,
+} from '@kontourai/station-contracts/orchestration';
+import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
+import type { ThreadUsageTree } from '@kontourai/station-contracts/thread-usage-tree';
 import { envelopeError } from './api-error-message';
+import { ChatHttpError } from './chatHttpError';
 import {
+  authenticatedFetch,
   type ClientRequestOptions,
   getJson,
   mutateJson,
   type StationHttpError,
 } from './http';
 import { rethrowDeadline } from './request-deadline';
+import { isStationAnswer } from './station-envelope';
 
 interface OrchestrationEnvelope<T> {
   success: boolean;
@@ -86,10 +97,15 @@ export type ApprovalDecision =
   | 'cancel';
 
 export interface RespondToRequestInput {
+  expectedSkillExperience?: {
+    identity: SkillExperienceIdentityV1;
+    eventId: string;
+  };
   threadId: string;
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
+  answers?: HarnessQuestionAnswers;
 }
 
 export interface RespondToRequestResult {
@@ -222,6 +238,25 @@ export async function getOrchestrationConversationEventWindow<T>(
   return unwrapOrchestrationResponse<T>(response);
 }
 
+/**
+ * A conversation's usage tree: its own turns, each child (engine subagent or
+ * delegated task) with how its usage relates to the parent, and a roll-up
+ * total marked partial where it leaves something out. A conversation the
+ * caller cannot read is a 404; a tree past its bound is a 422. Both throw
+ * `StationHttpError` with that status.
+ */
+export async function getConversationUsageTree(
+  apiBase: string,
+  conversationId: string,
+  opts?: ClientRequestOptions,
+): Promise<ThreadUsageTree> {
+  const response = await getJson(
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/usage-tree`,
+    opts,
+  );
+  return unwrapOrchestrationResponse<ThreadUsageTree>(response);
+}
+
 /** `GET /api/orchestration/sessions/read-model` — the session read-model list. */
 export async function listOrchestrationSessions<T = unknown[]>(
   apiBase: string,
@@ -314,6 +349,31 @@ export async function getSessionFlowRun<T = SessionFlowRunView>(
     return null;
   }
   return unwrapOrchestrationResponse<T>(response);
+}
+
+/**
+ * #3163: one page of an engine subagent's own read-only transcript, by
+ * message offset. The server resolves the transcript from the reporting
+ * session's persisted child-work facts; no path is sent. A 404 (no such
+ * transcript for a session you can read) and a 503 (the engine no longer has
+ * it) both throw `StationHttpError` with that status.
+ */
+export async function getChildWorkTranscript(
+  apiBase: string,
+  threadId: string,
+  childId: string,
+  page: { offset?: number; limit?: number } = {},
+  opts?: ClientRequestOptions,
+): Promise<ChildWorkTranscriptPage> {
+  const query = new URLSearchParams();
+  if (page.offset !== undefined) query.set('offset', String(page.offset));
+  if (page.limit !== undefined) query.set('limit', String(page.limit));
+  const suffix = query.size > 0 ? `?${query}` : '';
+  const response = await getJson(
+    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/child-work/${encodeURIComponent(childId)}/transcript${suffix}`,
+    opts,
+  );
+  return unwrapOrchestrationResponse<ChildWorkTranscriptPage>(response);
 }
 
 /**
@@ -412,4 +472,73 @@ export async function interruptTurn(
     },
   );
   return unwrapOrchestrationResponse<unknown>(response);
+}
+
+export interface SteerInput {
+  threadId: string;
+  text: string;
+  turnId?: string;
+  clientInputId?: string;
+}
+
+async function dispatchSteerCommand<T>(
+  apiBase: string,
+  command: {
+    type: 'steerTurn' | 'steerTurnOnce' | 'inspectSteerInput';
+    threadId: string;
+    input: string;
+    turnId?: string;
+    clientInputId?: string;
+  },
+): Promise<T> {
+  const response = await authenticatedFetch(
+    `${apiBase}/api/orchestration/commands`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(command),
+    },
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: T;
+    error?: string;
+    code?: string;
+    details?: unknown;
+  };
+  if (!response.ok || !result.success) {
+    const failure = envelopeError(response, result, `HTTP ${response.status}`);
+    throw new ChatHttpError(failure, isStationAnswer(response, result));
+  }
+  return result.data as T;
+}
+
+/** ID-bearing calls fail closed on servers without receipt-protected steering. */
+export function steerTurn(
+  apiBase: string,
+  input: SteerInput,
+): Promise<SteerTurnResult> {
+  return dispatchSteerCommand(apiBase, {
+    type: input.clientInputId !== undefined ? 'steerTurnOnce' : 'steerTurn',
+    threadId: input.threadId,
+    input: input.text,
+    ...(input.clientInputId !== undefined
+      ? { clientInputId: input.clientInputId }
+      : {}),
+    ...(input.turnId ? { turnId: input.turnId } : {}),
+  });
+}
+
+/** Looks up a receipt without claiming an input or invoking an engine. */
+export function inspectSteerInput(
+  apiBase: string,
+  input: SteerInput & { clientInputId: string },
+): Promise<SteerInputInspectionResult> {
+  return dispatchSteerCommand(apiBase, {
+    type: 'inspectSteerInput',
+    threadId: input.threadId,
+    input: input.text,
+    clientInputId: input.clientInputId,
+    ...(input.turnId ? { turnId: input.turnId } : {}),
+  });
 }

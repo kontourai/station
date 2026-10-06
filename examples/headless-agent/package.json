@@ -1,0 +1,12 @@
+{
+  "name": "@station-examples/headless-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.mjs",
+    "start": "node dist/main.mjs"
+  },
+  "dependencies": {
+    "@kontourai/station-sdk": "^0.8.0"
+  }
+}

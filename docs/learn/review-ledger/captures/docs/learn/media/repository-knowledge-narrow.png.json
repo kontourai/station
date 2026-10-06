@@ -1,0 +1,39 @@
+{
+  "path": "docs/learn/media/repository-knowledge-narrow.png",
+
+  "sources": [
+    "examples/knowledge-library/layout.json",
+
+    "examples/knowledge-library/plugin.json",
+
+    "examples/knowledge-library/src/index.tsx",
+
+    "examples/knowledge-library/src/knowledge-library.css",
+
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
+
+    "examples/knowledge-library/src/RootPicker.tsx",
+
+    "packages/sdk/src/client/knowledge.ts",
+
+    "packages/sdk/src/components/KnowledgeRecall.css",
+
+    "packages/sdk/src/components/KnowledgeRecall.tsx",
+
+    "packages/sdk/src/hooks/knowledge.ts",
+
+    "packages/sdk/src/query-domains/knowledgeStores.ts",
+
+    "src-server/knowledge-store/knowledge-store-provider.ts",
+
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/page-layout.css"
+  ],
+
+  "reviewNotes": []
+}

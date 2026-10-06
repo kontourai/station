@@ -1,0 +1,31 @@
+{
+  "path": "examples/registry/signed-package/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README and signing command inspected; actual local CLI verification passed signature/tamper/key placement/refusal/redaction/no-home cases with ephemeral fixtures.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/registry/signed-package/package.json",
+
+    "examples/registry/signed-package/prepare.ts",
+
+    "examples/registry/signed-package/verify.ts",
+
+    "packages/shared/src/plugin-registry-signature.ts",
+
+    "packages/shared/src/plugin-tree-digest.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "npm run test --prefix examples/registry/signed-package passed actual CLI signing/tamper/output-key-placement/namespace/redaction/no-home checks; ephemeral local keys only.",
+
+    "Integration source review through e0314c727: plugin-tree-digest.ts added an optional `alsoWithout` observation that yields a separate `digestWithout`. computePluginTreeDigest still excludes only the root .git under station-plugin-tree/v2, so the README's digest claims stay accurate. Source review is separate from executed test evidence."
+  ]
+}

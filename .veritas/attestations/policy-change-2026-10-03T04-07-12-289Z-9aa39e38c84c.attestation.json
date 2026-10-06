@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-03T04:07:12.289Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:d683b09c5100dfa5e0b31ec6efe07e788348ea4c4d5af74c477f2e3c6bdccb69",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c",
+  "validUntilDays": 7,
+  "notes": "Authorize only four high-advisory exceptions through 2026-10-10: http-cache-semantics root/sdk/shared GHSA-ch52-4w7c-c8xp and braces root GHSA-vfj7-8cjw-p6xm. Temporary risk acceptance; exploitability remains unproven; tracking issue station#3150.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c",
+    "approvalRef": "t3-thread:2476b495-8abe-4c47-be5a-57851a445325:exception-approval-2026-10-03",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58",
+        "validUntil": "2026-10-10T04:07:12.289Z"
+      },
+      "createdAt": "2026-10-03T04:07:12.289Z",
+      "updatedAt": "2026-10-03T04:07:12.289Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+      "claimId": "veritas.attestation.policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Authorize only four high-advisory exceptions through 2026-10-10: http-cache-semantics root/sdk/shared GHSA-ch52-4w7c-c8xp and braces root GHSA-vfj7-8cjw-p6xm. Temporary risk acceptance; exploitability remains unproven; tracking issue station#3150.",
+      "observedAt": "2026-10-03T04:07:12.289Z",
+      "collectedBy": "brian",
+      "integrityRef": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-03T04:07:12.289Z",
+        "validUntil": "2026-10-10T04:07:12.289Z",
+        "contentHash": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c.verified",
+      "claimId": "veritas.attestation.policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c"
+      ],
+      "createdAt": "2026-10-03T04:07:12.289Z",
+      "verifiedAt": "2026-10-03T04:07:12.289Z"
+    }
+  }
+}

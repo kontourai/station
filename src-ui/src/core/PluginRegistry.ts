@@ -6,12 +6,14 @@
  */
 
 import type { LayoutCatalogContribution } from '@kontourai/station-contracts/layout';
+import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import {
   authenticatedFetch,
   type LayoutComponent,
 } from '@kontourai/station-sdk';
 import { createElement } from 'react';
 import { isolatedPluginLayout } from '../components/plugins/isolatedPluginLayout';
+import type { PluginFrameHostProps } from '../components/plugins/PluginFrameHost';
 import { nativePlatformPromise } from '../platform/native';
 import { resolveCspNonce } from '../utils/csp';
 import { log } from '../utils/logger';
@@ -63,6 +65,10 @@ interface RegisteredPluginLayout {
   readonly owner: PluginLayoutOwner;
   readonly isolated?: boolean;
   isolatedLayouts?: WeakMap<LayoutCatalogContribution, LayoutComponent>;
+  experienceLayouts?: WeakMap<
+    NonNullable<PluginFrameHostProps['skillExperience']>,
+    LayoutComponent
+  >;
   readonly plugin?: {
     readonly name: string;
     readonly declaredSlug: string;
@@ -345,26 +351,41 @@ export class PluginRegistry {
   }
 
   private registerIsolatedPlugin(pluginMeta: any, generation: number): boolean {
-    const declaredSlug = pluginMeta?.layout?.slug;
-    if (typeof declaredSlug !== 'string' || !declaredSlug) return false;
+    const names = new Set<string>();
+    const legacySlug = pluginMeta?.layout?.slug;
+    if (typeof legacySlug === 'string' && legacySlug) names.add(legacySlug);
     const name = pluginMeta.name;
+    if (Array.isArray(pluginMeta.workspacePanes)) {
+      for (const input of pluginMeta.workspacePanes) {
+        const descriptor = parseWorkspacePaneDescriptor(input);
+        if (
+          descriptor?.renderer.kind === 'plugin-component' &&
+          descriptor.provenance.origin === 'plugin' &&
+          descriptor.provenance.pluginId === name
+        )
+          names.add(descriptor.renderer.name);
+      }
+    }
+    if (!names.size) return false;
     const component: LayoutComponent = () =>
       createElement('div', { hidden: true });
-    this.layouts.set(declaredSlug, {
-      component,
-      isolated: true,
-      plugin: {
-        name,
-        declaredSlug,
-        granted: pluginMeta.permissions?.granted,
-      },
-      owner: {
-        pluginId: name,
-        source: `plugins/${name}`,
-        version: pluginMeta.version,
-        generation,
-      },
-    });
+    for (const declaredSlug of names) {
+      this.layouts.set(declaredSlug, {
+        component,
+        isolated: true,
+        plugin: {
+          name,
+          declaredSlug,
+          granted: pluginMeta.permissions?.granted,
+        },
+        owner: {
+          pluginId: name,
+          source: `plugins/${name}`,
+          version: pluginMeta.version,
+          generation,
+        },
+      });
+    }
     this.pluginMeta.set(name, pluginMeta);
     return true;
   }
@@ -881,13 +902,17 @@ export class PluginRegistry {
 
   /**
    * Returns a React component only when its active registry record is owned by
-   * the exact local contribution bound to the pane occurrence. Component names
+   * the exact contribution bound to the pane occurrence. Component names
    * are intentionally insufficient authority: another contribution may use
    * the same name, or a newer registry generation may have replaced it.
    */
   getTrustedLayout(
     name: string,
     contribution: LayoutCatalogContribution | undefined,
+    experience?: Pick<
+      PluginFrameHostProps,
+      'skillExperience' | 'skillExperienceIdentity'
+    >,
   ): LayoutComponent | null {
     const registration = this.layouts.get(name);
     if (!registration || !contribution) return null;
@@ -897,10 +922,49 @@ export class PluginRegistry {
         owner,
         this.registryGeneration,
         contribution,
-        registration.isolated,
+        registration.isolated || Boolean(experience?.skillExperience),
       )
     )
       return null;
+    if (experience?.skillExperience) {
+      const identity = experience.skillExperienceIdentity;
+      if (
+        !identity ||
+        identity.pluginId !== owner.pluginId ||
+        identity.pluginVersion !== owner.version
+      )
+        return null;
+      const metadata = this.pluginMeta.get(owner.pluginId);
+      const plugin = registration.plugin ?? {
+        name: owner.pluginId,
+        declaredSlug: name,
+        granted: metadata?.permissions?.granted,
+      };
+      registration.experienceLayouts ??= new WeakMap();
+      const existing = registration.experienceLayouts.get(
+        experience.skillExperience,
+      );
+      if (existing) return existing;
+      const props: PluginFrameHostProps = {
+        plugin,
+        ...experience,
+        authorize: () =>
+          authorizesPluginLayout(
+            owner,
+            this.registryGeneration,
+            contribution,
+            true,
+          ),
+        onObservation: (exports) => {
+          if (!exports.includes(plugin.declaredSlug))
+            this.markIsolatedPluginFailed(plugin.name);
+        },
+        onFailure: () => this.markIsolatedPluginFailed(plugin.name),
+      };
+      const component: LayoutComponent = () => isolatedPluginLayout(props);
+      registration.experienceLayouts.set(experience.skillExperience, component);
+      return component;
+    }
     if (registration.isolated && registration.plugin) {
       // Preserve React component and callback identity across host renders.
       // Weak keys retain the exact authority binding without keeping retired

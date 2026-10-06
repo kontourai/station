@@ -52,12 +52,6 @@ function remember(key: string, top: number) {
   }
 }
 
-/** Test seam: the memory is module state, and a test that asserts a restore
- *  must be able to start from a known one. */
-export function resetScrollMemoryForTests() {
-  positions.clear();
-}
-
 export function useScrollRestoration(
   containerRef: RefObject<HTMLElement | null>,
   routeKey: string,

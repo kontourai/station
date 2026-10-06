@@ -3,7 +3,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'models',
     title: 'Models',
-    subtitle: 'Model connections that power chats and agents.',
+    subtitle: "API and local model services for agents using Station's engine.",
     path: '/connections/models',
     legacyPaths: ['/connections/providers'],
     addLabel: 'Add model connection',
@@ -11,7 +11,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'engines',
     title: 'Engines',
-    subtitle: 'Agent CLIs on this Station, and custom engines you connected.',
+    subtitle: 'AI apps and other engines that run your agents.',
     path: '/connections/engines',
     legacyPaths: [
       '/connections/acp',
@@ -23,7 +23,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'tools',
     title: 'Tools',
-    subtitle: 'Tool servers available to Station.',
+    subtitle: 'Connect tool servers and choose which agents use them.',
     path: '/connections/tools',
     legacyPaths: [],
     addLabel: 'Add tool server',

@@ -1,0 +1,7 @@
+{
+  "revision": "d3eb1da665d22aa5f894d13e93b23346bf15819e",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed historical Connections walkthrough qualifier: it now distinguishes older screenshot/video labels and missing pre-Create guidance. Existing capture provenance and no-live-provider limits remain; abstraction findings unchanged.","inputs":["docs/architecture/abstraction-review.md"]}
+  ]
+}

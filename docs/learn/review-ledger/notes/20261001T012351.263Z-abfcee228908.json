@@ -1,0 +1,7 @@
+{
+  "revision": "2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Delta review of TaskWorkspaceView: existing room/provider/pane composition moved before recorded-reference inspection; exact Task identity and capability admission unchanged; identity/workspace details are disclosed through native details. Optional product boundaries remain explanatory.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md"]}
+  ]
+}

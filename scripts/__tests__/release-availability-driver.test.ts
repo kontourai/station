@@ -117,6 +117,62 @@ describe('release availability driver', () => {
     vi.unstubAllGlobals();
   });
 
+  test('verifies the signed host manifest through the inventory, not a release.yml attestation (#2959)', async () => {
+    const withManifest = (name: string) => ({
+      ...release(tag, '2026-08-24T12:00:00.000Z'),
+      assets: [
+        ...release(tag, '2026-08-24T12:00:00.000Z').assets,
+        { id: 3, name },
+      ],
+    });
+    const api = fixture({
+      releaseForTag: vi
+        .fn()
+        .mockResolvedValue(
+          withManifest('station-portable-preview-manifest.json'),
+        ),
+    });
+    const validateInventory = vi.fn();
+    const assertAssets = vi.fn();
+    await expect(
+      runReleaseAvailability(
+        event,
+        options(api, { validateInventory, assertAssets }),
+      ),
+    ).resolves.toMatchObject({ kind: 'projected' });
+    expect(validateInventory).toHaveBeenCalledTimes(1);
+    expect(assertAssets).toHaveBeenCalledWith(expect.any(String), tag, {
+      allowSignedHostManifest: true,
+    });
+    expect(
+      api.verifyAttestation.mock.calls.map(([path]: unknown[]) =>
+        String(path).split(/[\\/]/).at(-1),
+      ),
+    ).toEqual([
+      'station-release-inventory.json',
+      'station-container-release.json',
+    ]);
+    // Another ring's manifest name is not exempt: it must carry a
+    // release.yml attestation like any other asset (and then fails here).
+    const other = fixture({
+      releaseForTag: vi
+        .fn()
+        .mockResolvedValue(
+          withManifest('station-portable-stable-manifest.json'),
+        ),
+      verifyAttestation: vi
+        .fn()
+        .mockImplementation((path: string) =>
+          path.endsWith('station-portable-stable-manifest.json')
+            ? Promise.reject(new Error('no attestation'))
+            : Promise.resolve(undefined),
+        ),
+    });
+    await expect(
+      runReleaseAvailability(event, options(other)),
+    ).resolves.toEqual({ kind: 'unavailable' });
+  });
+
   test('advances a public preview release only after every provider receipt, and is idempotent', async () => {
     const api = fixture();
     await expect(

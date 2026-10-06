@@ -1,0 +1,7 @@
+{
+  "revision": "543ec6c18fac08d9cd88ed6dff81b940e7776f86",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"The server reader change (gh refusal read from stderr only, page-full partial, merged-results reason) alters no SDK call, cache key or payload shape beyond the contracts' subject field; the SDK reference states none of these.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

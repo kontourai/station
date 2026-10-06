@@ -1,0 +1,105 @@
+/* A pull request row: title over a meta line, one `⋯` at the right. */
+.pull-request-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  /* The `⋯`'s 44px hit area reaches 8px past its 28px box. */
+  gap: 0 var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+.pull-request-row:last-child {
+  border-bottom: 0;
+}
+.pull-request-row__open {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  margin: 0 calc(-1 * var(--space-3));
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pull-request-row__open--inert {
+  cursor: default;
+}
+button.pull-request-row__open:hover {
+  background: var(--bg-hover);
+}
+.pull-request-row__title {
+  font-size: var(--text-md);
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.pull-request-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  min-width: 0;
+}
+.pull-request-row__meta > span {
+  overflow-wrap: anywhere;
+}
+.pull-request-row__reference {
+  font-variant-numeric: tabular-nums;
+}
+.pull-request-row__current {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+.pull-request-row__meta time {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.pull-request-row__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+/* The row's `⋯`: a 28px round icon with a 44px hit area, no border. */
+.pull-request-row__more {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-top: var(--space-2);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+.pull-request-row__more::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+.pull-request-row__more:hover,
+.pull-request-row__more.is-active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

@@ -31,6 +31,44 @@ function secureCanonicalOrigin(value: unknown): value is string {
   }
 }
 
+function normalizeNativeBrokerRoute(
+  value: unknown,
+  applicationOrigin: string,
+): NonNullable<SavedConnection['nativeBrokerRoute']> {
+  if (
+    !secureCanonicalOrigin(applicationOrigin) ||
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value)
+  )
+    throw new Error('Invalid native broker route metadata.');
+  const route = value as Record<string, unknown>;
+  if (
+    Object.keys(route).sort().join(',') !==
+      'brokerOrigin,enrollmentId,profileName,profileRevision,routeVersion,stationId' ||
+    route.routeVersion !== 1 ||
+    typeof route.profileName !== 'string' ||
+    !route.profileName.trim() ||
+    route.profileName.length > 256 ||
+    !Number.isSafeInteger(route.profileRevision) ||
+    (route.profileRevision as number) < 1 ||
+    !secureCanonicalOrigin(route.brokerOrigin) ||
+    typeof route.stationId !== 'string' ||
+    !BROKER_SAFE_ID.test(route.stationId) ||
+    typeof route.enrollmentId !== 'string' ||
+    !BROKER_SAFE_ID.test(route.enrollmentId)
+  )
+    throw new Error('Invalid native broker route metadata.');
+  return {
+    routeVersion: 1,
+    profileName: route.profileName,
+    profileRevision: route.profileRevision as number,
+    brokerOrigin: route.brokerOrigin,
+    stationId: route.stationId,
+    enrollmentId: route.enrollmentId,
+  };
+}
+
 function normalizeBrokerRoute(
   value: unknown,
   applicationOrigin: string,
@@ -155,6 +193,19 @@ function normalizeAccessMethod(
   endpoints: readonly AccessEndpoint[],
 ): EnvironmentAccessMethod | null {
   if (method?.accessVersion !== 1 || typeof method.id !== 'string') return null;
+  if (method.kind === 'native-broker') {
+    const endpoint = endpoints.find(
+      (candidate) => candidate.id === method.endpointId,
+    );
+    return endpoint
+      ? {
+          accessVersion: 1,
+          id: method.id,
+          kind: 'native-broker',
+          endpointId: endpoint.id,
+        }
+      : null;
+  }
   if (method.kind === 'direct-http') {
     const endpoint = endpoints.find(
       (candidate) => candidate.id === method.endpointId,
@@ -221,13 +272,22 @@ function reconcileAccessState(
   const hostMethods = persistedMethods.filter(
     (method) => method.kind === 'host-tunnel',
   );
-  const accessMethods = [...hostMethods, ...directMethods];
+  const nativeMethods = endpoints.map((endpoint) => ({
+    accessVersion: 1 as const,
+    id: `access:native-broker:${endpoint.id}`,
+    kind: 'native-broker' as const,
+    endpointId: endpoint.id,
+  }));
+  const accessMethods = connection.nativeBrokerRoute
+    ? nativeMethods
+    : [...hostMethods, ...directMethods];
   const selectedMethod =
     accessMethods.find(
       (method) => method.id === connection.selectedAccessMethodId,
     ) ??
-    directMethods.find(
-      (method) => method.endpointId === selectedEndpoint?.id,
+    accessMethods.find(
+      (method) =>
+        'endpointId' in method && method.endpointId === selectedEndpoint?.id,
     ) ??
     accessMethods[0];
   return {
@@ -295,6 +355,12 @@ export function normalizeConnectionProfile(
   id: string,
 ): SavedConnection {
   const rawUrl = connection.url ?? '';
+  const nativeBrokerRoute =
+    connection.nativeBrokerRoute === undefined
+      ? undefined
+      : normalizeNativeBrokerRoute(connection.nativeBrokerRoute, rawUrl);
+  if (nativeBrokerRoute && connection.brokerRoute)
+    throw new Error('Native and browser broker references cannot be mixed.');
   const brokerRoute =
     connection.brokerRoute === undefined
       ? undefined
@@ -341,6 +407,7 @@ export function normalizeConnectionProfile(
           ? 'not-required'
           : 'required')),
     ...(brokerRoute ? { brokerRoute } : {}),
+    ...(nativeBrokerRoute ? { nativeBrokerRoute } : {}),
     ...(!brokerRoute && connection.hostOwnedCredential === true
       ? { hostOwnedCredential: true as const }
       : {}),

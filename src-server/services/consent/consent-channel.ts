@@ -43,8 +43,18 @@ export class ConsentChannelService {
     reason: 'The consent listener has not started.',
   };
 
-  constructor(options: { now?: () => number } = {}) {
-    this.store = new ConsentTransactionStore(options);
+  /**
+   * The configured HTTPS consent origin (`STATION_TRUSTED_CONSENT_ORIGIN`,
+   * already validated by `parseTrustedConsentOrigin`), or null for the
+   * default per-request http URL.
+   */
+  readonly trustedOrigin: string | null;
+
+  constructor(
+    options: { now?: () => number; trustedOrigin?: string | null } = {},
+  ) {
+    this.store = new ConsentTransactionStore({ now: options.now });
+    this.trustedOrigin = options.trustedOrigin ?? null;
   }
 
   state(): ConsentChannelState {
@@ -63,7 +73,9 @@ export class ConsentChannelService {
    * The absolute review URL for a transaction, preserving the REQUEST-VISIBLE
    * hostname and changing only the port (owner decision 4): `localhost`,
    * `127.0.0.1`, a LAN IP, and a MagicDNS name are different cookie hosts and
-   * must not be collapsed to any one of them.
+   * must not be collapsed to any one of them. When
+   * `STATION_TRUSTED_CONSENT_ORIGIN` is configured, that exact origin is
+   * issued instead.
    *
    * `requestHostHeader` is the `Host` header of the request that asked for
    * the URL. `null` when the listener is unavailable or the header is
@@ -75,6 +87,11 @@ export class ConsentChannelService {
   ): string | null {
     const state = this.#state;
     if (state.status !== 'listening') return null;
+    // A configured HTTPS origin is the operator's statement of where the
+    // consent listener is reachable; the request's Host plays no part.
+    if (this.trustedOrigin !== null) {
+      return `${this.trustedOrigin}${consentReviewPath(transactionId)}`;
+    }
     if (!requestHostHeader) return null;
     let hostname: string;
     try {

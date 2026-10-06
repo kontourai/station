@@ -1,0 +1,15 @@
+{
+  "path": ".changeset/documentation-contract-clarity.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Patch release intent for CLI help and the four affected public package documentation surfaces.",
+
+  "limits": "Not evidence of package versioning or publication.",
+
+  "sources": [],
+
+  "checks": []
+}

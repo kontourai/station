@@ -64,28 +64,34 @@ export function Header({
       >
         <MenuGlyph />
       </button>
-      {/* The brand wordmark beside it is the real, labelled home link; this
-          decorative img (alt="") is a mouse convenience for the same
-          destination. Both are visible at the mobile breakpoint, so giving
-          the logo its own role would put two consecutive identical tab stops
-          in front of a keyboard user (review finding, PR #1277 round 2). */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: mouse convenience duplicating the adjacent labelled home link. */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard path is the brand link beside it. */}
-      <img
-        src="/favicon.png"
-        alt=""
-        className="app-toolbar__logo"
-        onClick={goHome}
-      />
-      <span
-        className="app-toolbar__brand"
-        {...activatable(goHome, {
-          role: 'link',
-          label: `${productName} home`,
-        })}
-      >
-        {productName}
-      </span>
+      {/* The lockup owns the "full name or no name" rule: it is a one-line
+          wrapping box, so a wordmark that cannot fit beside the logo wraps
+          out of view as a whole instead of truncating to "S…". */}
+      <div className="app-toolbar__lockup">
+        {/* The LOGO is the home link: the one tab stop and the one link in the
+            accessibility tree. The wordmark beside it is a visual repeat that
+            wraps out of view when the row is too narrow to show it whole (see
+            `.app-toolbar__lockup`), and a link that can vanish must not be the
+            only one - it would leave an invisible tab stop. The global
+            focus-visible rule rings the logo. */}
+        <img
+          src="/favicon.png"
+          alt=""
+          className="app-toolbar__logo"
+          {...activatable(goHome, {
+            role: 'link',
+            label: `${productName} home`,
+          })}
+        />
+        {/* Aria-hidden and click-only: a mouse convenience repeating the logo link. */}
+        <span
+          className="app-toolbar__brand"
+          aria-hidden="true"
+          onClick={goHome}
+        >
+          {productName}
+        </span>
+      </div>
 
       {/* Breadcrumb — always show where you are: project/layout for project
           views, the section name (clickable up to its root) for standalone

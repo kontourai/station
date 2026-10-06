@@ -33,7 +33,9 @@ import {
  * floors, so this file no longer re-measures them. What it owns is the
  * PROJECT-CONTEXT half: the project badge and the git badge, which #1536 F left
  * in place when it deleted the visible path segment beside them, plus the
- * clip-or-fit rule across the shared row.
+ * clip-or-fit rule across the shared row. #3144 deliberately stacked a
+ * "New chats" caption above the project name: each label must stay on one
+ * line, rather than requiring the whole badge to be one line tall.
  *
  * DRIVEN: three widths, each chosen because it makes a different part of the
  * row the binding constraint — 320px (the identity row's own contents no
@@ -50,6 +52,10 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../');
 const INDEX_CSS_PATH = resolve(HERE, '../index.css');
+const PROJECT_CONTEXT_CSS_PATH = resolve(
+  HERE,
+  '../components/chat-dock/ChatDockProjectContext.css',
+);
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '⌘W',
@@ -117,7 +123,7 @@ function renderHeaderMarkup(): string {
             <ChatDockProjectContext
               projectSlug="demo"
               projectName="Demo Project"
-              workingDirectory="/Users/brian/dev/github/kontourai/demo-project"
+              workingDirectory="/Users/me/dev/github/kontourai/demo-project"
               gitStatus={gitStatus}
               projects={[]}
               onSelectProject={() => {}}
@@ -133,11 +139,18 @@ function renderHeaderMarkup(): string {
   return markup;
 }
 
-function buildFixtureHtml(markup: string): string {
-  const css = resolveCssImports(INDEX_CSS_PATH);
+function buildFixtureHtml(
+  markup: string,
+  theme: string,
+  ownerFirst: boolean,
+): string {
+  const cssPaths = ownerFirst
+    ? [PROJECT_CONTEXT_CSS_PATH, INDEX_CSS_PATH]
+    : [INDEX_CSS_PATH, PROJECT_CONTEXT_CSS_PATH];
+  const css = cssPaths.map((path) => resolveCssImports(path)).join('\n');
   assertNoImportsSurvive(css);
   return `<!doctype html>
-<html>
+<html data-theme="${theme}">
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>${css}</style>
@@ -154,15 +167,25 @@ type Measurement = {
   lineHeight: number;
   overflowX: string;
   visible: boolean;
+  left: number;
+  right: number;
+  inkLeft: number;
 };
 
 const WIDTHS = [320, 800, 1200] as const;
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
-describe.skipIf(!chromiumAvailable)(
-  'dock header identity and project context stay on one line without overprinting',
-  () => {
+// main.tsx imports App (and its eager component CSS) before index.css. Keep
+// both orders covered so extraction or hot reload cannot change truncation.
+describe.skipIf(!chromiumAvailable).each([
+  { theme: 'dark', ownerFirst: true },
+  { theme: 'light', ownerFirst: true },
+  { theme: 'dark', ownerFirst: false },
+  { theme: 'light', ownerFirst: false },
+])(
+  'dock header labels stay on one line without overprinting ($theme, owner CSS first: $ownerFirst)',
+  ({ theme, ownerFirst }) => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
 
     beforeAll(async () => {
@@ -176,7 +199,9 @@ describe.skipIf(!chromiumAvailable)(
     async function measure(width: number): Promise<Measurement[]> {
       const page = await browser.newPage({ viewport: { width, height: 700 } });
       try {
-        await page.setContent(buildFixtureHtml(renderHeaderMarkup()));
+        await page.setContent(
+          buildFixtureHtml(renderHeaderMarkup(), theme, ownerFirst),
+        );
         return await page.evaluate(() =>
           [
             '.chat-dock__active-identity-text',
@@ -185,6 +210,9 @@ describe.skipIf(!chromiumAvailable)(
             '.chat-dock__active-identity-title',
             '.chat-dock__project-context',
             '.chat-dock__project-badge',
+            '.chat-dock__project-badge-lines',
+            '.chat-dock__project-badge-caption',
+            '.chat-dock__project-badge-name',
             '.git-badge',
             '.git-badge__branch',
           ].map((selector) => {
@@ -193,6 +221,9 @@ describe.skipIf(!chromiumAvailable)(
             const style = window.getComputedStyle(element);
             const fontSize = Number.parseFloat(style.fontSize) || 16;
             const parsedLineHeight = Number.parseFloat(style.lineHeight);
+            const box = element.getBoundingClientRect();
+            const text = document.createRange();
+            text.selectNodeContents(element);
             return {
               selector,
               clientWidth: element.clientWidth,
@@ -202,7 +233,10 @@ describe.skipIf(!chromiumAvailable)(
                 ? parsedLineHeight
                 : fontSize * 1.2,
               overflowX: style.overflowX,
-              visible: element.getBoundingClientRect().width > 0,
+              visible: box.width > 0,
+              left: box.left,
+              right: box.right,
+              inkLeft: text.getBoundingClientRect().left,
             };
           }),
         );
@@ -235,11 +269,16 @@ describe.skipIf(!chromiumAvailable)(
     );
 
     test.each(WIDTHS)(
-      'the project name and branch each stay on one line at %ipx',
+      'the project labels stay left aligned and all labels fit one line at %ipx',
       async (width) => {
         const measurements = await measure(width);
+        const column = measurements.find(
+          (entry) => entry.selector === '.chat-dock__project-badge-lines',
+        );
+        if (!column) throw new Error('missing project label column');
         for (const selector of [
-          '.chat-dock__project-badge',
+          '.chat-dock__project-badge-caption',
+          '.chat-dock__project-badge-name',
           '.git-badge__branch',
         ]) {
           const entry = measurements.find((m) => m.selector === selector);
@@ -250,6 +289,14 @@ describe.skipIf(!chromiumAvailable)(
           if (entry.clientWidth === 0) continue;
           // A wrapped second line at least doubles the box height.
           expect(entry.clientHeight).toBeLessThan(entry.lineHeight * 1.8);
+          if (selector !== '.git-badge__branch') {
+            expect(entry.left).toBeGreaterThanOrEqual(column.left - 1);
+            expect(entry.right).toBeLessThanOrEqual(column.right + 1);
+            expect(
+              entry.inkLeft,
+              `${selector} text remains left aligned`,
+            ).toBeCloseTo(column.left, 0);
+          }
         }
       },
     );

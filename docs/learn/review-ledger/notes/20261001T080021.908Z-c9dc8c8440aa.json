@@ -1,0 +1,7 @@
+{
+  "revision": "c5364f269c1fa068755974e957adba21c461a6fa",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#3071 final round, after merging origin/main. Changed inputs: event-store.ts (#3071 final round: adds firstOtherTurnStartedAfter and puts the superseding turn's start among the settlement facts of the bounded projection). Searched this page for respondToRequest, request.opened/request.resolved, turnId on requests, interrupt handling and the session projection's contents: it makes no statement those deltas change. No prose change; the page's other claims were not re-reviewed.","inputs":["docs/contexts/evidence-governance/CONTEXT.md"]}
+  ]
+}

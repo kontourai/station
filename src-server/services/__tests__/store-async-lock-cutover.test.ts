@@ -184,7 +184,7 @@ const CASES: StoreSeamCase[] = [
       new UnattendedGrantStore(root).grantTool(
         'voice:planner',
         'calendar.create',
-        'brian',
+        'casey',
       ),
   },
   {

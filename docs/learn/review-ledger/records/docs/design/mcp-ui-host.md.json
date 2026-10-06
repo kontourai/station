@@ -1,0 +1,55 @@
+{
+  "path": "docs/design/mcp-ui-host.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete MCP Apps host design through metadata collection, real tool/resource routes, integration and visibility pinning, package admission and local process custody, render grants, React host and dedicated proxy/static fallback. Corrected nested-string precedence, secure-scheme rules, proxy listener endpoints and navigation/credential claims; separated policy construction from complete source-expression and browser containment assurance.",
+
+  "limits": "Executed local transport/route/frame fixtures and a synthetic Chromium policy-boundary probe with intercepted requests only. No real remote exfiltration, credentials, live third-party MCP service, native WebView or full network-containment qualification. Current limits remain explicit; no runtime security policy changed.",
+
+  "sources": [
+    "packages/shared/src/mcp-connection.ts",
+
+    "packages/shared/src/mcp-local-custody.ts",
+
+    "packages/shared/src/mcp-ui-csp.ts",
+
+    "src-server/routes/agents/__tests__/tools.routes.test.ts",
+
+    "src-server/routes/agents/tools.ts",
+
+    "src-server/runtime/mcp/__tests__/mcp-ui-frame-server.test.ts",
+
+    "src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts",
+
+    "src-server/runtime/mcp/mcp-apps-metadata.ts",
+
+    "src-server/runtime/mcp/mcp-ui-frame-server.ts",
+
+    "src-server/runtime/mcp/mcp-ui-resolver.ts",
+
+    "src-server/services/plugins/mcp-service.ts",
+
+    "src-server/services/plugins/mcp-ui-permissions.ts",
+
+    "src-server/services/plugins/package-mcp-admission.ts",
+
+    "src-ui/src/__tests__/MCPToolUIFrame.test.tsx",
+
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"
+  ],
+
+  "checks": [
+    "Source/caller review of all documented claims in this document on 2026-09-27, including explicit history/proposal boundaries; source baseline b79def9ceb04aa645bf565ee7d1b3e8cfba86b9a, prose revision e176f3a62b139043306d9e434f031d0a87ee1640.",
+
+    "EXECUTED: 660 tests passed across 30 focused files: Flow/Conduit 79, installation/trust 86, MCP 188, plugin development/permissions/registry 249, server modules/operational subscriptions 58. One Linux-only filesystem digest case skipped on this macOS host. These local fixtures do not qualify live providers or other platforms.",
+
+    "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) makes mcpUiToolCallDecision private, drops the isDistinctFrameOrigin re-export, and replaces the helper test with a behavioural test. In that test read-only is denied, and undefined or inherit prompt the host and reach the server only on Approve. That matches the documented read-only/require/inherit policy and the distinct-origin fallback; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: mcp-ui-frame-server.test.ts replaced proxy source greps with behavioural VM negatives and an exact frame-ancestors assertion; mcp-ui-resolver.test.ts folded near-duplicate cases (authoritative-empty catalog fallbacks, flat plus nested Survey keys) into existing tests; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

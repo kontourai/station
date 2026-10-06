@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
 import type {
   ApprovalMode,
   EngineId,
@@ -20,6 +21,7 @@ import type { ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
+import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
@@ -127,6 +129,14 @@ export interface ComposerAttachmentStageSnapshot {
   delivery?: 'legacy-inline' | 'staged';
   /** A reload has retained the stage reference but cannot retain File bytes. */
   needsFile?: boolean;
+  /**
+   * The completed upload outlived its server stage TTL, so it must be
+   * uploaded again before it can be sent. Distinguishes "time ran out" from
+   * a failed upload so the chip can say which one happened.
+   */
+  expired?: boolean;
+  /** See `ComposerAttachmentStageUpdate.capacityFull`. */
+  capacityFull?: boolean;
   error?: string;
   /** Retained provenance is safe across reload; source bytes are never retained. */
   transformation?: TransformationReceipt;
@@ -151,6 +161,12 @@ export interface ChatMessage {
   showContinue?: boolean;
   timestamp?: number;
   traceId?: string;
+  /**
+   * A steer Station delivered by stopping the step that was running (the
+   * engine has no additive steer channel); the bubble says so, because the
+   * step it stopped otherwise reads as cancelled for no reason.
+   */
+  steerInterruptedRun?: boolean;
   fromPrompt?: boolean;
   contentParts?: Array<{
     type:
@@ -171,6 +187,8 @@ export interface ChatMessage {
     name?: string;
     // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
     toolName?: string;
+    /** See `MessagePart.toolKind`: the engine's own category, when reported. */
+    toolKind?: string;
     server?: string;
     originalName?: string;
     args?: any;
@@ -187,6 +205,11 @@ export interface ChatMessage {
     approvalThreadId?: string;
     /** #2316: see `MessagePart.approvalEventId`. */
     approvalEventId?: string;
+    /** See `MessagePart.approvalToolName`. */
+    approvalToolName?: string;
+    /** #2915: see `MessagePart.approvalSessionGrant`. */
+    approvalSessionGrant?: ToolRequestSessionGrant;
+    questionnaire?: HarnessQuestionnaire;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'
@@ -270,6 +293,10 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
+  skillExperienceDraftInvalid?: boolean;
+  skillExperienceActive?: boolean;
+  skillExperienceMode?: 'guided' | 'alongside' | 'chat';
   id: string;
   conversationId?: string;
   /** Replaceable execution context beneath this durable conversation. */
@@ -291,8 +318,13 @@ export interface ChatSession {
   input: string;
   attachments: FileAttachment[];
   queuedMessages: string[];
+  queuedMessageMetadata?: import('./contexts/active-chats-state').PendingMessageMetadata[];
+  queueSendNowPending?: boolean;
+  streamingMessage?: import('./contexts/active-chats-state').StreamingMessage;
   /** See ChatUIState.queuedMessageFailure (active-chats-state.ts) — persisted. */
   queuedMessageFailure?: { message: string; code?: string; at: number };
+  /** See ChatUIState.usageLimitStopped (#3157) — session-scoped. */
+  usageLimitStopped?: boolean;
   /** See ChatUIState.unsentMessages (archive#3706) — persisted, not a queue. */
   unsentMessages?: UnsentMessageRecord[];
   outboundQueuedTurns?: Array<{
@@ -365,6 +397,8 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  /** See ChatUIState.answeredApprovals. */
+  answeredApprovals?: string[];
   /** See ChatUIState.unacknowledgedDecisions (#2880). */
   unacknowledgedDecisions?: UnacknowledgedDecision[];
   isProcessingStep?: boolean;
@@ -404,6 +438,17 @@ export interface Tool {
   parameters?: any;
   server?: string;
   toolName?: string;
+  group?: string;
+  title?: string;
+  tools?: {
+    name: string;
+    toolName?: string;
+    description?: string;
+    readOnly?: boolean;
+    group?: string;
+    title?: string;
+    disabled?: boolean;
+  }[];
 }
 
 export type { TemplateVariable } from '@kontourai/station-contracts/config';

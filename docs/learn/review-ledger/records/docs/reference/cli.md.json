@@ -1,0 +1,57 @@
+{
+  "path": "docs/reference/cli.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
+
+  "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
+
+  "sources": [
+    "packages/shared/src/sqlite-store-integrity.ts"
+  ],
+
+  "checks": [
+    "Independent CLI caller review and final wording deltas accepted.",
+
+    "CLI implementation lane: 174 tests across 8 files passed; 51 help topics matched.",
+
+    "Independent admission probe: 11 cases passed; option/version and synthetic actual chat/SDK/SSE flow probes passed without network/provider calls.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "Reviewed source changes: Uses shared envelopeDetailsMessage instead of duplicated formatter; reviewed CLI sentence semantics and inherited SDK refusal documentation. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed new archive lifecycle/upgrade/state and registry-listing sections against their complete changed owners. Other pending CLI families remain explicitly partial.",
+
+    "Continuation:180 tests/12 files PASS,252.73s (triage,homearchive,cloud/workspace/import,portableconfig,surfaceHTTP,operate,Projectidentity); expected unavailable Flow fixture logs retained.",
+
+    "Continuation:77 tests/4 files PASS,5.98s (SBOMgeneration/artifactvalidation/sharedportability).",
+
+    "Independent actual caller probe: configureApiCredential and SDKgetOrchestrationSession control authenticated against synthetic loopbackserver; actual runOperateShell omitted bearer on/events and rejected401. Receipt operate-auth-probe.json with reproducible mjs; ephemeralport and PassThrough only.",
+
+    "Prior13source hashes unchanged.3 JSON/TS CLI fences parse;91heading checklist records scope but is not semantic proof. Final407Markdown local-path/anchor checks PASS;3CLIJSON/TS fences PASS;git diff --check PASS;Veritas1790528796424:0failures0warnings.",
+
+    "Parent-confirmed frozen changed-owner review retained for lifecycle.ts,service.ts,profile-store.ts,entire install-registry.ts and396-line installer delta. Root receipts: .kontourai/upstream-docs-review-20260927/{current-owner-deltas.diff,installer-main-delta.diff,document-deltas.diff,root-accepted-source-deltas.json}. Source dependencies captured without claiming all-branch execution or rerunning prior174tests/51helptopics.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. packages/cli/src/commands/profile-store.ts: Delegates Windows trust execution to the shared bounded runner (120-second default timeout/1MiB output), preserving command/arguments and owner-only trust policy. No new Windows execution proof. packages/cli/src/commands/triage.ts: Replaces its unbounded Windows trust spawn wrapper with the shared bounded runner. Triage stdout passthrough, stored redaction, owner-only directory policy and draft-only behavior unchanged. packages/shared/src/__tests__/workspace-package.test.ts: Strengthens existing corrupted pack fixture from any throw to exact Invalid staged object refusal while preserving original corrupted bytes assertion. Recorded portable-workspace docs claims unchanged; no rerun.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Integration source review through e0314c727: the page's merged prose for the platform-v2 archive install, archive service units (kind/installRoot, `current`, refusal from inactive versions, port refusal, stopped units left stopped, STATION_SERVICE_MANAGED, 75 s TimeoutStopSec) and installer-owned archive upgrade was checked against install.sh, service.ts, service-command.ts and lifecycle.ts. The removed `plugin` runs source was never documented here. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds the `environment access devices|scope|scopes` verbs (environment.ts, device-access.ts), makes describeCliError render a structured full-access refusal, and makes requestJson errors keep status, code and details. Main's merged synopsis and bullet match the parser and behaviour: id, prefix or name resolution with refusal on ambiguity; expectedScope conflict refusal; access:manage never granted; --dry-run; reset reporting; resetFullAccess retry; loopback-only. The config set and chat/delegate prose is unchanged in meaning. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 makes `station plugin install` send the preview's gitMetadata back in its consent, so a folder Station stages stripped installs instead of being refused. The reference says only that the CLI previews, requests consent for the captured package, and that the server rechecks the preview. It never claimed such folders were refused, so nothing is now wrong. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage (distribution.ts) and the dev open-file MIME/path helpers (dev/http.ts) private but leaves their callers and behavior the same. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Server-side plugin-source.ts still splits `#<branch>` and passes `--branch` to clone, so the documented `#<branch>` install syntax still works. The cloud, cloud-project-import, portability, surface-http and triage test changes only tighten assertions (EEXIST on new output paths, HTTP status text, export headings and loss entries, ledger degradedFields, remote-diagnostics rejection), and all of them match the documented behavior. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c auto-merged a new 'Recorded versus acknowledged decisions' subsection after the delegate examples. It fits the branch's delegate text (respond/status/events). It also matches source: the six delivery values in station-control-delegation.ts; CODEX_APPROVAL_ACK_WINDOW_MS = 30_000; the codes engine-decision-unacknowledged and engine-decision-not-sent; the CLI line formats in packages/cli delegate.ts; and acknowledgement 'none' in the acp and claude adapters. 7cd4892e5 refuses a decision on a closed Codex request ('not open'), which matches the closed-by-engine row. The approvals section's request.opened/request.resolved description still holds. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence."
+  ]
+}

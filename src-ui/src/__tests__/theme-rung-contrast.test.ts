@@ -50,6 +50,9 @@ const FAMILIES: Array<{ token: string; floor: number; renders: string }> = [
   { token: '--syntax-keyword', floor: TEXT_FLOOR, renders: 'text' },
   { token: '--syntax-number', floor: TEXT_FLOOR, renders: 'text' },
   { token: '--syntax-string', floor: TEXT_FLOOR, renders: 'text' },
+  { token: '--syntax-function', floor: TEXT_FLOOR, renders: 'text' },
+  { token: '--syntax-tag', floor: TEXT_FLOOR, renders: 'text' },
+  { token: '--syntax-variable', floor: TEXT_FLOOR, renders: 'text' },
 ];
 
 const ROOT_MATCHING =

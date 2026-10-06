@@ -1,0 +1,113 @@
+{
+  "path": "docs/design/native-capabilities.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "packages/connect/src/core/nativeApplicationTransport.ts",
+
+    "packages/connect/src/core/nativeRelayLink.ts",
+
+    "packages/contracts/src/native-relay-link.ts",
+
+    "packages/sdk/src/client/application-session-native.ts",
+
+    "scripts/native-platform-boundary.mjs",
+
+    "src-desktop/build.rs",
+
+    "src-desktop/capabilities/default.json",
+
+    "src-desktop/Cargo.toml",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/local_access_watch.rs",
+
+    "src-desktop/src/native_account_operations.rs",
+
+    "src-desktop/src/native_account_proof_key.rs",
+
+    "src-desktop/src/native_application_peer.rs",
+
+    "src-desktop/src/native_device_binding_candidate.rs",
+
+    "src-desktop/src/native_device_custody.rs",
+
+    "src-desktop/src/native_device_proof_key.rs",
+
+    "src-desktop/src/native_proof_key_core.rs",
+
+    "src-desktop/src/native_relay_ios_launch.rs",
+
+    "src-desktop/src/native_relay_key_approval.rs",
+
+    "src-desktop/src/native_relay_link_intake.rs",
+
+    "src-desktop/src/native_relay_proof_key.rs",
+
+    "src-desktop/src/native_relay_redemption.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
+
+    "src-desktop/src/tray.rs",
+
+    "src-ui/src/components/OnboardingGate.tsx",
+
+    "src-ui/src/contexts/ApiBaseContext.tsx",
+
+    "src-ui/src/platform/native/__tests__/capability-report-dev-build.test.ts",
+
+    "src-ui/src/platform/native/__tests__/native-consent-broker-capability.test.ts",
+
+    "src-ui/src/platform/native/agentActivityRuntime.ts",
+
+    "src-ui/src/platform/native/index.ts",
+
+    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
+
+    "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayApplicationRuntime.ts",
+
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
+
+    "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
+
+    "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
+
+    "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
+
+    "src-ui/src/platform/native/share.ts",
+
+    "src-ui/src/platform/native/tauri.ts",
+
+    "src-ui/src/platform/native/types.ts",
+
+    "src-ui/src/platform/native/web.ts",
+
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Read the changed document in context; its purpose and prior evidence limits remain.",
+
+    "Integration source review through e0314c727: lib.rs removed the dormant notification_watch_start/stop commands and their state, Cargo.toml reworded the rustls comment and a TLS-backend test was added, and ApiBaseContext dropped a comment. The document never listed those commands and its capability, permission and signaling claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

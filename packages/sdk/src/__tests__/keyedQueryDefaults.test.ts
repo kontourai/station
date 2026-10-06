@@ -21,6 +21,7 @@ vi.mock('../client/http', () => ({
 }));
 vi.mock('../query-core', () => ({
   useApiQuery: mocks.useApiQuery,
+  useApiQueryRefetchingInvalidatedOnMount: mocks.useApiQuery,
   useApiMutation: vi.fn(),
 }));
 

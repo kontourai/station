@@ -1,0 +1,7 @@
+{
+  "revision": "8de24b8a7f1ec1bb022a098a000f37aee9ba8182",
+
+  "notes": [
+    {"path":"packages/shared/README.md","note":"#3209 delta-review fix: lines ~76-78 said 'The SDK loads that reader after a successful feature response', describing the removed lazy load. They now say the SDK client imports the reader statically and runs it only on a successful feature response. Checked the rest of the paragraph against packages/shared/src/skill-experience-reader.ts and skill-experience-values: the browser-safe /skill-experience-values leaf, /skill-experience-reader validating inventory and session projections, previews-only hydration, and the 'neither helper discovers, executes or grants' limits are all unchanged.","inputs":["packages/shared/README.md"]}
+  ]
+}

@@ -1181,6 +1181,61 @@ describe('orchestration fetchers keep the guard’s typed refusal', () => {
   });
 });
 
+describe('the usage-limit banner routes (#3157): a person acts, an agent cannot', () => {
+  const ROUTES = [
+    ['GET', '/api/orchestration/sessions/op-limited/usage-limit'],
+    ['POST', '/api/orchestration/sessions/op-limited/usage-limit/resume'],
+    ['POST', '/api/orchestration/sessions/op-limited/usage-limit/cancel'],
+  ] as const;
+
+  test.each([
+    ['the raw internal token', () => internalHeaders()],
+    [
+      'a bound operator caller',
+      () =>
+        internalHeaders({
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: mintStationControlMcpToken(
+            'op-limited',
+            'sdk-in-process',
+          ).token,
+        }),
+    ],
+    [
+      'a bearer-exposed operator caller',
+      () =>
+        internalHeaders({
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: mintStationControlMcpToken(
+            'op-limited',
+            'url-token',
+          ).token,
+        }),
+    ],
+  ])('%s is refused before any handler runs', async (_label, headers) => {
+    for (const [method, path] of ROUTES)
+      expect(
+        await rest(method, path, headers(), method === 'GET' ? undefined : {}),
+      ).toEqual({ status: 403, code: 'station_control_route_unmapped' });
+    expect(hits).toEqual([]);
+  });
+
+  test('the operator UI, a credential and never kind:internal, is not the guard’s to refuse', async () => {
+    for (const [method, path] of ROUTES) {
+      const response = await rest(
+        method,
+        path,
+        {
+          'content-type': 'application/json',
+          authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        },
+        method === 'GET' ? undefined : {},
+      );
+      // The harness serves no such route, so it is a plain 404: the guard let
+      // the credential through to routing instead of refusing it.
+      expect(response.code).toBeUndefined();
+    }
+  });
+});
+
 describe('the Station agent relay (M2): server code, not a carve-out', () => {
   test('a bare internal token on the relay path is refused', async () => {
     expect(
@@ -1299,7 +1354,11 @@ describe('answering a pending request (M4): only the bound operator', () => {
     expect(refusals).toEqual([]);
   });
 
-  test('other commands keep the dispatch policy, and the operator UI still answers', async () => {
+  // Slice C3: an interrupt is held to the caller's scope like a steer; this
+  // harness composes no thread reader, so the guard cannot read the thread
+  // and refuses (fail closed). The scoped outcomes are proved in the
+  // production composition (`runtime-routes-station-control-authority`).
+  test('an interrupt whose thread the guard cannot read is refused, and the operator UI still answers', async () => {
     const bearer = forwardedCaller('bearer-exposed', nextSession('op-'));
     expect(
       await rest(
@@ -1308,7 +1367,9 @@ describe('answering a pending request (M4): only the bound operator', () => {
         internalHeaders({ [STATION_CONTROL_CALLER_TOKEN_HEADER]: bearer! }),
         { type: 'interruptTurn', threadId: 't' },
       ),
-    ).toEqual({ status: 200 });
+    ).toEqual({ status: 403, code: 'station_control_assurance_insufficient' });
+    expect(refusals).toEqual(['station_control_assurance_insufficient']);
+    refusals.length = 0;
     expect(
       await rest(
         'POST',

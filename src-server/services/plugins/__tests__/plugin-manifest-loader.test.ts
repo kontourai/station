@@ -756,4 +756,180 @@ describe('plugin-manifest-loader', () => {
       "duplicate id 'runtime-ready'",
     );
   });
+
+  describe('plugin command declarations (station#1418)', () => {
+    const navigate = {
+      version: '1.0',
+      id: 'demo.open-plugins',
+      title: 'Open plugins',
+      intent: { kind: 'navigate', surfaceId: 'plugins' },
+    };
+    const seed = {
+      version: '1.0',
+      id: 'demo.draft',
+      title: 'Draft a note',
+      keywords: ['note'],
+      requires: ['active-chat'],
+      intent: { kind: 'seed-composer', text: 'Summarize this chat' },
+    };
+
+    const writeLegacy = (commands: unknown) => {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({ name: 'demo', version: '1.0.0', commands }),
+      );
+      return manifestPath;
+    };
+
+    test('a legacy manifest keeps valid declarations, normalized', async () => {
+      const manifest = await readPluginManifestFile(
+        writeLegacy([navigate, seed]),
+      );
+      expect(manifest.commands).toEqual([navigate, seed]);
+    });
+
+    test.each([
+      [
+        'an id outside the plugin namespace',
+        [{ ...navigate, id: 'other.open' }],
+      ],
+      ['a bare plugin-name id', [{ ...navigate, id: 'demo.' }]],
+      ['a duplicate id', [navigate, { ...seed, id: navigate.id }]],
+      ['an unknown field', [{ ...navigate, route: '/plugins' }]],
+      [
+        'a destination id that is not an id',
+        [{ ...navigate, intent: { kind: 'navigate', surfaceId: '/plugins' } }],
+      ],
+      [
+        'an argument its intent never consumes',
+        [{ ...navigate, argument: { kind: 'text', label: 'term' } }],
+      ],
+      [
+        'an argument mode with no argument',
+        [
+          {
+            ...seed,
+            intent: {
+              kind: 'seed-composer',
+              text: 'Find',
+              argumentMode: 'append',
+            },
+          },
+        ],
+      ],
+      [
+        'a wildcard allowed host',
+        [
+          {
+            ...seed,
+            argument: {
+              kind: 'url',
+              label: 'link',
+              allowedHosts: ['*.example.com'],
+            },
+            intent: {
+              kind: 'seed-composer',
+              text: 'Open',
+              argumentMode: 'append',
+            },
+          },
+        ],
+      ],
+      ['an untrimmed title', [{ ...navigate, title: ' Open ' }]],
+      [
+        'more than 32 commands',
+        Array.from({ length: 33 }, (_, index) => ({
+          ...navigate,
+          id: `demo.c${index}`,
+        })),
+      ],
+      ['a non-array', { open: navigate }],
+    ])(
+      'L5: a legacy manifest with %s still loads; its commands are dropped with a diagnostic',
+      async (_label, commands) => {
+        const manifest = await readPluginManifestFile(writeLegacy(commands));
+        expect(manifest.name).toBe('demo');
+        expect(manifest.commands).toBeUndefined();
+        expect(manifest.commandsRejected?.reason).toEqual(expect.any(String));
+        expect(manifest.commandsRejected!.reason.length).toBeLessThanOrEqual(
+          240,
+        );
+      },
+    );
+
+    test('a manifest cannot assert its own command rejection', async () => {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          name: 'demo',
+          version: '1.0.0',
+          commands: [navigate],
+          commandsRejected: { reason: 'forged' },
+        }),
+      );
+      const manifest = await readPluginManifestFile(manifestPath);
+      expect(manifest.commands).toEqual([navigate]);
+      expect(manifest).not.toHaveProperty('commandsRejected');
+    });
+
+    test('the diagnostic is printable and bounded even for hostile field names', async () => {
+      const manifest = await readPluginManifestFile(
+        writeLegacy([
+          {
+            ...navigate,
+            [`evil${String.fromCharCode(7)}${'k'.repeat(400)}`]: 1,
+          },
+        ]),
+      );
+      const reason = manifest.commandsRejected!.reason;
+      expect(
+        [...reason].some((character) => character.charCodeAt(0) < 0x20),
+      ).toBe(false);
+      expect(reason.length).toBeLessThanOrEqual(240);
+    });
+
+    test('L5: an Agent Plugins manifest keeps its extension when only the semantic checks fail; schema failures still disable it', async () => {
+      const manifestPath = join(dir, 'plugin.json');
+      const write = (commands: unknown[]) =>
+        writeFileSync(
+          manifestPath,
+          JSON.stringify({
+            $schema:
+              'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+            name: 'portable.example',
+            version: '2.0',
+            extensions: {
+              'io.kontourai.station': {
+                schemaVersion: '1.0',
+                permissions: ['agents.invoke'],
+                commands,
+              },
+            },
+          }),
+        );
+      const valid = { ...navigate, id: 'portable.example.open' };
+      write([valid]);
+      await expect(
+        readPluginManifestFileWithFormat(manifestPath),
+      ).resolves.toMatchObject({
+        stationExtension: { status: 'validated' },
+        manifest: { commands: [valid] },
+      });
+      // Schema-valid, but owned by another plugin: dropped, extension kept.
+      write([{ ...navigate, id: 'someone-else.open' }]);
+      const semantic = await readPluginManifestFileWithFormat(manifestPath);
+      expect(semantic.stationExtension).toMatchObject({ status: 'validated' });
+      expect(semantic.manifest.permissions).toEqual(['agents.invoke']);
+      expect(semantic.manifest.commands).toBeUndefined();
+      expect(semantic.manifest.commandsRejected?.reason).toContain(
+        'portable.example.',
+      );
+      // Schema-invalid (closed shape): main's behaviour, the extension is disabled.
+      write([{ ...valid, route: '/plugins' }]);
+      const schema = await readPluginManifestFileWithFormat(manifestPath);
+      expect(schema.stationExtension).toMatchObject({ status: 'disabled' });
+    });
+  });
 });

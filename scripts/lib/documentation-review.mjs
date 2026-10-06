@@ -6,6 +6,12 @@ import {
   renderLedgerMarkdown,
   validateEntry,
 } from '../deploy-ledger.mjs';
+import {
+  bindingDigest,
+  bindingFile,
+  isBindingPath,
+} from './review-binding.mjs';
+import { reviewError } from './review-ledger-store.mjs';
 
 const deployLedgerOwners = [
   'scripts/deploy-ledger.mjs',
@@ -27,6 +33,7 @@ const kinds = new Set([
 ]);
 const states = new Set(['classified', 'partial', 'source-reviewed']);
 const digestPattern = /^[a-f0-9]{64}$/;
+const revisionPattern = /^[a-f0-9]{40}$/;
 
 function requireText(value, label) {
   if (typeof value !== 'string' || !value.trim())
@@ -39,8 +46,9 @@ function validateRecord(record, tracked, reportMissing) {
   if (!kinds.has(record.kind) || !states.has(record.state))
     throw new Error(`Invalid review classification: ${record.path}`);
   if (
-    !digestPattern.test(record.documentDigest) ||
-    !/^[a-f0-9]{40}$/.test(record.sourceRevision)
+    record.historyChanges === undefined &&
+    (!digestPattern.test(record.documentDigest) ||
+      !revisionPattern.test(record.documentRevision))
   )
     throw new Error(`Invalid review identity: ${record.path}`);
   for (const field of ['summary', 'limits']) requireText(record[field], field);
@@ -52,11 +60,12 @@ function validateRecord(record, tracked, reportMissing) {
   const sources = new Set();
   for (const source of record.sources) {
     if (
-      typeof source?.path !== 'string' ||
-      !source.path ||
-      (!reportMissing && !tracked.has(source.path)) ||
+      !isBindingPath(source?.path) ||
+      (!reportMissing && !tracked.has(bindingFile(source.path))) ||
       sources.has(source.path) ||
-      !digestPattern.test(source.digest)
+      (record.historyChanges === undefined &&
+        (!digestPattern.test(source.digest) ||
+          !revisionPattern.test(source.revision)))
     )
       throw new Error(
         `Invalid review source: ${record.path} -> ${source.path}`,
@@ -125,23 +134,36 @@ export async function evaluateDocumentationReview(
   const observedChanges = [];
   const missing = new Set();
   if (!documents.has(record.path)) missing.add(record.path);
-  if (documents.get(record.path) !== record.documentDigest)
+  if (
+    record.historyChanges === undefined &&
+    documents.get(record.path) !== record.documentDigest
+  )
     observedChanges.push(record.path);
   for (const source of record.sources) {
-    if (!tracked.has(source.path)) missing.add(source.path);
+    const file = bindingFile(source.path);
+    if (!tracked.has(file)) missing.add(source.path);
     let sourceDigest;
     if (!missing.has(source.path)) {
       try {
-        sourceDigest = digest(await read(source.path));
+        sourceDigest = bindingDigest(source.path, await read(file));
       } catch (error) {
         if (!reportMissing || error?.code !== 'ENOENT') throw error;
         missing.add(source.path);
       }
     }
-    if (missing.has(source.path) || sourceDigest !== source.digest)
+    if (
+      missing.has(source.path) ||
+      (record.historyChanges === undefined && sourceDigest !== source.digest)
+    )
       observedChanges.push(source.path);
   }
 
+  if (record.historyChanges !== undefined)
+    observedChanges.splice(
+      0,
+      observedChanges.length,
+      ...new Set([...record.historyChanges, ...missing]),
+    );
   let changed = observedChanges;
   let validation;
   const generated =
@@ -204,8 +226,10 @@ export async function evaluateDocumentationReview(
       ? requireFresh({ path: record.path, inputs: reviewInputs(record) })
       : requireFresh)
   )
-    throw new Error(
+    throw reviewError(
+      'needs-refresh',
       `Documentation review needs refresh: ${record.path}; changed: ${changed.join(', ')}`,
+      { path: record.path, changed },
     );
   return {
     ...record,
@@ -237,8 +261,10 @@ export async function compileDocumentationReviews(
   readSource,
   { requireFresh = false, reportMissing = false } = {},
 ) {
-  if (ledger?.version !== 1 || !Array.isArray(ledger.records))
-    throw new Error('Documentation review ledger requires version 1 records.');
+  if (ledger?.version !== 2 || !Array.isArray(ledger.records))
+    throw new Error(
+      'Documentation review ledger requires compiled version 2 records (scripts/lib/review-ledger-store.mjs).',
+    );
   const seen = new Set();
   const captured = new Map();
   const read = async (path) => {

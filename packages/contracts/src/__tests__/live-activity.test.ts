@@ -26,7 +26,7 @@ function projection() {
           workState: 'reviewing',
           startedAt: 1,
         },
-        watching: { state: 'following', targetLabel: 'Brian' },
+        watching: { state: 'following', targetLabel: 'Casey' },
       },
     ],
   };
@@ -46,7 +46,7 @@ test('accepts only the closed, bounded live-activity browser projection', () => 
   const human: any = projection();
   human.participants[0] = {
     ...human.participants[0]!,
-    actor: { kind: 'human', label: 'Brian' },
+    actor: { kind: 'human', label: 'Casey' },
     work: {
       workName: 'Review auth',
       workState: 'reviewing',
@@ -82,7 +82,7 @@ test('accepts only the closed, bounded live-activity browser projection', () => 
   const unsafeHuman: any = projection();
   unsafeHuman.participants[0] = {
     ...unsafeHuman.participants[0],
-    actor: { kind: 'human', label: 'Brian' },
+    actor: { kind: 'human', label: 'Casey' },
   };
   expect(parseLiveActivityProjection(unsafeHuman)).toBeUndefined();
 });

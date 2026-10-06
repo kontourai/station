@@ -1,0 +1,7 @@
+{
+  "revision": "6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed #2941 context hook and mergeability row additions against canonical contracts, SDK queries, routes, resolver and mounted chip integration. Optional owners preserve compatibility; local branch matching and case-insensitive owner comparison retain branch-only fallback. No live forge or browser evidence claimed.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

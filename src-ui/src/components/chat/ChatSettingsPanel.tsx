@@ -35,7 +35,7 @@ interface ChatSettingsPanelProps {
   autoHideEnabled: boolean;
   setAutoHideEnabled: (v: boolean) => void;
   /**
-   * archive#3310: "Summarize session" demoted out of the transcript
+   * archive#3310: "Summarize chat" demoted out of the transcript
    * the un-generated state no longer costs a permanent band above every
    * chat, so this gear panel is its entry point (reachable from the desktop
    * header's gear and the mobile overflow's "Chat settings"). Absent when no
@@ -69,13 +69,15 @@ export function ChatSettingsPanel({
   onReplayConversation,
   replayCaptureSource,
 }: ChatSettingsPanelProps) {
+  const returnBehaviorId = useId();
   const reasoningId = useId();
   const toolsId = useId();
   const autoHideId = useId();
   const autoFloatId = useId();
   const autoFloatHintId = useId();
   const answerDeliveryId = useId();
-  const { featureSettings, developerToolsEnabled } = useDeviceSettings();
+  const { featureSettings, developerToolsEnabled, chatReturnBehavior } =
+    useDeviceSettings();
   const { navigate } = useNavigationActions();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const dismissSummary = useDismissSessionSummaryMutation();
@@ -101,12 +103,43 @@ export function ChatSettingsPanel({
         Saved to this device only — never sent to the server.
       </p>
 
+      <div className="chat-settings-modal__section">
+        <label
+          className="chat-settings-modal__label"
+          htmlFor={returnBehaviorId}
+        >
+          Return in chat
+        </label>
+        <select
+          id={returnBehaviorId}
+          className="editor-select"
+          value={chatReturnBehavior}
+          onChange={(event) =>
+            setDeviceSetting(
+              'chatReturnBehavior',
+              event.target.value as 'auto' | 'send' | 'newline',
+            )
+          }
+        >
+          <option value="auto">
+            Automatic (desktop sends, touch adds a line)
+          </option>
+          <option value="send">Return sends</option>
+          <option value="newline">Return inserts a new line</option>
+        </select>
+        <p className="chat-settings-modal__hint">
+          Shift+Return adds a line. Ctrl/Cmd+Return sends. This preference also
+          applies to attached keyboards.
+        </p>
+      </div>
+
       <fieldset className="chat-settings-modal__section">
         <legend className="chat-settings-modal__label">Font Size</legend>
         <div className="chat-settings-modal__control">
           <button
             type="button"
             className="chat-settings-modal__btn"
+            aria-label="Decrease font size"
             onClick={() => setChatFontSize((prev) => Math.max(10, prev - 1))}
             disabled={chatFontSize <= 10}
           >
@@ -115,6 +148,7 @@ export function ChatSettingsPanel({
           <button
             type="button"
             className={`chat-settings-modal__btn${chatFontSize === defaultFontSize ? ' chat-settings-modal__btn--muted' : ''}`}
+            aria-label="Reset font size"
             onClick={() => setChatFontSize(() => defaultFontSize)}
           >
             A
@@ -122,6 +156,7 @@ export function ChatSettingsPanel({
           <button
             type="button"
             className="chat-settings-modal__btn"
+            aria-label="Increase font size"
             onClick={() => setChatFontSize((prev) => Math.min(24, prev + 1))}
             disabled={chatFontSize >= 24}
           >
@@ -269,7 +304,7 @@ export function ChatSettingsPanel({
             >
               {sessionSummary.isGenerating
                 ? 'Generating summary…'
-                : 'Summarize session'}
+                : 'Summarize chat'}
             </button>
             <button
               type="button"

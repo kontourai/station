@@ -1,0 +1,7 @@
+{
+  "revision": "67f01db59d82e421d168442b2f093e011c5b73a8",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#2873: also reviewed the regenerated src-server/tools/station-docs-content.ts, which the first note omitted. Its only delta is the module-map topic text gaining the Start-time repeat paragraph, produced by docs:mcp:generate from the reviewed module map; no topic was added, removed or renamed.","inputs":["docs/reference/station-docs.md","packages/contracts/src/agent-plugin.ts","packages/contracts/src/engine-capability-matrix.ts","packages/contracts/src/plugin.ts","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","packages/shared/src/build.ts","src-server/providers/adapters/acp-adapter.ts","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/mcp/mcp-ui-frame-server.ts","src-server/services/agents/skill-service.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts","src-server/services/orchestration/session-agent-resolution.ts","src-server/services/plugins/plugin-install-transaction.ts","src-server/tools/station-docs-content.ts"]}
+  ]
+}

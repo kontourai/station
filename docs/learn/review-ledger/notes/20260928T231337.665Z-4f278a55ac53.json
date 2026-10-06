@@ -1,0 +1,69 @@
+{
+  "revision": "294167795ff5e2a3e374d80411e081275d9adef9",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"#2936: the documentation-truth description (scoped freshness through docs:truth:gate, advisory in the queue) still holds after the value-binding and coded-error changes in documentation-review.mjs and documentation-freshness.mjs; the guide's new value-binding and fold sections change no claim here. narrowed the whole-file package.json binding to the manifest values this page states (scripts docs:truth:gate, lint:check, veritas:codex-hook:install, veritas:coverage, veritas:readiness, veritas:readiness:diff, veritas:shadow). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":[".veritas/README.md"]},
+
+    {"path":"docs/README.md","note":"#2936: the documentation-guide route is unchanged; the guide gained value-binding, JSON-output and fold sections this index does not restate.","inputs":["docs/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#2936: the cited documentation guide added value bindings, JSON output and the old-layout fold; the follow-through link and claims here are unchanged.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#2936: the documentation-freshness paragraph still matches: stale records block when the change touches them and value bindings only narrow what counts as touched; coded needs-refresh errors change no behaviour this guide states.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/development.md","note":"#2936: contributor workflow claims do not describe ledger internals; the guide, reachability test and review-compiler changes (value bindings, coded errors) leave them accurate.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"#2936: added value bindings (JSON Pointer, commit that set the value, JSON-only), --json output with stable codes, and folding an old-layout branch with migrate-review-ledger.mjs --base, checked against review-binding.mjs, record-documentation-review.mjs, check-documentation-freshness.mjs and the fold and value-binding tests in documentation-freshness.test.ts.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2936: only links the documentation maintenance workflow, whose ledger section grew; no claim here depends on it.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"#2936: the exporter now resolves a value binding to its file node and compares the cited value's hash; the snapshot and older-bytes claims still hold (repository-knowledge-graph.test.mjs).","inputs":["docs/guides/repository-knowledge-graph.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#2936: testing guidance is unaffected by the review-compiler coded errors, the new reachability assertions and the migration script's test-impact edge.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/learn/README.md","note":"#2936: the builder publishes a value binding's whole file as its source snapshot and atlas.js links it; learning-media.mjs accepts value bindings. The capture and catch-up descriptions are unchanged.","inputs":["docs/learn/README.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"#2936: documentation-review.mjs now accepts value bindings and throws a coded needs-refresh error; the deploy-ledger generated-output validation it cites is unchanged.","inputs":["docs/reference/deploy-ledger.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"#2936: a value binding stays a whole-document dependency edge to its file node; no ledger notes are copied.","inputs":["examples/repository-knowledge-graph/README.md"]},
+
+    {"path":"AGENTS.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts ci:fast, dependencies:ci, full:regression, gate:for, test:changed, test:focused; packageManager). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["AGENTS.md"]},
+
+    {"path":"docs/reference/contributor-commands.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts build:android, dependencies:ci, dev:desktop, full:regression, release:static, test:changed, test:focused, verify:static). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/reference/contributor-commands.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts test:e2e:product, verify, verify:e2e:full). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/e2e-coverage-matrix.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts connection:key, dependencies:ci, install:playwright, lab:browser-transport, lab:collaboration, lab:native-relay-diagnostic-echo, lab:remote-relay, test:focused, test:mutation:smoke; engines). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts test:focused). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts verify:desktop-rust). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts mobile:permissions:gate). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts test:focused; engines). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts gate:for, test:changed, test:focused). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"examples/README.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts examples:conformance, typecheck:examples). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["examples/README.md"]},
+
+    {"path":"examples/docs-snippets/README.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts typecheck:examples). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["examples/docs-snippets/README.md"]},
+
+    {"path":"docs/design/conduit-runtime-integration.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts conduit:conformance:generate, verify:static). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/design/conduit-runtime-integration.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts build:ios:simulator, channel-ports:check, install-script:check). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts agent-plugin:validators:gate). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/reference/agent-plugins.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts build:desktop, dependencies:ci; engines). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts dependencies:ci, fixture:browser-preview:macos, tauri, verify:desktop-clean-checkout; engines; packageManager). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts build:android, build:android:arm64, build:ui, dependencies:ci, install:playwright, tauri, test:android; engines; packageManager). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (scripts build:connect, build:native-client, build:sdk, dependencies:ci, release:static, tauri; version). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (version). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2936: narrowed the whole-file package.json binding to the manifest values this page states (version). Checked each named script exists and that the page makes no other claim about the root manifest, so an unrelated manifest edit no longer stales it.","inputs":["docs/guides/release-rings.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "49fbaef78e2df915b67dc8dbcd79452b797e67e5",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"The fold section now says the command runs while the merge is in progress (Git leaves the branch's old ledger in the tree, so no checkout step), resolves a conflicted media.json per hunk toward the old-layout side while keeping the other side's clean edits, and judges media.json bindings against the stripped bytes it writes. Checked each claim against resolveConflictedManifest and the current() change in migrate-review-ledger.mjs, and against local folds of two open PRs that edit media.json.","inputs":["docs/guides/documentation.md"]}
+  ]
+}

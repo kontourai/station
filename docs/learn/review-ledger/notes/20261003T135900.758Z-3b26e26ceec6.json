@@ -1,0 +1,7 @@
+{
+  "revision": "cde061c4f07a24ed6e82d9291915c9e95f51be1d",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Delta round: re-read the audit-round and Limits text against CodingWorkbench.tsx (useHostPaneActions, PaneHeadSlots hostActions, Escape only from the panel or its rail item, the fold kept through an arrival, the scrolling rail with portalled tips), CodingTerminalPane.tsx (closed-last-terminal memory), DiffPanel/FilePreviewPane (merged overflow) and the CSS (neutral edge at rest, title flex). Corrected the shared-link claim: the Chat position opens a link's preview beside the pane.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

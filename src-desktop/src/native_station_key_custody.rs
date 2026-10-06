@@ -32,6 +32,7 @@ use zeroize::Zeroizing;
 
 const MAX_CANDIDATE_BYTES: usize = 8192;
 const CANDIDATE_LIFETIME_SECONDS: u64 = 60;
+pub(crate) const CANDIDATE_CLOCK_SKEW_SECONDS: u64 = 5;
 const CODE_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 const TRUST_RECORD_SCHEMA_VERSION: u8 = 1;
@@ -419,7 +420,7 @@ fn validate_claims(claims: &Claims) -> CandidateResult<()> {
 fn ensure_candidate_fresh(claims: &Claims, now: u64) -> CandidateResult<()> {
     if now > JS_SAFE_INTEGER_MAX
         || claims.exp <= now
-        || claims.iat > now.saturating_add(5)
+        || claims.iat > now.saturating_add(CANDIDATE_CLOCK_SKEW_SECONDS)
         || claims.iat < now.saturating_sub(CANDIDATE_LIFETIME_SECONDS)
         || claims.exp <= claims.iat
         || claims.exp - claims.iat > CANDIDATE_LIFETIME_SECONDS
@@ -533,8 +534,9 @@ pub(crate) struct OsStationTrustBackend;
 impl StationTrustBackend for OsStationTrustBackend {
     fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>> {
         super::initialize_credential_store().map_err(|_| CandidateError::TrustStore)?;
-        let entry = keyring_core::Entry::new(TRUST_KEYRING_SERVICE, account)
-            .map_err(|_| CandidateError::TrustStore)?;
+        let entry =
+            crate::native_secure_entry::NativeSecureEntry::new(TRUST_KEYRING_SERVICE, account)
+                .map_err(|_| CandidateError::TrustStore)?;
         match entry.get_password() {
             Ok(value) => Ok(Some(Zeroizing::new(value))),
             Err(keyring_core::Error::NoEntry) => Ok(None),
@@ -544,8 +546,9 @@ impl StationTrustBackend for OsStationTrustBackend {
 
     fn write(&mut self, account: &str, value: &str) -> CandidateResult<()> {
         super::initialize_credential_store().map_err(|_| CandidateError::TrustStore)?;
-        let entry = keyring_core::Entry::new(TRUST_KEYRING_SERVICE, account)
-            .map_err(|_| CandidateError::TrustStore)?;
+        let entry =
+            crate::native_secure_entry::NativeSecureEntry::new(TRUST_KEYRING_SERVICE, account)
+                .map_err(|_| CandidateError::TrustStore)?;
         entry
             .set_password(value)
             .map_err(|_| CandidateError::TrustStore)
@@ -620,6 +623,41 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
                 trust.signing_key.y.clone(),
             ),
         })
+    }
+
+    pub(crate) fn unique_approved_broker_origin(
+        &mut self,
+        expected: &TrustProfileBinding,
+        expected_revision: u64,
+    ) -> CandidateResult<String> {
+        let _guard = STATION_TRUST_OPERATION
+            .lock()
+            .map_err(|_| CandidateError::TrustStore)?;
+        let account = trust_account(expected)?;
+        let stored = self.read_record(&account, &expected.station_id)?;
+        if expected_revision == 0
+            || stored.revision != expected_revision
+            || stored.status != Some(StationTrustStatus::Approved)
+            || stored
+                .trust
+                .as_ref()
+                .is_none_or(|trust| trust.enrollment_id != expected.enrollment_id)
+        {
+            return Err(CandidateError::ProfileStale);
+        }
+        let mut matching = stored.approved_bindings.iter().filter(|binding| {
+            binding.profile_owner_id == expected.profile_owner_id
+                && binding.app_identifier == expected.app_identifier
+                && binding.channel == expected.channel
+                && binding.client_instance_id == expected.client_instance_id
+                && binding.station_id == expected.station_id
+                && binding.enrollment_id == expected.enrollment_id
+        });
+        let only = matching.next().ok_or(CandidateError::ProfileStale)?;
+        if matching.next().is_some() || only.broker_origin != expected.broker_origin {
+            return Err(CandidateError::ProfileStale);
+        }
+        Ok(only.broker_origin.clone())
     }
 
     pub(crate) fn current_state<P: LockedTrustProfileProvider>(
@@ -731,6 +769,29 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         operator_full_key_id: &str,
         operator_deadline_ms: u64,
     ) -> CandidateResult<StationTrustMutationReceipt> {
+        self.approve_until_with_precommit(
+            provider,
+            candidate,
+            operator_code,
+            operator_full_key_id,
+            operator_deadline_ms,
+            || Ok(()),
+        )
+    }
+
+    pub(crate) fn approve_until_with_precommit<P, F>(
+        &mut self,
+        provider: &P,
+        candidate: VerifiedStationKeyCandidate,
+        operator_code: &str,
+        operator_full_key_id: &str,
+        operator_deadline_ms: u64,
+        precommit: F,
+    ) -> CandidateResult<StationTrustMutationReceipt>
+    where
+        P: LockedTrustProfileProvider,
+        F: FnOnce() -> CandidateResult<()>,
+    {
         let confirmed = candidate.confirm_operator(operator_code, operator_full_key_id)?;
         let candidate = confirmed.candidate;
         let binding = candidate.profile_binding.clone();
@@ -786,6 +847,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
             // immediately before committing the OS-keyring record.
             ensure_candidate_fresh(&candidate.claims, self.clock.now_seconds()?)?;
             ensure_operator_deadline(self.clock.now_millis()?, operator_deadline_ms)?;
+            precommit()?;
             self.write_record(&account, &stored)?;
             Ok(receipt)
         })
@@ -1690,6 +1752,105 @@ mod tests {
     }
 
     #[test]
+    fn linked_approval_cancelled_at_precommit_never_writes_station_trust() {
+        let backend = MemoryTrustBackend::default();
+        let profile = locked_profile(&binding());
+        let mut store = NativeStationTrustStore::with_backend(backend.clone());
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let deadline = candidate.expires_at() * 1000;
+        assert_eq!(
+            store.approve_until_with_precommit(
+                &profile,
+                candidate,
+                &code,
+                &key_id,
+                deadline,
+                || Err(CandidateError::ProfileStale)
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        assert!(backend.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn routing_supersession_during_explicit_trust_write_does_not_revoke_committed_approval() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::mpsc;
+        use std::time::Duration;
+        struct BlockedTrustWrite {
+            inner: MemoryTrustBackend,
+            started: mpsc::Sender<()>,
+            resume: mpsc::Receiver<()>,
+        }
+        impl StationTrustBackend for BlockedTrustWrite {
+            fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>> {
+                self.inner.read(account)
+            }
+            fn write(&mut self, account: &str, value: &str) -> CandidateResult<()> {
+                self.started
+                    .send(())
+                    .map_err(|_| CandidateError::TrustStore)?;
+                self.resume
+                    .recv_timeout(Duration::from_secs(2))
+                    .map_err(|_| CandidateError::TrustStore)?;
+                self.inner.write(account, value)
+            }
+        }
+        let backend = MemoryTrustBackend::default();
+        let profile = locked_profile(&binding());
+        let (started_tx, started_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let blocked = BlockedTrustWrite {
+            inner: backend.clone(),
+            started: started_tx,
+            resume: resume_rx,
+        };
+        let mut store = NativeStationTrustStore::with_backend(blocked);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let deadline = candidate.expires_at() * 1000;
+        let cancelled = AtomicBool::new(false);
+        let receipt = std::thread::scope(|scope| {
+            let write = scope.spawn(|| {
+                store.approve_until_with_precommit(
+                    &profile,
+                    candidate,
+                    &code,
+                    &key_id,
+                    deadline,
+                    || {
+                        if cancelled.load(Ordering::Acquire) {
+                            Err(CandidateError::ProfileStale)
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+            });
+            started_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("explicit approval entered the actual trust backend write");
+            cancelled.store(true, Ordering::Release);
+            resume_tx.send(()).unwrap();
+            write.join().unwrap().unwrap()
+        });
+        assert_eq!(receipt.status, StationTrustStatus::Approved);
+        assert!(cancelled.load(Ordering::Acquire));
+        assert_eq!(backend.0.lock().unwrap().len(), 1);
+        let mut readback = NativeStationTrustStore::with_backend(backend);
+        assert_eq!(
+            readback
+                .current_state(&profile, &trust_binding(&binding()), 7)
+                .unwrap()
+                .status,
+            Some(StationTrustStatus::Approved)
+        );
+    }
+
+    #[test]
     fn approved_candidate_expires_before_locked_keyring_commit() {
         let backend = MemoryTrustBackend::default();
         let profile = locked_profile(&binding());
@@ -1914,6 +2075,61 @@ mod tests {
         assert_eq!(receipt.revision, 2);
         assert_eq!(receipt.generation, 4);
         assert_eq!(receipt.key_id, rotated_key);
+    }
+
+    #[test]
+    fn legacy_enrollment_broker_requires_one_unchanged_approved_binding() {
+        let backend = MemoryTrustBackend::default();
+        let original = binding();
+        let expected = trust_binding(&original);
+        let profile = locked_profile(&original);
+        let mut store = NativeStationTrustStore::with_backend(backend);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let receipt = store.approve(&profile, candidate, &code, &key_id).unwrap();
+        assert_eq!(
+            store
+                .unique_approved_broker_origin(&expected, receipt.revision)
+                .unwrap(),
+            expected.broker_origin
+        );
+        assert!(store
+            .unique_approved_broker_origin(&expected, receipt.revision + 1)
+            .is_err());
+        let mut wrong = expected.clone();
+        wrong.client_instance_id = "77777777-7777-4777-8777-777777777777".into();
+        assert!(store
+            .unique_approved_broker_origin(&wrong, receipt.revision)
+            .is_err());
+        wrong = expected.clone();
+        wrong.broker_origin = "https://different-broker.example".into();
+        assert!(store
+            .unique_approved_broker_origin(&wrong, receipt.revision)
+            .is_err());
+
+        let mut alternate = original;
+        alternate.broker_origin = "https://different-broker.example".into();
+        alternate.expected_trust_revision = receipt.revision;
+        let profile = locked_profile(&alternate);
+        let mut pending = PendingStationKeyChallenge::with_challenge(
+            alternate,
+            URL_SAFE_NO_PAD.encode([8u8; 32]),
+        )
+        .unwrap();
+        let compact = signed_candidate(&mut pending, |claims| {
+            claims.candidate.generation = 4;
+        });
+        let candidate = pending.verify(&compact, NOW).unwrap();
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let updated = store.approve(&profile, candidate, &code, &key_id).unwrap();
+        assert!(store
+            .unique_approved_broker_origin(&expected, receipt.revision)
+            .is_err());
+        assert!(store
+            .unique_approved_broker_origin(&expected, updated.revision)
+            .is_err());
     }
 
     #[test]

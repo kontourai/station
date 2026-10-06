@@ -193,6 +193,7 @@ export interface RequestCredentialEvidence {
   origin: string;
   /** Secret-free route identity. The grant itself is held by host custody. */
   brokerRoute?: NonNullable<SavedConnection['brokerRoute']>;
+  nativeBrokerRoute?: NonNullable<SavedConnection['nativeBrokerRoute']>;
 }
 
 const ConnectionsContext = createContext<ConnectionsContextType | undefined>(
@@ -523,6 +524,9 @@ export function ConnectionsProvider({
           // so the address belongs to the same live snapshot as the credential
           // rather than to whatever React last rendered.
           origin: active.url ?? defaultUrl,
+          ...(active.nativeBrokerRoute
+            ? { nativeBrokerRoute: structuredClone(active.nativeBrokerRoute) }
+            : {}),
           ...(active.brokerRoute
             ? { brokerRoute: structuredClone(active.brokerRoute) }
             : {}),
@@ -537,7 +541,9 @@ export function ConnectionsProvider({
             (active.url ?? defaultUrl) === evidence.origin &&
             resolvedStore.credentialAuthorityGeneration(active.id) ===
               evidence.authorityGeneration &&
-            active.credentialState === evidence.credentialState,
+            active.credentialState === evidence.credentialState &&
+            JSON.stringify(active.nativeBrokerRoute) ===
+              JSON.stringify(evidence.nativeBrokerRoute),
         );
       },
       recordAuthenticatedSuccess: (id, url, generation, at) =>

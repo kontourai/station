@@ -223,13 +223,17 @@
 
 .station-connect-row__url {
   margin-top: 2px;
-  pointer-events: auto;
+  pointer-events: none;
   user-select: text;
   overflow-wrap: anywhere;
   white-space: normal;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--text-secondary, #999);
+}
+
+.station-connect-row--details .station-connect-row__url {
+  pointer-events: auto;
 }
 
 .station-connect-row__meta {
@@ -718,4 +722,14 @@
   color: var(--text-secondary, #aaa);
   font-size: 0.8rem;
   line-height: 1.5;
+}
+
+.station-connect-row__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-3);
+}
+.station-connect-row__details .station-connect-btn {
+  min-height: 44px;
 }

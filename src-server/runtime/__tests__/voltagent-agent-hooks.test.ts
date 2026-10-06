@@ -309,7 +309,7 @@ describe('VoltAgent lifecycle hooks', () => {
     // archive#3091: reproduce the installed @voltagent/core's OWN
     // documented copy behavior (`buildToolErrorResult`, verified by reading
     // the installed package's compiled source — it is not exported so it
-    // cannot be called directly): every own-enumerable property of the
+    // cannot be called directly): own properties of the
     // thrown error, `policyDenied` included, is copied onto the tool's
     // resolved output. Then feed that EXACT shape through the real
     // normalization function this fix adds, proving the full chain from a
@@ -348,7 +348,6 @@ describe('VoltAgent lifecycle hooks', () => {
         type: 'tool-result',
         toolCallId: 'call-real-policy-denied',
         toolName: 'lookup',
-        output: errorResult,
         error: err.message,
         policyDenied: true,
       },

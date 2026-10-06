@@ -1,0 +1,45 @@
+{
+  "path": "packages/cli/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete package README against distribution/CLI reference and actual setup, target selection and triage callers. Corrected hosted availability implication, model-service sharing, terminal-output redaction limits and Operate stream authentication.",
+
+  "limits": "No published tarball installation, real hosted pairing, OS keyring/service, external agent or destructive restore was executed. Mode flags are requests to an installed agent, not independent enforcement proof.",
+
+  "sources": [
+    "station"
+  ],
+
+  "checks": [
+    "Independent CLI caller review and final wording deltas accepted.",
+
+    "CLI implementation lane: 174 tests across 8 files passed; 51 help topics matched.",
+
+    "Independent admission probe: 11 cases passed; option/version and synthetic actual chat/SDK/SSE flow probes passed without network/provider calls.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "Reviewed source changes: Uses shared envelopeDetailsMessage instead of duplicated formatter; reviewed CLI sentence semantics and inherited SDK refusal documentation. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Executed 42 setup, target and triage tests across three files; all passed. Complete CLI reference review independently traced command dispatch and documented families.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/triage.ts: Replaces its unbounded Windows trust spawn wrapper with the shared bounded runner. Triage stdout passthrough, stored redaction, owner-only directory policy and draft-only behavior unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Updated prebuilt installer-owned upgrades and retained loose-archive/service refusals; unrelated command, API and triage contracts remain unchanged.",
+
+    "Integration source review through e0314c727: cli.md now documents installer-owned prebuilt archives, archive service units and packaged archive upgrade (#2867). The published CLI still refuses contributor verbs apart from `service status|start|stop`. Added a parenthetical that an install.sh prebuilt archive's own lifecycle CLI can also install a service and run upgrade. The rest is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds `station environment access devices|scope|scopes` (environment.ts, device-access.ts, docs/reference/cli.md). distribution.ts `isHostEnvironmentInvocation` admits every `access` subcommand in the packaged CLI. cli.ts `describeCliError` now renders structured full-access refusals first, and `requestJson` keeps code, status and details on errors. The README's list of published local operations therefore left out the new verbs, so I added `devices|scope` to `environment access list|approve|deny`. The transport-failure, pairing and triage prose is still accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 makes contributorCommandMessage in packages/cli/src/distribution.ts private. Its behavior is unchanged, and the README's claims that contributor commands are checkout-only and about distribution do not name it. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c added the 'Recorded versus acknowledged decisions' section to cli.md. The README's links to cli.md and its claims about timeouts, streams and published-CLI boundaries are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) extended the service and upgrade sections of docs/reference/cli.md (fixed launcher, stage-and-handoff upgrade, client-started update). The merged reference is coherent. The README's claims still hold: packaged service status|start|stop, and a prebuilt archive's own lifecycle CLI installing a service and running upgrade. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

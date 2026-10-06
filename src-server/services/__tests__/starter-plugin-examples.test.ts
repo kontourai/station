@@ -15,7 +15,6 @@ const starterPlugins = [
     displayName: 'Getting Started Starter',
     expectedTabs: ['start', 'patterns'],
     expectedComponents: ['getting-started-home', 'getting-started-patterns'],
-    readmeTerms: ['useAgents()', 'useNavigation()', 'useToast()'],
   },
   {
     id: 'knowledge-docs-starter',
@@ -26,7 +25,6 @@ const starterPlugins = [
       'knowledge-ask',
       'knowledge-sources',
     ],
-    readmeTerms: [] as string[],
   },
 ];
 
@@ -448,9 +446,33 @@ describe('starter plugin examples', () => {
     expect(registered.has('something-else')).toBe(true);
   });
 
-  // README prose and headings are editorial; these pin the install command
-  // and the SDK hook and manifest identifiers a copier needs to find.
+  /**
+   * The SDK hooks a starter's source imports, read from the source rather
+   * than copied here (#2927): a README must name each one a copier will meet.
+   */
+  function importedSdkHooks(starterId: string): string[] {
+    const source = readFileSync(
+      join(examplesDir, starterId, 'src', 'index.tsx'),
+      'utf-8',
+    );
+    const hooks = new Set<string>();
+    for (const [, clause] of source.matchAll(
+      /import\s*\{([^}]*)\}\s*from\s*'@kontourai\/station-sdk'/g,
+    ))
+      for (const name of clause.split(','))
+        if (/^use[A-Z]\w*$/.test(name.trim())) hooks.add(name.trim());
+    return [...hooks].sort();
+  }
+
+  // README prose and headings are editorial; these require the install
+  // command and the identifiers a copier needs to find, derived from the
+  // starter's own source and manifest.
   test('starter READMEs give the registry install command and name the SDK hooks they use', () => {
+    const allHooks = starterPlugins.flatMap((starter) =>
+      importedSdkHooks(starter.id),
+    );
+    // The derivation must find hooks somewhere, or this checks nothing.
+    expect(allHooks.length).toBeGreaterThan(0);
     for (const starter of starterPlugins) {
       const readme = readFileSync(
         join(examplesDir, starter.id, 'README.md'),
@@ -458,51 +480,50 @@ describe('starter plugin examples', () => {
       );
 
       expect(readme).toContain(`station registry install ${starter.id}`);
-      for (const term of starter.readmeTerms) {
-        expect(readme).toContain(term);
-      }
+      for (const hook of importedSdkHooks(starter.id))
+        expect(readme, `${starter.id}: ${hook}`).toContain(`${hook}()`);
     }
   });
 
   /**
    * Pane-era starters install with `station plugin install .` from the package
    * directory, not the registry verb. Each starter's manifest surfaces (Pane
-   * names, the review action, the agent slug, permissions) are named so a
-   * README that dropped a Pane or the review action would go red.
+   * names, the review action, the agent slug, permissions) are read from its
+   * `plugin.json`, so a README that dropped a Pane or the review action goes
+   * red, and renaming one in the manifest asks for the README too.
    */
   test('Pane-era starter READMEs give the local install command and name their manifest surfaces', () => {
-    const paneStarters = [
-      {
-        id: 'coding-starter',
-        terms: [
-          'Coding Workspace',
-          'Coding Diff Review',
-          'Review current diff',
-          'coding-starter-assistant',
-          'navigation.dock',
-          'agents.invoke',
-        ],
-      },
-      {
-        id: 'minimal-layout',
-        terms: ['navigation.dock'],
-      },
-    ];
-
-    for (const starter of paneStarters) {
+    type StationExtension = {
+      permissions?: string[];
+      agents?: { slug: string }[];
+      workspacePanes?: { name: string }[];
+      workspacePaneHost?: { actions?: { label: string }[] };
+    };
+    for (const id of ['coding-starter', 'minimal-layout']) {
+      const station = readJson<{
+        extensions: { 'io.kontourai.station': StationExtension };
+      }>(join(examplesDir, id, 'plugin.json')).extensions[
+        'io.kontourai.station'
+      ];
+      const terms = [
+        ...(station.workspacePanes ?? []).map((pane) => pane.name),
+        ...(station.workspacePaneHost?.actions ?? []).map(
+          (action) => action.label,
+        ),
+        ...(station.agents ?? []).map((agent) => agent.slug),
+        ...(station.permissions ?? []),
+      ];
+      expect(station.workspacePanes?.length, id).toBeGreaterThan(0);
       // Prose is hard-wrapped, so phrases are matched across line breaks.
       const readme = readFileSync(
-        join(examplesDir, starter.id, 'README.md'),
+        join(examplesDir, id, 'README.md'),
         'utf-8',
       ).replace(/\s+/g, ' ');
 
-      expect(readme, starter.id).toContain('station plugin install .');
-      expect(readme, starter.id).not.toContain(
-        `station registry install ${starter.id}`,
-      );
-      for (const term of starter.terms) {
-        expect(readme, `${starter.id}: ${term}`).toContain(term);
-      }
+      expect(readme, id).toContain('station plugin install .');
+      expect(readme, id).not.toContain(`station registry install ${id}`);
+      for (const term of terms)
+        expect(readme, `${id}: ${term}`).toContain(term);
     }
   });
 });

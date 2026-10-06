@@ -1,0 +1,15 @@
+{
+  "path": ".changeset/pinned-native-pion-identity.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Read the package change description and release intent.",
+
+  "limits": "A changeset does not prove publication, current installation or an end-user outcome.",
+
+  "sources": [],
+
+  "checks": []
+}

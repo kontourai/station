@@ -49,6 +49,7 @@ import { PrincipalUnresolvedError } from '../services/identity/principal-resolve
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
+  SCOPED_THREAD_COMMAND_FIELD,
   type StationControlDispatchTarget,
   type StationControlRefusal,
   stationControlRefusal,
@@ -126,7 +127,7 @@ export interface StationControlAuthorityGuardOptions {
   ): boolean | Promise<boolean>;
   /**
    * For the `thread-commands-stay-in-scope` rule: the server's records for
-   * a thread a `steerTurn` or `adoptSession` names (owner, session-record
+   * a thread a scoped command (`SCOPED_THREAD_COMMAND_FIELD`) names (owner, session-record
    * Project, whether it runs `host`). Absent, throwing or answering nothing:
    * the command is refused (fail closed).
    */
@@ -207,12 +208,6 @@ async function retargetsGrantedJob(
   }
 }
 
-/** The thread each scoped command names, by its body field. */
-const COMMAND_THREAD_FIELD: Readonly<Record<string, string>> = {
-  steerTurn: 'threadId',
-  adoptSession: 'sourceThreadId',
-};
-
 /**
  * For `thread-commands-stay-in-scope`: the server's records for the thread
  * a scoped command names. Read only for those commands on that leaf.
@@ -241,9 +236,12 @@ function scopedCommandThreadId(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
   const record = body as Record<string, unknown>;
   const type = record.type;
-  if (typeof type !== 'string' || !Object.hasOwn(COMMAND_THREAD_FIELD, type))
+  if (
+    typeof type !== 'string' ||
+    !Object.hasOwn(SCOPED_THREAD_COMMAND_FIELD, type)
+  )
     return undefined;
-  const threadId = record[COMMAND_THREAD_FIELD[type]!];
+  const threadId = record[SCOPED_THREAD_COMMAND_FIELD[type]!];
   return typeof threadId === 'string' ? threadId : undefined;
 }
 

@@ -15,34 +15,16 @@ interface KeyringEntry {
 }
 
 const requireKeyring = createRequire(import.meta.url);
-type KeyringEntryFactory = (service: string, account: string) => KeyringEntry;
-
-let createEntry: KeyringEntryFactory = (service, keyringAccount) => {
-  const { Entry } = requireKeyring('@napi-rs/keyring') as {
-    Entry: new (service: string, account: string) => KeyringEntry;
-  };
-  return new Entry(service, keyringAccount);
-};
 
 function entry(ref: StationProfileCredentialRef): KeyringEntry {
   // The native addon is resolved only after the dispatcher has admitted a
   // command that needs profile credentials. Help, version, and bundled
   // lifecycle refusals must not even load the platform keyring boundary.
-  return createEntry(STATION_KEYRING_SERVICE, account(ref));
-}
-
-/** Explicit test seam; production always uses the lazily resolved native addon. */
-export function setProfileKeyringEntryFactoryForTests(
-  factory: KeyringEntryFactory | undefined,
-): void {
-  createEntry =
-    factory ??
-    ((service, keyringAccount) => {
-      const { Entry } = requireKeyring('@napi-rs/keyring') as {
-        Entry: new (service: string, account: string) => KeyringEntry;
-      };
-      return new Entry(service, keyringAccount);
-    });
+  const keyringAccount = account(ref);
+  const { Entry } = requireKeyring('@napi-rs/keyring') as {
+    Entry: new (service: string, account: string) => KeyringEntry;
+  };
+  return new Entry(STATION_KEYRING_SERVICE, keyringAccount);
 }
 
 /** Production CLI credential store backed only by the operating-system keyring. */

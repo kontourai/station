@@ -2,7 +2,8 @@ import {
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
 } from '@kontourai/station-contracts/orchestration';
-import { type ClientRequestOptions, getJson, StationHttpError } from './http';
+import { envelopeError } from './api-error-message';
+import { type ClientRequestOptions, getJson, readJsonBody } from './http';
 
 /** Reads one currently authorized completed answer without loading its Session history. */
 export async function getAssistantQuoteSource(
@@ -15,8 +16,14 @@ export async function getAssistantQuoteSource(
     `${apiBase}/api/orchestration/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turnId)}/quote-source`,
     opts,
   );
+  // Deliberately opaque: status, code and Retry-After, never the route's text.
   if (!response.ok)
-    throw new StationHttpError(response.status, 'Quote source unavailable');
+    throw envelopeError(
+      response,
+      await readJsonBody(response),
+      'Quote source unavailable',
+      { message: 'Quote source unavailable' },
+    );
   const body = (await response.json()) as {
     success?: boolean;
     data?: Partial<OrchestrationQuoteSource>;

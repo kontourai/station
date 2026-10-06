@@ -1,0 +1,7 @@
+{
+  "revision": "9bb9a7b5bcbf355997862b00d0bacc08f130739a",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Merged bytes after main gained the Activity list change and #2994: this branch's D3 rule (each place row opens its surface as the page; the row whose surface is the page is current) is present beside #2994's reading-status header and the list change's presence-source sentence; verified against ProjectSidebarNav.tsx and useShowSurface.ts at this revision.","inputs":["docs/design/shell-ownership-and-boards.md"]}
+  ]
+}

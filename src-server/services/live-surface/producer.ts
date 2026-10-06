@@ -9,6 +9,21 @@ import type {
 } from '@kontourai/station-contracts/live-surface';
 
 /**
+ * A producer refusing an input for a reason the viewer can act on (not a
+ * failure): thrown from `dispatch`, it reaches the viewer as its `code`
+ * instead of `dispatch-failed`. Nothing of the refused event was sent.
+ */
+export class LiveSurfaceInputRefusal extends Error {
+  constructor(
+    readonly code: 'page-dialog-open',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'LiveSurfaceInputRefusal';
+  }
+}
+
+/**
  * What a controller had pressed when it lost control: buttons it sent a
  * `down` for without an `up`, keys likewise, and where the pointer was.
  */

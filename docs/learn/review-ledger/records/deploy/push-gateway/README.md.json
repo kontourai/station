@@ -1,0 +1,49 @@
+{
+  "path": "deploy/push-gateway/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "All worker source/config parsed; corrected NSE availability, deferred cleanup, provider acceptance, soft limiter accounting and ordered sweep starvation. Preserved dated sandbox observations as historical, removed unproved live IAM/plan/quota assertions.",
+
+  "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
+
+  "sources": [
+    "deploy/push-gateway/package.json",
+
+    "deploy/push-gateway/src/apns-channel-auth.ts",
+
+    "deploy/push-gateway/src/apns-request.ts",
+
+    "deploy/push-gateway/src/apns-sweep.ts",
+
+    "deploy/push-gateway/src/apns-token.ts",
+
+    "deploy/push-gateway/src/apns.ts",
+
+    "deploy/push-gateway/src/channel-ledger.ts",
+
+    "deploy/push-gateway/src/fcm.ts",
+
+    "deploy/push-gateway/src/gateway.ts",
+
+    "deploy/push-gateway/src/send-request.ts",
+
+    "deploy/push-gateway/src/station-auth.ts",
+
+    "deploy/push-gateway/src/worker.ts",
+
+    "deploy/push-gateway/wrangler.jsonc",
+
+    "src-desktop/ios/StationNotificationService/NotificationService.swift",
+
+    "src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlertDelivery.swift"
+  ],
+
+  "checks": [
+    "441 focused tests across 28 files passed. Full local Markdown link check passed; Veritas readiness reported zero failures and warnings. Actual external provider, physical-device and hosted deployment outcomes were not exercised.",
+
+    "Integration source review through e0314c727: MAX_APNS_PAYLOAD_BYTES, MAX_SWEEP_SUBREQUESTS and MAX_SWEEP_DELETES lost their export keywords with values unchanged (4096/45/40), and the test-only resetProviderTokenCacheForTest was removed. The README's payload cap, sweep budget and fingerprint-keyed token cache claims still match, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

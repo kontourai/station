@@ -1,0 +1,69 @@
+{
+  "revision": "583277c3feaea350d025dfa9cce17006b1a56960",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Updated §1.2: persisted record may carry a non-secret env overlay; selected-profile failure (explicit ref or active profile, incl. invalid persisted overlay) fails closed; automatic selection refuses environment_mismatch. Re-checked §1.1 spawn-env table and adoption/discovery exclusions against claude-adapter/codex-adapter: unchanged and still accurate.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Updated §1.2 for heuristic wording and invalid-overlay preservation/envInvalid projection; checked against credential-profile-registry.ts profileRecord/projectProfile and connection-recovery-policy credentialProfilesRouteAlike (invalid never alike). Contract CredentialProfileRecord/CredentialProfileProjection match.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#2966 marker round: replaced 'invalid overlay kept as written' with the value-free envInvalid marker; checked credential-profile-registry.ts profileRecord (drops values, keeps marker, setCredentialProfileEnv clears it), credential-profile-env.ts resolver refusing the marker, and contract CredentialProfileRecord.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Updated: an invalid saved overlay becomes a value-free envInvalid marker; values not retained by the next registry write or a PUT /config/app that includes the profiles. Matches persistableCredentialProfiles in config.ts PUT and registry normalization.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change.","inputs":["docs/design/offline-outbound-queue.md"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change.","inputs":["docs/design/offline-outbound-queue.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Weak-write-path claim (PUT /config/app validates as z.record(z.unknown())) remains true: the route schema is unchanged; profile normalization runs after validation for credentialRecovery.profiles only. No prose change.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/guides/agents.md","note":"#2966 delta: checked for connection env/app-home/credential-profile claims; none present (agent credentialProfileRef semantics unchanged). No change.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/agents.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/agents.md","note":"#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2966 delta: api.md/cli.md gained the profile env route/command; this guide's profile mentions are deployment profiles, not credential profiles. No change.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2966 marker round delta: api.md changes are limited to the credential-profile env 413 bound and /config/app invalid-overlay projection; searched this guide's routing to api.md and found no claim about either, no prose change.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"#2966 marker round delta: config.ts projectPublicAppConfig now reduces credentialRecovery.profiles to the registry projection (invalid env overlays as value-free envInvalid names). Searched this document for GET/PUT /config/app projection, credential-profile and overlay claims; none describe profile env contents, no prose change.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2966 delta: no connection env, app-home or credential-profile claims. No change.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/api.md","note":"Added the PUT credential-recovery profiles/:ref/env section; checked 400 via credentialProfileEnvRequestSchema + validateCredentialProfileEnv (violation text names variables only), 404 for unknown profile/unsupported connection, 409 conflict path, response projection with profiles[].env, and access:manage via the credential-recovery prefix entry in pairing-route-scopes.ts. Other sections unaffected by surfaces.ts/connection-service delta.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the env route section against app-home.ts (404/409 paths, maxBodyBytes CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES=2MiB+64KiB -> 413 via schema-validation readRequestText), schema heuristic list against connection-env.ts, envInvalid projection in credential-profile-registry.ts, scopes via requiredPairingScope (credential-recovery access:manage; listings and GET /config/app orchestration:read; PUT /config/app orchestration:operate), and upsert env refusal in credentialProfileUpsertRequestSchema.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-bound after merging origin/main (ledger conflict resolved per record). This branch's credential-profile env overlay claims were reviewed on the branch; main's concurrent changes (lifecycle.ts, cli.md, release-channel-ports.md) were reviewed in their own PR. Checked the merged document keeps both sets of claims and no overlay claim was touched by main's edits.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"#2966 marker round: corrected the 413 body-bound claim to what the 2 MiB + 64 KiB bound guarantees (unescaped printable-ASCII values at caps, names <= 65,143 bytes compact JSON; pinned by app-home.routes.test.ts), and the GET/PUT /config/app invalid-overlay claim to the envInvalid marker (config.ts projectPublicAppConfig via projectPublicCredentialProfiles).","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"Updated: PUT /config/app does not refuse an invalid overlay but normalizes the profiles it is given, persisting only the envInvalid marker; GET/PUT responses show only the marker; hand-edited values remain until a registry write or a PUT including profiles. Checked against config.ts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2966 delta: no connection env, app-home or credential-profile claims. No change.","inputs":["examples/self-configuring-agent/README.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["examples/self-configuring-agent/README.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2966 marker round delta: connection-env.ts adds sanitizeCredentialProfileEnvInvalidNames and bounds the URL-userinfo scheme run (linear time); connection env map sanitizer unchanged. Searched this document for connection env / profile overlay claims; none affected, no prose change.","inputs":["examples/self-configuring-agent/README.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked for claims about PUT /config/app, agentConnections, credential profiles or the profile env heuristic. The change normalizes credentialRecovery.profiles in a PUT /config/app body and widens the URL-userinfo check; this document makes no claim affected by either. No prose change.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

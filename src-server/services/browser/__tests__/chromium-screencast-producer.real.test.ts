@@ -1,8 +1,9 @@
 /**
  * Real-Chromium integration for the Browser pane's live surface (#90 wave 2):
  * a server session registers a screencast surface, a viewer receives real
- * frames, human input changes the page, and an `alert()` is answered without
- * wedging the surface.
+ * frames, human input changes the page, a dialog a person's click opens is
+ * held for that person without wedging the surface, and the page's console
+ * and a screenshot are read from the real browser.
  *
  * Runs against an INSTALLED Chrome/Edge only (never a download). With none
  * installed every case reports an explicit skip naming why: a missing
@@ -50,7 +51,17 @@ const FIXTURE = `<!doctype html><html><head><title>fixture</title>
 <p id="out">idle</p>
 <button id="go" style="left:40px;top:100px">Go</button>
 <button id="nag" style="left:40px;top:260px">Nag</button>
+<button id="ask" style="left:300px;top:100px">Ask</button>
+<button id="noisy" style="left:300px;top:260px">Noisy</button>
 <script>
+document.getElementById('ask').addEventListener('click', () => {
+  const name = prompt('Your name?', 'Ada');
+  document.getElementById('out').textContent = 'name:' + name;
+});
+document.getElementById('noisy').addEventListener('click', () => {
+  console.error('fixture error', 7);
+  setTimeout(() => { throw new TypeError('fixture boom'); }, 0);
+});
 document.getElementById('go').addEventListener('click', () => {
   document.getElementById('out').textContent = 'clicked';
 });
@@ -248,29 +259,94 @@ describe('Browser live surface against a real installed Chromium', () => {
     ).toBe('clicked');
   }, 60_000);
 
-  test('an alert() is answered automatically: input does not wedge and the history records it', async (ctx) => {
+  test("an alert() a person's click opens waits for them: the click settles at once, the surface is not wedged, and their answer lets the page continue", async (ctx) => {
     if (!executablePath) return ctx.skip(SKIP_REASON);
     const started = Date.now();
     const result = await click(140, 300);
-    // Without the dialog contract the mouse release stays pending until the
-    // registry's 10 s dispatch timeout wedges the surface.
+    // Without the settle-on-hold contract the mouse release stays pending
+    // until the registry's 10 s dispatch timeout wedges the surface.
     expect(result).toMatchObject({ ok: true, accepted: 3 });
     expect(Date.now() - started).toBeLessThan(8_000);
+    const pending = binder.pendingDialogFor(browserSessionId);
+    expect(pending).toMatchObject({ type: 'alert', message: 'are you sure?' });
+    expect(entry().hub.state().wedged).toBe(false);
+    // The handler is still inside alert(): it has not run past it.
+    expect(
+      sessions
+        .getSession(browserSessionId)!
+        .history.entries.some((action) => action.kind === 'dialog-handled'),
+    ).toBe(false);
+    const answer = await binder.answerDialog(
+      browserSessionId,
+      pending!.dialogId,
+      { accept: true },
+      { kind: 'operator' },
+    );
+    expect(answer).toMatchObject({ ok: true });
     expect(
       await poll(
         () => evaluate('document.getElementById("out").textContent'),
         (value) => value === 'after-alert',
       ),
     ).toBe('after-alert');
-    const history = sessions.getSession(browserSessionId)!.history.entries;
-    expect(history.some((action) => action.kind === 'dialog-handled')).toBe(
-      true,
-    );
     expect(
-      history.find((action) => action.kind === 'dialog-handled')?.detail,
-    ).toBe('alert dismissed automatically: are you sure?');
+      sessions.getSession(browserSessionId)!.history.entries.at(-1),
+    ).toMatchObject({
+      kind: 'dialog-answered',
+      detail: 'alert accepted: are you sure?',
+    });
     // And the surface still takes input afterwards.
     expect(await click(140, 140)).toMatchObject({ ok: true });
+  }, 60_000);
+
+  test('a prompt() answered by the person returns their text to the page', async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    expect(await click(400, 140)).toMatchObject({ ok: true });
+    const pending = await poll(
+      async () => binder.pendingDialogFor(browserSessionId),
+      (value) => value?.type === 'prompt',
+    );
+    expect(pending).toMatchObject({
+      type: 'prompt',
+      message: 'Your name?',
+      defaultPrompt: 'Ada',
+    });
+    await binder.answerDialog(
+      browserSessionId,
+      pending!.dialogId,
+      { accept: true, promptText: 'Grace' },
+      { kind: 'operator' },
+    );
+    expect(
+      await poll(
+        () => evaluate('document.getElementById("out").textContent'),
+        (value) => value === 'name:Grace',
+      ),
+    ).toBe('name:Grace');
+  }, 60_000);
+
+  test("the page's console.error and an uncaught exception are captured from the real browser", async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    expect(await click(400, 300)).toMatchObject({ ok: true });
+    const snapshot = await poll(
+      async () => binder.consoleFor(browserSessionId)!,
+      (value) =>
+        value.entries.some((e) => e.source === 'exception') &&
+        value.entries.some((e) => e.text === 'fixture error 7'),
+    );
+    expect(
+      snapshot.entries.find((e) => e.text === 'fixture error 7'),
+    ).toMatchObject({ level: 'error', source: 'console' });
+    expect(
+      snapshot.entries.find((e) => e.source === 'exception')?.text,
+    ).toContain('TypeError: fixture boom');
+  }, 60_000);
+
+  test('a screenshot is a real PNG of the page', async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    const shot = await sessions.captureScreenshot(browserSessionId);
+    expect(shot.mimeType).toBe('image/png');
+    expect([...shot.data.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
   }, 60_000);
 
   test('on a phone viewport, a page with no meta viewport is tapped and clicked where it is SEEN (D1)', async (ctx) => {

@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/engine-login-profile-index.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Pending minor release declaration for additive engine sign-in profile contracts and SDK query; no publication receipt.",
+
+  "limits": "Release planner declaration only. Registry publication and installed-consumer availability are not claimed.",
+
+  "sources": [],
+
+  "checks": [
+    "npm run changesets:check"
+  ]
+}

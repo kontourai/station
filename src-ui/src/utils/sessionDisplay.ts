@@ -5,7 +5,6 @@ import {
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { isSessionUnanswerable } from './answerability';
 
 /**
  * A turn is mid-flight. archive#1073: gated on the summary's turn-level fold, not
@@ -299,6 +298,10 @@ export interface SessionIconAgent {
   icon?: string;
   slug?: string;
   iconUrl?: string;
+  /** The engine connection the agent is bound to, when the catalog says. */
+  execution?: { agentConnectionId?: string };
+  /** `'acp'` for an ACP-bound agent; see `inboxRowIconAgent`. */
+  engineConnectionType?: string;
 }
 
 /**
@@ -354,9 +357,7 @@ export function sessionIconAgent(
  * settled on, and a delegated Agent is exactly what the chip should name.
  * Adding an `'agent'` branch would be a live copy change, not a fix.
  */
-export function delegationTargetLabel(
-  session: OrchestrationSessionSummary,
-): string {
+function delegationTargetLabel(session: OrchestrationSessionSummary): string {
   if (session.delegation?.targetKind === 'station-agent') {
     return 'Station agent';
   }
@@ -375,7 +376,10 @@ export function displayProvider(session: OrchestrationSessionSummary): string {
     return `${delegationTargetLabel(session)} · ${identity}`;
   }
   const engineLabel = engineDisplayLabel(session.provider);
-  return engineLabel ?? `Station agent · ${session.provider}`;
+  const label = engineLabel ?? `Station agent · ${session.provider}`;
+  return session.modelRoute
+    ? `${label} · via ${session.modelRoute.label}`
+    : label;
 }
 
 export function displayEnvironment(
@@ -396,12 +400,11 @@ export function displayEnvironment(
  * (`{completed}`: no transition out at all; `failed` and `canceled` are both
  * retryable). archive#3244 replaced the hand-written list that used to sit
  * here — the same drift class archive#1548 deleted server-side — with the
- * derivation, keeping the members identical. Callers gate ranking
- * (`delegatedTaskPriority`) and finished-session affordance removal
- * (`DelegatedTaskCoordinator`) on it, which are stopped-semantics questions;
- * whether the coordinator's follow-up composer should instead follow the
- * terminal predicate, as the session detail's composer now does, is a
- * separate deliberate call (reported on archive#3244).
+ * derivation, keeping the members identical. The Activity row menu's Stop…
+ * gates on it, a stopped-semantics question. (The delegated-work coordinator
+ * card and its task ranking, which also read it, were removed from Activity;
+ * the session detail's composer follows the terminal predicate,
+ * archive#3244.)
  */
 export function isTerminalSession(
   session: OrchestrationSessionSummary,
@@ -431,43 +434,3 @@ export function isTerminalSession(
  * live retry path, archive#1090), and a `needs_input` session whose provider
  * adapter is gone is non-terminal yet unanswerable.
  */
-
-/**
- * Rank for the delegated-task list. Lower wins, and the list is never
- * filtered — an unanswerable task is DE-PRIORITIZED, not deleted, so the
- * annotation on its card is still reachable (ADR 0012: consumers annotate,
- * they do not silently filter).
- *
- * Rank 3 is archive#1781's addition. Before it, a dead session's sticky
- * `review_pending`/`pendingReview` returned rank 0 — the highest — and
- * `DelegatedTaskCoordinator` renders `tasks[0]` only, so one stranded task
- * occupied the single coordinator slot indefinitely while live work sat
- * behind it. It ranks above `terminal` because a session that has not
- * finished is still more interesting than one that has.
- */
-export function delegatedTaskPriority(
-  session: OrchestrationSessionSummary,
-): number {
-  const unanswerable = isSessionUnanswerable(session);
-  if (
-    !unanswerable &&
-    (session.pendingReview || session.lifecycleState === 'review_pending')
-  ) {
-    return 0;
-  }
-  if (!unanswerable && isStreamingSession(session)) return 1;
-  if (!isTerminalSession(session)) return unanswerable ? 3 : 2;
-  return 4;
-}
-
-export function prioritizedDelegatedTasks(
-  sessions: OrchestrationSessionSummary[],
-): OrchestrationSessionSummary[] {
-  return sessions
-    .filter((session) => Boolean(session.delegation))
-    .sort((a, b) => {
-      const priority = delegatedTaskPriority(a) - delegatedTaskPriority(b);
-      if (priority !== 0) return priority;
-      return b.updatedAt.localeCompare(a.updatedAt);
-    });
-}

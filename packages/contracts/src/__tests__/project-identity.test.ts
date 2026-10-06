@@ -470,7 +470,7 @@ describe('isWellFormedResolution', () => {
     const result: ResourceResolutionResult = {
       state: 'bound',
       resourceId: 'github.com/kontourai/station',
-      path: '/Users/brian/dev/station',
+      path: '/Users/me/dev/station',
     };
     expect(isWellFormedResolution(result)).toBe(true);
   });
@@ -511,8 +511,8 @@ describe('isWellFormedResolution', () => {
       'missing',
       { record: 'working-directory' as const, declaredPath: '~/dev/gone' },
     ],
-    ['drifted', { unverifiedPath: '/Users/brian/dev/station' }],
-    ['stale', { unverifiedPath: '/Users/brian/dev/station' }],
+    ['drifted', { unverifiedPath: '/Users/me/dev/station' }],
+    ['stale', { unverifiedPath: '/Users/me/dev/station' }],
     ['unresolvable', {}],
     ['not-portable', {}],
   ] as const)(
@@ -538,8 +538,8 @@ describe('isWellFormedResolution', () => {
         resourceId: 'github.com/kontourai/station',
         reason: 'path no longer exists',
         record: 'binding',
-        declaredPath: '/Users/brian/dev/station',
-        path: '/Users/brian/dev/station',
+        declaredPath: '/Users/me/dev/station',
+        path: '/Users/me/dev/station',
       }),
     ).toBe(false);
   });
@@ -687,14 +687,14 @@ function manifestWithAuth(auth: unknown): Record<string, unknown> {
 
 describe('§3.2 — a local filesystem path can never reach a git resource (HIGH-1)', () => {
   test('a file:// remote canonicalizes to an absolute path, is therefore idempotent, and is REFUSED as a canonicalRemote', () => {
-    // normalizeGitOrigin('file:///Users/brian/dev/acme-client/repo') is
-    // '/users/brian/dev/acme-client/repo' — see
+    // normalizeGitOrigin('file:///Users/me/dev/acme-client/repo') is
+    // '/users/me/dev/acme-client/repo' — see
     // `git-remote-identity.test.ts`'s file:// row, which asserts exactly that
     // mapping. It passes the already-canonical check, so §5's migration
     // (which derives canonicalRemote from an observed `git remote`) would
     // otherwise publish a member's home directory and a client name in the
     // manifest's most-displayed field.
-    const canonical = '/users/brian/dev/acme-client/repo';
+    const canonical = '/users/me/dev/acme-client/repo';
     const result = validateProjectManifest({
       ...minimalManifest(),
       repos: [
@@ -727,7 +727,7 @@ describe('§3.2 — a local filesystem path can never reach a git resource (HIGH
           id: 'github.com/kontourai/station',
           canonicalRemote: 'github.com/kontourai/station',
           role: 'primary',
-          aliases: ['/users/brian/dev/station-mirror'],
+          aliases: ['/users/me/dev/station-mirror'],
         },
       ],
     });
@@ -805,7 +805,7 @@ describe('§3.4 — auth references that are legitimate and long (HIGH-3 accept 
     ['station', { station: 'com.kontourai.station.linear' }],
     [
       'keychain',
-      { keychain: { service: 'station', account: 'brian@briananderson.xyz' } },
+      { keychain: { service: 'station', account: 'casey@example.test' } },
     ],
     ['op', { op: 'op://engineering-vault/github-deploy/token' }],
   ])('%s: %j is accepted', (_backend, auth) => {
@@ -872,10 +872,10 @@ describe('§3.4 — auth values that are actually secrets (HIGH-3 reject table)'
 
 describe('§3.2 — a local-only resource id is grammar-constrained (HIGH-4a)', () => {
   test.each([
-    ['an absolute filesystem path', '/Users/brian/dev/secret-client/repo'],
+    ['an absolute filesystem path', '/Users/me/dev/secret-client/repo'],
     ['a tilde-prefixed path', '~/dev/x'],
     ['a bare name with no local: prefix', 'scratch'],
-    ['a local: prefix with a path inside it', 'local:/Users/brian/dev'],
+    ['a local: prefix with a path inside it', 'local:/Users/me/dev'],
   ])('%s is refused as a local-only id', (_label, id) => {
     // §5 turns today's directory-only Project into a local-only resource,
     // and the only value on hand for its id is that directory. The grammar
@@ -908,10 +908,10 @@ describe('§3.2 — a local-only resource id is grammar-constrained (HIGH-4a)', 
 
 describe('§3.2 — the free-text fields that REPLICATE are path-checked too (HIGH-4b)', () => {
   test.each([
-    ['name', { name: '/Users/brian/dev/secret-client' }],
+    ['name', { name: '/Users/me/dev/secret-client' }],
     ['slug', { slug: '~/dev/secret-client' }],
-    ['icon', { icon: '/Users/brian/secrets/logo.png' }],
-    ['id', { id: '/Users/brian/dev/secret-client' }],
+    ['icon', { icon: '/Users/me/secrets/logo.png' }],
+    ['id', { id: '/Users/me/dev/secret-client' }],
   ])('a filesystem path in the manifest %s is refused', (field, patch) => {
     // Non-portability describes RESOLUTION, not whether a record travels:
     // every one of these fields is in the manifest each member reads.
@@ -935,7 +935,7 @@ describe('§3.2 — the free-text fields that REPLICATE are path-checked too (HI
           id: 'github.com/kontourai/station',
           canonicalRemote: 'github.com/kontourai/station',
           role: 'primary',
-          label: '/Users/brian/dev/acme-client',
+          label: '/Users/me/dev/acme-client',
         },
       ],
     });
@@ -1475,7 +1475,7 @@ describe('isWellFormedResolution — the resource is NAMED and the state is real
       isWellFormedResolution({
         state: 'bound',
         resourceId: '',
-        path: '/Users/brian/dev/station',
+        path: '/Users/me/dev/station',
       }),
     ).toBe(false);
   });

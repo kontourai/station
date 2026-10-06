@@ -1,0 +1,23 @@
+{
+  "path": "src-ui/CLAUDE.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+
+  "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+
+  "sources": [
+    "src-ui/AGENTS.md"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed landing deltas through 111744681: Routes UI/brand/copy work to the published @kontourai/ui DESIGN.md, available in package versions from 1.13.0. The pinned package lacks that file, so its canonical GitHub document was read; no OPEN design decision was resolved."
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ef78c0d0980e7dbbf2cf8b633de002f5abf305da",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the shared native module/state/IPC composition, exact main WebView guard, mobile paired bearer-plus-V2-companion transaction, retirement journal paths and captured locked profile path. Actual c8f4 iOS 26.5 simulator artifact e74a completed Station trust, host routing custody, pairing/current Device candidate and server self-receipt without a renderer bearer; stale revision refused and local deletion completed. Full encrypted Project/account/Device revoke sequence remains NOT_VERIFIED: later controller hit five-minute child withdrawal and the prepared full run failed startup under host load 182.23 and disk free 2.9 GiB. No source timeout increase, CSP weakening, production deployment, signed release or physical qualification claimed.","inputs":["docs/design/native-capabilities.md"]}
+  ]
+}

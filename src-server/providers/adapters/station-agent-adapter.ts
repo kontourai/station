@@ -20,6 +20,7 @@ import {
 import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
+  currentSkillExperienceContext,
   INTERNAL_TURN_CORRELATION_HEADER,
   issueAuthorizedTurnCorrelationHandoff,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
@@ -36,6 +37,13 @@ import {
   takeToolPurpose,
   toolPurposeForCall,
 } from '../../runtime/frameworks/tool-purpose.js';
+import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  beginNativeKnowledgeTurn,
+  finishNativeKnowledgeTurn,
+  startNativeKnowledgeSession,
+  stopNativeKnowledgeSession,
+} from '../../runtime/mcp/station-knowledge-native-tools.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
 import {
@@ -59,6 +67,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_TENANT_HEADER,
 } from '../../utils/internal-api-token.js';
+import { outwardTransportError } from '../../utils/outward-error.js';
 import {
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
@@ -68,6 +77,11 @@ import {
   SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
+import {
+  MODEL_PROVIDER_CREDENTIALS_REJECTED,
+  modelProviderFailureMessage,
+  modelProviderHttpStatus,
+} from '../model-provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
@@ -735,13 +749,30 @@ export function mapStationAgentStreamEvent(options: {
     return { finishReason: finishReason(event.finishReason) };
   }
   if (event.type === 'error') {
+    // The chunk's `errorText` is the outward generic and is never read;
+    // only the numeric `statusCode` (`writeSSEError`) is, and it becomes a
+    // sentence composed here, so no provider text reaches the event. A 401
+    // flagged `statusInferred` came from the error's wording, not an HTTP
+    // response, so it is neither quoted nor recorded as a status.
+    const reportedStatus = modelProviderHttpStatus(event.statusCode);
+    const inferredCredentials =
+      reportedStatus === 401 && event.statusInferred === true;
+    const httpStatus = inferredCredentials ? undefined : reportedStatus;
     publish({
       ...base,
       method: 'runtime.error',
       severity: 'error',
-      message: 'Station agent turn failed',
+      message: inferredCredentials
+        ? MODEL_PROVIDER_CREDENTIALS_REJECTED
+        : httpStatus === undefined
+          ? // The same text the route persists in its failed-turn marker
+            // (`outwardTurnFailureText`), so a reloaded chat's projected
+            // runtime error and marker de-duplicate to one card.
+            outwardTransportError('sse')
+          : modelProviderFailureMessage(httpStatus),
       code: 'station_agent_turn_failed',
       retriable: true,
+      ...(httpStatus !== undefined ? { details: { httpStatus } } : {}),
     });
     return { failed: true };
   }
@@ -839,6 +870,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       createdAt: now,
       updatedAt: now,
     };
+    startNativeKnowledgeSession(input.threadId);
     this.sessions.set(input.threadId, {
       workspaceRequired:
         input.workspaceIsolation?.mode === 'worktree' ||
@@ -930,6 +962,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const controller = new AbortController();
     record.activeTurnId = turnId;
     record.activeController = controller;
+    beginNativeKnowledgeTurn(input.threadId, turnId, controller.signal);
     record.abortPublished = false;
     // archive#796: a Station agent's session is started without a model — the UI
     // resolves one only when a turn is sent — so the model settles here.
@@ -1009,6 +1042,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             nativeOutputRelay,
             currentNativeMemoryHistory(),
             nativeForeground,
+            currentSkillExperienceContext(),
           )
         : undefined;
       // #2377 slice A: the relay is Station's own server code (the built-in
@@ -1241,11 +1275,17 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   }
 
   async stopSession(threadId: string): Promise<void> {
+    const knowledgeCleanup = stopNativeKnowledgeSession(threadId);
+    revokeStationControlMcpToken(threadId);
     const record = this.sessions.get(threadId);
-    if (!record) return;
+    if (!record) {
+      await knowledgeCleanup;
+      return;
+    }
     this.cancelPendingApprovals(record);
     record.activeController?.abort('session stopped');
     this.sessions.delete(threadId);
+    await knowledgeCleanup;
     // station#1569 (item 4): the abort above tears down the SSE stream
     // without publishing anything for the calls it was mid-way through —
     // `consumeChatStream`'s aborted branch returns silently by design. So
@@ -1422,6 +1462,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         record.activeTurnId === turnId &&
         record.activeController === controller
       ) {
+        finishNativeKnowledgeTurn(record.session.threadId, turnId);
         record.activeTurnId = undefined;
         record.activeController = undefined;
       }
@@ -1466,6 +1507,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       this.updateSession(record, 'error');
       this.publishState(record, 'running', 'errored');
     }
+    finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
   }
@@ -1497,6 +1539,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     });
     this.updateSession(record, 'error');
     this.publishState(record, 'running', 'errored');
+    finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
   }

@@ -1,4 +1,4 @@
-name: CI
+name: "PR: CI"
 
 on:
   push:
@@ -52,7 +52,7 @@ jobs:
 
   # #2709: `fast-checks` is the required check. The affected-test selection
   # outgrew one runner's fifteen-minute budget, so it is computed once here,
-  # run as FAST_CHECKS_SHARD_COUNT slices in fast-checks-shard, and the fixed
+  # run as one to four planned slices in fast-checks-shard, and the fixed
   # static invariants, browser smoke and bundle budget run in
   # fast-checks-statics. The `fast-checks` job below passes only when all of
   # them succeeded and every shard's receipt proves it ran its slice of this
@@ -79,6 +79,8 @@ jobs:
       # Exactly 'true' or 'false', from the base-controlled detection step.
       # The aggregator fails on anything else.
       legacy: ${{ steps.mode.outputs.legacy }}
+      shards: ${{ steps.plan.outputs.shards }}
+      shard-count: ${{ steps.plan.outputs.shard-count }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -166,9 +168,13 @@ jobs:
         run: npm run ci:fast
 
       - name: Plan the affected-test selection
+        id: plan
         if: ${{ steps.mode.outputs.legacy == 'false' }}
         timeout-minutes: 5
         env:
+          # Rollout handshake: a new planner under the old base workflow must
+          # retain its fixed four-way split; older planners ignore this opt-in.
+          STATION_FAST_CHECKS_ADAPTIVE_SHARDS: 'true'
           STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
           # Parity with the lane step's env (review F1).
           STATION_TYPECHECK_SLOTS: '4'
@@ -216,7 +222,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # Older candidates do not emit adaptive outputs and retain their plan's
+        # four-way split. Unplanned legs are absent, never runner-backed skips.
+        shard: ${{ fromJSON(needs.fast-checks-plan.outputs.shards || '[1,2,3,4]') }}
     steps:
       # The shard runs the lane's tests, so it gets the lane's environment
       # (review F1): full history like fast-checks-statics (tests read
@@ -252,7 +260,8 @@ jobs:
         id: slice
         env:
           SHARD: ${{ matrix.shard }}
-        run: node scripts/fast-checks-shard.mjs slice --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/4"
+          SHARD_COUNT: ${{ needs.fast-checks-plan.outputs.shard-count || '4' }}
+        run: node scripts/fast-checks-shard.mjs slice --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/$SHARD_COUNT"
 
       # The lane's static invariants put actionlint on PATH before its tests
       # ran; a selected test that shells out to it sees the same binary here.
@@ -311,9 +320,10 @@ jobs:
       - name: Run fast-checks shard
         env:
           SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: ${{ needs.fast-checks-plan.outputs.shard-count || '4' }}
           STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
           STATION_TYPECHECK_SLOTS: '4'
-        run: npm run fast-checks:shard -- run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/4" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"
+        run: npm run fast-checks:shard -- run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/$SHARD_COUNT" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"
 
       # Verdict-bearing: the aggregator fails on a missing receipt, so this
       # upload is never continue-on-error. The attempt is in the name because
@@ -711,6 +721,9 @@ jobs:
         run: npm run ci:fast
 
   full-regression:
+    permissions:
+      contents: read
+      actions: read
     # Manual escape hatch only. Nightly and tagged releases call the same
     # reusable workflow with their own already-bound immutable source SHA.
     needs: [classify, fast-checks]
@@ -731,7 +744,7 @@ jobs:
     # promotion contract. The canonical command already includes the complete
     # Vitest corpus and Veritas repo-governance; this job preserves the focused
     # connected-agent projection and diff-oriented readiness report for an
-    # operator who explicitly dispatched CI.
+    # operator who explicitly dispatched PR: CI.
     needs: [classify, full-regression]
     if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}
     runs-on: ubuntu-22.04

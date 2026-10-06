@@ -9,6 +9,7 @@ import {
   verifyStationConnectionKeyCandidate,
 } from '@kontourai/station-shared/connection-proof';
 import type { ConnectionKeyCandidateIssuer } from '../ssh/connection-key-candidate-issuer.js';
+import type { ApprovedNativeSurface } from './native-surface-registry.js';
 import type {
   BrokerNativeOffer,
   BrokerOffer,
@@ -39,6 +40,17 @@ export interface BrokerNativeOfferAdapter {
   ) => Promise<Answer>;
 }
 
+/** Trusted operator-approved registry; the broker still polls one exact surface at a time. */
+export interface BrokerNativeOfferResolver {
+  approvedSurfaces(): readonly ApprovedNativeSurface[];
+  answer(
+    offer: BrokerNativeOffer,
+    trust: ApprovedStationConnectionTrust,
+    signal: AbortSignal,
+    admission: ApprovedNativeSurface,
+  ): Promise<Answer>;
+}
+
 function sameNativeSurface(
   left: SelfHostedBrokerNativeClientSurfaceV2,
   right: SelfHostedBrokerNativeClientSurfaceV2,
@@ -61,6 +73,7 @@ export class SelfHostedBrokerConnector {
   readonly #lifetime = new AbortController();
   readonly #scope: Readonly<SelfHostedBrokerScopeV1>;
   readonly #native: BrokerNativeOfferAdapter | undefined;
+  readonly #nativeResolver: BrokerNativeOfferResolver | undefined;
   constructor(
     scope: SelfHostedBrokerScopeV1,
     private readonly client: SelfHostedBrokerClient,
@@ -73,15 +86,24 @@ export class SelfHostedBrokerConnector {
       trust: ApprovedStationConnectionTrust,
       signal: AbortSignal,
     ) => Promise<Answer>,
-    nativeOfferAdapter?: BrokerNativeOfferAdapter,
+    nativeOfferAdapter?: BrokerNativeOfferAdapter | BrokerNativeOfferResolver,
   ) {
     this.#scope = Object.freeze(structuredClone(scope));
-    this.#native = nativeOfferAdapter
-      ? Object.freeze({
-          surface: Object.freeze(structuredClone(nativeOfferAdapter.surface)),
-          answer: nativeOfferAdapter.answer,
-        })
-      : undefined;
+    this.#nativeResolver =
+      nativeOfferAdapter && 'approvedSurfaces' in nativeOfferAdapter
+        ? Object.freeze({
+            approvedSurfaces:
+              nativeOfferAdapter.approvedSurfaces.bind(nativeOfferAdapter),
+            answer: nativeOfferAdapter.answer.bind(nativeOfferAdapter),
+          })
+        : undefined;
+    this.#native =
+      nativeOfferAdapter && 'surface' in nativeOfferAdapter
+        ? Object.freeze({
+            surface: Object.freeze(structuredClone(nativeOfferAdapter.surface)),
+            answer: nativeOfferAdapter.answer,
+          })
+        : undefined;
   }
   #notWithdrawn() {
     if (this.#state === 'withdrawn')
@@ -295,7 +317,8 @@ export class SelfHostedBrokerConnector {
   /** Explicit native-v2 lane; the legacy `poll()` callback never sees it. */
   async pollNative(signal: AbortSignal) {
     const native = this.#native;
-    if (!native)
+    const resolver = this.#nativeResolver;
+    if (!native && !resolver)
       throw new Error('broker_connector_native_offer_opt_in_required');
     return this.#runAdmission(signal, async (currentSignal) => {
       this.#active();
@@ -316,69 +339,112 @@ export class SelfHostedBrokerConnector {
       let answered = 0;
       let diagnosticEchoMode = false;
       const diagnosticEchoes: string[] = [];
-      while (observed < 32 && !diagnosticEchoMode) {
-        let offers: BrokerNativeOffer[];
-        try {
-          offers = await this.client.nativeOffers(
-            native.surface,
-            currentSignal,
-          );
-        } catch (error) {
-          if (error instanceof BrokerTransientRequestError)
-            throw new BrokerOfferReadTransientError(error);
-          throw error;
-        }
-        current();
-        if (offers.length === 0) break;
-        const offer = offers[0]!;
-        observed++;
-        if (
-          offer.version !== 'station-broker-native-connection-offer/v2' ||
-          offer.scope.stationId !== this.#scope.stationId ||
-          offer.scope.enrollmentId !== this.#scope.enrollmentId ||
-          offer.scope.routingGeneration !== this.#scope.routingGeneration ||
-          !sameNativeSurface(offer.surface, native.surface) ||
-          offer.clientId !== native.surface.clientInstanceId
-        )
-          throw new Error('broker_connector_native_surface_mismatch');
-        const stationSigningKeyId =
-          await stationConnectionSigningKeyId(descriptor);
-        current();
-        if (
-          offer.stationSigningKeyId !== stationSigningKeyId ||
-          offer.stationSigningGeneration !== descriptor.generation
-        )
-          throw new Error('broker_connector_native_station_binding_mismatch');
-        const result = await native.answer(offer, descriptor, currentSignal);
-        try {
+      const admitted = resolver?.approvedSurfaces();
+      if (admitted && admitted.length > 16)
+        throw new Error('broker_connector_native_surface_capacity');
+      const selections = native
+        ? [{ surface: native.surface, admission: undefined }]
+        : (admitted ?? [])
+            .filter(
+              (value) =>
+                value.scope.stationId === this.#scope.stationId &&
+                value.scope.enrollmentId === this.#scope.enrollmentId &&
+                value.scope.routingGeneration === this.#scope.routingGeneration,
+            )
+            .map((value) => ({
+              surface: Object.freeze({ ...value.surface }),
+              admission: Object.freeze({
+                ...value,
+                scope: Object.freeze({ ...value.scope }),
+                surface: Object.freeze({ ...value.surface }),
+              }),
+            }));
+      for (const selection of selections) {
+        const selectionCurrent = () => {
           current();
-          await this.client.answerNative(
-            {
-              surface: native.surface,
-              clientId: offer.clientId,
-              nonce: offer.nonce,
-              stationSigningKeyId: offer.stationSigningKeyId,
-              stationSigningGeneration: offer.stationSigningGeneration,
-              answerSdp: result.answerSdp,
-              stationProof: result.stationProof,
-            },
-            currentSignal,
-          );
-          current();
-          if (result.collectDiagnosticEcho) {
-            diagnosticEchoMode = true;
-            diagnosticEchoes.push(
-              ...(await result.collectDiagnosticEcho(currentSignal)),
+          const admission = selection.admission;
+          if (
+            admission &&
+            (!admission.isCurrent() ||
+              admission.scope.stationId !== this.#scope.stationId ||
+              admission.scope.enrollmentId !== this.#scope.enrollmentId ||
+              admission.scope.routingGeneration !==
+                this.#scope.routingGeneration)
+          )
+            throw new Error('broker_connector_native_surface_retired');
+        };
+        selectionCurrent();
+        while (observed < 32 && !diagnosticEchoMode) {
+          let offers: BrokerNativeOffer[];
+          try {
+            offers = await this.client.nativeOffers(
+              selection.surface,
+              currentSignal,
             );
-            current();
-            await this.#dispose(result);
-            current();
+          } catch (error) {
+            if (error instanceof BrokerTransientRequestError)
+              throw new BrokerOfferReadTransientError(error);
+            throw error;
           }
-        } catch (error) {
-          await this.#dispose(result);
-          throw error;
+          selectionCurrent();
+          if (offers.length === 0) break;
+          const offer = offers[0]!;
+          observed++;
+          if (
+            offer.version !== 'station-broker-native-connection-offer/v2' ||
+            offer.scope.stationId !== this.#scope.stationId ||
+            offer.scope.enrollmentId !== this.#scope.enrollmentId ||
+            offer.scope.routingGeneration !== this.#scope.routingGeneration ||
+            !sameNativeSurface(offer.surface, selection.surface) ||
+            offer.clientId !== selection.surface.clientInstanceId
+          )
+            throw new Error('broker_connector_native_surface_mismatch');
+          const stationSigningKeyId =
+            await stationConnectionSigningKeyId(descriptor);
+          selectionCurrent();
+          if (
+            offer.stationSigningKeyId !== stationSigningKeyId ||
+            offer.stationSigningGeneration !== descriptor.generation
+          )
+            throw new Error('broker_connector_native_station_binding_mismatch');
+          const result = native
+            ? await native.answer(offer, descriptor, currentSignal)
+            : await resolver!.answer(
+                offer,
+                descriptor,
+                currentSignal,
+                selection.admission!,
+              );
+          try {
+            selectionCurrent();
+            await this.client.answerNative(
+              {
+                surface: selection.surface,
+                clientId: offer.clientId,
+                nonce: offer.nonce,
+                stationSigningKeyId: offer.stationSigningKeyId,
+                stationSigningGeneration: offer.stationSigningGeneration,
+                answerSdp: result.answerSdp,
+                stationProof: result.stationProof,
+              },
+              currentSignal,
+            );
+            selectionCurrent();
+            if (result.collectDiagnosticEcho) {
+              diagnosticEchoMode = true;
+              diagnosticEchoes.push(
+                ...(await result.collectDiagnosticEcho(currentSignal)),
+              );
+              selectionCurrent();
+              await this.#dispose(result);
+              selectionCurrent();
+            }
+          } catch (error) {
+            await this.#dispose(result);
+            throw error;
+          }
+          answered++;
         }
-        answered++;
       }
       return diagnosticEchoMode
         ? { observed, answered, diagnosticEchoes }

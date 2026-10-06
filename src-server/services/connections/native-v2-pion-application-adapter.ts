@@ -15,9 +15,16 @@ import {
   createStationConnectionProofVerifier,
   stationConnectionSigningKeyId,
 } from '@kontourai/station-shared/connection-proof';
-import type { PionApplicationAdapterInput } from './pion-application-adapter.js';
+import type {
+  ApprovedNativeSurface,
+  NativeSurfaceRegistry,
+} from './native-surface-registry.js';
 import { startPionApplicationAdapter } from './pion-application-adapter.js';
-import type { BrokerNativeOfferAdapter } from './self-hosted-broker-connector.js';
+import { capturePionTurn, type PionTurnSource } from './relay-ice-consumer.js';
+import type {
+  BrokerNativeOfferAdapter,
+  BrokerNativeOfferResolver,
+} from './self-hosted-broker-connector.js';
 import type {
   VerifiedNativePionApplicationRequestFacts,
   VirtualApplication,
@@ -32,6 +39,107 @@ const CLIENT_INSTANCE_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SURFACE_KEY_THUMBPRINT = /^[A-Za-z0-9_-]{43}$/;
 const NATIVE_CHANNELS = new Set(['dev', 'stable', 'beta', 'nightly']);
+
+/** Resolve only operator-approved surfaces; each peer retains its immutable approval. */
+export function createResolvedNativeV2PionApplicationAdapter(
+  input: Omit<NativeV2PionApplicationAdapterInput, 'surface'> & {
+    registry: Pick<NativeSurfaceRegistry, 'approvedSurfaces'>;
+  },
+  dependencies?: NativeV2PionApplicationAdapterDependencies,
+) {
+  const owned = new Map<
+    string,
+    ReturnType<typeof createNativeV2PionApplicationAdapter>
+  >();
+  let closed = false;
+  const currentAdmission = (
+    admission: ApprovedNativeSurface,
+    offer: SelfHostedBrokerNativeConnectionOfferV2,
+  ) => {
+    if (
+      closed ||
+      !admission.isCurrent() ||
+      !sameSurface(admission.surface, offer.surface) ||
+      admission.scope.stationId !== offer.scope.stationId ||
+      admission.scope.enrollmentId !== offer.scope.enrollmentId ||
+      admission.scope.routingGeneration !== offer.scope.routingGeneration
+    )
+      throw new Error('native_pion_application_surface_unapproved');
+  };
+  const adapter: BrokerNativeOfferResolver = Object.freeze({
+    approvedSurfaces: () => (closed ? [] : input.registry.approvedSurfaces()),
+    async answer(
+      offer: SelfHostedBrokerNativeConnectionOfferV2,
+      trust: ApprovedStationConnectionTrust,
+      signal: AbortSignal,
+      admission: ApprovedNativeSurface,
+    ) {
+      currentAdmission(admission, offer);
+      let target = owned.get(admission.approvalId);
+      if (!target) {
+        if (owned.size >= 16)
+          throw new Error('native_pion_application_surface_capacity');
+        const captured = Object.freeze({
+          ...admission,
+          surface: Object.freeze({ ...admission.surface }),
+          scope: Object.freeze({ ...admission.scope }),
+        });
+        target = createNativeV2PionApplicationAdapter(
+          {
+            ...input,
+            surface: captured.surface,
+            trust: {
+              current: () =>
+                !closed && captured.isCurrent() ? input.trust.current() : null,
+              isCurrent: (value) =>
+                !closed && captured.isCurrent() && input.trust.isCurrent(value),
+            },
+          },
+          dependencies,
+        );
+        owned.set(admission.approvalId, target);
+      }
+      const result = await target.adapter.answer(offer, trust, signal);
+      try {
+        currentAdmission(admission, offer);
+        return result;
+      } catch (error) {
+        await result.dispose();
+        throw error;
+      }
+    },
+  });
+  return {
+    adapter,
+    get activePeerCount() {
+      return [...owned.values()].reduce(
+        (sum, value) => sum + value.activePeerCount,
+        0,
+      );
+    },
+    get retiringPeerCount() {
+      return [...owned.values()].reduce(
+        (sum, value) => sum + value.retiringPeerCount,
+        0,
+      );
+    },
+    async close() {
+      closed = true;
+      const results = await Promise.allSettled(
+        [...owned.values()].map((value) => value.close()),
+      );
+      const errors = results.flatMap((value) =>
+        value.status === 'rejected' ? [value.reason] : [],
+      );
+      if (errors.length)
+        throw new AggregateError(
+          errors,
+          'native_pion_application_cleanup_failed',
+        );
+      owned.clear();
+    },
+  };
+}
 
 function fingerprint(sdp: string) {
   const values = [...sdp.matchAll(/^a=fingerprint:sha-256 (.+)$/gm)].map(
@@ -116,7 +224,7 @@ export interface NativeV2PionApplicationAdapterInput {
   executable: string;
   certificatePem: string;
   privateKeyPem: string;
-  turn: PionApplicationAdapterInput['turn'];
+  turn: PionTurnSource;
   trust: {
     current(): ApprovedStationConnectionTrust | null;
     isCurrent(value: ApprovedStationConnectionTrust): boolean;
@@ -166,7 +274,10 @@ export function createNativeV2PionApplicationAdapter(
   const executable = input.executable;
   const certificatePem = input.certificatePem;
   const privateKeyPem = input.privateKeyPem;
-  const turn = Object.freeze(structuredClone(input.turn));
+  const turn: PionTurnSource =
+    'source' in input.turn
+      ? Object.freeze({ source: 'broker', capture: input.turn.capture })
+      : Object.freeze(structuredClone(input.turn));
   const trustOwner = input.trust;
   const issuerOwner = input.issuer;
   const peers = new Set<NativeApplicationPeer>();
@@ -256,6 +367,9 @@ export function createNativeV2PionApplicationAdapter(
       )
         throw new Error('native_pion_application_trust_unavailable');
 
+      // Scalar is copied from the authenticated offer before any await; the
+      // offer object itself is never retained for later reads.
+      const peerNonce = offer.nonce;
       const clientFingerprint = fingerprint(offer.offerSdp);
       const routingGeneration = offer.scope.routingGeneration;
       const controller = new AbortController();
@@ -382,6 +496,7 @@ export function createNativeV2PionApplicationAdapter(
             verifiedNativeRequests.set(
               request,
               Object.freeze({
+                peerNonce,
                 stationId: captured.stationId,
                 connectionEnrollmentId: captured.enrollmentId,
                 routingGeneration,
@@ -421,6 +536,13 @@ export function createNativeV2PionApplicationAdapter(
         )
           throw new Error('native_pion_application_station_binding_mismatch');
 
+        const peerTurn = await capturePionTurn(
+          turn,
+          offer.scope,
+          controller.signal,
+          90_000,
+        );
+        assertCurrent();
         const started = await dependencies.startAdapter({
           executable,
           profile: 'application',
@@ -428,10 +550,9 @@ export function createNativeV2PionApplicationAdapter(
           offer: { type: 'offer', sdp: offer.offerSdp },
           certificatePem,
           privateKeyPem,
-          turn,
+          ...peerTurn,
           accept,
           signal: controller.signal,
-          maxLifetimeMs: 90_000,
         });
         const entry: NativeApplicationPeer = {
           peer: started,

@@ -26,6 +26,7 @@ import {
   type CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
+import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderTurnInProgressError } from '../adapter-shape.js';
 import {
@@ -489,6 +490,7 @@ describe('#2452 muse serve: a workflow subagent approval reaches Station', () =>
       approvalMode: 'ask',
       decide: 'accept',
     });
+
     // The capture ends with the host's own turn still running.
     const refusal = await h.adapter
       .sendTurn({ threadId: THREAD, input: 'next' })
@@ -610,6 +612,16 @@ describe('#2452 muse serve: workflow children are child work', () => {
       approvalMode: 'ask',
       decide: 'accept',
     });
+    const envelopes = assembleTurnProvenanceEnvelopes(h.events);
+    expect(
+      envelopes.some(
+        (envelope) =>
+          envelope.usage.state === 'observed' &&
+          envelope.usage.value.inputTokens === 28465 &&
+          envelope.usage.value.outputTokens === 911 &&
+          envelope.usage.value.cacheReadTokens === 5105,
+      ),
+    ).toBe(true);
     const deltas = childWorkDeltas(h.events);
     const firstSnapshot = deltas.find((delta) => delta.kind === 'snapshot');
     expect(firstSnapshot).toMatchObject({
@@ -644,6 +656,11 @@ describe('#2452 muse serve: workflow children are child work', () => {
           'Ran `date > stamp.txt` in workspace root. File stamp.txt content: "Thu Sep 24 04:40:45 UTC 2026".',
       },
     });
+    // #3337: the terminal revision carries only a duration; the settle still
+    // reports the whole accumulated figure, so nothing is left provisional.
+    expect(child.usage).toEqual({ totalTokens: 30972 + 627, durationMs: 8170 });
+    expect(child.usageProvisional).toBeUndefined();
+    expect(child.usageRunningFields).toBeUndefined();
   });
 
   test("deny: a child whose every tool was denied stays completed (muse's verdict) but never reads as a clean success", async () => {
@@ -654,6 +671,8 @@ describe('#2452 muse serve: workflow children are child work', () => {
     });
     const [child] = childWorkForReporter(fold(h.events), THREAD);
     expect(child.status).toBe('completed');
+    expect(child.usage).toEqual({ totalTokens: 20216 + 312, durationMs: 3728 });
+    expect(child.usageProvisional).toBeUndefined();
     expect(
       child.result?.summary?.startsWith(MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX),
     ).toBe(true);
@@ -676,6 +695,9 @@ describe('#2452 muse serve: workflow children are child work', () => {
     ).toEqual(['stopped-unconfirmed', 'cancelled']);
     const [child] = childWorkForReporter(fold(h.events), THREAD);
     expect(child.status).toBe('cancelled');
+    // #3337: the usage revision muse sent after the stop still counts.
+    expect(child.usage).toEqual({ totalTokens: 0, durationMs: 3104 });
+    expect(child.usageProvisional).toBeUndefined();
     // No summary was reported (final_summary.summary is null): none invented.
     expect(child.result).toBeUndefined();
   });
@@ -1393,6 +1415,46 @@ describe('#2452 fix round: regressions from the verifier', () => {
         .slice(before)
         .filter((frame) => frame.method === 'approval/decide'),
     ).toEqual([]);
+  });
+
+  test('#3071: a request names its turn only when the turn itself asked; a subagent origin names none', async () => {
+    const h = harness();
+    const stopAt = captureIndex(
+      'workflow-child-approve',
+      (msg, dir) => dir === 's2c' && msg.method === 'approval/requested',
+    );
+    await run(h, 'workflow-child-approve', { approvalMode: 'ask', stopAt });
+    const liveTurnId = of(h.events, 'turn.started').at(-1)?.turnId;
+    expect(liveTurnId).toBeTruthy();
+    const host = h.hosts[0];
+    const requested = (approvalId: string, extra: Record<string, unknown>) => {
+      const params: Record<string, unknown> = {
+        ...APPROVE_REQUESTED().params,
+        approvalId,
+        currentRequirementId: { approvalId, sourceIndex: 0 },
+        // The case the captured protocol never produces: a request that
+        // reports the PARENT's live turn id.
+        turnId: liveTurnId,
+        ...extra,
+      };
+      if (extra.subagentOrigin === undefined) delete params.subagentOrigin;
+      host.writeFrame({ jsonrpc: '2.0', method: 'approval/requested', params });
+    };
+    requested('00000000-0000-7000-8000-0000000000c1', {
+      subagentOrigin: { subagentId: 'child-under-parent-turn' },
+    });
+    requested('00000000-0000-7000-8000-0000000000c2', {});
+    await settle();
+    const opened = of(h.events, 'request.opened');
+    const bySubagent = opened.find(
+      (event) => event.requestId === '00000000-0000-7000-8000-0000000000c1',
+    );
+    const byTurn = opened.find(
+      (event) => event.requestId === '00000000-0000-7000-8000-0000000000c2',
+    );
+    expect(bySubagent).toBeDefined();
+    expect(bySubagent?.turnId).toBeUndefined();
+    expect(byTurn?.turnId).toBe(liveTurnId);
   });
 
   for (const target of ['ask', 'auto'] as const) {

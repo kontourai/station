@@ -23,31 +23,31 @@ describe('resolvePrincipal', () => {
     const principal = resolvePrincipal(
       {
         provider: 'tailscale-serve',
-        subject: 'brian@example.test',
-        displayName: 'Brian',
+        subject: 'casey@example.test',
+        displayName: 'Casey',
       },
       'personal',
       undefined,
       undefined,
     );
     expect(principal).toEqual({
-      id: 'human:tailscale-serve:brian@example.test',
+      id: 'human:tailscale-serve:casey@example.test',
       kind: 'human',
-      display: 'Brian',
+      display: 'Casey',
     });
   });
 
   test('resolves a human principal from a verified identity with no displayName, falling back to subject for display only', () => {
     const principal = resolvePrincipal(
-      { provider: 'tailscale-serve', subject: 'brian@example.test' },
+      { provider: 'tailscale-serve', subject: 'casey@example.test' },
       'hosted',
       undefined,
       undefined,
     );
     expect(principal).toEqual({
-      id: 'human:tailscale-serve:brian@example.test',
+      id: 'human:tailscale-serve:casey@example.test',
       kind: 'human',
-      display: 'brian@example.test',
+      display: 'casey@example.test',
     });
   });
 
@@ -107,12 +107,12 @@ describe('resolvePrincipal', () => {
 
   test('an identity always wins over the personal-mode local-operator default, even with the authority fact present', () => {
     const principal = resolvePrincipal(
-      { provider: 'tailscale-serve', subject: 'brian@example.test' },
+      { provider: 'tailscale-serve', subject: 'casey@example.test' },
       'personal',
       HOME_POSSESSION,
       undefined,
     );
-    expect(principal.id).toBe('human:tailscale-serve:brian@example.test');
+    expect(principal.id).toBe('human:tailscale-serve:casey@example.test');
     expect(principal.id).not.toBe(LOCAL_OPERATOR_PRINCIPAL_ID);
   });
 

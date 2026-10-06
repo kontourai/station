@@ -1,0 +1,7 @@
+{
+  "revision": "f79265eb4c5cd5ac62bfbb4640ebe97cecffd929",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed shared-state and action-row adoption: recent-chat loading, empty and failure branches now use canonical state primitives; Send has its own ResponsiveSurfaceActions row below the two value pickers. Draft selection, scoped recent rows, setup retention and authority checks are unchanged. Focused mounted start/setup/recent tests and state-primitives/button-cap static gates passed. Retained browser setup/turn evidence remains separately bounded.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

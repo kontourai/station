@@ -1,10 +1,16 @@
+import type { RegistryItem as CatalogRegistryItem } from '@kontourai/station-contracts/catalog';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 
-export interface RegistryItem {
+export interface RegistryItem
+  extends Pick<
+    CatalogRegistryItem,
+    'catalog' | 'catalogSourceName' | 'catalogFreshness' | 'installedPluginName'
+  > {
   id: string;
   displayName?: string;
   description?: string;
   installed?: boolean;
+  status?: string;
   source?: string;
   version?: string;
   name?: string;
@@ -29,6 +35,7 @@ export function getRegistryItemId(item: RegistryItem) {
 }
 
 export function getRegistrySourceLabel(item: RegistryItem) {
+  if (item.catalogSourceName) return item.catalogSourceName;
   if (!item.source) return null;
   if (item.source === 'GitHub') return 'GitHub';
   if (
@@ -96,6 +103,22 @@ export function getRegistryTabCopy(tab: RegistryCatalogTab) {
         empty: 'No portable Kits are installed for this workspace yet.',
       };
   }
+}
+
+export function getRegistrySkillInstallRefusal(
+  tab: RegistryCatalogTab,
+  item: RegistryItem,
+): string | null {
+  if (item.catalogFreshness === 'stale')
+    return 'This marketplace is offline. Refresh its source and inspect the item again before installing.';
+  if (tab !== 'skills') return null;
+  if (item.status === 'installed-name-conflict')
+    return 'A skill with this name is already in your Library from another source. Manage that copy before adding this one.';
+  if (item.status === 'unsupported-skill-name')
+    return 'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.';
+  if (item.status === 'unsupported-skill-format')
+    return 'This skill uses metadata that Station cannot install. Its original Markdown is available for inspection; ask its publisher for a supported format.';
+  return null;
 }
 
 export function getRegistryActionLabel(

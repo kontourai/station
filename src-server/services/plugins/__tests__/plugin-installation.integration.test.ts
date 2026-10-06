@@ -19,6 +19,7 @@ import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { Client } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
@@ -37,6 +38,10 @@ import {
   closePluginActivationSession,
   createPluginActivationSession,
 } from '../plugin-activation-composition.js';
+import {
+  createPluginCommandEffectService,
+  FilePluginCommandEffectStore,
+} from '../plugin-command-effects.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../plugin-incarnation.js';
 import { derivePluginConsentBasis } from '../plugin-install-consent.js';
@@ -57,6 +62,10 @@ import { PluginInstallationService } from '../plugin-installation-service.js';
 import { PluginLifecycleProposalService } from '../plugin-lifecycle-proposals.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 import { grantPermissions } from '../plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  pluginInstallationGeneration,
+} from '../plugin-runtime-artifact.js';
 import { installPluginDependency } from '../plugin-source.js';
 
 const tempDir = trackTempDirs();
@@ -301,6 +310,7 @@ test('the actual install route uses transport-backed installation control and ex
     reconcile: () => request('reconcile-all', null),
   };
   const app = new Hono();
+  bindOperatorPrincipal(app);
   registerPluginInstallRoutes(app, {
     projectVisiblePlugins: () => (installed) => installed,
     ...f.deps,
@@ -368,6 +378,7 @@ test.each(['con', 'nul', 'com1', 'con.foo'])(
         .map((plugin) => plugin.manifest.name),
     ).toEqual([name]);
     const app = new Hono();
+    bindOperatorPrincipal(app);
     registerPluginInstallRoutes(app, {
       ...f.deps,
       projectVisiblePlugins: () => (installed) => installed,
@@ -430,6 +441,7 @@ test.each([false, true])(
       'Next fixture',
     );
     const app = new Hono();
+    bindOperatorPrincipal(app);
     registerPluginLifecycleRoutes(app, f.deps);
     if (removeAlias) unlinkSync(join(f.plugins, 'fixture'));
     const response = await app.request('/fixture/update', { method: 'POST' });
@@ -475,6 +487,7 @@ test('the Update route finds no source for a package without its own repository,
   expect(before.kind).toBe('incarnation');
   expect(existsSync(join(before.packageRoot, '.git'))).toBe(false);
   const app = new Hono();
+  bindOperatorPrincipal(app);
   registerPluginLifecycleRoutes(app, f.deps);
   const response = await app.request('/fixture/update', { method: 'POST' });
   const body = (await response.json()) as { error?: string };
@@ -539,6 +552,7 @@ test('the Update route completes a matching update proposal and leaves another p
     })
   ).proposal;
   const app = new Hono();
+  bindOperatorPrincipal(app);
   registerPluginLifecycleRoutes(app, { ...f.deps, proposals });
   const update = (proposalId: string) =>
     app.request('/fixture/update', {
@@ -593,6 +607,7 @@ test.each(['ready', 'pending'] as const)(
     writeFileSync(join(captured.root.dataRoot!, 'retained-value'), 'keep this');
     unlinkSync(join(f.plugins, 'fixture'));
     const app = new Hono();
+    bindOperatorPrincipal(app);
     registerPluginLifecycleRoutes(app, f.deps);
     const response = await app.request('/fixture', { method: 'DELETE' });
     expect(await response.json()).toMatchObject({
@@ -1501,6 +1516,7 @@ test.each(['registry', 'source', 'mutation'] as const)(
           },
         ]);
       const app = new Hono();
+      bindOperatorPrincipal(app);
       registerPluginLifecycleRoutes(app, {
         ...f.deps,
         ...(barrier === 'mutation'
@@ -1555,3 +1571,57 @@ test.each(['registry', 'source', 'mutation'] as const)(
     }
   },
 );
+
+test('kontourai/station#1419: installing over a managed plugin captures command effects admitted against the replaced generation', async () => {
+  const f = fixture();
+  await installPluginFromSource(f.source, [], f.deps);
+  const replaced = capturePluginRuntimeArtifact(
+    f.plugins,
+    'fixture',
+    f.journal,
+  );
+  expect(replaced).not.toBeNull();
+  const effects = createPluginCommandEffectService({
+    store: new FilePluginCommandEffectStore(f.home),
+  });
+  const admitted = await effects.recordAdmission({
+    principalId: 'local-operator',
+    pluginId: 'fixture',
+    installationGeneration: pluginInstallationGeneration(replaced!),
+    requiresPluginServer: false,
+    commandId: 'fixture.open',
+    target: { kind: 'destination', destinationId: 'plugins' },
+    content: { kind: 'navigate', destinationId: 'plugins' },
+    documentId: 'document-install-over',
+    documentKey: 'k'.repeat(43),
+    requestId: 'request-install-over',
+    issuedAt: Date.now(),
+  });
+  if (admitted.kind !== 'admitted') throw new Error(admitted.reason);
+
+  const result = await installPluginFromSource(f.source, [], f.deps);
+  expect(result.commandEffects).toMatchObject({
+    status: 'winding-down',
+    outstanding: 1,
+  });
+  expect(
+    await effects.withdrawal(result.commandEffects!.withdrawalId),
+  ).toMatchObject({
+    causes: ['update'],
+    outstandingEffectIds: [admitted.receipt.effectId],
+  });
+  const current = capturePluginRuntimeArtifact(f.plugins, 'fixture', f.journal);
+  expect(pluginInstallationGeneration(current!)).not.toBe(
+    pluginInstallationGeneration(replaced!),
+  );
+  // Nothing outstanding: a later install-over records no withdrawal.
+  await effects.settle({
+    principalId: 'local-operator',
+    documentId: 'document-install-over',
+    documentKey: 'k'.repeat(43),
+    items: [{ requestId: 'request-install-over', outcome: 'applied' }],
+  });
+  expect(
+    (await installPluginFromSource(f.source, [], f.deps)).commandEffects,
+  ).toBeUndefined();
+});

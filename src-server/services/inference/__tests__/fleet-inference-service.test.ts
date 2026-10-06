@@ -380,7 +380,7 @@ describe('FleetInferenceService: named refusals, never a silent 404 (§4.5)', ()
       provider: streamingProvider([
         {
           type: 'error',
-          error: 'connect ECONNREFUSED 10.0.0.7:11434 (profile brian-work)',
+          error: 'connect ECONNREFUSED 10.0.0.7:11434 (profile casey-work)',
         },
       ]),
     }).complete(REQUEST);
@@ -392,7 +392,7 @@ describe('FleetInferenceService: named refusals, never a silent 404 (§4.5)', ()
     // carries no base URLs, and a refusal must not become the side channel
     // the manifest refuses to be.
     expect(outcome.refusal.message).not.toContain('10.0.0.7');
-    expect(outcome.refusal.message).not.toContain('brian-work');
+    expect(outcome.refusal.message).not.toContain('casey-work');
     expect(outcome.refusal.message).not.toContain('ECONNREFUSED');
   });
 });

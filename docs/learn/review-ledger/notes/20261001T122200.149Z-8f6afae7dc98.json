@@ -1,0 +1,7 @@
+{
+  "revision": "7a327814d48d76faaca497206b6529d781d111dd",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed native first-run discovery from the Home Stations manager through its native-only list-footer action into the existing RelayRouteProfiles editor, while preserving the manager's address, QR, and pairing-code choices. Executed the mounted OnboardingGate path test and Connect modal slot test (90/90 suite), Connect build, UI typecheck, Biome, and static gates. Limits: this proves local mounted behavior, not simulator/public operator qualification; root is running the installed iOS path.","inputs":["docs/guides/connections.md"]}
+  ]
+}

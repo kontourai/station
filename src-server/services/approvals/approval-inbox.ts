@@ -6,8 +6,9 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
-  toolRequestDisplayName,
   toolRequestFromPayload,
+  toolRequestGrantLabel,
+  toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { approvalInboxOps } from '../../telemetry/metrics.js';
@@ -132,6 +133,17 @@ export class ApprovalInboxNotificationProvider
     } catch {
       return { state: 'unavailable' };
     }
+  }
+
+  /**
+   * #3276: whether actioning or dismissing this row would settle an approval
+   * that is still waiting. The one answer every caller asks: an `unavailable`
+   * outcome counts, because a request whose state cannot be read may still
+   * be open. Rows from any other source are never live approvals.
+   */
+  isLiveApproval(notification: Notification): boolean {
+    const { state } = this.observe(notification);
+    return state === 'open' || state === 'unavailable';
   }
 
   completeRequest(requestKey: string): string | null {
@@ -424,14 +436,25 @@ export function wireApprovalInboxNotifications(
         // only way the durable card says it — fixing the live toast alone left
         // the inbox row still reading "Allow for Session".
         //
-        // `toolRequestDisplayName` collapses an `mcp__<server>__<tool>` wire
-        // name and bounds it. When the payload reported no tool name, stay
-        // generic rather than reaching for `event.title`: that is adapter
-        // display text (for Codex, the literal shell command), and a grant
-        // label built from it would misstate the grant's scope.
-        const grantToolName = toolRequestDisplayName(
-          toolRequestFromPayload(event.payload).toolName,
-        );
+        // `toolRequestGrantLabel` is the label the toast and inline card use:
+        // it collapses an `mcp__<server>__<tool>` wire name, stays generic
+        // rather than reaching for `event.title` (adapter display text; for
+        // Codex the literal shell command), names a folder grant as one
+        // (#2915), and is undefined for a plan exit, which offers none (#2916).
+        //
+        // #2915: an edit-mode answer lasts until the user changes mode only
+        // because the answering caller records an Auto posture, which only
+        // the orchestration command route (the `setApprovalMode` authority)
+        // may do. An answer from this card is sent as a one-call accept, so
+        // the card does not offer "Auto-accept file edits for this session".
+        const grant = toolRequestSessionGrantFromPayload(event.payload);
+        const grantLabel =
+          grant === 'edit-mode'
+            ? undefined
+            : toolRequestGrantLabel(
+                toolRequestFromPayload(event.payload).toolName,
+                grant,
+              );
         const notification = await notificationService.schedule(
           APPROVAL_INBOX_SOURCE,
           {
@@ -441,13 +464,15 @@ export function wireApprovalInboxNotifications(
             priority: 'high',
             actions: [
               { id: 'accept', label: 'Allow Once', variant: 'primary' },
-              {
-                id: 'acceptForSession',
-                label: grantToolName
-                  ? `Allow ${grantToolName} for this session`
-                  : 'Allow this tool for this session',
-                variant: 'secondary',
-              },
+              ...(grantLabel
+                ? [
+                    {
+                      id: 'acceptForSession',
+                      label: grantLabel,
+                      variant: 'secondary' as const,
+                    },
+                  ]
+                : []),
               { id: 'decline', label: 'Deny', variant: 'danger' },
             ],
             dedupeTag: buildOrchestrationRequestKey(event),
@@ -468,7 +493,7 @@ export function wireApprovalInboxNotifications(
               sessionKind: ORCHESTRATION_SESSION_KIND,
               threadId: event.threadId,
               // Raw, not the display form: this is provenance for consumers,
-              // and `grantToolName` above is the display form for the button.
+              // and `grantLabel` above is the display form for the button.
               toolName: toolRequestFromPayload(event.payload).toolName,
             },
           },

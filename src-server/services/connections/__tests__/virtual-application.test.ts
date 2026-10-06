@@ -69,6 +69,7 @@ describe('virtual application ingress', () => {
       return Response.json({ admitted: !!native });
     });
     const owner = new VirtualApplicationIngress(origin, undefined, () => ({
+      peerNonce: 'a'.repeat(43),
       stationId: 'station-a',
       connectionEnrollmentId: 'enrollment-a',
       routingGeneration: 1,
@@ -338,6 +339,63 @@ describe('virtual application ingress', () => {
     await vi.waitFor(() => expect(finishes).toHaveLength(33));
     finishes[32]!(new Response(null, { status: 204 }));
     expect((await next).status).toBe(204);
+    owner.stop();
+  });
+  // #2842: the ingress answers these itself, outside the Hono app, so they
+  // must carry the marker the app's middleware would have put on them.
+  test.each([
+    [
+      'a cookie operation',
+      400,
+      () => request('/api/account-auth/local/sign-in'),
+    ],
+    [
+      'a foreign target',
+      400,
+      () => new Request('https://foreign.example/api/projects'),
+    ],
+    [
+      'a forbidden header',
+      400,
+      () =>
+        request('/api/projects', { headers: { 'X-Forwarded-For': '1.2.3.4' } }),
+    ],
+    [
+      'an unsupported method',
+      405,
+      () => request('/api/projects', { method: 'PROPFIND' }),
+    ],
+  ] as const)(
+    "the ingress's own refusal of %s is marked as this Station's answer",
+    async (_name, status, make) => {
+      const handler = vi.fn(() => Response.json({}));
+      const { application, owner } = setup(handler);
+      const response = await application.fetch(make());
+      expect(response.status).toBe(status);
+      expect(response.headers.get('x-station-envelope')).toBe('1');
+      expect(handler).not.toHaveBeenCalled();
+      owner.stop();
+    },
+  );
+  test("a cookie-setting response's replacement and a retired ingress are marked", async () => {
+    const { application, owner } = setup(
+      () => new Response('secret', { headers: { 'Set-Cookie': 'a=b' } }),
+    );
+    const replaced = await application.fetch(request());
+    expect(replaced.status).toBe(502);
+    expect(replaced.headers.get('x-station-envelope')).toBe('1');
+    owner.stop();
+    const retired = await application.fetch(request());
+    expect(retired.status).toBe(503);
+    expect(retired.headers.get('x-station-envelope')).toBe('1');
+  });
+  test("the application's own answer passes through without an ingress marker", async () => {
+    const { application, owner } = setup(
+      () => new Response(null, { status: 204 }),
+    );
+    const response = await application.fetch(request());
+    expect(response.status).toBe(204);
+    expect(response.headers.has('x-station-envelope')).toBe(false);
     owner.stop();
   });
   test('cannot publish an unbound or retired application', () => {

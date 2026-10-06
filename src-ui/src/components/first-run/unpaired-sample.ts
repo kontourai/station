@@ -24,10 +24,10 @@ const UNPAIRED_SAMPLE_SURFACES = {
     eyebrow: 'Every Monday at 9:00',
     body: 'A scheduled job produces the same kind of evidence as work you start yourself. Nobody is watching it — which is when a receipt matters.',
   },
-  'command-palette': {
-    title: 'Command palette',
-    eyebrow: 'One keystroke',
-    body: 'Everything in Station is reachable from here, including this tour. Pair a Station to use it on your own work.',
+  customize: {
+    title: 'Customize Station',
+    eyebrow: 'Agents, skills, engines, and plugins',
+    body: 'Choose what powers your work. Pair a Station to customize its agents and tools.',
   },
 } as const;
 

@@ -1,0 +1,7 @@
+{
+  "revision": "25f63f03a09eda855bc12e5b913d994478860035",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"#2799 changed only the Workspace section's identity-preview markup in ProjectSettingsView.tsx (parent/leaf path spans, title). Re-read the document's ProjectSettingsView claims against the file: DetailHeader is still imported and rendered as the header, and the root wrapper is still page page--full as the status note says. No shell, root or header claim is affected; no prose change.","inputs":["src-ui/src/app-shell/page-frame-registry.ts","src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}

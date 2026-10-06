@@ -1,0 +1,57 @@
+{
+  "revision": "221320bceb1299b6f951afdfd77730df09332301",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/media/connections-tour.webm"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/media/inspect-request.png"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/media/inspect-request.webm"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/media/project-with-task.png"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/media/repository-knowledge-narrow.png"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/media/repository-knowledge.png"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/media/shared-task-document.png"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"approvalHandlers.ts and its test: answering from the approval queue now records the request in the chat state answeredApprovals until request.resolved (taken back if the decision is not delivered); grant labels, grant scope and the answer sent to the engine are unchanged, so the grant and delivery claims here still hold.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/design/collaborative-editor-pane.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/design/collaborative-editor-pane.md"]},
+
+    {"path":"docs/design/placement.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset. active-chats-state.ts: adds the optional answeredApprovals list to chat UI state; it is live UI state, not part of a tape, so the replay claims here are unaffected.","inputs":["docs/design/session-tape-replay.md"]},
+
+    {"path":"docs/guides/connections.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/guides/knowledge.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/guides/theming.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"tests/orchestration-chat-flow.spec.ts: the approval step now goes through the chat pane status pill (Approval needed) instead of the app-wide 1 pending approval trigger, and focus returns inside the chat pane; the spec is still the transcript, tool activity and approval UI smoke this document lists it as.","inputs":["docs/testing/browser-smoke.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["examples/knowledge-library/README.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"src-ui/src/index.css: the status pill clear space above the chat transcript moved from padding-top on .chat-messages to a ::before spacer in its scrolled content (same 36px of clear space, but it no longer takes fixed room in a short dock); no other rule changed, and this document or capture makes no claim about that inset.","inputs":["src-desktop/icons/README.md"]}
+  ]
+}

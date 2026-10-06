@@ -1,5 +1,5 @@
 import { connectionFailureCopy } from '../core/environmentProfiles';
-import type { SavedConnection } from '../core/types';
+import type { ConnectionFailureReason, SavedConnection } from '../core/types';
 
 export type ConnectionManagerPanel =
   | 'list'
@@ -14,6 +14,12 @@ export type ConnectionManagerPanel =
 export type ConnectionHealthValue = boolean | null | undefined;
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'error' | 'idle';
+
+export interface ConnectionManagerActiveHealth {
+  connectionId: string;
+  status: ConnectionStatus;
+  reason?: ConnectionFailureReason | null;
+}
 
 export function getConnectionManagerTitle(
   panel: ConnectionManagerPanel,
@@ -42,21 +48,19 @@ export function getConnectionStatus({
   connectionId,
   activeConnectionId,
   healthValue,
+  activeStatus,
 }: {
   connectionId: string;
   activeConnectionId: string | null | undefined;
   healthValue: ConnectionHealthValue;
+  activeStatus?: ConnectionStatus;
 }): ConnectionStatus {
-  if (connectionId === activeConnectionId) {
-    if (healthValue === null) return 'connecting';
-    if (healthValue === true) return 'connected';
-    if (healthValue === false) return 'error';
-    return 'connecting';
-  }
-
+  if (connectionId === activeConnectionId && activeStatus !== undefined)
+    return activeStatus;
+  if (healthValue === null) return 'connecting';
   if (healthValue === true) return 'connected';
   if (healthValue === false) return 'error';
-  return 'connecting';
+  return 'idle';
 }
 
 /**

@@ -10,14 +10,14 @@ import {
 } from '../main-health-comment-policy.mjs';
 
 const RUN = {
-  workflowName: 'Backlog disposition policy',
+  workflowName: 'Repo: Backlog policy',
   runUrl: 'https://github.com/kontourai/station/actions/runs/1',
   headSha: 'a'.repeat(40),
 };
 
 const START = Date.parse('2026-09-08T00:00:00.000Z');
 const BOT = { type: 'Bot', login: 'github-actions[bot]' };
-const HUMAN = { type: 'User', login: 'briananderson1222' };
+const HUMAN = { type: 'User', login: 'octocat' };
 const GATE_FAILURE = 'policy > Run the gate (failure)';
 
 function jobs(...failing: { job: string; step?: string }[]) {

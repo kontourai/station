@@ -1,6 +1,11 @@
 # Example Registry Manifest
 
-This directory holds the two registry manifests Station ships.
+This directory holds the two registry manifests Station ships. The Registry
+marketplace can also connect this manifest as an additional source through
+Add marketplace → Station JSON manifest, using its absolute path on the host.
+Its entries still use the existing plugin preview, consent and installation
+transaction. Source labels and author metadata do not establish verified
+publisher identity or execution qualification.
 
 - **`default.json` is the one that ships as a default.** When `registryUrl` is
   unset and the bundled file is present, Station uses this local catalog.
@@ -18,6 +23,13 @@ This directory holds the two registry manifests Station ships.
   `default.json` to its stricter contract: every source resolves, no listed
   plugin declares dependencies or a host `build` command, and it stays a subset
   of `manifest.json` so the two cannot drift apart.
+
+The default catalog includes the
+[Station-curated engineering collection](../matt-pocock-engineering/README.md).
+It is an ordinary Agent Plugin with pinned attributed Skills and visual
+definitions; choosing an agent, project/tracker setup and concrete action
+authority are still required. A catalog listing alone does not qualify its
+installed model journey.
 
 ## Scope
 

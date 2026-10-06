@@ -7,11 +7,12 @@ import {
   useRef,
   useSyncExternalStore,
 } from 'react';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { DockMode } from '../types';
 import { isShallowEqual } from '../utils/isShallowEqual';
 import type { OpenFilePreviewIntent } from '../workspace-panes/openFilePreviewIntent';
 import type { NavigationState } from './navigation-store';
-import { navigationStore } from './navigation-store';
+import { navigationStore, parseNavigationTarget } from './navigation-store';
 
 export { navigationStore } from './navigation-store';
 
@@ -30,7 +31,11 @@ export type NavigationActions = {
   setLayout: (
     projectSlug: string,
     layoutSlug: string,
-    options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+    options?: {
+      openFilePreviewIntent?: OpenFilePreviewIntent;
+      from?: 'pane';
+      preserveChatProjectDefault?: boolean;
+    },
   ) => void;
   setConversation: (id: string | null) => void;
   setActiveChat: (id: string | null) => void;
@@ -42,11 +47,27 @@ export type NavigationActions = {
 const NavigationContext = createContext<NavigationActions | null>(null);
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
+  const isMobile = useIsMobile();
   const navigate = useCallback(
     (pathname: string, params?: Record<string, string | null>) => {
-      navigationStore.navigate(pathname, params);
+      const target = parseNavigationTarget(pathname, window.location.href);
+      const explicitChat =
+        target.searchParams.has('chat') ||
+        Boolean(params?.chat) ||
+        target.searchParams.get('surface') === 'chat' ||
+        params?.surface === 'chat';
+      const revealPage =
+        !explicitChat &&
+        !target.searchParams.has('maximize') &&
+        params?.maximize === undefined;
+      navigationStore.navigate(
+        pathname,
+        revealPage
+          ? { ...params, maximize: null, ...(isMobile ? { dock: null } : {}) }
+          : params,
+      );
     },
-    [],
+    [isMobile],
   );
 
   const updateParams = useCallback((params: Record<string, string | null>) => {
@@ -72,7 +93,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     (
       projectSlug: string,
       layoutSlug: string,
-      options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+      options?: {
+        openFilePreviewIntent?: OpenFilePreviewIntent;
+        from?: 'pane';
+        preserveChatProjectDefault?: boolean;
+      },
     ) => {
       navigationStore.setLayout(projectSlug, layoutSlug, options);
     },

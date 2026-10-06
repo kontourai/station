@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -82,6 +82,42 @@ afterEach(async () => {
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test.each([true, false])(
+  'a built-in probe persists its observed health (%s) without the runtime launch identity',
+  async (ok) => {
+    const identity = {
+      command: process.execPath,
+      args: ['runtime-fixture'],
+      env: { FIXTURE_INSTANCE: 'instance-a' },
+    };
+    loader.registerBuiltinIntegrationRuntimeIdentity('fixture', () => identity);
+    await loader.saveIntegration('fixture', {
+      id: 'fixture',
+      kind: 'mcp',
+      transport: 'stdio',
+    });
+    if (!ok)
+      vi.mocked(Client.prototype.listTools).mockRejectedValueOnce(
+        new Error('fixture discovery failure'),
+      );
+
+    const result = await service.probeIntegration('fixture');
+    expect(result.probe).toMatchObject({ ok, toolCount: ok ? 1 : 0 });
+    const persisted = JSON.parse(
+      await readFile(
+        join(home, 'integrations/fixture/integration.json'),
+        'utf8',
+      ),
+    );
+    expect(persisted.probe).toEqual(result.probe);
+    for (const field of ['command', 'args', 'env'])
+      expect(persisted).not.toHaveProperty(field);
+    expect(await loader.loadIntegration('fixture')).toMatchObject(identity);
+    expect(service.inspectLocalConnections().retained).toBe(0);
+  },
+);
+
 test('real probe/reset refuses late discovery publication and keeps cleanup visibly pending', async () => {
   const entered = deferred<void>(),
     blocked = deferred<any>();

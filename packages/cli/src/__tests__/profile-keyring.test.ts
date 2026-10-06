@@ -1,15 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const keyring = vi.hoisted(() => ({
-  deleteCredential: vi.fn(),
-  getPassword: vi.fn(),
-  setPassword: vi.fn(),
+const keyring = vi.hoisted(() => {
+  const methods = {
+    construct: vi.fn<(service: string, account: string) => void>(),
+    deleteCredential: vi.fn<() => boolean>().mockReturnValue(true),
+    getPassword: vi.fn<() => string | null>(),
+    setPassword: vi.fn<(credential: string) => void>(),
+  };
+
+  class FakeEntry {
+    constructor(service: string, account: string) {
+      methods.construct(service, account);
+    }
+
+    deleteCredential = methods.deleteCredential;
+    getPassword = methods.getPassword;
+    setPassword = methods.setPassword;
+  }
+
+  return {
+    ...methods,
+    require: vi.fn(() => ({ Entry: FakeEntry })),
+  };
+});
+
+vi.mock('node:module', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:module')>()),
+  createRequire: () => keyring.require,
 }));
 
-import {
-  createProfileKeyringStore,
-  setProfileKeyringEntryFactoryForTests,
-} from '../commands/profile-keyring.js';
+import { createProfileKeyringStore } from '../commands/profile-keyring.js';
+
+const nativeLoadCallsOnImport = [...keyring.require.mock.calls];
 
 const ref = { kind: 'station-bearer' as const, id: 'remote-home' };
 
@@ -17,16 +39,18 @@ describe('profile OS-keyring adapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     keyring.getPassword.mockReturnValue(null);
-    setProfileKeyringEntryFactoryForTests(() => ({
-      deleteCredential: keyring.deleteCredential,
-      getPassword: keyring.getPassword,
-      setPassword: keyring.setPassword,
-    }));
   });
 
   it('round-trips only through the native keyring entry', () => {
+    expect(nativeLoadCallsOnImport).toEqual([]);
     const store = createProfileKeyringStore();
+    expect(keyring.require).not.toHaveBeenCalled();
     store.set(ref, 'secret');
+    expect(keyring.require).toHaveBeenCalledWith('@napi-rs/keyring');
+    expect(keyring.construct).toHaveBeenCalledWith(
+      'io.kontourai.station',
+      'profile:station-bearer:remote-home',
+    );
     expect(keyring.setPassword).toHaveBeenCalledWith('secret');
 
     keyring.getPassword.mockReturnValue('secret');

@@ -1,3 +1,4 @@
+import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 // @vitest-environment jsdom
 import {
   _setApiBase,
@@ -83,7 +84,11 @@ beforeEach(() => {
     origin: authority.apiBase,
     requestAuthority: authority,
   }));
-  window.matchMedia = vi.fn().mockReturnValue({ matches: false });
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
   Element.prototype.scrollIntoView = vi.fn();
   navigationStore.navigate('/');
 });
@@ -100,6 +105,10 @@ afterEach(() => {
 test('real SDK observers cannot admit stale ready rows when notifications lag failed refetch', async () => {
   let stage: 'initial' | 'offline' | 'changed' = 'initial';
   const unexpectedPaths: string[] = [];
+  const experiences: SkillExperienceInventoryV1 = {
+    experiences: [],
+    diagnostics: [],
+  };
   const fresh = {
     ...OLD_READY,
     available: false,
@@ -110,7 +119,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
   };
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(
         typeof input === 'string'
           ? input
@@ -118,6 +127,14 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
             ? input.href
             : input.url,
       ).pathname;
+      const method =
+        init?.method ?? (input instanceof Request ? input.method : 'GET');
+      if (method.toUpperCase() !== 'GET') {
+        unexpectedPaths.push(`${method} ${path}`);
+        throw new Error(
+          `Unexpected admission fixture write: ${method} ${path}`,
+        );
+      }
       if (path === '/api/agents' && stage === 'offline')
         return new Response(
           JSON.stringify({
@@ -129,6 +146,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
       let data: unknown;
       if (path === '/api/agents')
         data = stage === 'changed' ? [NEEDS, fresh] : [NEEDS, OLD_READY];
+      else if (path === '/api/skills/experiences') data = experiences;
       else if (path === '/api/projects') data = [PROJECT];
       else if (path === '/api/projects/alpha')
         data = { ...PROJECT, agents: ['needs-setup', 'other'] };

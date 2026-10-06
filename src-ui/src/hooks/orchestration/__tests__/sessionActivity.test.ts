@@ -297,6 +297,70 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     vi.resetModules();
   });
 
+  test('Codex reported retry keeps the same turn open until resumed progress or termination', async () => {
+    handleTurnStartedEvent(
+      {
+        eventId: 'start',
+        provider: 'codex',
+        threadId,
+        createdAt: '2026-10-02T17:00:00.000Z',
+        method: 'turn.started',
+        turnId: 't1',
+      },
+      activeChatsStore,
+    );
+    handleRuntimeErrorEvent({
+      eventId: 'retry',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-10-02T17:00:01.000Z',
+      method: 'runtime.error',
+      severity: 'error',
+      turnId: 't1',
+      retriable: true,
+      message: 'request timeout',
+    });
+    const retrying = activeChatsStore.getSnapshot()[threadId];
+    expect(retrying.orchestrationTurnOpen).toBe(true);
+    expect(retrying.openTurnId).toBe('t1');
+    expect(retrying.activityHint).toEqual({
+      kind: 'retrying',
+      detail: 'Response timed out',
+    });
+    expect(retrying.error).toBeUndefined();
+    const { handleReasoningDeltaEvent } = await import('../streamHandlers');
+    handleReasoningDeltaEvent({
+      eventId: 'progress',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-10-02T17:00:02.000Z',
+      method: 'content.reasoning-delta',
+      turnId: 't1',
+      itemId: 'reason',
+      delta: 'thinking',
+    });
+    expect(
+      activeChatsStore.getSnapshot()[threadId].activityHint,
+    ).toBeUndefined();
+    handleRuntimeErrorEvent({
+      eventId: 'failed',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-10-02T17:00:03.000Z',
+      method: 'runtime.error',
+      severity: 'error',
+      turnId: 't1',
+      retriable: false,
+      message: 'failed',
+    });
+    expect(activeChatsStore.getSnapshot()[threadId].orchestrationTurnOpen).toBe(
+      false,
+    );
+    expect(
+      activeChatsStore.getSnapshot()[threadId].activityHint,
+    ).toBeUndefined();
+  });
+
   test('session.exited clears a live activityHint and pending backgroundTasks', () => {
     activeChatsStore.updateChat(threadId, {
       activityHint: { kind: 'thinking', detail: '~1.2k tokens' },
@@ -319,6 +383,31 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(chat?.activityHint).toBeUndefined();
     expect(chat?.backgroundTasks).toBeUndefined();
     expect(chat?.orchestrationStatus).toBe('exited');
+  });
+
+  test('the exit of a superseded predecessor leaves the live chat alone', () => {
+    // A never-used first session shares the chat's key; its successor is the
+    // chat's current session. The stop publishes this exact event shape.
+    activeChatsStore.updateChat(threadId, {
+      currentSessionId: `${threadId}:session:2`,
+      orchestrationStatus: 'idle',
+      orchestrationSessionStarted: true,
+    });
+    handleSessionExitedEvent(
+      {
+        eventId: 'evt-2',
+        provider: 'acp',
+        threadId,
+        createdAt: '2026-07-23T00:00:00.000Z',
+        method: 'session.exited',
+        sessionId: threadId,
+        reason: 'stopped',
+      } as any,
+      activeChatsStore,
+    );
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.orchestrationStatus).toBe('idle');
+    expect(chat?.orchestrationSessionStarted).toBe(true);
   });
 
   test('session.exited clears the unacknowledged-decision note (#2880)', () => {
@@ -862,6 +951,9 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
         .getSnapshot()
         [threadId]?.approvalToasts?.get('req-dead');
       expect(toastId).toBeDefined();
+      activeChatsStore.updateChat(threadId, {
+        answeredApprovals: ['req-dead'],
+      });
 
       handleSessionStateChangedEvent(
         {
@@ -889,6 +981,8 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
       expect(chat?.pendingApprovals ?? []).toEqual([]);
       expect(chat?.approvalToasts?.size ?? 0).toBe(0);
       expect(dismissSpy).toHaveBeenCalledWith(toastId);
+      // An "answered here" mark belongs to a request that no longer exists.
+      expect(chat?.answeredApprovals ?? []).toEqual([]);
     } finally {
       dismissSpy.mockRestore();
     }

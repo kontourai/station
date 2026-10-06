@@ -321,6 +321,37 @@ export interface WorkspaceFileExistenceRequest {
   thread?: string;
 }
 
+/**
+ * Largest per-file change patch the server returns. A larger one is refused
+ * as `oversized`, never truncated: half a patch reads as the whole change.
+ */
+export const WORKSPACE_FILE_CHANGES_MAX_BYTES = 256 * 1024;
+
+/** One file's changes, read with the same path and session rules as a preview. */
+export interface WorkspaceFileChangesRequest {
+  path: string;
+  thread?: string;
+}
+
+/**
+ * The working tree against the repository's HEAD commit (staged and unstaged
+ * together, what `git diff HEAD -- <file>` reports) for one previewed file.
+ * Each non-`changed` state is a distinct fact the reader is told; none of
+ * them is an empty patch standing in for "no changes".
+ */
+export type WorkspaceFileChanges =
+  | { state: 'changed'; base: 'HEAD'; patch: string }
+  | { state: 'unchanged'; base: 'HEAD' }
+  /** Not tracked by git (new, or ignored): there is no HEAD version. */
+  | { state: 'untracked' }
+  /** The file is not inside a git working tree. */
+  | { state: 'not-a-repository' }
+  /** The repository has no commit yet, so there is no HEAD to compare. */
+  | { state: 'no-commits' }
+  | { state: 'oversized'; limitBytes: number }
+  /** The repository's own config defines programs `git diff` would run. */
+  | { state: 'refused'; reason: string };
+
 export interface WorkspaceFileExistence {
   /** The subset of the requested paths that are previewable regular files. */
   files: string[];

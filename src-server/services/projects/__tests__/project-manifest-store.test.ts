@@ -320,7 +320,7 @@ describe('ProjectManifestStore — backfill derivation (§5)', () => {
     const store = new ProjectManifestStore(home, adapter, {
       readRemotes: remoteReader([
         { name: 'origin', url: 'git@github.com:KontourAI/Station.git' },
-        { name: 'fork', url: 'https://github.com/brian/station.git' },
+        { name: 'fork', url: 'https://github.com/casey/station.git' },
       ]),
     });
 

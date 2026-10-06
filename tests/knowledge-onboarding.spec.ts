@@ -97,9 +97,11 @@ async function mockKnowledgeReadRoutes(
 }
 
 test.describe('Knowledge onboarding (product, mocked)', () => {
-  test("Obsidian vault connect renders the adapter's real reason text on validation failure, not a generic message", async ({
+  test('Obsidian validation reports adapter rejection and failed requests without an unhandled error', async ({
     page,
   }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
     await mockKnowledgeReadRoutes(page, {
       status: CHAT_READY_STATUS,
       roots: [],
@@ -117,7 +119,7 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
       }),
     );
 
-    await page.goto('/settings');
+    await page.goto('/settings?view=knowledge');
     await page.waitForSelector('#section-knowledge', { timeout: 15_000 });
     const section = page.locator('#section-knowledge');
 
@@ -137,6 +139,25 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
     await expect(
       section.getByRole('button', { name: 'Connect' }),
     ).toBeDisabled();
+
+    const requestFailure = 'The knowledge adapter is temporarily unavailable';
+    await page.route('**/api/knowledge/roots/validate', (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: false, error: requestFailure }),
+      }),
+    );
+    await section.getByRole('button', { name: 'Validate' }).click();
+    await expect(
+      section.getByText('Vault validation could not be completed'),
+    ).toBeVisible();
+    await expect(section.getByText(requestFailure)).toBeVisible();
+    await expect(section.getByText(MOCK_REASON)).toHaveCount(0);
+    await expect(
+      section.getByRole('button', { name: 'Connect' }),
+    ).toBeDisabled();
+    expect(pageErrors).toEqual([]);
   });
 
   test('an empty knowledge registry does not block the app toolbar', async ({

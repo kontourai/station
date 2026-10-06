@@ -2,6 +2,7 @@ import { externalSessionContinuationAvailability } from '@kontourai/station-cont
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   OrchestrationSessionSummary,
   StarterWorkStatus,
 } from '@kontourai/station-sdk';
@@ -14,8 +15,9 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import {
@@ -25,11 +27,17 @@ import {
 import type { ChatMessage } from '../../types';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
+import { sessionProjectKeys } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
 import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { MessageBubble } from '../chat/MessageBubble';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
+import {
+  TranscriptMarker,
+  transcriptMarkerLabel,
+} from '../chat/TranscriptMarker';
 import { Dialog } from '../Dialog';
+import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
 function hasCanonicalEventId(
   event: OrchestrationEvent,
@@ -59,6 +67,22 @@ function reservationFailure(
  * adopt it into a real Station-owned continuation — plus the imported
  * transcript. Split out of `SessionsView` per archive#1204.
  */
+type TranscriptPart = ReturnType<typeof conversationPartToContentParts>[number];
+
+/** A part as a read-only transcript shows it: never answerable from here. */
+function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
+  const {
+    needsApproval: _needsApproval,
+    approvalId: _approvalId,
+    approvalThreadId: _approvalThreadId,
+    approvalEventId: _approvalEventId,
+    approvalToolName: _approvalToolName,
+    approvalSessionGrant: _approvalSessionGrant,
+    ...rest
+  } = part as TranscriptPart & Record<string, unknown>;
+  return rest as TranscriptPart;
+}
+
 export function AttachedSessionDetail({
   apiBase,
   chatFontSize = 14,
@@ -120,6 +144,17 @@ export function AttachedSessionDetail({
     session.attachedSource,
   );
   const continuationSupported = continuationSupport.enabled;
+  // #3386: a conversation no project claims (Activity's No project) continues
+  // only as a No project chat in its own folder, and only because the person
+  // confirmed that here: the request names the choice, and Station refuses
+  // it for a folder too broad to confine an agent to. A conversation a
+  // project claims continues under that project, so it names no choice.
+  const outsideProjects = sessionProjectKeys(session).length === 0;
+  const adoptionTarget: AdoptSessionTarget | undefined = outsideProjects
+    ? { kind: 'own-folder' }
+    : undefined;
+  const ownFolder = session.cwd ? session.cwd : 'its own folder';
+  const noProjectExplanation = `This conversation belongs to no project. Station will continue it as a No project chat that works only in ${ownFolder}. To continue it in a project instead, add a project for that folder or its repository first.`;
   const adoptionIntent = useRef(createAdoptOrchestrationSessionIntent());
   // A settled server outcome is distinct from local reservation evidence: the
   // former says this exact continuation cannot be retried safely, whereas the
@@ -128,6 +163,13 @@ export function AttachedSessionDetail({
   // that disables the button.
   const serverRejectedRetryRef = useRef(false);
   const [serverRejectedRetry, setServerRejectedRetry] = useState(false);
+  /**
+   * #3429: Station's reason for a continuation it settled as not created
+   * (its engine was not ready), shown as written; the retry stays available.
+   */
+  const [serverFailureReason, setServerFailureReason] = useState<string | null>(
+    null,
+  );
   const continuationStore = useRef<ReturnType<
     typeof browserAttachedSessionContinuationStore
   > | null>(null);
@@ -143,38 +185,21 @@ export function AttachedSessionDetail({
   const confirmedDraft = useRef('');
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
-  const followLatest = useRef(true);
   const transcriptBodyRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const scroll = transcriptScrollRef.current;
-    const body = transcriptBodyRef.current;
-    if (
-      presentation !== 'chat' ||
-      !scroll ||
-      !body ||
-      typeof ResizeObserver === 'undefined'
-    )
-      return;
-    const observer = new ResizeObserver(() => {
-      if (followLatest.current) scroll.scrollTop = scroll.scrollHeight;
-    });
-    observer.observe(body);
-    observer.observe(scroll);
-    return () => observer.disconnect();
-  }, [presentation]);
-  useEffect(() => {
-    if (
-      events.length > 0 &&
-      presentation === 'chat' &&
-      followLatest.current &&
-      transcriptScrollRef.current
-    ) {
-      transcriptScrollRef.current.scrollTop =
-        transcriptScrollRef.current.scrollHeight;
-    }
-  }, [presentation, events.length]);
+  const { atLatest, jumpToLatest, pauseFollowing } = useSessionTranscriptScroll(
+    {
+      identity: `${apiBase}\0${session.threadId}`,
+      scrollRef: transcriptScrollRef,
+      contentRef: transcriptBodyRef,
+      ready: events.length > 0 && !upgradeRequired && !streamError,
+      contentVersion: events,
+      preserveReading:
+        events.length > 0 && Boolean(upgradeRequired || streamError),
+    },
+  );
   const adoption = useMutation({
     mutationFn: async (_intent: number) => {
+      setServerFailureReason(null);
       try {
         const persisted = continuationStore.current!.read(session.threadId);
         let operationId: string;
@@ -207,6 +232,7 @@ export function AttachedSessionDetail({
               sourceThreadId: session.threadId,
               apiBase,
               intent: adoptionIntent.current,
+              ...(adoptionTarget ? { target: adoptionTarget } : {}),
             });
           const reservation = await continuationStore.current!.reserve(
             session.threadId,
@@ -221,6 +247,7 @@ export function AttachedSessionDetail({
           sourceSessionId: session.threadId,
           operationId,
           apiBase,
+          ...(adoptionTarget ? { target: adoptionTarget } : {}),
         });
         if (outcome.state === 'continued') {
           const clearance = await continuationStore.current!.clear(
@@ -245,6 +272,8 @@ export function AttachedSessionDetail({
         if (outcome.retrySafe === false) {
           serverRejectedRetryRef.current = true;
           setServerRejectedRetry(true);
+        } else if (outcome.state === 'failed') {
+          setServerFailureReason(outcome.reason);
         }
         throw new AdoptSessionError({
           failureClass:
@@ -253,6 +282,11 @@ export function AttachedSessionDetail({
               : 'certain-response',
           message: outcome.reason,
           retryable: outcome.retrySafe,
+          // #3386: a settled refusal Station says retrying cannot change is
+          // shown in its own words.
+          ...(outcome.state === 'failed' && outcome.retrySafe === false
+            ? { refusal: outcome.reason }
+            : {}),
         });
       } catch (error) {
         if (error instanceof AdoptSessionError) throw error;
@@ -316,7 +350,15 @@ export function AttachedSessionDetail({
   const adoptionOutcomeUncertain =
     adoptionError?.failureClass === 'uncertain-no-response';
   const adoptionTransportFailed = isStationTransportFailure(adoption.error);
+  // #3386: Station refused this continuation for a reason a retry cannot
+  // change (a folder it will not continue in): say why, offer no retry.
+  const adoptionRefusal =
+    adoptionError?.failureClass === 'certain-response' &&
+    adoptionError.retryable === false
+      ? adoptionError.refusal
+      : undefined;
   const adoptionDisabled =
+    Boolean(adoptionRefusal) ||
     !continuationSupported ||
     adoption.isPending ||
     openingContinuation ||
@@ -357,16 +399,23 @@ export function AttachedSessionDetail({
   const continuationFeedback = (
     <>
       {adoption.error && (
-        <p className="sessions-detail__adoption-reason" role="alert">
-          {serverRejectedRetry
-            ? 'Station says this continuation cannot be retried safely from this state.'
-            : adoptionNonRetryable
-              ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
-              : adoptionDidNotReachStation ||
-                  adoptionOutcomeUncertain ||
-                  adoptionTransportFailed
-                ? "Couldn't start the continuation — Station isn't responding right now."
-                : "Couldn't start the continuation. Technical detail is under Details below."}
+        <p
+          className="sessions-detail__adoption-reason sessions-detail__adoption-folder"
+          role="alert"
+        >
+          {adoptionRefusal
+            ? adoptionRefusal
+            : serverRejectedRetry
+              ? 'Station says this continuation cannot be retried safely from this state.'
+              : adoptionNonRetryable
+                ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
+                : serverFailureReason
+                  ? `Couldn't start the continuation. ${serverFailureReason}`
+                  : adoptionDidNotReachStation ||
+                      adoptionOutcomeUncertain ||
+                      adoptionTransportFailed
+                    ? "Couldn't start the continuation — Station isn't responding right now."
+                    : "Couldn't start the continuation. Technical detail is under Details below."}
         </p>
       )}
       {adoptionOutcomeUncertain && !serverRejectedRetry && (
@@ -385,6 +434,14 @@ export function AttachedSessionDetail({
             ? `Continue from this history. The original conversation in ${displayProvider(session)} stays available.`
             : continuationSupport.reason}
         </p>
+        {continuationSupported && outsideProjects && (
+          <p
+            className="sessions-detail__adoption-folder"
+            data-testid="attached-continuation-no-project"
+          >
+            {noProjectExplanation}
+          </p>
+        )}
       </div>
       {continuationAction}
       {continuationFeedback}
@@ -433,22 +490,19 @@ export function AttachedSessionDetail({
         tabIndex={-1}
         aria-label="Conversation messages"
         ref={transcriptScrollRef}
-        onWheel={(event) => {
-          if (event.deltaY < 0) followLatest.current = false;
-        }}
-        onPointerDown={() => {
-          followLatest.current = false;
-        }}
+        onPointerDown={pauseFollowing}
         onKeyDown={(event) => {
           if (['ArrowUp', 'PageUp', 'Home'].includes(event.key))
-            followLatest.current = false;
-        }}
-        onScroll={(event) => {
-          const node = event.currentTarget;
-          if (node.scrollHeight - node.scrollTop - node.clientHeight < 64)
-            followLatest.current = true;
+            pauseFollowing();
         }}
       >
+        {!atLatest && (
+          <div className="session-transcript__toolbar responsive-surface-actions">
+            <Button variant="secondary" onClick={jumpToLatest}>
+              Jump to latest
+            </Button>
+          </div>
+        )}
         {presentation !== 'chat' && (
           <p className="sessions-detail__readonly-label">
             Started in {displayProvider(session)} · Read only
@@ -514,17 +568,19 @@ export function AttachedSessionDetail({
         )}
 
         {presentation === 'chat' && onLoadOlder && (
-          <Button
-            onClick={() => {
-              followLatest.current = false;
-              void onLoadOlder().then(() => {
-                if (transcriptScrollRef.current)
-                  transcriptScrollRef.current.scrollTop = 0;
-              });
-            }}
-          >
-            Show older messages
-          </Button>
+          <div className="session-history-controls responsive-surface-actions">
+            <Button
+              onClick={() => {
+                pauseFollowing();
+                void onLoadOlder().then(() => {
+                  if (transcriptScrollRef.current)
+                    transcriptScrollRef.current.scrollTop = 0;
+                });
+              }}
+            >
+              Show older messages
+            </Button>
+          </div>
         )}
         <div
           className="sessions-detail__transcript"
@@ -537,16 +593,17 @@ export function AttachedSessionDetail({
             </p>
           ) : (
             messages.map((message, index) => {
-              const contentParts = message.parts.map((part) => ({
-                type: part.type,
-                content: part.text,
-                toolCallId: part.toolCallId,
-                toolName: part.toolName,
-                args: part.args,
-                result: part.result,
-                state: part.state,
-                isError: part.isError,
-              }));
+              // Chat's own mapping, so a runtime error's code (its
+              // translated copy), a file's reference and a cancelled call
+              // render here as they do in the dock — minus the approval
+              // binding: this view is read-only, and a bound part would
+              // offer Approve/Deny that nothing here can answer.
+              const contentParts = message.parts
+                .flatMap(conversationPartToContentParts)
+                .map(withoutApprovalBinding);
+              const marker = transcriptMarkerLabel(contentParts);
+              if (marker)
+                return <TranscriptMarker key={message.id} label={marker} />;
               if (presentation === 'chat')
                 return (
                   <MessageBubble
@@ -693,6 +750,14 @@ export function AttachedSessionDetail({
               ? `This conversation started in ${displayProvider(session)}. Station will continue from this history and send your message. The original conversation stays available.`
               : continuationSupport.reason}
           </p>
+          {continuationSupported && outsideProjects && (
+            <p
+              className="sessions-detail__adoption-folder"
+              data-testid="attached-continuation-no-project"
+            >
+              {noProjectExplanation}
+            </p>
+          )}
           {continuationFeedback}
         </Dialog>
       )}

@@ -10,48 +10,55 @@
   flex-direction: column;
 }
 
+.relay-route-profiles__setup > summary {
+  min-height: 44px;
+  padding: var(--k-space-3) 0;
+  color: var(--k-text);
+  cursor: pointer;
+}
+
 /* Mirrors the engine chip's token pair (see EngineChip.css for the contrast
    measurement that chose them) rather than inventing a second pill scale. */
 .connections-computers__chip {
   display: inline-block;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-xs);
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 4px;
+  padding: var(--k-border-thick) var(--k-space-2);
+  border-radius: var(--k-radius-control);
   white-space: nowrap;
-  background: var(--bg-tertiary);
-  color: var(--text-tertiary);
+  background: var(--k-panel-raised);
+  color: var(--k-text-faint);
 }
 
 .connections-computers__state {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-xs);
   font-weight: 600;
   white-space: nowrap;
-  color: var(--text-tertiary);
+  color: var(--k-text-faint);
 }
 
 .connections-computers__state--ready {
-  color: var(--success-text);
+  color: var(--k-positive);
 }
 
 .connections-computers__state--warn {
-  color: var(--warning-text);
+  color: var(--k-caution);
 }
 
 .connections-computers__state--error {
-  color: var(--error-text);
+  color: var(--k-negative);
 }
 
 .connections-computers__note {
   display: block;
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
 }
 
 .connections-computers__alert {
   display: block;
-  font-size: var(--text-sm);
-  color: var(--error-text);
+  font-size: var(--k-text-sm);
+  color: var(--k-negative);
 }
 
 /* A link-weight control inside the row body, deliberately subordinate to the
@@ -63,133 +70,133 @@
   padding: 0;
   border: 0;
   background: none;
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
   text-decoration: underline;
   cursor: pointer;
 }
 
 .connections-computers__remove:hover {
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 
 .relay-route-profiles {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-6);
+  gap: var(--k-space-3);
+  margin-top: var(--k-space-6);
 }
 
 .relay-route-profiles__heading {
   margin: 0;
-  font-size: var(--text-lg);
-  color: var(--text-primary);
+  font-size: var(--k-text-lg);
+  color: var(--k-text);
 }
 
 .relay-route-profiles__form {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
 }
 
 .relay-route-profiles__form label {
   display: grid;
-  gap: var(--space-1);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  gap: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
 .relay-route-profiles__form input {
   width: 100%;
   min-height: 44px;
-  padding: var(--space-2);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  background: var(--bg-secondary);
+  padding: var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text);
+  background: var(--k-panel);
 }
 
 .relay-route-trust {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  gap: var(--k-space-1);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
 .relay-route-trust strong {
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 
 .relay-route-trust--approved {
-  border-color: var(--success-border);
+  border-color: var(--k-positive);
 }
 
 .relay-route-trust--revoked,
 .relay-route-trust--mismatch,
 .relay-route-trust--invalid,
 .relay-route-trust--unavailable {
-  border-color: var(--error-border);
+  border-color: var(--k-negative);
 }
 
 .relay-route-trust--untrusted,
 .relay-route-trust--checking {
-  border-color: var(--warning-border);
+  border-color: var(--k-caution);
 }
 
 .relay-route-trust-approval {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
 }
 
 .relay-route-trust-approval h3 {
   margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-md);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
 }
 
 .relay-route-trust-approval__confirm {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
 .relay-route-trust-approval__confirm input {
   flex: 0 0 auto;
-  width: 20px;
-  min-height: 20px;
-  margin-top: 2px;
+  width: var(--k-space-5);
+  min-height: var(--k-space-5);
+  margin-top: var(--k-border-thick);
 }
 
 .relay-route-trust-approval__key-id {
   overflow-wrap: anywhere;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
+  color: var(--k-text);
+  font-family: var(--k-font-mono);
 }
 
 .relay-route-key-approval {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--k-space-3);
   min-width: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
 }
 
 .relay-route-key-approval h3,
 .relay-route-key-approval h4 {
   margin: 0;
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 
 .relay-route-key-approval__candidate,
@@ -198,39 +205,56 @@
 .relay-route-key-approval__prepare,
 .relay-route-key-approval__revoke {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--k-space-3);
   min-width: 0;
+}
+
+.relay-route-key-approval__prepare {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.relay-route-key-approval__prepare > p {
+  flex: 1 1 12rem;
+}
+
+.native-relay-setup .button {
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
 }
 
 .relay-route-key-approval__durable {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
 }
 
 .relay-route-key-approval__durable > strong {
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 
 .relay-route-key-approval dl {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--k-space-2);
   margin: 0;
 }
 
 .relay-route-key-approval dl > div {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--k-space-2);
   min-width: 0;
 }
 
 .relay-route-key-approval dt {
   flex: 1 1 7rem;
-  color: var(--text-tertiary);
-  font-size: var(--text-sm);
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
 }
 
 .relay-route-key-approval dd {
@@ -238,39 +262,220 @@
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  color: var(--text-primary);
-  font-size: var(--text-sm);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
 }
 
 .relay-route-key-approval :is(input:not([type="checkbox"]), textarea) {
   width: 100%;
   min-height: 44px;
-  padding: var(--space-2);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  background: var(--bg-secondary);
+  padding: var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text);
+  background: var(--k-panel);
 }
 
 .relay-route-key-approval__attestation {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: var(--k-space-2);
   min-height: 44px;
-  padding-block: var(--space-2);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
+  padding-block: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
 .relay-route-key-approval__attestation input {
-  flex: 0 0 20px;
-  width: 20px;
-  height: 20px;
-  min-height: 20px;
-  margin: 2px 0 0;
+  flex: 0 0 var(--k-space-5);
+  width: var(--k-space-5);
+  height: var(--k-space-5);
+  min-height: var(--k-space-5);
+  margin: var(--k-border-thick) 0 0;
 }
 
 .relay-route-key-approval :is(button, input):focus-visible {
-  outline: 2px solid var(--focus-ring, var(--accent-primary));
-  outline-offset: 2px;
+  outline: var(--k-border-thick) solid var(--k-focus);
+  outline-offset: var(--k-border-thick);
+}
+
+/* Local setup uses the shipped UI scale; protocol values stay in Details. */
+.native-relay-setup,
+.relay-route-profiles {
+  /* Existing Station controls inherit the published theme inside setup. */
+  --font-sans: var(--k-font-ui);
+  --font-mono: var(--k-font-mono);
+  --text-primary: var(--k-text);
+  --text-secondary: var(--k-text-muted);
+  --text-muted: var(--k-text-muted);
+  --text-tertiary: var(--k-text-faint);
+  --text-on-accent: var(--k-action-contrast);
+  --text-xs: var(--k-text-xs);
+  --text-sm: var(--k-text-sm);
+  --text-base: var(--k-text-md);
+  --text-md: var(--k-text-md);
+  --text-lg: var(--k-text-lg);
+  --bg-primary: var(--k-bg);
+  --bg-secondary: var(--k-panel);
+  --bg-elevated: var(--k-panel-raised);
+  --bg-tertiary: var(--k-panel-raised);
+  --border-primary: var(--k-line);
+  --border-secondary: var(--k-line-strong);
+  --accent-primary: var(--k-action);
+  --accent-hover-fill: var(--k-action);
+  --accent-darker: var(--k-action);
+  --focus-ring: var(--k-focus);
+  --error-fill: var(--k-negative);
+  --error-dark: var(--k-negative);
+  --error-text: var(--k-negative);
+  --success-text: var(--k-positive);
+  --warning-text: var(--k-caution);
+  font-family: var(--k-font-ui);
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+}
+.native-relay-setup :is(h3, h4, p) {
+  margin: 0;
+  font-size: var(--k-text-md);
+  line-height: var(--k-leading-normal);
+}
+.native-relay-setup :is(h3, h4) {
+  font-weight: 600;
+}
+.native-relay-setup h2 {
+  font-size: var(--k-text-xl);
+}
+.native-relay-setup details {
+  min-width: 0;
+}
+.native-relay-setup summary {
+  min-height: 44px;
+  padding-block: var(--k-space-2);
+  color: var(--k-text-muted);
+  cursor: pointer;
+  font-size: var(--k-text-md);
+}
+.native-relay-setup details[open] > :not(summary) {
+  margin-top: var(--k-space-2);
+}
+.native-relay-setup :is(dl, pre, code) {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.native-relay-setup .native-relay-setup__code {
+  padding: var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xl);
+  letter-spacing: var(--k-tracking-wide);
+}
+.native-relay-setup__comparison-key {
+  display: grid;
+  gap: var(--k-space-1);
+}
+.native-relay-setup__comparison-key code {
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+}
+.native-relay-setup :is(button, input, select) {
+  font-size: var(--k-text-md);
+}
+
+.relay-route-key-approval--confirmed {
+  border: 0;
+  padding: 0;
+}
+
+.native-relay-setup__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+}
+.relay-setup-help__trigger {
+  min-width: 44px;
+  min-height: 44px;
+  padding: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.relay-setup-help__trigger:hover {
+  color: var(--k-text);
+}
+.relay-setup-help .popover__panel {
+  width: min(20rem, calc(100vw - 2 * var(--k-space-6)));
+  font-family: var(--k-font-ui);
+  font-size: var(--k-text-md);
+  line-height: var(--k-leading-normal);
+}
+.native-relay-setup summary:focus-visible {
+  outline: var(--k-border-thick) solid var(--k-focus);
+  outline-offset: var(--k-border-thick);
+}
+
+.native-relay-setup .editor-input {
+  border-radius: var(--k-radius-control);
+  border-color: var(--k-line);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+}
+.native-relay-setup .editor-input:focus-visible {
+  outline: var(--k-border-thick) solid var(--k-focus);
+  outline-offset: var(--k-border-thick);
+}
+.native-relay-setup .button {
+  border-radius: var(--k-radius-control);
+}
+.native-relay-setup .button--danger {
+  color: var(--k-status-contrast);
+}
+
+.native-relay-setup .editor-input:focus {
+  border-color: var(--k-focus);
+}
+
+.native-relay-setup input[type="checkbox"] {
+  accent-color: var(--k-action);
+}
+.native-relay-setup .button,
+.native-relay-setup .button:hover:not(:disabled) {
+  box-shadow: none;
+}
+
+.relay-setup-help:has(.popover__panel) .tooltip {
+  display: none;
+}
+.native-relay-member-shell {
+  height: 100dvh;
+  overflow: auto;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+.native-relay-member-shell .page__header {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin-bottom: var(--k-space-3);
+}
+
+.native-relay-member-shell .page__header-text {
+  min-width: 0;
+}
+
+.native-relay-member-shell .project-page__inner {
+  padding-top: var(--k-space-3);
+}
+
+.native-relay-member-shell .theme-toggle {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--k-text-muted);
+  border-radius: var(--k-radius-control);
+}
+.native-relay-member-shell .theme-toggle:focus-visible {
+  outline: var(--k-border-thick) solid var(--k-focus);
+  outline-offset: var(--k-border-thick);
+}
+.native-relay-setup [role="alert"] {
+  color: var(--k-negative);
 }

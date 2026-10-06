@@ -1,0 +1,7 @@
+{
+  "revision": "f79265eb4c5cd5ac62bfbb4640ebe97cecffd929",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared-state and action-row adoption: recent-chat states reuse the canonical family, and the two value choices are separate from the Send action row. Creation still waits for explicit Send; setup/navigation, transcript, approval and continuation contracts are unchanged. Focused mounted start/setup/recent tests plus static primitive/action-cap checks passed.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

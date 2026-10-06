@@ -5,14 +5,42 @@ import {
   type ActionOperationWatchSnapshot,
   parseActionOperation,
 } from '@kontourai/station-contracts/action-operation';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import { authenticatedFetch } from './http';
 import { rethrowDeadline } from './request-deadline';
 
 export class ActionOperationProtocolError extends Error {
-  constructor(message: string) {
-    super(message);
+  /**
+   * Set only when Station refused the request (#2708): the answer's status,
+   * machine `code`, `details` and `Retry-After`. A malformed or unreadable
+   * response leaves them absent.
+   */
+  readonly status?: number;
+  readonly code?: string;
+  readonly details?: unknown;
+  readonly retryAfterMs?: number;
+
+  constructor(failure: string | StationHttpError) {
+    super(typeof failure === 'string' ? failure : failure.message);
     this.name = 'ActionOperationProtocolError';
+    if (typeof failure === 'string') return;
+    this.status = failure.status;
+    if (failure.code !== undefined) this.code = failure.code;
+    if (failure.details !== undefined) this.details = failure.details;
+    if (failure.retryAfterMs !== undefined)
+      this.retryAfterMs = failure.retryAfterMs;
   }
+}
+
+/** A refusal under this client's own sentence, keeping status and `code`. */
+function refused(
+  response: Response,
+  body: unknown,
+  message: string,
+): ActionOperationProtocolError {
+  return new ActionOperationProtocolError(
+    envelopeError(response, body, message, { message }),
+  );
 }
 
 function page(value: unknown): ActionOperationPage | undefined {
@@ -69,7 +97,7 @@ export async function fetchActionOperations(
     );
   }
   if (!response.ok)
-    throw new ActionOperationProtocolError('Action operation request failed');
+    throw refused(response, body, 'Action operation request failed');
   const parsed = page(envelope(body));
   if (!parsed)
     throw new ActionOperationProtocolError(
@@ -95,7 +123,7 @@ export async function watchActionOperations(
     );
   }
   if (!response.ok)
-    throw new ActionOperationProtocolError('Action operation watch failed');
+    throw refused(response, body, 'Action operation watch failed');
   const data = envelope(body);
   const parsed = page(data);
   if (
@@ -135,13 +163,10 @@ export async function cancelActionOperation(
     );
   }
   if (!response.ok) {
-    const message =
-      body &&
-      typeof body === 'object' &&
-      typeof (body as { error?: unknown }).error === 'string'
-        ? (body as { error: string }).error
-        : 'Action operation cancellation failed';
-    throw new ActionOperationProtocolError(message);
+    // A cancellation refusal is read out: the route's reason is the message.
+    throw new ActionOperationProtocolError(
+      envelopeError(response, body, 'Action operation cancellation failed'),
+    );
   }
   const operation = parseActionOperation(envelope(body));
   if (!operation)

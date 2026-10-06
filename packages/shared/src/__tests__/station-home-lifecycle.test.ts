@@ -34,6 +34,21 @@ afterEach(() => {
 });
 
 describe('Station home lifecycle authority', () => {
+  it('publishes its own exact lease after a transient Windows birth-probe miss', () => {
+    const home = join(root(), 'home');
+    let probes = 0;
+    const runtime = acquireStationHomeRuntimeLease(home, {
+      processIdentity: {
+        platform: 'win32',
+        alive: () => 'alive',
+        lookup: () => (++probes === 1 ? null : 'same-process-birth'),
+        wait: () => {},
+      },
+    });
+    expect(probes).toBe(2);
+    runtime.release();
+  });
+
   it('waits asynchronously behind a real sync maintenance holder, then hands off', async () => {
     const home = join(root(), 'home');
     const sync = acquireStationHomeMaintenanceLease(home);

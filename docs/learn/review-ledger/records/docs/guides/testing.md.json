@@ -1,0 +1,227 @@
+{
+  "path": "docs/guides/testing.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
+
+  "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"ours\":{\"digest\":\"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8\",\"revision\":\"2e4f061f91ffb0338e45de62382cf6da59cd5c76\"},\"main\":{\"digest\":\"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619\",\"revision\":\"0114a7cecb46255b1a87068cbc76f2bf1bd1b720\"}},{\"path\":\"docs/guides/native-shell-verification.md\",\"ours\":{\"digest\":\"0dc1e36afaee9186e0164f601a59dde5434fc3d9f06a6c5fd06a7dbf08e8e133\",\"revision\":\"93a6062e306f412f1c9382143b03d675c9450c1f\"},\"main\":{\"digest\":\"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3\",\"revision\":\"c75bec0547019930c54180d793516d033641ff0a\"}},{\"path\":\"docs/guides/documentation.md\",\"ours\":{\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"main\":{\"digest\":\"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633\",\"revision\":\"cda5879b28558d002561d656b869c4f7b05bc4ca\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/guides/testing.md\",\"ours\":{\"digest\":\"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916\",\"revision\":\"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f\"},\"main\":{\"digest\":\"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925\",\"revision\":\"1c13dd90939769cd3ca557a36649aa25823194db\"},\"active\":{\"digest\":\"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925\",\"revision\":\"1c13dd90939769cd3ca557a36649aa25823194db\"},\"decision\":\"mainMatch\"},{\"path\":\".github/workflows/ci.yml\",\"ours\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\".github/workflows/portable-server-archives.yml\",\"ours\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/documentation.md\",\"ours\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"main\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633\",\"revision\":\"cda5879b28558d002561d656b869c4f7b05bc4ca\"},\"active\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/guides/native-shell-verification.md\",\"ours\":{\"path\":\"docs/guides/native-shell-verification.md\",\"digest\":\"811180a699dc7ff7ecbd525e98aa00099c83efd00113c9154b52c55a3763f1bd\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"main\":{\"path\":\"docs/guides/native-shell-verification.md\",\"digest\":\"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3\",\"revision\":\"c75bec0547019930c54180d793516d033641ff0a\"},\"active\":{\"path\":\"docs/guides/native-shell-verification.md\",\"digest\":\"811180a699dc7ff7ecbd525e98aa00099c83efd00113c9154b52c55a3763f1bd\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"decision\":\"oursMatch\"},{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/ci-workflow-contract.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/ci-workflow-contract.test.ts\",\"digest\":\"72a4c7cfe5d8abbda57a925c7e14c8f46f8a76a1b683abf807085a449b4cf0be\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},\"main\":{\"path\":\"scripts/__tests__/ci-workflow-contract.test.ts\",\"digest\":\"deaa1c8c3f09f99cfd21894ef8cf069a0648c1750711bc97ff4771395f85ae6d\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/__tests__/ci-workflow-contract.test.ts\",\"digest\":\"deaa1c8c3f09f99cfd21894ef8cf069a0648c1750711bc97ff4771395f85ae6d\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/fast-checks-shard-cli.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/fast-checks-shard-cli.test.ts\",\"digest\":\"a90b55560ee262930585540e8a6458b4bc6f8de918294fecc012eed2c87487cc\",\"revision\":\"29fa8649d8b61deb25adf50c4424d9ed0154c5ab\"},\"main\":{\"path\":\"scripts/__tests__/fast-checks-shard-cli.test.ts\",\"digest\":\"4b23f683ba0e4e429321e14d13b611e065b59b501131bb0f381c6a258d21e744\",\"revision\":\"e3aa94d61398bd351129bb14663daefd2b11e2ec\"},\"active\":{\"path\":\"scripts/__tests__/fast-checks-shard-cli.test.ts\",\"digest\":\"4b23f683ba0e4e429321e14d13b611e065b59b501131bb0f381c6a258d21e744\",\"revision\":\"e3aa94d61398bd351129bb14663daefd2b11e2ec\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/path-read-pin-boundary.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/path-read-pin-boundary.test.ts\",\"digest\":\"e1f9ca1c3fbfb5c9368447ec82975b33d7745f330f1cf78f15d9b5de9f1c15a5\",\"revision\":\"11f79a2a4fc292de1adfd5cd21e4925ca2d2501d\"},\"main\":{\"path\":\"scripts/__tests__/path-read-pin-boundary.test.ts\",\"digest\":\"01211e6de3353b7773a35a910287e1dea2de931fca837de9d55a76cc3e0ad5fa\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},\"active\":{\"path\":\"scripts/__tests__/path-read-pin-boundary.test.ts\",\"digest\":\"01211e6de3353b7773a35a910287e1dea2de931fca837de9d55a76cc3e0ad5fa\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/portable-server-archive.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/portable-server-archive.test.ts\",\"digest\":\"080cf7aa36c4680b1a4e296ae8aa96b83ee57a84c71c61c225a074e9e3468b4a\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/__tests__/portable-server-archive.test.ts\",\"digest\":\"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"scripts/__tests__/portable-server-archive.test.ts\",\"digest\":\"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/fast-checks-shard.mjs\",\"ours\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"ours\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc\",\"revision\":\"555c5aa3646e08ef44d26002f81508daf7a32305\"},\"active\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc\",\"revision\":\"555c5aa3646e08ef44d26002f81508daf7a32305\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/test-impact-manifest.mjs\",\"ours\":{\"path\":\"scripts/test-impact-manifest.mjs\",\"digest\":\"0c791fec362bdc43dbbc24e650c79b39e121462e818d30beeb8e2edae3383333\",\"revision\":\"11f79a2a4fc292de1adfd5cd21e4925ca2d2501d\"},\"main\":{\"path\":\"scripts/test-impact-manifest.mjs\",\"digest\":\"6fd22302dee661b3b37ea175558dc38176f3e7c9778df0734448aff5b1fe38c4\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},\"active\":{\"path\":\"scripts/test-impact-manifest.mjs\",\"digest\":\"6fd22302dee661b3b37ea175558dc38176f3e7c9778df0734448aff5b1fe38c4\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},\"decision\":\"mainMatch\"},{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"ours\":{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"digest\":\"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8\",\"revision\":\"2e4f061f91ffb0338e45de62382cf6da59cd5c76\"},\"main\":{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"digest\":\"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619\",\"revision\":\"0114a7cecb46255b1a87068cbc76f2bf1bd1b720\"},\"active\":{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"digest\":\"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8\",\"revision\":\"2e4f061f91ffb0338e45de62382cf6da59cd5c76\"},\"decision\":\"oursMatch\"}]\n\nFull reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    ".agents/skills/documentation-audit/SKILL.md",
+
+    ".codex/hooks.json",
+
+    ".githooks/commit-msg",
+
+    ".githooks/pre-push",
+
+    ".github/workflows/ci.yml",
+
+    ".github/workflows/full-regression.yml",
+
+    ".github/workflows/merge-queue-regression.yml",
+
+    ".github/workflows/portable-server-archives.yml",
+
+    ".github/workflows/windows-pr-verification.yml",
+
+    ".veritas/GOVERNANCE.md",
+
+    ".veritas/authority/default.authority-settings.json",
+
+    ".veritas/repo-map.json",
+
+    ".veritas/repo-standards/default.repo-standards.json",
+
+    "docs/guides/documentation.md",
+
+    "docs/guides/native-shell-verification.md",
+
+    "docs/plans/documentation-code-audit.md",
+
+    "package.json",
+
+    "scripts/__tests__/changed-verification.test.ts",
+
+    "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
+
+    "scripts/__tests__/ci-health.test.ts",
+
+    "scripts/__tests__/ci-workflow-contract.test.ts",
+
+    "scripts/__tests__/docs-index-reachability.test.ts",
+
+    "scripts/__tests__/fast-checks-shard-cli.test.ts",
+
+    "scripts/__tests__/guardrail-execution-coverage.test.ts",
+
+    "scripts/__tests__/local-collaboration-station-config.test.ts",
+
+    "scripts/__tests__/metric-reference.test.ts",
+
+    "scripts/__tests__/path-read-pin-boundary.test.ts",
+
+    "scripts/__tests__/portable-server-archive.test.ts",
+
+    "scripts/__tests__/prepush-typecheck.test.ts",
+
+    "scripts/__tests__/run-ci-fast.test.ts",
+
+    "scripts/ci-health.mjs",
+
+    "scripts/cli-agent-e2e.mjs",
+
+    "scripts/dependency-lifecycle.mjs",
+
+    "scripts/docs-truth-gate-aggregate.mjs",
+
+    "scripts/fast-checks-shard.mjs",
+
+    "scripts/just-interface.mjs",
+
+    "scripts/lib/ci-event-environment.mjs",
+
+    "scripts/lib/dependency-lifecycle-policy.mjs",
+
+    "scripts/lib/documentation-review.mjs",
+
+    "scripts/lib/fast-checks-shards.mjs",
+
+    "scripts/lib/git-environment.mjs",
+
+    "scripts/lib/local-collaboration-station-child.ts",
+
+    "scripts/lib/local-collaboration-station.ts",
+
+    "scripts/prepare-verify-static.mjs",
+
+    "scripts/run-changed-verification.mjs",
+
+    "scripts/run-ci-fast.mjs",
+
+    "scripts/run-focused-tests.mjs",
+
+    "scripts/run-local-verification.mjs",
+
+    "scripts/run-tauri-shell-e2e.mjs",
+
+    "scripts/scripts-typecheck-coverage.mjs",
+
+    "scripts/test-impact-manifest.mjs",
+
+    "scripts/typecheck-aggregate.mjs",
+
+    "scripts/verification-lanes.mjs",
+
+    "scripts/verification-policy-gate.mjs",
+
+    "src-server/__test-utils__/read-json.ts",
+
+    "src-server/__test-utils__/route-test-app.ts",
+
+    "src-server/__test-utils__/sse-helpers.ts",
+
+    "src-server/routes/spatial-board.ts",
+
+    "tests/screenshots.spec.ts",
+
+    "tests/tauri-shell/native-project-acceptance-webview.ts",
+
+    "tests/tauri-shell/native-project-acceptance.e2e.ts",
+
+    "tests/tauri-shell/native-project-runtime-fixture.ts",
+
+    "vitest.setup.ts",
+
+    "scripts/orchestration-transfer-capture.ts",
+
+    "scripts/lib/transfer-capture-progress.ts",
+
+    "scripts/__tests__/transfer-capture-progress.test.ts",
+
+    "scripts/check-prepush-orchestration-transfer.mjs",
+
+    "scripts/__tests__/prepush-orchestration-transfer.test.ts",
+
+    "scripts/run-vitest-corpus.mjs",
+
+    "scripts/__tests__/run-vitest-corpus.test.ts",
+
+    "scripts/__tests__/windows-resource-staging.test.ts"
+  ],
+
+  "checks": [
+    "focused: PASS 146 tests / 5 files: verification-lanes, verification-policy-gate, just-interface, documentation-foundations, veritas-repo-map",
+
+    "dependencyLifecycleDocs: PASS 1 test / 1 file",
+
+    "verificationPolicy: PASS exit 0, generated owner parity",
+
+    "veritasReadiness: PASS exit 0, 0 failures / 0 warnings; proof:repo-governance, lint:check, verification:policy:gate; protected attestation matches unchanged hashes",
+
+    "Reviewed documentation-only dependency correction: docs/plans/documentation-code-audit.md. The linked owner and purpose remain; no new runtime proof is inferred.",
+
+    "Upstream source review: Reviewed scope selector all versus statics and unchanged fixed invariant list/budget. Current docs distinguish hosted plan/shard/statics aggregator from local whole lane; docsTruth still not fixed invariant.",
+
+    "Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Upstream source review: Delta only removes unused resolveNpmCli re-export; managed lifecycle still imports/uses owner resolver. No prose change needed for bootstrap/security/CI guidance.",
+
+    "Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
+
+    "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
+
+    "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
+
+    "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Hosted Windows floor caught three missing directory-walk classifications. Registered the real learning-media repository scan in REPO_SCAN_SUITES; classified the pre-push and Knowledge identity walks only after tracing their temporary fixture roots. The detector is unchanged and an independent review confirmed the scope. A broader local selector group also hit the existing 30-second representative CLI fixture timeout; the unchanged direct CLI diagnostic completed its real focused target, and that timeout receipt is retained rather than relabeled as a pass.",
+
+    "Landing review through d0d9d33f7: Advanced only the recorded reviewed upstream revision and named the bounded source deltas; retained historical evidence and coverage baseline. The added installer-test walk classification covers only its disposable install roots; the real-repository scan detector is unchanged.",
+
+    "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change.",
+
+    "Integration source review through d1e0facc2: Merged actual-repository owner checks with reader/snapshot coverage; retired marker-only assertion removed. Reviewed merged path-read gate tests; production refusal guidance remains accurate. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Required merge-queue recovery through 421517851: Added the actual generator CLI test owner to the exact guardrail classification; no equality/refusal assertion weakened. Baseline at cf3 reproduced 4 passes/1 failure; corrected guardrail plus real metric CLI suites passed 52/52 in 13.69s. Final change after execution was formatter-only wrapping; scoped Biome and diff checks passed.. Changed inputs reviewed: scripts/__tests__/guardrail-execution-coverage.test.ts, scripts/__tests__/metric-reference.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: ci.yml adds a zsh provisioning step to fast-checks shards (job timeout 60->65, pinned by ci-workflow-contract.test.ts). The test-impact manifest dropped the literal-swap-gate spawned edge (11->10) and the native-notification-watch scan suite and added the knowledge file-transactions scan suite. path-read-pin-boundary adds one fixture exemption, and bearing/forage deps were removed. The guide makes no claims about those counts, steps or timeouts, and its fast-checks shard description remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 adds one TEMP_VIA_FIXTURE directory-walk exemption, for plugin-proposal-staged-reinstall.test.ts, to scripts/__tests__/path-read-pin-boundary.test.ts. The guide makes no claim about that exemption list or its size. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection vitest-file suites to the changed selection, where it used to route to a ci-fast lane and defer the whole diff. 1cc8576b4 (#2907) drops keyedQueryDefaults from the repo-scan and path-read lists, renames the SDK browser-bundle manifest targets to browser-entry-bundles.test.ts and adds a profile.test.ts directory-walk exemption. The guide never claimed that product laws defer to a ci-fast lane and names none of these suites. Its claims still hold: exit 3 is a deferral, deferred lanes stay deferred, and changed areas are matched to their registered laws. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2914 adds Android NDK, PR-smoke bound and no-child-process tests to ci-workflow-contract; the Playwright image version vs pnpm-lock assertion remains. It repoints the path-read-pin fixtures, drops the native-recovery-docs impact rules and adds the store-registry test in test-impact-manifest. It also makes verification-policy-gate run validateLaneCatalog and un-export its E2E latest markers, which are still enforced. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed deltas: ci:fast adds five fixed verify:static gates (the guide describes a fixed bounded static invariant set, still accurate); test-impact-manifest maps the freshness CLIs and sweep workflow to documentation-freshness.test.ts; the ledger test now uses the shared scoped policy. No generated schedule or claim here changes.",
+
+    "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
+
+    "Reviewed the reportMissing option added to the review compiler; no claim in this guide changes.",
+
+    "2026-09-28 test-audit refresh: path-read-pin-boundary.test.ts only added one justified entry to the unreported path-read suite list; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+
+    "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only path-read-pin-boundary.test.ts, adding turn-started-attachment-projection.test.ts to the unreported path-read suite list (verified with git diff d0ca944c5 062fad816); the guide names neither file; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged.",
+
+    "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes."
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "path": "scripts/__tests__/fixtures/codeql-sarif/README.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "Explains extension-rule, legacy driver-rule, failed-invocation, and omitted-level fixtures. Hosted run 33187380619 still exists and reports success at fa8099f3537687834660550e99093d6d4cc37b17; current policy tests exercise the local fixtures.",
+
+  "limits": "Raw historical hosted SARIF artifacts and verbatim result provenance were not independently re-downloaded. Recorded CodeQL/action versions describe the historical fixture, not current production scanner versions or absence of vulnerabilities.",
+
+  "sources": [
+    "scripts/__tests__/codeql-sarif-policy.test.ts",
+
+    "scripts/__tests__/fixtures/codeql-sarif/codeql-2.26.3-no-level.sarif",
+
+    "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-analysis-error.sarif",
+
+    "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-clean.sarif",
+
+    "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-finding.sarif",
+
+    "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-legacy-driver-rules.sarif",
+
+    "scripts/codeql-error-baseline.json"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+  ]
+}

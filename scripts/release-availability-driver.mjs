@@ -11,6 +11,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   assertOnlyExpectedAssets,
   readInventory,
+  signedHostManifestAsset,
   validateReleaseInventory,
 } from './lib/release-artifacts.mjs';
 import { projectReleaseAvailability } from './release-availability.mjs';
@@ -299,14 +300,21 @@ export async function runReleaseAvailability(
       updaterPublicKey,
       containerDescriptor: join(directory, 'station-container-release.json'),
     });
-    assertAssets(directory, event.tag);
+    assertAssets(directory, event.tag, { allowSignedHostManifest: true });
     validatePredicates(directory);
-    for (const asset of release.assets)
+    // The signed host manifest is attached by publish-release.yml, not
+    // release.yml, so it carries no release.yml attestation. validateInventory
+    // above already verified it against the pinned release key and the
+    // attested payload it signs.
+    const signedHostManifest = signedHostManifestAsset(event.tag);
+    for (const asset of release.assets) {
+      if (asset.name === signedHostManifest) continue;
       await api.verifyAttestation(join(directory, asset.name), {
         tag: event.tag,
         sourceSha: event.sourceSha,
         workflow: '.github/workflows/release.yml',
       });
+    }
   } catch {
     rmSync(directory, { recursive: true, force: true });
     return { kind: 'unavailable' };

@@ -1,0 +1,15 @@
+{
+  "revision": "390a624e73d6d9726117e9928e79e7c149607e7b",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"Historical classification note moved from consumed .changeset/documentation-contract-clarity.md: Changesets planner passed with 72 retained notes.","inputs":[".changeset/README.md"]},
+
+    {"path":".changeset/README.md","note":"Historical classification note moved from consumed .changeset/sdk-envelope-projects-plugins.md: Read the full retained changeset during the frozen f3954615e upstream review.","inputs":[".changeset/README.md"]},
+
+    {"path":".changeset/README.md","note":"Historical classification note moved from consumed .changeset/windows-pwsh7-install-path.md: Read the full retained changeset during the frozen f3954615e upstream review.","inputs":[".changeset/README.md"]},
+
+    {"path":".changeset/README.md","note":"Historical classification note moved from consumed .changeset/windows-trust-runner-budget.md: Read the full retained changeset during the frozen f3954615e upstream review.","inputs":[".changeset/README.md"]},
+
+    {"path":".changeset/README.md","note":"Historical classification note moved from consumed .changeset/agent-sdk-boundary.md: Reviewed the release intent against the additive public entry and shared builder delta.","inputs":[".changeset/README.md"]}
+  ]
+}

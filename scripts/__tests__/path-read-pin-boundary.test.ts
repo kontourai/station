@@ -68,6 +68,7 @@ import {
   PATH_READ_PIN_BOUNDARY_TEST,
   pathReadPinEdges,
   REPO_SCAN_SUITES,
+  spawnedScriptEdges,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
@@ -100,6 +101,15 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Read install.ps1 through the generator's exported path and the installer
+  // core it embeds from a temporary extraction (#2675 W1): computed paths the
+  // scanner cannot pin. The install.ps1 impact edge selects both, and their
+  // imports of the generator and verifier select them for source changes.
+  'scripts/__tests__/install-script-generated.test.ts',
+  'scripts/__tests__/release-manifest-vectors.test.ts',
+  // Reads each workflow from a directory listing; the .github/workflows/**
+  // impact edge selects it (#2922).
+  'scripts/__tests__/ci-event-environment.test.ts',
   'packages/cli/src/__tests__/dev-security.test.ts',
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts',
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
@@ -145,6 +155,12 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
   'src-server/services/__tests__/flow-agents-skills.test.ts',
+  // Reads by path with a module anchor, so the scanner counts it, but no read
+  // names a repository source to pin: its fixture is under fixtures/, and the
+  // rest are a child process's pid file in a temp dir and readFileSync text
+  // inside the fake `opencode` scripts it writes and spawns. Its import of
+  // opencode-model-capabilities.ts selects it for source changes.
+  'src-server/services/acp/__tests__/opencode-model-capabilities.test.ts',
   // Device hosts: these read only their own fixtures (real OpenSSH
   // transcripts, anchored to the test file) or, for the resolver, walk the
   // server source tree to prove a structural rule. Neither names a source
@@ -171,6 +187,11 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // so no single pin could stand for it. test-impact-manifest.mjs routes it
   // for any src-ui source change.
   'src-ui/src/__tests__/station-vocabulary.test.ts',
+  // The status-vocabulary scan of the work surfaces: it walks those
+  // directories under src-ui/src and reads every file it finds, so no single
+  // pin could stand for it. test-impact-manifest.mjs routes it for a change
+  // under any root it walks.
+  'src-ui/src/__tests__/session-state-word-consistency.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
   'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
   'src-ui/src/views/project-settings/__tests__/ResourcesSection.test.tsx',
@@ -495,6 +516,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'scripts/__tests__/ci-event-environment.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts':
@@ -514,6 +537,12 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
     'walks its own fixture root',
+  'scripts/__tests__/review-ledger-guards.test.ts':
+    'git ls-files through a helper that runs with cwd set to its temporary fixture repository, never the real tree',
+  'scripts/__tests__/install-ps1-full.test.ts':
+    'lists only the versions directory of the temporary install roots it creates',
+  'scripts/__tests__/install-ps1.test.ts':
+    'lists only the versions directory of the temporary install roots it creates',
   'scripts/__tests__/install-script.test.ts':
     'walks only the temporary install roots it creates',
   'scripts/__tests__/path-read-pin-boundary.test.ts':
@@ -544,6 +573,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/routes/plugins/__tests__/plugin-proposed-install-git-metadata.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts':
+    'lists only the temporary Station home returned by setup() to verify refused acquisitions leave no installed or staged files',
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts':
     'git ls-files inside the temporary project it creates',
   'src-server/runtime/conversation/__tests__/runtime-event-log.test.ts':
@@ -581,6 +612,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'a Playwright spec; Vitest cannot schedule it (#1817)',
   'src-ui/src/__tests__/station-vocabulary.test.ts':
     'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
+  'src-ui/src/__tests__/session-state-word-consistency.test.ts':
+    'walks the work-surface directories under src-ui/src only; an edge per walked root selects it on every change there',
   'tests/builder-delivery-viewer.spec.ts':
     'a Playwright spec (examples/builder-delivery-viewer); Vitest cannot schedule it (#1817)',
 });
@@ -768,7 +801,12 @@ describe('derived pin edges only add to selection', () => {
     expect(built.slice(0, TEST_IMPACT_MANIFEST.length)).toEqual(
       TEST_IMPACT_MANIFEST,
     );
-    expect(built.length).toBe(TEST_IMPACT_MANIFEST.length + derived.length);
+    // #2922: the spawned-script edges follow the pin edges.
+    expect(built.length).toBe(
+      TEST_IMPACT_MANIFEST.length +
+        derived.length +
+        spawnedScriptEdges({ root: ROOT }).length,
+    );
     expect(derived.length).toBeGreaterThan(40);
   });
 
@@ -787,8 +825,14 @@ describe('derived pin edges only add to selection', () => {
   });
 
   it('leaves lanes, related paths, and escalation exactly as they were', () => {
+    // The baseline includes the spawned-script edges, so this isolates the
+    // pin edges: a spawned edge may legitimately defer to test-full (#2922).
+    const withoutPins = [
+      ...TEST_IMPACT_MANIFEST,
+      ...spawnedScriptEdges({ root: ROOT }),
+    ];
     for (const { pattern } of derived) {
-      const before = selectChangedVerification([pattern]);
+      const before = selectChangedVerification([pattern], withoutPins as never);
       const after = selectChangedVerification([pattern], built as never);
       expect(after.lanes, pattern).toEqual(before.lanes);
       expect(after.relatedPaths, pattern).toEqual(before.relatedPaths);
@@ -1093,6 +1137,24 @@ describe('the scanner resolves only what it can justify', () => {
           'readFileSync(target);\n',
       ),
     ).toEqual(['src-ui/src/main.tsx']);
+  });
+
+  it('resolves aliased Node URL value imports without guessing other constructors', () => {
+    const read =
+      "readFileSync(new NodeURL('../App.tsx', import.meta.url), 'utf8');\n";
+    for (const imported of [
+      "import { URL as NodeURL } from 'node:url';\n",
+      "import { fileURLToPath, URL as NodeURL } from 'node:url';\n",
+    ])
+      expect(scan(imported + read)).toEqual(['src-ui/src/App.tsx']);
+    for (const imported of [
+      "import { URL as NodeURL } from 'another-package';\n",
+      "import type { URL as NodeURL } from 'node:url';\n",
+      "import { type URL as NodeURL } from 'node:url';\n",
+      "// import { URL as NodeURL } from 'node:url';\n",
+      'const NodeURL = arbitraryConstructor;\n',
+    ])
+      expect(scan(imported + read)).toEqual([]);
   });
 
   it('resolves a read-helper parameter (arrow and function forms)', () => {

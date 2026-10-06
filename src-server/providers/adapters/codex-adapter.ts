@@ -28,6 +28,12 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import {
+  harnessAnswerTexts,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
   appHomeSessions,
@@ -58,7 +64,11 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
-import { CredentialProfileEnvUnavailableError } from '../app-home/credential-profile-env.js';
+import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
 import {
   buildCliRuntimePrerequisites,
   type CliCommandResult,
@@ -77,6 +87,7 @@ import {
   snapshotSessionSourceAffinity,
 } from '../sessions/session-source-affinity.js';
 import { readLeadingLine } from '../sessions/transcript-file-io.js';
+import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
 import {
   codexRunningChildTurnId,
@@ -120,6 +131,7 @@ import {
 } from './codex-mcp-passthrough.js';
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { codexQuestionnaire } from './harness-questions.js';
 
 type CodexAdapterLogger = Pick<Logger, 'warn'>;
 type CodexExecutionKnobs = NonNullable<
@@ -137,14 +149,14 @@ interface CodexAdapterOptions {
    * overlay model, channel 2) — `undefined` when the codex
    * connection has not opted in (`config.useAppHome`). For a selected
    * credential profile it is the profile's env overlay under its `CODEX_HOME`
-   * (#2966), and a failure throws `CredentialProfileEnvUnavailableError`,
+   * (#2966), and a failure throws `CredentialProfileEnvironmentError`,
    * which `resolveAppHomeEnv` never degrades. Applied at `startSession` and
    * quota reads only — model discovery deliberately keeps today's
    * byte-identical global env (Ambiguity C).
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
-  ) => Promise<Record<string, string> | undefined>;
+  ) => Promise<ResolvedAppHome | undefined>;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -159,6 +171,7 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Readiness seams, injectable so the installed branch and the probe's
    * environment are exercised on any host (a host without `codex` would
@@ -190,6 +203,12 @@ interface CodexAdapterOptions {
   mintStationControlMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
+    allowedTools?: readonly string[],
+  ) => string | undefined;
+  mintStationKnowledgeMcpAuth?: (
+    threadId: string,
+    tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
+    allowedTools?: readonly string[],
   ) => string | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop. Never required to be provided; a missing
@@ -806,9 +825,9 @@ export class CodexAdapter implements ProviderAdapterShape {
   }): Promise<ConnectionQuotaResult> {
     // Resolve the credential namespace before consulting cache: the same
     // connection can legitimately address a profile or global Codex account.
-    const appHomeEnv = await this.resolveAppHomeEnv(
-      options.credentialProfileRef,
-    );
+    const appHomeEnv = (
+      await this.resolveAppHomeEnv(options.credentialProfileRef)
+    )?.env;
     const { accountScope, cacheKey } = quotaCacheIdentity({
       connectionId: options.connectionId,
       credentialProfileRef: options.credentialProfileRef,
@@ -824,7 +843,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     // station#2072: the quota probe is an app-server child of this
     // connection too — it sees the connection env merged under the
     // resolved profile home, same precedence as the session spawn.
-    const connectionEnvForQuota = await this.resolveConnectionEnv();
+    const quotaLaunch = await this.resolveConnectionLaunch();
+    const connectionEnvForQuota = quotaLaunch.env;
     let processHandle: ReturnType<typeof createCodexProcess> | undefined;
     const pending = new Map<
       string,
@@ -837,11 +857,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     };
     let stdout: ReturnType<typeof createInterface> | undefined;
     try {
-      processHandle = this.processFactory(
-        appHomeEnv
-          ? { ...connectionEnvForQuota, ...appHomeEnv }
-          : connectionEnvForQuota,
-      );
+      const quotaEnv = appHomeEnv
+        ? { ...connectionEnvForQuota, ...appHomeEnv }
+        : connectionEnvForQuota;
+      processHandle = quotaLaunch.args.length
+        ? this.processFactory(quotaEnv, quotaLaunch.args)
+        : this.processFactory(quotaEnv);
       stdout = createInterface({ input: processHandle.stdout });
       stdout.on('line', (line) => {
         let message: any;
@@ -1160,10 +1181,13 @@ export class CodexAdapter implements ProviderAdapterShape {
     // The credential-profile app-home env stays session-scoped (archive#896
     // pin above) — profile homes are per-account credential state, the
     // connection env is connection-level routing.
-    const connectionEnv = await this.resolveConnectionEnv();
-    const processHandle = connectionEnv
-      ? this.processFactory(connectionEnv)
-      : this.processFactory();
+    const connectionLaunch = await this.resolveConnectionLaunch();
+    const connectionEnv = connectionLaunch.env;
+    const processHandle = connectionLaunch.args.length
+      ? this.processFactory(connectionEnv, connectionLaunch.args)
+      : connectionEnv
+        ? this.processFactory(connectionEnv)
+        : this.processFactory();
     let termination: Promise<void> | null = null;
     const terminate = () => {
       termination ??= terminateCodexProcess(processHandle);
@@ -1720,6 +1744,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       adoption?.input.sourceAffinity ?? resumeCursor?.sourceAffinity;
     let appHomeEnv: Record<string, string> | undefined;
     let appHome: 'profile' | 'global' | 'source';
+    let resolvedHome: ResolvedAppHome | undefined;
     if (sourceAffinity) {
       const sourceHome = this.options.resolveSourceHome?.(sourceAffinity);
       if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
@@ -1728,7 +1753,8 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHomeEnv = { CODEX_HOME: sourceHome };
       appHome = 'source';
     } else {
-      appHomeEnv = await this.resolveAppHomeEnv(input.credentialProfileRef);
+      resolvedHome = await this.resolveAppHomeEnv(input.credentialProfileRef);
+      appHomeEnv = resolvedHome?.env;
       appHome = appHomeEnv ? 'profile' : 'global';
     }
     const quotaConnectionId = string(input.metadata?.connectionId);
@@ -1740,12 +1766,18 @@ export class CodexAdapter implements ProviderAdapterShape {
     // the ambient env. An explicit configHome lands here exactly when no
     // profile/affinity home did (the runtime resolves only one of
     // configHome/useAppHome into these layers).
-    const connectionEnv = await this.resolveConnectionEnv();
+    const connectionLaunch = await this.resolveConnectionLaunch();
+    const connectionEnv = connectionLaunch.env;
     const spawnEnv =
       connectionEnv && appHomeEnv
         ? { ...connectionEnv, ...appHomeEnv }
         : (connectionEnv ?? appHomeEnv);
-    const processHandle = this.processFactory(spawnEnv, toolServers.configArgs);
+    const processHandle = this.processFactory(
+      spawnEnv,
+      connectionLaunch.args.length
+        ? [...connectionLaunch.args, ...(toolServers.configArgs ?? [])]
+        : toolServers.configArgs,
+    );
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,
@@ -1795,6 +1827,11 @@ export class CodexAdapter implements ProviderAdapterShape {
         },
       });
       this.transport.sendNotification(record, 'initialized');
+      const authoredMcpConfig = await this.authoredMcpConfig(
+        record,
+        input,
+        toolServers.report?.delivered ?? [],
+      );
 
       const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
       // #2493: `never` reaches `danger-full-access` only for a `host`
@@ -1815,6 +1852,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         ? await this.forkNativeAdoption(record, adoption, {
             approvalKnobs,
             serviceTier: modelOptions.fastMode ? 'fast' : null,
+            ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
           })
         : resumeCursor
           ? await this.transport.sendRequest(record, 'thread/resume', {
@@ -1824,6 +1862,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               ...approvalWire,
               serviceTier: modelOptions.fastMode ? 'fast' : null,
               persistExtendedHistory: false,
+              ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
             })
           : await this.transport.sendRequest(record, 'thread/start', {
               cwd: input.cwd,
@@ -1831,6 +1870,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               ...approvalWire,
               experimentalRawEvents: false,
               persistExtendedHistory: false,
+              ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
               serviceTier: modelOptions.fastMode ? 'fast' : null,
             });
       if (record.stdoutIngressLimit?.exceeded) {
@@ -1877,6 +1917,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         : approvalKnobs?.sandbox;
       record.session = {
         ...record.session,
+        modelRoute: connectionLaunch.route,
         status: 'ready',
         model: reportedModelFromInit ?? input.modelId,
         updatedAt: this.now().toISOString(),
@@ -1893,6 +1934,9 @@ export class CodexAdapter implements ProviderAdapterShape {
         initialState: 'created',
         metadata: {
           ...input.metadata,
+          usageAccountKey: resolvedHome
+            ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+            : undefined,
           codexThreadId: codexThread.id,
           ...(adoption
             ? {
@@ -1914,6 +1958,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       });
       const baseConfiguredMetadata: Record<string, unknown> = {
         ...input.metadata,
+        usageAccountKey: resolvedHome
+          ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+          : undefined,
         // Note: `effectiveModel` here is sourced from `record.session.model`
         // (reported-or-requested, pre-existing behavior kept for
         // back-compat with every consumer already reading it as "the best
@@ -1969,6 +2016,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // resolution-stage undelivered entries session-agent-resolution.ts
       // already recorded, so passing the previous metadata as inputMetadata
       // preserves that report.
+      baseConfiguredMetadata.modelRoute = connectionLaunch.route;
       const configuredMetadata = toolServers.report
         ? mergeCapabilityDeliveryMetadata(
             baseConfiguredMetadata,
@@ -2026,12 +2074,72 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
   }
 
+  private async authoredMcpConfig(
+    record: CodexSessionRecord,
+    input: ProviderSessionStartInput,
+    delivered: string[],
+  ): Promise<Record<string, unknown> | undefined> {
+    const authored = input.agent?.toolServers ?? [];
+    if (
+      input.agent?.toolServerMode === undefined &&
+      !authored.some(
+        (server) =>
+          server.allowedTools !== undefined ||
+          server.toolNames !== undefined ||
+          server.disabledTools !== undefined,
+      )
+    )
+      return undefined;
+    const result = await this.boundedProviderRequest<{
+      config?: {
+        mcp_servers?: Record<string, { enabled_tools?: string[] | null }>;
+      };
+    }>(this.transport, record, 'config/read', {
+      cwd: input.cwd,
+      includeLayers: false,
+    });
+    if (!result.config || typeof result.config !== 'object')
+      throw new Error('Codex did not provide its MCP configuration.');
+    const servers = result.config.mcp_servers ?? {};
+    if (typeof servers !== 'object' || Array.isArray(servers))
+      throw new Error('Codex provided an invalid MCP configuration.');
+    const overrides: Record<string, unknown> = {};
+    const keep = new Set(delivered);
+    if (input.agent?.toolServerMode === 'replace') {
+      for (const id of Object.keys(servers)) {
+        if (!/^[a-zA-Z0-9_-]+$/.test(id))
+          throw new Error('Codex provided an unsupported MCP server identity.');
+        overrides[`mcp_servers.${id}.enabled`] = keep.has(id);
+      }
+    }
+    for (const server of authored) {
+      if (!keep.has(server.id)) continue;
+      const key = `mcp_servers.${server.id}`;
+      overrides[`${key}.enabled`] = true;
+      overrides[`${key}.disabled_tools`] = server.disabledTools ?? [];
+      if (server.allowedTools !== undefined)
+        overrides[`${key}.enabled_tools`] = server.allowedTools;
+      else if (
+        servers[server.id]?.enabled_tools !== undefined &&
+        servers[server.id]?.enabled_tools !== null
+      ) {
+        if (!server.toolNames?.length)
+          throw new Error(
+            'Check this integration’s tools before replacing a harness tool selection.',
+          );
+        overrides[`${key}.enabled_tools`] = server.toolNames;
+      }
+    }
+    return overrides;
+  }
+
   private async forkNativeAdoption(
     record: CodexSessionRecord,
     adoption: CodexNativeAdoption,
     execution: {
       approvalKnobs?: CodexExecutionKnobs;
       serviceTier: string | null;
+      config?: Record<string, unknown>;
     },
   ): Promise<unknown> {
     const boundary = adoption.input.sourceBoundary!;
@@ -2052,6 +2160,7 @@ export class CodexAdapter implements ProviderAdapterShape {
             }
           : {}),
         serviceTier: execution.serviceTier,
+        ...(execution.config ? { config: execution.config } : {}),
         ephemeral: false,
         ...(adoption.input.modelId !== undefined
           ? { model: adoption.input.modelId }
@@ -2147,7 +2256,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (toolServers === undefined) return {};
 
     const hasBuiltinStationControl = toolServers.some(
-      (server) => server.id === 'station-control',
+      (server) =>
+        builtinStationApiServerId(server.id, toPassthroughToolDef(server)) ===
+        'station-control',
     );
     // Only mint (and therefore only ever hand out) a station-control MCP
     // token when the resolved toolServers actually include it — a session
@@ -2156,18 +2267,50 @@ export class CodexAdapter implements ProviderAdapterShape {
     // actually decides whether an entry qualifies as the canonical server
     // (this is just an early-exit so an unrelated session never mints a
     // token it will never use).
+    const control = toolServers.find(
+      (server) => server.id === 'station-control',
+    );
+    const selectedControlTools = control?.disabledTools?.length
+      ? (control.allowedTools ?? control.toolNames ?? []).filter(
+          (name) => !control.disabledTools!.includes(name),
+        )
+      : control?.allowedTools;
     const stationControlMcpUrl = hasBuiltinStationControl
-      ? input.tenantExecutionContext
+      ? selectedControlTools !== undefined
         ? this.options.mintStationControlMcpAuth?.(
             input.threadId,
             input.tenantExecutionContext,
+            selectedControlTools,
           )
-        : this.options.mintStationControlMcpAuth?.(input.threadId)
+        : input.tenantExecutionContext
+          ? this.options.mintStationControlMcpAuth?.(
+              input.threadId,
+              input.tenantExecutionContext,
+            )
+          : this.options.mintStationControlMcpAuth?.(input.threadId)
       : undefined;
 
+    const knowledge = toolServers.find(
+      (server) =>
+        builtinStationApiServerId(server.id, toPassthroughToolDef(server)) ===
+        'station-knowledge',
+    );
+    const selectedKnowledgeTools = knowledge?.disabledTools?.length
+      ? (knowledge.allowedTools ?? knowledge.toolNames ?? []).filter(
+          (name) => !knowledge.disabledTools!.includes(name),
+        )
+      : knowledge?.allowedTools;
+    const stationKnowledgeMcpUrl = knowledge
+      ? this.options.mintStationKnowledgeMcpAuth?.(
+          input.threadId,
+          input.tenantExecutionContext,
+          selectedKnowledgeTools,
+        )
+      : undefined;
     const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(
       toolServers,
       stationControlMcpUrl,
+      stationKnowledgeMcpUrl,
     );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
@@ -2210,19 +2353,15 @@ export class CodexAdapter implements ProviderAdapterShape {
    */
   private async resolveAppHomeEnv(
     credentialProfileRef?: string,
-  ): Promise<Record<string, string> | undefined> {
+  ): Promise<ResolvedAppHome | undefined> {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      // #2966: the resolver's typed error marks a failure AFTER a profile
-      // was selected — including the connection's configured active profile,
-      // which carries no explicit ref here. Degrading that to global would
-      // run on credentials (and routing) nobody selected.
       if (
         credentialProfileRef ||
-        error instanceof CredentialProfileEnvUnavailableError
+        error instanceof CredentialProfileEnvironmentError
       ) {
-        throw new CredentialProfileEnvUnavailableError();
+        throw new CredentialProfileEnvironmentError();
       }
       (this.options.logger ?? console).warn?.(
         `Codex app-home profile lookup failed; continuing with the global Codex config: ${errorMessage(error)}`,
@@ -2238,9 +2377,19 @@ export class CodexAdapter implements ProviderAdapterShape {
    * block a spawn (the credential-profile branch of `resolveAppHomeEnv`
    * above stays the only fail-closed one).
    */
+  private async resolveConnectionLaunch(): Promise<
+    ReturnType<typeof engineProxyLaunch>
+  > {
+    if (this.options.getConnectionLaunch)
+      return this.options.getConnectionLaunch();
+    return { env: await this.resolveConnectionEnv(), args: [] };
+  }
+
   private async resolveConnectionEnv(): Promise<
     Record<string, string> | undefined
   > {
+    if (this.options.getConnectionLaunch)
+      return (await this.options.getConnectionLaunch()).env;
     try {
       return await this.options.getConnectionEnv?.();
     } catch (error) {
@@ -2759,6 +2908,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         requestId,
         rpcRequestId: pending.rpcRequestId,
         method: pending.method,
+        ...(pending.blocking === false ? { blocking: false } : {}),
         result: outcome.result,
         status: mapApprovalResolutionStatus(outcome.decision),
       });
@@ -2770,6 +2920,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.transport.requireSession(threadId);
     const pending = record.pendingApprovals.get(requestId);
@@ -2779,6 +2930,43 @@ export class CodexAdapter implements ProviderAdapterShape {
       throw new Error('This Codex approval request is not open.');
     }
 
+    if (pending.method === 'item/tool/requestUserInput') {
+      const questionnaire = codexQuestionnaire(pending.payload);
+      if (
+        !questionnaire ||
+        !context?.expectedRequestEventId ||
+        context.expectedRequestEventId !== pending.openedEventId ||
+        decision === 'acceptForSession'
+      )
+        throw new Error('Inspect this question before answering it.');
+      const answers =
+        decision === 'accept'
+          ? validateHarnessQuestionAnswers(questionnaire, context?.answers)
+          : undefined;
+      if (decision !== 'accept' && context?.answers !== undefined)
+        throw new Error('A cancelled question cannot carry answers.');
+      record.pendingApprovals.delete(requestId);
+      this.transport.replyToApproval(record, {
+        requestId,
+        rpcRequestId: pending.rpcRequestId,
+        method: pending.method,
+        ...(pending.blocking === false ? { blocking: false } : {}),
+        result: {
+          answers: answers
+            ? Object.fromEntries(
+                questionnaire.questions.map((question) => [
+                  question.id,
+                  { answers: harnessAnswerTexts(question, answers) },
+                ]),
+              )
+            : {},
+        },
+        status: mapApprovalResolutionStatus(decision),
+      });
+      return;
+    }
+    if (context?.answers !== undefined)
+      throw new Error('This request does not accept question answers.');
     record.pendingApprovals.delete(requestId);
     const outcome = resolveApprovalOutcome(
       pending.method,

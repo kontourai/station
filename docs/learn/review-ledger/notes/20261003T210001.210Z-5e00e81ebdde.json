@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Read the complete responsive guide. Corrected the shared creation-owner claim: Projects retains PickerCreateAction; chats use NewChatAction in mobile bar, task picker and desktop inbox. Touch titles retain two lines. Existing ResponsiveDialogSurface portal, viewport, focus/history ownership and action-cap requirements remain accurate. Browser measured primary controls >=44px with no horizontal overflow at 320 and 412px; physical device/keyboard not verified.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

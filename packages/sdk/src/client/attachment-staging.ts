@@ -9,7 +9,8 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
-import { ChatHttpError, isStationEnvelope } from './chatHttpError';
+import { envelopeError } from './api-error-message';
+import { ChatHttpError } from './chatHttpError';
 import {
   assertClientRawEgressAllowed,
   type ClientRequestOptions,
@@ -17,6 +18,7 @@ import {
   mutateJson,
 } from './http';
 import { unlessDeadline } from './request-deadline';
+import { isStationAnswer, observeStationResponse } from './station-envelope';
 
 const ROOT = '/api/orchestration/attachment-staging';
 
@@ -131,12 +133,8 @@ async function read<T>(response: Response, fallback: string): Promise<T> {
   };
   if (!response.ok) {
     throw new ChatHttpError(
-      response.status,
-      typeof body.error === 'string' ? body.error : fallback,
-      typeof (body as { code?: unknown }).code === 'string'
-        ? (body as { code: string }).code
-        : undefined,
-      isStationEnvelope(body),
+      envelopeError(response, body, fallback),
+      isStationAnswer(response, body),
     );
   }
   return body as T;
@@ -229,8 +227,10 @@ export async function uploadAttachmentStage(
         body: dataUrl,
         signal: opts?.signal,
       });
+  // Neither branch passes the SDK request seams, and an XHR-built Response
+  // has no url, so the upload is attributed to its request url here (#2842).
   return await read<StagedAttachmentReference>(
-    response,
+    observeStationResponse(url, response),
     'Attachment staging could not be uploaded.',
   );
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "20d703d387612f032748b56eae2b17a60d1e6984",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed and updated the recovery journey labels to Review saved connections and Remove saved connections. The preview states that only saved access on this device is cleared, exposes routing details only when expanded, and keeps device approval, account sign-in and shared Project access distinct. Both mounted journeys passed; installed-shell qualification remains separate.","inputs":["docs/guides/connections.md"]}
+  ]
+}

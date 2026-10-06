@@ -1,0 +1,227 @@
+{
+  "path": "docs/guides/self-hosted-broker.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed documented broker schema/grant/proof/offer/renewal, connector lifecycle and private configuration claims through routes, service transactions, native signer/host command table and browser consumer. Corrected distinct browser/native header contracts and redemption exceptions, renewal window and conflict receipt wording. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; ordinary Desktop route activation remains unwired; the explicit native library/server application lane is now documented.",
+
+  "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "deployment/self-hosted-broker/.env.example",
+
+    "deployment/self-hosted-broker/Caddyfile",
+
+    "deployment/self-hosted-broker/compose.yaml",
+
+    "Dockerfile",
+
+    "docs/guides/native-shell-verification.md",
+
+    "packages/connect/src/__tests__/relayIceConfiguration.test.ts",
+
+    "packages/connect/src/core/applicationChannel.ts",
+
+    "packages/connect/src/core/applicationChannelFrames.ts",
+
+    "packages/connect/src/core/brokerRouteEnrollment.ts",
+
+    "packages/connect/src/core/browserPionConnection.ts",
+
+    "packages/connect/src/core/connectionTrust.ts",
+
+    "packages/connect/src/core/relayIceConfiguration.ts",
+
+    "packages/connect/src/core/selfHostedApplicationTransport.ts",
+
+    "packages/connect/src/core/selfHostedBrokerBrowserClient.ts",
+
+    "packages/contracts/src/relay-ice.ts",
+
+    "packages/contracts/src/self-hosted-broker.ts",
+
+    "packages/shared/src/connection-proof.ts",
+
+    "scripts/__tests__/self-hosted-broker-cli.test.ts",
+
+    "scripts/lib/turn-fixture.ts",
+
+    "scripts/native-fresh-relay-fixture.ts",
+
+    "scripts/native-relay-diagnostic-echo-lab.ts",
+
+    "scripts/self-hosted-broker.ts",
+
+    "scripts/self-hosted-connector-identity.ts",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/native_account_operations.rs",
+
+    "src-desktop/src/native_account_proof_key.rs",
+
+    "src-desktop/src/native_application_peer.rs",
+
+    "src-desktop/src/native_relay_ice.rs",
+
+    "src-desktop/src/native_relay_key_approval.rs",
+
+    "src-desktop/src/native_relay_proof_key.rs",
+
+    "src-desktop/src/native_relay_redemption.rs",
+
+    "src-desktop/src/native_station_key_custody.rs",
+
+    "src-server/index.ts",
+
+    "src-server/routes/connections/self-hosted-broker.ts",
+
+    "src-server/routes/system/relay-enrollment-routes.ts",
+
+    "src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts",
+
+    "src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime.test.ts",
+
+    "src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts",
+
+    "src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts",
+
+    "src-server/runtime/bootstrap/self-hosted-broker-runtime.ts",
+
+    "src-server/runtime/bootstrap/self-hosted-connector-config.ts",
+
+    "src-server/services/connections/__tests__/broker-ice-service.test.ts",
+
+    "src-server/services/connections/__tests__/native-v2-pion-application-adapter.test.ts",
+
+    "src-server/services/connections/broker-ice-service.ts",
+
+    "src-server/services/connections/cloudflare-turn-provider.ts",
+
+    "src-server/services/connections/native-v2-pion-application-adapter.ts",
+
+    "src-server/services/connections/pion-application-adapter.ts",
+
+    "src-server/services/connections/pion-application-ipc.ts",
+
+    "src-server/services/connections/pion-peer/application.go",
+
+    "src-server/services/connections/pion-peer/go.mod",
+
+    "src-server/services/connections/pion-peer/go.sum",
+
+    "src-server/services/connections/pion-peer/main.go",
+
+    "src-server/services/connections/relay-ice-consumer.ts",
+
+    "src-server/services/connections/self-hosted-broker-client.ts",
+
+    "src-server/services/connections/self-hosted-broker-connector.ts",
+
+    "src-server/services/connections/self-hosted-broker-service.ts",
+
+    "src-server/services/connections/virtual-application.ts",
+
+    "src-server/services/identity/relay-enrollment-service.ts",
+
+    "src-server/services/infra/process-utils.ts",
+
+    "src-ui/src/contexts/ApiBaseContext.tsx",
+
+    "src-ui/src/lib/browserRelayEnrollmentController.ts",
+
+    "src-ui/src/lib/browserRelayProjectInvitation.ts",
+
+    "src-ui/src/lib/browserRelayRouteRuntime.ts",
+
+    "src-ui/src/lib/browserRelayTurnCustody.ts",
+
+    "src-ui/src/platform/native/__tests__/nativeDiagnosticEchoBridge.test.ts",
+
+    "src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx",
+
+    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
+
+    "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+
+    "src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
+
+    "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx",
+
+    "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
+
+    "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
+
+    "src-ui/src/platform/native/nativeRelayIceConfigurationBridge.ts",
+
+    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
+
+    "src-ui/src/platform/native/nativeRelaySignalingBridge.ts",
+
+    "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx",
+
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
+
+    "tests/tauri-shell/native-fresh-relay-fixture.md",
+
+    "tests/tauri-shell/native-project-acceptance-webview.ts",
+
+    "tests/tauri-shell/native-project-acceptance.e2e.ts",
+
+    "tests/tauri-shell/native-project-runtime-fixture.ts",
+
+    "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts"
+  ],
+
+  "checks": [
+    "Prior accepted evidence, not rerun in this tranche: focused: PASS 175 tests / 9 files / 20.65s",
+
+    "Prior accepted evidence, not rerun in this tranche: links: PASS 397 Markdown files; later opening-paragraph routing qualifier adds no links.",
+
+    "Prior accepted evidence, not rerun in this tranche: references: PASS 263 maintained documents; later opening-paragraph routing qualifier adds no paths.",
+
+    "Prior accepted evidence, not rerun in this tranche: veritas: PASS 0 failures / 0 warnings; veritas-1790515441320 at seven-guide batch. Tiny later CI-routing prose qualifier inspected; no protected/code changes, no rerun.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed affected current owners: native startup callbacks and separate React mount, registered native grant/diagnostic commands and cleanup hooks, native notification feed manage/start/IPC, state-directory profile genesis. Updated readiness/recovery/tray/broker claims; no native/platform delivery proof.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Adds optional diagnosticEcho collection/retirement to explicitly supplied native adapter; ordinary Pion application composition unchanged. Documented as diagnostic only, no new native application route.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Adds constructor for already-verified P256 coordinates. Existing fixed proof signing remains; new trusted context provider in redemption now actually consumes approved host trust.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Traced main-window commands into locked saved-profile/trust owner, grant redemption/status/revoke/cleanup, diagnostic binding/open/read and startup/removal cleanup. Guide no longer says service is unwired. Broader deep protocol/security claims remain partial.",
+
+    "Prior accepted evidence, not rerun in this tranche: Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "REASONED: full document read and remaining documented protocol/admission/recovery claims traced through the listed production owners and callers; existing source hashes matched the prior accepted records before scoped corrections.",
+
+    "EXECUTED: docs links passed 412 Markdown files; reference gate passed 266 maintained documents; MCP check passed 99 shipped topics; safe lab --help output and focused Biome passed.",
+
+    "EXECUTED: docs:truth:gate ran all 13 lanes; 12 passed, foundations had 163 tests pass and one inherited stale ledger failure at .agents/skills/deslop/SKILL.md. No unreviewed metadata was refreshed to conceal it. Root owns combined ledger integration and final check.",
+
+    "EXECUTED: Veritas readiness run veritas-1790532008463: zero failures, one optional verification-policy warning from the retained in-worktree installed-plugin fixture tests. Governance, lint and connected-agent checks passed. Protected standards unchanged.",
+
+    "EXECUTED: current and archive GitHub issue titles checked for 303, 483, 487, 488, 489, 495, 496 and 497. Restored explicit current membership/hosted identity/tenant isolation/acceptance references; retained archive303 reconnect history and archive496 Task history because their titles match. Current488 is closed; its historical implementation link does not prove the independent-human acceptance.",
+
+    "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Reviewed real multiple-Station init/serve test on one database with distinct credentials and scope refusals; preserved corrected preflight headers and current schema history. No new hosted or remote qualification.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Read the changed document in context; its purpose and prior evidence limits remain.",
+
+    "Required merge-queue recovery through 421517851: Corrected the obsolete production-native-adapter refusal: nativeClient explicitly enables one exact surface, separate browser/native offer polling and verified-request provenance. Retained separate grant/Device/provider/Project authority and unwired ordinary Desktop activation.. Changed inputs reviewed: docs/guides/self-hosted-broker.md, src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts, src-server/runtime/bootstrap/self-hosted-broker-runtime.ts, src-server/runtime/bootstrap/self-hosted-connector-config.ts, src-server/services/connections/native-v2-pion-application-adapter.ts, src-server/services/connections/virtual-application.ts, src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: lib.rs removed the dormant notification_watch module and its commands and added a rustls TLS test for the native HTTP agent. SelfHostedBrokerNativeClient gained a comment saying only tests and the native relay echo lab use it, linking this guide's 'Native routing grant foundation (v2)' heading, which exists. ApiBaseContext lost only a notification comment. The guide's native grant, command-table, supervisor and lab claims remain accurate. Source review is separate from executed test evidence."
+  ]
+}

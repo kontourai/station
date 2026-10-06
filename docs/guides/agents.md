@@ -42,11 +42,41 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.modelId` | Explicit model preference on that execution binding |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
+| `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |
 
 ### MCP Tool Configuration
 
-For Station-engine Agents, `tools` selects MCP connections and exposed tools.
-External delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
+Open an Agent's **Tools** section to add integrations. **Station**
+adds read-only built-in controls; expand the row to choose **Read only**, **All**,
+**None**, or individual tools. Use the group picker to narrow Station controls to
+Knowledge, Projects, Tasks, Scheduling, and other areas. The three shortcuts apply
+to the chosen group and preserve choices elsewhere. Search narrows the checklist. The shield opens approval settings; the gear
+opens harness settings. **Advanced** contains browser and workflow options.
+Saved changes apply to new chats. Hover over or click an info icon for field
+explanations and engine capabilities. Keyboard users can press Enter to open it,
+use arrow or Page keys to scroll long help, and press Escape to dismiss it.
+
+Station Control publishes native MCP titles and behavioral annotations. The
+`ai.kontour/tool-group` vendor metadata organizes the picker; third-party
+integrations can supply the same display hint. It does not grant access or
+change approval rules. MCP has no standard category field; grouping does not
+require separate servers.
+
+Claude and Codex offer **Keep harness tools**. New Agents add integrations to
+the harness configuration; existing Agents keep their previous behavior until
+you change this switch. Turning it off replaces the configured MCP list; the harness keeps its built-in tools. Claude
+also offers **Harness default**, **On demand**, and **Always available** loading.
+On demand uses Claude's native tool search and requires a compatible model and
+endpoint; it is not a Station search proxy. Other engines keep their own loading
+behavior.
+
+`tools` selects MCP connections and exposed tools. Station applies its runtime
+filter; Claude applies SDK exclusions plus a pre-tool refusal, and Codex receives
+its native `enabled_tools` / `disabled_tools` configuration. Station Control also
+filters its served catalog and calls to the session's selection. Engines reached
+through the generic connected-engine protocol cannot deliver individual-tool
+selection: a restricted integration is reported undelivered rather than widened.
+External policy delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
 
 ```json
 {
@@ -58,9 +88,11 @@ External delivery follows the [engine policy contract](../conformance/tool-polic
 }
 ```
 
-- `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
-- `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
-- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals
+- `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/integration.json`)
+- `mcpMode` — `add` preserves harness integrations; `replace` supplies only the Agent's list. Omission retains legacy engine behavior
+- `mcpLoading` — `on-demand` or `always`, delivered through Claude's `ENABLE_TOOL_SEARCH`; omission preserves the harness setting
+- `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none from these integrations
+- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 
 `tools.aliases` is retired. Older files still load because the loader removes
@@ -146,12 +178,92 @@ every possible tool outcome:
 
 The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
 
+### Questions from agent harnesses
+
+Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as inline
+question cards in the Session. Select an option, choose several where the
+harness supports it, or choose Other to enter a custom answer. Question tabs
+let you jump between prompts. Use Tab and the native choice
+keys; Ctrl/Cmd+Enter advances to the next question or the review. Review and
+edit every answer before sending the batch. Answering a question never grants
+permission to later tool calls, including under wildcard auto-approval.
+
+Non-private drafts are saved on this device for the exact request and verified
+Station authority. Without that verification or available storage, the draft
+stays in the tab. Private answers are masked during review and aren't saved as
+drafts; this does not promise secrecy in the engine's own history. A failed
+send keeps the entered answers. Optional Codex questions remain answerable
+without pausing the running Session.
+
+### What autoApprove never covers
+
+A pattern allows plain calls to a matching tool. It never answers a request
+that reaches beyond the call or a plan exit, even when the pattern is `*`. On
+Claude Code these always reach a person:
+
+- a path outside the session's working directories on a single command or
+  call (a `Read` pattern means reading the workspace, not reading anywhere),
+  or a suggestion to widen them;
+- a single command or call forced to ask by a `permissions.ask` rule, when
+  the engine reports the rule that matched;
+- a safety check the engine raises, on a read, a file edit (a sensitive
+  file such as `.git/config`) or a shell command (the engine allows reads
+  inside the working directories itself, so any Read, Glob, Grep or LSP ask
+  it raises prompts);
+- a single command or call a `permissions.ask` rule forced to ask, whether
+  or not the engine names the rule, including a WebFetch domain rule
+  (#2932);
+- a chained Bash command (`a && b`, a pipeline) when any part raises a
+  safety check, and every PowerShell command (#2932);
+- a sandbox network-host ask (each new host prompts), a call that disables
+  the sandbox, a tool whose approval is the user's own interaction, and an
+  MCP tool the organization requires approval for (#2932);
+- `ExitPlanMode`, so a plan is always reviewed.
+
+On ACP engines a plan exit (a `switch_mode` tool call, or `ExitPlanMode`)
+always prompts, and answering it "for this session" allows that one exit
+only. ACP reports no other escalation signal. Codex and Muse do not
+honour `autoApprove`. Station reads why Claude Code asks from the engine's
+own request, and a request it cannot read counts as an escalation, so a
+pattern never answers one. A pattern such as `Bash` covers chained commands
+too, and the engine does not report what their parts raise. So the first
+two items above do not hold inside a chained Bash command: a
+`permissions.ask` rule on the chain or on one part (when more than one part
+needs approval), a write or delete outside the working directories in an `&&` or
+`;` chain or behind a pipeline's output redirect, and a part's non-safety
+warning are answered by the pattern. A safety check on any part still
+prompts ([delivery boundary](../conformance/tool-policy-delivery.md)).
+
+An approval-guardian allow has the same limits on these engines (#2947). The
+guardian reviews the tool's name and arguments (and, on ACP, the call's
+title); it isn't shown the session's working directories or why the engine
+asks. On Claude Code its allow answers a plain call without a prompt, for the
+input it reviewed, and everything in the list above still reaches a person,
+including a read outside the working directories that the guardian allowed.
+Like a `Bash` pattern, a guardian allow answers a chained Bash command,
+including the chained-command gaps described above: an ask rule or an
+outside-directory write hidden inside the chain does not prompt. On ACP engines its allow answers any call except a
+plan exit, a question, or a sandbox network-host ask. A guardian deny in
+`enforce` mode still blocks the call. A delegated child that cannot grant
+approvals is denied an escalation at once, guardian allow or not. With the
+guardian enabled, a headless run on these engines that reaches an escalation
+waits on an approval request where it used to run on the guardian's allow.
+
 ### Unattended runs
 
 A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
 or a delegated child session that cannot grant approvals — never waits on an
 approval request. Station's engine either allows the call without asking or
 denies it.
+
+External engines differ. On Claude Code and ACP, `autoApprove` does not cover
+escalations or plan exits, even for `*` ([what autoApprove never covers](#what-autoapprove-never-covers)).
+A headless run on those engines that reaches one waits on an approval request
+until someone answers it (for example from the approval inbox). A delegated
+child that cannot grant approvals is denied the call at once. On Claude Code
+every PowerShell call is such an escalation, so a `PowerShell` pattern
+answers nothing there: a headless run waits on each PowerShell call, and a
+child that cannot grant approvals is denied it.
 
 `autoApprove` is attended auto-approval. Attended chat matches a pattern against
 both the original MCP tool name (`station-control_delete_agent`) and the runtime
@@ -295,7 +407,8 @@ const selectedAccountId = params.get('selectedAccount');
 
 Start Station through `./station`, never through `npm run dev:server` /
 `dev:ui` directly — the CLI orchestrates the server and UI builds in the right
-order. Use a named instance on ports that cannot collide with the defaults
+order. To run with hot reload, use `./station start --watch` (see
+[development](development.md#running-a-second-station-in-development-mode)). Use a named instance on ports that cannot collide with the defaults
 (3141/3000 are reserved for the user's own testing) and `--temp-home` so the
 runtime data is isolated from the normal Station home. Shared client/instance
 metadata can still use `STATION_ROOT`; select a separate root consistently for
@@ -356,10 +469,11 @@ caution, negative and active `.tone-*` classes with AA-checked pairs. Custom sta
 styles use the tone tokens `--k-positive`, `--k-caution`, `--k-negative`,
 `--k-active` and `--k-neutral`, with `--k-positive-soft`, `--k-caution-soft`,
 `--k-negative-soft` and `--k-active-soft` as tinted fills (there is no neutral
-soft fill), and always carry a text label; color only reinforces it. Newer tokens
-such as `--k-status-contrast`, `--k-trust-*`, `--k-action` and `--k-focus`
-exist only in later package versions (1.12.0 defines none of them), so check
-`node_modules/@kontourai/ui/tokens/tokens.css` before using one. Follow the
+soft fill), and always carry a text label; color only reinforces it. The
+installed package (1.18.0) also defines `--k-status-contrast` (text on a
+status fill), the `--k-trust-*` trust-state inks, fills and line styles, and
+the `--k-action` and `--k-focus` interaction roles; check
+`node_modules/@kontourai/ui/tokens/tokens.css` before using a token. Follow the
 owning component's button style and [frontend guidance](../patterns/frontend.md).
 
 ### Styling
@@ -405,6 +519,15 @@ connection ID is `execution.agentConnectionId`, not the Agent ID or a legacy
 `source` discriminator. Execution requests name the Agent and let the server
 resolve that binding. User-facing copy names the engine.
 
+A bound Agent's `engineId` comes from its connection's static identity (the
+Adapter's engine, or `'acp'`), not from the live connection inspection, so a
+failing or slow inspection does not remove it; `engineDisplayName` and
+readiness still need the live read (#3355). When a row's Agent resolves, is
+bound to an engine connection, and still reports no `engineId`,
+`inboxRowIconAgent` draws the engine the row's own execution recorded
+(`HomeWorkItem.provider`), only when that engine has a bundled mark and never
+for an ACP-bound or unresolved Agent.
+
 ### Plugin Workflow
 
 Use the [plugin development workflow](plugins.md#development-workflow) for
@@ -419,7 +542,9 @@ ordinary notification history. An approval or `review_pending` item with an
 exact request reference opens the request's decision controls. An approval
 without that reference uses its persisted notification's Allow/Deny actions;
 `review_pending` without one opens the session. `needs_input` sends a normal
-orchestration turn to the owning session. The header
+orchestration turn to the owning session. An item for a delegated task that
+runs on a paired Station offers no reply. It says to answer on that Station
+and opens the Activity detail. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
 session. Gate exceptions also suppress that session's lifecycle duplicate;

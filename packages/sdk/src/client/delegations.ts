@@ -47,7 +47,7 @@ import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
 } from '@kontourai/station-contracts/execution-target';
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import type { ApprovalDecision } from './orchestration';
 import { rethrowDeadline } from './request-deadline';
@@ -63,32 +63,63 @@ interface DelegationEnvelope<T> {
 
 /** A delegated engine-start refusal with a stable machine-readable cause. */
 export class DelegationApiError extends Error {
+  readonly code?: string;
+  readonly retryable?: boolean;
+  /** The envelope's `details`, exactly as sent (e.g. #1796's refusal). */
+  readonly details?: unknown;
+  /**
+   * The observed HTTP status and `Retry-After` (#2708), when the error was
+   * built from a response; absent on the positional form.
+   */
+  readonly status?: number;
+  readonly retryAfterMs?: number;
+
+  /** Built from the envelope helper's error, plus the body's `retryable`. */
+  constructor(failure: StationHttpError, retryable?: boolean);
   constructor(
     message: string,
-    readonly code?: string,
-    readonly retryable?: boolean,
-    /** The envelope's `details`, exactly as sent (e.g. #1796's refusal). */
-    readonly details?: unknown,
+    code?: string,
+    retryable?: boolean,
+    details?: unknown,
+  );
+  constructor(
+    first: string | StationHttpError,
+    second?: string | boolean,
+    retryable?: boolean,
+    details?: unknown,
   ) {
-    super(message);
+    super(typeof first === 'string' ? first : first.message);
     this.name = 'DelegationApiError';
+    const failure = typeof first === 'string' ? undefined : first;
+    const code = failure ? failure.code : (second as string | undefined);
+    const retry = failure ? (second as boolean | undefined) : retryable;
+    const sent = failure ? failure.details : details;
+    if (code !== undefined) this.code = code;
+    if (retry !== undefined) this.retryable = retry;
+    if (sent !== undefined) this.details = sent;
+    if (failure) {
+      this.status = failure.status;
+      if (failure.retryAfterMs !== undefined)
+        this.retryAfterMs = failure.retryAfterMs;
+    }
   }
 }
 
 async function unwrapDelegationResponse<T>(response: Response): Promise<T> {
+  const fallback = `Delegation API error: ${response.status}`;
   let result: DelegationEnvelope<T> | null = null;
   try {
     result = (await response.json()) as DelegationEnvelope<T>;
   } catch (error) {
     rethrowDeadline(error);
-    throw new Error(`Delegation API error: ${response.status}`);
+    // Not a `DelegationApiError`: a body that is not JSON is not Station's
+    // refusal, and callers read that class as one (`delegate wait`).
+    throw envelopeError(response, undefined, fallback);
   }
   if (!response.ok || !result.success) {
     throw new DelegationApiError(
-      apiErrorMessage(result, `Delegation API error: ${response.status}`),
-      result.code,
+      envelopeError(response, result, fallback),
       result.retryable,
-      result.details,
     );
   }
   return result.data as T;
@@ -318,6 +349,15 @@ export interface DelegatedTaskPendingRequest {
   id: string;
   title?: string;
   type?: string;
+  /** `delegatedInputAnswers`: the request's `request.opened` event id. */
+  eventId?: string;
+  /** The question as the serving Station presents it. */
+  body?: string;
+  /**
+   * The serving Station's check of the reading caller on the route that
+   * answers the request; absent when it did not evaluate one.
+   */
+  callerCanRespond?: boolean;
 }
 
 /**
@@ -558,6 +598,17 @@ export async function observeDelegatedTaskEvents(
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * Deliver `message` only as the answer to this exact open input request
+   * on the task's current Session. The serving Station refuses with
+   * `input_request_changed` when it is gone or replaced; forwarding to
+   * another Station requires its `delegatedInputAnswers` capability.
+   */
+  expectedInputRequest?: {
+    threadId: string;
+    requestId: string;
+    requestEventId: string;
+  };
   model?: string;
   /** station#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -763,6 +814,11 @@ export interface DelegationAttemptView {
   taskId?: string;
   /** Present only when `state === 'accepted'`: the real initial turn id. */
   turnId?: string;
+  /**
+   * Present only when `state === 'refused'` and the refusal carried a closed
+   * code, such as `execution_preparation_version_mismatch` (#2875).
+   */
+  refusalCode?: string;
 }
 
 /**

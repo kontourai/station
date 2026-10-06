@@ -1,0 +1,27 @@
+{
+  "path": "examples/openai-realtime-voice/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide, injected provider/activation and credentialed smoke dispatcher read; static unconfigured registration separated from concrete server-side smoke and real-provider success.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/openai-realtime-voice/plugin.json",
+
+    "examples/openai-realtime-voice/src/OpenAIRealtimeProvider.ts",
+
+    "examples/openai-realtime-voice/src/index.ts",
+
+    "scripts/voice-realtime-live-smoke.mjs",
+
+    "scripts/voice-realtime-openai-smoke.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+  ]
+}

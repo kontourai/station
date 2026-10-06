@@ -1,0 +1,27 @@
+{
+  "path": "docs/design/pane-or-shell.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Adopted pane/shell criterion and runtime trust policy; surface inventory explicitly scoped to its migration stage.",
+
+  "limits": "Current destination/router ownership checked. No exhaustive placement, migration, iframe-security, or runtime-tier compatibility proof.",
+
+  "sources": [
+    "src-ui/src/app-shell/destination-registry.ts",
+
+    "src-ui/src/app-shell/routing.ts",
+
+    "src-ui/src/views/ConsoleBoardView.tsx"
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Entire original body byte-identical after removing reading banner and inventory qualification.",
+
+    "Reviewed integration deltas: src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged."
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "path": "docs/reference/agent-plugins.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed every documented portable Agent Plugins claim through shared schema/parser, runtime loader and host normalization, Skill discovery and mutation policy, MCP projection/read-only service, settings persistence and provider factory, managed installation paths, CLI consent/build and validator gates. Corrected unsupported moving-upstream assertion, retired root-field exception, namespace host-normalization failure boundary, workspacePaneHost classification, literal versus expanded MCP fields, and managed-versus-legacy code/data retention scope. Added package tree and direct owner/caller navigation.",
+
+  "limits": "190 existing tests across seven files use controlled package, route, builder, install and MCP fixtures; no live external MCP service, package publication, user-home installation, OAuth exchange, device or hosted deployment was exercised. Settings secret references remain plaintext settings inputs rather than a secret resolver. Source review is of current documented claims, not a formal proof of every package/adversarial input or every contribution runtime.",
+
+  "sources": [
+    ".githooks/pre-push",
+
+    "package.json#/scripts/agent-plugin:validators:gate",
+
+    "packages/cli/src/commands/build.ts",
+
+    "packages/cli/src/commands/install.ts",
+
+    "packages/contracts/src/agent-plugin.ts",
+
+    "packages/contracts/src/skill-experience.ts",
+
+    "packages/shared/src/agent-plugin-manifest.ts",
+
+    "packages/shared/src/agent-plugin-validators.generated.mjs",
+
+    "packages/shared/src/build.ts",
+
+    "packages/shared/src/skill-experience-author.ts",
+
+    "schemas/agent-plugins/1.0.0/mcp.schema.json",
+
+    "schemas/agent-plugins/1.0.0/plugin.schema.json",
+
+    "schemas/agent-plugins/io.kontourai.station-1.0.schema.json",
+
+    "schemas/agent-plugins/skill-experience-1.0.schema.json",
+
+    "scripts/agent-plugin-validators-gate.mjs",
+
+    "scripts/check-prepush-static-gates.mjs",
+
+    "scripts/generate-agent-plugin-validators.mjs",
+
+    "src-server/domain/config-loader-storage.ts",
+
+    "src-server/domain/config-loader.ts",
+
+    "src-server/providers/plugin-provider-loader.ts",
+
+    "src-server/routes/plugins/plugin-config-routes.ts",
+
+    "src-server/services/agents/skill-service.ts",
+
+    "src-server/services/plugins/agent-plugin-loader.ts",
+
+    "src-server/services/plugins/mcp-service.ts",
+
+    "src-server/services/plugins/plugin-activation-composition.ts",
+
+    "src-server/services/plugins/plugin-activation-plan.ts",
+
+    "src-server/services/plugins/plugin-incarnation.ts",
+
+    "src-server/services/plugins/plugin-install-transaction.ts",
+
+    "src-server/services/plugins/plugin-installation-local.ts",
+
+    "src-server/services/plugins/plugin-manifest-loader.ts",
+
+    "src-server/services/plugins/reserved-plugin-identities.ts",
+
+    "src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx"
+  ],
+
+  "checks": [
+    "190 tests across seven files pass, exit 0, 15.56s. Builder refusal fixture intentionally logs unresolved stolen-dep; test suite passes.",
+
+    "agent-plugin:validators:gate passes byte reproduction, exit 0; 407 Markdown local paths/rendered anchors pass; git diff --check passes.",
+
+    "Veritas readiness veritas-1790521820225: 0 failures, 0 warnings. One Markdown file committed; no runtime or shared-ledger mutation.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
+
+    "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+
+    "Integration source review through e0314c727: the install transaction now carries excludeGitMetadata for proposal-named local sources (#2719), and package.json dropped bearing/forage. The reference's directory/git install path, managed retention and data-directory claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata in its install consent. This reference makes no claim about how the CLI builds consent or about git metadata staging. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

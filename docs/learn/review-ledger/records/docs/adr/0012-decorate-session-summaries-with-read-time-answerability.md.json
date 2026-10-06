@@ -1,0 +1,35 @@
+{
+  "path": "docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "A status note bounds the historical branch/review counts and routes readers to current open-requests and required wire fields. Current code preserves process/observation qualifiers and separates answerability from dispatch authority.",
+
+  "limits": "The historical 37 folds,30 decisions,21 client sites and12 injected failures are not a current inventory. All notification/CLI/UI consumers, residual slice completion and cross-instance user journeys were not re-audited.",
+
+  "sources": [
+    "packages/contracts/src/__tests__/orchestration-answerability.test.ts",
+
+    "packages/contracts/src/orchestration.ts",
+
+    "src-server/services/orchestration/__tests__/session-answerability-decoration.test.ts",
+
+    "src-server/services/orchestration/open-requests.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts"
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904 added the ApprovalFullAccessRefusalDetails and requester types, a sanitizer and a details parser to contracts/orchestration.ts, and the full-access reset logic to orchestration-service. Nothing changes read-time answerability decoration, open-request projection or the dispatch-authority separation that the status note routes readers to. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

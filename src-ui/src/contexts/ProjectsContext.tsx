@@ -2,7 +2,12 @@ import type { EnvironmentRef } from '@kontourai/station-contracts/execution-targ
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
-import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
+import type {
+  ProjectSharedTaskDocument,
+  ProjectSharedTaskHistory,
+  ProjectSharedTaskPublication,
+  ProjectSharedTaskSummary,
+} from '@kontourai/station-contracts/project-shared-task';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import {
   type ProjectReadQueryConfig,
@@ -246,6 +251,190 @@ export function useScopedMemberProjectSharedTasksQuery(
   return query;
 }
 
+function sameSharedProjectTask(
+  actual: ProjectSharedTaskSummary,
+  expected: ProjectSharedTaskSummary,
+): boolean {
+  return (
+    actual.shareId === expected.shareId &&
+    actual.project.stationId === expected.project.stationId &&
+    actual.project.localProjectId === expected.project.localProjectId &&
+    actual.project.localProjectSlug === expected.project.localProjectSlug &&
+    actual.project.portableProjectId === expected.project.portableProjectId &&
+    actual.task.id === expected.task.id &&
+    actual.task.createdAt === expected.task.createdAt
+  );
+}
+
+/** Read only the supported shared-work leaves under the page's captured scope. */
+export function useScopedMemberProjectSharedTaskDetails(
+  project: Pick<MemberProjectView, 'id' | 'slug'>,
+  sharedTask: ProjectSharedTaskSummary,
+  requestScope: ReturnType<typeof useHostRequestAuthorityScope>,
+) {
+  const apiBase = requestScope?.apiBase ?? 'unavailable';
+  const authorityKey = requestScope?.authorityKey ?? 'unavailable';
+  const key = useMemo(
+    () =>
+      [
+        'member-project-shared-work-item',
+        apiBase,
+        authorityKey,
+        project.id,
+        project.slug,
+        sharedTask.shareId,
+        sharedTask.task.id,
+        sharedTask.task.createdAt,
+      ] as const,
+    [
+      apiBase,
+      authorityKey,
+      project.id,
+      project.slug,
+      sharedTask.shareId,
+      sharedTask.task.createdAt,
+      sharedTask.task.id,
+    ],
+  );
+  const scopeIsCurrent = Boolean(requestScope?.isCurrent());
+  const requestEnabled = Boolean(
+    project.id &&
+      project.slug &&
+      sharedTask.shareId &&
+      requestScope &&
+      scopeIsCurrent,
+  );
+  const publication = useQuery<ProjectSharedTaskPublication>({
+    queryKey: [...key, 'publication'],
+    queryFn: async ({ signal }) => {
+      const captured = requestScope;
+      if (!captured?.isCurrent())
+        throw new Error('The selected Station authority is unavailable.');
+      const { getProjectSharedTaskPublication } = await import(
+        '@kontourai/station-sdk/project-shared-tasks'
+      );
+      signal.throwIfAborted();
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
+      const value = await getProjectSharedTaskPublication(
+        captured.apiBase,
+        project.slug,
+        sharedTask.task.id,
+        {
+          requestScope: captured,
+          requireCredential: captured.requiresEnrolledCredential ?? true,
+          signal,
+          timeoutMs: 15_000,
+          maxResponseBytes: 64 * 1024,
+        },
+      );
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
+      if (
+        value.kind === 'shared'
+          ? !sameSharedProjectTask(value.publication, sharedTask)
+          : value.project.stationId !== sharedTask.project.stationId ||
+            value.project.localProjectId !== project.id ||
+            value.project.localProjectSlug !== project.slug ||
+            value.task.id !== sharedTask.task.id ||
+            value.task.createdAt !== sharedTask.task.createdAt
+      )
+        throw new Error(
+          'Shared publication returned a different Project scope.',
+        );
+      return value;
+    },
+    enabled: requestEnabled,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const publicationIsCurrent = Boolean(
+    requestEnabled &&
+      publication.isSuccess &&
+      !publication.isFetching &&
+      publication.data?.kind === 'shared' &&
+      sameSharedProjectTask(publication.data.publication, sharedTask),
+  );
+  const sharedDetailsEnabled = requestEnabled && publicationIsCurrent;
+  const history = useQuery<ProjectSharedTaskHistory>({
+    queryKey: [...key, 'history'],
+    queryFn: async ({ signal }) => {
+      const captured = requestScope;
+      if (!captured?.isCurrent())
+        throw new Error('The selected Station authority is unavailable.');
+      const { readProjectSharedTaskHistory } = await import(
+        '@kontourai/station-sdk/project-shared-tasks'
+      );
+      signal.throwIfAborted();
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
+      const value = await readProjectSharedTaskHistory(
+        captured.apiBase,
+        project.slug,
+        sharedTask.task.id,
+        {
+          requestScope: captured,
+          requireCredential: captured.requiresEnrolledCredential ?? true,
+          signal,
+          timeoutMs: 15_000,
+          maxResponseBytes: 1024 * 1024,
+        },
+      );
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
+      return value;
+    },
+    enabled: sharedDetailsEnabled,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const document = useQuery<ProjectSharedTaskDocument>({
+    queryKey: [...key, 'document'],
+    queryFn: async ({ signal }) => {
+      const captured = requestScope;
+      if (!captured?.isCurrent())
+        throw new Error('The selected Station authority is unavailable.');
+      const { readProjectSharedTaskDocument } = await import(
+        '@kontourai/station-sdk/project-shared-tasks'
+      );
+      signal.throwIfAborted();
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
+      const value = await readProjectSharedTaskDocument(
+        captured.apiBase,
+        project.slug,
+        sharedTask.task.id,
+        {
+          requestScope: captured,
+          requireCredential: captured.requiresEnrolledCredential ?? true,
+          signal,
+          timeoutMs: 15_000,
+          maxResponseBytes: 1024 * 1024,
+        },
+      );
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
+      if (
+        value.kind === 'snapshot' &&
+        (value.project.id !== project.id ||
+          value.project.slug !== project.slug ||
+          value.task.id !== sharedTask.task.id ||
+          value.task.createdAt !== sharedTask.task.createdAt)
+      )
+        throw new Error('Shared document returned a different Project scope.');
+      return value;
+    },
+    enabled: sharedDetailsEnabled,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  return { publication, publicationIsCurrent, history, document };
+}
+
 export interface ProjectMetadata {
   version?: 'station.member-project/v1';
   kind?: 'member-project';
@@ -269,6 +458,7 @@ export interface ProjectMetadata {
 export interface ProjectConfig extends ProjectMetadata {
   workingDirectory?: string;
   defaultModel?: string;
+  defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;

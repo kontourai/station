@@ -17,6 +17,7 @@ import type {
   ProjectTaskRoomGrant,
   ProjectTaskRoomGrantKind,
   ProjectTaskRoomOpenOutcome,
+  ProjectTaskRoomOutputFeedback,
   ProjectTaskRoomPrincipal,
   ProjectTaskRoomReadOutcome,
   ProjectTaskRoomScope,
@@ -56,6 +57,7 @@ import type {
   ProjectTaskRoomCapabilityResolution,
   ProjectTaskRoomHistory,
   ProjectTaskRoomLinkAuthority,
+  ProjectTaskRoomOutputFeedbackTargets,
 } from './project-task-room-history.js';
 import { projectTaskRoomChannelId } from './project-task-room-history.js';
 import type { ProjectTaskRoomRevisionEvidencePort } from './project-task-room-revision-evidence-bridge.js';
@@ -133,15 +135,29 @@ interface ProjectTaskRoomRuntimeDeps {
     capabilities: ProjectTaskRoomCapabilityAuthority;
     agents: ProjectTaskRoomAgentGrantAuthority;
     links?: ProjectTaskRoomLinkAuthority;
+    outputFeedbackTargets?: ProjectTaskRoomOutputFeedbackTargets;
   }) => RecoverableRoomHistory;
   /** archive#3546 bridge: recorder, scope-bound resolver, and lifecycle owner. */
   readonly revisionEvidence?: ProjectTaskRoomRevisionEvidencePort;
+  readonly outputFeedbackTargets?: ProjectTaskRoomOutputFeedbackTargets;
   readonly working: ProjectTaskRoomWorkingState;
   readonly requestAuthority: ProjectTaskRoomRequestAuthority;
+  /** Private journal lookup, filtered by current Task incarnation and immutable execution binding. */
+  readonly readAgentRequests?: (taskId: string) => Promise<
+    readonly {
+      sessionId: string;
+      agentId: string;
+      ownerOperatorId: string;
+      taskCreatedAt: string;
+      createdAt: string;
+    }[]
+  >;
   /** Durable Session projection used to reconstruct exact provider/lifecycle. */
   readonly readAgentLifecycle?: (input: { sessionId: string }) => Promise<
     | {
         readonly provider: string;
+        readonly createdAt?: string;
+        readonly updatedAt?: string;
         readonly outcome?: 'completed' | 'failed' | 'cancelled';
       }
     | undefined
@@ -164,6 +180,7 @@ interface IssuedGrant {
   readonly material?: true;
   readonly receiptId: string;
   readonly currentSharedRead?: () => Promise<boolean>;
+  readonly expectedTaskCreatedAt?: string;
 }
 interface IssuedEditPlan {
   readonly batch: SharedWorkingStateEditBatch;
@@ -323,6 +340,9 @@ export class ProjectTaskRoomRuntime {
       capabilities: {
         resolve: (input) => this.#resolveGrant(input.grant, input.required),
       },
+      ...(deps.outputFeedbackTargets
+        ? { outputFeedbackTargets: deps.outputFeedbackTargets }
+        : {}),
       agents: { revalidate: (receipt) => this.#revalidateAgent(receipt) },
       ...(deps.revisionEvidence ? { links: deps.revisionEvidence.links } : {}),
     });
@@ -559,6 +579,7 @@ export class ProjectTaskRoomRuntime {
     this.#publishAgentPresence({
       task: association.task,
       scope: association.scope,
+      agentId: input.agentId,
       sessionId: input.sessionId,
       provider: input.provider,
       startedAt: Date.parse(
@@ -588,16 +609,21 @@ export class ProjectTaskRoomRuntime {
     sessionId: string;
     provider: string;
     outcome: 'completed' | 'failed' | 'cancelled';
+    occurredAt?: string;
   }): Promise<void> {
-    const task = this.#deps.taskGraph.readTaskView(input.taskId);
-    if (!task || task.sessionId !== input.sessionId || !task.agentId) return;
+    const association = await this.#lifecycleAssociation(
+      input.taskId,
+      input.sessionId,
+    );
+    if (!association) return;
+    const { task } = association;
     const lifecycle: PendingAgentLifecycle = {
       taskId: task.id,
       sessionId: input.sessionId,
       provider: input.provider,
       outcome: input.outcome,
       dispatchId: `room-exit:${input.sessionId}`,
-      occurredAt: new Date().toISOString(),
+      occurredAt: input.occurredAt ?? new Date().toISOString(),
       authorizationReceiptId: agentLifecycleReceiptId(
         task.id,
         input.sessionId,
@@ -620,6 +646,35 @@ export class ProjectTaskRoomRuntime {
         const lifecycle = parsePendingAgentLifecycle(record.value);
         if (!lifecycle || lifecycle.taskId !== taskId) continue;
         await this.#publishAgentLifecycle(lifecycle);
+      }
+      for (const request of (await this.#deps.readAgentRequests?.(taskId)) ??
+        []) {
+        const durable = await this.#deps.readAgentLifecycle?.({
+          sessionId: request.sessionId,
+        });
+        if (!durable) continue;
+        const started: PendingAgentLifecycle = {
+          taskId,
+          sessionId: request.sessionId,
+          provider: durable.provider,
+          outcome: 'started',
+          dispatchId: `room-request:${request.sessionId}`,
+          occurredAt: durable.createdAt ?? request.createdAt,
+          authorizationReceiptId: agentLifecycleReceiptId(
+            taskId,
+            request.sessionId,
+            'started',
+          ),
+        };
+        await this.#publishAgentLifecycle(started);
+        if (durable.outcome)
+          await this.publishAgentFinished({
+            taskId,
+            sessionId: request.sessionId,
+            provider: durable.provider,
+            outcome: durable.outcome,
+            occurredAt: durable.updatedAt,
+          });
       }
       // Task association is the durable source of a started publication. It
       // closes the crash window before an outbox insert (or when that insert
@@ -716,7 +771,8 @@ export class ProjectTaskRoomRuntime {
     request: Request;
   }): Promise<ProjectTaskRoomInspectionOutcome> {
     if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
-    if (!this.#scope(input.taskId)) return { kind: 'not-found' };
+    const initialScope = this.#scope(input.taskId);
+    if (!initialScope) return { kind: 'not-found' };
     const grant = await this.#issue(
       input.taskId,
       input.request,
@@ -731,13 +787,15 @@ export class ProjectTaskRoomRuntime {
     try {
       const resolved = await this.#resolveGrant(grant, 'home-transfer');
       if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      const currentScope = this.#scope(input.taskId);
+      if (!currentScope || !sameScope(currentScope, initialScope))
+        return { kind: 'not-found' };
       if (resolved.kind !== 'granted') {
         return this.#scope(input.taskId)
           ? { kind: resolved.kind === 'unavailable' ? 'unavailable' : 'denied' }
           : { kind: 'not-found' };
       }
-      const currentScope = this.#scope(input.taskId);
-      if (!currentScope || !sameScope(currentScope, resolved.receipt.scope))
+      if (!sameScope(currentScope, resolved.receipt.scope))
         return { kind: 'not-found' };
       return {
         kind: 'available',
@@ -904,11 +962,14 @@ export class ProjectTaskRoomRuntime {
     proposalId: string;
     text: string;
     occurredAt?: string;
+    expectedTaskCreatedAt?: string;
   }): Promise<ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomAppendOutcome>> {
     const grant = await this.#issue(
       input.taskId,
       input.request,
       'message-write',
+      undefined,
+      input.expectedTaskCreatedAt,
     );
     if (!grant) return { kind: 'not-found' };
     const result = await this.#history.append({
@@ -928,6 +989,45 @@ export class ProjectTaskRoomRuntime {
           documentId: documentIdFor(scope),
         });
     }
+    return result.kind === 'denied' ? { kind: 'not-found' } : result;
+  }
+
+  async outputFeedback(input: {
+    taskId: string;
+    request: Request;
+    proposalId: string;
+    occurredAt: string;
+    feedback: ProjectTaskRoomOutputFeedback;
+  }): Promise<ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomAppendOutcome>> {
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'message-write',
+      undefined,
+      input.feedback.target.taskCreatedAt,
+    );
+    if (!grant) return { kind: 'not-found' };
+    const result = await this.#history.append({
+      grant,
+      intent: {
+        proposalId: input.proposalId,
+        occurredAt: input.occurredAt,
+        body: input.feedback,
+      },
+    });
+    if (result.kind === 'committed' || result.kind === 'duplicate') {
+      const delivery = await this.#resolveGrant(grant, 'message-write');
+      if (delivery.kind !== 'granted') return { kind: 'not-found' };
+      const scope = this.#scope(input.taskId);
+      if (scope)
+        await this.#publishHistory({
+          projectId: scope.projectId,
+          taskId: scope.taskId,
+          documentId: documentIdFor(scope),
+        });
+    }
+    const current = await this.#resolveGrant(grant, 'message-write');
+    if (current.kind !== 'granted') return { kind: 'not-found' };
     return result.kind === 'denied' ? { kind: 'not-found' } : result;
   }
 
@@ -1985,19 +2085,16 @@ export class ProjectTaskRoomRuntime {
     lifecycle: PendingAgentLifecycle,
   ): Promise<void> {
     if (this.#closed || this.#deps.hosted?.()) return;
-    const task = this.#deps.taskGraph.readTaskView(lifecycle.taskId);
-    if (
-      !task?.agentId ||
-      task.id !== lifecycle.taskId ||
-      task.sessionId !== lifecycle.sessionId
-    )
-      return;
-    const scope = this.#scope(task.id);
-    if (!scope) return;
+    const association = await this.#lifecycleAssociation(
+      lifecycle.taskId,
+      lifecycle.sessionId,
+    );
+    if (!association) return;
+    const { task, scope, agentId, ownerOperatorId } = association;
     const principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }> = {
       kind: 'agent',
-      agentId: task.agentId,
-      ownerOperatorId: task.createdBy,
+      agentId,
+      ownerOperatorId,
       deviceId: `agent-session:${lifecycle.sessionId}`,
       authorizationReceiptId: lifecycle.authorizationReceiptId,
     };
@@ -2029,11 +2126,12 @@ export class ProjectTaskRoomRuntime {
         this.#publishAgentPresence({
           task,
           scope,
+          agentId,
           sessionId: lifecycle.sessionId,
           provider: lifecycle.provider,
           startedAt: Date.parse(lifecycle.occurredAt),
         });
-      else this.#removeAgentPresence(scope, task.agentId, lifecycle.sessionId);
+      else this.#removeAgentPresence(scope, agentId, lifecycle.sessionId);
       await this.#deps.working.removeAgentLifecycle({
         scope: { ...scope, documentId: documentIdFor(scope) },
         intentId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
@@ -2044,6 +2142,41 @@ export class ProjectTaskRoomRuntime {
         documentId: documentIdFor(scope),
       });
     }
+  }
+
+  async #lifecycleAssociation(taskId: string, sessionId: string) {
+    if (this.#closed || this.#deps.hosted?.()) return undefined;
+    const before = this.#deps.taskGraph.readTaskView(taskId);
+    const scope = this.#scope(taskId);
+    if (!before || !scope) return undefined;
+    if (before.agentId && before.sessionId === sessionId)
+      return {
+        task: before,
+        scope,
+        agentId: before.agentId,
+        ownerOperatorId: before.createdBy,
+      };
+    const request = (await this.#deps.readAgentRequests?.(taskId))?.find(
+      (candidate) =>
+        candidate.sessionId === sessionId &&
+        candidate.taskCreatedAt === before.createdAt,
+    );
+    const task = this.#deps.taskGraph.readTaskView(taskId);
+    const currentScope = this.#scope(taskId);
+    if (
+      !request ||
+      !task ||
+      task.createdAt !== before.createdAt ||
+      !currentScope ||
+      !sameScope(scope, currentScope)
+    )
+      return undefined;
+    return {
+      task,
+      scope: currentScope,
+      agentId: request.agentId,
+      ownerOperatorId: request.ownerOperatorId,
+    };
   }
 
   #agentAssociation(input: {
@@ -2083,16 +2216,12 @@ export class ProjectTaskRoomRuntime {
   #publishAgentPresence(input: {
     readonly task: TaskRecord;
     readonly scope: ProjectTaskRoomScope;
+    readonly agentId: string;
     readonly sessionId: string;
     readonly provider?: string;
     readonly startedAt: number;
   }): void {
-    if (
-      this.#closed ||
-      input.task.agentId === undefined ||
-      input.task.sessionId !== input.sessionId
-    )
-      return;
+    if (this.#closed) return;
     const document = {
       ...input.scope,
       documentId: documentIdFor(input.scope),
@@ -2103,17 +2232,13 @@ export class ProjectTaskRoomRuntime {
         ? input.startedAt
         : Date.now(),
     );
-    const actorId = agentActorId(
-      input.task.id,
-      input.task.agentId,
-      input.sessionId,
-    );
+    const actorId = agentActorId(input.task.id, input.agentId, input.sessionId);
     const existingRunId = entry.agentParticipants.get(actorId)?.work.runId;
     const runId = input.provider
       ? createOrchestrationRunId(input.provider, input.sessionId)
       : existingRunId;
     entry.agentParticipants.set(actorId, {
-      actor: { actorId, kind: 'agent', label: input.task.agentId },
+      actor: { actorId, kind: 'agent', label: input.agentId },
       work: {
         sessionId: input.sessionId,
         ...(runId ? { runId } : {}),
@@ -2254,14 +2379,15 @@ export class ProjectTaskRoomRuntime {
     principal: ProjectTaskRoomPrincipal;
   }) {
     if (receipt.principal.kind !== 'agent') return { kind: 'denied' as const };
-    const task = this.#deps.taskGraph.readTaskView(receipt.scope.taskId);
-    return task &&
-      task.projectId === receipt.scope.projectId &&
+    const sessionId = agentSessionId(receipt.principal);
+    const association =
+      sessionId &&
+      (await this.#lifecycleAssociation(receipt.scope.taskId, sessionId));
+    return association &&
+      sameScope(receipt.scope, association.scope) &&
       receipt.receiptId === receipt.principal.authorizationReceiptId &&
-      task.agentId === receipt.principal.agentId &&
-      task.createdBy === receipt.principal.ownerOperatorId &&
-      task.sessionId === agentSessionId(receipt.principal) &&
-      sameScope(receipt.scope, this.#scope(task.id) ?? receipt.scope)
+      association.agentId === receipt.principal.agentId &&
+      association.ownerOperatorId === receipt.principal.ownerOperatorId
       ? { kind: 'authorized' as const, principal: receipt.principal }
       : { kind: 'revoked' as const };
   }
@@ -2271,6 +2397,7 @@ export class ProjectTaskRoomRuntime {
     request: Request,
     capability: K,
     currentSharedRead?: () => Promise<boolean>,
+    expectedTaskCreatedAt?: string,
   ): Promise<ProjectTaskRoomGrant<K> | undefined> {
     if (this.#closed || this.#deps.hosted?.()) return undefined;
     const scope = this.#scope(taskId);
@@ -2290,6 +2417,7 @@ export class ProjectTaskRoomRuntime {
       request,
       receiptId: requestReceiptId(scope, principal, capability),
       ...(currentSharedRead ? { currentSharedRead } : {}),
+      ...(expectedTaskCreatedAt ? { expectedTaskCreatedAt } : {}),
     });
     return Object.freeze({
       schemaVersion: 'station.project-task-room-grant/v1',
@@ -3069,17 +3197,24 @@ export class ProjectTaskRoomRuntime {
       grant.capability !== required
     )
       return { kind: 'denied' };
+    if (
+      issued.expectedTaskCreatedAt &&
+      this.#deps.taskGraph.readTaskView(issued.scope.taskId)?.createdAt !==
+        issued.expectedTaskCreatedAt
+    )
+      return { kind: 'revoked' };
     const currentScope = this.#scope(issued.scope.taskId);
     if (issued.principal.kind === 'agent') {
-      const task = this.#deps.taskGraph.readTaskView(issued.scope.taskId);
+      const sessionId = agentSessionId(issued.principal);
+      const association =
+        sessionId &&
+        (await this.#lifecycleAssociation(issued.scope.taskId, sessionId));
       if (
-        !currentScope ||
-        !task ||
-        !sameScope(currentScope, issued.scope) ||
+        !association ||
+        !sameScope(association.scope, issued.scope) ||
         issued.receiptId !== issued.principal.authorizationReceiptId ||
-        task.agentId !== issued.principal.agentId ||
-        task.createdBy !== issued.principal.ownerOperatorId ||
-        task.sessionId !== agentSessionId(issued.principal)
+        association.agentId !== issued.principal.agentId ||
+        association.ownerOperatorId !== issued.principal.ownerOperatorId
       )
         return { kind: 'revoked' };
       return {
@@ -3087,9 +3222,9 @@ export class ProjectTaskRoomRuntime {
         receipt: {
           receiptId: issued.receiptId,
           capability: required,
-          scope: currentScope,
+          scope: association.scope,
           principal: issued.principal,
-          policyRevision: this.#roomPolicyRevision(currentScope),
+          policyRevision: this.#roomPolicyRevision(association.scope),
         },
       };
     }
@@ -3119,10 +3254,14 @@ export class ProjectTaskRoomRuntime {
     if (issued.currentSharedRead && !(await issued.currentSharedRead()))
       return { kind: 'revoked' };
     const currentPrincipal = await this.#principal(issued.request);
+    const settledScope = this.#scope(issued.scope.taskId);
     if (
-      !currentScope ||
+      !settledScope ||
       !currentPrincipal ||
-      !sameScope(currentScope, issued.scope) ||
+      !sameScope(settledScope, issued.scope) ||
+      (issued.expectedTaskCreatedAt !== undefined &&
+        this.#deps.taskGraph.readTaskView(issued.scope.taskId)?.createdAt !==
+          issued.expectedTaskCreatedAt) ||
       !samePrincipal(currentPrincipal, issued.principal)
     )
       return { kind: 'revoked' };
@@ -3131,13 +3270,13 @@ export class ProjectTaskRoomRuntime {
       receipt: {
         receiptId: issued.receiptId,
         capability: required,
-        scope: currentScope,
+        scope: settledScope,
         principal: {
           kind: 'operator',
           operatorId: currentPrincipal.operatorId,
           deviceId: currentPrincipal.deviceId,
         },
-        policyRevision: this.#roomPolicyRevision(currentScope),
+        policyRevision: this.#roomPolicyRevision(settledScope),
       },
     };
   }
@@ -3446,6 +3585,13 @@ function projectCheckpoint(value: any) {
   };
 }
 function projectBody(value: any): unknown {
+  if (value?.kind === 'output-feedback')
+    return {
+      kind: value.kind,
+      target: { ...value.target },
+      review: value.review,
+      text: value.text,
+    };
   if (value?.kind === 'human-message')
     return { kind: value.kind, text: value.text };
   if (value?.kind === 'live-work-started')

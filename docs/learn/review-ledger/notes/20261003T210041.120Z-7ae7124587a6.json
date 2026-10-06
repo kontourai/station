@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Independent source-delta review: Project service preserves defaultAgent and deletes it on explicit null; host ProjectConfig declares the optional field. Query authority/cache identity, mutation invalidation and SDK transport behavior remain unchanged. No prose change required.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

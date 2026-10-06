@@ -928,7 +928,7 @@ export interface EnrolmentCommand {
  * a device-code login is available reads this list, never a boolean.
  */
 export interface EngineLoginMechanismEvidence {
-  mechanism: 'device-code' | 'api-key-stdin';
+  mechanism: 'device-code' | 'api-key-stdin' | 'browser-code';
   observedCommand: string[];
   observedMatch: string;
   argument?: string;
@@ -959,7 +959,7 @@ export interface DeviceCodeLogin {
 /** What the engine's CLI said about how it can be signed in, and when. */
 export interface EngineLoginSurface {
   /** Derived server-side from `evidence`; never an independent claim. */
-  mechanisms: Array<'device-code' | 'api-key-stdin'>;
+  mechanisms: Array<'device-code' | 'api-key-stdin' | 'browser-code'>;
   evidence: EngineLoginMechanismEvidence[];
   observedAt: string;
   /** Present when the CLI could not be asked at all — distinct from "offers none". */

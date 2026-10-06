@@ -1,0 +1,49 @@
+{
+  "path": "docs/design/conduit-runtime-integration.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
+
+  "limits": "Executed focused hook/projection tests and generated-evidence parity. No real model provider, complete framework invocation/cancellation, external-engine policy delivery or live cross-framework behavioral equivalence qualification. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
+
+  "sources": [
+    "docs/conformance/station-runtime-conformance.json",
+
+    "package.json#/scripts/conduit:conformance:generate",
+
+    "package.json#/scripts/verify:static",
+
+    "pnpm-lock.yaml",
+
+    "scripts/generate-runtime-conformance.mjs",
+
+    "src-server/runtime/__tests__/voltagent-agent-hooks.test.ts",
+
+    "src-server/runtime/frameworks/__tests__/conduit-framework-adapter.test.ts",
+
+    "src-server/runtime/frameworks/conduit-framework-adapter.ts",
+
+    "src-server/runtime/frameworks/strands-adapter.ts",
+
+    "src-server/runtime/frameworks/strands-agent-hooks.ts",
+
+    "src-server/runtime/frameworks/voltagent-adapter.ts"
+  ],
+
+  "checks": [
+    "Source/caller review of all documented claims in this document on 2026-09-27, including explicit history/proposal boundaries; source baseline b79def9ceb04aa645bf565ee7d1b3e8cfba86b9a, prose revision e176f3a62b139043306d9e434f031d0a87ee1640.",
+
+    "EXECUTED: 660 tests passed across 30 focused files: Flow/Conduit 79, installation/trust 86, MCP 188, plugin development/permissions/registry 249, server modules/operational subscriptions 58. One Linux-only filesystem digest case skipped on this macOS host. These local fixtures do not qualify live providers or other platforms.",
+
+    "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
+
+    "Integration source review through d1e0facc2: Tests now call the real adapter capability/projection surface. Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root bearing/forage dependencies. Conduit 0.7.1 and the VoltAgent/Strands lockfile identities are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

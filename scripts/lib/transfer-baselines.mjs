@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   readdirSync,
@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import { sanitizedGitEnvironment } from './git-environment.mjs';
 
 /**
@@ -116,7 +117,28 @@ export function transferBaselineShaFromPath(path) {
   const name = basename(String(path).replace(/[/]+$/, ''));
   if (!name.startsWith(TRANSFER_BASELINE_PREFIX)) return null;
   const sha = name.slice(TRANSFER_BASELINE_PREFIX.length);
-  return /^[0-9a-f]{12}$/.test(sha) ? sha : null;
+  // Any abbreviation git itself would print (7+), not only the twelve the
+  // gate writes: agents following the docs created nine-character names,
+  // and a fixed length made the gate refuse a verified baseline at exactly
+  // the SHA it needed (#2925).
+  return /^[0-9a-f]{7,40}$/.test(sha) ? sha : null;
+}
+
+/**
+ * The SHA a REUSABLE baseline's name claims, or null.
+ *
+ * Wider than `transferBaselineShaFromPath`, which also decides what pruning
+ * may delete: lanes name their own baselines `<lane>-transfer-baseline-<sha>`
+ * (sometimes with a `-<date>` tail), and reusing one is safe because reuse
+ * requires its HEAD to equal the base exactly and its dependencies to verify.
+ * Deleting one is not, so pruning keeps the gate's own prefix.
+ */
+function reusableBaselineShaFromPath(path) {
+  const name = basename(String(path).replace(/[/]+$/, ''));
+  const match = name.match(
+    /(?:^|[-_])transfer-baseline-([0-9a-f]{7,40})(?:-[^/]*)?$/,
+  );
+  return match ? match[1] : null;
 }
 
 function transferBaselinePruneEnabled(env = process.env) {
@@ -157,12 +179,38 @@ function parseWorktreePorcelain(porcelain) {
 }
 
 function gitSync(root, args) {
-  return execFileSync('git', ['-C', root, ...args], {
+  return execFileSyncBounded('git', ['-C', root, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: sanitizedGitEnvironment(process.env),
     windowsHide: true,
   });
+}
+
+/**
+ * The merge base with `mainSha` of every registered branch worktree: the
+ * baseline each other lane's transfer gate compares against. Pruning keeps
+ * these, so preparing one lane's baseline never deletes a sibling lane's
+ * still-valid one (#2925).
+ * @param {{ repoRoot: string, mainSha: string | null, worktrees?: ReturnType<typeof listRegisteredWorktrees>, git?: typeof gitSync }} input
+ */
+export function laneMergeBases({
+  repoRoot,
+  mainSha,
+  worktrees = listRegisteredWorktrees(repoRoot),
+  git = gitSync,
+}) {
+  if (!mainSha) return [];
+  const bases = new Set();
+  for (const worktree of worktrees) {
+    if (!worktree.branch || typeof worktree.head !== 'string') continue;
+    try {
+      bases.add(git(repoRoot, ['merge-base', mainSha, worktree.head]).trim());
+    } catch {
+      // Unrelated history has no base to keep.
+    }
+  }
+  return [...bases];
 }
 
 export function listRegisteredWorktrees(repoRoot, git = gitSync) {
@@ -198,13 +246,37 @@ function isOwnedTransferBaseline(worktree) {
   );
 }
 
+/** A detached, unlocked linked worktree whose name claims its own HEAD. */
+function isReusableBaseline(worktree) {
+  const claimed = reusableBaselineShaFromPath(worktree.path);
+  return (
+    claimed !== null &&
+    !worktree.isPrimary &&
+    worktree.detached === true &&
+    !worktree.branch &&
+    !worktree.locked &&
+    typeof worktree.head === 'string' &&
+    worktree.head.startsWith(claimed)
+  );
+}
+
 /**
- * The first owned baseline already at exactly `baseSha` whose dependencies
- * verify, or null. `verify(path)` throws (or returns false) to reject.
+ * The first baseline already at exactly `baseSha` whose dependencies verify,
+ * or null: the gate's own first, then any lane-named
+ * `…transfer-baseline-<sha>` worktree whose HEAD matches its name.
+ * `verify(path)` throws (or returns false) to reject.
  */
 export function findReusableBaseline({ worktrees, baseSha, verify, log }) {
-  for (const worktree of worktrees) {
-    if (!isOwnedTransferBaseline(worktree)) continue;
+  // The gate's own baselines first, then lane-named ones.
+  const candidates = [
+    ...worktrees.filter(isOwnedTransferBaseline),
+    ...worktrees.filter(
+      (worktree) =>
+        !isOwnedTransferBaseline(worktree) && isReusableBaseline(worktree),
+    ),
+  ];
+  for (const worktree of candidates) {
+    // Exactly the base: never a different commit, whatever its name claims.
     if (worktree.head !== baseSha || !existsSync(worktree.path)) continue;
     try {
       if (verify(worktree.path) === false) continue;

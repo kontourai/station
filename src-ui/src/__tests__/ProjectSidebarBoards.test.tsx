@@ -26,6 +26,7 @@ import { requestNewBoard } from '../components/project-sidebar/new-board-events'
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 /**
  * The region model, as a SPY rather than the `null` this used to return
@@ -114,6 +115,10 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
 }));
 vi.mock('../contexts/open-chats-store', () => ({
   useOpenChats: () => [],
+  useOpenChatInbox: () => ({
+    items: [],
+    currentSessionIdByConversation: new Map(),
+  }),
   openChatsStore: {
     focus: vi.fn(),
     openCollection: vi.fn(),

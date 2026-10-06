@@ -16,19 +16,140 @@ where — see
 
 ---
 
+## Native relay link publication
+
+The `/native-relay-link` source entry exports `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink`. It publishes or inspects the
+closed `station-native-relay-link/v1` envelope: public first-contact route
+intent, or an untrusted application-origin hint wrapping an unchanged native
+v2 installation-bound invitation. The distinct URI association carries the
+complete bounded envelope in its fragment, with no query payload. Production
+origins require canonical HTTPS; explicit development links permit only exact
+numeric loopback HTTP.
+
+The codec grants no authority and is not the receiving native secret boundary.
+iOS receives the invitation in [host custody](../../src-desktop/src/native_relay_link_intake.rs)
+and emits only `NativeRelayLinkDelivery` metadata and a pending handle. The
+renderer does not parse or retain a received link's secret. Saved-route review,
+public-proof/operator approval, independent Station-key comparison, person
+authentication, Device approval and Project membership remain separate.
+Android does not register the relay-secret association. Source composition
+does not qualify an installed native or collaborator journey.
+
+## Native Device setup failure diagnostics
+
+The `/native-enrollment` exchange retains the primary operation failure while
+attempting both channel and host-peer cleanup. Cleanup failures remain separate
+and a cleanup-only failure rejects the operation. Existing `Error` objects retain
+their identity; primitive native rejections normalize to an `Error` containing
+an allowlisted code or `unknown`. The native Device setup UI
+can show an optional troubleshooting disclosure containing a fixed operation
+stage, an allowlisted code (or `unknown`), an integer HTTP status when a response
+was received, and at most two cleanup stage/code entries. It displays no raw
+error text, response body, URL, proof, credential or owner identifier.
+Non-success HTTP responses are refused before native host acceptance. Only a
+closed error envelope with an allowlisted server code contributes its code;
+other bodies become `native_enrollment_application_refused`. The diagnostic
+retains the `application-response` stage and HTTP status.
+
+After an uncertain activation, **Check Device status** remains available through
+pending or refused status checks. Expired saved deliveries also reconcile status
+before terminal cleanup. The UI reports configured only after active status
+passes the host's transition currentness check; it does not retry activation.
+
+The automatic saved-setup recovery check uses the same disclosure, including
+failures before client construction: route status, saved-route currentness and
+Station trust have distinct fixed stages. Host resume refusals retain their
+existing fixed code at the `recovery` boundary; no protocol call is repeated to
+obtain diagnostics.
+Multiple saved routing grants report the fixed
+`native_enrollment_saved_connections_ambiguous` code at `route-status`. The UI
+directs the user to a fresh owner-issued invitation for explicit connection
+review and cleanup; it does not select or remove a grant automatically.
+
+These fields identify the local failing boundary, not a verified server cause.
+`peer-open` includes binding, ICE and peer admission; a missing HTTP status does
+not establish whether the server received an earlier request. This diagnostic
+adds no retries, admission authority or native command inputs. Caller tests
+exercise rejection and cleanup through application channels and the mounted
+setup UI; they do not diagnose an earlier installed attempt or prove a successful
+Device enrollment.
+
+Fixed `browser_transport_timeout` and `browser_transport_failed` codes identify
+local transport timing or failure without exposing the browser's raw error.
+
+## Application channel request preparation
+
+The `/application-channel` entry exports `ApplicationChannel`,
+`ApplicationChannelRequestPreparation` and `ApplicationChannelPreparedHeaders`.
+A channel owner can implement optional `prepareRequest(request)` to add headers
+after its peer opens and before the request is sent. This permits per-peer
+preparation without changing the broker or application-frame protocol.
+
+`createApplicationChannelFetch` first reads and validates the bounded request
+body. The callback receives immutable method and path fields (including the
+query), independent body bytes of at most 16 KiB, copied original headers and
+the owned request signal. Mutating these copies cannot change the transmitted
+target, body or original headers. The callback returns additional header pairs;
+case-insensitive collisions with original headers or previous additions are
+refused, including attempts to replace caller-supplied proof or credential
+headers. Existing header-count, byte and frame limits still apply.
+
+The adapter checks endpoint trust, cancellation and caller authority before
+preparation and after its asynchronous result. Cancellation settles a hanging
+callback and closes the channel; a late result cannot dispatch. Preparation or
+framing failure after opening also closes without sending a request. Channels
+without the method keep their existing request behavior. No operation retries
+automatically.
+
+This is an opt-in transport contract. It exposes no native peer handles,
+signing keys or proof claims, and installs no signer. The native host signer
+and ordinary UI composition require separate integration and verification.
+The [application-channel tests](../../packages/connect/src/__tests__/applicationChannel.test.ts)
+exercise the Fetch adapter through frames and the server request boundary;
+they do not establish physical native-client or relay-only acceptance.
+
 ## Optional native application transport
 
 The `/native-application` source entry exports
-`createNativeApplicationTransport({ signaling, origin, signal, trust, ... })`.
-The host supplies v2 signaling and approved Station trust, including an
-authoritative asynchronous recheck. The client verifies the signed Station
-answer before setting the remote description and uses only the reliable,
-ordered `station-application-v1` DataChannel. It returns `fetch` and
-`openChannel`; abort or retired trust closes owned work. There is no direct
-HTTP fallback or grant-bearer exposure.
+`createNativeApplicationTransport({ signaling, origin, signal, trust, ... })`
+with an independent `NativeApplicationSignaling` contract. The host prepares an
+opaque peer handle, nonce and connection ID before SDP creation; the client
+opens and reads that same handle, verifies the signed Station answer before
+setting the remote description, and uses only the reliable, ordered
+`station-application-v1` DataChannel. After opening, the channel's
+`prepareRequest` calls the host signer with the exact bounded method, path and
+body and returns only the native Device-proof header. Caller-supplied
+Authorization, Cookie and Device-proof headers are refused. Abort, failed
+preparation or retired trust closes owned work. There is no direct HTTP
+fallback, grant-bearer exposure or signing-key exposure.
 
-This is an opt-in library surface, separate from ordinary saved-route selection.
-It does not approve a Device, authenticate an account or grant Project access.
+ICE gathering has a 10-second bound. If gathering stalls on a relay-only peer,
+the client can submit its current local offer only when its active application
+media contains a valid UDP relay candidate. Missing, malformed, non-relay or
+unusable candidates do not enable this fallback; every candidate in the snapshot
+must be a valid UDP relay candidate, even under relay-only policy. Cancellation, failed or closed
+transport, and retired Station trust still prevent submission. The one captured
+SDP string is used for signaling, its digest and Station proof verification;
+later candidates never cause a second offer. These source-level conditions do
+not establish connectivity or installed iOS enrollment success.
+
+Host transcripts and browser RTC connectivity are separate observations. The
+host permits one Device proof per handle; account proofs come from the separate
+structured provider and their complete exchange body is prepared before this
+transport freezes it. Host read expiry may shorten a prior deadline, while an
+extension or expired read is refused. The adapter retains bounded peer leases
+and retires cancellation, failed/late preparation and expired handles.
+
+The library does not enroll or activate a Device, authenticate an account or
+grant Project access. Station's native saved-route owner now composes this
+transport for a configured host-owned Device binding, obtaining fresh ICE for
+each peer. Its separate account bridge supplies continuation proof for bounded
+Project and authority reads. Unsupported resources and writes fail before
+peer creation; this is not a general operator Workspace transport. The CLI
+continues to exclude these routes from default selection. Focused source tests do not establish executed
+Tauri IPC, packaged-client, physical-device or complete authenticated
+Project-journey evidence.
 See the [package README](../../packages/connect/README.md#optional-native-application-transport)
 and [native account continuation](sdk.md#native-station-account-continuation-opt-in)
 for the separate caller responsibilities. No physical native-client result is
@@ -73,7 +194,10 @@ client-local summary derived from the handshake's `transports` block — not
 the same thing as the raw handshake document's own optional `capabilities`
 field (station#1095), which is a server-advertised map of named boolean
 feature flags (e.g. `sshEnvironments`, `webPushNotifications`) used for
-feature detection across a rolling client/server upgrade. See
+feature detection across a rolling client/server upgrade. Station-to-Station
+senders read it too: `delegatedInputAnswers` gates sending a bound answer
+(`expectedInputRequest`) to another Station's delegated task, as described in
+the [session API](session-api.md#bound-answers-to-a-paired-stations-question). See
 [docs/security/remote-access-threat-model.md](../security/remote-access-threat-model.md#surface-matrix)
 for that field's schema and absence-means-unsupported semantics, and
 `hasCapability()` from `@kontourai/station-sdk` for reading it.
@@ -102,8 +226,9 @@ subscriber set changes, and wakes on browser online/visibility signals. The
 last verified profile/session data may remain visible during a transient
 outage. Health snapshots do not themselves make all consumers read-only. The
 SDK transport can reject non-safe HTTP methods before dispatch when a host's
-credential resolver supplies `mutationAllowed: () => false`; Station's current
-`ApiBaseContext` resolver does not supply that optional guard. Individual
+credential resolver supplies `mutationAllowed: () => false`. Station's native
+broker credential owner supplies that guard for its bounded read transport;
+other resolver paths retain their existing behavior. Individual
 features still own their availability checks. See the
 [SDK transport](../../packages/sdk/src/client/http.ts) and
 [Station resolver](../../src-ui/src/contexts/ApiBaseContext.tsx).
@@ -466,6 +591,34 @@ and voice WebSockets. A `401` returns the connection to its masked
 credential-required recovery state. Reconnect/session continuity beyond this
 credential recovery is tracked in #303.
 
+The pairing client and UI health probe observe
+`compatibility.capabilities.clientProtocolHeader` in the public handshake
+before protected requests. The shared
+[header policy](../../packages/shared/src/client-protocol.ts) sends
+`X-Station-Client-Protocol` cross-origin in a browser only after that host
+advertises a numeric capability of at least 1. An absent capability removes
+the process-local observation; it is not persisted across page loads. The UI
+also clears the previous observation when a handshake starts. Only the
+latest-started handshake per origin may restore acceptance. Its non-OK
+response, invalid JSON or transport error leaves acceptance cleared, even if
+an older overlapping handshake succeeds. The next cross-origin request then
+carries no protocol header.
+Same-origin, Node and host-owned transport requests can carry the header
+without CORS negotiation. The SDK replaces any caller-supplied copy with its
+build's protocol. These declarations grant no credential or scope.
+
+The host checks paired-scope HTTP and the public pairing request,
+access-request and exchange before credentials: below `minClientProtocol` is
+`426 client_protocol_unsupported`, malformed is `400 client_protocol_invalid`,
+and absent means protocol 1. The handshake remains reachable. A protocol
+refusal requires correcting/updating the client rather than re-pairing to gain
+authority. Protocol refusals use a separate direct-socket-peer audit budget
+(default: 10 per 60 seconds), reusing the existing limiter and its 1,024-peer
+cap. Exhaustion suppresses only audits while every refusal receives 400/426.
+Refusals neither consult nor consume the authentication budget.
+The separate native Rust pairing exchange and direct fetch callers
+remain undeclared; terminal/voice WebSockets are outside this HTTP check.
+
 See the [remote access threat model](../security/remote-access-threat-model.md)
 for the protocol, public/protected surface matrix, and operator recovery steps.
 
@@ -709,16 +862,29 @@ pairing, manual endpoint add, and provider-backed connection suggestions.
 **selected props**
 
 ```ts
+import type { ReactNode } from 'react';
+
 interface ConnectionManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   checkHealth: (url: string, credential?: string) => Promise<ConnectionHealthCheckResult>;
+  checkCompatibility?: (url: string, signal?: AbortSignal) => Promise<StationCompatibilityResult>;
+  activeHealth?: {
+    connectionId: string;
+    status: 'connecting' | 'connected' | 'error' | 'idle';
+    reason?: ConnectionFailureReason | null;
+  };
+  guardConnectionChange?: (proceed: () => void) => void;
   initialPanel?: 'list' | 'add' | 'request-access' | 'pair-device' | 'pair-code' | 'pair-host' | 'devices' | 'discover';
   initialPairingPayload?: string;
+  listFooterContent?: ReactNode;
 }
 ```
 
 Must be rendered inside `ConnectionsProvider`.
+`listFooterContent` lets a host render optional, host-owned setup content in the
+Stations list footer. It appears only on the list panel; the connection manager
+does not interpret the content or change pairing and address flows.
 
 **example**
 
@@ -727,6 +893,9 @@ Must be rendered inside `ConnectionsProvider`.
   isOpen={showModal}
   onClose={() => setShowModal(false)}
   checkHealth={hostCheckConnectionHealth}
+  checkCompatibility={hostCheckCompatibility}
+  activeHealth={hostActiveConnectionHealth}
+  guardConnectionChange={hostGuardUnsavedWork}
 />
 ```
 
@@ -735,6 +904,19 @@ structured failure reason to a bare `false`; credential refusal and an
 unreachable server need different recovery. See the
 [complete prop contract](../../packages/connect/src/react/ConnectionManagerModal.tsx)
 for compatibility checks and native-host integration options.
+
+The compatibility checker is required for adding a Station or completing
+pairing: omitting it blocks those flows with an integration error. Bind
+`activeHealth` to the selected connection's ID and its live health snapshot;
+the manager ignores it for another connection. Without that snapshot, an
+unchecked row is idle rather than claiming an in-progress connection.
+Opening a row reveals details without changing the selected Station. Its
+explicit **Switch to this Station** action passes through
+`guardConnectionChange`; the host calls `proceed` only after its unsaved-work
+decision allows the change. Hosts that omit this optional guard supply no
+unsaved-work interception at this boundary. The manager offers an access
+request for a missing or rejected credential, rather than for every saved
+connection.
 
 The [store](../../packages/connect/src/core/ConnectionStore.ts),
 [profile normalizer](../../packages/connect/src/core/connectionProfile.ts), and

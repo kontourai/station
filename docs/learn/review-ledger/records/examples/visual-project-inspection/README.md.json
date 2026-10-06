@@ -1,0 +1,25 @@
+{
+  "path": "examples/visual-project-inspection/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed public author inspection/review, portable materialization, definition source labels and explicit workflow stops against owning files. Read actual pinned source requirements for Grill Me, grilling, domain modelling, specification, tickets, setup and implementation dependencies.",
+
+  "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
+
+  "sources": [
+    "examples/visual-project-inspection/plugin.json",
+
+    "examples/visual-project-inspection/skills/inspect-onboarding/SKILL.md",
+
+    "examples/visual-project-inspection/io.kontourai.station/experiences/inspect-onboarding.json",
+
+    "packages/shared/src/skill-experience-author.ts"
+  ],
+
+  "checks": [
+    "Focused author/workflow tests 29 passed; CLI typecheck passed; direct supported CLI inspection succeeds and unknown entry refuses; gap-review mutation caught one intended failure and restored green."
+  ]
+}

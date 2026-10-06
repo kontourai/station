@@ -1,5 +1,6 @@
 import { expect, type Locator } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
+import { openCodingView } from './helpers/coding-stack';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
 import { test } from './helpers/fixture-audit';
 import {
@@ -196,6 +197,9 @@ test.describe('Orchestration Chat Flow', () => {
       window.localStorage.setItem(key, JSON.stringify(document));
     }, persistedKey!);
     await page.reload();
+    // The Coding layout lands on its Chat page; the restored pane is a
+    // drill-in of it (#928 coding stack).
+    await openCodingView(page, /Basis/);
     await expect(page.locator('.station-basis-pane')).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'Basis' })).toHaveCount(0);
     await expect
@@ -358,6 +362,10 @@ test.describe('Orchestration Chat Flow', () => {
       page.getByRole('button', { name: 'Running ls' }),
     ).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
+    // On a phone the Coding layout's Chat is the dock again (the wide
+    // centre's Chat unmounts); the approval arrives once it is on screen.
+    await expect(page.locator('#chat-dock')).toBeVisible();
+    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
         provider: 'codex',
@@ -374,11 +382,22 @@ test.describe('Orchestration Chat Flow', () => {
       },
     });
 
+    // The chat pane presents its own pending approval in its floating status
+    // pill, so the app-wide queue does not float a second "1 pending
+    // approval" trigger over the pane. This request is bound to no transcript
+    // row, so the pill has no card to reveal and opens the queue instead.
     const approvalQueue = page.getByRole('button', {
-      name: '1 pending approval',
+      name: /^Needs approval/,
     });
     await expect(approvalQueue).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: '1 pending approval' }),
+    ).toHaveCount(0);
     await expect(page.getByText('Tool Approval Request')).toBeHidden();
+    // The pill floats in with a scale transform; measure the settled box.
+    await approvalQueue.evaluate((pill) =>
+      Promise.all(pill.getAnimations().map((animation) => animation.finished)),
+    );
     const queueBox = await approvalQueue.boundingBox();
     expect(queueBox).not.toBeNull();
     expect(queueBox!.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
@@ -415,16 +434,30 @@ test.describe('Orchestration Chat Flow', () => {
      * walk's browser-side verification is invisible to it. The unit suite
      * covers the removal-and-walk half; this covers the half only Chromium can
      * answer.
+     *
+     * The trigger is now the chat pane's status pill, which stops being a
+     * button once the request is answered. The walk's substitute is the
+     * nearest surviving ancestor on the path the trigger occupied, so focus
+     * stays inside the chat pane rather than falling back to the app root.
      */
     await expect
       .poll(() =>
-        page.evaluate(
-          () => document.activeElement?.id || document.activeElement?.tagName,
-        ),
+        page.evaluate(() => {
+          const active = document.activeElement;
+          if (!active || active === document.body) return 'body';
+          return active.closest('.chat-dock__body')
+            ? 'inside the chat pane'
+            : active.id || active.tagName;
+        }),
       )
-      .toBe('root');
+      .toBe('inside the chat pane');
 
     await page.setViewportSize({ width: 1280, height: 720 });
+    // Back on a wide screen the centre takes Chat and the phone's dock
+    // unmounts: let that settle, or `openChatRegion` reads the dock that is
+    // about to vanish (the mirror of the 390px wait above).
+    await expect(page.locator('#chat-workspace-pane')).toBeVisible();
+    await expect(page.locator('#chat-dock')).toHaveCount(0);
     await openChatRegion(page);
 
     await expect
@@ -778,6 +811,13 @@ test.describe('Orchestration Chat Flow', () => {
     };
 
     await page.setViewportSize({ width: 360, height: 800 });
+    // At a phone width the Coding layout's Chat is its dock again (#928
+    // coding stack): the centre's Chat unmounts and the Chat page opens the
+    // dock maximized. `boundingBox()` does not wait, so the card has to be
+    // back on screen in the dock before its geometry is read.
+    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
+    await expect(page.locator('#chat-dock')).toBeVisible();
+    await expect(allowOnce).toBeVisible();
     await expectClearLayout('pending 360');
     await expectLegibleButtons('pending');
 
@@ -835,9 +875,9 @@ test.describe('Orchestration Chat Flow', () => {
     // than overflow it with buttons squeezed into vertical letters.
     answer = 'refuse';
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(
-      '/projects/dev/layouts/code?chat=conv-1&dock=open&dockSlotPlacement=right',
-    );
+    // A route whose Chat is the dock: the Coding layout's centre owns Chat on
+    // a wide screen (#928 coding stack), so the narrow right dock is Home's.
+    await page.goto('/?chat=conv-1&dock=open&dockSlotPlacement=right');
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
     await page.addStyleTag({
       content:

@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked the navigation and chat claims against NavigationContext.tsx, navigation-store.ts and ChatDock.tsx: setLayout's extra options and the inbox count publication change no user-facing step described here. No prose change.","inputs":["docs/user/getting-started.md","docs/guides/release-channel-ports.md","src-server/services/orchestration/orchestration-service.ts","src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/home/HomeChatStartForm.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/modals/useNewChatSetupReturn.ts","src-ui/src/components/scheduler/JobFormModal.tsx","src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx","src-ui/src/contexts/NavigationContext.tsx","src-ui/src/hooks/useChatInput.ts","src-ui/src/hooks/useNewChatSelectionModel.ts","src-ui/src/views/ProjectPage.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat/chat.css","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "19bab6571b2753d06fdded47e2c1bf4e2a814b22",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"#2961 scoped reference review: Read current published-contract routes and the historical package-assessment boundary against the changed integrating-station guide. The guide now names pending container policy registration instead of claiming current GCP startup support. No package export, Flow/Veritas/Knowledge contract, pinned dependency or historical package assessment changed; no sibling-internal import, cloud deployment or external interoperability proof renewed.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

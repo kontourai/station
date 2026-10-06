@@ -1,0 +1,7 @@
+{
+  "revision": "c940b8d8bd415857e855a1674fc214f5d456b5a8",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"No contract shape changed in this delta (cap and reason text are server behaviour); changeset and contracts reference remain the explicit record.","inputs":["packages/contracts/AGENTS.md"]}
+  ]
+}

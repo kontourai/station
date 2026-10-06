@@ -1,0 +1,15 @@
+{
+  "revision": "231bd56ebc8379877a169db1822e3fbff10c9787",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed cost availability through actual transcript scans and incremental/enrichment owners. Missing saved assistant costs, unreadable rows and changed measurements cannot qualify a cost milestone before rebuilding; measured zero remains valid. Retained counters compare messages/tokens/costs, with a contributor-count rounding tolerance validated by reversing the same 3000 measured rows. Four route regressions failed before repair; current routes pass 23 tests. Retry regression failed with the old handler and restored Profile tests pass 7. Shared coverage Empty/Skeleton preserves unknown versus absent states. Live billing and native acceptance remain unverified.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed snapshot missingMessageCosts, costCoverageChecked and retainedUsage against both mutation paths and the actual rescan/achievement routes. The optional fields disclose read and measurement gaps, prevent missing costs becoming zero and avoid sum-order floating point drift. Route regressions pass 23 tests. Raw-receipt authority and historical/mixed-model limits remain unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed monitoring guide changes: cost coverage now includes saved messages and skipped rows, invalidates after writes/enrichment and distinguishes retained counters from roundoff. Existing collector/Insights and attached-Claude importer limitations remain. No new architecture or deployed proof is claimed.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed API/monitoring contract delta against the integration reading routes. New snapshot coverage metadata describes retained Station aggregates; it does not establish personal billing, hosted tenancy, Marketplace acceptance or live-account reconciliation. Existing integration limits remain accurate.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"examples/shared-providers/README.md","note":"Reviewed final Profile entrypoint delta. Plugin achievement links still flow through pluginRegistry into AchievementsBadge. Retry recovery and daily-empty wording do not change the placeholder provider example or imply live enterprise integration.","inputs":["examples/shared-providers/README.md"]}
+  ]
+}

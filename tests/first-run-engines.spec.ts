@@ -24,7 +24,7 @@
  * Agent this test placed, not whatever the host's home happens to hold.
  */
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 interface EngineRow {
@@ -334,10 +334,10 @@ async function startFirstChat(page: Page) {
     .getByRole('button', { name: 'Start your first chat', exact: true })
     .click();
   await expect(
-    page.getByRole('dialog', { name: 'New Chat', exact: true }),
+    page.getByRole('dialog', { name: 'New chat', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('dialog', { name: 'New Chat', exact: true }),
+    page.getByRole('dialog', { name: 'New chat', exact: true }),
   ).toHaveCSS('opacity', '1');
   await expect(
     page.getByRole('button', { name: 'Skip the tour', exact: true }),
@@ -394,6 +394,21 @@ async function passEngineRoleStep(page: Page) {
       .first()
       .click();
   }
+}
+
+/**
+ * Home is intent-first (#3082, `<FirstRunHomeChapter intentFirst />`): once
+ * nothing is left to disclose, the run never opens over the task on its own.
+ * It waits behind the Home card's explicit "Personalize Station". Asserting
+ * the absence after the card is up is what keeps a chapter that starts
+ * auto-opening again from passing here unnoticed.
+ */
+async function openRunFromHomeCard(page: Page) {
+  const card = page.getByTestId('first-run-home-card');
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
+  await expect(page.locator('.responsive-surface-overlay')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Personalize Station' }).click();
 }
 
 function disclosureInventory(acknowledged: boolean, telemetryEnabled = true) {
@@ -472,6 +487,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
 
@@ -562,6 +581,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Set up 3' }).click();
@@ -677,6 +700,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Set up 3' }).click();
@@ -702,6 +729,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
 
@@ -753,6 +784,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Set up 3' }).click();
@@ -786,6 +821,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await chapter.getByRole('button', { name: 'Not now' }).click();
@@ -804,7 +843,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
       path: testInfo.outputPath('first-run-home-card.png'),
       fullPage: false,
     });
-    await card.getByRole('button', { name: 'Set up Station' }).click();
+    await card.getByRole('button', { name: 'Personalize Station' }).click();
     await expect(chapter).toBeVisible();
   });
 
@@ -888,7 +927,11 @@ test.describe('First-run engines chapter (station#3027)', () => {
     });
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
     await page.getByRole('button', { name: 'Continue Without Setup' }).click();
+    await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
 
+    // Answering the launcher hands Home back to the task; the run is one
+    // explicit step away rather than a second interruption.
+    await openRunFromHomeCard(page);
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await expect(engineRow(page, 'claude-code')).toHaveAttribute(
@@ -963,7 +1006,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByText('station_started')).toBeHidden();
     await disclosureStep(page).getByText('See exactly what is sent').click();
     await expect(page.getByText('station_started')).toBeVisible();
-    await expect(page.getByText('Step 1 of 4')).toBeVisible();
+    await expect(page.getByText('Step 1 of 1')).toBeVisible();
     // THE DEFECT THIS CLOSES: exactly one overlay, and the engines step is
     // behind the disclosure rather than beside it.
     await expect(standaloneModal(page)).toHaveCount(0);
@@ -982,8 +1025,12 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     // The receipt is written through the same endpoint the modal uses, and
     // only then does the run move on.
     await expect.poll(() => acknowledgements.length).toBe(1);
+    // Intent-first Home (#3082): the decision returns the reader to the task
+    // instead of walking on into the engines step.
+    await expect(disclosureStep(page)).toHaveCount(0);
+    await openRunFromHomeCard(page);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByText('Step 2 of 4')).toBeVisible();
+    await expect(page.getByText('Step 1 of 3')).toBeVisible();
     await expect(disclosureStep(page)).toHaveCount(0);
     await expect(standaloneModal(page)).toHaveCount(0);
   });
@@ -1031,10 +1078,21 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
       .poll(() => settingWrites)
       .toEqual([{ telemetryEnabled: false }]);
     await expect.poll(() => acknowledgements.length).toBe(1);
+    await expect(disclosureStep(page)).toHaveCount(0);
+    // Deciding the disclosure is not COMPLETING the run. Intent-first Home
+    // (#3082) returns to the task by deferring it — the same resumable
+    // `skipped` snooze the chapter's own "Not now" records — and never
+    // records `completed`.
+    await expect
+      .poll(() => firstRunWrites(configWrites).map((record) => record.status))
+      .toEqual(['skipped']);
+    await openRunFromHomeCard(page);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByText('Step 2 of 4')).toBeVisible();
-    // Deciding the disclosure is not deciding the RUN.
-    expect(firstRunWrites(configWrites)).toEqual([]);
+    await expect(page.getByText('Step 1 of 3')).toBeVisible();
+    // Resuming from the card is not a second decision.
+    expect(firstRunWrites(configWrites).map((record) => record.status)).toEqual(
+      ['skipped'],
+    );
   });
 
   test('closing the run over the disclosure decides nothing (#765 B1)', async ({
@@ -1167,7 +1225,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByTestId('first-run-home-card')).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByRole('button', { name: 'Set up Station' }).click();
+    await page.getByRole('button', { name: 'Personalize Station' }).click();
 
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
     await expect(standaloneModal(page)).toHaveCount(0);
@@ -1193,10 +1251,11 @@ for (const viewport of [
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
     // This fixture has no ready engine: explicitly leave the prerequisite
-    // launcher before the independent first-run chapter can open.
+    // launcher before Home's card can open the first-run chapter.
     await page
       .getByRole('button', { name: 'Continue Without Setup', exact: true })
       .click();
+    await openRunFromHomeCard(page);
     const engines = page.getByTestId('first-run-engines');
     await expect(engines).toBeVisible({ timeout: 20_000 });
     await engines
@@ -1229,60 +1288,56 @@ for (const viewport of [
 }
 
 /**
- * The chrome each device class actually offers for New Chat, named by the
- * caller rather than sniffed.
- *
- * A wide chrome keeps `ChatDockHeader`'s own control — "New chat", or "Start a
- * chat" while the dock holds no session. On a phone that control is gone:
- * archive#3309's pinned far-right icon was deleted from
- * `ChatDockMobileHeader` by #1512, which passes `onNewChat` to the header's
- * `⋯` "Chat actions" sheet instead, so the sheet's menu item is the phone's
- * route (the same one `mobile-chat-composer.spec.ts` and
- * `new-chat-mobile-context-sheet.spec.ts` drive).
+ * The chrome each device class actually offers for New chat, named by the
+ * caller rather than sniffed. Both now carry the same control in the dock
+ * header row: the one New chat action (`NewChatAction`), icon-only on the
+ * collapsed wide bar and the phone header's own button (owner, 2026-10; it
+ * replaced the wide "Start a chat" label and the phone's route through the
+ * "Chat actions" sheet).
  */
 type NewChatChrome = 'wide' | 'phone';
 
 async function openNewChatFromChrome(page: Page, chrome: NewChatChrome) {
   // Scoped to the dock HEADER row, which both chromes render
-  // (`ChatDockHeader` / `ChatDockMobileHeader` share `chat-dock__header`). The
-  // dock BODY's empty state carries a "Start a chat" of its own
-  // (`ChatDockContentArea`), and a page-wide locator would read that as the
-  // header control the phone is supposed to have lost.
-  const wideControl = page
+  // (`ChatDockHeader` / `ChatDockMobileHeader` share `chat-dock__header`).
+  const headerNewChat = page
     .locator('.chat-dock__header')
-    .getByRole('button', { name: /^(New chat|Start a chat)$/ });
-  if (chrome === 'wide') {
-    await wideControl.click();
-    return;
+    .getByRole('button', { name: 'New chat', exact: true });
+  await expect(headerNewChat).toHaveCount(1, { timeout: 20_000 });
+  if (chrome === 'phone') {
+    // The phone header's own New chat is the shared action, not a route
+    // through the "Chat actions" sheet.
+    await expect(
+      headerNewChat,
+      'the phone dock header offers the one New chat action',
+    ).toHaveClass(/new-chat-action/);
+    await expect(
+      page.locator('.chat-dock__header').getByText('Start a chat'),
+    ).toHaveCount(0);
   }
-  const chatActions = page.getByRole('button', {
-    name: 'Chat actions',
-    exact: true,
-  });
-  // The phone header has to be MOUNTED before its absence proves anything: an
-  // assertion made straight after `goto('/')` passes just as well on a dock
-  // that has not rendered at all.
-  await expect(chatActions).toBeVisible({ timeout: 20_000 });
-  // Then absence, which is what makes this a drive of the phone's route rather
-  // than of a wide control that happened to survive at 390px — the exact claim
-  // #1512 makes, and the exact claim that broke this fixture when
-  // archive#3309's icon went away (#1606).
-  await expect(
-    wideControl,
-    'the phone dock header must not render a New chat control of its own',
-  ).toHaveCount(0);
-  await chatActions.click();
-  // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`, kept
-  // out of the entry bundle), so its first open is a module fetch that renders
-  // nothing while it is in flight — more than Playwright's 5s expect default
-  // allows on a loaded host.
-  const sheet = page.getByRole('menu', { name: 'Chat actions' });
-  await expect(sheet).toBeVisible({ timeout: 15_000 });
-  // The fixture's only agent is unavailable until `repair()`, so New chat has
-  // no single chat-ready agent to open directly and lands on the picker —
-  // an ordinary click, no event injection.
-  await sheet.getByRole('menuitem', { name: 'New chat', exact: true }).click();
+  await headerNewChat.click();
 }
+
+/** The start composer's project chip, and choosing a project through it. */
+async function chooseProject(page: Page, modal: Locator, slug: string) {
+  await modal.getByRole('button', { name: /^Project: / }).click();
+  const menu = page.getByRole('dialog', { name: 'Choose project' });
+  await expect(menu).toBeVisible({ timeout: 15_000 });
+  await menu.locator(`[data-context-value="${slug}"]`).click();
+  await expect(menu).toHaveCount(0);
+}
+
+/** Open the Agent chip and take the Setup Assistant row's Connect. */
+async function connectFromAgentChip(page: Page, modal: Locator) {
+  await modal.getByRole('button', { name: /^Agent: / }).click();
+  const menu = page.getByRole('dialog', { name: 'Choose agent' });
+  await expect(menu).toBeVisible({ timeout: 15_000 });
+  await menu
+    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
+    .click();
+}
+
+const SETUP_RETURN_DRAFT = 'Summarize the setup notes for Beta';
 
 async function setupReturnFixture(page: Page, chrome: NewChatChrome = 'wide') {
   let ready = false;
@@ -1371,12 +1426,14 @@ async function setupReturnFixture(page: Page, chrome: NewChatChrome = 'wide') {
   );
   await page.goto('/');
   await openNewChatFromChrome(page, chrome);
-  const modal = page.getByRole('dialog', { name: 'New Chat', exact: true });
+  const modal = page.getByRole('dialog', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible();
-  await modal.locator('.new-chat-modal__context-button').click();
-  await page.locator('[data-context-value="setup-beta"]').click();
+  await modal
+    .getByRole('textbox', { name: 'What would you like done?' })
+    .fill(SETUP_RETURN_DRAFT);
+  await chooseProject(page, modal, 'setup-beta');
   await expect(
-    modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+    modal.getByRole('button', { name: 'Project: Setup Beta' }),
   ).toBeVisible();
   return {
     modal,
@@ -1407,9 +1464,7 @@ for (const viewport of [
       height: viewport.height,
     });
     const fixture = await setupReturnFixture(page, viewport.chrome);
-    await fixture.modal
-      .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
-      .click();
+    await connectFromAgentChip(page, fixture.modal);
     await expect(fixture.modal).toHaveCount(0);
     await expect(page).toHaveURL(/\/connections/);
     const returnButton = page.getByRole('button', {
@@ -1426,11 +1481,19 @@ for (const viewport of [
     fixture.repair();
     await returnButton.click();
     await expect(fixture.modal).toHaveCSS('opacity', '1');
+    // The draft and every choice came back: the message, the project, and
+    // the Agent, which the refetched catalog now reports ready.
     await expect(
-      fixture.modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+      fixture.modal.getByRole('textbox', { name: 'What would you like done?' }),
+    ).toHaveValue(SETUP_RETURN_DRAFT);
+    await expect(
+      fixture.modal.getByRole('button', { name: 'Project: Setup Beta' }),
     ).toBeVisible();
+    const agentChip = fixture.modal.getByRole('button', { name: /^Agent: / });
+    await expect(agentChip).toHaveAttribute('aria-label', /Setup Assistant/);
+    await expect(agentChip).not.toHaveAttribute('aria-label', /needs setup/);
     await expect(
-      fixture.modal.locator('[data-agent-slug="setup-assistant"]'),
+      fixture.modal.getByRole('button', { name: 'Start', exact: true }),
     ).toBeEnabled();
     await expect(
       page.getByRole('button', { name: 'Return to New Chat', exact: true }),
@@ -1446,20 +1509,22 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
   page,
 }) => {
   const fixture = await setupReturnFixture(page);
-  await fixture.modal
-    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
-    .click();
+  const draft = () =>
+    fixture.modal.getByRole('textbox', { name: 'What would you like done?' });
+  await connectFromAgentChip(page, fixture.modal);
   await expect(
     page.getByRole('button', { name: 'Return to New Chat', exact: true }),
   ).toBeVisible();
+  // Back returns to the draft as it was.
   await page.goBack();
   await expect(fixture.modal).toBeVisible();
+  await expect(draft()).toHaveValue(SETUP_RETURN_DRAFT);
   await expect(
-    fixture.modal.getByRole('button', { name: 'Workspace: Setup Beta' }),
+    fixture.modal.getByRole('button', { name: 'Project: Setup Beta' }),
   ).toBeVisible();
-  await fixture.modal
-    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
-    .click();
+  // The project is deleted while setup is away: the return says so and
+  // keeps the message rather than choosing a substitute.
+  await connectFromAgentChip(page, fixture.modal);
   fixture.deleteProject();
   await page
     .getByRole('button', { name: 'Return to New Chat', exact: true })
@@ -1471,14 +1536,14 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
       .getByRole('alert')
       .filter({ hasText: 'workspace you selected' }),
   ).toContainText('workspace you selected is no longer available');
+  await expect(draft()).toHaveValue(SETUP_RETURN_DRAFT);
   await expect(
-    fixture.modal.getByRole('button', { name: 'Workspace: Select workspace' }),
-  ).toBeVisible();
-  await fixture.modal.locator('.new-chat-modal__context-button').click();
-  await page.locator('[data-context-value="setup-alpha"]').click();
-  await fixture.modal
-    .getByRole('button', { name: 'Connect Setup Assistant', exact: true })
-    .click();
+    fixture.modal.getByRole('button', { name: 'Project: Setup Beta' }),
+  ).toHaveCount(0);
+  // Choosing again works; then Cancel return ends the journey and the
+  // choices with it.
+  await chooseProject(page, fixture.modal, 'setup-alpha');
+  await connectFromAgentChip(page, fixture.modal);
   await page
     .getByRole('button', { name: 'Cancel return', exact: true })
     .click();
@@ -1490,7 +1555,10 @@ test('New Chat setup return supports Back, cancellation and deleted Project disc
     window.dispatchEvent(new Event('station:open-new-chat')),
   );
   await expect(fixture.modal).toBeVisible();
+  // The cancelled draft's message is gone. The project stays: the project
+  // chip is the dock's remembered project for new chats (owner, 2026-10).
+  await expect(draft()).toHaveValue('');
   await expect(
-    fixture.modal.getByRole('button', { name: 'Workspace: No workspace' }),
+    fixture.modal.getByRole('button', { name: 'Project: Setup Alpha' }),
   ).toBeVisible();
 });

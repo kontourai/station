@@ -1,6 +1,9 @@
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { resolveAcpPassthroughMcpServers } from '../adapters/acp-mcp-passthrough.js';
 
 /** No `env` by default — most cases below are about transport/binary resolution, not secrets. */
@@ -16,6 +19,43 @@ function toolDef(overrides: Partial<ToolDef> = {}): ToolDef {
 }
 
 describe('resolveAcpPassthroughMcpServers', () => {
+  test('delivers Knowledge only with its own header credential and never operational env', async () => {
+    const definition = toolDef({
+      id: 'station-knowledge',
+      command: 'node',
+      args: [builtinStationKnowledgeServerPath()],
+      env: { INTERNAL_API_TOKEN: 'internal-secret' },
+    });
+    const missing = await resolveAcpPassthroughMcpServers({
+      toolServerIds: ['station-knowledge'],
+      resolveToolServer: async () => definition,
+      stationControlAuth: {
+        url: 'http://127.0.0.1:41031/mcp/station-control',
+        token: 'control',
+      },
+      logger: {},
+    });
+    expect(missing.servers).toEqual([]);
+    const delivered = await resolveAcpPassthroughMcpServers({
+      toolServerIds: ['station-knowledge'],
+      resolveToolServer: async () => definition,
+      stationKnowledgeAuth: {
+        url: 'http://127.0.0.1:41031/mcp/station-knowledge',
+        token: 'knowledge',
+      },
+    });
+    expect(delivered.stationKnowledgeDelivered).toBe(true);
+    expect(delivered.servers).toEqual([
+      {
+        type: 'http',
+        name: 'station-knowledge',
+        url: 'http://127.0.0.1:41031/mcp/station-knowledge',
+        headers: [{ name: 'Authorization', value: 'Bearer knowledge' }],
+      },
+    ]);
+    expect(JSON.stringify(delivered)).not.toContain('internal-secret');
+  });
+
   test('off by default: undefined toolServerIds resolves to an empty array without any lookups', async () => {
     const resolveToolServer = vi.fn();
     const result = await resolveAcpPassthroughMcpServers({
@@ -26,6 +66,7 @@ describe('resolveAcpPassthroughMcpServers', () => {
       servers: [],
       skipped: [],
       stationControlDelivered: false,
+      stationKnowledgeDelivered: false,
     });
     expect(resolveToolServer).not.toHaveBeenCalled();
   });
@@ -40,6 +81,7 @@ describe('resolveAcpPassthroughMcpServers', () => {
       servers: [],
       skipped: [],
       stationControlDelivered: false,
+      stationKnowledgeDelivered: false,
     });
     expect(resolveToolServer).not.toHaveBeenCalled();
   });

@@ -1,52 +1,66 @@
-/* ═══ Prompt Run Modal ═══ */
+/* Skill input and instruction review before starting a chat. */
 
 .skill-run__var-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
+  display: grid;
+  gap: var(--k-space-3);
+  margin-bottom: var(--k-space-4);
 }
 
 .skill-run__preview {
-  font-family: var(--font-mono);
-  font-size: var(--text-base);
-  line-height: 1.6;
-  padding: 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  max-height: 200px;
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-loose);
+  padding: var(--k-space-3);
+  background: var(--k-panel-raised);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  max-height: 16rem;
   overflow-y: auto;
   white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  color: var(--k-text);
 }
 
 .skill-run__section-label {
-  font-size: var(--text-base);
-  font-weight: 500;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.skill-run__dialog {
-  max-width: min(560px, calc(100vw - 32px));
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+  margin-bottom: var(--k-space-2);
 }
 
 .skill-run__agent-field {
-  margin-top: 16px;
+  margin-top: var(--k-space-4);
+}
+
+.skill-run__input-hint {
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+
+.skill-run__instructions summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--k-text);
+}
+
+.skill-run__instructions summary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }
 
 .skill-run__error {
-  margin: 0 0 8px;
-  padding: 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  color: var(--error-text);
-  font-size: var(--text-base);
+  margin: 0 0 var(--k-space-2);
+  padding: var(--k-space-3);
+  background: var(--k-panel-raised);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  color: var(--k-negative);
+  font-size: var(--k-text-md);
 }
 
 .skill-run__error code {
-  font-family: var(--font-mono);
+  font-family: var(--k-font-mono);
 }

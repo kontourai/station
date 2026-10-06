@@ -49,6 +49,7 @@ export interface LocalAccountProvider extends DeploymentAuthenticationProvider {
 }
 
 interface PendingEnrollmentAttemptState {
+  registrationInvitation?: string;
   readonly enrollmentId: string;
   retired: boolean;
   creating: boolean;
@@ -346,7 +347,8 @@ export async function createLocalAccountProvider(
               const invitation =
                 typeof callbackInvitation === 'string'
                   ? callbackInvitation
-                  : context?.request?.headers.get('x-station-invitation');
+                  : (context?.request?.headers.get('x-station-invitation') ??
+                    pendingEnrollmentScope.getStore()?.registrationInvitation);
               const eligible =
                 !!invitation &&
                 (await enrollment.mayRegister({
@@ -574,6 +576,74 @@ export async function createLocalAccountProvider(
     }
 
     const signUpPath = localUsername ? '/sign-up/username' : '/sign-up/email';
+    async function registerPendingUsername(
+      request: Request,
+      attempt: PendingEnrollmentAttemptState,
+    ): Promise<PendingEnrollmentSessionResult> {
+      if (closed || request.signal.aborted || attempt.retired)
+        return { kind: 'unavailable' };
+      const parsed = z
+        .object({
+          username: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{2,31}$/),
+          password: z.string().min(12).max(128),
+          name: z.string().trim().min(1).max(128).optional(),
+        })
+        .strict()
+        .safeParse(
+          await raceWithSignal(request.clone().json(), request.signal),
+        );
+      const invitation = request.headers.get('x-station-invitation');
+      if (
+        !parsed.success ||
+        !invitation ||
+        !(await enrollment.mayRegister({ invitation }))
+      )
+        return { kind: 'invalid', reason: 'invalid-credential' };
+      if (closed || request.signal.aborted || attempt.retired)
+        return { kind: 'unavailable' };
+      const body = {
+        ...parsed.data,
+        name: parsed.data.name ?? parsed.data.username,
+        email: `${randomUUID()}@station.invalid`,
+      };
+      attempt.registrationInvitation = invitation;
+      const operation = trackAttemptOperation(
+        attempt,
+        attempt.signIns,
+        pendingEnrollmentScope.run(attempt, () =>
+          auth.api.signUpEmail({
+            body,
+            headers: new Headers({
+              'Content-Type': 'application/json',
+              'x-station-invitation': invitation,
+            }),
+            asResponse: true,
+          }),
+        ),
+      );
+      void operation
+        .finally(() => {
+          attempt.registrationInvitation = undefined;
+        })
+        .catch(() => {});
+      const response = await raceWithSignal(operation, request.signal);
+      if (closed || request.signal.aborted || attempt.retired)
+        return { kind: 'unavailable' };
+      if (!response.ok)
+        return { kind: 'invalid', reason: 'invalid-credential' };
+      return usernameLogin(
+        new Request(request.url, {
+          method: 'POST',
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            username: parsed.data.username,
+            password: parsed.data.password,
+          }),
+          signal: request.signal,
+        }),
+        attempt,
+      );
+    }
     const signInPath = localUsername ? '/sign-in/username' : '/sign-in/email';
     const endpoints: DeploymentAuthenticationProvider['endpoints'] = [
       ...oidc.flatMap((provider) => [
@@ -706,6 +776,40 @@ export async function createLocalAccountProvider(
                 return usernameLogin(request);
               },
               pendingEnrollment: {
+                async register(enrollmentId, request) {
+                  if (
+                    closed ||
+                    request.signal.aborted ||
+                    !/^[A-Za-z0-9._:-]{16,128}$/.test(enrollmentId)
+                  )
+                    return { kind: 'unavailable' };
+                  const attempt = pendingAttempt(enrollmentId);
+                  if (
+                    !attempt ||
+                    attempt.retired ||
+                    attempt.creating ||
+                    attempt.createdSession
+                  )
+                    return { kind: 'invalid', reason: 'conflicting-identity' };
+                  attempt.creating = true;
+                  const operation = trackAttemptOperation(
+                    attempt,
+                    attempt.creations,
+                    registerPendingUsername(request, attempt),
+                  );
+                  try {
+                    const result = await operation;
+                    if (result.kind === 'pending')
+                      attempt.createdSession = true;
+                    else retirePendingAttempt(attempt);
+                    return result;
+                  } catch {
+                    retirePendingAttempt(attempt);
+                    return { kind: 'unavailable' };
+                  } finally {
+                    attempt.creating = false;
+                  }
+                },
                 async create(enrollmentId, request) {
                   if (
                     closed ||

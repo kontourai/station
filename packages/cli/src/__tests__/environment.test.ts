@@ -257,12 +257,12 @@ describe('environment CLI commands', () => {
       {
         requestId: 'request-tailnet-list',
         offerId: 'offer-tailnet-list',
-        deviceName: 'Brian phone',
+        deviceName: 'Casey phone',
         source: 'tailnet',
         requester: {
           provider: 'tailscale-serve',
-          login: 'brian@example.test',
-          displayName: 'Brian',
+          login: 'casey@example.test',
+          displayName: 'Casey',
         },
         createdAt: 10,
         expiresAt: 20,
@@ -288,8 +288,8 @@ describe('environment CLI commands', () => {
       'requestedBy',
     ]);
     expect(entry).toMatchObject({
-      deviceName: 'Brian phone',
-      requestedBy: 'Brian',
+      deviceName: 'Casey phone',
+      requestedBy: 'Casey',
       requestId: 'request-tailnet-list',
       offerId: 'offer-tailnet-list',
     });
@@ -419,12 +419,12 @@ describe('environment CLI commands', () => {
   test('interactively approves the only pending local request without printing a credential', async () => {
     const pending = {
       requestId: 'request-tailnet',
-      deviceName: 'Brian phone',
+      deviceName: 'Casey phone',
       source: 'tailnet' as const,
       requester: {
         provider: 'tailscale-serve' as const,
-        login: 'brian@example.test',
-        displayName: 'Brian',
+        login: 'casey@example.test',
+        displayName: 'Casey',
       },
       createdAt: 10,
       expiresAt: 20,
@@ -447,7 +447,7 @@ describe('environment CLI commands', () => {
     });
 
     expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining('verified Tailscale user "Brian"'),
+      expect.stringContaining('verified Tailscale user "Casey"'),
     );
     expect(request).toHaveBeenLastCalledWith(
       DEFAULT_LOOPBACK_API_BASE,

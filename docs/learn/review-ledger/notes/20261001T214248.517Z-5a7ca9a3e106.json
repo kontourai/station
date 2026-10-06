@@ -1,0 +1,7 @@
+{
+  "revision": "ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Re-reviewed after the record types were renamed (CodingSessionPanelsRecord) and the store's parser table (COMPOSITE_RECORD_PARSERS) landed: still one composite device setting with its own import parser; nothing in this document names the device-setting inventory, the store's import path or the Coding layout's panels, so the prose stands.","inputs":["docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","packages/sdk/src/query-core.ts","packages/shared/package.json","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx","src-ui/src/tokens.css"]}
+  ]
+}

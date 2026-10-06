@@ -119,9 +119,9 @@ function home(): string {
 }
 
 const HOST = {
-  alias: 'brian-media',
-  hostname: 'brian-media.internal',
-  user: 'brian',
+  alias: 'home-media',
+  hostname: 'home-media.internal',
+  user: 'casey',
   port: 22,
   identityAgent: 'default' as const,
   proxyJump: null,
@@ -132,10 +132,10 @@ const WORKER = {
   nodeVersion: 'v24.18.0',
   platform: 'linux',
   arch: 'x64',
-  remoteHome: '/home/brian',
-  remoteProjectPath: '/home/brian/dev/github/kontourai/station',
+  remoteHome: '/home/user',
+  remoteProjectPath: '/home/user/dev/github/kontourai/station',
   environmentId: '11111111-1111-4111-8111-111111111111',
-  instanceId: 'brian-media-dogfood',
+  instanceId: 'home-media-dogfood',
   sha: 'a'.repeat(40),
   bootId: '22222222-2222-4222-8222-222222222222',
 } satisfies OpenSshWorkerProbeResult;
@@ -183,7 +183,7 @@ describe('station-control SSH environment management tools', () => {
 
     const created = toolBody(
       await tools.create_ssh_environment({
-        hostAlias: 'brian-media',
+        hostAlias: 'home-media',
         remoteProjectPath: '~/dev/github/kontourai/station',
       }),
     );
@@ -194,7 +194,7 @@ describe('station-control SSH environment management tools', () => {
 
     const listed = toolBody(await tools.get_ssh_environment({ id }));
     expect(listed.success).toBe(true);
-    expect(listed.data.profile.hostAlias).toBe('brian-media');
+    expect(listed.data.profile.hostAlias).toBe('home-media');
 
     const connected = toolBody(await tools.connect_ssh_environment({ id }));
     expect(connected.success).toBe(true);
@@ -250,13 +250,13 @@ describe('station-control SSH environment management tools', () => {
 
     const created = toolBody(
       await tools.create_ssh_environment({
-        hostAlias: 'brian-media',
+        hostAlias: 'home-media',
         remoteProjectPath: '~/dev/github/kontourai/station',
       }),
     );
     const id = created.data.profile.id;
     expect(addSpy).toHaveBeenCalledWith({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
     });
 
@@ -312,7 +312,7 @@ describe('station-control SSH environment management tools', () => {
 
     const created = toolBody(
       await tools.create_ssh_environment({
-        hostAlias: 'brian-media',
+        hostAlias: 'home-media',
         remoteProjectPath: '~/dev/github/kontourai/station',
       }),
     );

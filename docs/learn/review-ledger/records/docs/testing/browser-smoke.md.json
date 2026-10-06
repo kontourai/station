@@ -1,0 +1,81 @@
+{
+  "path": "docs/testing/browser-smoke.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "PR smoke manifest, fixture boundaries, browser-health scope and CI execution policy. Full 40-line baseline read. Traced all seven manifest selections, real HTTP Ollama-shaped fixture versus page-routed streams, explicit monitor installations/assertions/exceptions, worker/retry runner flags, CI step timeout and nonblocking artifact retention. Existing mutation protocol remains a maintenance instruction; not executed in this doc-only pass. Final follow-up scopes required fast-checks to same-repository PRs/merge groups, with fork routing distinct.",
+
+  "limits": "No actual PR smoke/full browser run, seeded browser-failure mutation, hosted CI, physical phone or model/provider. Source and focused manifest/coordinator tests verify composition, not current journey success.",
+
+  "sources": [
+    ".github/workflows/ci.yml",
+
+    "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
+
+    "scripts/__tests__/e2e-coverage.test.ts",
+
+    "scripts/__tests__/e2e-manifest.test.ts",
+
+    "scripts/__tests__/run-ci-fast.test.ts",
+
+    "scripts/critical-browser-reporter.mjs",
+
+    "scripts/fast-checks-shard.mjs",
+
+    "scripts/lib/fast-checks-shards.mjs",
+
+    "scripts/run-e2e-suite.mjs",
+
+    "tests/connect-modal.spec.ts",
+
+    "tests/connect-remote-auth-recovery.spec.ts",
+
+    "tests/cross-runtime-chat-switching.spec.ts",
+
+    "tests/csp-shell.spec.ts",
+
+    "tests/e2e-manifest.mjs",
+
+    "tests/helpers/browser-health.ts",
+
+    "tests/helpers/ollama-fixture.ts",
+
+    "tests/orchestration-chat-flow.spec.ts",
+
+    "tests/pr-smoke-live-chat-send.spec.ts",
+
+    "tests/ui-crud-smoke.spec.ts"
+  ],
+
+  "checks": [
+    "focused: PASS 175 tests / 9 files / 20.65s",
+
+    "links: PASS 397 Markdown files; later opening-paragraph routing qualifier adds no links.",
+
+    "references: PASS 263 maintained documents; later opening-paragraph routing qualifier adds no paths.",
+
+    "veritas: PASS 0 failures / 0 warnings; veritas-1790515441320 at seven-guide batch. Tiny later CI-routing prose qualifier inspected; no protected/code changes, no rerun.",
+
+    "Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
+
+    "Upstream source review: Only upstream deletion removes Android split-pane spec entry; seven PR-smoke specs and non-quarantine bucket contract unchanged. Our table never claims full coverage or names removed spec.",
+
+    "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Reviewed integration deltas: scripts/run-e2e-suite.mjs: Classifies new early-dead-child identity-wait messages as boot-race only for fetch-failed or exact boot identity mismatch, preserving existing retry category; other failures remain fatal. No E2E run claimed.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts.",
+
+    "Reviewed landing deltas through 111744681: Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Integration source review through d1e0facc2: Reviewed browser-spec pruning and repaired actions/positive controls; registry.spec.ts remains after the duplicate install spec was removed. Coverage descriptions retain fixture and execution limits. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: ci.yml added a zsh provisioning step and a 65-minute timeout only to the fast-checks shard job. The pr-smoke step, its ten-minute timeout, the same-repository/merge-group routing and artifact retention are unchanged; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2919 strengthens the connect-modal and connect-remote-auth-recovery specs, removes the plugin-system and plugin-dependency-lifecycle manifest entries, adds the authenticated-request-canary smoke-live entry, and moves run-e2e-suite failure retention into settleStartedE2ERun. It also drops the e2e-manifest ci.yml text pin, which ci-workflow-contract now covers. PR_BROWSER_SMOKE_CONTRACT is unchanged with seven journeys, 1 worker and 0 retries. ci.yml still runs the smoke with a 10-minute timeout, and neither connection spec uses monitorBrowserHealth. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the run-ci-fast.test.ts delta (the pinned static list gains five gates); the browser smoke wiring described here is unchanged."
+  ]
+}

@@ -525,7 +525,7 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
   [PAIRING_SCOPE_ENGINE_LOGIN]: {
     label: 'Start engine sign-in',
     summary:
-      "Can start an engine's own device-code sign-in on this Station and see the code to approve. The engine stores the account in this Station's credential profile, so agents using that profile run as it; Station never sees the token.",
+      "Can sign a saved credential profile in through the engine's own login. You approve on the provider page; Claude may ask you to return a code. The engine stores the account so agents using that profile run as it. This does not allow quota reads, account creation or replacement of the host's default account.",
   },
   [PAIRING_SCOPE_CODING_EXEC]: {
     label: 'Run commands',
@@ -642,6 +642,76 @@ export const STATION_COMPAT_MIN_CLIENT_PROTOCOL = 1;
  * itself to speak the older contract.
  */
 export const STATION_COMPAT_MIN_SERVER_PROTOCOL = 1;
+
+/**
+ * Request header in which a client states the client API protocol
+ * ({@link STATION_COMPAT_PROTOCOL_VERSION}) it was built against, as one
+ * decimal integer.
+ *
+ * A compatibility signal, never authority: it decides only whether a host
+ * still serves the contract the caller speaks. It grants nothing, and a caller
+ * that lies about it only chooses which refusal it receives.
+ */
+export const CLIENT_PROTOCOL_HEADER = 'X-Station-Client-Protocol';
+
+/**
+ * Key in {@link StationCompatibility.capabilities} (value: the version of this
+ * header contract, 1) by which a host says it allow-lists
+ * {@link CLIENT_PROTOCOL_HEADER} in its CORS preflight. A browser client sends
+ * the header cross-origin only to a host it has seen advertise this, because a
+ * host released before the header would refuse the preflight and strand a
+ * client that is otherwise compatible with it.
+ */
+export const CLIENT_PROTOCOL_HEADER_CAPABILITY = 'clientProtocolHeader';
+
+/**
+ * The protocol a request WITHOUT {@link CLIENT_PROTOCOL_HEADER} is read as:
+ * every client built before the header existed spoke protocol 1. Absence is
+ * therefore admitted while a host's minimum is 1 and refused once it rises.
+ */
+export const LEGACY_CLIENT_PROTOCOL = 1;
+
+/**
+ * Largest value {@link CLIENT_PROTOCOL_HEADER} may carry. A larger value is
+ * malformed and refused, never clamped: the protocol moves only on
+ * contract-breaking changes, so four digits is far beyond any real client.
+ */
+export const MAX_CLIENT_PROTOCOL = 9999;
+
+/** A host refuses a client protocol below its minimum with this code (HTTP 426). */
+export const CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE =
+  'client_protocol_unsupported';
+/** A host refuses an unparseable {@link CLIENT_PROTOCOL_HEADER} with this code (HTTP 400). */
+export const CLIENT_PROTOCOL_INVALID_ERROR_CODE = 'client_protocol_invalid';
+
+export type ClientProtocolHeaderReading =
+  | { kind: 'absent' }
+  | { kind: 'declared'; protocol: number }
+  | { kind: 'malformed' };
+
+/**
+ * Parse a {@link CLIENT_PROTOCOL_HEADER} value exactly. Only one decimal
+ * integer from 1 to {@link MAX_CLIENT_PROTOCOL}, without sign, leading zero,
+ * or surrounding text, is declared. Repeated headers arrive joined
+ * (`"2, 3"`) and are malformed, as is an empty value: a present header is
+ * never quietly read as absent.
+ */
+export function readClientProtocolHeader(
+  value: string | null | undefined,
+): ClientProtocolHeaderReading {
+  if (value === null || value === undefined) return { kind: 'absent' };
+  // Length first, so an oversized value is refused before it is converted.
+  if (
+    value.length > String(MAX_CLIENT_PROTOCOL).length ||
+    !/^[1-9][0-9]*$/.test(value)
+  ) {
+    return { kind: 'malformed' };
+  }
+  const protocol = Number(value);
+  return protocol <= MAX_CLIENT_PROTOCOL
+    ? { kind: 'declared', protocol }
+    : { kind: 'malformed' };
+}
 
 /**
  * The compatibility block a host advertises on the public handshake.
@@ -1103,6 +1173,32 @@ export interface StationCapabilityFlags {
    * fact about this build, never a statement that any claim is held.
    */
   delegationAttemptClaims?: boolean;
+  /**
+   * #2875 slice 1: this build understands the `project-portable-prepared`
+   * workspace variant and refuses to start it unless its admitted checkout
+   * is at the requested version when checked. A STATIC protocol fact, never
+   * a statement about what is offered or at which version. A sender MUST
+   * gate sending the variant on this flag; an older receiver's schema
+   * refuses the unknown variant anyway, and the flag lets the sender refuse
+   * before the wire with a typed code.
+   */
+  executionPreparation?: boolean;
+  /**
+   * This build understands the opt-in `expectedInputRequest` field on
+   * `POST /api/orchestration/delegations/:taskId/continue`: it delivers the
+   * follow-up only as the answer to that exact open input request on the
+   * task's current Session (same `threadId`, `requestId` and
+   * `requestEventId`), re-checked when the engine is invoked, and refuses
+   * with `input_request_changed` when that request is gone or replaced. Its
+   * delegated-task snapshot's `pendingRequest` then also carries `eventId`,
+   * the presented `body` and, for an authenticated read, `callerCanRespond`.
+   *
+   * A sender MUST gate sending `expectedInputRequest` on this flag: an older
+   * receiver's schema silently drops the unknown field and would deliver the
+   * text as an ordinary, unbound follow-up turn. A STATIC protocol fact
+   * about this build, never a statement that any request is open.
+   */
+  delegatedInputAnswers?: boolean;
 }
 
 export interface PublicStationHandshake {
@@ -1245,10 +1341,15 @@ export interface FullAccessRevocationReport {
       | 'station-default';
   }[];
   /**
-   * Conversations with a session this device's grant had unconfined, which
-   * run confined (`workspace`) from their next turn: a decision stands, so
-   * each turn re-applies its mode under the confinement the grant no longer
-   * lifts; or the engine is not running, so its next start is confined.
+   * Conversations with a session this device's grant had unconfined and no
+   * engine of it still unconfined: none is running, or each running one has
+   * already taken a turn under `workspace`. Each runs confined from its next
+   * turn or start.
+   *
+   * Version skew (#2898): before #2898 this also held conversations whose
+   * engine was running with a decision standing; those are now in
+   * `stillUnconfined`, which a connect build from before #2898 drops (it
+   * does not know `next-turn`). Such a client under-lists them.
    */
   readonly reconfined: readonly {
     readonly conversationId: string;
@@ -1256,10 +1357,20 @@ export interface FullAccessRevocationReport {
     readonly sessionId?: string;
   }[];
   /**
-   * The same kind of session, still unconfined: its engine is running with
-   * no decision standing, so it keeps the posture it started with until it
-   * restarts (`engine-restart`); or this Station does not check the grant
-   * at each turn (`grant-not-checked`).
+   * The same kind of session, still unconfined:
+   * - `next-turn` (#2898): its engine is running and its last turn ran
+   *   under the confinement the grant no longer gives. A turn already
+   *   running finishes at the posture it started with, and cannot be
+   *   steered (`confinement-changed`); the session's next turn runs
+   *   confined, whether or not a decision stands. One entry per such
+   *   session, whose `sessionId` is that session, so a client can stop it
+   *   at once (`stopSession`). Clients from before #2898 drop these
+   *   entries.
+   * - `grant-not-checked`: this Station does not check the grant at each
+   *   turn.
+   * - `engine-restart`: sent only by Stations from before #2898, where a
+   *   running engine with no decision standing kept its start posture until
+   *   it restarted. Clients still read it from those Stations.
    */
   readonly stillUnconfined: readonly {
     readonly conversationId: string;
@@ -1267,7 +1378,7 @@ export interface FullAccessRevocationReport {
     readonly title?: string;
     /** A session of it, to open it by (the Activity deep link). */
     readonly sessionId?: string;
-    readonly until: 'engine-restart' | 'grant-not-checked';
+    readonly until: 'next-turn' | 'grant-not-checked' | 'engine-restart';
   }[];
   /**
    * Live sessions running unconfined (`host`) whose start recorded no

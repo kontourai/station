@@ -1,0 +1,7 @@
+{
+  "revision": "342094bf078ddd81dfcdcf4e77d9cfd84d32f746",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"Computers is a scrolling form/list, not a split-pane fill page. Flow sizing lets the shell reserve its chat-bar clearance; header and actual split-pane routes retain their framing.","inputs":["docs/design/shell-skeletons.md"]}
+  ]
+}

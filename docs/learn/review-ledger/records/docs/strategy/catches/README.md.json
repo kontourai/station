@@ -1,0 +1,23 @@
+{
+  "path": "docs/strategy/catches/README.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Dated catch-log observations and contribution policy, with a schema/class-table test rather than mandatory catch-count enforcement.",
+
+  "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
+
+  "sources": [
+    ".veritas/proof-families/repo-guardrails.families.json",
+
+    "docs/strategy/catches/catches.jsonl",
+
+    "scripts/__tests__/catch-log.test.ts"
+  ],
+
+  "checks": [
+    "Read the full record and checked the current owner or local validation route."
+  ]
+}

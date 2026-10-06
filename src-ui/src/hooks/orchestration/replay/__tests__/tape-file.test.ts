@@ -242,3 +242,28 @@ test('imports a Flow run whose gates have never been evaluated', async () => {
   };
   await expect(readSessionTapeFile(file(recorded))).resolves.toBeDefined();
 });
+
+test("a redacted export keeps a tool call's engine kind, which is vocabulary, not content", () => {
+  const toolTape = tapeFromSessionEvents(
+    { threadId: 'source', agentSlug: 'opencode' },
+    [
+      event,
+      {
+        method: 'tool.started',
+        provider: 'acp',
+        threadId: 'source',
+        turnId: 'turn',
+        eventId: 'tool',
+        createdAt: '2026-09-12T00:00:01Z',
+        itemId: 'call',
+        toolCallId: 'call',
+        toolName: 'rm -rf /tmp/secret',
+        toolKind: 'execute',
+      },
+    ],
+  );
+  const exported = JSON.parse(serializeSessionTape(toolTape));
+  const started = JSON.stringify(exported);
+  expect(started).toContain('"toolKind":"execute"');
+  expect(started).not.toContain('secret');
+});

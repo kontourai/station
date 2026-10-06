@@ -18,7 +18,6 @@ import {
   getConversationHandoffStatus,
   handoffExecutionMessage,
   reserveConversationContextBoundary,
-  sendExecutionMessage,
 } from '../client/execution';
 import { StationHttpError, setClientCredentialResolver } from '../client/http';
 import { getInputReplyContext } from '../client/input-reply';
@@ -27,6 +26,7 @@ import {
   discoverProjectTaskRoom,
   ProjectTaskRoomProtocolError,
 } from '../client/project-task-rooms';
+import { sendExecutionMessage } from '../client/send-execution-message';
 import {
   getSessionInventory,
   SessionInventoryRequestError,

@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-export const PRODUCT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const PRODUCT_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const CARGO_PACKAGE_VERSION =
   /(^\[package\][\s\S]*?^version\s*=\s*")([^"]+)(")/m;
 const ROOT_CARGO_PACKAGE = 'station';
@@ -53,7 +53,7 @@ function cargoLockPackage(source, name = ROOT_CARGO_PACKAGE) {
 }
 
 /** Reads root release authority plus the checked-in native mirrors. */
-export function productVersionState(root = process.cwd()) {
+function productVersionState(root = process.cwd()) {
   const packagePath = resolve(root, 'package.json');
   const tauriPath = resolve(root, 'src-desktop/tauri.conf.json');
   const cargoPath = resolve(root, 'src-desktop/Cargo.toml');
@@ -82,7 +82,7 @@ export function productVersionState(root = process.cwd()) {
   };
 }
 
-export function productVersionMismatches(state) {
+function productVersionMismatches(state) {
   const mismatches = [];
   if (state.tauriVersion !== state.version) {
     mismatches.push(

@@ -226,15 +226,18 @@ test.describe('ACP + Project Context', () => {
   }) => {
     await seedRoutes(page);
     await page.goto('/');
-    await page.getByRole('button', { name: /^Start direct chat/ }).click();
-    await expect(page.getByRole('dialog', { name: 'New Chat' })).toBeVisible();
-    await page.locator('.new-chat-modal__context-button').click();
+    // Home's start composer chooses the project on its project chip, from
+    // the current catalog.
+    const composer = page.getByRole('form', { name: 'Start work' });
+    await composer.getByRole('button', { name: /^Project: / }).click();
     await page
-      .locator('.new-chat-modal__dropdown')
+      .getByRole('dialog', { name: 'Choose project' })
       .getByRole('button', { name: /My Project|my-project/ })
       .click();
-    await expect(page.locator('.new-chat-modal__context-button')).toContainText(
-      /My Project|my-project/,
-    );
+    await expect(
+      composer.getByRole('button', {
+        name: /^Project: (My Project|my-project)$/,
+      }),
+    ).toBeVisible();
   });
 });

@@ -1,0 +1,110 @@
+{
+  "description": "Rows that showed more than two labelled actions when #3045 introduced the cap, keyed by file :: component :: element (never a line). An entry without a reason is debt: fold its extra actions into ActionRow's overflow menu. An entry with a reason is one the scan misreads. Lower with: node scripts/button-cap-ratchet.mjs --record",
+  "rows": [
+    {
+      "row": "src-ui/src/components/GuidedConnect.tsx :: GuidedConnect :: div.guided-connect__alternatives",
+      "labelledActions": 3,
+      "reason": "Not a row: each .guided-connect__action is width: 100%, so these are three stacked ways to connect on first run, read top to bottom."
+    },
+    {
+      "row": "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx :: ACPConnectionSetupCompletionActions :: <>",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx :: ACPConnectionSetupEntryActions :: <>",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx :: ConversationHandoffDialog :: div.conversation-handoff-dialog__actions",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/chat/ChatSettingsPanel.tsx :: ChatSettingsPanel :: div.chat-settings-modal__control",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/chat/OutboundQueuedMessages.tsx :: OutboundQueuedMessages :: div.queued-message",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/chat/ToolCallDisplay.tsx :: ToolApprovalButtons :: <>",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/live-activity/LiveCollaboratorsSection.tsx :: LiveCollaboratorsSection :: div.live-collaborators__actions",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/registry/RegistryCatalogItems.tsx :: RegistryCatalogDetail :: div.page__card-footer",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/registry/RegistryLayoutActions.tsx :: RegistryLayoutActions :: <>",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/search/ExactMessageInspector.tsx :: ExactMessageInspector :: <>",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/session-detail/DelegatedTaskCoordinator.tsx :: DelegatedTaskCoordinator :: div.sessions-coordinator__actions",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/components/usage-stats/UsageRollupPanel.tsx :: UsageRollupPanel :: div.usage-rollup__footer",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx :: BrowserRelayRoutes :: <>",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx :: BrowserRelayRoutes :: PageRow.connections-computers__row",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx :: SshComputerCreatorDialog :: <>",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/views/integrations/IntegrationEditorPanel.tsx :: IntegrationEditorPanel :: DetailHeader",
+      "labelledActions": 4
+    },
+    {
+      "row": "src-ui/src/views/plugin-management/NewPluginModal.tsx :: NewPluginModal :: ResponsiveSurfaceActions.plugins__confirm-actions",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/views/plugin-management/PluginDetailPanel.tsx :: PluginDetailPanel :: DetailHeader",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/views/plugin-management/PluginRecoveryPanel.tsx :: PluginRecoveryPanel :: ResponsiveSurfaceActions.plugins__recovery-actions",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/views/project-page/ProjectLiveWorkSection.tsx :: TaskRoomLiveWorkRow :: span.project-page__live-work-controls",
+      "labelledActions": 4
+    },
+    {
+      "row": "src-ui/src/views/settings/KnowledgeStoreSection.tsx :: ConnectObsidianVault :: div.knowledge-store-section__obsidian-actions",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/workspace-panes/FilePreviewPane.tsx :: FilePreviewPane :: div",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx :: ProjectTaskRoomPresence :: div",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/workspace-panes/TaskRoomEditorPane.tsx :: TaskRoomEditorPane :: section.task-room-editor",
+      "labelledActions": 3
+    },
+    {
+      "row": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx :: BrowserSessionPane :: div.browser-pane__bar",
+      "labelledActions": 4
+    }
+  ]
+}

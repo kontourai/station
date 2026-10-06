@@ -1,0 +1,17 @@
+{
+  "path": ".agents/skills/deslop/SKILL.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+
+  "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+
+  "sources": [],
+
+  "checks": [
+    "Read the complete skill; new type-laundering gate route supplements the unchanged behavior-neutral cleanup rule."
+  ]
+}

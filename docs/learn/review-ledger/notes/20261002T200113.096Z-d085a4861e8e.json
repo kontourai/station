@@ -1,0 +1,7 @@
+{
+  "revision": "20d703d387612f032748b56eae2b17a60d1e6984",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Updated the broker guide labels to Review saved connections and Remove saved connections. Reviewed the preview, explicit confirmation, cleanup pending behavior and authority boundaries; host cleanup behavior is unchanged and installed-shell evidence remains separate.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

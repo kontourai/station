@@ -1,0 +1,7 @@
+{
+  "revision": "a72a293dc7175a4d5117698684a4add62eb584a5",
+
+  "notes": [
+    {"path":"docs/design/revision-bound-evidence.md","note":"Only the receipt query's row cast changed from any[] to unknown[] in event-store.ts; no behaviour or documented claim changed.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

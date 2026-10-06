@@ -1,0 +1,257 @@
+{
+  "path": "docs/user/getting-started.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
+
+  "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/user/getting-started.md\",\"ours\":{\"digest\":\"267eb15eb3c8a487f4fa8f4eb2f3f38e04337b08821be5ea1a4d34ea9541cfc1\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"},\"main\":{\"digest\":\"53a097e483b1f02b6541a49f02a08bf09432d1f84e5533507e011b02b8a1d974\",\"revision\":\"5c4715178ae1172f03cd2d819c40985302e56ee7\"},\"active\":{\"digest\":\"53a097e483b1f02b6541a49f02a08bf09432d1f84e5533507e011b02b8a1d974\",\"revision\":\"5c4715178ae1172f03cd2d819c40985302e56ee7\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/release-channel-ports.md\",\"ours\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d\",\"revision\":\"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80\"},\"main\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"active\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/starter-work.md\",\"ours\":{\"path\":\"docs/guides/starter-work.md\",\"digest\":\"677c00d993f3fa61dcaa3c0bb6e506da73eddc0c2ba88b74238c0472a0863a20\",\"revision\":\"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694\"},\"main\":{\"path\":\"docs/guides/starter-work.md\",\"digest\":\"1300918a521f942a809ce0c08355c3e3a8940928d792d41c2b817ea44d4e0839\",\"revision\":\"a15d7b09e3b1a1434ac3d51a25d52773d30746a7\"},\"active\":{\"path\":\"docs/guides/starter-work.md\",\"digest\":\"1300918a521f942a809ce0c08355c3e3a8940928d792d41c2b817ea44d4e0839\",\"revision\":\"a15d7b09e3b1a1434ac3d51a25d52773d30746a7\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"},\"main\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/components/chat/ChatInputArea.tsx\",\"ours\":{\"path\":\"src-ui/src/components/chat/ChatInputArea.tsx\",\"digest\":\"585db4db640e419062c8f94aae75c677dd26574b5168f560d22e4ec3a2885253\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/components/chat/ChatInputArea.tsx\",\"digest\":\"3d88560ac4a659c6b5feaff9d1fa7e80f0a99c48eb6c8f942210596915afa791\",\"revision\":\"a8b3f341a58336f2cf1812088968d13a0b10c056\"},\"active\":{\"path\":\"src-ui/src/components/chat/ChatInputArea.tsx\",\"digest\":\"3d88560ac4a659c6b5feaff9d1fa7e80f0a99c48eb6c8f942210596915afa791\",\"revision\":\"a8b3f341a58336f2cf1812088968d13a0b10c056\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/components/first-run/FirstRunHomeChapter.tsx\",\"ours\":{\"path\":\"src-ui/src/components/first-run/FirstRunHomeChapter.tsx\",\"digest\":\"a2872082206b0e7bc6ffa67f9a5936bf55b7f16df9764b226c22db6764693734\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/components/first-run/FirstRunHomeChapter.tsx\",\"digest\":\"3e923e245de1c7b55d2f1e9a56c595aa0999167c441584aeea52b35357af4172\",\"revision\":\"7d1b3d94166917be8991f72c799f4dc8d87dc45d\"},\"active\":{\"path\":\"src-ui/src/components/first-run/FirstRunHomeChapter.tsx\",\"digest\":\"3e923e245de1c7b55d2f1e9a56c595aa0999167c441584aeea52b35357af4172\",\"revision\":\"7d1b3d94166917be8991f72c799f4dc8d87dc45d\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/components/modals/NewChatModal.tsx\",\"ours\":{\"path\":\"src-ui/src/components/modals/NewChatModal.tsx\",\"digest\":\"cc0fe918eafae5643d0a191a130fe17a222a8d6303fd26d977bed447196cd141\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/components/modals/NewChatModal.tsx\",\"digest\":\"5e4b1e564e12483bce2b34698e431b9d69e4b9123dac8130ff61be6fbd8c11d0\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"active\":{\"path\":\"src-ui/src/components/modals/NewChatModal.tsx\",\"digest\":\"5e4b1e564e12483bce2b34698e431b9d69e4b9123dac8130ff61be6fbd8c11d0\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/components/modals/useNewChatSetupReturn.ts\",\"ours\":{\"path\":\"src-ui/src/components/modals/useNewChatSetupReturn.ts\",\"digest\":\"cc2d69428c1b40135252806c9ac78f35ef536536f4f666cff63efbde60adbadc\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/components/modals/useNewChatSetupReturn.ts\",\"digest\":\"4b5c978700d19e3d99a85002f83eb502582380d9b1e31fcfc696c5a7e35b74ed\",\"revision\":\"d85d50244f03fafcd0453f70c29878b39049e1dd\"},\"active\":{\"path\":\"src-ui/src/components/modals/useNewChatSetupReturn.ts\",\"digest\":\"4b5c978700d19e3d99a85002f83eb502582380d9b1e31fcfc696c5a7e35b74ed\",\"revision\":\"d85d50244f03fafcd0453f70c29878b39049e1dd\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/hooks/useChatInput.ts\",\"ours\":{\"path\":\"src-ui/src/hooks/useChatInput.ts\",\"digest\":\"a8abfaf6c39c8117c988337e852e526dbf53b543f0c504db81da4c6c6fbfa2ac\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/hooks/useChatInput.ts\",\"digest\":\"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c\",\"revision\":\"74db2e79bbb82782cffb1834eb904546edfb536a\"},\"active\":{\"path\":\"src-ui/src/hooks/useChatInput.ts\",\"digest\":\"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c\",\"revision\":\"74db2e79bbb82782cffb1834eb904546edfb536a\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/index.css\",\"ours\":{\"path\":\"src-ui/src/index.css\",\"digest\":\"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889\",\"revision\":\"28ee475ceed3623c147d918bcd6c30d99a49bc00\"},\"main\":{\"path\":\"src-ui/src/index.css\",\"digest\":\"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd\",\"revision\":\"b0231bc1e00fb9e7db24a527aea16f59b7db2c21\"},\"active\":{\"path\":\"src-ui/src/index.css\",\"digest\":\"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd\",\"revision\":\"b0231bc1e00fb9e7db24a527aea16f59b7db2c21\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/views/ProjectPage.tsx\",\"ours\":{\"path\":\"src-ui/src/views/ProjectPage.tsx\",\"digest\":\"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0\",\"revision\":\"3a63c64679a92f30544c2b84905fdb2874ebfebb\"},\"main\":{\"path\":\"src-ui/src/views/ProjectPage.tsx\",\"digest\":\"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"active\":{\"path\":\"src-ui/src/views/ProjectPage.tsx\",\"digest\":\"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0\",\"revision\":\"3a63c64679a92f30544c2b84905fdb2874ebfebb\"},\"decision\":\"oursMatch\"}]",
+
+  "sources": [
+    ".nvmrc",
+
+    "docs/guides/release-channel-ports.md",
+
+    "docs/guides/starter-work.md",
+
+    "docs/learn/media.json#/captures/0",
+
+    "docs/learn/media.json#/captures/3",
+
+    "docs/learn/media.json#/captures/4",
+
+    "docs/learn/media/inspect-request.png",
+
+    "docs/learn/media/inspect-request.webm",
+
+    "docs/learn/media/project-with-task.png",
+
+    "docs/user/work-board.md",
+
+    "install.sh",
+
+    "packages/cli/src/commands/lifecycle-doctor.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "src-server/knowledge-store/knowledge-source-observation-policy.ts",
+
+    "src-server/routes/chat/conversations.ts",
+
+    "src-server/routes/knowledge/knowledge-source-routes.ts",
+
+    "src-server/routes/orchestration/attention.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx",
+
+    "src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx",
+
+    "src-ui/src/components/attention/RequestInspectionDialog.css",
+
+    "src-ui/src/components/attention/RequestInspectionDialog.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockOverlays.ts",
+
+    "src-ui/src/components/chat/ChatInputArea.tsx",
+
+    "src-ui/src/components/chat/FileMentionAutocomplete.tsx",
+
+    "src-ui/src/components/chat/SessionReferencePicker.tsx",
+
+    "src-ui/src/components/chat/composer-mention-wire.ts",
+
+    "src-ui/src/components/chat/composer-mentions.ts",
+
+    "src-ui/src/components/first-run/AboutYouStep.tsx",
+
+    "src-ui/src/components/first-run/FirstRunFlow.tsx",
+
+    "src-ui/src/components/first-run/FirstRunHomeChapter.tsx",
+
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/components/modals/AutomaticEnginePreparation.tsx",
+
+    "src-ui/src/components/modals/NewChatModal.tsx",
+
+    "src-ui/src/components/modals/useNewChatSetupReturn.ts",
+
+    "src-ui/src/components/scheduler/JobFormModal.tsx",
+
+    "src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx",
+
+    "src-ui/src/contexts/NavigationContext.tsx",
+
+    "src-ui/src/contexts/scheduler-job-dialog-store.ts",
+
+    "src-ui/src/hooks/useChatInput.ts",
+
+    "src-ui/src/hooks/useNewChatSelectionModel.ts",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/lib/newChatIntent.ts",
+
+    "src-ui/src/pages/NotificationsPage.css",
+
+    "src-ui/src/pages/NotificationsPage.tsx",
+
+    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
+
+    "src-ui/src/platform/native/authenticatedTransport.ts",
+
+    "src-ui/src/views/ProjectPage.css",
+
+    "src-ui/src/views/ProjectPage.tsx",
+
+    "src-ui/src/views/ScheduleView.css",
+
+    "src-ui/src/views/learning-review/LearningSourceAction.tsx",
+
+    "src-ui/src/views/learning-review/LearningSourceDialog.tsx",
+
+    "src-ui/src/views/page-layout.css",
+
+    "tests/helpers/exact-request-backend.ts",
+
+    "tests/helpers/live-station-task.ts",
+
+    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
+
+    "src-ui/src/components/PickerCreateAction.tsx",
+
+    "src-ui/src/components/PickerCreateAction.css",
+
+    "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
+
+    "src-ui/src/contexts/navigation-store.ts",
+
+    "tests/cross-runtime-chat-switching.spec.ts",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/views/home/work-facts.ts",
+
+    "src-ui/src/hooks/useLongPress.ts",
+
+    "tests/helpers/long-press.ts",
+
+    "src-ui/src/views/SkillsView.tsx",
+
+    "src-ui/src/components/modals/SkillRunModal.tsx",
+
+    "src-ui/src/components/modals/ImportSkillsModal.tsx",
+
+    "src-ui/src/__tests__/SkillsView.test.tsx",
+
+    "src-ui/src/__tests__/SkillsView.navigation.test.tsx",
+
+    "src-ui/src/__tests__/SkillsView.launch.test.tsx",
+
+    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/lib/foregroundMessageDispatch.ts",
+
+    "src-ui/src/lib/skill-experience-draft.ts",
+
+    "src-ui/src/lib/skill-experience-preview.ts",
+
+    "src-ui/src/components/chat-start/ChatSetupHelper.tsx",
+
+    "src-ui/src/components/chat-start/RecentChatList.tsx",
+
+    "src-ui/src/components/NewChatAction.tsx",
+
+    "src-ui/src/hooks/useRecentAgents.ts",
+
+    "src-ui/src/views/project-settings/AgentsSection.tsx",
+
+    "src-server/services/projects/project-service.ts",
+
+    "packages/contracts/src/project.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
+
+    "src-ui/src/components/home/HomeStartComposer.tsx",
+
+    "src-ui/src/components/chat-start/StartComposer.tsx",
+
+    "src-ui/src/hooks/useStartSelection.ts",
+
+    "src-server/services/orchestration/attached-session-follow-service.ts",
+
+    "src-server/services/orchestration/attached-session-repository.ts",
+
+    "src-ui/src/views/activity/activity-list-model.ts",
+
+    "src-server/providers/sessions/claude-transcript-session-source.ts",
+
+    "src-server/providers/sessions/codex-rollout-session-source.ts",
+
+    "src-server/providers/sessions/grok-session-source.ts"
+  ],
+
+  "checks": [
+    "123 focused tests across seven named UI/server fixture files PASS (98.81s).",
+
+    "Existing isolated capture separately exercised real Project/Task save and controlled exact request inspection; no provider call.",
+
+    "Local Markdown links/anchors 409 PASS; git diff --check PASS.",
+
+    "Veritas 1790525108169: 0 failures/0 warnings, exact one-doc working scope.",
+
+    "Prior starter-work/native/install/module audit receipts reused only for unchanged source-owned claims; no repeated physical journey implied.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-ui/src/components/first-run/FirstRunHomeChapter.tsx: planFirstRunChapterSteps becomes private to the production owner; implementation and actual component/caller unchanged. No current Markdown advertises the removed export. Test changes move assertions to owner output; no new execution receipt inferred. docs/guides/starter-work.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. Proposed copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
+
+    "Formatter-only change; parsed media metadata is identical.",
+
+    "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+
+    "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Engine-enable refusal text improves without changing successful creation or the captured UI layout. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through e0314c727: install.sh now records and reuses resolved ports, validates them, and stops/switches/restarts archive services that run the install's `current` (#2867). Uninstall now refuses while such a service exists, and packaged upgrade tolerates that service. The guide's default install, rerun-to-upgrade and uninstall steps stay accurate for the stable/beta path, and it links archive service limits to the archive guide. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 changes useChatInput's refused queued full-access pick to add a structured refusal notice ('pick-not-applied') in place of the fixed note, and adds grantor and revocation logic to orchestration-service. The guide makes no full-access refusal claim; its first-run, file-mention, conversation-picker and approval-inspection claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion module-private in packages/cli/src/commands/lifecycle-doctor.ts without changing its behavior; prose accurate: the `./station doctor` guidance is unchanged. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 makes a same-channel installer rerun for a launcher-run archive service stage the version and hand off to the launcher, which trials it and rolls back on failure. It also adds the service launcher env passthrough in lifecycle.ts. #2914 makes isPortableDraftShortcut in ChatInputArea non-exported. 'Run the installer again in the same channel to update safely' remains true. Archive upgrade and service details are deferred to release-channel-ports.md, which is not in this group. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -50,6 +50,18 @@ const sourceAwareComponents: NonNullable<Options['components']> = {
     );
   },
   img: MarkdownImage,
+  // A table scrolls sideways inside its own box instead of squeezing to the
+  // message width. Squeezed, the message's `overflow-wrap: anywhere` let
+  // every cell shrink to one character, so a phone showed "Dire / ctor / y".
+  // Focusable and named explicitly: WKWebView does not make a scroll
+  // container keyboard-focusable on its own, and a region a keyboard cannot
+  // reach cannot be scrolled without a pointer.
+  table: ({ node: _node, ...props }) => (
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: a horizontally scrollable region must be focusable to be scrolled by keyboard
+    <section className="chat-markdown-table" aria-label="Table" tabIndex={0}>
+      <table {...props} />
+    </section>
+  ),
 };
 // After GFM, so a URL it autolinks is already a link and is not re-scanned
 // for path mentions.

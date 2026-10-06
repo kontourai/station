@@ -25,6 +25,8 @@ import {
 } from '@kontourai/station-contracts/project-identity';
 import { PROJECT_MEMBER_ACTIONS } from '@kontourai/station-contracts/project-membership';
 import type {
+  WorkspaceFileChanges,
+  WorkspaceFileChangesRequest,
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
@@ -36,9 +38,9 @@ import type {
   WorkspacePaneAvailability,
   WorkspacePaneAvailabilityInput,
 } from '@kontourai/station-contracts/workspace-pane-availability';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
-  envelopeErrorMessage,
   getJson,
   mutateJson,
   readJsonBody,
@@ -260,6 +262,43 @@ export async function previewProjectWorkspaceFile(
     response,
     'Failed to preview file',
   );
+}
+
+/**
+ * `POST /api/projects/:slug/file-preview/changes`: one previewed file's
+ * changes against HEAD, read with the preview's path and session rules. The
+ * path travels in the body for the same reason the preview's does.
+ */
+export async function readProjectWorkspaceFileChanges(
+  apiBase: string,
+  projectSlug: string,
+  request: WorkspaceFileChangesRequest,
+  opts?: ClientRequestOptions,
+): Promise<WorkspaceFileChanges> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/file-preview/changes`,
+    'POST',
+    opts,
+    request.thread
+      ? { path: request.path, thread: request.thread }
+      : { path: request.path },
+  );
+  return unwrapOrThrow<WorkspaceFileChanges>(
+    response,
+    'Failed to read file changes',
+  );
+}
+
+/**
+ * The changes read's `503 repository-busy`: the repository was being
+ * written each time Station read it, and a read is only answered from one
+ * that held still. Not a refusal and not a result; the same read a moment
+ * later usually succeeds, and `retryAfterMs` says when the server suggests.
+ */
+export function isRepositoryBusyError(
+  error: unknown,
+): error is StationHttpError {
+  return error instanceof StationHttpError && error.code === 'repository-busy';
 }
 
 /**
@@ -523,14 +562,9 @@ export async function deleteProjectLayout(
   const result = (await readJsonBody(response)) as
     | ProjectEnvelope<never>
     | undefined;
-  if (!response.ok) {
-    throw new StationHttpError(
-      response.status,
-      envelopeErrorMessage(result, 'Failed to delete layout'),
-    );
-  }
-  if (!result?.success) {
-    throw new Error(envelopeErrorMessage(result, 'Failed to delete layout'));
+  // A 2xx `success:false` is a refusal too, and keeps its observed status.
+  if (!response.ok || !result?.success) {
+    throw envelopeError(response, result, 'Failed to delete layout');
   }
 }
 

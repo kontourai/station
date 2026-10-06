@@ -28,6 +28,11 @@ import {
   clipboardRefuses,
   clipboardWrites,
 } from './clipboard-stubs';
+import {
+  chooseOverflow,
+  openOverflow,
+  overflowItems,
+} from './helpers/overflow-menu';
 
 vi.mock('../components/chat/LazyMarkdown', () => ({
   LazyMarkdown: ({ children }: { children?: string }) => <div>{children}</div>,
@@ -85,5 +90,40 @@ describe('WorkflowPlanPanel copy (station#3341)', () => {
     expect(copyButton().getAttribute('title')).toContain(
       'refused clipboard access',
     );
+  });
+
+  // Review M3: Save and Export were folded out of the header (#3045); both
+  // are still there and each still writes a file.
+  test('the plan menu holds Save and Export, and each downloads', () => {
+    // jsdom has no object URLs; these are the two calls a download makes.
+    const createObjectURL = vi.fn(() => 'blob:plan');
+    const { createObjectURL: realCreate, revokeObjectURL: realRevoke } = URL;
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    renderPanel();
+
+    expect(overflowItems(openOverflow('More plan actions'))).toEqual([
+      { name: 'Save', danger: false },
+      { name: 'Export', danger: false },
+    ]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Save' }));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    chooseOverflow('More plan actions', 'Export');
+    expect(createObjectURL).toHaveBeenCalledTimes(2);
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+  });
+
+  test('with no plan, both rows are refused and say why', () => {
+    render(<WorkflowPlanPanel artifact={null} />);
+    openOverflow('More plan actions');
+    for (const name of ['Save', 'Export']) {
+      const row = screen.getByRole('menuitem', { name });
+      expect(row.getAttribute('aria-disabled')).toBe('true');
+      expect(
+        document.getElementById(row.getAttribute('aria-describedby')!)
+          ?.textContent,
+      ).toBe('No plan yet');
+    }
   });
 });

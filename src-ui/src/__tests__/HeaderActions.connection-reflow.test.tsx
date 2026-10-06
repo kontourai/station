@@ -303,7 +303,7 @@ describe.skipIf(!chromiumAvailable)(
      * width must keep the whole cluster invariant across every connection
      * state, and the chip must meet the 44px target floor.
      */
-    test('the phone cluster is invariant across every state with a compact Station label (#1401, #2406)', async () => {
+    test('the phone cluster is invariant across every state with a touchable status dot (#1401, #2406)', async () => {
       const viewport = { width: 390, height: 200 };
       const states: ChipState[] = [
         'connected',
@@ -332,7 +332,7 @@ describe.skipIf(!chromiumAvailable)(
               document.querySelector<HTMLElement>('.app-toolbar__conn');
             if (!chip) throw new Error('connection chip not found');
             // Hidden at this breakpoint; the compact healthy state has its
-            // own short visible Station label.
+            // saved name in the accessible label.
             const label = document.querySelector<HTMLElement>(
               '.app-toolbar__conn-state',
             );
@@ -347,7 +347,7 @@ describe.skipIf(!chromiumAvailable)(
               // Laid out, not merely present: `display: none` is exactly what
               // this test is about, and a hidden span has no boxes.
               labelBoxes: label?.getClientRects().length ?? 0,
-              compactLabel: compactLabel?.textContent ?? '',
+              compactLabelBoxes: compactLabel?.getClientRects().length ?? 0,
               accessibleName: chip.getAttribute('aria-label'),
             };
           });
@@ -358,11 +358,11 @@ describe.skipIf(!chromiumAvailable)(
           expect(
             Math.round(measured.chipWidth),
             `the ${state} chip must meet the 44px touch floor on a phone`,
-          ).toBeGreaterThanOrEqual(44);
+          ).toBe(44);
           expect(
-            measured.compactLabel,
-            `the connected chip must visibly identify the Station on a phone`,
-          ).toBe(state === 'connected' ? 'Station · Default' : '');
+            measured.compactLabelBoxes,
+            `the phone chip must reserve its width for the status dot`,
+          ).toBe(0);
           expect(
             measured.accessibleName,
             `the ${state} chip must keep its words in the accessible name`,
@@ -459,7 +459,7 @@ describe.skipIf(!chromiumAvailable)(
         );
         expect(
           await page.locator('.app-toolbar__conn-label').textContent(),
-        ).toBe('Station · Default');
+        ).toBe('Default');
       } finally {
         await page.close();
       }
@@ -471,7 +471,7 @@ describe.skipIf(!chromiumAvailable)(
     });
 
     test.each(['dark', 'light'] as const)(
-      'the mobile Station label stays readable and touchable in the %s theme',
+      'the mobile status dot preserves a touchable control in the %s theme',
       async (theme) => {
         const viewport = { width: 320, height: 568 };
         const page = await browser.newPage({ viewport });
@@ -498,11 +498,12 @@ describe.skipIf(!chromiumAvailable)(
               right: box.right,
               width: box.width,
               height: box.height,
-              labelFits: label.scrollWidth <= label.clientWidth,
+              labelBoxes: label.getClientRects().length,
             };
           }, theme);
-          expect(measured.label).toBe('Station · Default');
-          expect(measured.labelFits).toBe(true);
+          expect(measured.label).toBe('Default');
+          expect(measured.labelBoxes).toBe(0);
+          expect(measured.width).toBe(44);
           expect(measured.color).not.toBe('rgba(0, 0, 0, 0)');
           expect(measured.background).toBe(
             theme === 'light' ? '#f5f4ef' : '#0a0e13',
@@ -565,7 +566,7 @@ describe.skipIf(!chromiumAvailable)(
 
       const desktop = await inventory({ width: 1280, height: 400 });
       expect(desktop).toEqual([
-        'Manage Stations — Connected · Station · Default',
+        'Choose Station — Connected · Default',
         'Notifications',
         'Profile and settings',
       ]);
@@ -575,7 +576,7 @@ describe.skipIf(!chromiumAvailable)(
       // compact chip at both widths; the accessible name also carries status.
       const phone = await inventory({ width: 390, height: 600 });
       expect(phone).toEqual([
-        'Manage Stations — Connected · Station · Default',
+        'Choose Station — Connected · Default',
         'Notifications',
         'More actions',
       ]);
@@ -727,7 +728,7 @@ describe.skipIf(!chromiumAvailable)(
           measured.labelBoxes,
           `the error state lays out remedy text at ${width}px`,
         ).toBe(0);
-        expect(measured.chipWidth).toBe(136);
+        expect(measured.chipWidth).toBe(44);
         expect(measured.accessibleName).toContain("Can't connect");
       }
     });

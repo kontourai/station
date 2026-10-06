@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-shared",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Shared runtime helpers, config parsing, and compatibility re-exports for Station",
   "type": "module",
   "engines": {
@@ -40,6 +40,7 @@
     "./tool-server-credential-store": "./src/tool-server-credential-store.ts",
     "./guidance-assets": "./src/guidance-assets.ts",
     "./mcp": "./src/mcp.ts",
+    "./mcp-tool-selection": "./src/mcp-tool-selection.ts",
     "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
     "./node-runtime": "./src/node-runtime.ts",
     "./owned-dependency-installer": "./src/owned-dependency-installer.ts",
@@ -59,9 +60,12 @@
     "./source-watch": "./src/source-watch.ts",
     "./conversation-message": "./src/conversation-message.ts",
     "./runtime-event-projection": "./src/runtime-event-projection.ts",
+    "./extension-transcript-markers": "./src/extension-transcript-markers.ts",
+    "./request-settlement": "./src/request-settlement.ts",
     "./usage-fold": "./src/usage-fold.ts",
     "./usage-measurement": "./src/usage-measurement.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
+    "./thread-usage-tree": "./src/thread-usage-tree.ts",
     "./turn-provenance-fold": "./src/turn-provenance-fold.ts",
     "./lifecycle-events": "./src/lifecycle-events.ts",
     "./process-identity": "./src/process-identity.mjs",
@@ -74,6 +78,7 @@
     "./instance-registry": "./src/instance-registry.ts",
     "./notification-priority": "./src/notification-priority.ts",
     "./notification-envelope": "./src/notification-envelope.ts",
+    "./client-protocol": "./src/client-protocol.ts",
     "./native-shell-origin": "./src/native-shell-origin.ts",
     "./answer-share-projection": "./src/answer-share-projection.ts",
     "./thread-projection": "./src/thread-projection.ts",
@@ -85,6 +90,9 @@
     "./setup-import-bounds": "./src/setup-import-bounds.ts",
     "./random-id": "./src/random-id.ts",
     "./terminal-capability": "./src/terminal-capability.ts",
+    "./skill-experience-author": "./src/skill-experience-author.ts",
+    "./skill-experience-values": "./src/skill-experience-values.ts",
+    "./skill-experience-reader": "./src/skill-experience-reader.ts",
     "./agent-plugin-manifest": "./src/agent-plugin-manifest.ts",
     "./plugin-tree-digest": "./src/plugin-tree-digest.ts",
     "./plugin-scaffold": "./src/plugin-scaffold.ts",
@@ -96,15 +104,18 @@
     "./portable-server-targets": "./src/portable-server-targets.mjs",
     "./release-manifest": "./src/release-manifest.mjs",
     "./prebuilt-archive": "./src/prebuilt-archive.ts",
-    "./service-launcher-protocol": "./src/service-launcher-protocol.ts"
+    "./service-launcher-protocol": "./src/service-launcher-protocol.ts",
+    "./harness-questions": "./src/harness-questions.ts",
+    "./skill-experience-workflow": "./src/skill-experience-workflow.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.7.0",
+    "@kontourai/station-contracts": "^0.8.0",
     "@kontourai/thread": "0.5.0",
     "@modelcontextprotocol/client": "^2.0.0",
+    "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
     "jose": "6.2.12"
   }

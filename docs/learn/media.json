@@ -10,183 +10,40 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
-      "sources": [
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
-        },
-        {
-          "path": "src-ui/src/views/ProjectPage.css",
-          "digest": "804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3"
-        },
-        {
-          "path": "src-ui/src/views/ProjectPage.tsx",
-          "digest": "a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "tests/helpers/live-station-task.ts",
-          "digest": "f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f"
-        }
-      ],
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
         "docs/user/getting-started.md"
-      ],
-      "reviewNotes": [
-        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Viewed the capture: Project page with tasks and knowledge; no tool-call row or approval card is shown, so the changed selectors do not appear in it.",
-        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged."
       ]
     },
     {
       "path": "docs/learn/media/shared-task-document.png",
       "kind": "image",
-      "digest": "7f6b0ad776d4c9488f991df92236cb2e8b209e3dc3b58d3335fc434e158baadc",
+      "digest": "8b69b76c448a670304f1be06e452e3ef23b4a88f096924f060dde11fbb4ac393",
       "alt": "A Task with its shared document, live room and saved revision history.",
       "caption": "A saved Task document and its room history.",
       "scenario": "Save a shared revision",
-      "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
-      "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
-      "sources": [
-        {
-          "path": "src-server/services/orchestration/project-task-room-runtime.ts",
-          "digest": "0f1ead7c25dfa3a8217f9b31102762ac1e4ce5e8eaf7f7cdd5017a827c4d7cd5"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
-        },
-        {
-          "path": "src-ui/src/views/TaskWorkspaceView.css",
-          "digest": "840e1c5e9fe66275729aa508628e29deeeaf42ab63af5789052038d159c46b59"
-        },
-        {
-          "path": "src-ui/src/views/TaskWorkspaceView.tsx",
-          "digest": "c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
-          "digest": "37939136798ca53c7328477bcb6b1e3a7fb8550c79effd535a8cec5cb5650152"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx",
-          "digest": "dc406fe2f30112e8baf9399d957551aefe38128232681c971e79fd8f4f581ced"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/TaskRoomEditorPane.tsx",
-          "digest": "aa5a44f48f228e5de3b446ba60f9c5261587718c9d0863179aacb5e4c2ce5e0a"
-        }
-      ],
+      "evidence": "Actual isolated production Station at 1440x1400. Created Project and Task through UI, saved a multi-paragraph shared document, sent a human room message and reopened the Task. Document and room history persisted. Editor also measured 310x256 and composer 310x96 at 390px without page overflow. One human identity only; no external Agent/provider, public publication, native device or full #2844 closure proof.",
+      "capturedRevision": "fbb464a6f50ad701f4c11b95cd8badaf73d3b391",
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
         "docs/reference/project-task-room-collaboration-acceptance.md"
-      ],
-      "reviewNotes": [
-        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Task workspace document and conversation panes; no tool-call row or inline approval card appears.",
-        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged."
       ]
     },
     {
       "path": "docs/learn/media/connections-models.png",
       "kind": "image",
-      "digest": "708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9",
+      "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c",
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
       "scenario": "Connections \u2192 Models",
-      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
-      "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
-      "sources": [
-        {
-          "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac"
-        },
-        {
-          "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
-        },
-        {
-          "path": "src-ui/src/views/AgentConnectionView.tsx",
-          "digest": "6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61"
-        },
-        {
-          "path": "src-ui/src/views/ConnectionsSectionFrame.tsx",
-          "digest": "78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c"
-        },
-        {
-          "path": "src-ui/src/views/ProviderSettingsView.tsx",
-          "digest": "e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
-          "digest": "bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6"
-        },
-        {
-          "path": "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
-          "digest": "5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208"
-        },
-        {
-          "path": "tests/connections-crud.spec.ts",
-          "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
-        }
-      ],
+      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later.",
+      "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
         "docs/guides/connections.md",
         "docs/learn/walkthroughs.md",
         "docs/reference/agent-smoke-confidence.md"
-      ],
-      "reviewNotes": [
-        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Connections > Models; no tool-call row or inline approval card appears.",
-        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged."
       ]
     },
     {
@@ -198,63 +55,10 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
-      "sources": [
-        {
-          "path": "src-server/routes/orchestration/attention.ts",
-          "digest": "13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07"
-        },
-        {
-          "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
-        },
-        {
-          "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
-          "digest": "a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da"
-        },
-        {
-          "path": "src-ui/src/components/attention/RequestInspectionDialog.tsx",
-          "digest": "22e170f6a032aec9ef353593a9b09207b2fb51d63d29b3b0a394494aa3d79acc"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
-        },
-        {
-          "path": "src-ui/src/pages/NotificationsPage.css",
-          "digest": "cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5"
-        },
-        {
-          "path": "src-ui/src/pages/NotificationsPage.tsx",
-          "digest": "cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "tests/helpers/exact-request-backend.ts",
-          "digest": "ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff"
-        }
-      ],
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
         "docs/user/getting-started.md"
-      ],
-      "reviewNotes": [
-        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Notifications Inspect request dialog (Deny / Approve once). That dialog is not ToolCallDisplay and uses none of the changed selectors.",
-        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged."
       ]
     },
     {
@@ -266,62 +70,9 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
-      "sources": [
-        {
-          "path": "src-server/routes/orchestration/attention.ts",
-          "digest": "13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07"
-        },
-        {
-          "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76"
-        },
-        {
-          "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
-          "digest": "a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da"
-        },
-        {
-          "path": "src-ui/src/components/attention/RequestInspectionDialog.tsx",
-          "digest": "22e170f6a032aec9ef353593a9b09207b2fb51d63d29b3b0a394494aa3d79acc"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
-        },
-        {
-          "path": "src-ui/src/pages/NotificationsPage.css",
-          "digest": "cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5"
-        },
-        {
-          "path": "src-ui/src/pages/NotificationsPage.tsx",
-          "digest": "cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "tests/helpers/exact-request-backend.ts",
-          "digest": "ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff"
-        }
-      ],
       "documents": [
         "docs/user/getting-started.md",
         "docs/guides/starter-work.md"
-      ],
-      "reviewNotes": [
-        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Sampled frames every 3s with ffmpeg: Notifications list and Inspect request dialog only; no ToolCallDisplay row or .tool-call__approve-btn appears.",
-        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged."
       ]
     },
     {
@@ -331,235 +82,38 @@
       "alt": "Browse the example model and engine settings.",
       "caption": "Browse Models and Engines without testing or invoking a provider.",
       "scenario": "Connections \u2192 Models and Engines",
-      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained.",
+      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079",
-      "sources": [
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
-        },
-        {
-          "path": "src-ui/src/views/AgentConnectionView.tsx",
-          "digest": "6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61"
-        },
-        {
-          "path": "src-ui/src/views/ConnectionsSectionFrame.tsx",
-          "digest": "78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c"
-        },
-        {
-          "path": "src-ui/src/views/ProviderSettingsView.tsx",
-          "digest": "e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
-          "digest": "bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6"
-        },
-        {
-          "path": "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
-          "digest": "5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208"
-        },
-        {
-          "path": "tests/connections-crud.spec.ts",
-          "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
-        }
-      ],
       "documents": [
         "docs/guides/connections.md"
-      ],
-      "reviewNotes": [
-        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Sampled frames every 3s with ffmpeg: Connections Models/Engines pages only; no tool-call row or approval card appears.",
-        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged."
       ]
     },
     {
       "path": "docs/learn/media/repository-knowledge.png",
       "kind": "image",
-      "digest": "8e627f67945d05387f19448dabeb593c6e547d7527ade97c9ff6aa618a422b21",
-      "alt": "Knowledge Library shows 1149 repository records, 2089 links and the selected KnowledgeStoreProvider canonical record.",
+      "digest": "ff36a01d202fd05e8face22117d8c73f9051f52ebaaa965c910a8164d235e8a2",
+      "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail.",
       "scenario": "Knowledge Library \u2192 selected repository record",
-      "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
-      "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
-      "sources": [
-        {
-          "path": "examples/knowledge-library/layout.json",
-          "digest": "9fd8a841ae7073614bee6c644c21e986ab63dd70cf355328a4703e6eb67884fa"
-        },
-        {
-          "path": "examples/knowledge-library/plugin.json",
-          "digest": "56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318"
-        },
-        {
-          "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
-        },
-        {
-          "path": "examples/knowledge-library/src/RootPicker.tsx",
-          "digest": "f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa"
-        },
-        {
-          "path": "examples/knowledge-library/src/index.tsx",
-          "digest": "0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55"
-        },
-        {
-          "path": "examples/knowledge-library/src/knowledge-library.css",
-          "digest": "1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7"
-        },
-        {
-          "path": "packages/sdk/src/client/knowledge.ts",
-          "digest": "3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743"
-        },
-        {
-          "path": "packages/sdk/src/components/KnowledgeRecall.css",
-          "digest": "c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474"
-        },
-        {
-          "path": "packages/sdk/src/components/KnowledgeRecall.tsx",
-          "digest": "d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12"
-        },
-        {
-          "path": "packages/sdk/src/hooks/knowledge.ts",
-          "digest": "b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53"
-        },
-        {
-          "path": "packages/sdk/src/query-domains/knowledgeStores.ts",
-          "digest": "52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6"
-        },
-        {
-          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
-          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        }
-      ],
+      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 1440\u00d71000 with no horizontal overflow (document width 1440). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval.",
+      "capturedRevision": "171fcbe0cdcb2a4266aa71ae737baf757b4436dd",
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
-      ],
-      "reviewNotes": [
-        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: Knowledge Library; no tool-call row or approval card appears.",
-        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "Rechecked the repository-knowledge capture: the only change in its source knowledge.ts is the body-read deadline guard in the unwrap, which alters no screen state shown."
       ]
     },
     {
       "path": "docs/learn/media/repository-knowledge-narrow.png",
       "kind": "image",
-      "digest": "d3917f3c5e3994bb73d63decf2e7ff0b1913be20e46933f545449d739f55f1c4",
-      "alt": "Knowledge Library shows 1149 repository records, 2089 links and the selected KnowledgeStoreProvider canonical record.",
+      "digest": "ee41b771796dce8d021bab23f63db99bd9e5ad283ebf37e7c35699dfc78b46c2",
+      "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record, its title wrapped at the word boundary.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail at a narrow browser width.",
       "scenario": "Knowledge Library \u2192 narrow layout",
-      "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
-      "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
-      "sources": [
-        {
-          "path": "examples/knowledge-library/layout.json",
-          "digest": "9fd8a841ae7073614bee6c644c21e986ab63dd70cf355328a4703e6eb67884fa"
-        },
-        {
-          "path": "examples/knowledge-library/plugin.json",
-          "digest": "56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318"
-        },
-        {
-          "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
-        },
-        {
-          "path": "examples/knowledge-library/src/RootPicker.tsx",
-          "digest": "f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa"
-        },
-        {
-          "path": "examples/knowledge-library/src/index.tsx",
-          "digest": "0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55"
-        },
-        {
-          "path": "examples/knowledge-library/src/knowledge-library.css",
-          "digest": "1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7"
-        },
-        {
-          "path": "packages/sdk/src/client/knowledge.ts",
-          "digest": "3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743"
-        },
-        {
-          "path": "packages/sdk/src/components/KnowledgeRecall.css",
-          "digest": "c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474"
-        },
-        {
-          "path": "packages/sdk/src/components/KnowledgeRecall.tsx",
-          "digest": "d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12"
-        },
-        {
-          "path": "packages/sdk/src/hooks/knowledge.ts",
-          "digest": "b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53"
-        },
-        {
-          "path": "packages/sdk/src/query-domains/knowledgeStores.ts",
-          "digest": "52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6"
-        },
-        {
-          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
-          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        }
-      ],
+      "evidence": "Actual installed Knowledge Library example plugin on an isolated Station built from 4e900230b (this change's branch): own home, instance rem-capture-kl, ports 43621/43631, the same home and imported project root as the 171fcbe0c capture (1656 canonical records/3278 links imported through the public SDK from that revision's atlas, module map and review ledger, input digest 1024718b7c30). The plugin bundle takes the SDK from the host, so the record heading is this revision's KnowledgeRecall. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider, measured at 390\u00d7844 with no horizontal overflow (document width 390); the record heading wraps as KnowledgeStore / Provider. Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval.",
+      "capturedRevision": "4e900230beb9023bec9a2a8e21cc82327d7139e2",
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
-      ],
-      "reviewNotes": [
-        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn colours/states and approve-error/status containment in src-ui/src/index.css. Viewed the capture: narrow Knowledge Library; no tool-call row or approval card appears.",
-        "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
-        "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
-        "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "Rechecked the repository-knowledge capture: the only change in its source knowledge.ts is the body-read deadline guard in the unwrap, which alters no screen state shown."
       ]
     }
   ]

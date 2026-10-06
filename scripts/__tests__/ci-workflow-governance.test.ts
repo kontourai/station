@@ -11,6 +11,7 @@ import {
   FAST_CHECKS_LEGACY_DETECT_RUN,
   FAST_CHECKS_LEGACY_OUTPUT,
   FAST_CHECKS_LEGACY_STEP_IF,
+  FAST_CHECKS_MATRIX,
   FAST_CHECKS_PART_RESULTS_RUN,
   FAST_CHECKS_PLAN_RUN,
   FAST_CHECKS_PLANNED_STEP_IF,
@@ -46,6 +47,8 @@ jobs:
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     outputs:
       legacy: ${FAST_CHECKS_LEGACY_OUTPUT}
+      shards: \${{ steps.plan.outputs.shards }}
+      shard-count: \${{ steps.plan.outputs.shard-count }}
     steps:
       - name: Detect a candidate without the sharded lane
         id: mode
@@ -55,6 +58,7 @@ jobs:
         if: ${FAST_CHECKS_LEGACY_STEP_IF}
         run: npm run ci:fast
       - name: Plan the affected-test selection
+        id: plan
         if: ${FAST_CHECKS_PLANNED_STEP_IF}
         run: '${FAST_CHECKS_PLAN_RUN}'
       - name: Upload fast-checks plan
@@ -66,7 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: ${FAST_CHECKS_MATRIX}
     steps:
       - name: Resolve fast-checks shard slice
         run: '${FAST_CHECKS_SLICE_RUN}'
@@ -311,7 +315,7 @@ describe('primary CI workflow governance', () => {
     );
   });
 
-  test('keeps Secret Scan on candidate pull requests to main', () => {
+  test('keeps PR: Secret scan on candidate pull requests to main', () => {
     const secretScan = load(
       readFileSync(
         new URL('../../.github/workflows/secret-scan.yml', import.meta.url),
@@ -720,27 +724,27 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
     ],
     [
       'a dropped shard',
-      'shard: [1, 2, 3, 4]',
+      `shard: ${FAST_CHECKS_MATRIX}`,
       'shard: [1, 2, 3]',
-      'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
+      'fast-checks-shard must run the planned matrix after the plan without swallowing failures.',
     ],
     [
       'fail-fast shards',
       'fail-fast: false',
       'fail-fast: true',
-      'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
+      'fast-checks-shard must run the planned matrix after the plan without swallowing failures.',
     ],
     [
       'a shard admitted without a successful plan',
       `    if: ${FAST_CHECKS_SHARD_IF}\n`,
       '    if: always()\n',
-      'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
+      'fast-checks-shard must run the planned matrix after the plan without swallowing failures.',
     ],
     [
       'a swallowed receipt upload',
       '      - name: Upload fast-checks shard receipt\n',
       '      - name: Upload fast-checks shard receipt\n        continue-on-error: true\n',
-      'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
+      'fast-checks-shard must run the planned matrix after the plan without swallowing failures.',
     ],
     [
       'a receipt uploaded only on success',

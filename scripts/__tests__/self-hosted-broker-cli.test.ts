@@ -43,6 +43,56 @@ test.runIf(process.platform === 'win32')(
 );
 describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
   const makeTempDir = trackTempDirs();
+  test('serve refuses an invalid private TURN issuer before opening a listener', () => {
+    const root = makeTempDir('station-broker-ice-cli-');
+    const configPath = join(root, 'broker.json');
+    const issuerPath = join(root, 'issuer.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 'station-self-hosted-broker/v1',
+        databasePath: join(root, 'broker.sqlite'),
+        credentialsPath: join(root, 'credentials.json'),
+        port: 0,
+        provision: [],
+      }),
+      { mode: 0o600 },
+    );
+    writeFileSync(
+      issuerPath,
+      JSON.stringify({
+        version: 'station-broker-cloudflare-turn/v1',
+        keyId: 'example-key',
+        apiToken: 'X'.repeat(32),
+        ledgerPath: join(root, 'ice.sqlite'),
+        policy: {
+          ttlSeconds: 600,
+          maxAttemptsPerDay: 101,
+          maxAttemptsPerSubject: 4,
+          maxConcurrent: 4,
+        },
+      }),
+      { mode: 0o600 },
+    );
+    try {
+      expect(() =>
+        execFileSync(
+          resolve('node_modules/.bin/tsx'),
+          ['scripts/self-hosted-broker.ts', 'serve', configPath],
+          {
+            cwd: resolve(import.meta.dirname, '../..'),
+            env: { ...process.env, STATION_BROKER_ICE_CONFIG_FILE: issuerPath },
+            windowsHide: true,
+            timeout: 10_000,
+            maxBuffer: 64 * 1024,
+            stdio: 'pipe',
+          },
+        ),
+      ).toThrow('self_hosted_broker_refused');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   test('issues a private one-time invitation and lists/revokes one client grant', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-broker-invite-cli-'));
     const configPath = join(root, 'config.json');

@@ -1,0 +1,7 @@
+{
+  "revision": "c525c30acd15673439ffd4c4218c22b0e77c5d3b",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"docs/glossary.md gained the Activity and Run (delegated run) entries in this branch; this document's vocabulary pointers remain accurate and do not restate either entry.","inputs":["CONTEXT-MAP.md"]}
+  ]
+}

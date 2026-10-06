@@ -1,0 +1,7 @@
+{
+  "revision": "26b51492632d81e2d767e2f4729d214b514403ac",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Reviewed builtin integration update callback overlay against plugin lifecycle, MCP projection and read-only package contracts. No plugin manifest, grants, activation, provider or tenant authority changed; only builtin probe comparisons now receive the same effective launch identity as readers. Focused custody, identity and MCP service suites pass; plugin execution not newly verified.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

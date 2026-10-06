@@ -1,0 +1,79 @@
+{
+  "revision": "8d69bac357383f01bb5af80dbbbea853ecf538d2",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"#2961 bounded changed-source review: Read the single-owner VM and image-transfer recipe against the service.ts claim delta. No cloud provisioning or container boot path changed; no GCP run.","inputs":["packages/cli/src/commands/service.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"#2961 bounded changed-source review: Read single-home Compose/Caddy and cleanup claims against service install refusal. Network, volumes and synthetic upstream recipe unchanged; no deployment run.","inputs":["packages/cli/src/commands/service.ts"]},
+
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"#2961 bounded changed-source review: Read the decision and #2957 historical addendum against launch_owner, owner_after_launch_claim, guarded bridge publish/release and teardown. Preparation retains a safety read, status refresh a display read. Rust real-bridge losing-launch and real-child teardown tests passed; all four claim-path faults caught. Packaged qualification remains separate.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","docs/design/instance-registry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"#2961 bounded changed-source review: Read D4 and NOT_VERIFIED notes against the bounded claim-path slice. Atomic owner mapping is implemented in source; first-run fetching, bundle removal and launcher ranges are outside this lane. Installed services and Desktop sidecars are fenced; bare container service run remains explicitly unfenced.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","docs/adr/0015-restore-desktop-owned-command-station-sidecar.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2961 bounded changed-source review: Read DesktopStartupReadiness identity/recovery and native command composition claims against the #2961 lib.rs delta. Atomic claim selects ownership before the existing ticket/recovery paths; service restart and teardown remain ownership gated. Unrelated relay, credential and application command registration is unchanged by this slice.","inputs":["packages/cli/src/commands/service.ts","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#2961 bounded changed-source review: Read evidence-owner and independent-review distinctions against service.ts claim/refusal delta. No receipt, gate, Flow binding or review authority changed; runtime proof is not inferred.","inputs":["packages/cli/src/commands/service.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#2961 bounded changed-source review: Read operation-owner table, desktop feed and verification distinctions against service claim changes. No notification-feed owner or operational data contract changed.","inputs":["packages/cli/src/commands/service.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"#2961 bounded changed-source review: Read native HTTP bearer custody, Device binding and private sidecar claims against lib.rs ownership-only delta. Those broker/application mechanisms and IPC handlers are unchanged; the local host registry is a different sidecar.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/instance-registry.md","note":"#2961 bounded changed-source review: Read complete registry contract against claimHostOwner, service install and liveness, lifecycle protected types, bridge owner-checked operations and Rust launch/restart/teardown. Five owner suites passed 248 tests; six-process cross-type race, SIGKILL reclaim and all four injected defects were executed. Added service-liveness and real bridge tests as source owners. Bare service run and CLI shared-home escapes remain limits.","inputs":["docs/design/instance-registry.md","packages/cli/src/commands/service.ts","packages/shared/src/__tests__/instance-registry-claim.test.ts","packages/shared/src/__tests__/instance-registry.test.ts","packages/shared/src/instance-registry.ts","src-desktop/src/lib.rs","src-server/tools/instance-registry-bridge.ts","packages/cli/src/commands/service-liveness.ts","packages/cli/src/commands/service-run.ts","src-server/tools/__tests__/instance-registry-bridge.test.ts"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"#2961 bounded changed-source review: Read historical blocker/current-owner note against lib.rs desktop-only claim delta. Mobile broker registration, keyring selection, iOS accessibility and Android DNS are unchanged; no physical-device qualification.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"#2961 bounded changed-source review: Read readiness, service tray, native subscriptions and single-instance table against desktop ownership delta. Home claim is the cross-surface guard; no capability/CSP, report, updater or mobile registration change.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"#2961 bounded changed-source review: Read native capability owner and desktop quit/feed sections against owner-gated teardown extraction. Quit still stops only an owned sidecar; notification_feed and push capabilities are unchanged. No new push or OS-alert qualification.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"#2961 bounded changed-source review: Read retained SSH launcher/replaced UI composition status against desktop local-host ownership delta. SSH launcher module and command registration are unchanged; no remote-host evidence.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/station-instance-reconciler.md","note":"#2961 bounded changed-source review: Read complete reconciliation contract against service.ts install claim changes. inspect/reconcile coordination, deadlines and status projections are unchanged; installation remains separate and now refuses live sidecars.","inputs":["packages/cli/src/commands/service.ts"]},
+
+    {"path":"docs/design/station-topology.md","note":"#2961 bounded changed-source review: Read instance/home identity and owner pointers against home-scoped registry claim. One home is the lock scope; no environment, Device, principal, Project or route identity is merged.","inputs":["packages/shared/src/instance-registry.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"#2961 bounded changed-source review: Read Rust-entrypoint and generated Android ownership table against cfg(not(mobile)) claim changes. Android project generation, permissions and mobile IPC are unchanged; no Android build claimed.","inputs":["packages/cli/src/commands/service-run.ts","packages/cli/src/commands/service.ts","src-desktop/src/lib.rs","src-server/tools/instance-registry-bridge.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2961 bounded changed-source review: Read saved-route maintenance and native connection boundaries against desktop claim delta. Route renewal supervisor and connection/admission IPC are unchanged; host ownership is not connection trust.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2961 bounded changed-source review: Read deployment choices, container and service-adapter/dogfood sections against service claim delta. Bare container run stays supported; no OS install, dogfood or cloud deployment was executed.","inputs":["packages/cli/src/commands/service.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"#2961 bounded changed-source review: Read packaged-preview genesis/schema refusal and native home-preparation owner references against launch_owner changes. Preparation refusals still exit before supervisor startup; no bundle/resource configuration changed and no packaged preview run.","inputs":["packages/cli/src/commands/service-run.ts","packages/cli/src/commands/service.ts","src-desktop/src/lib.rs","src-server/tools/instance-registry-bridge.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"#2961 bounded changed-source review: Read full tray guide against claim-based DesktopOwner mapping, service wait/remediation, owner_owns_reapable_child teardown and unchanged tray authority. Rust tests establish process/decision behavior, not a visible tray journey; bare-container fence limit documented.","inputs":["docs/guides/desktop-tray.md","packages/cli/src/commands/service-run.ts","packages/cli/src/commands/service.ts","src-desktop/src/lib.rs","src-server/tools/instance-registry-bridge.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#2961 bounded changed-source review: Read broker-lab completion and remote supervisor cleanup requirements against local desktop claim delta. No remote launcher, relay enrollment or lab recipe changed; no lab execution claimed.","inputs":["src-desktop/src/lib.rs","src-server/services/projects/project-shared-task-service.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2961 bounded changed-source review: Read remote_push_capability owner and native release evidence limits against desktop-only lib.rs claim changes. Push enablement and store build path unchanged; no mobile/store receipt.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#2961 bounded changed-source review: Read AppImage resource-path finding and publication inventory against unchanged bridge/sidecar resource resolution. Claim operations changed, paths/bundling/signing/publish did not; platform finding is retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"#2961 bounded changed-source review: Read native proof ladder and startup/sidecar/recovery/log sections against atomic claim and real-child teardown tests. npm verify:desktop-rust passed 578 tests with four ignored cases; no Tauri window, packaged startup or physical-device proof inferred.","inputs":["packages/cli/src/commands/service.ts","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"#2961 bounded changed-source review: Read embedded-sidecar update card scope against ownership-only lib.rs delta. Existing bundled host update path unchanged; first-run fetching/bundle removal not part of this slice.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"#2961 bounded changed-source review: Read archive service install/launcher/home/port descriptions against claim/refusal changes. Generated port bands, manifests, release state and fixed launcher are unchanged; tests bind no default ports.","inputs":["packages/cli/src/commands/service-run.ts","packages/cli/src/commands/service.ts","src-desktop/src/lib.rs","src-server/tools/instance-registry-bridge.ts"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2961 bounded changed-source review: Read signed-ring and publication contract against desktop claim delta. No release verifier, manifest, resource bytes, version identity or launcher-protocol range changed; no release proof.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"#2961 bounded changed-source review: Read native ICE command registration and routing-grant renewal ownership against lib.rs claim changes. Broker, relay grant and native application command handlers are unchanged; no broker/provider journey.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#2961 bounded changed-source review: Read owner checklist and native release routing against desktop-only claim delta. Provider setup, mobile identity, signing and submission paths unchanged; no provider acceptance.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"#2961 bounded changed-source review: Read draft-copy status and app/channel identity declarations against ownership delta. No listing copy, privacy authority, native capability or store identity changed; no console verification.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/reference/api.md","note":"#2961 bounded changed-source review: Read native-related/source owner leads and public route scope against lib.rs local registry delta. No registered native API handler or public HTTP contract changed; bridge operation names are internal host IPC, not these HTTP routes.","inputs":["src-desktop/src/lib.rs","src-server/routes/schemas/schema-definitions/content.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/cli.md","note":"#2961 bounded changed-source review: Read service run/install, backend table, launcher handoff and registry authority sections against service.ts/liveness changes. Install refusal preserves origins and live generation fence; bare run/container remains supported. No command option, launcher range or service-status schema change.","inputs":["packages/cli/src/commands/service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2961 bounded changed-source review: Read bearer/native authority and internal-child credential boundaries against desktop claim delta. No authentication, grant, IPC registration or child credential/environment construction changed; home ownership grants no remote authority.","inputs":["src-desktop/src/lib.rs","src-server/services/projects/project-shared-task-service.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"#2961 bounded changed-source review: Read complete recovery guide against claim-based owner mapping and teardown. Service/unowned retry still requests recovery only, Exit signals only an owned sidecar, and ticket/readiness budgets stay unchanged; no visible packaged recovery proof.","inputs":["packages/cli/src/commands/service.ts","src-desktop/src/lib.rs"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"#2961 bounded changed-source review: Read Station patch scope/current-owner and retained upstream status against desktop-only lib.rs claim delta. Android write/delete propagation and store selection unchanged; no Android persistence proof.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"scripts/AGENTS.md","note":"#2961 bounded changed-source review: Read complete scripts scope against resource-manifest comments and Windows-safe process fixtures. Existing process-heavy classes already contain both bridge and registry suites; six bounded claimants are described. No gate weakened.","inputs":["docs/guides/testing.md","scripts/lib/owned-process.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"#2961 bounded changed-source review: Read production peer ownership, pinned build and private transport boundary against lib.rs local claim changes. Pion registration and transport owners are unchanged; no binary build or peer qualification.","inputs":["src-desktop/src/lib.rs"]}
+  ]
+}

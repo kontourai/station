@@ -320,3 +320,82 @@ describe('SessionEventReads bounded archive caller', () => {
     }
   });
 });
+
+describe('SessionEventReads session window sequence space', () => {
+  // Two threads interleaved, so a thread's own ordinal (1, 2, 3, …) and the
+  // global stream sequence (1, 3, 5, …) diverge. The window's `watermark` is
+  // the thread-filtered GLOBAL head; its events must be numbered in that same
+  // space, or a reader stitching live SSE frames (global ids) past the
+  // watermark orders the page wrongly.
+  function seedInterleaved(store: EventStore, a: string, b: string) {
+    seedRoot(store, a);
+    seedRoot(store, b);
+    const globals: number[] = [];
+    for (let index = 0; index < 6; index++) {
+      for (const threadId of [a, b]) {
+        const event =
+          index === 0
+            ? {
+                method: 'turn.started' as const,
+                turnId: `${threadId}-turn`,
+                prompt: 'go',
+              }
+            : {
+                method: 'content.text-delta' as const,
+                turnId: `${threadId}-turn`,
+                itemId: 'text',
+                delta: `${threadId}-${index} `,
+              };
+        store.appendEvent({
+          eventId: `${threadId}-${index}`,
+          provider: 'claude',
+          threadId,
+          createdAt: `2026-09-29T00:00:0${index}.000Z`,
+          ...event,
+        } as never);
+        if (threadId === a) globals.push(store.headGlobalSequence());
+      }
+    }
+    return globals;
+  }
+
+  test.each([
+    ['newest', { direction: 'newest' as const }],
+    ['oldest-first', {}],
+  ])(
+    'a no-lineage session window (%s) numbers its events in the watermark’s global space',
+    async (_label, direction) => {
+      const store = createStore();
+      const a = `window-space-a-${_label}`;
+      const b = `window-space-b-${_label}`;
+      try {
+        const globals = seedInterleaved(store, a, b);
+        const reads = readsFor(store, a);
+        const session = await reads.readSessionEventWindow(a, {
+          authority: INTERNAL_SESSION_READ_SCOPE,
+          turnLimit: 10,
+          ...direction,
+        });
+        expect(session).not.toBeNull();
+        const sequences = session!.events.map((item) => item.sequence);
+        // Per-thread ordinals would be [1..6]; these are the global ones.
+        expect(sequences).toEqual(globals);
+        expect(Math.max(...sequences)).toBe(session!.watermark);
+
+        // The conversation reader's legacy (no-lineage) branch serves the
+        // same page, so it is in the same space too.
+        const conversation = await reads.readConversationEventWindow(a, {
+          authority: INTERNAL_SESSION_READ_SCOPE,
+          turnLimit: 10,
+          ...direction,
+        });
+        expect(conversation?.events.map((item) => item.sequence)).toEqual(
+          globals,
+        );
+        expect(conversation?.watermark).toBe(session!.watermark);
+      } finally {
+        store.close();
+      }
+    },
+  );
+});

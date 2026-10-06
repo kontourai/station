@@ -1,0 +1,7 @@
+{
+  "revision": "35b5cd5a622bbad1cb25c23136e7c17b884902c1",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Bounded merge review of accessible SplitPane rows and the engine-sign-in delta: existing operator/profile management and delegated read branches retain their authority checks. Engine view and delegated sign-in UI tests pass with the new list component. Retained both source/note histories; updated only changed review bindings. No new provider approval or physical-device qualification.","inputs":["docs/guides/connections.md"]}
+  ]
+}

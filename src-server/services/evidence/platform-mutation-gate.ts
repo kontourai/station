@@ -415,7 +415,10 @@ export function wrapPlatformMutationGatedTools<T extends GatedToolShape>(
   tools: T[],
   options: { agentSlug: string; toolId: string },
 ): T[] {
-  if (options.toolId !== 'station-control') {
+  if (
+    options.toolId !== 'station-control' &&
+    options.toolId !== 'station-knowledge'
+  ) {
     return tools;
   }
 

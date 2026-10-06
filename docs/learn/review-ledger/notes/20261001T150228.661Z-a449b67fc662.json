@@ -1,0 +1,7 @@
+{
+  "revision": "33c0de450a1c232f6b2f2f02d22b0ae9cf238fb8",
+
+  "notes": [
+    {"path":"examples/custom-branding/README.md","note":"Integration source review through 33c0de450: 5a2e68619 (#3077) changes how ProjectSidebar builds its Open-chats rows (the dock inbox's items via useInboxWorkItems/openChatInboxRows, so one chat reads the same status in both inboxes) and nothing else in the file; the branding read (useBranding().appName for the browser sidebar, the installed identity under native chrome) is untouched, so the claim that the browser sidebar consumes the provider's name and native chrome keeps its own identity holds. Prose accurate. Source review is separate from executed test evidence.","inputs":["examples/custom-branding/README.md"]}
+  ]
+}

@@ -94,6 +94,8 @@ vi.mock('../platform/useBundledServerStatus', () => ({
   useBundledServerStatus: () => ({ status: null, restart: vi.fn() }),
 }));
 vi.mock('../lib/serverHealth', () => ({
+  checkServerHealth: vi.fn(),
+  probeServerConnection: vi.fn(),
   checkServerHealthDetailed: vi.fn(),
   checkHostCompatibility: vi.fn(),
 }));
@@ -108,6 +110,15 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     await importOriginal<typeof import('@kontourai/station-connect')>();
   return {
     ...actual,
+    useConnectionStatus: () => ({
+      status: 'connected',
+      reason: null,
+      checking: false,
+      failureStreak: 0,
+      blocked: false,
+      failureWindows: [],
+      recheck: vi.fn(),
+    }),
     useConnections: () => ({
       apiBase: 'http://localhost:3242',
       activeConnection: {
@@ -426,7 +437,7 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       disclosure: 1,
     });
 
-    screen.getByRole('button', { name: 'Set up Station' }).click();
+    screen.getByRole('button', { name: 'Personalize Station' }).click();
     view.rerender(
       <OnboardingGate>
         <FirstRunHomeChapter />

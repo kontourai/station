@@ -1,0 +1,7 @@
+{
+  "revision": "f575b48480af7db79f68548006fdd1b0ff71a72a",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the combined SDK guide delta after main plugin-command merge: ready plugin command declarations, installation generation and effect admission/settlement documentation match the landed plugin inventory/client owners; the generation remains a compatibility binding, not authority. Member Task publication passages and their code are unchanged from independently approved f928 source. The integration guide remains an authenticated public-API journey, with publication and runtime evidence limits retained.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

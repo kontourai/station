@@ -1,0 +1,7 @@
+{
+  "revision": "7313e2e5010c88deda8f65df663a7b85c6f7380e",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"src-ui/src/components/Button.tsx changed on this branch only by dropping the branch's own short-lived 'icon' variant, restoring main's variant set; the Browser pane's icon controls are BrowserIconButton, a pane-owned wrapper over Button. The instruction to use Button for standard actions and keep 44px mobile targets is unaffected. No prose change.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

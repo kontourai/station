@@ -14,12 +14,16 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { Logger } from '../../utils/logger.js';
-import { BUILTIN_STATION_DOCS_TOOL_SERVER_ID } from '../bootstrap/station-control-runtime-env.js';
+import {
+  BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
+  BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
+} from '../bootstrap/station-control-runtime-env.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import type { IAgentFramework } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import type { AgentHooksDeps } from './agent-hooks.js';
 import { createAgentHooks } from './agent-hooks.js';
+import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from './station-capability-discovery.js';
 
 interface RuntimeDefaultAgentContext {
   appConfig: AppConfig;
@@ -111,6 +115,19 @@ export function createRuntimeSelfIntegration() {
   };
 }
 
+function createRuntimeKnowledgeIntegration() {
+  return {
+    knowledgeIntegrationId: BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
+    knowledgeIntegration: {
+      id: BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
+      displayName: 'Station Knowledge',
+      description: 'Read and capture Knowledge records',
+      kind: 'mcp' as const,
+      transport: 'stdio' as const,
+    },
+  };
+}
+
 /**
  * archive#1547: the built-in `station-docs` tool server.
  *
@@ -173,8 +190,11 @@ export async function materializeBuiltinIntegrations(
 ): Promise<void> {
   const { selfIntegrationId, selfIntegration } = createRuntimeSelfIntegration();
   const { docsIntegrationId, docsIntegration } = createRuntimeDocsIntegration();
+  const { knowledgeIntegrationId, knowledgeIntegration } =
+    createRuntimeKnowledgeIntegration();
   for (const [id, def] of [
     [selfIntegrationId, selfIntegration],
+    [knowledgeIntegrationId, knowledgeIntegration],
     [docsIntegrationId, docsIntegration],
   ] as const) {
     if (options.onlyIfMissing && (await configLoader.hasIntegration(id))) {
@@ -327,7 +347,10 @@ export async function bootstrapRuntimeDefaultAgent(
     name: 'default',
     instructions: () =>
       context.replaceTemplateVariables(
-        context.appConfig.systemPrompt || context.defaultSystemPrompt,
+        [
+          context.appConfig.systemPrompt || context.defaultSystemPrompt,
+          STATION_CAPABILITY_DISCOVERY_GUIDANCE,
+        ].join('\n\n'),
       ),
     model: defaultModel,
     tools: defaultTools,

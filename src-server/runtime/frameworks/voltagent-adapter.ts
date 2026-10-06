@@ -5,6 +5,7 @@
  * framework-agnostic interfaces in runtime/types.ts.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type {
   MCPConnection,
@@ -20,7 +21,7 @@ import {
   type Tool,
   ToolDeniedError,
 } from '@voltagent/core';
-import { jsonSchema } from 'ai';
+import { jsonSchema, type UIMessage } from 'ai';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { createPromptOnlyMemoryView } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { resolveMaxSteps } from '../../constants.js';
@@ -63,6 +64,8 @@ import type {
   IStreamChunk,
   IStreamResult,
   ITool,
+  ModelInputComposer,
+  ModelInputMessage,
   ToolCallContext,
   ToolCallDenial,
 } from '../types.js';
@@ -128,81 +131,14 @@ export interface CreateAgentOptions {
 // ── IAgent wrapper around VoltAgent Agent ──────────────
 
 /**
- * archive#3091/#3113: lift a VoltAgent tool failure's real outcome onto the
- * `IStreamChunk` the rest of Station's pipeline (MetadataHandler, SSE, the
- * live orchestration path) reads — for BOTH a policy denial and an ordinary
- * tool error.
+ * VoltAgent resolves ordinary thrown tool errors as tool-result output containing
+ * error details and own properties of the thrown value. Lift the
+ * failure onto the stream chunk and omit that raw output before SSE or projection.
+ * Station-composed denials retain their safe reason; other failures use fixed text.
  *
- * For an ORDINARY tool error (the tool's own `execute` throws something that
- * is not a `ToolDeniedError`), `@voltagent/core`'s internal `handleToolError`
- * catches it and RESOLVES the tool call normally with
- * `buildToolErrorResult(error, toolCallId, toolName)` as the output —
- * `{ error: true, name, message, stack, toolCallId, toolName, ...<every
- * other own-enumerable property of the thrown error> }` (verified by
- * reading the installed package's compiled source, not guessed — see the
- * tripwire test in voltagent-adapter.test.ts, which exercises this REAL
- * shape end to end through a real Agent + a real thrown error, and reddens
- * if a `@voltagent/core` upgrade changes it). That own-property copy is why
- * `onToolStart` below sets `.policyDenied` directly on the thrown
- * `ToolDeniedError` instance for the policy-denial case: it survives into
- * this exact shape, arriving here as a completely ordinary `type:
- * 'tool-result'` chunk whose `output` looks like success unless this
- * function lifts the real outcome back out.
- *
- * DISCLOSED GAP (found investigating archive#3171, not yet filed as its own
- * issue): for a GENUINE `ToolDeniedError` specifically — thrown from
- * `onToolStart` below OR from a tool's own `execute` — `handleToolError`
- * takes a DIFFERENT branch first: `if (isToolDeniedError(errorValue))
- * oc.abortController.abort(errorValue)`. Verified empirically (a real Agent,
- * a real thrown `ToolDeniedError`, consumed via `agent.streamText()`):
- * `result.fullStream` stops emitting chunks right after `'tool-call'` — no
- * `'tool-result'` chunk is ever yielded for that call — while
- * `result.finishReason` and `result.text` both REJECT with the denial's
- * message. This function's `policyDenied` branch below is therefore
- * unreached for a real, live policy denial delivered through
- * `VoltAgentWrapper.streamText()`; it only fires today for a hand-shaped
- * `'tool-result'` chunk (which is what this file's own unit tests, and
- * apparently nothing in the live request path, actually construct). Fixing
- * the propagation gap (deciding whether to prevent the abort, or synthesize
- * a `'tool-result'` chunk before it, or surface the rejection to the caller
- * some other way) is a separate, larger change than archive#3171's marker-
- * authenticity hardening and is left here as a found-but-not-fixed risk.
- *
- * Before archive#3091 nothing recognized this shape at all: MetadataHandler's
- * outcome derivation and the client's `ToolCallDisplay` both read only the
- * chunk's OWN top-level `error`/`state`, so ANY VoltAgent tool failure —
- * policy-denied or ordinary — rendered with `result` set and no `error`: a
- * false SUCCESS checkmark. archive#3091 fixed only the policy-denied case
- * (deliberately, as the smallest defensible change — generalizing to
- * ordinary failures needed its own redaction decision). This function now
- * covers both: a denial whose reason `denial-message.ts` composed carries its
- * real reason (`output.message`), and independently the `policyDenied` badge
- * marker when the policy evaluator produced it (archive#3210 separated those
- * two questions); everything else — including an ordinary failure — carries
- * only `GENERIC_TOOL_FAILURE_MESSAGE`, never
- * `output.message`, which is untrusted for that branch. `output` itself is
- * left untouched in both branches (matching the prior tested contract for
- * the policy-denial case).
- *
- * Where that distinction actually lands, stated precisely because the two
- * paths differ (archive#3210 review, corrected here):
- *
- * - On the canonical orchestration relay, `mapStationAgentStreamEvent` drops
- *   `output` whenever `error` is set, so the redacted-vs-real decision made
- *   here is the whole of what a client sees.
- * - On the `/api/agents/:slug/chat` SSE path — which is what the chat UI and
- *   every test in `chat-primary-stream.denial.test.ts` drive —
- *   `writeSSEChunk` serialises the WHOLE chunk, so the raw `output` (remote
- *   `message`, and a `stack` carrying absolute host paths) is delivered
- *   alongside the redacted `error` and rendered under "Response:" while
- *   "Error:" shows the redaction. The decision made here is therefore not the
- *   only thing that reaches the chat UI on that path, and saying so would be
- *   a claim this code does not support.
- *
- * That leak predates archive#3210 and is neither widened nor narrowed by it;
- * it is filed as **archive#3263**, whose fix is to project `output` here the
- * way the Strands adapter already constructs a fresh chunk, with a test that
- * asserts the whole stringified frame rather than a `toMatchObject` subset.
+ * Genuine SDK denials abort before yielding a result. appendObservedToolDenials
+ * handles that separate path (archive#3179). The installed-package tripwire and
+ * chat-primary-stream.denial tests cover the SDK shape and whole outward frame.
  */
 export function normalizeVoltAgentToolErrors(
   source: AsyncIterable<IStreamChunk>,
@@ -246,14 +182,15 @@ export function normalizeVoltAgentToolErrors(
         // badged and still redacted — fail-closed on authorship.
         const badge =
           output.policyDenied === true ? { policyDenied: true } : {};
+        const { output: _rawOutput, ...outward } = chunk;
         if (
           output.stationComposedReason === true &&
           typeof output.message === 'string'
         ) {
-          yield { ...chunk, error: output.message, ...badge };
+          yield { ...outward, error: output.message, ...badge };
           continue;
         }
-        yield { ...chunk, error: GENERIC_TOOL_FAILURE_MESSAGE, ...badge };
+        yield { ...outward, error: GENERIC_TOOL_FAILURE_MESSAGE, ...badge };
         continue;
       }
       yield chunk;
@@ -455,6 +392,98 @@ async function* bindVoltAgentToolPurposes(
   }
 }
 
+/**
+ * #3112: VoltAgent's model-only seam for one turn's context. `prepareMessages`
+ * appends the authored input after memory history as the newest message(s)
+ * — a string as one user text message, an array as its own messages, ids
+ * kept — and passes the result here before the model call. Only that tail
+ * is composed; the copy VoltAgent saved to memory stays the authored turn.
+ *
+ * The tail is matched exactly: the string's one user text part, or every
+ * input message by its (required) id and role. Anything else fails the turn
+ * rather than sending it to the model without its context.
+ */
+export function composeInputAtModelSeam(
+  input: string | ModelInputMessage[],
+  compose: ModelInputComposer,
+): (args: { messages: UIMessage[] }) => Promise<{ messages: UIMessage[] }> {
+  const unexpected = () =>
+    new Error('The prepared model input does not end with the authored turn.');
+  return async ({ messages }) => {
+    if (typeof input === 'string') {
+      const last = messages.at(-1);
+      const part = last?.parts[0];
+      if (
+        last?.role !== 'user' ||
+        last.parts.length !== 1 ||
+        part?.type !== 'text' ||
+        part.text !== input
+      )
+        throw unexpected();
+      const composed = compose(input);
+      if (typeof composed !== 'string') throw unexpected();
+      return {
+        messages: [
+          ...messages.slice(0, -1),
+          { ...last, parts: [{ ...part, text: composed }] },
+        ],
+      };
+    }
+    const ids = input.map((message) => message.id);
+    if (
+      input.length === 0 ||
+      ids.some((id) => typeof id !== 'string' || id === '') ||
+      new Set(ids).size !== ids.length
+    )
+      throw unexpected();
+    const tail = messages.slice(-input.length);
+    if (
+      tail.length !== input.length ||
+      tail.some(
+        (message, index) =>
+          message.id !== ids[index] || message.role !== input[index]!.role,
+      )
+    )
+      throw unexpected();
+    const composed = compose(tail as ModelInputMessage[]);
+    if (!Array.isArray(composed)) throw unexpected();
+    return {
+      messages: [
+        ...messages.slice(0, -input.length),
+        // A composed context message is new; the model input still needs ids.
+        ...composed.map(
+          (message) =>
+            ({ ...message, id: message.id ?? randomUUID() }) as UIMessage,
+        ),
+      ],
+    };
+  };
+}
+
+type PrepareMessagesHook = NonNullable<AgentHooks['onPrepareMessages']>;
+
+/**
+ * #3112: VoltAgent runs one `onPrepareMessages` per call — a per-call hook
+ * replaces the caller's and the agent's own. The composition runs first, on
+ * the tail VoltAgent itself appended (the only place it can be matched
+ * exactly); the hook it would otherwise have replaced then runs on the
+ * composed messages, which is what that hook saw before #3112, when the
+ * composed input was the input.
+ */
+function chainAfterComposition(
+  composition: (args: { messages: UIMessage[] }) => Promise<{
+    messages: UIMessage[];
+  }>,
+  replaced: PrepareMessagesHook | undefined,
+): PrepareMessagesHook {
+  return async (args) => {
+    const composed = await composition(args);
+    if (!replaced) return composed;
+    const result = await replaced({ ...args, messages: composed.messages });
+    return { messages: result?.messages ?? composed.messages };
+  };
+}
+
 class VoltAgentWrapper implements IAgent {
   constructor(
     private inner: Agent,
@@ -499,10 +528,39 @@ class VoltAgentWrapper implements IAgent {
     // (which are per-AGENT and shared by concurrent turns) only through
     // this call's own operation context.
     const observedDenials: ObservedToolDenial[] = [];
-    const result = await this.inner.streamText(input, {
-      ...options,
+    const { composeModelInput, ...invokeOptions } = options ?? {};
+    // #3112: the tail is matched by id, so an authored message gets one
+    // before VoltAgent sees (and stores) it.
+    const authored: string | ModelInputMessage[] =
+      composeModelInput && Array.isArray(input)
+        ? (input as ModelInputMessage[]).map((message) =>
+            message.id ? message : { ...message, id: randomUUID() },
+          )
+        : input;
+    const result = await this.inner.streamText(authored as string, {
+      ...invokeOptions,
+      // #3112: VoltAgent persists (and titles from) the input it is handed,
+      // so it is handed the authored turn and the context joins only the
+      // messages prepared for the model.
+      ...(composeModelInput
+        ? {
+            hooks: {
+              ...invokeOptions.hooks,
+              onPrepareMessages: chainAfterComposition(
+                composeInputAtModelSeam(
+                  authored,
+                  composeModelInput as ModelInputComposer,
+                ),
+                // VoltAgent's own precedence: the caller's hook, else the
+                // agent's.
+                invokeOptions.hooks?.onPrepareMessages ??
+                  this.inner.hooks?.onPrepareMessages,
+              ),
+            },
+          }
+        : {}),
       context: contextWithToolDenialObservations(
-        options?.context,
+        invokeOptions.context,
         observedDenials,
       ),
     });

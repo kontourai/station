@@ -1215,7 +1215,7 @@ describe('EventStore', () => {
      * banner's event, a method this guard never inspects at all).
      */
     describe('legitimate re-appends against a PRE-STAGE-2 (old-format) owner never trip the guard', () => {
-      const oldFormatOwner = 'brian'; // a bare OS-alias string, not a PrincipalRef id.
+      const oldFormatOwner = 'casey'; // a bare OS-alias string, not a PrincipalRef id.
 
       test('a reconnect session.configured with no metadata.userId at all is accepted', () => {
         store.appendEvent(
@@ -4297,6 +4297,50 @@ describe('EventStore', () => {
     });
   });
 
+  test.each(['claude', 'muse', 'codex'])(
+    'turn windows preserve %s usage according to its declared measurement scope',
+    (provider) => {
+      const threadId = `usage-window-${provider}`;
+      store.appendEvent({
+        eventId: `${provider}-start`,
+        provider,
+        threadId,
+        turnId: 'turn-1',
+        method: 'turn.started',
+        prompt: 'question',
+        createdAt: '2026-08-19T04:00:00.000Z',
+      });
+      store.appendEvent({
+        eventId: `${provider}-usage-a`,
+        provider,
+        threadId,
+        turnId: 'turn-1',
+        method: 'token-usage.updated',
+        promptTokens: 5,
+        completionTokens: 7,
+        createdAt: '2026-08-19T04:00:01.000Z',
+      });
+      store.appendEvent({
+        eventId: `${provider}-usage-b`,
+        provider,
+        threadId,
+        turnId: 'turn-1',
+        method: 'token-usage.updated',
+        promptTokens: 11,
+        completionTokens: 13,
+        createdAt: '2026-08-19T04:00:02.000Z',
+      });
+      const usage = store
+        .listEventWindowByTurn(threadId, { turnLimit: 1 })
+        .events.filter((event) => event.method === 'token-usage.updated');
+      expect(usage.map((event) => event.id)).toEqual(
+        provider === 'codex'
+          ? [`${provider}-usage-b`]
+          : [`${provider}-usage-a`, `${provider}-usage-b`],
+      );
+    },
+  );
+
   /**
    * archive#3462. `snapshotEvent`'s `output` handling used a bare
    * `String(value)` coercion, so a persisted `output: null` read back as the
@@ -5460,6 +5504,68 @@ describe('EventStore', () => {
     ]);
     expect(repairQueries[0]).toContain('LIMIT ?');
     expect(repairQueries[0]).not.toContain('NOT IN');
+  });
+
+  test('backfill titles a history row with the shared derived title, not a raw prompt slice', () => {
+    store.close();
+    const databasePath = join(dir, 'title-history.sqlite');
+    const database = new DatabaseSync(databasePath);
+    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+    database
+      .prepare(
+        `INSERT INTO provider_session_state
+          (thread_id, provider, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'thread-title',
+        'claude',
+        'ready',
+        '2026-08-08T11:00:00.000Z',
+        '2026-08-08T12:00:00.000Z',
+      );
+    const insertEvent = database.prepare(
+      `INSERT INTO orchestration_events
+        (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+       VALUES (?, 'claude', 'thread-title', ?, ?, ?, ?, ?)`,
+    );
+    insertEvent.run(
+      'title-start',
+      'session.started',
+      JSON.stringify({
+        method: 'session.started',
+        metadata: { userId: 'owner-title', agentSlug: 'claude' },
+      }),
+      '2026-08-08T11:00:00.000Z',
+      1,
+      1,
+    );
+    insertEvent.run(
+      'title-turn',
+      'turn.started',
+      JSON.stringify({
+        method: 'turn.started',
+        prompt: 'Run `ls -la` for **me** and keep user_id',
+      }),
+      '2026-08-08T11:00:01.000Z',
+      2,
+      2,
+    );
+    database.close();
+
+    store = new EventStore(databasePath);
+    expect(
+      store.listConversationHistoryPage({
+        ownerUserId: 'owner-title',
+        agentSlug: 'claude',
+        limit: 1,
+      }).records,
+    ).toEqual([
+      expect.objectContaining({
+        threadId: 'thread-title',
+        title: 'Run ls -la for me and keep user_id',
+      }),
+    ]);
   });
 
   test('backfill retains ownership metadata when later configuration events carry neither field', () => {

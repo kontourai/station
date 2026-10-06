@@ -37,6 +37,26 @@ describe('ChatSettingsPanel accessibility', () => {
    * #585 / #2144 slice 6 item B: the "Smooth answer reveal" toggle became a
    * "Answer delivery" control over the two device-local delivery booleans.
    */
+  test('saves Return behavior on this device and restores it when the panel reopens', () => {
+    deviceSettingsStore.reset('chatReturnBehavior');
+    const panel = render(<ChatSettingsPanel {...props()} />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Return in chat' }), {
+      target: { value: 'newline' },
+    });
+    expect(deviceSettingsStore.get('chatReturnBehavior')).toBe('newline');
+    panel.unmount();
+    const reopened = render(<ChatSettingsPanel {...props()} />);
+    expect(
+      (
+        screen.getByRole('combobox', {
+          name: 'Return in chat',
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe('newline');
+    reopened.unmount();
+    deviceSettingsStore.reset('chatReturnBehavior');
+  });
+
   test('persists answer delivery to this device, both ways, and defaults to token', () => {
     deviceSettingsStore.reset('featureSettings');
     const rendered = render(<ChatSettingsPanel {...props()} />);
@@ -108,7 +128,7 @@ describe('ChatSettingsPanel accessibility', () => {
     const dialog = screen.getByRole('dialog', { name: 'Chat Settings' });
     expect(document.activeElement).toBe(dialog);
 
-    const first = screen.getByRole('button', { name: 'A−' });
+    const first = screen.getByRole('combobox', { name: 'Return in chat' });
     const last = screen.getByRole('button', { name: 'Done' });
     first.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
@@ -165,9 +185,9 @@ describe('ChatSettingsPanel accessibility', () => {
     ).toBeNull();
   });
 
-  // #3310: "Summarize session" demoted out of the transcript — this panel is
+  // #3310: "Summarize chat" demoted out of the transcript — this panel is
   // the entry point, present only when a conversation is active.
-  test('offers Summarize session for an active conversation and closes after triggering', () => {
+  test('offers Summarize chat for an active conversation and closes after triggering', () => {
     const panelProps = props();
     const onGenerate = vi.fn();
     render(
@@ -182,7 +202,7 @@ describe('ChatSettingsPanel accessibility', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Summarize session' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Summarize chat' }));
     expect(onGenerate).toHaveBeenCalledOnce();
     expect(panelProps.onClose).toHaveBeenCalledOnce();
   });
@@ -238,9 +258,7 @@ describe('ChatSettingsPanel accessibility', () => {
 
   test('renders no session section when no conversation is active', () => {
     render(<ChatSettingsPanel {...props()} />);
-    expect(
-      screen.queryByRole('button', { name: 'Summarize session' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Summarize chat' })).toBeNull();
   });
 
   test('keeps each full visible toggle label clickable and described', () => {

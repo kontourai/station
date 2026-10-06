@@ -44,8 +44,10 @@ uses it. Installation and rendered branding were not exercised in this audit.
 `getTheme()` returns white-label overrides for the `@kontourai/ui` brand slot and
 interaction roles. The rules come from the "White-label overrides" section of
 [`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides);
-the [validation](../../src-ui/src/lib/branding-theme.ts) applies a theme that
-passes to buttons, accents and focus rings in both modes.
+the [validation](../../src-ui/src/lib/branding-theme.ts) runs the package's own
+`validateBrandOverride` (`@kontourai/ui/contrast`) plus one stricter Station
+rule, and applies a theme that passes to buttons, accents and focus rings in
+both modes.
 
 Shape:
 
@@ -59,10 +61,10 @@ Shape:
 
 What Station accepts:
 
-| Property | Role | Check (per mode, against that mode's page and panel) |
+| Property | Role | Check (per mode, against that mode's surfaces) |
 | --- | --- | --- |
-| `--k-brand`, `--k-brand-contrast` | Identity accent and the text on a brand fill | brand ≥ 4.5:1 on page and panel; brand/contrast pair ≥ 4.5:1 (an unset half uses the shipped value) |
-| `--k-action`, `--k-action-contrast` | Primary action fill and its text | both or neither; pair ≥ 4.5:1; fill ≥ 4.5:1 on page and panel, because Station also uses it as accent text |
+| `--k-brand`, `--k-brand-contrast` | Identity accent and the text on a brand fill | brand ≥ 4.5:1 on page, panel and raised panel (the shared rule, since `@kontourai/ui` 1.18); brand/contrast pair ≥ 4.5:1 (an unset half uses the shipped value) |
+| `--k-action`, `--k-action-contrast` | Primary action fill and its text | both or neither; pair ≥ 4.5:1; fill ≥ 4.5:1 on page and panel (the shared rule asks 3:1 on the panel and does not rate the page; Station also uses the fill as accent text) |
 | `--k-focus` | Keyboard focus ring | ≥ 3:1 on page and panel |
 
 - Values must be `#rgb` or `#rrggbb`. Named colours, `rgb()`, `var()`, `url()`,
@@ -71,8 +73,21 @@ What Station accepts:
 - All or nothing: if any key, value or check fails, in either mode, none of the
   theme is applied and the default stays. Each rejection is logged in the
   browser console with a `[branding-theme]` prefix.
+- The raised-panel check on the brand is new with `@kontourai/ui` 1.18. A dark
+  brand that cleared the page and the panel but is under 4.5:1 on the dark
+  raised panel `#16202d` (for example `#9364ff` at 4.31:1 or `#007efa` at
+  4.20:1) was accepted before and is now rejected, so the whole theme falls
+  back to the defaults. The console line names the value, the surface and the
+  ratio; lighten the dark brand until it reaches 4.5:1 there.
 - Flat keys are expanded into both modes before checking, so a flat value must
-  pass in both. One value rarely does; prefer the `dark` / `light` objects.
+  pass in both. One value rarely does; prefer the `dark` / `light` objects. A
+  flat value that a mode object replaces must still be a `#rgb` or `#rrggbb`
+  colour, or the theme is rejected.
+- A mode that sets `--k-brand` but neither `--k-action` nor
+  `--k-action-contrast` uses the brand as its action too, with
+  `--k-brand-contrast` (or the default action contrast) as the text on it. So a
+  brand-only theme still colours buttons, links and focus rings, and the brand
+  must also pass the action rules.
 - A device accent chosen in **Settings → Appearance** still colours buttons and
   links on that device over the theme's action colour. Focus rings follow
   `--k-focus` when the theme (or a Dev, Beta or Nightly build) sets it, and

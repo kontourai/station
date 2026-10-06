@@ -32,6 +32,7 @@ describe('enrolment command composition', () => {
   test('points each engine at the profile home with its own config-home variable', () => {
     expect(enrolmentHomeEnv('claude', '/p')).toEqual({
       CLAUDE_CONFIG_DIR: '/p',
+      CLAUDE_SECURESTORAGE_CONFIG_DIR: '/p',
     });
     expect(enrolmentHomeEnv('codex', '/p')).toEqual({ CODEX_HOME: '/p' });
   });
@@ -42,7 +43,9 @@ describe('enrolment command composition', () => {
     for (const engine of ['claude', 'codex'] as const) {
       const composed = enrolmentCommand(engine, '/profile');
       expect(composed.command).toBe(engine);
-      expect(Object.keys(composed.env)).toHaveLength(1);
+      expect(Object.keys(composed.env)).toHaveLength(
+        engine === 'claude' ? 2 : 1,
+      );
       expect(JSON.stringify(composed.env)).not.toMatch(
         /token|key|secret|password/i,
       );

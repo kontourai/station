@@ -1,5 +1,6 @@
 import {
   type KeyboardEvent,
+  type ReactNode,
   type Ref,
   useEffect,
   useId,
@@ -10,9 +11,11 @@ import { connectionFailureCopy } from '../../core/environmentProfiles';
 import type { SavedConnection } from '../../core/types';
 import { ConnectionStatusDot } from '../ConnectionStatusDot';
 import {
+  type ConnectionManagerActiveHealth,
   type ConnectionStatus,
   connectionCardMeta,
   connectionDisplayLabel,
+  connectionNeedsAccessRequest,
   injectedConnectionDotStatus,
   injectedConnectionStateLabel,
 } from '../connection-manager-modal-utils';
@@ -20,6 +23,7 @@ import {
 interface ConnectionListPanelProps {
   connections: SavedConnection[];
   activeConnectionId?: string;
+  activeHealth?: ConnectionManagerActiveHealth;
   editingId: string | null;
   canEditSharedProfiles?: boolean;
   canRemoveSharedProfiles?: boolean;
@@ -83,6 +87,7 @@ interface ConnectionListPanelProps {
    * provider registers (part B, out of scope here).
    */
   discoveryAvailable: boolean;
+  listFooterContent?: ReactNode;
 }
 
 /**
@@ -141,6 +146,7 @@ function ConnectionRow({
   // honest home for a fact that was previously true of every row, all the
   // time, whether or not anyone was about to tap Forget.
   const [forgetArmed, setForgetArmed] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string>();
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsMenuId = useId();
@@ -214,19 +220,24 @@ function ConnectionRow({
 
   return (
     <div
-      className={`station-connect-row${connection.id === activeConnectionId ? ' station-connect-row--active' : ''}${isLocalServerDown ? ' station-connect-row--inactive' : ''}`}
+      className={`station-connect-row${connection.id === activeConnectionId ? ' station-connect-row--active' : ''}${isLocalServerDown ? ' station-connect-row--inactive' : ''}${detailsOpen ? ' station-connect-row--details' : ''}`}
     >
       {!isLocalServerDown && (
         <button
           type="button"
           className="station-connect-row__select"
           disabled={busy}
-          aria-label={`Select ${connectionDisplayLabel(connection)}`}
-          aria-pressed={connection.id === activeConnectionId}
-          onClick={() => onSelect(connection)}
+          aria-label={`View details for ${connectionDisplayLabel(connection)}`}
+          aria-expanded={detailsOpen}
+          onClick={() => setDetailsOpen((open) => !open)}
         />
       )}
-      <span className="station-connect-row__status">
+      <span
+        className="station-connect-row__status"
+        aria-hidden={
+          dotStatus === 'idle' && !isLocalServerDown ? true : undefined
+        }
+      >
         <ConnectionStatusDot status={dotStatus} size={8} />
       </span>
       <div className="station-connect-row__body">
@@ -234,7 +245,52 @@ function ConnectionRow({
           <div className="station-connect-row__name">
             {connection.name || connection.url}
           </div>
+          {!isLocalServerDown && (
+            <span className="station-connect-chip">
+              {connection.id === activeConnectionId ? 'Current · ' : ''}
+              {dotStatus === 'idle'
+                ? 'Not checked'
+                : dotStatus === 'connected'
+                  ? connection.id === activeConnectionId
+                    ? 'Connected'
+                    : 'Reachable'
+                  : dotStatus === 'error'
+                    ? "Can't connect"
+                    : 'Connecting'}
+            </span>
+          )}
         </div>
+        {detailsOpen && (
+          <div className="station-connect-row__details">
+            <button
+              type="button"
+              className="station-connect-btn station-connect-btn--primary"
+              aria-label={`Switch to ${connectionDisplayLabel(connection)}`}
+              disabled={
+                busy ||
+                connection.id === activeConnectionId ||
+                isLocalServerDown
+              }
+              onClick={() => onSelect(connection)}
+            >
+              {connection.id === activeConnectionId
+                ? 'Current Station'
+                : 'Switch to this Station'}
+            </button>
+            <button
+              type="button"
+              className="station-connect-btn station-connect-btn--secondary"
+              disabled={
+                busy ||
+                isInjected ||
+                (isSharedStationProfile && !canEditSharedProfiles)
+              }
+              onClick={() => onStartEdit(connection)}
+            >
+              Edit Station
+            </button>
+          </div>
+        )}
         {isLocalServerDown ? (
           <div role="status" className="station-connect-row__state">
             {localServerState}
@@ -435,6 +491,18 @@ function ConnectionRow({
                 >
                   Check reachability
                 </button>
+                {connection.id === activeConnectionId && !isInjected && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      closeActions();
+                      onRequestAccess(connection);
+                    }}
+                  >
+                    Reconnect
+                  </button>
+                )}
                 <button
                   type="button"
                   role="menuitem"
@@ -494,6 +562,7 @@ function ConnectionRow({
 export function ConnectionListPanel({
   connections,
   activeConnectionId,
+  activeHealth,
   editingId,
   canEditSharedProfiles,
   canRemoveSharedProfiles,
@@ -530,7 +599,22 @@ export function ConnectionListPanel({
   onViewDevices,
   onDiscover,
   discoveryAvailable,
+  listFooterContent,
 }: ConnectionListPanelProps) {
+  const selected = connections.find(
+    (connection) => connection.id === activeConnectionId,
+  );
+  const needsAccess =
+    selected &&
+    (connectionNeedsAccessRequest(selected) ||
+      (!selected.injected &&
+        activeHealth?.connectionId === selected.id &&
+        activeHealth.reason === 'authentication-failed'));
+  const showAccessRequest =
+    needsAccess &&
+    selected.id !== pendingConnectionId &&
+    !connectionCardMeta(selected, false)?.actionLabel;
+
   return (
     <>
       {editError && (
@@ -688,32 +772,34 @@ export function ConnectionListPanel({
       </div>
 
       <div className="station-connect-footer">
-        <section
-          className="station-connect-footer__group"
-          aria-label="Connect this device"
-        >
-          <h3>Connect this device</h3>
-          <p>
-            Request approval from{' '}
-            {connections.find(
-              (connection) => connection.id === activeConnectionId,
-            )?.name ?? 'the selected Station'}{' '}
-            to use it here.
-          </p>
-          <button
-            type="button"
-            onClick={() =>
-              onRequestAccess(
-                connections.find(
-                  (connection) => connection.id === activeConnectionId,
-                ),
-              )
-            }
-            className="station-connect-btn station-connect-btn--primary"
+        {showAccessRequest && (
+          <section
+            className="station-connect-footer__group"
+            aria-label="Connect this device"
           >
-            Request access
-          </button>
-        </section>
+            <h3>Connect this device</h3>
+            <p>
+              Request approval from{' '}
+              {connections.find(
+                (connection) => connection.id === activeConnectionId,
+              )?.name ?? 'the selected Station'}{' '}
+              to use it here.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                onRequestAccess(
+                  connections.find(
+                    (connection) => connection.id === activeConnectionId,
+                  ),
+                )
+              }
+              className="station-connect-btn station-connect-btn--primary"
+            >
+              Request access
+            </button>
+          </section>
+        )}
         <section
           className="station-connect-footer__group"
           aria-label="Connect to another Station"
@@ -785,6 +871,14 @@ export function ConnectionListPanel({
             </button>
           </section>
         )}
+        {listFooterContent ? (
+          <section
+            className="station-connect-footer__group"
+            aria-label="Additional connection options"
+          >
+            {listFooterContent}
+          </section>
+        ) : null}
       </div>
     </>
   );

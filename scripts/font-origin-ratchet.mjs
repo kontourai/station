@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Zero-tolerance gate for #2648 (self-hosted UI fonts). The web UI used to
 // load its faces from the Google Fonts css2 endpoint on every boot — a
 // local-first violation (typography breaks offline, every boot leaks to a
@@ -21,8 +22,8 @@
 // external-font reference when this gate was introduced — and the gate fails
 // if any of them falls out of the scanned list.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SCAN_PATHSPECS = [
@@ -71,10 +72,14 @@ export function inspectFiles(files, readFile) {
 }
 
 function main() {
-  const files = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  })
+  const files = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  )
     .trim()
     .split('\n')
     .filter(Boolean);

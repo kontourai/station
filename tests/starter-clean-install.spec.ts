@@ -65,16 +65,29 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
     await disclosure
       .getByRole('button', { name: /^(Turn it off|Keep usage telemetry off)$/ })
       .click();
-    const engineChapter = page.getByTestId('first-run-engines');
-    await expect(engineChapter).toBeVisible({ timeout: 20_000 });
-    await engineChapter.getByRole('button', { name: 'Not now' }).click();
+    // Intent-first Home (#3082): the usage decision returns to the task and
+    // defers the rest of the run as a resumable snooze, rather than walking
+    // on into the engines chapter.
+    await expect(disclosure).toHaveCount(0);
     await expect(page.getByTestId('first-run-home-card')).toBeVisible();
+    await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const config = await readData<{
+          firstRun?: { status?: string };
+        }>('/config/app');
+        return config.firstRun?.status;
+      })
+      .toBe('skipped');
 
-    await page.getByRole('button', { name: /Set up an agent/i }).click();
-    const newChat = page.getByRole('dialog', { name: 'New Chat' });
-    await expect(newChat).toBeVisible();
-    await newChat.getByRole('button', { name: 'Connect Station' }).click();
-    await expect(newChat).toHaveCount(0);
+    // Home's start composer is the one way to start a chat (#3371); the
+    // Station Agent's own Connect action on its Agent menu leads to setup.
+    const homeDraft = page.getByRole('form', { name: 'Start work' });
+    await homeDraft.getByRole('button', { name: /^Agent:/ }).click();
+    const agentMenu = page.getByRole('dialog', { name: 'Choose agent' });
+    await expect(agentMenu).toBeVisible();
+    await agentMenu.getByRole('button', { name: 'Connect Station' }).click();
+    await expect(agentMenu).toHaveCount(0);
     await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
     await page.getByRole('button', { name: 'Add model connection' }).click();
     await expect(page).toHaveURL(/\/connections\/models\/new(?:\?|$)/);
@@ -101,7 +114,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       .toBe(true);
 
     await page.goto(baseURL);
-    await page.getByRole('button', { name: 'Set up Station' }).click();
+    await page.getByRole('button', { name: 'Personalize Station' }).click();
     const resumedEngines = page.getByTestId('first-run-engines');
     await expect(resumedEngines).toBeVisible({ timeout: 20_000 });
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();
@@ -125,13 +138,9 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       '/config/app',
     );
     expect(completedConfig.telemetryEnabled).not.toBe(true);
-    await expect(
-      page.getByRole('dialog', { name: 'New Chat', exact: true }),
-    ).toBeVisible();
-    const stationAgent = page.locator(
-      '.new-chat-modal__agent[data-agent-slug="station"]',
-    );
-    await expect(stationAgent).toBeVisible({ timeout: 20_000 });
+    const newChat = page.getByRole('dialog', { name: 'New chat', exact: true });
+    await expect(newChat).toBeVisible();
+    const draft = newChat.getByRole('form', { name: 'Start work' });
     // Engine selection saves configuration before deferred activation settles.
     // Prove its authoritative readiness before exercising the first dispatch.
     await expect
@@ -151,10 +160,20 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
         { timeout: 30_000 },
       )
       .toBe(true);
+    await draft.getByRole('button', { name: /^Agent:/ }).click();
+    const chooseAgent = page.getByRole('dialog', { name: 'Choose agent' });
+    const stationAgent = chooseAgent.locator(
+      '.new-chat-modal__agent[data-agent-slug="station"]',
+    );
+    await expect(stationAgent).toBeEnabled({ timeout: 20_000 });
     await stationAgent.click();
-    const composer = page.locator('textarea[placeholder*="Type a message"]');
-    await expect(composer).toBeVisible();
-    await composer.fill(USER_MESSAGE);
+    await expect(chooseAgent).toHaveCount(0);
+    await expect(
+      draft.getByRole('button', { name: /^Agent: Station/ }),
+    ).not.toHaveAttribute('aria-label', /needs setup/);
+    await draft
+      .getByRole('textbox', { name: 'What would you like done?', exact: true })
+      .fill(USER_MESSAGE);
     // The real foreground route is the qualification boundary: a 409 here
     // means the UI must preserve the message as indeterminate rather than
     // sending it to Ollama. Assert its accepted receipt before accepting the
@@ -165,7 +184,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
         new URL(response.url()).pathname === '/api/orchestration/chat' &&
         response.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await draft.getByRole('button', { name: 'Start', exact: true }).click();
     const dispatch = await foregroundResponse;
     expect(dispatch.status()).toBe(200);
     const receipt = (await dispatch.json()) as ApiEnvelope<{
@@ -194,7 +213,14 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
     });
     await expect(starter).toHaveCount(0);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByRole('switch', { name: 'Enable developer tools' }).check();
+    // Developer tools live on Settings' Advanced page (#3143).
+    await page.getByRole('link', { name: 'Advanced', exact: true }).click();
+    const developerTools = page.getByRole('switch', {
+      name: 'Enable developer tools',
+    });
+    await expect(developerTools).not.toBeChecked();
+    await developerTools.check();
+    await expect(developerTools).toBeChecked();
     await page.getByRole('button', { name: 'Home', exact: true }).click();
     await expect(starter).toBeVisible();
     await starter.getByRole('button', { name: 'Run check' }).click();

@@ -54,6 +54,10 @@ const runMutation = vi.hoisted(() => ({
 }));
 const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => null,
+}));
+
 vi.mock('../hooks/useScheduler', () => ({
   useSchedulerJobs: () => schedulerHooks.jobs,
   useSchedulerStatus: () => schedulerHooks.status,
@@ -87,6 +91,7 @@ vi.mock('../hooks/useScheduler', () => ({
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn(), updateParams: vi.fn() }),
+  useNavigationActions: () => ({ navigate: vi.fn() }),
 }));
 
 vi.mock('../contexts/ToastContext', () => ({

@@ -1,3 +1,4 @@
+import type { ProjectTaskRoomOutputFeedback } from './project-task-room.js';
 /** Closed browser projection for the Project/Task room transport. */
 export const PROJECT_TASK_ROOM_BROWSER_LIVE_SOURCE_SCHEMA_VERSION =
   'station.live-work-session/v6' as const;
@@ -21,6 +22,7 @@ export type ProjectTaskRoomBrowserLink = {
   readonly digest: string;
 };
 export type ProjectTaskRoomBrowserBody =
+  | ProjectTaskRoomOutputFeedback
   | { readonly kind: 'human-message'; readonly text: string }
   | {
       readonly kind: 'live-work-started';
@@ -243,6 +245,32 @@ function body(value: unknown): ProjectTaskRoomBrowserBody | undefined {
   const row = value as RecordValue;
   const kind = hasOwn(row, 'kind') ? row.kind : undefined;
   if (
+    kind === 'output-feedback' &&
+    own(row, ['kind', 'target', 'review', 'text']) &&
+    own(row.target, ['outputId', 'digest', 'taskCreatedAt']) &&
+    id(row.target.outputId) &&
+    typeof row.target.digest === 'string' &&
+    /^sha256:[0-9a-f]{64}$/.test(row.target.digest) &&
+    typeof row.target.taskCreatedAt === 'string' &&
+    row.target.taskCreatedAt.length === 24 &&
+    Number.isFinite(Date.parse(row.target.taskCreatedAt)) &&
+    new Date(row.target.taskCreatedAt).toISOString() ===
+      row.target.taskCreatedAt &&
+    typeof row.review === 'string' &&
+    ['comment', 'changes-requested', 'accepted'].includes(row.review) &&
+    humanText(row.text)
+  )
+    return {
+      kind: 'output-feedback',
+      target: {
+        outputId: row.target.outputId,
+        digest: row.target.digest as `sha256:${string}`,
+        taskCreatedAt: row.target.taskCreatedAt,
+      },
+      review: row.review as 'comment' | 'changes-requested' | 'accepted',
+      text: row.text,
+    };
+  if (
     kind === 'human-message' &&
     own(row, ['kind', 'text']) &&
     humanText(row.text)
@@ -359,7 +387,8 @@ function record(value: unknown): ProjectTaskRoomBrowserRecord | undefined {
   )
     return undefined;
   const parsed = body(value.body);
-  return parsed
+  return parsed &&
+    (parsed.kind !== 'output-feedback' || value.actor.kind === 'human')
     ? {
         actor: {
           kind: value.actor.kind as 'human' | 'agent',

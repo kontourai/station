@@ -670,8 +670,10 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
     const disclosure = document.getElementById(
       button.getAttribute('aria-describedby') ?? '',
     );
-    expect(disclosure?.textContent).toContain('one minimal chat request');
-    expect(disclosure?.textContent).toContain('bill');
+    expect(disclosure?.textContent).toMatch(
+      /small test prompt|one minimal chat request/,
+    );
+    expect(disclosure?.textContent).toMatch(/charge|bill/);
   });
 
   test('Models is a control that loads the catalogue, and the rail tracks real steps', () => {

@@ -1,0 +1,33 @@
+{
+  "path": "docs/design/shell-skeletons.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Header/skeleton policy with historical port measurements; current owners linked, wrapper descriptions scoped historically, and distinct frame-null/ratchet-exception inventories corrected.",
+
+  "limits": "Current component/header/route ownership and ratchet source patterns checked. Original measurements are not remeasured; no rendered-layout, visual parity, breakpoint, focus, or accessibility certification.",
+
+  "sources": [
+    "scripts/shell-conformance-ratchet.mjs",
+
+    "src-ui/src/app-shell/page-frame-registry.ts",
+
+    "src-ui/src/components/SplitPaneLayout.tsx",
+
+    "src-ui/src/views/ConnectionsHub.tsx",
+
+    "src-ui/src/views/KnowledgeConnectionView.tsx",
+
+    "src-ui/src/views/ProjectSettingsView.tsx"
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Original port table, numbers, statuses, and evidence retained byte-identically; surrounding interpretation explicitly historical.",
+
+    "Reviewed integration deltas: Corrected evidence to actual AppViewContent tests; those tests do not prove whole-App navigation or transition-guard behavior. src-ui/src/views/ProjectSettingsView.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found."
+  ]
+}

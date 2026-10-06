@@ -1,0 +1,33 @@
+{
+  "path": ".changeset/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Checked the managed Changesets command, package discovery, retained-note validation, and ci:fast ordering.",
+
+  "limits": "This verifies contributor instructions and the local release planner; it does not publish a package.",
+
+  "sources": [
+    ".changeset/config.json",
+
+    "pnpm-workspace.yaml",
+
+    "scripts/check-changesets.mjs",
+
+    "scripts/run-ci-fast.mjs"
+  ],
+
+  "checks": [
+    "npm run changesets:check — 71 retained changesets form a valid release plan.",
+
+    "Reviewed source changes: Reviewed the hosted statics scope addition: local default still runs selector plus statics; hosted plan/shards own the selection and statics omits only that duplicated selector. Changeset validation remains in the static command list.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope.",
+
+    "Reviewed landing deltas through 111744681: Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Reviewed the run-ci-fast.mjs delta (five added static gates after gate:workflows); the changeset status check this README describes still runs in ci:fast."
+  ]
+}

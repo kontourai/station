@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 // set so these tests pin what the nav DOES with the flags it is given.
 const flagsState = vi.hoisted(() => ({ flags: new Set<string>() }));
 const regionState = vi.hoisted(() => ({
-  showSurface: vi.fn(),
+  showSurfacePage: vi.fn(),
   toggleSurface: vi.fn(),
   activityVisible: false,
   mainOccupant: null as string | null,
@@ -41,7 +41,7 @@ vi.mock('../contexts/RegionModelContext', () => ({
   }),
 }));
 vi.mock('../contexts/useShowSurface', () => ({
-  useShowSurface: () => regionState.showSurface,
+  useShowSurfacePage: () => regionState.showSurfacePage,
 }));
 
 import { DEVELOPER_TOOLS_FLAG } from '../app-shell/destination-registry';
@@ -51,7 +51,7 @@ import { ProjectSidebarNav } from '../components/project-sidebar/ProjectSidebarN
 describe('ProjectSidebarNav', () => {
   beforeEach(() => {
     flagsState.flags = new Set();
-    regionState.showSurface.mockReset();
+    regionState.showSurfacePage.mockReset();
     regionState.toggleSurface.mockReset();
     regionState.activityVisible = false;
     regionState.mainOccupant = null;
@@ -141,109 +141,87 @@ describe('ProjectSidebarNav', () => {
     expect(activity.className).not.toContain('sidebar__nav-btn--pending');
   });
 
-  // #1582 D4: Activity's row places a surface — it never navigates, and the
-  // audit found it wearing the same current-page highlight as Home while the
-  // URL was unchanged, so two rows read as "you are here" at once. Its state
-  // is `aria-pressed` plus a distinct `--shown` mark, and `aria-current`
-  // stays the exclusive property of a routed row.
-  test('marks Activity as a pressed toggle from visible region occupancy, never as the current page', () => {
-    regionState.activityVisible = true;
-    render(
-      <ProjectSidebarNav
-        collapsed={false}
-        isMobile={false}
-        navigate={vi.fn()}
-        activePath="/registry"
-      />,
-    );
-
-    const activity = screen.getByRole('button', { name: 'Activity' });
-    expect(activity.getAttribute('aria-pressed')).toBe('true');
-    expect(activity.className).toContain('sidebar__nav-btn--shown');
-    expect(activity.className).not.toContain('sidebar__nav-btn--active');
-    expect(activity.getAttribute('aria-current')).toBeNull();
-    expect(
-      screen
-        .getAllByRole('button')
-        .filter((button) => button.getAttribute('aria-current') === 'page'),
-    ).toHaveLength(0);
-  });
-
-  // A control that reports `aria-pressed` has to un-press, or the state it
-  // announces is a label nothing acts on. Hiding goes through the model's own
-  // toggle (#1523), so the sidebar keeps no copy of the placement rules.
-  test('pressing a shown region-surface row hides it through the model toggle', () => {
-    regionState.activityVisible = true;
-    render(
-      <ProjectSidebarNav
-        collapsed={false}
-        isMobile={false}
-        navigate={vi.fn()}
-        activePath="/registry"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-    expect(regionState.toggleSurface).toHaveBeenCalledWith('activity');
-    expect(regionState.showSurface).not.toHaveBeenCalled();
-  });
-
-  test('pressing a hidden region-surface row reveals it through the show seam', () => {
-    // Revealing keeps `useShowSurface`, which routes to the canonical deep
-    // link when no region host is mounted — the model's toggle has no such
-    // fallback.
-    regionState.activityVisible = false;
-    render(
-      <ProjectSidebarNav
-        collapsed={false}
-        isMobile={false}
-        navigate={vi.fn()}
-        activePath="/registry"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-    expect(regionState.showSurface).toHaveBeenCalledWith('activity');
-    expect(regionState.toggleSurface).not.toHaveBeenCalled();
-  });
-
-  test('reports Activity as not pressed while its region is hidden', () => {
-    regionState.activityVisible = false;
-    render(
-      <ProjectSidebarNav
-        collapsed={false}
-        isMobile={false}
-        navigate={vi.fn()}
-        activePath="/registry"
-      />,
-    );
-
-    const activity = screen.getByRole('button', { name: 'Activity' });
-    expect(activity.getAttribute('aria-pressed')).toBe('false');
-    expect(activity.className).not.toContain('sidebar__nav-btn--shown');
-  });
-
-  // #928 lets Activity take the primary area. A surface showing in `main` is
-  // no less shown than one in a side region, and the row must say so — the
-  // pre-#1582 read only looked at the dock regions.
-  test('marks Activity as pressed when it occupies main', () => {
+  // Activity's row is a PLACE, like Home: it opens Activity as the page, so
+  // it is current exactly when `/` shows Activity in `main`. (#1582 D4 had
+  // made it a pressed toggle while it only docked Activity beside the page.)
+  test('is the current page when Activity occupies main at /', () => {
     regionState.mainOccupant = 'activity';
-    regionState.activityVisible = false;
     render(
       <ProjectSidebarNav
         collapsed={false}
         isMobile={false}
         navigate={vi.fn()}
-        activePath="/registry"
+        activePath="/"
       />,
     );
 
-    expect(
-      screen
-        .getByRole('button', { name: 'Activity' })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
+    const activity = screen.getByRole('button', { name: 'Activity' });
+    expect(activity.getAttribute('aria-current')).toBe('page');
+    expect(activity.className).toContain('sidebar__nav-btn--active');
+    expect(activity.hasAttribute('aria-pressed')).toBe(false);
   });
+
+  // `main` renders only at `/`: on another route the routed view is the
+  // page, even with Activity still placed there for the next return.
+  test('is not current on another route, even with Activity in main', () => {
+    regionState.mainOccupant = 'activity';
+    render(
+      <ProjectSidebarNav
+        collapsed={false}
+        isMobile={false}
+        navigate={vi.fn()}
+        activePath="/settings"
+      />,
+    );
+
+    const activity = screen.getByRole('button', { name: 'Activity' });
+    expect(activity.getAttribute('aria-current')).toBeNull();
+    expect(activity.className).not.toContain('sidebar__nav-btn--active');
+  });
+
+  // Docked beside Home, Activity is a pane, not the page: Home stays current
+  // (`ProjectSidebar`), and this row claims nothing.
+  test('is not current while Activity is only docked', () => {
+    regionState.activityVisible = true;
+    render(
+      <ProjectSidebarNav
+        collapsed={false}
+        isMobile={false}
+        navigate={vi.fn()}
+        activePath="/"
+      />,
+    );
+
+    const activity = screen.getByRole('button', { name: 'Activity' });
+    expect(activity.getAttribute('aria-current')).toBeNull();
+    expect(activity.hasAttribute('aria-pressed')).toBe(false);
+  });
+
+  // The press is the page verb in every state — hidden, docked, or already
+  // the page — and never the dock toggle (that stays ⌘⇧A's).
+  test.each([
+    ['hidden', false, null],
+    ['docked', true, null],
+    ['the page', false, 'activity'],
+  ] as const)(
+    'pressing the row while Activity is %s opens its page',
+    (_label, docked, main) => {
+      regionState.activityVisible = docked;
+      regionState.mainOccupant = main;
+      render(
+        <ProjectSidebarNav
+          collapsed={false}
+          isMobile={false}
+          navigate={vi.fn()}
+          activePath="/registry"
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+      expect(regionState.showSurfacePage).toHaveBeenCalledWith('activity');
+      expect(regionState.toggleSurface).not.toHaveBeenCalled();
+    },
+  );
 
   // archive#2652: a stable anchor per management group so the first-run tour
   // can point at a real nav affordance, derived from the registry's semantic

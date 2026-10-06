@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/shared-working-state.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed shared state ordering, resync, compaction, authority and editing adapter review; retained local sealSource is not called by the production controller.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "sources": [
+    "src-server/domain/__tests__/shared-working-state.test.ts",
+
+    "src-server/domain/shared-working-state-editing.ts",
+
+    "src-server/domain/shared-working-state.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/project-task-room-working-state.ts"
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
+
+    "Reviewed integration deltas: Completed shared state ordering, resync, compaction, authority and editing adapter review; retained local sealSource is not called by the production controller.",
+
+    "Integration source review through e0314c727: shared-working-state.ts now documents that no production caller composes createSharedWorkingState() recovery and points to this record's 'Ordering and outcomes'. That section described adapter-owned recovery as current, and a grep confirmed only tests call it while the room runtime and workers construct the live-only SharedWorkingState. Added that disclosure. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added read-only EventStore approval-decision and host-start-grantor queries, a conversation-title read, and an actor on latestApprovalModeDecision. Shared-state ordering, resync, compaction, authority and the retained sealSource are untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: the page itself dropped its paragraph on the deleted assertion-free shared-working-state-benchmark.test.ts (batch 59); event-store.ts only deleted the caller-less readChatTurn; claims corrected in-branch: the removed benchmark paragraph was the only claim affected. Source review only; no new executed evidence."
+  ]
+}

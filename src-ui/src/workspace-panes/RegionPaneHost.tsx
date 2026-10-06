@@ -42,6 +42,7 @@ import { RegionChromeBar, type RegionChromeTab } from './RegionChromeBar';
 import { RegionChromeSlotsContext } from './RegionChromeSlots';
 import { RegionEmptyChooser } from './RegionEmptyChooser';
 import { useDockProject } from './useDockProject';
+import type { WorkspacePaneFailureContext } from './WorkspacePaneFailure';
 import { WorkspacePaneHost } from './WorkspacePaneHost';
 import type { WorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
 import {
@@ -497,11 +498,18 @@ export function RegionPaneHost({
   onRequestAuth,
   renderChatPane,
   renderActivityPane,
+  chatPaneFailureContext,
 }: {
   regionId?: DockMode;
   onRequestAuth?: () => Promise<boolean> | undefined;
   renderChatPane: RenderChatPane;
   renderActivityPane?: RenderActivityPane;
+  /**
+   * Chat's side of a crashed Chat pane (which conversation, and a way back
+   * to the list) — supplied by the caller with Chat's renderer, for the
+   * same reason the renderer is.
+   */
+  chatPaneFailureContext?: () => WorkspacePaneFailureContext | undefined;
 }) {
   const model = useRegionModelOptional();
   const region = regionId && model ? model.regions[regionId] : undefined;
@@ -816,6 +824,11 @@ export function RegionPaneHost({
               onOpenActionChange={setOpenAction}
               onDocumentChange={(live) =>
                 setLiveActiveInstanceId(live.activeInstanceId)
+              }
+              paneFailureContext={(instance) =>
+                regionSurfaceOfPane(instance) === 'chat'
+                  ? chatPaneFailureContext?.()
+                  : undefined
               }
               renderPane={(instance) => {
                 switch (regionSurfaceOfPane(instance)) {

@@ -1,0 +1,7 @@
+{
+  "revision": "cde061c4f07a24ed6e82d9291915c9e95f51be1d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Delta round touched CodingWorkbench (Escape scope, host actions, rail), not the composer's picker record or dock claims cited here. No prose change.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-server/routes/chat/chat.ts","src-server/routes/orchestration/orchestration.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat/ChatInputArea.tsx","packages/contracts/src/device-settings.ts","src-server/services/orchestration/event-store.ts","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

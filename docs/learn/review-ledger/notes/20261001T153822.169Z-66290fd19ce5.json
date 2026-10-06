@@ -1,0 +1,15 @@
+{
+  "revision": "392b955a316234ea7972c96b5930b0b27db06ea6",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed for #3071: turnHandlers.ts now settles the chat store's pending approvals on turn.aborted and cancelled turn.completed through the shared requestIdsSettledByTurnAbort fold. The module map describes no UI pending-approval fold and its orchestration module claims are unchanged; no prose change.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-reviewed for #3071: approvalHandlers.ts records each pending request's turn binding and owns settlePendingApprovalsOnTurnEnd. The preview-behavior claim this document makes about the live approval handler is untouched; no prose change.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Re-reviewed for #3071: ChatUIState gains the optional pendingApprovalTurnIds field. The replay observation this design derives from ChatUIState does not read it; no prose change.","inputs":["docs/design/session-tape-replay.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-reviewed for #3071: useToolApproval.ts also drops a request's turn binding beside its pending id after a decision. The orchestration-first, registry-fallback answer path this reference describes is unchanged; no prose change.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-reviewed for #3071: snapshotHandlers.ts keeps the turn bindings a client learned live for the ids a snapshot still lists. useToolApproval()'s documented shape and the snapshot claims here are unchanged; no prose change.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

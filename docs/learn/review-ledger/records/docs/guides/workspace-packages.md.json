@@ -1,0 +1,159 @@
+{
+  "path": "docs/guides/workspace-packages.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed documented AES envelope, Git snapshot/content/path/expansion limits, source rechecks, fresh destination and cleanup, read-only verification, and import-project durable intent/create/readback caller semantics. Current prose accurately distinguishes metadata verification from target filesystem and execution authority.",
+
+  "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"digest\":\"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64\",\"revision\":\"390a624e73d6d9726117e9928e79e7c149607e7b\"},\"main\":{\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7\",\"revision\":\"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3\"}},{\"path\":\"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx\",\"ours\":{\"digest\":\"3dffbccd4597bbe4d0cc2eb7339a205fd21b73e5f1789c886e3ff73616588621\",\"revision\":\"892e14891bb23e9aeeee3af94ca3f4784da31536\"},\"main\":{\"digest\":\"9cf334499d01499656f57ea5a63f7efc7465972380778ec77ff547dc74906513\",\"revision\":\"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"src-server/tools/station-control-delegation.ts\",\"ours\":{\"digest\":\"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"},\"main\":{\"digest\":\"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}}]. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/ci.yml\",\"ours\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8\",\"revision\":\"892e14891bb23e9aeeee3af94ca3f4784da31536\"},\"main\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"},\"main\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"active\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-ui/src/views/HomeView.tsx\",\"ours\":{\"path\":\"src-ui/src/views/HomeView.tsx\",\"digest\":\"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46\",\"revision\":\"892e14891bb23e9aeeee3af94ca3f4784da31536\"},\"main\":{\"path\":\"src-ui/src/views/HomeView.tsx\",\"digest\":\"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f\",\"revision\":\"c4e12e530c3346d3191a89e29cd504f2e2e475a7\"},\"active\":{\"path\":\"src-ui/src/views/HomeView.tsx\",\"digest\":\"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f\",\"revision\":\"c4e12e530c3346d3191a89e29cd504f2e2e475a7\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx\",\"ours\":{\"path\":\"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx\",\"digest\":\"511e0ac91b3e0c2b744ffe1da6967e1741aa9d2d99f9daa10f39d1b2e78e8494\",\"revision\":\"892e14891bb23e9aeeee3af94ca3f4784da31536\"},\"main\":{\"path\":\"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx\",\"digest\":\"4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276\",\"revision\":\"0af0405fb22db35e44b4577b9c610067fbfd109b\"},\"active\":{\"path\":\"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx\",\"digest\":\"4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276\",\"revision\":\"0af0405fb22db35e44b4577b9c610067fbfd109b\"},\"decision\":\"mainMatch\"}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388\",\"revision\":\"d73d9f64333504f027a200482e978cc4445338da\"},\"theirs\":{\"path\":\"package.json\",\"digest\":\"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"},\"active\":{\"path\":\"package.json\",\"digest\":\"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}},{\"path\":\"pnpm-workspace.yaml\",\"ours\":{\"path\":\"pnpm-workspace.yaml\",\"digest\":\"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953\",\"revision\":\"3ff5522abf460ad69d2e2ed4c53740d82e9ec289\"},\"theirs\":{\"path\":\"pnpm-workspace.yaml\",\"digest\":\"ed259839e7e5efa8c6024aedf584c0cfd0f8fb23bb0604574d2b0e07afd5e411\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"},\"active\":{\"path\":\"pnpm-workspace.yaml\",\"digest\":\"ed259839e7e5efa8c6024aedf584c0cfd0f8fb23bb0604574d2b0e07afd5e411\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}}]",
+
+  "sources": [
+    ".github/workflows/ci.yml",
+
+    ".github/workflows/container-smoke.yml",
+
+    ".github/workflows/interactive-workspace-performance.yml",
+
+    ".github/workflows/security-analysis.yml",
+
+    ".github/workflows/windows-vitest-diagnostic.yml",
+
+    "config/product-laws.json",
+
+    "package.json",
+
+    "packages/cli/src/commands/cloud-project-import.ts",
+
+    "packages/cli/src/commands/cloud.ts",
+
+    "packages/cli/src/commands/core-api.ts",
+
+    "packages/contracts/src/workspace-home-role.ts",
+
+    "packages/sdk/src/client/delegations.ts",
+
+    "packages/sdk/src/client/projects.ts",
+
+    "packages/shared/src/workspace-git-pack.ts",
+
+    "packages/shared/src/workspace-package-io.ts",
+
+    "packages/shared/src/workspace-package.ts",
+
+    "pnpm-workspace.yaml",
+
+    "scripts/actionlint-gate.mjs",
+
+    "scripts/codeql-error-baseline.json",
+
+    "scripts/codeql-sarif-policy.mjs",
+
+    "scripts/container-smoke.sh",
+
+    "scripts/dependency-advisory-policy.mjs",
+
+    "scripts/lib/dependency-audit-diagnostics.mjs",
+
+    "scripts/lib/pnpm-advisory.mjs",
+
+    "scripts/lib/product-laws.mjs",
+
+    "scripts/product-law-gate.mjs",
+
+    "src-server/routes/environments/home-authority-routes.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/routes/spatial-board.ts",
+
+    "src-server/runtime/bootstrap/personal-home-authority-database.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/orchestration/delegation-attempt-claim-store.ts",
+
+    "src-server/services/orchestration/planned-home-admission-reconciliation.ts",
+
+    "src-server/services/orchestration/planned-home-control-room-write-adapter.ts",
+
+    "src-server/services/orchestration/project-task-room-history.ts",
+
+    "src-server/services/spatial-board/spatial-board-reference.ts",
+
+    "src-server/services/spatial-board/spatial-board-resolver.ts",
+
+    "src-server/services/spatial-board/spatial-board-store.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "src-ui/src/views/HomeView.tsx",
+
+    "src-ui/src/views/home/HomeRolePane.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
+
+    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
+
+    "tests/container-self-host.spec.ts"
+  ],
+
+  "checks": [
+    "Prior accepted evidence, not rerun in this tranche: focused: PASS99tests8files28.26s: CodeQL SARIF policy, pnpm advisory command, product laws, delegation attempts route, home-authority routes, cloud-project-import, spatial-board-resolver, documentation foundations",
+
+    "Prior accepted evidence, not rerun in this tranche: links: PASS397Markdown paths/anchors",
+
+    "Prior accepted evidence, not rerun in this tranche: references: PASS263maintained documents/entrypoints",
+
+    "Prior accepted evidence, not rerun in this tranche: veritas: PASS exit0/0failures/0warnings; governance/lint/verification-policy; protected hashes unchanged",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Upstream delta extracts plugin event relay gate; Starter, fleet inference, Project/delegation and deployment composition discussed by these owned guides unchanged. Accepted ONLY for listed owned-document claims; broader plugin gate semantics reviewed elsewhere.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed localRefusalOf and actual read/post callers: typed local refusal cause only for current target; remote codes not promoted to local authority. Delegation identity/claim/persistence explanations unchanged. This is a relevant-delta review, not all delegation behavior re-executed.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed workflow policy delta for new CI parts, skip-tolerant status conditions, exact Intel pnpm fallback and isolated portable archive workflow upload. Existing policy descriptions retain structural-only proof limits; no claim of full hosted security qualification.",
+
+    "Prior accepted evidence, not rerun in this tranche: Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "REASONED: full document read and remaining documented protocol/admission/recovery claims traced through the listed production owners and callers; existing source hashes matched the prior accepted records before scoped corrections.",
+
+    "EXECUTED: docs links passed 412 Markdown files; reference gate passed 266 maintained documents; MCP check passed 99 shipped topics; safe lab --help output and focused Biome passed.",
+
+    "EXECUTED: docs:truth:gate ran all 13 lanes; 12 passed, foundations had 163 tests pass and one inherited stale ledger failure at .agents/skills/deslop/SKILL.md. No unreviewed metadata was refreshed to conceal it. Root owns combined ledger integration and final check.",
+
+    "EXECUTED: Veritas readiness run veritas-1790532008463: zero failures, one optional verification-policy warning from the retained in-worktree installed-plugin fixture tests. Governance, lint and connected-agent checks passed. Protected standards unchanged.",
+
+    "EXECUTED: current and archive GitHub issue titles checked for 303, 483, 487, 488, 489, 495, 496 and 497. Restored explicit current membership/hosted identity/tenant isolation/acceptance references; retained archive303 reconnect history and archive496 Task history because their titles match. Current488 is closed; its historical implementation link does not prove the independent-human acceptance.",
+
+    "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through e0314c727: ci.yml added a zsh provisioning step to fast-checks shards (timeout 60 to 65 min) with a matching actionlint-gate pin, and package.json dropped bearing/forage. The workspace-package claims do not depend on these, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 makes requestJson in core-api.ts attach status, code and details to its thrown error without changing the message. DelegationApiError now keeps details, and runtime-routes gained the full-access refusal and revocation wiring. The import-project caller semantics are unchanged: slug precheck, local verification, one create plus readback, no silent retry, and an unconfirmed-registration report. So are the package and verification limits. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential wiring in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The guide's envelope, snapshot, import and authentication-owner claims do not depend on the refusal status. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds decision-delivery types and fields to the SDK delegations.ts and to station-control-delegation.ts. The guide's package boundaries and cloud-move or CLI delegation claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2919 trims unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports from builtinWorkspacePaneRegistry. The guide does not reference those exports; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+
+    "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+
+    "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+  ]
+}

@@ -357,6 +357,11 @@ Scope residuals:
 
 ### 8.1 station#1598 — the recorded channel binding
 
+> The absence claims in this historical residual concern the answer-share
+> observer/history-resolver seam. [Personal Task-room history](project-task-room-history.md)
+> now exists; output feedback does not wire answer shares into that history.
+> The universal wording below is not a current Station feature inventory.
+
 Additive: a share keeps its `{sessionId, turnId}` binding and gains a
 discriminated `channel` field recording where the answer sat in a channel log
 at mint time, plus a `contentDigest` over the served blocks. Residuals this

@@ -1,0 +1,7 @@
+{
+  "revision": "2d2041d2e37ac1e09e9094647767b6f676bf1b1c",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the changed Registry Skill paragraphs in the linked API reference. This guide's application-integration route continues to require exact client/server versions, authenticated requests, and observed outcomes; the new GitHub adapter behavior and explicit source-selection limits do not change those integration instructions.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

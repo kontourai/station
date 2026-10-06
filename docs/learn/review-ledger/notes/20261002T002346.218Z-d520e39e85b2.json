@@ -1,0 +1,9 @@
+{
+  "revision": "d2eb0a1f41d51f8a40520b6666872b3d1dab5e23",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2932: claude-permission-frames.ts stopped exporting recordClaudePermissionFrame, MAX_PERMISSION_FRAME_BYTES and the ClaudePermissionAsk type, which nothing outside the module used (the code-health gate flagged the first as a new unused export). No behaviour changed: the tap, the ask map and the stdin observer are byte-for-byte the same, and the tap, spawn, real-SDK and adapter tests pass. The page names the file and its 256-record and 8 MiB bounds, not those symbols, so every statement still holds.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2932: claude-permission-frames.ts stopped exporting recordClaudePermissionFrame, MAX_PERMISSION_FRAME_BYTES and the ClaudePermissionAsk type, which nothing outside the module used (the code-health gate flagged the first as a new unused export). No behaviour changed: the tap, the ask map and the stdin observer are byte-for-byte the same, and the tap, spawn, real-SDK and adapter tests pass. The page describes the claudeAsk payload and which asks prompt, and names none of those symbols.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

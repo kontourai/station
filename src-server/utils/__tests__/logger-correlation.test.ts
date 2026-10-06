@@ -87,7 +87,7 @@ describe('logger.child correlation — real read-path proof (AC3)', () => {
       sessionCorrelationBindings({
         conversationId,
         agentSlug: 'station',
-        userId: 'brian',
+        userId: 'casey',
       }),
     );
     child.info('Turn dispatched', { apiKey: 'sk-should-be-redacted' });
@@ -105,7 +105,7 @@ describe('logger.child correlation — real read-path proof (AC3)', () => {
     expect(entry.msg).toBe('Turn dispatched');
     expect(entry[LOG_BINDING_KEYS.CONVERSATION_ID]).toBe(conversationId);
     expect(entry[LOG_BINDING_KEYS.AGENT_SLUG]).toBe('station');
-    expect(entry[LOG_BINDING_KEYS.USER_ID]).toBe('brian');
+    expect(entry[LOG_BINDING_KEYS.USER_ID]).toBe('casey');
     // Default (remote) read path still redacts: the secret is on disk so a
     // local operator can see it, but `query()` without `redact: false`
     // never returns it.

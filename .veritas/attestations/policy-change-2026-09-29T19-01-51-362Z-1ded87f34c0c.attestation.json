@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "4603907+briananderson1222@users.noreply.github.com",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-29T19:01:51.362Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:d683b09c5100dfa5e0b31ec6efe07e788348ea4c4d5af74c477f2e3c6bdccb69",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc",
+  "validUntilDays": 90,
+  "notes": "Owner attests the documentation rule's contextLink change in default.repo-standards.json: it now points at the per-record review ledger index (docs/learn/review-ledger/) that replaces docs/learn/review-ledger.json in #2967. Link-only change; no rule, severity or evidence requirement changed.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-27T21-40-57-476Z-1d79d99785fc",
+    "approvalRef": "conversation:2026-09-29:review-ledger-context-link-attested",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58",
+        "validUntil": "2026-12-28T19:01:51.362Z"
+      },
+      "createdAt": "2026-09-29T19:01:51.362Z",
+      "updatedAt": "2026-09-29T19:01:51.362Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c",
+      "claimId": "veritas.attestation.policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Owner attests the documentation rule's contextLink change in default.repo-standards.json: it now points at the per-record review ledger index (docs/learn/review-ledger/) that replaces docs/learn/review-ledger.json in #2967. Link-only change; no rule, severity or evidence requirement changed.",
+      "observedAt": "2026-09-29T19:01:51.362Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-29T19:01:51.362Z",
+        "validUntil": "2026-12-28T19:01:51.362Z",
+        "contentHash": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c",
+      "status": "verified",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c"
+      ],
+      "createdAt": "2026-09-29T19:01:51.362Z",
+      "verifiedAt": "2026-09-29T19:01:51.362Z"
+    }
+  }
+}

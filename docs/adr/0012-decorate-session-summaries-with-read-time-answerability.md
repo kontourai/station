@@ -8,7 +8,13 @@ consumer inventory or proof that every residual slice landed. The current
 and [wire contract](../../packages/contracts/src/orchestration.ts) retain the
 process-local observation and required decoration. This classification does
 not requalify every notification, CLI, or UI consumer. An observed answerability
-value remains separate from fresh dispatch authorization.
+value remains separate from fresh dispatch authorization. Interrupted-turn
+recovery's `request.resolved` with status `expired` (#3071) is not the
+boot-time synthetic resolution this record rejected: that one claimed
+`cancelled` for a process-local, time-varying fact (no adapter here, now),
+while recovery records a fact true for every reader and for good (the process
+that held the request died mid-turn, which the same recovery writes as
+`turn.aborted`), with the status that says nobody decided.
 
 ## Context
 

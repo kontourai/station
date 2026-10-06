@@ -1,0 +1,33 @@
+{
+  "path": ".veritas/init-plans/documentation-maintenance.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Owner-approved additive documentation policy activation, catch/restoration results, required-evidence selection and cost. Historical candidate runs retain their separate protected-hash refusals.",
+
+  "limits": "Purpose and recorded evidence reviewed; no exhaustive semantic certification or live provider/device proof; policy activation is limited to the approved additions in this branch.",
+
+  "sources": [
+    ".veritas/init-plans/documentation-maintenance-additions.json",
+
+    ".veritas/repo-map.json",
+
+    ".veritas/repo-standards/default.repo-standards.json",
+
+    ".veritas/attestations/HEAD"
+  ],
+
+  "checks": [
+    "Proposal reviewed against actual override trial receipts: default-only failure warned; required candidate caught recorded drift, exact restoration removed that evidence failure. Protected policy remained unchanged.",
+
+    "Reviewed frozen CI selection and the tested required-check proposal plus impact guidance. It remains explicitly inactive pending protected-policy approval.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed the linked contributor/governance change; existing scope and evidence limits remain accurate.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
+  ]
+}

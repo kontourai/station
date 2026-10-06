@@ -382,7 +382,7 @@ describe('#2323 S5 install proposal sources', () => {
     ['https://github.com/kontourai/‮txt.x', 'source-invalid'],
     ['https://github.com/kontourai/x​', 'source-invalid'],
     ['git@github.com:kontourai/x‮', 'source-invalid'],
-    ['/Users/brian/dev/x‮abc', 'source-invalid'],
+    ['/Users/me/dev/x‮abc', 'source-invalid'],
     ['https://github.com@evil.com/x', 'source-unsupported'],
     ['https://127.0.0.1:3141/api/x', 'source-unsupported'],
     ['https://127.0.0.1/api/x', 'source-unsupported'],

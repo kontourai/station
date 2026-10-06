@@ -1,0 +1,31 @@
+{
+  "path": "docs/design/live-work-session.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed lifecycle/transition and actual room-history adapter review; distinguished model outcomes from adapter exceptions and external execution.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "sources": [
+    "src-server/domain/__tests__/live-work-session.test.ts",
+
+    "src-server/domain/live-work-session.ts",
+
+    "src-server/services/orchestration/__tests__/project-task-live-work-history-adapter.test.ts",
+
+    "src-server/services/orchestration/project-task-live-work-history-adapter.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts"
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
+
+    "Reviewed integration deltas: Completed lifecycle/transition and actual room-history adapter review; distinguished model outcomes from adapter exceptions and external execution."
+  ]
+}

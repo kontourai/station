@@ -1,0 +1,7 @@
+{
+  "revision": "0012c855ccce9d70f17f64fc15e0abbe80189353",
+
+  "notes": [
+    {"path":"docs/design/native-relay-enrollment.md","note":"Installed iOS 26.5 simulator 46D7E454-B7FA-4846-80E7-C23E5295EF0E, Dev app source 2c50608053 and executable SHA256 0a1ecf582f54a317324ecb63d210e98f93fc0d79d6adaf41bc8c8e62c7e80c95, retained its actual G16 configured Device and Station trust across replacement install. The real saved Station card now reports Station confirmed instead of Station identity unavailable. G16 source 6879fbab98 independently registered and signed in the local test account, staged sealed delivery, activated the Device, and retained a committed server enrollment; owned wrapper cleanup confirmed grant revocation and process settlement. This corrected runtime check proves post-publication trust reading on that Dev simulator, not a live shared Project read, released Nightly, physical iPhone or Zach acceptance.","inputs":["docs/design/native-relay-enrollment.md"]}
+  ]
+}

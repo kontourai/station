@@ -889,3 +889,201 @@ describe('#2911 round 7: no delimiter reaches domainToASCII, and no quote lookal
     expect(title).toBe(`${lead}${'c'.repeat(29)}\u2026`);
   });
 });
+
+test('question answers reach numeric RPC id zero, and invalid submissions leave the request open', async () => {
+  const { adapter, process, events } = await startedAdapter();
+  try {
+    await emit(process, {
+      id: 0,
+      method: 'item/tool/requestUserInput',
+      params: {
+        threadId: 'codex-thread',
+        turnId: 'turn-1',
+        itemId: 'questions-1',
+        isBlocking: true,
+        autoResolutionMs: null,
+        questions: [
+          {
+            id: 'deployment',
+            header: 'Deploy',
+            question: 'Where should we deploy?',
+            isOther: true,
+            isSecret: false,
+            options: [
+              { label: 'Staging', description: 'Try first' },
+              { label: 'Production', description: 'Release' },
+            ],
+          },
+          {
+            id: 'credential',
+            header: 'Credential',
+            question: 'Enter the temporary credential',
+            isOther: false,
+            isSecret: true,
+            options: null,
+          },
+        ],
+      },
+    });
+    const opened = await waitFor(
+      () => events.find((event) => event.method === 'request.opened'),
+      'question request',
+    );
+    const context = { expectedRequestEventId: opened.eventId };
+    await expect(
+      adapter.respondToRequest(THREAD, opened.requestId, 'accept', context),
+    ).rejects.toThrow('Answer every question');
+    await expect(
+      adapter.respondToRequest(
+        THREAD,
+        opened.requestId,
+        'acceptForSession',
+        context,
+      ),
+    ).rejects.toThrow('Inspect this question');
+    expect(repliesTo(process, 0)).toHaveLength(0);
+    const secret = ' private-answer-canary ';
+    await adapter.respondToRequest(THREAD, opened.requestId, 'accept', {
+      ...context,
+      answers: {
+        deployment: { optionIds: ['1'] },
+        credential: { optionIds: [], custom: secret },
+      },
+    });
+    expect(repliesTo(process, 0)).toEqual([
+      expect.objectContaining({
+        id: 0,
+        result: {
+          answers: {
+            deployment: { answers: ['Production'] },
+            credential: { answers: [secret] },
+          },
+        },
+      }),
+    ]);
+    expect(JSON.stringify(events)).not.toContain(secret);
+    expect(
+      events.some(
+        (event) =>
+          event.method === 'request.delivery' &&
+          event.reason === 'invalid-reply',
+      ),
+    ).toBe(false);
+    await emit(process, {
+      method: 'serverRequest/resolved',
+      params: { requestId: 0 },
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        method: 'request.delivery',
+        requestId: opened.requestId,
+        outcome: 'acknowledged',
+      }),
+    );
+  } finally {
+    await adapter.stopSession(THREAD);
+  }
+});
+
+test('interrupting an open Codex question cancels its numeric RPC request and settles the turn', async () => {
+  const { adapter, process, events } = await startedAdapter();
+  try {
+    await emit(process, {
+      id: 0,
+      method: 'item/tool/requestUserInput',
+      params: {
+        threadId: 'codex-thread',
+        turnId: 'turn-1',
+        itemId: 'question-cancel',
+        isBlocking: true,
+        autoResolutionMs: null,
+        questions: [
+          {
+            id: 'choice',
+            header: 'Choice',
+            question: 'Which choice?',
+            isOther: true,
+            isSecret: false,
+            options: null,
+          },
+        ],
+      },
+    });
+    const requestId = await openedRequestId(events, 0);
+    const interrupted = adapter.interruptTurn(THREAD, 'turn-1');
+    const interruptRpc = await waitFor(
+      () =>
+        stdinMessages(process).find((line) => line.method === 'turn/interrupt'),
+      'turn interruption',
+    );
+    await emit(process, { id: interruptRpc.id, result: {} });
+    await withTimeout(interrupted, 'question interruption');
+    expect(repliesTo(process, 0)).toEqual([
+      expect.objectContaining({ id: 0, result: { answers: {} } }),
+    ]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        method: 'request.resolved',
+        requestId,
+        status: 'cancelled',
+      }),
+    );
+    await expect(
+      adapter.respondToRequest(THREAD, requestId, 'accept'),
+    ).rejects.toThrow('not open');
+  } finally {
+    await adapter.stopSession(THREAD);
+  }
+});
+
+test('an engine-closed nonblocking question carries its progress-neutral resolution', async () => {
+  const { adapter, process, events } = await startedAdapter();
+  try {
+    await emit(process, {
+      id: 0,
+      method: 'item/tool/requestUserInput',
+      params: {
+        threadId: 'codex-thread',
+        turnId: 'turn-1',
+        itemId: 'async-input',
+        isBlocking: false,
+        autoResolutionMs: 1000,
+        questions: [
+          {
+            id: 'q',
+            header: 'Question',
+            question: 'Which?',
+            isOther: true,
+            isSecret: false,
+            options: null,
+          },
+        ],
+      },
+    });
+    const requestId = await openedRequestId(events, 0);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        method: 'request.opened',
+        requestId,
+        blocking: false,
+      }),
+    );
+    await emit(process, {
+      method: 'serverRequest/resolved',
+      params: { requestId: 0 },
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        method: 'request.resolved',
+        requestId,
+        blocking: false,
+        status: 'cancelled',
+      }),
+    );
+    await expect(
+      adapter.respondToRequest(THREAD, requestId, 'accept'),
+    ).rejects.toThrow('not open');
+  } finally {
+    await adapter.stopSession(THREAD);
+  }
+});

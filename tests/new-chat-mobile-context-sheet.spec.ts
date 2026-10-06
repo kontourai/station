@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
@@ -23,7 +23,7 @@ const PROJECTS = Array.from({ length: PROJECT_COUNT }, (_, index) => ({
   icon: '🚀',
   description: `Workspace ${index}`,
   hasWorkingDirectory: true,
-  workingDirectory: `/Users/brian/dev/project-${index}`,
+  workingDirectory: `/Users/me/dev/project-${index}`,
   layoutCount: 0,
   hasKnowledge: false,
 }));
@@ -175,7 +175,12 @@ async function openNewChat(page: Page) {
   return modal;
 }
 
-test.describe('New Chat mobile workspace picker (390x844)', () => {
+/** The dock composer's project chip, which opens the project list. */
+function projectChip(modal: Locator) {
+  return modal.getByRole('button', { name: /^Project: / });
+}
+
+test.describe('New Chat mobile project picker (390x844)', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
@@ -185,51 +190,47 @@ test.describe('New Chat mobile workspace picker (390x844)', () => {
     await seedRoutes(page);
   });
 
-  test('opens as a bottom sheet instead of the clipped anchored dropdown', async ({
+  test('opens as a bottom sheet instead of a clipped anchored dropdown', async ({
     page,
   }) => {
     const modal = await openNewChat(page);
-    const contextButton = modal.locator('.new-chat-modal__context-button');
-    await contextButton.click();
+    await projectChip(modal).click();
 
-    // Mobile never renders the desktop anchored dropdown (it would be clipped
-    // by the header's `overflow-y: auto`); it renders the bottom sheet.
+    // Mobile never renders an anchored dropdown inside the modal (it would be
+    // clipped by the modal's scroll box); the project list is its own sheet.
     await expect(modal.locator('.new-chat-modal__dropdown')).toHaveCount(0);
-    const sheet = page.getByRole('dialog', { name: 'Select workspace' });
+    const sheet = page.getByRole('dialog', { name: 'Choose project' });
     await expect(sheet).toBeVisible();
 
-    // The sheet overlay sits fixed above the whole modal and is not clipped
-    // by (nor a source of) the header's own scroll box.
+    // The sheet sits fixed above the whole modal, inside the viewport.
     const sheetBox = await sheet.boundingBox();
     expect(sheetBox).not.toBeNull();
     expect(sheetBox!.y).toBeGreaterThanOrEqual(0);
     expect(sheetBox!.y + sheetBox!.height).toBeLessThanOrEqual(844);
 
-    // Design decision: no autofocus on mobile, to avoid a keyboard-driven
-    // viewport jump the instant the sheet opens.
+    // Design decision: no autofocus on the filter on mobile, to avoid a
+    // keyboard-driven viewport jump the instant the sheet opens.
     const filter = sheet.getByPlaceholder('Filter...');
     await expect(filter).not.toBeFocused();
   });
 
-  test('scrolls its own contained list, filters, and picks a workspace', async ({
+  test('scrolls its own contained list, filters, and picks a project', async ({
     page,
   }) => {
     const modal = await openNewChat(page);
-    const contextButton = modal.locator('.new-chat-modal__context-button');
-    await contextButton.click();
+    await projectChip(modal).click();
 
-    const sheet = page.getByRole('dialog', { name: 'Select workspace' });
+    const sheet = page.getByRole('dialog', { name: 'Choose project' });
     await expect(sheet).toBeVisible();
-    const list = sheet.locator('.new-chat-modal__context-sheet-list');
+    const list = sheet.locator('.start-menu__list');
 
     // The list is genuinely the only scroll container in play: it overflows
-    // its own box, and the header behind it never moves.
-    const header = page.locator('.new-chat-modal__header');
-    const headerScrollBefore = await header.evaluate((el) => el.scrollTop);
+    // its own box, and the modal behind it never moves.
+    const body = page.locator('.new-chat-modal .chat-start__body');
+    const bodyScrollBefore = await body.evaluate((el) => el.scrollTop);
     const before = await list.evaluate((el) => ({
       clientHeight: el.clientHeight,
       scrollHeight: el.scrollHeight,
-      scrollTop: el.scrollTop,
     }));
     expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
 
@@ -237,12 +238,9 @@ test.describe('New Chat mobile workspace picker (390x844)', () => {
     await expect
       .poll(() => list.evaluate((el) => el.scrollTop))
       .toBeGreaterThan(0);
-    expect(await header.evaluate((el) => el.scrollTop)).toBe(
-      headerScrollBefore,
-    );
+    expect(await body.evaluate((el) => el.scrollTop)).toBe(bodyScrollBefore);
 
-    // The last project is reachable now that it has scrolled into view —
-    // this is exactly the option the old clipped dropdown could strand.
+    // The last project is reachable now that it has scrolled into view.
     // (Text-content match, not accessible-name match: the item's accessible
     // name also folds in the working-directory breadcrumb's own aria-label.)
     const lastProject = sheet.locator('.new-chat-modal__dropdown-item', {
@@ -259,36 +257,37 @@ test.describe('New Chat mobile workspace picker (390x844)', () => {
     await expect(matches).toHaveCount(1);
     await expect(matches).toContainText('Project 3');
 
-    // Picking closes the sheet and updates the trigger.
+    // Picking closes the sheet and updates the chip.
     await matches.click();
     await expect(sheet).toBeHidden();
-    await expect(contextButton).toContainText('Project 3');
+    await expect(projectChip(modal)).toHaveAccessibleName('Project: Project 3');
   });
 
   test('dismisses on outside tap and on Escape without picking anything', async ({
     page,
   }) => {
     const modal = await openNewChat(page);
-    const contextButton = modal.locator('.new-chat-modal__context-button');
-    const selectionBefore = await contextButton.textContent();
+    const chip = projectChip(modal);
+    const selectionBefore = await chip.getAttribute('aria-label');
 
-    await contextButton.click();
-    let sheet = page.getByRole('dialog', { name: 'Select workspace' });
+    await chip.click();
+    let sheet = page.getByRole('dialog', { name: 'Choose project' });
     await expect(sheet).toBeVisible();
     // Tap the backdrop area above the sheet (not the sheet panel itself).
-    await page.locator('.new-chat-modal__context-sheet-overlay').click({
-      position: { x: 8, y: 8 },
-    });
+    await page
+      .locator('.composer-popover-overlay')
+      .last()
+      .click({ position: { x: 8, y: 8 } });
     await expect(sheet).toBeHidden();
-    await expect(contextButton).toHaveText(selectionBefore ?? '');
+    await expect(chip).toHaveAttribute('aria-label', selectionBefore ?? '');
 
-    await contextButton.click();
-    sheet = page.getByRole('dialog', { name: 'Select workspace' });
+    await chip.click();
+    sheet = page.getByRole('dialog', { name: 'Choose project' });
     await expect(sheet).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(sheet).toBeHidden();
-    // Escape closed only the sheet, not the whole New Chat modal.
+    // Escape closed only the sheet, not the whole New chat modal.
     await expect(modal).toBeVisible();
-    await expect(contextButton).toHaveText(selectionBefore ?? '');
+    await expect(chip).toHaveAttribute('aria-label', selectionBefore ?? '');
   });
 });

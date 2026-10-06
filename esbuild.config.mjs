@@ -62,6 +62,11 @@ await Promise.all([
     entryPoints: ['./src-server/tools/station-control-server.ts'],
     outfile: `${serverDir}/station-control.js`,
   }),
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/tools/station-knowledge-server.ts'],
+    outfile: `${serverDir}/station-knowledge.js`,
+  }),
   // station#1547: the credential-free docs server. Bundling it here is what
   // makes "documentation ships with Station, never fetched at runtime" a
   // build property — the topic prose is compiled into this artifact.
@@ -133,6 +138,15 @@ await Promise.all([
     ...shared,
     entryPoints: ['./src-server/services/plugins/plugin-draft-build-child.ts'],
     outfile: `${serverDir}/plugin-draft-build-child.js`,
+  }),
+  // #3406: attached-session discovery reads session folders in this helper
+  // process, spawned via an import.meta.url-relative path like the one above.
+  esbuild.build({
+    ...shared,
+    entryPoints: [
+      './src-server/services/orchestration/attached-session-path-child.ts',
+    ],
+    outfile: `${serverDir}/attached-session-path-child.js`,
   }),
   // The private document worker is loaded via import.meta.url at runtime too.
   // Ship it beside the history worker: source-only availability passes dev

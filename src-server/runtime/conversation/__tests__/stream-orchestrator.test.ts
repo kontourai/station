@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   CHAT_STREAM_KEEPALIVE_INTERVAL_MS,
   createElicitationCallback,
+  outwardTurnFailureText,
   startSSEKeepalive,
   writeSSEChunk,
   writeSSEError,
@@ -177,6 +178,92 @@ describe('writeSSEError', () => {
     expect(writes[0]).not.toContain('provider.example.test');
     expect(writes[0]).not.toContain('token=secret');
     expect(writes[0]).not.toContain('/Users/operator');
+  });
+
+  test('forwards the provider HTTP status as a bare number and nothing the provider said', async () => {
+    const { APICallError } = await import('@ai-sdk/provider');
+    const writes: string[] = [];
+    const streamWriter = {
+      write: vi.fn(async (value: string) => writes.push(value)),
+    };
+
+    await writeSSEError(
+      streamWriter,
+      new APICallError({
+        message: 'rate limited sk-live-SECRET-1234',
+        url: 'https://provider.example.test/v1/chat/completions',
+        requestBodyValues: { messages: ['sk-live-SECRET-1234'] },
+        statusCode: 429,
+        responseBody: '{"error":"sk-live-SECRET-1234"}',
+      }),
+    );
+
+    expect(JSON.parse(writes[0].replace(/^data: /, ''))).toEqual({
+      type: 'error',
+      errorText: 'The response stream failed.',
+      statusCode: 429,
+    });
+    expect(writes[0]).not.toContain('sk-live-SECRET');
+    expect(writes[0]).not.toContain('provider.example.test');
+  });
+
+  test("a status on an error that is not the model provider's is never forwarded", async () => {
+    const { HTTPException } = await import('hono/http-exception');
+    const writes: string[] = [];
+    const streamWriter = {
+      write: vi.fn(async (value: string) => writes.push(value)),
+    };
+
+    await writeSSEError(streamWriter, new HTTPException(404));
+    await writeSSEError(
+      streamWriter,
+      Object.assign(new Error('route refused'), { status: 429 }),
+    );
+    await writeSSEError(
+      streamWriter,
+      Object.assign(new Error('catalog refused'), { statusCode: 503 }),
+    );
+
+    expect(
+      writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusCode),
+    ).toEqual([undefined, undefined, undefined]);
+    expect(outwardTurnFailureText(new HTTPException(404))).toBe(
+      'The response stream failed.',
+    );
+  });
+
+  test('infers a credential 401 only without a provider status, and drops a status outside 4xx/5xx', async () => {
+    const writes: string[] = [];
+    const streamWriter = {
+      write: vi.fn(async (value: string) => writes.push(value)),
+    };
+
+    await writeSSEError(streamWriter, new Error('missing credential'));
+    await writeSSEError(
+      streamWriter,
+      Object.assign(new Error('redirected'), { statusCode: 302 }),
+    );
+    await writeSSEError(streamWriter, new Error('plain failure'));
+    // A real provider status wins over a credential-shaped message; the
+    // inference applies only when no status exists.
+    const { APICallError } = await import('@ai-sdk/provider');
+    await writeSSEError(
+      streamWriter,
+      new APICallError({
+        message: 'upstream credential store exploded',
+        url: 'https://provider.example.test/v1',
+        requestBodyValues: {},
+        statusCode: 500,
+      }),
+    );
+
+    expect(
+      writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusCode),
+    ).toEqual([401, undefined, undefined, 500]);
+    // Only the inferred 401 says it was inferred.
+    expect(
+      writes.map((w) => JSON.parse(w.replace(/^data: /, '')).statusInferred),
+    ).toEqual([true, undefined, undefined, undefined]);
   });
 });
 

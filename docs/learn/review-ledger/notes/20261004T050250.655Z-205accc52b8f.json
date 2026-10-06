@@ -1,0 +1,7 @@
+{
+  "revision": "bc69af1db032e199f1091d9def9ce74c583ab6b2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed exact-source phase diagnostics: fixed provenance and enum phase fields, performance.now elapsed since snapshot creation, atomic bounded private snapshot, optional phase-only I/O warning without interrupting cleanup, no gate/report admission or limit change. Independent source review clear; focused 7/7 and privacy, scope and elapsed-time mutations caught with clean restoration. Real collector admission and canonical qualification remain pending.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs","scripts/orchestration-transfer-capture.ts","scripts/lib/transfer-capture-progress.ts","scripts/__tests__/transfer-capture-progress.test.ts","scripts/check-prepush-orchestration-transfer.mjs","scripts/__tests__/prepush-orchestration-transfer.test.ts"]}
+  ]
+}

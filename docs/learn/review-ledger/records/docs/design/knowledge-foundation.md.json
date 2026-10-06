@@ -1,0 +1,65 @@
+{
+  "path": "docs/design/knowledge-foundation.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete K2-K5 document as current architectural boundaries plus explicitly dated planning/rollout history. Traced store/transaction/index/migration/Settings/record/Neo4j callers; corrected width-only vector reuse, upsert versus rebuild, absent cutover, excerpt-only Ask and default scope. Historical pins and milestone prose remain history, not current interface or live acceptance.",
+
+  "limits": "Current claims are source-reviewed; dated milestone execution, real-home migration acceptance, every provider/mutation path and native or live Neo4j/model behavior are not independently requalified. Later physical-identity repair is reviewed as a bounded source delta, not newly executed historical acceptance.",
+
+  "sources": [
+    "examples/meeting-notes/src/AskPane.tsx",
+
+    "packages/cli/src/commands/knowledge.ts",
+
+    "packages/contracts/src/knowledge-index.ts",
+
+    "packages/contracts/src/knowledge-store.ts",
+
+    "packages/sdk/src/client/knowledge.ts",
+
+    "src-server/knowledge-index/migrate-pre-index-knowledge.ts",
+
+    "src-server/knowledge-index/sqlite-vec-index-provider.ts",
+
+    "src-server/knowledge-store/adapters/default-store.ts",
+
+    "src-server/knowledge-store/adapters/obsidian-store.ts",
+
+    "src-server/knowledge-store/adapters/shared/file-transactions.ts",
+
+    "src-server/knowledge-store/conversation-root-bootstrap.ts",
+
+    "src-server/knowledge-store/knowledge-store-provider.ts",
+
+    "src-server/knowledge-store/neo4j-connection.ts",
+
+    "src-server/knowledge-store/neo4j-graph-provider.ts",
+
+    "src-server/knowledge-store/neo4j-graph-sync.ts",
+
+    "src-server/routes/knowledge/knowledge-index-routes.ts",
+
+    "src-server/routes/knowledge/knowledge-record-routes.ts",
+
+    "src-server/routes/knowledge/knowledge-store-routes.ts",
+
+    "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
+
+    "src-ui/src/views/project-settings/KnowledgeSection.tsx",
+
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx"
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Integration source review through e0314c727: neo4j-connection.ts deleted the queryNeo4jGraphView stub and the unused connection-type constant, and DELETE /api/knowledge/roots/:id now returns 404 for an unknown root. Added dated notes to the K2 planner note and the K5 landed record that the query stub was later deleted and fixed-query reads/sync live in the graph provider and sync modules. The other historical prose is preserved. Source review is separate from executed test evidence."
+  ]
+}

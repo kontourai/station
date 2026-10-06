@@ -1,0 +1,57 @@
+{
+  "path": "packages/shared/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README read. Checked explicit subpaths, .ts/.mjs export distinction, Node24 requirement, build entrypoint/mode/output and exact external allowlist, no-entrypoint result, manifest shell-build refusal, registry digest/signature helper scope and lack of install/activation authority.",
+
+  "limits": "No independent npm installation or registry publication, arbitrary loader compatibility, full package build or live plugin activation. Registry signing fixture does not establish real key custody.",
+
+  "sources": [
+    "packages/shared/src/build.ts",
+
+    "packages/shared/src/index.ts",
+
+    "packages/shared/src/parsers.ts",
+
+    "packages/shared/src/plugin-registry-signature.ts",
+
+    "packages/shared/src/plugin-tree-digest.ts",
+
+    "packages/shared/package.json#/engines",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/src/skill-experience-values.ts",
+
+    "packages/shared/src/skill-experience-reader.ts"
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+
+    "Reviewed source changes: Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Integration source review through e0314c727: plugin-tree-digest.ts added an optional alsoWithout/digestWithout observation to observePluginTreeAsync. computePluginTreeDigest's walk (no symlink following, root `.git` excluded) and the documented subpaths are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) package.json adds ./prebuilt-archive and ./service-launcher-protocol .ts subpaths; the README names package.json as the entry-point inventory and describes mostly-.ts source exports; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

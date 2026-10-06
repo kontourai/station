@@ -42,70 +42,136 @@ function resolveBaseSha(base) {
   }
 }
 
-export function gateReport({ changedPaths, baseSha }) {
-  // A pure consumer of the hook's own scope deciders, so this report cannot
-  // drift from what the hook actually runs.
+/** What `.githooks/pre-push` runs on every push, whatever the change. */
+export const EVERY_PUSH_CHECKS = Object.freeze([
+  Object.freeze({
+    command: 'npm run lint:check',
+    note: 'biome lint/format/imports',
+  }),
+  Object.freeze({
+    command: 'npm run proof:repo-governance',
+    note: 'governance proof (~4s)',
+  }),
+  Object.freeze({
+    command: 'npm run veritas:readiness',
+    note: 'Veritas readiness (~15-35s)',
+  }),
+  Object.freeze({
+    command: 'node scripts/commit-message-gate.mjs --prepush-stdin',
+    note: 'commit subjects in the push range',
+  }),
+]);
+
+/** The verification ladder, cheapest first; `command` is null off-host. */
+export const LANE_LADDER = Object.freeze([
+  Object.freeze({
+    stage: 'Tests — derive the focused selection (do not guess)',
+    command: 'npm run test:changed -- --base=origin/main --explain',
+    detail: null,
+  }),
+  Object.freeze({
+    stage: 'Bounded feedback before push',
+    command: 'npm run ci:fast',
+    detail: null,
+  }),
+  Object.freeze({
+    stage: 'Ordinary PR integration',
+    command: null,
+    detail: 'required checks on the GitHub merge queue candidate',
+  }),
+  Object.freeze({
+    stage: 'Promotion completion',
+    command: 'npm run full:regression',
+    detail: 'hosted Nightly/tag workflow runs',
+  }),
+  Object.freeze({
+    stage: 'Explicit diagnostic escape hatch',
+    command: null,
+    detail: 'manual PR: CI workflow_dispatch',
+  }),
+]);
+
+/**
+ * The pre-push gates scoped to this change surface, each with its own
+ * decider's verdict and reason. A pure consumer of the hook's deciders, so
+ * this cannot drift from what the hook actually runs.
+ *
+ * @returns {{ name: string, runs: boolean, reason: string, command: string }[]}
+ */
+export function gateScopes({ changedPaths, baseSha }) {
   const statics = decideStaticGateScope({ baseSha, changedPaths });
   const barrel = decideSdkBarrelScope({ baseSha, changedPaths });
   const transfer = decideOrchestrationTransferScope({ baseSha, changedPaths });
   const typecheck = decideTypecheckScope({ baseSha, changedPaths });
-  const scoped = [
-    [
-      'orchestration transfer budgets',
-      transfer.run,
-      transfer.reason,
-      'node scripts/check-prepush-orchestration-transfer.mjs',
-    ],
-    [
-      'static gates (UI contracts, content)',
-      statics.run,
-      statics.reason,
-      'node scripts/check-prepush-static-gates.mjs',
-    ],
-    [
-      'SDK public barrel',
-      barrel.run,
-      barrel.reason,
-      'node scripts/check-prepush-sdk-barrel.mjs',
-    ],
-    [
-      'typecheck (twelve tsc lanes, ~91s)',
-      typecheck.run,
-      typecheck.reason,
-      'node scripts/check-prepush-typecheck.mjs',
-    ],
-  ];
+  return [
+    {
+      name: 'orchestration transfer budgets',
+      decision: transfer,
+      command: 'node scripts/check-prepush-orchestration-transfer.mjs',
+    },
+    {
+      name: 'static gates (UI contracts, content)',
+      decision: statics,
+      command: 'node scripts/check-prepush-static-gates.mjs',
+    },
+    {
+      name: 'SDK public barrel',
+      decision: barrel,
+      command: 'node scripts/check-prepush-sdk-barrel.mjs',
+    },
+    {
+      name: 'typecheck (twelve tsc lanes, ~91s)',
+      decision: typecheck,
+      command: 'node scripts/check-prepush-typecheck.mjs',
+    },
+  ].map(({ name, decision, command }) => ({
+    name,
+    runs: decision.run,
+    reason: decision.reason,
+    command,
+  }));
+}
+
+/** Everything the report says, as data (`npm run gate:for -- --json`). */
+export function gatePlan({ changedPaths, baseSha }) {
+  return {
+    changedPaths: [...changedPaths],
+    everyPush: EVERY_PUSH_CHECKS,
+    scoped: gateScopes({ changedPaths, baseSha }),
+    fixtureCommands: fixturePolicyCommands(changedPaths),
+    ladder: LANE_LADDER,
+  };
+}
+
+export function gateReport({ changedPaths, baseSha }) {
+  const plan = gatePlan({ changedPaths, baseSha });
   const lines = [
-    `gate:for — ${changedPaths.length} changed path(s)`,
+    `gate:for — ${plan.changedPaths.length} changed path(s)`,
     '',
     'Every push (armed in .githooks/pre-push):',
-    '  npm run lint:check                             # biome lint/format/imports',
-    '  npm run proof:repo-governance                  # governance proof (~4s)',
-    '  npm run veritas:readiness                      # Veritas readiness (~15-35s)',
-    '  node scripts/commit-message-gate.mjs --prepush-stdin   # commit subjects in the push range',
+    ...plan.everyPush.map(
+      ({ command, note }) => `  ${command.padEnd(46)} # ${note}`,
+    ),
     '',
     'Scoped to this change surface:',
   ];
-  for (const [name, applies, reason, command] of scoped) {
-    lines.push(`  ${applies ? 'RUNS   ' : 'skipped'} ${name}`);
+  for (const { name, runs, reason, command } of plan.scoped) {
+    lines.push(`  ${runs ? 'RUNS   ' : 'skipped'} ${name}`);
     lines.push(`          ${reason}`);
-    if (applies) lines.push(`          ${command}`);
+    if (runs) lines.push(`          ${command}`);
   }
-  const fixtureCommands = fixturePolicyCommands(changedPaths);
-  if (fixtureCommands.length)
+  if (plan.fixtureCommands.length)
     lines.push(
       '',
       'Fixture and test-effectiveness route:',
-      ...fixtureCommands.map((command) => `  ${command}`),
+      ...plan.fixtureCommands.map((command) => `  ${command}`),
     );
   lines.push(
     '',
-    'Tests — derive the focused selection (do not guess):',
-    '  npm run test:changed -- --base=origin/main --explain',
-    'Bounded feedback before push:  npm run ci:fast',
-    'Ordinary PR integration:  required checks on the GitHub merge queue candidate',
-    'Promotion completion:  hosted Nightly/tag workflow runs npm run full:regression',
-    'Explicit diagnostic escape hatch:  manual CI workflow_dispatch',
+    ...plan.ladder.map(
+      ({ stage, command, detail }) =>
+        `${stage}:  ${[detail, command].filter(Boolean).join(' ')}`,
+    ),
   );
   return lines.join('\n');
 }
@@ -116,9 +182,10 @@ function addGuidanceRule(selected, rule, filePath) {
   else selected.set(rule.id, { rule, paths: new Set([filePath]) });
 }
 
-function guidanceLinesForRule({ rule, paths }) {
+function guidanceLinesForRule(rule) {
+  const { paths } = rule;
   const lines = [
-    `  ${rule.id} (${rule.enforcementLevel}) — ${[...paths].join(', ')}`,
+    `  ${rule.id} (${rule.enforcementLevel}) — ${paths.join(', ')}`,
     `    ${rule.summary}`,
   ];
   if (rule.evidenceCheckIds.length > 0)
@@ -128,10 +195,12 @@ function guidanceLinesForRule({ rule, paths }) {
   return lines;
 }
 
-/** Present the exact Veritas path guidance during Station's required pre-edit route. */
-export function veritasGuidanceForPaths(changedPaths, rootDir = process.cwd()) {
-  if (changedPaths.length === 0)
-    return 'Veritas guidance: no changed paths to brief.';
+/**
+ * The Veritas rules that govern `changedPaths`, as data: each rule once,
+ * with the paths it matched.
+ */
+export function veritasGuidanceRules(changedPaths, rootDir = process.cwd()) {
+  if (changedPaths.length === 0) return [];
   const repoMap = loadRepoMap(resolve(rootDir, '.veritas/repo-map.json'));
   const repoStandards = loadRepoStandards(
     resolve(rootDir, '.veritas/repo-standards/default.repo-standards.json'),
@@ -147,16 +216,45 @@ export function veritasGuidanceForPaths(changedPaths, rootDir = process.cwd()) {
     for (const rule of guidance.rules)
       addGuidanceRule(selected, rule, filePath);
   }
-  if (selected.size === 0)
+  return [...selected.values()].map(({ rule, paths }) => ({
+    id: rule.id,
+    enforcementLevel: rule.enforcementLevel,
+    summary: rule.summary,
+    evidenceCheckIds: [...rule.evidenceCheckIds],
+    mustDo: [...rule.mustDo],
+    mustNotDo: [...rule.mustNotDo],
+    paths: [...paths],
+  }));
+}
+
+/** Present the exact Veritas path guidance during Station's required pre-edit route. */
+export function veritasGuidanceForPaths(changedPaths, rootDir = process.cwd()) {
+  if (changedPaths.length === 0)
+    return 'Veritas guidance: no changed paths to brief.';
+  const rules = veritasGuidanceRules(changedPaths, rootDir);
+  if (rules.length === 0)
     return 'Veritas guidance: no matching rules for these paths.';
   return [
     'Veritas guidance for the intended paths:',
-    ...[...selected.values()].flatMap(guidanceLinesForRule),
+    ...rules.flatMap(guidanceLinesForRule),
   ].join('\n');
 }
 
-function writeBriefedReport(changedPaths, baseSha, mergeBase) {
+function writeBriefedReport(changedPaths, baseSha, mergeBase, { json }) {
   try {
+    if (json) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            ...gatePlan({ changedPaths, baseSha }),
+            guidance: veritasGuidanceRules(changedPaths),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      return;
+    }
     const guidance = veritasGuidanceForPaths(changedPaths);
     const documentation = formatDocumentationImpact(
       readDocumentationImpact({ changedPaths, mergeBase }),
@@ -174,6 +272,7 @@ function writeBriefedReport(changedPaths, baseSha, mergeBase) {
 
 export function parseArgs(argv) {
   let base = 'origin/main';
+  let json = false;
   const explicit = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -182,16 +281,20 @@ export function parseArgs(argv) {
     } else if (arg === '--base') {
       i += 1;
       base = argv[i] ?? '';
+    } else if (arg === '--json') {
+      json = true;
     } else if (arg.startsWith('--')) {
       // A scoping advisor must never absorb a typo'd flag as a path and then
       // answer "nothing applies" about a surface it never looked at.
-      throw new Error(`unrecognized flag: ${arg} (supported: --base=<ref>)`);
+      throw new Error(
+        `unrecognized flag: ${arg} (supported: --base=<ref>, --json)`,
+      );
     } else {
       explicit.push(arg);
     }
   }
   if (!base) throw new Error('--base requires a ref');
-  return { base, explicit };
+  return { base, explicit, json };
 }
 
 export function main(argv = process.argv.slice(2)) {
@@ -204,12 +307,12 @@ export function main(argv = process.argv.slice(2)) {
     );
     process.exit(2);
   }
-  const { base, explicit } = parsed;
+  const { base, explicit, json } = parsed;
   if (explicit.length > 0) {
     // Explicit-paths mode never consults git: the caller supplied the scope,
     // so the deciders get a truthy sentinel instead of a resolved sha and the
     // verdict depends only on the paths given.
-    writeBriefedReport(explicit, 'explicit-paths');
+    writeBriefedReport(explicit, 'explicit-paths', undefined, { json });
     return;
   }
   const baseSha = resolveBaseSha(base);
@@ -226,11 +329,15 @@ export function main(argv = process.argv.slice(2)) {
     console.error(
       'gate-for: changed paths are unavailable, so Veritas cannot brief the edit scope.',
     );
-    process.stdout.write(`${gateReport({ changedPaths, baseSha: '' })}\n`);
+    process.stdout.write(
+      json
+        ? `${JSON.stringify(gatePlan({ changedPaths, baseSha: '' }), null, 2)}\n`
+        : `${gateReport({ changedPaths, baseSha: '' })}\n`,
+    );
     process.exitCode = 2;
     return;
   }
-  writeBriefedReport(changedPaths, baseSha, mergeBase);
+  writeBriefedReport(changedPaths, baseSha, mergeBase, { json });
 }
 
 if (invokedDirectly(import.meta.url)) {

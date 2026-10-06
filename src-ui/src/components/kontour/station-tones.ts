@@ -1,4 +1,5 @@
 import { type SemanticTone, toneForValue } from '@kontourai/ui/react';
+import type { SessionStateLabel } from '../../utils/session-state';
 
 // ─── Station domain → Console Kit semantic tones ──────────────────────────────
 // The single place Station's domain vocabularies map onto Console Kit's
@@ -62,4 +63,25 @@ const SURFACE_CLAIM_TONE_OVERRIDES: Record<string, SemanticTone> = {
 /** Surface trust-report claim status (trust panel + readiness why-detail). */
 export function surfaceClaimTone(status: string): SemanticTone {
   return SURFACE_CLAIM_TONE_OVERRIDES[status] ?? toneForValue(status);
+}
+
+const SESSION_STATE_TONES: Record<SessionStateLabel, SemanticTone> = {
+  'Needs attention': 'caution',
+  Unanswerable: 'caution',
+  Failed: 'negative',
+  Running: 'active',
+  Completed: 'positive',
+  Stopped: 'neutral',
+  Ready: 'neutral',
+  Draft: 'neutral',
+};
+
+/**
+ * A session's canonical state (`orchestrationLifecycleLabel`) on the kit's
+ * semantic scale. Keyed by the fold's own label type, so a new canonical state
+ * is a typecheck failure here rather than a badge that silently goes neutral.
+ * The badge TEXT is the status ladder's word; this only chooses its tone.
+ */
+export function sessionStateTone(state: SessionStateLabel): SemanticTone {
+  return SESSION_STATE_TONES[state];
 }

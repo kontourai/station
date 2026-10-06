@@ -1,0 +1,113 @@
+{
+  "repository": "https://github.com/mattpocock/skills",
+  "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+  "inspectionDigest": "aaf843303d58ad7540d331a5b25e145304cc0398f70919596984e048e3a00eca",
+  "skills": [
+    {
+      "name": "code-review",
+      "path": "skills/engineering/code-review/SKILL.md",
+      "dependsOn": ["setup-matt-pocock-skills"]
+    },
+    {
+      "name": "codebase-design",
+      "path": "skills/engineering/codebase-design/SKILL.md",
+      "dependsOn": []
+    },
+    {
+      "name": "domain-modeling",
+      "path": "skills/engineering/domain-modeling/SKILL.md",
+      "dependsOn": []
+    },
+    {
+      "name": "grill-me",
+      "path": "skills/productivity/grill-me/SKILL.md",
+      "dependsOn": ["grilling"]
+    },
+    {
+      "name": "grill-with-docs",
+      "path": "skills/engineering/grill-with-docs/SKILL.md",
+      "dependsOn": ["domain-modeling", "grilling"]
+    },
+    {
+      "name": "grilling",
+      "path": "skills/productivity/grilling/SKILL.md",
+      "dependsOn": []
+    },
+    {
+      "name": "implement",
+      "path": "skills/engineering/implement/SKILL.md",
+      "dependsOn": ["code-review", "tdd"]
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "path": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "dependsOn": ["codebase-design", "domain-modeling", "grilling"]
+    },
+    {
+      "name": "prototype",
+      "path": "skills/engineering/prototype/SKILL.md",
+      "dependsOn": []
+    },
+    {
+      "name": "research",
+      "path": "skills/engineering/research/SKILL.md",
+      "dependsOn": []
+    },
+    {
+      "name": "setup-matt-pocock-skills",
+      "path": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "dependsOn": [
+        "domain-modeling",
+        "grill-with-docs",
+        "improve-codebase-architecture",
+        "triage",
+        "wayfinder"
+      ]
+    },
+    {
+      "name": "tdd",
+      "path": "skills/engineering/tdd/SKILL.md",
+      "dependsOn": ["codebase-design"]
+    },
+    {
+      "name": "to-spec",
+      "path": "skills/engineering/to-spec/SKILL.md",
+      "dependsOn": ["setup-matt-pocock-skills"]
+    },
+    {
+      "name": "to-tickets",
+      "path": "skills/engineering/to-tickets/SKILL.md",
+      "dependsOn": ["setup-matt-pocock-skills"]
+    },
+    {
+      "name": "triage",
+      "path": "skills/engineering/triage/SKILL.md",
+      "dependsOn": ["domain-modeling", "grilling", "setup-matt-pocock-skills"]
+    },
+    {
+      "name": "wayfinder",
+      "path": "skills/engineering/wayfinder/SKILL.md",
+      "dependsOn": [
+        "domain-modeling",
+        "grilling",
+        "prototype",
+        "research",
+        "setup-matt-pocock-skills"
+      ]
+    }
+  ],
+  "gaps": [
+    "Literal discovery cannot resolve dynamic Skill/tool/environment discovery; reviewer must inspect the supplied source and record limits.",
+    "skills/engineering/domain-modeling/GLOSSARY-FORMAT.md: unresolved reference ./src/billing/GLOSSARY.md",
+    "skills/engineering/domain-modeling/GLOSSARY-FORMAT.md: unresolved reference ./src/fulfillment/GLOSSARY.md",
+    "skills/engineering/domain-modeling/GLOSSARY-FORMAT.md: unresolved reference ./src/ordering/GLOSSARY.md",
+    "skills/engineering/improve-codebase-architecture/SKILL.md: unresolved Skill tmp",
+    "skills/engineering/pr/SKILL.md: Skill parser refused source: Field 'metadata' must contain scalar values",
+    "skills/engineering/prototype/UI.md: unresolved Skill settings",
+    "skills/engineering/setup-matt-pocock-skills/issue-tracker-gitlab.md: unresolved Skill blocked",
+    "skills/engineering/wayfinder/SKILL.md: unresolved reference link",
+    "skills/engineering/wizard/template.sh: script is inspection data; execution requirements need review"
+  ],
+  "status": "source-inspection-only",
+  "limits": "No installed runtime, model execution, native/device, or released qualification is claimed."
+}

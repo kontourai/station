@@ -4,6 +4,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
+import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
 import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
@@ -65,6 +66,16 @@ interface ChatDockModalStackProps {
   sessions: ChatSession[];
   showNewChatModal: boolean;
   newChatRequestEpoch?: number;
+  newChatStartWithDefault?: boolean;
+  newChatInitialPrompt?: string;
+  newChatSelection?: ComponentProps<typeof NewChatModal>['startSelection'];
+  newChatHandoff?: ComponentProps<typeof NewChatModal>['handoff'];
+  newChatSelectionInvalid?: boolean;
+  onNewChatDraftChange?: (text: string) => void;
+  projectBindable?: boolean;
+  projectsLoaded?: boolean;
+  projectAccentBySlug?: ReadonlyMap<string, string>;
+  recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
   chatFontSize: number;
@@ -84,6 +95,8 @@ interface ChatDockModalStackProps {
     providerOptions?: Record<string, unknown>,
     providerId?: string,
     providerType?: string,
+    experienceDraft?: SkillExperienceDraft,
+    sendInitialMessage?: boolean,
   ) => void;
   onCloseNewChat: () => void;
   onCloseSettings: () => void;
@@ -95,7 +108,7 @@ interface ChatDockModalStackProps {
   onShowReasoningChange: (show: boolean) => void;
   onShowToolDetailsChange: (show: boolean) => void;
   onAutoHideChange: (v: boolean) => void;
-  /** #3310: the settings panel's "Summarize session" entry point. */
+  /** #3310: the settings panel's "Summarize chat" entry point. */
   sessionSummary?: {
     isGenerating: boolean;
     onGenerate: () => void;
@@ -117,6 +130,16 @@ export function ChatDockModalStack({
   sessions,
   showNewChatModal,
   newChatRequestEpoch,
+  newChatStartWithDefault,
+  newChatInitialPrompt,
+  newChatSelection,
+  newChatHandoff,
+  newChatSelectionInvalid,
+  onNewChatDraftChange,
+  projectBindable,
+  projectsLoaded,
+  projectAccentBySlug,
+  recentChats,
   showChatSettings,
   showSessionPicker,
   chatFontSize,
@@ -160,6 +183,17 @@ export function ChatDockModalStack({
             agents,
             projects,
             requestAuthority,
+            startWithDefault: newChatStartWithDefault,
+            initialPrompt: newChatInitialPrompt,
+            startSelection: forkMode ? undefined : newChatSelection,
+            handoff: forkMode ? undefined : newChatHandoff,
+            selectionInvalid: forkMode ? false : newChatSelectionInvalid,
+            onDraftChange: onNewChatDraftChange,
+            projectBindable,
+            projectsLoaded,
+            projectAccentBySlug,
+            startSurface: true,
+            recentChats,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,

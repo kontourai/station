@@ -1,0 +1,7 @@
+{
+  "revision": "b38fa3bf89210ebfba30a32ced0c7f5027261bcd",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the native route card copy against the documented host renewal and application boundaries. The UI now identifies the local saved credential and avoids claiming live connection or Station access; backend status, renewal and authority behavior are unchanged.","inputs":["docs/design/native-capabilities.md"]}
+  ]
+}

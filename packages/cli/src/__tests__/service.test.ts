@@ -1,3 +1,5 @@
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import * as nodeFs from 'node:fs';
 import {
   chmodSync,
@@ -18,6 +20,7 @@ import {
 } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import type { CollectedInstanceStatus } from '../commands/lifecycle.js';
 import type { ServiceFs } from '../commands/service.js';
 
 const makeTempDir = trackTempDirs();
@@ -79,7 +82,9 @@ vi.mock('../commands/service-systemd.js', () => ({
   uninstallSystemd,
 }));
 vi.mock('../commands/service-windows.js', () => ({
-  WINDOWS_INTERACTIVE_TASK_PRIORITY: 5,
+  WINDOWS_TASK_SETTINGS_EXPECTED:
+    'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
+  windowsTaskSettingsObservation: () => '',
   assertWindowsServiceExecutionTrusted,
   installWindowsService,
   startWindowsService,
@@ -1040,6 +1045,150 @@ describe('station service dispatch', () => {
     });
   });
 
+  // #2961 (ADR 0020 D4): a home has one live host. A live Desktop sidecar
+  // holds it under a DIFFERENT id, which the per-id #3047 guard never saw.
+  const liveDesktopSidecar = (baseDir: string) =>
+    upsertInstance(
+      'desktop-sidecar-4242',
+      {
+        port: 38141,
+        type: 'sidecar',
+        status: 'running',
+        pid: process.pid,
+        birth: lookupProcessBirthFingerprint(process.pid)!,
+      },
+      baseDir,
+    );
+
+  test('refuses install while a live Desktop sidecar owns the home (#2961)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    liveDesktopSidecar(baseDir);
+    const before = readInstanceRegistry(baseDir);
+
+    await expect(
+      runServiceCommand(['install'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      }),
+    ).rejects.toThrow(
+      `Station service 'service-test' cannot own Station home ${baseDir}: it is in use by Station Desktop's built-in server (registry id 'desktop-sidecar-4242', pid ${process.pid}). Quit Station Desktop so the background service can own this home, or install the service for a different home.`,
+    );
+    expect(installLaunchd).not.toHaveBeenCalled();
+    expect(readInstanceRegistry(baseDir)).toEqual(before);
+  });
+
+  test('fences a fresh install before backend start races a Desktop claim (#2961)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { superviseService: realSupervisor } = await vi.importActual<
+      typeof import('../commands/service-run.js')
+    >('../commands/service-run.js');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const installBackend = installLaunchd.getMockImplementation()!;
+    let host: ChildProcess | undefined;
+    let hostPort: Promise<number> | undefined;
+    const start = vi.fn(async () => {
+      host = spawn(
+        process.execPath,
+        [
+          '-e',
+          "require('node:http').createServer((req,res) => res.end('service-host')).listen(0,'127.0.0.1', function() {console.log(this.address().port)});",
+        ],
+        { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      hostPort = once(host.stdout!, 'data').then(([data]) =>
+        Number(String(data).trim()),
+      );
+    });
+    let supervision: Promise<void> | undefined;
+    const supervisorExit = vi.fn();
+    const supervisorStop = vi.fn();
+    installLaunchd.mockImplementationOnce((instanceId, input) => {
+      // Real supervisor starts at the OS-backend seam, before install returns.
+      supervision = realSupervisor(lifecycle(baseDir), {
+        start,
+        stop: supervisorStop,
+        exit: supervisorExit,
+        onSignal: vi.fn(),
+        needsBuildForInstance: () => false,
+        collect: vi.fn(
+          async (): Promise<CollectedInstanceStatus> => ({
+            found: true,
+            healthy: true,
+            bootId: 'boot',
+            sha: 'sha',
+            instanceId: 'service-test',
+            server: {
+              pid: host?.pid ?? null,
+              probe: 'ok',
+              listening: true,
+              reachable: true,
+            },
+            ui: {
+              pid: host?.pid ?? null,
+              probe: 'ok',
+              listening: true,
+              reachable: true,
+            },
+          }),
+        ),
+        setTimer: vi.fn(() => 1 as never),
+      });
+      const sidecar = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          'src-server/tools/instance-registry-bridge.ts',
+          'claimSidecar',
+        ],
+        {
+          windowsHide: true,
+          encoding: 'utf8',
+          input: JSON.stringify({
+            home: baseDir,
+            id: 'racing-desktop',
+            instance: { type: 'sidecar', port: 38141, status: 'starting' },
+          }),
+        },
+      );
+      expect(sidecar.status).toBe(0);
+      expect(
+        JSON.parse(sidecar.stdout).claimed,
+        'backend must already be fenced against Desktop',
+      ).toBe(false);
+      return installBackend(instanceId, input);
+    });
+    try {
+      await runServiceCommand(['install'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      });
+      await supervision;
+      const port = await hostPort!;
+      expect(port).toBeGreaterThan(0);
+      expect(await (await fetch(`http://127.0.0.1:${port}`)).text()).toBe(
+        'service-host',
+      );
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(supervisorExit).not.toHaveBeenCalled();
+      expect(supervisorStop).not.toHaveBeenCalled();
+      expect(Object.keys(readInstanceRegistry(baseDir).instances)).toEqual([
+        'service-test',
+      ]);
+    } finally {
+      if (host) {
+        const exited = once(host, 'exit');
+        host.kill();
+        await exited;
+      }
+    }
+  });
+
   // station#2689: from a source checkout the launcher selects the development
   // channel and exports the checkout's derived dev identity, so a home left to
   // its default is that dev instance's home. The entry-point suite
@@ -1229,10 +1378,10 @@ describe('station service dispatch', () => {
 
     expect(installLaunchd).toHaveBeenCalled();
     const entry = readInstanceRegistry(baseDir).instances['service-test'];
-    // Replaced, not merged: the retired generation's liveness must not ride
-    // into the new record (#3047), while its origin policy is preserved.
-    expect(entry.pid).toBeUndefined();
-    expect(entry.birth).toBeUndefined();
+    // Policy publication must not erase a supervisor that is still live:
+    // it may have claimed while the backend was being installed.
+    expect(entry.pid).toBe(process.pid);
+    expect(entry.birth).toBe(lookupProcessBirthFingerprint(process.pid));
     expect(entry.env).toEqual({ ALLOWED_ORIGINS: 'https://paired.example' });
   });
 
@@ -1272,10 +1421,12 @@ describe('station service dispatch', () => {
       port: 3242,
       uiPort: 5274,
       type: 'service',
+      status: 'installing',
+      pid: process.pid,
+      birth: lookupProcessBirthFingerprint(process.pid),
       env: { ALLOWED_ORIGINS: '' },
     });
-    expect(entry.pid).toBeUndefined();
-    expect(entry.birth).toBeUndefined();
+    expect(entry.checkout).toBeUndefined();
   });
 
   test('rejects a manifest whose allowedOrigins field is malformed (#1672)', async () => {
@@ -1514,6 +1665,8 @@ describe('station service dispatch', () => {
       manifest,
       registry: {
         allowedOrigins: [],
+        pid: process.pid,
+        status: 'installing',
         port: 3242,
         type: 'service',
         uiPort: 5274,

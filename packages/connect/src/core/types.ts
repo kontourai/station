@@ -87,6 +87,24 @@ export interface SavedConnection {
     brokerOrigin: string;
     scope: SelfHostedBrokerScopeV1;
   };
+  /** Native host resolves this saved routing intent; no browser Origin or secret. */
+  nativeBrokerRoute?: NativeBrokerRouteReference;
+}
+
+export interface NativeBrokerRouteReference {
+  routeVersion: 1;
+  profileName: string;
+  profileRevision: number;
+  brokerOrigin: string;
+  stationId: string;
+  enrollmentId: string;
+}
+
+export interface NativeBrokerAccessMethod {
+  accessVersion: 1;
+  id: string;
+  kind: 'native-broker';
+  endpointId: string;
 }
 
 export interface DirectHttpAccessMethod {
@@ -112,7 +130,8 @@ export interface HostTunnelAccessMethod {
 
 export type EnvironmentAccessMethod =
   | DirectHttpAccessMethod
-  | HostTunnelAccessMethod;
+  | HostTunnelAccessMethod
+  | NativeBrokerAccessMethod;
 
 export type AccessEndpointKind =
   | 'same-origin'
@@ -196,6 +215,11 @@ export type ConnectionFailureReason =
   | 'access-method-mismatch'
   | 'authentication-failed'
   | 'unsupported-capability-version'
+  /**
+   * #2962 — the host refused this client's API protocol (HTTP 426
+   * `client_protocol_unsupported`): this app, not the host, is too old.
+   */
+  | 'client-protocol-unsupported'
   | 'timeout'
   /**
    * Nothing answered: a thrown fetch (DNS failure, refused socket, no route).

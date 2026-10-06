@@ -230,7 +230,60 @@ export interface BrowserSessionActivityView {
     message: string;
     accepted: boolean;
     count: number;
+    /** Held for a person, then answered automatically because nobody did. */
+    unanswered?: true;
+    /** Held for a person, then dismissed when their control ended. */
+    controlEnded?: true;
   };
+}
+
+/**
+ * A JavaScript dialog the page is showing and Station is holding for a
+ * PERSON to answer: one that opened while a person was in control of the
+ * live view. Agents never answer it; an unanswered one is answered
+ * automatically (dismissed) after a bounded wait.
+ */
+export interface BrowserPendingDialogView {
+  /** Echo it with the answer; an answer for any other dialog is refused. */
+  dialogId: string;
+  type: 'alert' | 'confirm' | 'prompt';
+  /** Page text: untrusted, bounded. */
+  message: string;
+  /** A prompt's pre-filled answer (page text). */
+  defaultPrompt?: string;
+  openedAt: string;
+}
+
+export type BrowserConsoleLevelView = 'error' | 'warning' | 'info' | 'debug';
+
+/** One console line: page text, untrusted, shown as text only. */
+export interface BrowserConsoleEntryView {
+  seq: number;
+  /** Server capture time, ms since the epoch. */
+  at: number;
+  level: BrowserConsoleLevelView;
+  /** `console` API call, uncaught `exception`, or the `browser`'s own log. */
+  source: 'console' | 'exception' | 'browser';
+  text: string;
+  /** The text was cut to the server's per-entry bound. */
+  truncated?: true;
+  url?: string;
+  line?: number;
+}
+
+/** `GET /api/browser/sessions/:id/console[?after=<seq>]`. */
+export interface BrowserConsoleView {
+  entries: BrowserConsoleEntryView[];
+  /** Oldest entries evicted to keep the server's bound, since capture began. */
+  dropped: number;
+  latestSeq: number;
+  /**
+   * The browser generation these entries came from. `seq` restarts with each
+   * generation (a reopen), so a reader keeps entries of one generation only.
+   */
+  generation: number;
+  /** False when this Station captures no console for the session. */
+  capturing: boolean;
 }
 
 export interface BrowserViewportView {
@@ -270,6 +323,8 @@ export interface BrowserSessionView {
   activity: BrowserSessionActivityView;
   /** Present only while the session is live and streaming is wired. */
   surfaceId?: string;
+  /** Present only while the live page holds a dialog for a person. */
+  pendingDialog?: BrowserPendingDialogView;
 }
 
 export interface BrowserPaneAccessView {

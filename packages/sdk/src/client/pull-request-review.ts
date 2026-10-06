@@ -6,7 +6,13 @@ import type {
   PullRequestReviewOutcome,
   PullRequestReviewSnapshot,
 } from '@kontourai/station-contracts/pull-request-provider';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { envelopeError, StationHttpError } from './api-error-message';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  readJsonBody,
+} from './http';
 
 export interface PullRequestReviewTarget {
   provider: string;
@@ -36,7 +42,10 @@ function path(apiBase: string, target: PullRequestReviewTarget) {
   return `${apiBase}/api/pull-requests/${identity.map(encodeURIComponent).join('/')}/review?${query}`;
 }
 async function read<T>(response: Response): Promise<PullRequestResult<T>> {
-  const value = await response.json();
+  // A refusal whose body is not JSON keeps its status (#2708).
+  const value = (await readJsonBody(response)) as
+    | { success?: unknown; data?: { available?: unknown } }
+    | undefined;
   if (
     !response.ok ||
     value?.success !== true ||
@@ -45,17 +54,19 @@ async function read<T>(response: Response): Promise<PullRequestResult<T>> {
     // The server's refusal names its cause (a checkout it cannot resolve, a
     // pull request from another repository); Refresh fixes none of those, so
     // saying only "refresh" sent the reader in a loop.
-    const reason =
-      !response.ok && typeof value?.error === 'string' && value.error.trim()
-        ? value.error.trim().replace(/\.$/, '').slice(0, 300)
-        : null;
-    throw Error(
+    const refusal = envelopeError(response, value, '');
+    const reason = response.ok
+      ? ''
+      : refusal.message.trim().replace(/\.$/, '').slice(0, 300);
+    throw new StationHttpError(
+      refusal.status,
       reason
         ? `Pull request review unavailable: ${reason}.`
         : 'Pull request review unavailable. Refresh to inspect current provider state.',
+      refusal,
     );
   }
-  return value.data;
+  return value.data as PullRequestResult<T>;
 }
 /** Forges compare owner and repository names case-insensitively. */
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();

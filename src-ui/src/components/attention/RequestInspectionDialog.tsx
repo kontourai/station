@@ -172,7 +172,8 @@ export function RequestInspectionDialog({
       checking ||
       !current ||
       query.data?.state !== 'open' ||
-      !query.data.canRespond
+      !query.data.canRespond ||
+      query.data.requiresAnswers
     )
       return;
     inFlight.current = true;
@@ -252,7 +253,9 @@ export function RequestInspectionDialog({
                 <dd>{result.openedAt}</dd>
               </dl>
             </details>
-            {!result.canRespond ? (
+            {result.requiresAnswers ? (
+              <p>Open the session to answer the agent’s questions.</p>
+            ) : !result.canRespond ? (
               <p role="status">
                 This session cannot currently answer the request. Open the
                 session for its current status.

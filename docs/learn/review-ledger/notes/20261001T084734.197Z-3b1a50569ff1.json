@@ -1,0 +1,11 @@
+{
+  "revision": "7b2a0b28383d9ac1fd919753c0cbb45e867c78dc",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed added covered Home goal action inventory entry against shared Button44px targets, wrapping layout, actual375px browser and iOS26.5 Safari evidence. Theme tokens and backend/frontend boundary guidance remain unchanged.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed added covered Home goal action inventory entry against shared Button44px targets, wrapping layout, actual375px browser and iOS26.5 Safari evidence. Theme tokens and backend/frontend boundary guidance remain unchanged.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed added covered Home goal action inventory entry against shared Button44px targets, wrapping layout, actual375px browser and iOS26.5 Safari evidence. Theme tokens and backend/frontend boundary guidance remain unchanged.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

@@ -336,7 +336,10 @@ Two of those statuses mean the run was **stopped**, not judged: `timed_out` and
 `canceled`. No step failed and no test verdict exists, so the bounded summary
 names the step that was still running as `inFlightStep` rather than
 `failingStep`, and `failingStep` is absent. Every other non-passing status
-still reports `failingStep` as before. Read `inFlightStep` as the phase that
+still reports `failingStep` as before. Either field names the last step
+boundary in the capture: npm's `> <pkg>@<version> <script>` header, or the
+`[ci:fast] step <id>` line `ci:fast` prints before each step, which is what
+names a direct `node scripts/...` step (#2922). Read `inFlightStep` as the phase that
 was still running. Inspect host load, owned processes and phase progress
 before choosing a fix; its presence does not justify increasing a budget or
 imply a failed product assertion.
@@ -567,7 +570,7 @@ invalid range, checkout failure, or overflow fails closed instead of reporting
 docs-only.
 
 Heavy jobs own lane-specific concurrency groups only after classification. A
-docs-only push therefore runs the independent Secret Scan and classifier but
+docs-only push therefore runs the independent PR: Secret scan and classifier but
 does not enter or cancel fast, full-regression, browser, or container work.
 Manual dispatches fail closed to heavy verification. The local deterministic
 policy gate is `npm run gate:ci-change-classifier`; its fixtures include more
@@ -701,3 +704,28 @@ Builder gate verdict. Consumers must validate the evidence and apply their
 own gate contract; Station does not own those external decisions. See the
 [integration guide](../guides/integrating-station.md) and the installed
 consumer's public contract for its current evidence requirements.
+
+## Hosted source qualification
+
+The hosted [full-regression workflow](../../.github/workflows/full-regression.yml)
+executes all canonical phase commands across hosted jobs and additionally runs
+the Android viewport suite. Its aggregate emits a version-1
+`station.source-qualification` JSON artifact only when every planned job passes
+or when an admitted exact-source producer is reused. The
+[evidence resolver](../../scripts/qualification-evidence.mjs) validates the
+producer run, source, successful gate and ordinary shards, artifact presence
+and original 24-hour evidence lifetime. Reused runs cannot extend that age.
+
+This artifact is a different schema from the local version-3 receipt described
+above. It does not contain the local coordinator's workspace request key,
+phase records or digest-addressed local captures. It must not be passed to
+`assertReceiptSemantics` or renamed to look like a local receipt. Individual
+phase-driver calls still emit diagnostic outcomes, not independently reusable
+completion receipts; only the hosted aggregate establishes hosted completion.
+
+Attach the exact hosted artifact and original producer run when reporting
+source qualification. Builder or another external consumer needs an explicit
+supported admission contract before treating this schema as its required
+`tests-evidence`; that compatibility is not established by local tests here.
+Source qualification also does not establish native signing, installation,
+provider publication or rollback. See [the release process](../guides/releasing.md).

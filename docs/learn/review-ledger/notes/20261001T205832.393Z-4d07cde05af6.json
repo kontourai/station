@@ -1,0 +1,7 @@
+{
+  "revision": "39e1f4bbf14013fd9e91df90a3f285d57aed40d3",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Conflict integration review: inspected merged ChatDock task-first goal handoff. Uses existing chat/composer and model defaults; changes no config schema, environment variable, approval preference or attachment boundary. Prior configuration review scope remains unchanged.","inputs":["docs/reference/config.md"]}
+  ]
+}

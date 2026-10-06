@@ -91,6 +91,9 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   // project `typecheck:examples` compiles. It ran only in `gate:platform`,
   // so an uncovered example was found in the merge queue.
   'examples-conformance',
+  // #3045: ~2s — it parses every UI .tsx file with the TypeScript compiler
+  // rather than matching text, so it sits with the slower gates.
+  'button-cap-ratchet',
   'a11y-ratchet',
 ]);
 

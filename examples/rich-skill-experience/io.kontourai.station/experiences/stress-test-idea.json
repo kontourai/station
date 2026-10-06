@@ -1,0 +1,72 @@
+{
+  "$schema": "https://kontour.ai/schemas/agent-plugins/skill-experience/1.0/schema.json",
+  "schemaVersion": "1.0",
+  "id": "stress-test-idea",
+  "version": "1.0.0",
+  "title": "Stress-test an idea",
+  "purpose": "Work through the decisions behind an idea using short question rounds.",
+  "example": "Help me decide how a small team should review incoming feature requests.",
+  "authors": [
+    {
+      "name": "Station"
+    }
+  ],
+  "skills": [
+    {
+      "id": "interview",
+      "name": "stress-test-idea",
+      "path": "./skills/stress-test-idea/SKILL.md",
+      "sha256": "d5e7270b300e941d361be53562712fa04274a3076ba0201803d422832966e35d"
+    }
+  ],
+  "requiredContext": [],
+  "capabilities": ["conversation", "artifact-output"],
+  "inputs": [
+    {
+      "id": "idea",
+      "kind": "text",
+      "label": "What would you like to build?",
+      "required": true,
+      "minLength": 1,
+      "maxLength": 8000,
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "interview",
+        "explanation": "The skill asks for the idea the user wants to develop."
+      }
+    }
+  ],
+  "interaction": {
+    "pattern": "interview",
+    "questionRounds": {
+      "answerKinds": ["text", "single-choice"],
+      "maxQuestionsPerRound": 3
+    },
+    "stopConditions": [
+      "Important decisions are settled.",
+      "The user chooses to stop."
+    ],
+    "unsupportedBehavior": ["No implementation actions or tool execution."]
+  },
+  "outputs": [
+    {
+      "id": "decisions",
+      "label": "Decisions and open questions",
+      "kind": "decision-summary",
+      "required": false,
+      "provenance": {
+        "origin": "station-added",
+        "explanation": "An optional presentation summary; the skill itself does not promise an exported artifact."
+      }
+    }
+  ],
+  "presentation": {
+    "modes": ["guided", "alongside"],
+    "defaultMode": "guided",
+    "richView": {
+      "version": "1.0",
+      "kind": "workspace-pane",
+      "descriptorId": "pane:plugin%3Arich-skill-experience:interview:review"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "revision": "5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the source delta: workspace-package.ts only re-exports its existing portable path validator; pack, inspect, unpack, verify, content limits, encryption, and authority semantics are unchanged. Checked this document's workspace package and caller claims against that export-only delta.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Skill acquisition refusal for portable file/directory aliases and exclusive staged writes against real Registry routes and SkillService tests. Default MultiSource aggregation, exact old selection revision, source provenance, and network budgets remain explicitly unqualified.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed changed API and Workspace package guide claims. The newly exposed existing path validator and GitHub alias refusal do not change the guide's authenticated API/version evidence or workspace-copy registration requirements.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

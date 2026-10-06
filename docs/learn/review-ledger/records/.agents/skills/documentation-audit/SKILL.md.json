@@ -1,0 +1,21 @@
+{
+  "path": ".agents/skills/documentation-audit/SKILL.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
+
+  "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
+
+  "sources": [],
+
+  "checks": [
+    "Documentation-audit skill quick_validate.py passed.",
+
+    "Reviewed the added impact/catch-up workflow and its tested scope/refusal boundaries.",
+
+    "Added the scoped-freshness pointer, the docs:review:record command for refreshing records, and subsystem slice guidance of roughly 20 to 40 documents per PR (#2928); checked the command and anchor exist."
+  ]
+}

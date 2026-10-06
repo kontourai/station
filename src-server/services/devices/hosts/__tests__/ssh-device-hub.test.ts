@@ -40,7 +40,7 @@ function setup(
   const hub = new SshDeviceHub({
     hostId: HOST_ID,
     owner: 'b'.repeat(24),
-    target: () => parseSshDeviceTarget('brian@mac-mini:2222'),
+    target: () => parseSshDeviceTarget('casey@mac-mini:2222'),
     enabled: () => enabled,
     resolveLaunch: () =>
       overrides.installed === false

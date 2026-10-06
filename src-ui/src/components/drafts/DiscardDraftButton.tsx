@@ -94,7 +94,11 @@ export function DiscardDraftButton({
   className,
   closeSessionIds = [],
   onDiscarded,
+  label,
 }: {
+  /** Visible words beside the icon, for a host that lists it as a button
+   *  among other labelled buttons rather than as an icon in a row. */
+  label?: string;
   threadId: string;
   title: string;
   className: string;
@@ -128,6 +132,7 @@ export function DiscardDraftButton({
         }}
       >
         <DiscardGlyph />
+        {label}
       </button>
       {discard.isError && (
         <span className="discard-draft__error" role="alert">

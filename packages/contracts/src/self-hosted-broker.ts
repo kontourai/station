@@ -138,7 +138,56 @@ export interface SelfHostedBrokerNativeGrantRetireV2 {
   readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
 }
 
+export const SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVE_VERSION =
+  'station-broker-native-superseded-scope-observe/v1' as const;
+export const SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVED_VERSION =
+  'station-broker-native-superseded-scope-observed/v1' as const;
+export const SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_VERSION =
+  'station-broker-native-invitation-request-proof/v1' as const;
+export const SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_TYPE =
+  'station-broker-native-invitation-request+jws' as const;
+
+/** Observation authenticates current invitation custody without redeeming it. */
+export interface SelfHostedBrokerObserveSupersededNativeScopeV1 {
+  readonly version: typeof SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVE_VERSION;
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly supersededScope: SelfHostedBrokerNativeScopeV2;
+  readonly requestNonce: string;
+  readonly proofPublicKey: SelfHostedBrokerNativeRedemptionProofV2['publicKey'];
+}
+
+/** Proves only older scope inadmissibility, never individual grant existence. */
+export interface SelfHostedBrokerSupersededNativeScopeObservedV1 {
+  readonly version: typeof SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVED_VERSION;
+  readonly requestNonce: string;
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly disposition: 'superseded-generation-not-admitted';
+  readonly leaseRevision: number;
+}
+
+/** Invitation identity is distinct from grant request authority. */
+export interface SelfHostedBrokerNativeInvitationObservationProofClaimsV1 {
+  readonly version: typeof SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_VERSION;
+  readonly aud: string;
+  readonly brokerOrigin: string;
+  readonly purpose: 'station-native-superseded-scope-observe-v1';
+  readonly method: 'POST';
+  readonly path: '/broker/v1/native/grants/observe-superseded-scope';
+  readonly invitationId: string;
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly stationSigningKeyId: string;
+  readonly stationSigningGeneration: number;
+  readonly bodySha256: string;
+  readonly ath: string;
+  readonly jti: string;
+  readonly iat: number;
+  readonly exp: number;
+}
+
 export type SelfHostedBrokerNativeRequestPurposeV1 =
+  | 'station-native-ice-configuration-v1'
   | 'station-native-connection-open-v2'
   | 'station-native-connection-read-v2'
   | 'station-native-grant-retire-v2'
@@ -153,6 +202,7 @@ export interface SelfHostedBrokerNativeRequestProofClaimsV1 {
   readonly brokerOrigin: string;
   readonly method: 'POST';
   readonly path:
+    | '/broker/v1/native/ice/configuration'
     | '/broker/v1/native/connections/open'
     | '/broker/v1/native/connections/read'
     | '/broker/v1/native/grants/retire'

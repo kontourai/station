@@ -6,8 +6,8 @@
  * Only a turn's terminal EVENT drains the queue (as on main), so a Stop
  * (`turn.aborted`) never auto-sends (archive#3451), and a replayed frame's
  * as-of-delivery record can never fire a send ahead of the turn it replays.
- * The activity record is used for liveness and for OFFERING "Send now" when
- * the automatic drain will not come; the send itself is the user's.
+ * The activity record routes explicit Send now to the exact active turn;
+ * silence alone never interrupts or submits a pending message.
  *
  * These cases drive the real app-wide stream (`ensureOrchestrationEventStream`,
  * with only the SSE transport and the dispatch network call mocked).
@@ -40,9 +40,11 @@ const mocks = vi.hoisted(() => ({
     (raw: { event: string; data: string; id?: string }) => void
   >(),
   dispatchForeground: vi.fn(async (_input: Record<string, unknown>) => ({})),
+  interruptOrchestrationTurn: vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  interruptOrchestrationTurn: mocks.interruptOrchestrationTurn,
   fetchSSE: (
     url: string,
     options: {
@@ -89,8 +91,10 @@ import { QueuedMessages } from '../components/chat/QueuedMessages';
 import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
-import { drainQueuedMessageOnTurnCompleted } from '../hooks/orchestration/queueDrain';
-import { queueSendNowOffered } from '../utils/conversation-activity';
+import {
+  drainQueuedMessageOnTurnCompleted,
+  sendPendingMessageNow,
+} from '../hooks/orchestration/queueDrain';
 
 let index = 0;
 let API = '';
@@ -251,16 +255,10 @@ function Queue({ apiBase }: { apiBase: string }) {
     <QueuedMessages
       sessionId={CONVERSATION}
       messages={current.queuedMessages}
-      onSendNow={
-        queueSendNowOffered(current)
-          ? () =>
-              drainQueuedMessageOnTurnCompleted(
-                apiBase,
-                CONVERSATION,
-                true,
-                true,
-              )
-          : undefined
+      metadata={current.queuedMessageMetadata}
+      sendNowPending={current.queueSendNowPending || current.queueDrainSettling}
+      onSendMessageNow={(messageId) =>
+        sendPendingMessageNow(apiBase, CONVERSATION, messageId)
       }
     />
   );
@@ -274,6 +272,12 @@ beforeEach(() => {
   TURN = `turn-queue-${index}`;
   sequence = 0;
   mocks.dispatchForeground.mockClear();
+  mocks.interruptOrchestrationTurn.mockReset();
+  mocks.interruptOrchestrationTurn.mockResolvedValue({
+    outcome: 'cooperative',
+    threadId: CHILD,
+    turnId: TURN,
+  });
   vi.useFakeTimers();
 });
 
@@ -341,6 +345,66 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
     expect(mocks.dispatchForeground).not.toHaveBeenCalled();
     expect(chat().queuedMessages).toEqual(['held after stop']);
   });
+  // #3157: a usage-limit stop holds the queue on a reload or reconnect
+  // exactly as it does live; the snapshot carries the server's verdict.
+  test('a fallback snapshot after a usage-limit stop keeps the queued follow-up held', async () => {
+    chatWithQueue(['held after the limit']);
+    resumeWithoutSnapshot(API, open(104));
+    deliverSnapshot(API, {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: CONVERSATION,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationActivity: closed(105),
+        },
+        {
+          provider: 'claude',
+          threadId: CHILD,
+          status: 'error',
+          hasActiveTurn: false,
+          conversationId: CONVERSATION,
+          lastEventMethod: 'runtime.error',
+          lastRuntimeErrorMessage: "You've hit your session limit",
+          lastRuntimeErrorUsageLimit: true,
+          conversationActivity: closed(105),
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['held after the limit']);
+  });
+
+  test('a fallback snapshot after an ordinary failure still drains', async () => {
+    chatWithQueue(['after a failure']);
+    resumeWithoutSnapshot(API, open(106));
+    deliverSnapshot(API, {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: CONVERSATION,
+          status: 'ready',
+          hasActiveTurn: false,
+          conversationActivity: closed(107),
+        },
+        {
+          provider: 'claude',
+          threadId: CHILD,
+          status: 'error',
+          hasActiveTurn: false,
+          conversationId: CONVERSATION,
+          lastEventMethod: 'runtime.error',
+          lastRuntimeErrorMessage: 'engine crashed',
+          conversationActivity: closed(107),
+        },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+  });
+
   test("a lineage child's turn.completed drains the conversation's chat, though the chat names the root", async () => {
     chatWithQueue(['and then summarize it']);
     resumeWithoutSnapshot(API, open(10));
@@ -555,6 +619,29 @@ describe('#2309 the binding-routed drain acts only for an unrouted current child
     });
   });
 
+  // #3157: the successor-Session path (`drainUnroutedConversationTurnEnd`)
+  // holds the queue on a usage-limit stop exactly like the routed one.
+  test('a usage-limit runtime.error on the unrouted current child holds the queue', async () => {
+    chatWithQueue(['held behind the limit']);
+    resumeWithoutSnapshot(API, open(100));
+    deliverEvent(
+      API,
+      {
+        ...runtimeError('claude', false),
+        code: 'engine-turn-failed',
+        details: {
+          usageLimit: true,
+          scope: 'account',
+          resetAt: '2026-09-23T01:00:00.000Z',
+        },
+      } as OrchestrationEvent,
+      closed(101),
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['held behind the limit']);
+  });
+
   test('a chat the terminal routes to is left to its own handler: the head is taken only after the answer is committed', async () => {
     chatWithQueue(['B1', 'B2'], CHILD);
     connect(API, open(110));
@@ -597,9 +684,10 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
     chatWithQueue(['after the stop', 'and this later'], CHILD);
     connect(API, open(50));
     render(<Queue apiBase={API} />);
+    fireEvent.click(screen.getByRole('button', { name: /pending messages?/ }));
     expect(
-      screen.queryByRole('button', { name: /Send the next queued/ }),
-    ).toBeNull();
+      screen.queryByRole('button', { name: /Send pending message 1 now/ }),
+    ).not.toBeNull();
 
     act(() => deliverEvent(API, turnAborted(), closed(51)));
     await act(async () => {
@@ -609,7 +697,7 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
     expect(chat().queuedMessages).toEqual(['after the stop', 'and this later']);
 
     const sendNow = screen.getByRole('button', {
-      name: 'Send the next queued message now',
+      name: 'Send pending message 1 now',
     });
     expect(sendNow.textContent).toBe('Send now');
     await act(async () => {
@@ -624,14 +712,11 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
     expect(chat().queuedMessages).toEqual(['and this later']);
   });
 
-  test('a turn that stays open is never offered "Send now", even once the watchdog has observed it silent', () => {
+  test('silence never interrupts by itself; an explicit Send now stops the exact active turn before sending', async () => {
     chatWithQueue(['waiting'], CHILD);
     connect(API, open(60));
     render(<Queue apiBase={API} />);
-    expect(
-      screen.queryByRole('button', { name: /Send the next queued/ }),
-    ).toBeNull();
-
+    fireEvent.click(screen.getByRole('button', { name: /pending messages?/ }));
     act(() =>
       activeChatsStore.applyConversationActivity(
         open(60, {
@@ -644,11 +729,23 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
         }),
       ),
     );
-    // Sending into an open (if silent) turn is refused as indeterminate and
-    // blocks the thread; the path is Stop first.
-    expect(
-      screen.queryByRole('button', { name: /Send the next queued/ }),
-    ).toBeNull();
+    expect(mocks.interruptOrchestrationTurn).not.toHaveBeenCalled();
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Send pending message 1 now' }),
+      );
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(mocks.interruptOrchestrationTurn).toHaveBeenCalledExactlyOnceWith({
+      threadId: CHILD,
+      turnId: TURN,
+      apiBase: API,
+    });
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'waiting',
+    });
   });
 
   test('a silent turn, then Stop: once the turn has ended "Send now" is offered, and one click sends exactly one', async () => {
@@ -665,9 +762,10 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
       }),
     );
     render(<Queue apiBase={API} />);
+    fireEvent.click(screen.getByRole('button', { name: /pending messages?/ }));
     expect(
-      screen.queryByRole('button', { name: /Send the next queued/ }),
-    ).toBeNull();
+      screen.queryByRole('button', { name: /Send pending message 1 now/ }),
+    ).not.toBeNull();
 
     // The stall notice's Stop ends the turn; its turn.aborted closes the record.
     act(() => deliverEvent(API, turnAborted(), closed(65)));
@@ -679,7 +777,7 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
     await act(async () => {
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'Send the next queued message now',
+          name: 'Send pending message 1 now',
         }),
       );
       await vi.advanceTimersByTimeAsync(500);

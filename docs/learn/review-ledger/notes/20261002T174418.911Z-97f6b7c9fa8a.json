@@ -1,0 +1,7 @@
+{
+  "revision": "82fea394a09cdf62071b073d09aa6cb08ebbca48",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed ChatDockBody delta: composer status and scroll-target wiring only. Attachment retry resolution, blob-reference refusal, configuration precedence and send authority are unchanged; the attachment claims remain accurate. No live provider proof added.","inputs":["docs/reference/config.md"]}
+  ]
+}

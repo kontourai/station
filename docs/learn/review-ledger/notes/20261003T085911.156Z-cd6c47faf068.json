@@ -1,0 +1,11 @@
+{
+  "revision": "e15fe01696dceae30228b1a82f7df16592bace49",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"Reviewed merged ACP guide: MCP selection/delivery limits coexist with upstream Queue-default and safe-waiting composer behavior. Explicit adapter steer retains its separately documented cancellation/re-prompt fallback; attachment waiting and engine-specific notification bindings remain distinguished. Preserve both source review histories and their execution limits.","inputs":["docs/acp-chat-architecture.md"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed merged ACP guide: MCP selection/delivery limits coexist with upstream Queue-default and safe-waiting composer behavior. Explicit adapter steer retains its separately documented cancellation/re-prompt fallback; attachment waiting and engine-specific notification bindings remain distinguished. Preserve both source review histories and their execution limits.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped documentation from the combined canonical guides: compact Agent tool selection/info help and upstream composer/activity guidance are both included. Documentation remains static, credential-free and separate from live control/authority; no new provider/device proof claimed.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

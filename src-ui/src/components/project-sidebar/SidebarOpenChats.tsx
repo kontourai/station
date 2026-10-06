@@ -7,7 +7,12 @@ import {
   chatTaskSessionId,
   type HomeWorkItem,
 } from '../../views/home/home-view-model';
+import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
+import {
+  type RowProjectMarks,
+  rowProjectMarks,
+} from '../inbox-row/row-project-marks';
 import { SkeletonBlock } from '../state';
 import './SidebarOpenChats.css';
 
@@ -15,10 +20,19 @@ import './SidebarOpenChats.css';
 export function SidebarOpenChats({
   items,
   now,
+  workFacts,
+  projectAccentBySlug,
+  projectIconBySlug,
   onActivate,
 }: {
   items: HomeWorkItem[];
   now: number;
+  /** Status facts by item id, so a chat reads here as it does in the dock. */
+  workFacts?: WorkFactsById;
+  /** The sidebar's project colours (`useProjectAccents`), by slug. */
+  projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** The projects' icons (`useProjectIcons`), by slug. */
+  projectIconBySlug?: ReadonlyMap<string, string>;
   onActivate: (item: HomeWorkItem) => void;
 }) {
   return (
@@ -28,6 +42,10 @@ export function SidebarOpenChats({
           key={item.id}
           item={item}
           now={now}
+          facts={workFacts?.get(item.id)}
+          // The mark every other work row wears, by the same rule
+          // (`rowProjectMarks`: a remote row takes neither).
+          marks={rowProjectMarks(item, projectAccentBySlug, projectIconBySlug)}
           onActivate={onActivate}
         />
       ))}
@@ -37,10 +55,14 @@ export function SidebarOpenChats({
 function FileDropRow({
   item,
   now,
+  facts,
+  marks,
   onActivate,
 }: {
   item: HomeWorkItem;
   now: number;
+  facts?: WorkFacts;
+  marks: RowProjectMarks;
   onActivate: (item: HomeWorkItem) => void;
 }) {
   const root = useRef<HTMLFieldSetElement>(null);
@@ -114,6 +136,8 @@ function FileDropRow({
         isSnoozed={false}
         isOpenChat={false}
         now={now}
+        facts={facts}
+        {...marks}
         onActivate={onActivate}
       />
       {drop.isDraggingFiles && (

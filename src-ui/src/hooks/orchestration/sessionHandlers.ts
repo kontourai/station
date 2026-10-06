@@ -162,6 +162,8 @@ export function handleSessionStateChangedEvent(
           isProcessingStep: false,
           activityHint: undefined,
           pendingApprovals: [],
+          answeredApprovals: [],
+          pendingApprovalTurnIds: {},
           approvalToasts: new Map(),
         }
       : {}),
@@ -181,6 +183,10 @@ export function handleSessionExitedEvent(
   store: SessionActivityStore = activeChatsStore,
 ) {
   const chat = store.getSnapshot()[event.threadId];
+  // A session the conversation has moved past (a stopped never-used
+  // predecessor shares the chat's key) says nothing about the live one.
+  if (chat?.currentSessionId && chat.currentSessionId !== event.threadId)
+    return;
   if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
     // Engine death used to tear down the streaming shell without committing
     // the buffered answer (replay: in-flight-content-dropped-on-session-exit).

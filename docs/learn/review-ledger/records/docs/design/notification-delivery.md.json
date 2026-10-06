@@ -1,0 +1,107 @@
+{
+  "path": "docs/design/notification-delivery.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed full documented protocol/caller review of registration, per-principal projection, sealed payloads and phone pinning, FCM/APNs lifecycle, bounded retry/queue/replay behavior, native tap routes and desktop feed ownership. Corrected gateway state/kinds, iOS18 implementation floor, soft queue cap, scoped sweep recovery, historical Rust/watch conclusions and implemented Kotlin CI. All provisioning and physical delivery receipts remain historical.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    ".github/workflows/desktop-rust.yml",
+
+    "deploy/push-gateway/src/apns-sweep.ts",
+
+    "deploy/push-gateway/src/channel-ledger.ts",
+
+    "deploy/push-gateway/src/fcm.ts",
+
+    "deploy/push-gateway/src/gateway.ts",
+
+    "deploy/push-gateway/src/send-request.ts",
+
+    "deploy/push-gateway/src/station-auth.ts",
+
+    "scripts/run-agent-activity-android-unit-tests.mjs",
+
+    "src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentActivityModel.kt",
+
+    "src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentActivityPlugin.kt",
+
+    "src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentNotifications.kt",
+
+    "src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/StationNotifications.kt",
+
+    "src-desktop/plugins/agent-activity/ios/Sources/StationAgentActivityPlugin/AgentActivityPlugin.swift",
+
+    "src-desktop/plugins/agent-activity/ios/Sources/StationAgentActivityShared/CardOpener.swift",
+
+    "src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlert.swift",
+
+    "src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlertDelivery.swift",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/local_access_watch.rs",
+
+    "src-desktop/src/notification_feed.rs",
+
+    "src-server/routes/operations/native-push-routes.ts",
+
+    "src-server/services/notifications/agent-activity-card.ts",
+
+    "src-server/services/notifications/agent-activity-eligibility.ts",
+
+    "src-server/services/notifications/agent-activity-publisher.ts",
+
+    "src-server/services/notifications/agent-activity-seal.ts",
+
+    "src-server/services/notifications/delivery/apns-alert-channel.ts",
+
+    "src-server/services/notifications/delivery/card-alerted-categories.ts",
+
+    "src-server/services/notifications/delivery/fcm-alert-channel.ts",
+
+    "src-server/services/notifications/live-activity-planner.ts",
+
+    "src-server/services/notifications/native-push-registration-store.ts",
+
+    "src-server/services/notifications/native-push-send-floor.ts",
+
+    "src-server/services/notifications/push-signing-key-store.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-ui/src/__tests__/deliveryFeed.nativeConsumer.test.ts",
+
+    "src-ui/src/__tests__/deliveryFeed.test.ts",
+
+    "src-ui/src/platform/native/agentActivity.ts",
+
+    "src-ui/src/platform/native/deliveryFeed.ts",
+
+    "src-ui/src/platform/native/notifier.ts",
+
+    "src-ui/src/views/settings/AgentActivitySetting.tsx"
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through e0314c727: main deleted the host notification watch (lib.rs commands, notification_watch.rs, the notifier.ts watch/unwatch wrapper and the feed comment), moved the TLS listener guard into lib.rs as native_http_agent_can_actually_speak_tls, and un-exported the sweep limits with values unchanged; the merge already marked the watch retired. Two 'Rules this area has earned' bullets still described the deleted watch in the present tense, so they were changed to past tense. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds only a read-only `deviceHoldsScope(deviceId, scope)` to device-pairing-service, which checks for a live, non-pending device holding the scope. It changes no revoke, replace, scope-change notification (`onDeviceAccessChanged`) or registration behaviour that the design describes. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

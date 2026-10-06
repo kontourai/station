@@ -1989,3 +1989,62 @@ describe('provider-plan quota terminal notice (#2265)', () => {
     });
   });
 });
+
+test('a nonblocking question does not pause a turn or revive it when the engine closes the request later', () => {
+  const base = {
+    provider: 'codex' as const,
+    threadId: 'thread-async',
+    sessionId: 'thread-async',
+  };
+  const session = {
+    ...base,
+    status: 'running' as const,
+    createdAt: '2026-09-29T10:00:00Z',
+    updatedAt: '2026-09-29T10:00:01Z',
+  };
+  const question: CanonicalRuntimeEvent = {
+    ...base,
+    eventId: 'async-open',
+    createdAt: '2026-09-29T10:00:02Z',
+    method: 'request.opened',
+    requestId: 'async-question',
+    requestType: 'approval',
+    title: 'Question',
+    blocking: false,
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...base,
+      eventId: 'async-start',
+      createdAt: '2026-09-29T10:00:01Z',
+      method: 'turn.started',
+      turnId: 'turn-async',
+      prompt: 'go',
+    },
+    question,
+  ];
+  expect(projectSessionLifecycle({ session, events })).toMatchObject({
+    lifecycleState: 'running',
+    pendingReview: false,
+  });
+  events.push({
+    ...base,
+    eventId: 'async-done',
+    createdAt: '2026-09-29T10:00:03Z',
+    method: 'turn.completed',
+    turnId: 'turn-async',
+  });
+  const completed = projectSessionLifecycle({ session, events });
+  events.push({
+    ...base,
+    eventId: 'async-close',
+    createdAt: '2026-09-29T10:00:04Z',
+    method: 'request.resolved',
+    requestId: 'async-question',
+    status: 'cancelled',
+    blocking: false,
+  });
+  expect(projectSessionLifecycle({ session, events }).lifecycleState).toBe(
+    completed.lifecycleState,
+  );
+});

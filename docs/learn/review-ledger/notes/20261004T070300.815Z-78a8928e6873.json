@@ -1,0 +1,9 @@
+{
+  "revision": "83d93e016c1c698c16571461ad96f3d1c8eb8300",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Re-read the opt-in Dockerfile command regression after real startup and held-owner readiness both succeeded but its original process-group teardown left detached lifecycle children outside that group. The fixture now signals the PID/birth-verified supervisor, waits for its launcher group, and uses real lifecycle stop identities to reap detached server/UI children before deleting the home. The final assertion verifies atomic home re-claimability, not guaranteed registry erasure after an abrupt group termination. Production self-claim, schema admission, policy preservation and capped wait behavior are unchanged.","inputs":["docs/guides/deployment.md","scripts/__tests__/service-container-command.test.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Re-read the opt-in Dockerfile command regression after real startup and held-owner readiness both succeeded but its original process-group teardown left detached lifecycle children outside that group. The fixture now signals the PID/birth-verified supervisor, waits for its launcher group, and uses real lifecycle stop identities to reap detached server/UI children before deleting the home. The final assertion verifies atomic home re-claimability, not guaranteed registry erasure after an abrupt group termination. Production self-claim, schema admission, policy preservation and capped wait behavior are unchanged.","inputs":["docs/design/instance-registry.md","scripts/__tests__/service-container-command.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "3ca79d2ec811df37fcf53e20c05c326a579d9b11",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#3164 merge with origin/main: packages/contracts/src/orchestration.ts differs from main only by the authorizedTranscript handoff label ('Recent conversation messages, up to a size limit'). Re-checked this document: it states no seed size, transcript-carry wording or disclosure label text, so its claims remain accurate.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md"]}
+  ]
+}

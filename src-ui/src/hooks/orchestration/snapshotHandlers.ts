@@ -31,6 +31,8 @@ type SnapshotChatState = Pick<
   | 'currentSessionId'
   | 'conversationId'
   | 'pendingApprovals'
+  | 'answeredApprovals'
+  | 'pendingApprovalTurnIds'
   | 'approvalToasts'
 >;
 
@@ -193,7 +195,10 @@ type SelectedSnapshotRow = {
   /** The chat's record (newest across its rows), when any row carries one. */
   record: ConversationRecord | undefined;
   openRequestIds: string[] | undefined;
+  blockingOpenRequestIds: string[] | undefined;
   lastTurnEndMethod?: 'turn.completed' | 'turn.aborted' | 'runtime.error';
+  /** #3157: that turn end was a provider usage-limit stop. */
+  usageLimitStopped?: boolean;
 };
 
 function selectSnapshotRows(
@@ -273,7 +278,7 @@ function selectSnapshotRows(
 
   const selected = new Map<string, SelectedSnapshotRow>();
   for (const [key, candidates] of candidatesByChat) {
-    const lastTurnEndMethod = candidates
+    const lastTurnEnd = candidates
       .filter(
         (row) =>
           row.lastEventMethod === 'turn.completed' ||
@@ -283,12 +288,27 @@ function selectSnapshotRows(
       .sort((left, right) =>
         (left.lastEventAt ?? '').localeCompare(right.lastEventAt ?? ''),
       )
-      .at(-1)?.lastEventMethod as SelectedSnapshotRow['lastTurnEndMethod'];
+      .at(-1);
+    const lastTurnEndMethod =
+      lastTurnEnd?.lastEventMethod as SelectedSnapshotRow['lastTurnEndMethod'];
+    const usageLimitStopped =
+      lastTurnEndMethod === 'runtime.error' &&
+      lastTurnEnd?.lastRuntimeErrorUsageLimit === true;
     const openRequestIds = candidates.every(
       (row) => row.openRequestIds !== undefined,
     )
       ? [...new Set(candidates.flatMap((row) => row.openRequestIds ?? []))]
       : undefined;
+    const blockingOpenRequestIds =
+      openRequestIds === undefined
+        ? undefined
+        : [
+            ...new Set(
+              candidates.flatMap(
+                (row) => row.blockingOpenRequestIds ?? row.openRequestIds ?? [],
+              ),
+            ),
+          ];
     const latest = (rows: SnapshotSession[]) =>
       rows.reduce((best, row) =>
         snapshotRowRecency(row) >= snapshotRowRecency(best) ? row : best,
@@ -318,7 +338,9 @@ function selectSnapshotRows(
           latest(candidates),
         record,
         openRequestIds,
+        blockingOpenRequestIds,
         lastTurnEndMethod,
+        usageLimitStopped,
       });
       continue;
     }
@@ -333,7 +355,9 @@ function selectSnapshotRows(
             latest(candidates)),
       record: undefined,
       openRequestIds,
+      blockingOpenRequestIds,
       lastTurnEndMethod,
+      usageLimitStopped,
     });
   }
   return selected;
@@ -348,7 +372,13 @@ function planSnapshot(
   const sessionUpdates = [...selected].map(
     ([
       chatKey,
-      { row: session, record, openRequestIds, lastTurnEndMethod },
+      {
+        row: session,
+        record,
+        blockingOpenRequestIds,
+        lastTurnEndMethod,
+        usageLimitStopped,
+      },
     ]) => {
       const chat = chats[chatKey];
       // #2303: live events for the running child route through
@@ -450,7 +480,21 @@ function planSnapshot(
                     !rowTurnIsOpen(session, record)
                   ? 'idle'
                   : session.status,
-          ...(openRequestIds ? { pendingApprovals: openRequestIds } : {}),
+          ...(blockingOpenRequestIds
+            ? {
+                pendingApprovals: blockingOpenRequestIds,
+                // An answer is only meaningful while its request is still
+                // open: one the server no longer lists was resolved, and its
+                // mark would otherwise outlive it.
+                ...(chat?.answeredApprovals
+                  ? {
+                      answeredApprovals: chat.answeredApprovals.filter((id) =>
+                        blockingOpenRequestIds.includes(id),
+                      ),
+                    }
+                  : {}),
+              }
+            : {}),
           // Reseed the client turn fold only from an EXPLICIT server
           // verdict (archive#1076) — a reconnect during an in-turn approval must
           // let the next live 'running' state-change re-engage. A legacy
@@ -490,6 +534,10 @@ function planSnapshot(
               : lastTurnEndMethod === 'turn.aborted'
                 ? { error: session.lastTurnAbortReason }
                 : { error: undefined }),
+          // #3157: the server's verdict, so a reload or reconnect holds the
+          // queue exactly as the live usage-limit `runtime.error` did.
+          usageLimitStopped:
+            !snapshotTurnOpen && usageLimitStopped === true ? true : undefined,
           ...(adoptsCurrentChild
             ? {
                 currentSessionId: currentChild,
@@ -606,8 +654,19 @@ export function applyOrchestrationSnapshot(
 
   for (const { threadId, updates } of plan.sessionUpdates) {
     let approvalToasts: Map<string, string> | undefined;
+    let pendingApprovalTurnIds: Record<string, string> | undefined;
+    const placeholders = new Map<string, string>();
     if (updates.pendingApprovals) {
       const openIds = new Set(updates.pendingApprovals);
+      // #3071: the server's list already excludes what a turn's abort
+      // settled. A binding this client learned live (`request.opened.turnId`)
+      // is kept for the ids still open, so a later live abort can settle
+      // them by the same rule; the server names no turn for the rest.
+      pendingApprovalTurnIds = Object.fromEntries(
+        Object.entries(snapshot[threadId]?.pendingApprovalTurnIds ?? {}).filter(
+          ([requestId]) => openIds.has(requestId),
+        ),
+      );
       approvalToasts = new Map(snapshot[threadId]?.approvalToasts ?? []);
       for (const [requestId, toastId] of approvalToasts) {
         if (openIds.has(requestId)) continue;
@@ -622,6 +681,7 @@ export function applyOrchestrationSnapshot(
           0,
         );
         approvalToasts.set(requestId, toastId);
+        placeholders.set(requestId, toastId);
       }
     }
     // One write per thread. Each `updateChat` copies the whole chat map and
@@ -631,6 +691,7 @@ export function applyOrchestrationSnapshot(
     activeChatsStore.updateChat(threadId, {
       ...updates,
       ...(approvalToasts ? { approvalToasts } : {}),
+      ...(pendingApprovalTurnIds ? { pendingApprovalTurnIds } : {}),
       ...(isReconnectFallback
         ? reconnectCatchUpUpdates(
             snapshot[threadId],
@@ -639,6 +700,18 @@ export function applyOrchestrationSnapshot(
           )
         : {}),
     });
+    // The snapshot has only ids; swap each placeholder for the real approval
+    // toast once the request's payload is read (loaded on demand, off the
+    // entry chunk).
+    if (!replayId && options?.apiBase && placeholders.size > 0) {
+      const { apiBase } = options;
+      // A failed chunk load leaves the placeholder in place.
+      void import('./hydrateOpenApprovalToasts')
+        .then((module) =>
+          module.hydrateOpenApprovalToasts(apiBase, threadId, placeholders),
+        )
+        .catch(() => {});
+    }
   }
 
   for (const threadId of plan.exitedThreadIds) {

@@ -1,0 +1,39 @@
+{
+  "path": "examples/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Example catalog roles and verification commands; corrected missing-portable-kit claim to cross-client qualification gap.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/portable-author-kit/plugin.json",
+
+    "examples/rich-skill-experience/README.md",
+
+    "examples/rich-skill-experience/tsconfig.json",
+
+    "package.json#/scripts/examples:conformance",
+
+    "package.json#/scripts/typecheck:examples",
+
+    "scripts/examples-conformance.mjs"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Independent review corrected catalog labels to match actual Pane and trusted-module identities and current voice implementation limits.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Reviewed the catalog row for the repository graph example against its public SDK export/import/recall path and explicit evidence limits.",
+
+    "Integration source review through e0314c727: package.json added docs:impact, fast-checks:shard, portable-server, install-script:check and native relay lab scripts, and dropped bearing/forage. The README's `examples:conformance -- --build` and `typecheck:examples` commands still exist, and the catalog prose is accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

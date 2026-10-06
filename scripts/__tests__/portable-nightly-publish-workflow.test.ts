@@ -18,6 +18,8 @@ import {
   compareNightlyVersions,
   createDryRunKeys,
   DRY_RUN_SIGNING_KEY_ID,
+  isStaleRollingManifest,
+  ManifestMismatchError,
   NIGHTLY_MANIFEST_ASSET,
   portableNightlyVersion,
   publicationLocations,
@@ -129,7 +131,22 @@ function gateAllows(expression: string, context: Context): boolean {
     if (operand in known) return known[operand];
     throw new Error(`unrecognised gate operand: ${operand}`);
   };
+  // `contains(fromJSON(format('[...]', github.repository)), github.workflow_ref)`:
+  // exact membership of the caller identity in a literal list.
+  const membership = (part: string): boolean | null => {
+    const match = part.match(
+      /^contains\(fromJSON\(format\('(\[[^']*\])', github\.repository\)\), github\.workflow_ref\)$/,
+    );
+    if (!match) return null;
+    const list = JSON.parse(
+      match[1].replaceAll('{0}', context.repository),
+    ) as unknown;
+    if (!Array.isArray(list)) throw new Error('membership list is not a list');
+    return list.includes(context.workflowRef);
+  };
   return conjuncts(expression).every((part) => {
+    const member = membership(part);
+    if (member !== null) return member;
     const comparison = part.match(/^(.+?) (==|!=) (.+)$/);
     if (!comparison) throw new Error(`unrecognised gate conjunct: ${part}`);
     const [, left, operator, right] = comparison;
@@ -142,6 +159,9 @@ function gateAllows(expression: string, context: Context): boolean {
 const expr = (inner: string) => `\${{ ${inner} }}`;
 const REPOSITORY = 'kontourai/station';
 const NIGHTLY_ON_MAIN = `${REPOSITORY}/.github/workflows/nightly.yml@refs/heads/main`;
+// Main qualification calls nightly.yml, and a called workflow's
+// github.workflow_ref names the top-level caller.
+const QUALIFICATION_ON_MAIN = `${REPOSITORY}/.github/workflows/main-qualification.yml@refs/heads/main`;
 const enabledNightly: Context = {
   vars: { [GATE_VARIABLE]: 'enabled' },
   ref: 'refs/heads/main',
@@ -208,6 +228,22 @@ describe('portable Nightly publication workflow: the owner gate', () => {
         workflowRef:
           'someone/station/.github/workflows/nightly.yml@refs/heads/main',
       },
+      // Main qualification on a branch, or from a fork's copy.
+      {
+        ...enabledNightly,
+        ref: 'refs/heads/feat/x',
+        workflowRef: `${REPOSITORY}/.github/workflows/main-qualification.yml@refs/heads/feat/x`,
+      },
+      {
+        ...enabledNightly,
+        workflowRef:
+          'someone/station/.github/workflows/main-qualification.yml@refs/heads/main',
+      },
+      // Any other workflow on main that might call this one.
+      {
+        ...enabledNightly,
+        workflowRef: `${REPOSITORY}/.github/workflows/release.yml@refs/heads/main`,
+      },
       // A synthetic (unreserved) version or a failed dry run never publishes.
       { ...enabledNightly, reserved: 'false' },
       { ...enabledNightly, assemble: 'failure' },
@@ -222,6 +258,33 @@ describe('portable Nightly publication workflow: the owner gate', () => {
 
   it('publishes only for the enabled, reserved Nightly on main', () => {
     expect(gateAllows(gate, enabledNightly)).toBe(true);
+  });
+
+  it('publishes for the Nightly that Main qualification starts on main', () => {
+    expect(
+      gateAllows(gate, {
+        ...enabledNightly,
+        workflowRef: QUALIFICATION_ON_MAIN,
+      }),
+    ).toBe(true);
+    // The dry-run summary names the same two entry points as the gate.
+    const record = publication.jobs.assemble.steps?.find(
+      (step) => step.name === 'Record what this run will do',
+    );
+    expect(record?.run).toContain(
+      '"$GITHUB_REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" | "$GITHUB_REPOSITORY/.github/workflows/main-qualification.yml@refs/heads/main") entry=nightly ;;',
+    );
+  });
+
+  it('is reachable from Main qualification only through nightly.yml', () => {
+    const nightlyCallers = readdirSync(workflowsDir)
+      .filter((file) => /\.ya?ml$/.test(file))
+      .filter((file) =>
+        Object.values(readWorkflow(file).jobs ?? {}).some(
+          (job) => job?.uses === './.github/workflows/nightly.yml',
+        ),
+      );
+    expect(nightlyCallers).toEqual(['main-qualification.yml']);
   });
 
   it('is a plain conjunction that nothing upstream can widen', () => {
@@ -533,7 +596,7 @@ describe('Nightly caller', () => {
     ]);
     const parts = conjuncts(caller.if ?? '');
     for (const required of [
-      "needs['full-regression'].result == 'success'",
+      "(needs['full-regression'].result == 'success' || inputs.caller_qualification == 'success')",
       "github.ref == 'refs/heads/main'",
       "needs['native-stage'].outputs.build == 'true'",
     ])
@@ -695,6 +758,17 @@ describe('dry-run signing through the real signer CLI', () => {
     expect(() => verifyExpectedManifest(envelope, keyTable, payload)).toThrow(
       /not the payload this run signed/,
     );
+    // The real mismatch carries the fetched version the retry decision reads.
+    let mismatch: unknown;
+    try {
+      verifyExpectedManifest(envelope, keyTable, payload);
+    } catch (error) {
+      mismatch = error;
+    }
+    expect(mismatch).toBeInstanceOf(ManifestMismatchError);
+    expect((mismatch as ManifestMismatchError).fetchedVersion).toBe(
+      '0.7.0-nightly.13',
+    );
     expect(
       verifyExpectedManifest(
         envelope,
@@ -702,6 +776,29 @@ describe('dry-run signing through the real signer CLI', () => {
         JSON.parse(readFileSync(other, 'utf8')),
       ).version,
     ).toBe('0.7.0-nightly.13');
+  });
+});
+
+describe('rolling-manifest re-verify retries only staleness', () => {
+  const expected = { version: '0.7.0-nightly.13' };
+  it('retries a validly signed but OLDER manifest: the asset host serving replaced bytes', () => {
+    expect(
+      isStaleRollingManifest(
+        new ManifestMismatchError('0.7.0-nightly.12', expected.version),
+        expected,
+      ),
+    ).toBe(true);
+  });
+  it('fails at once on anything waiting cannot fix', () => {
+    for (const error of [
+      new ManifestMismatchError('0.7.0-nightly.13', expected.version),
+      new ManifestMismatchError('0.7.0-nightly.14', expected.version),
+      new ManifestMismatchError('not-a-version', expected.version),
+      new Error('manifest signature did not verify'),
+    ])
+      expect(isStaleRollingManifest(error, expected), error.message).toBe(
+        false,
+      );
   });
 });
 

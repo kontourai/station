@@ -1,0 +1,11 @@
+{
+  "revision": "c191c6d08ae926b8d038cf5e2a4b494beee19243",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the Skill unsupported-format refusal serialization delta: the route emits its fixed public human message after identifying the typed owner refusal, instead of serializing outward error.message. HTTP400/code, raw content inspection, storage guards, staged cleanup, and all unrelated route/profile/plugin behavior remain unchanged. Actual repo-governance proof passes without policy/allowlist changes; the real route control asserts the same safe message.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Reviewed the Skill unsupported-format refusal serialization delta: the route emits its fixed public human message after identifying the typed owner refusal, instead of serializing outward error.message. HTTP400/code, raw content inspection, storage guards, staged cleanup, and all unrelated route/profile/plugin behavior remain unchanged. Actual repo-governance proof passes without policy/allowlist changes; the real route control asserts the same safe message.","inputs":["docs/guides/distribution-profiles.md"]},
+
+    {"path":"examples/registry/README.md","note":"Reviewed the Skill unsupported-format refusal serialization delta: the route emits its fixed public human message after identifying the typed owner refusal, instead of serializing outward error.message. HTTP400/code, raw content inspection, storage guards, staged cleanup, and all unrelated route/profile/plugin behavior remain unchanged. Actual repo-governance proof passes without policy/allowlist changes; the real route control asserts the same safe message.","inputs":["examples/registry/README.md"]}
+  ]
+}

@@ -5,6 +5,7 @@ import {
   readApplicationFrame,
   writeApplicationFrame,
 } from './applicationChannelFrames.js';
+import { raceOwnedLifetime } from './browserTransportWait.js';
 
 function headerEntries(headers: Headers): [string, string][] {
   const entries: [string, string][] = [];
@@ -12,11 +13,32 @@ function headerEntries(headers: Headers): [string, string][] {
   return entries;
 }
 
+/** A channel owner observes copies of one exact request after peer admission. */
+export interface ApplicationChannelRequestPreparation {
+  readonly method: string;
+  /** Exact request path, including its query. */
+  readonly path: string;
+  /** Independent copy of the bounded request body; empty when no body was supplied. */
+  readonly body: Uint8Array;
+  /** Independent copy of the original request headers. */
+  readonly headers: Headers;
+  readonly signal: AbortSignal;
+}
+
+export type ApplicationChannelPreparedHeaders = readonly (readonly [
+  string,
+  string,
+])[];
+
 /** The transport owner supplies an authenticated, reliable, ordered channel. */
 export interface ApplicationChannel {
   send(message: string): void;
   close(): void;
   subscribe(message: (value: unknown) => void, closed: () => void): () => void;
+  /** Add per-request headers after peer admission, without changing the original request. */
+  prepareRequest?(
+    request: ApplicationChannelRequestPreparation,
+  ): Promise<ApplicationChannelPreparedHeaders>;
 }
 export interface ApplicationChannelTarget {
   readonly signal: AbortSignal;
@@ -243,19 +265,64 @@ export function createApplicationChannelFetch(options: {
     init?.authorityGuard?.();
     await configuration.assertCurrent();
     const body = await readRequestBody(request);
-    const frame = writeApplicationFrame({
-      type: 'request',
+    const target = Object.freeze({
       method: request.method,
       path: url.pathname + url.search,
-      headers: headerEntries(headers),
       body,
+    });
+    let frame = writeApplicationFrame({
+      type: 'request',
+      ...target,
+      headers: headerEntries(headers),
     });
     signal.throwIfAborted();
     const channel = await openOwnedChannel(configuration.open, signal);
     try {
-      await configuration.assertCurrent();
+      await raceOwnedLifetime(
+        Promise.resolve(configuration.assertCurrent()),
+        signal,
+      );
       signal.throwIfAborted();
       init?.authorityGuard?.();
+      const prepare = channel.prepareRequest;
+      if (prepare) {
+        const additions = await raceOwnedLifetime(
+          Promise.resolve().then(() => {
+            signal.throwIfAborted();
+            init?.authorityGuard?.();
+            return prepare.call(
+              channel,
+              Object.freeze({
+                method: target.method,
+                path: target.path,
+                body:
+                  target.body === null
+                    ? new Uint8Array(0)
+                    : decodeApplicationBytes(target.body),
+                headers: new Headers(headers),
+                signal,
+              }),
+            );
+          }),
+          signal,
+        );
+        await raceOwnedLifetime(
+          Promise.resolve(configuration.assertCurrent()),
+          signal,
+        );
+        signal.throwIfAborted();
+        init?.authorityGuard?.();
+        for (const [name, value] of additions) {
+          if (headers.has(name))
+            throw new ApplicationChannelError(false, 'header_collision');
+          headers.set(name, value);
+        }
+        frame = writeApplicationFrame({
+          type: 'request',
+          ...target,
+          headers: headerEntries(headers),
+        });
+      }
     } catch (error) {
       channel.close();
       throw error;

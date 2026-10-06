@@ -16,6 +16,7 @@ import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
 
 vi.mock('../contexts/open-chats-store', () => ({
@@ -33,6 +34,12 @@ vi.mock('../contexts/open-chats-store', () => ({
 interface QueryState<T> {
   data?: T;
   isLoading?: boolean;
+  /**
+   * TanStack's "no answer yet", fetching or not. Left out, it reads as
+   * settled: every fixture here that gives `data` is an answered query, and
+   * `data: undefined` with it absent is a settled miss (the `/` routes).
+   */
+  isPending?: boolean;
   isError?: boolean;
 }
 
@@ -70,6 +77,7 @@ const {
   showToast,
   chatControllerAction,
   registerRegionSurfaceHost,
+  unsubscribePushNotifications,
 } = vi.hoisted(() => ({
   hooks: {
     projects: { data: [], isLoading: false, isError: false } as QueryState<
@@ -120,6 +128,7 @@ const {
   showToast: vi.fn(),
   chatControllerAction: vi.fn(),
   registerRegionSurfaceHost: vi.fn(() => () => undefined),
+  unsubscribePushNotifications: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -136,6 +145,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectLayoutQuery: () => hooks.layout,
   useCoreUpdateStatusQuery: () => coreUpdateStatus,
   useQueryClient: () => ({ invalidateQueries }),
+  DevicePairingRequiredError: class DevicePairingRequiredError extends Error {},
+  unsubscribePushNotifications,
+  fetchVapidPublicKey: vi.fn().mockResolvedValue('AQAB'),
+  subscribePushNotifications: vi.fn(),
   // App raises OS alerts for blocking requests (#1912); this route's subject
   // is navigation, so an empty notification list keeps it silent.
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
@@ -325,13 +338,26 @@ vi.mock('../components/chat-dock/ChatDock', () => ({
 // reads the registry off a real region model (`surfaces`), which this file's
 // stub does not carry. Reduced to its one contract this file relies on:
 // the host renders Chat's pane through the renderer it is handed.
-vi.mock('../workspace-panes/RegionPaneHost', () => ({
-  RegionPaneHost: ({
-    renderChatPane,
-  }: {
-    renderChatPane: (...args: never[]) => ReactNode;
-  }) => <>{renderChatPane()}</>,
-}));
+vi.mock('../workspace-panes/RegionPaneHost', async () => {
+  const { useRegionModelOptional } = await import(
+    '../contexts/RegionModelContext'
+  );
+  return {
+    // Chat renders where the region (as the shells see it) holds Chat.
+    RegionPaneHost: ({
+      regionId,
+      renderChatPane,
+    }: {
+      regionId: 'left' | 'right' | 'bottom';
+      renderChatPane: (...args: never[]) => ReactNode;
+    }) => {
+      const model = useRegionModelOptional();
+      return model?.regions[regionId].panes.includes('chat') ? (
+        <>{renderChatPane()}</>
+      ) : null;
+    },
+  };
+});
 vi.mock('../components/CommandPalette', () => ({
   CommandPalette: () => null,
 }));
@@ -410,14 +436,22 @@ vi.mock('../contexts/ProjectsContext', async (importOriginal) => {
 // The stubs below describe an ARRANGEMENT; the registry is the real one,
 // supplied here the way the provider supplies it, because `RegionShells`
 // reads `surfaces` to decide which dock occupants get a host (#2045).
-vi.mock('../contexts/RegionModelContext', async () => {
+vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../contexts/RegionModelContext')>();
   const { REGION_SURFACE_REGISTRY } = await import('../regions/region-model');
   return {
+    ...actual,
+    // The provider's STATE is this file's stub; what a reader sees of it
+    // still passes through the real suspension (`SuspendRegionSurfaces`), so
+    // the Coding layout's suspended Chat is App's real behaviour here.
     useRegionModelOptional: () =>
-      hooks.regionModel && {
-        surfaces: REGION_SURFACE_REGISTRY,
-        ...hooks.regionModel,
-      },
+      actual.useSuspendedRegionModel(
+        (hooks.regionModel && {
+          surfaces: REGION_SURFACE_REGISTRY,
+          ...hooks.regionModel,
+        }) as never,
+      ),
   };
 });
 vi.mock('../contexts/useShowSurface', () => ({
@@ -426,9 +460,24 @@ vi.mock('../contexts/useShowSurface', () => ({
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast }),
 }));
-vi.mock('../hooks/useFeatureSettings', () => ({
-  useFeatureSettings: () => ({ settings: { voiceS2SEnabled: false } }),
-}));
+let exercisePushLifecycle = false;
+vi.mock('../hooks/useFeatureSettings', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../hooks/useFeatureSettings')>();
+  return {
+    useFeatureSettings: () => {
+      const feature = actual.useFeatureSettings();
+      return exercisePushLifecycle
+        ? feature
+        : {
+            settings: {
+              voiceS2SEnabled: false,
+              pushNotificationsEnabled: false,
+            },
+          };
+    },
+  };
+});
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: vi.fn(),
 }));
@@ -471,6 +520,87 @@ describe('App home route resolution', () => {
     connectionState.status = 'connected';
     connectionState.reason = null;
     authenticatedFetch.mockReset();
+    exercisePushLifecycle = false;
+    unsubscribePushNotifications.mockClear();
+  });
+
+  test('resetting device defaults stops browser push while Home owns the route without prompting for permission', async () => {
+    exercisePushLifecycle = true;
+    const previous = deviceSettingsStore.get('featureSettings');
+    const workerDescriptor = Object.getOwnPropertyDescriptor(
+      navigator,
+      'serviceWorker',
+    );
+    const pushDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      'PushManager',
+    );
+    const notificationDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      'Notification',
+    );
+    const subscription = {
+      endpoint: 'https://push.test/home-subscription',
+      options: {
+        userVisibleOnly: true,
+        applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
+      },
+      unsubscribe: vi.fn(async () => {
+        current = null;
+        return true;
+      }),
+    };
+    let current: typeof subscription | null = subscription;
+    const registration = {
+      pushManager: { getSubscription: async () => current },
+    };
+    const requestPermission = vi.fn();
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        register: async () => registration,
+        getRegistration: async () => registration,
+      },
+    });
+    Object.defineProperty(window, 'PushManager', {
+      configurable: true,
+      value: class PushManager {},
+    });
+    Object.defineProperty(window, 'Notification', {
+      configurable: true,
+      value: { permission: 'granted', requestPermission },
+    });
+    deviceSettingsStore.set('featureSettings', {
+      ...previous,
+      pushNotificationsEnabled: true,
+    });
+    const mounted = render(<App />);
+    try {
+      expect(screen.getByTestId('app-view-content').textContent).toBe(
+        '{"type":"home"}',
+      );
+      await act(async () => deviceSettingsStore.resetMany(['featureSettings']));
+      await waitFor(() =>
+        expect(subscription.unsubscribe).toHaveBeenCalledOnce(),
+      );
+      expect(unsubscribePushNotifications).toHaveBeenCalledWith(
+        subscription.endpoint,
+        homeConnection.apiBase,
+      );
+      expect(requestPermission).not.toHaveBeenCalled();
+    } finally {
+      mounted.unmount();
+      deviceSettingsStore.set('featureSettings', previous);
+      exercisePushLifecycle = false;
+      for (const [target, key, descriptor] of [
+        [navigator, 'serviceWorker', workerDescriptor],
+        [window, 'PushManager', pushDescriptor],
+        [window, 'Notification', notificationDescriptor],
+      ] as const) {
+        if (descriptor) Object.defineProperty(target, key, descriptor);
+        else Reflect.deleteProperty(target, key);
+      }
+    }
   });
 
   test('loads the deferred launch update checker and presents its banner', async () => {
@@ -1219,6 +1349,116 @@ describe('App home route resolution', () => {
       expect(registration[5]).toBe(expectedEnabled);
     },
   );
+
+  /**
+   * #928 coding stack: the built-in Coding layout's centre renders Chat, so
+   * the dock's Chat is suspended — one chat event owner, the centre's — while
+   * the region shells stay mounted for every other pane.
+   */
+  describe('the Coding layout owns Chat in its centre', () => {
+    const openBottom = () => ({
+      ...regionModelStub(),
+      regions: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        bottom: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT.bottom,
+          visible: true,
+        },
+      },
+    });
+
+    test('on a wide fine-pointer screen: one chat owner, the centre’s, and the region host stays', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      hooks.layout = { data: { type: 'coding' }, isLoading: false };
+      hooks.regionModel = openBottom();
+
+      render(<App />);
+      await act(async () => undefined);
+
+      expect(screen.getByTestId('fullscreen-chat-controller')).toBeTruthy();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+      expect(registerRegionSurfaceHost).toHaveBeenCalled();
+
+      openChatsStore.focus({ sessionId: 'fixture' });
+      window.dispatchEvent(new CustomEvent('station:open-new-chat'));
+      expect(chatControllerAction.mock.calls).toEqual([
+        ['fullscreen:focus'],
+        ['fullscreen:new'],
+      ]);
+    });
+
+    /**
+     * `PersistQueryClientProvider` keeps every query idle while the persisted
+     * cache restores, so for that frame the layout query has no answer AND
+     * `isLoading` is false. A gate on `isLoading` mounted the dock's Chat
+     * there, then tore it down for the centre's Chat once the record arrived
+     * (the CI trace on #3035: `#chat-dock` attached before the layout request
+     * was even issued). The layout is unknown until the query is no longer
+     * pending, and an unknown layout mounts no dock host at all.
+     */
+    test('while the layout record is pending but idle (a restoring cache), no dock host mounts; it mounts once the record arrives', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      hooks.layout = { data: undefined, isLoading: false, isPending: true };
+      hooks.regionModel = openBottom();
+
+      const { rerender } = render(<App />);
+      await act(async () => undefined);
+
+      // `RegionShells` is App's only dock host and registers on mount, so a
+      // dock mounted for the pending frame registers here.
+      expect(registerRegionSurfaceHost).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+
+      hooks.layout = {
+        data: { type: 'coding' },
+        isLoading: false,
+        isPending: false,
+      };
+      await act(async () => rerender(<App />));
+
+      // The answer releases the gate: the host mounts (for the other
+      // regions), with Chat still the centre's, never the dock's.
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+    });
+
+    test('a plugin layout typed coding keeps Chat in the dock', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      hooks.layout = {
+        data: { type: 'coding', config: { plugin: 'fixture-plugin' } },
+        isLoading: false,
+      };
+      hooks.regionModel = openBottom();
+
+      render(<App />);
+      await act(async () => undefined);
+
+      expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+    });
+
+    test('a bottom-only device keeps Chat in its dock', async () => {
+      const width = window.innerWidth;
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: 390,
+      });
+      try {
+        window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+        hooks.layout = { data: { type: 'coding' }, isLoading: false };
+        hooks.regionModel = openBottom();
+
+        render(<App />);
+        await act(async () => undefined);
+
+        expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+      } finally {
+        Object.defineProperty(window, 'innerWidth', {
+          configurable: true,
+          value: width,
+        });
+      }
+    });
+  });
 
   test('registers no region surface host for a full-screen chat layout', async () => {
     window.history.replaceState({}, '', '/projects/demo/layouts/chat');

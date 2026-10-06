@@ -70,6 +70,14 @@ export interface OrchestrationSessionUsage {
 }
 
 export interface UsageStats {
+  snapshot?: {
+    rescannedAt: string;
+    engineUsage: 'available' | 'unavailable' | 'not_configured';
+    skippedMessages: number;
+    missingMessageCosts?: number;
+    costCoverageChecked?: boolean;
+    retainedUsage?: boolean;
+  };
   lifetime: {
     totalMessages: number;
     totalConversations: number;
@@ -144,37 +152,38 @@ export interface Achievement {
   progressPercent?: number;
   lowerIsBetter?: boolean;
   precondition?: { label: string; current: number; threshold: number };
+  measurementUnavailableReason?: string;
 }
 
 export const ACHIEVEMENTS = [
   {
     id: 'first-message',
     name: 'First Steps',
-    description: 'Send your first message',
+    description: 'Record a message or completed engine turn',
     threshold: 1,
   },
   {
     id: 'conversationalist',
     name: 'Conversationalist',
-    description: 'Send 100 messages',
+    description: 'Record 100 messages or completed engine turns',
     threshold: 100,
   },
   {
     id: 'power-user',
     name: 'Power User',
-    description: 'Send 1,000 messages',
+    description: 'Record 1,000 messages or completed engine turns',
     threshold: 1000,
   },
   {
     id: 'model-explorer',
     name: 'Model Explorer',
-    description: 'Use 5 different models',
+    description: 'Record 5 models in the lifetime summary',
     threshold: 5,
   },
   {
     id: 'cost-conscious',
     name: 'Cost Conscious',
-    description: 'Keep average cost under $0.01/message',
+    description: 'Keep recorded average cost under $0.01/message',
     threshold: 0.01,
   },
 ] as const;
@@ -755,6 +764,29 @@ export function mergeRescannedUsageStats(
   return existing;
 }
 
+export function getCostMeasurementGap(stats: UsageStats): string | null {
+  if (!stats.snapshot?.costCoverageChecked) {
+    return 'Cost coverage has not been checked for the current saved messages.';
+  }
+  if (stats.snapshot.skippedMessages > 0) {
+    return 'Some saved messages could not be read, so their cost is unknown.';
+  }
+  if (stats.snapshot.missingMessageCosts) {
+    return 'Some saved assistant messages did not report cost. Missing cost is not zero.';
+  }
+  if (stats.snapshot?.engineUsage === 'unavailable') {
+    return 'Engine cost could not be checked during the last rebuild.';
+  }
+  if (stats.snapshot?.retainedUsage) {
+    return 'Cost coverage is unavailable for retained usage that could not be remeasured.';
+  }
+  const coverage = stats.lifetime.engineUsageCoverage;
+  if (coverage && coverage.sessionsReportingCost < coverage.sessions) {
+    return 'Some engine sessions did not report cost. Missing cost is not zero.';
+  }
+  return null;
+}
+
 export function checkAchievement(
   def: (typeof ACHIEVEMENTS)[number],
   stats: UsageStats,
@@ -768,6 +800,7 @@ export function checkAchievement(
       return Object.keys(stats.byModel).length >= def.threshold;
     case 'cost-conscious':
       return (
+        getCostMeasurementGap(stats) === null &&
         stats.lifetime.totalMessages >= 50 &&
         stats.lifetime.totalCost / stats.lifetime.totalMessages <= def.threshold
       );

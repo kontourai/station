@@ -71,10 +71,28 @@ const TAURI_EVENT_BRIDGE: TauriEventBridge = {
 
 const TAURI_DEEP_LINK_BRIDGE: TauriDeepLinkBridge = {
   async getCurrent() {
+    const mode = await invokeTauri<unknown>(
+      'station_native_link_delivery_mode',
+    );
+    if (mode === 'station-owned')
+      return invokeTauri<string[]>('station_native_pairing_link_take');
+    if (mode !== 'plugin')
+      throw new Error('Native link delivery is unavailable.');
     const { getCurrent } = await import('@tauri-apps/plugin-deep-link');
     return (await getCurrent()) ?? [];
   },
   async onOpenUrl(handler) {
+    const mode = await invokeTauri<unknown>(
+      'station_native_link_delivery_mode',
+    );
+    if (mode === 'station-owned') {
+      const { listen } = await import('@tauri-apps/api/event');
+      return listen<string[]>('station://pairing-deep-link', (event) =>
+        handler(event.payload),
+      );
+    }
+    if (mode !== 'plugin')
+      throw new Error('Native link delivery is unavailable.');
     const { onOpenUrl } = await import('@tauri-apps/plugin-deep-link');
     return onOpenUrl(handler);
   },

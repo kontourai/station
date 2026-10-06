@@ -719,7 +719,10 @@ test.each([
     expect(revoked.status).toBe(200);
     expect(revoked.body.fullAccessRevocation).toMatchObject({
       reset: [{ conversationId: threadId, was: 'host-start' }],
-      reconfined: [{ conversationId: threadId }],
+      // #3242: the session's engine is still running, so it stays listed as
+      // unconfined until its next turn, which runs confined (asserted below).
+      reconfined: [],
+      stillUnconfined: [{ conversationId: threadId, until: 'next-turn' }],
       unattributedHostStarts: { sessions: [], total: 0 },
     });
     await f.service!.dispatch({

@@ -49,6 +49,26 @@ prevalidated authority adapters; a caller-supplied string is not authority.
 The proposal idempotency digest covers resolved scope, principal, occurrence,
 correlation and causation, resolved link projections, and the authority receipt.
 
+Personal output reviews use the closed `output-feedback` body: an output ID,
+SHA-256 digest, Task creation time, comment, and a human review statement.
+`accepted` records what that reviewer said about that version; it neither changes
+Task status nor establishes evidence standing. Agents cannot author this body.
+The mounted runtime binds the target's Task creation time into the write grant.
+
+The worker checks permanent proposal identity before fresh output admission.
+An exact, currently authorized retry therefore survives output deletion and
+history pruning. A new proposal must match a retained output's identity and
+digest, including when no home-controller admission port is configured.
+Output validation releases its separate lock before the room commits; this
+proves identity at admission, not atomic retention through the room transaction.
+
+The first feedback append activates room record version 3 in the same SQLite
+transaction as its record. A persistent per-room format marker and INSERT
+trigger reject older version-2 writers after activation. New readers preserve
+existing version-2 bytes and read mixed version-2/version-3 history. The marker
+survives restart and record pruning. Older readers reject the unfamiliar format.
+The invited-share projection still excludes output feedback.
+
 Inputs and stored projections use an incremental JSON byte counter that
 includes syntax and escaping without allocating the serialized payload. Body,
 request, envelope, receipt, and complete-page budgets are independent.
@@ -93,7 +113,7 @@ SQLite contention therefore commits and reveals nothing. Resolved `receipt`
 links are a first-class outcome-link kind distinct from the authority receipt
 that proves how any link was resolved.
 Every persisted grant receipt is closed and type-checked, and its capability is
-derived from the durable principal/body pair: human messages use
+derived from the durable principal/body pair: human messages and output reviews use
 `message-write`, lifecycle facts use `lifecycle-append`, outcome links use
 `revision-link`, and every agent-authored record uses `agent-publish`.
 

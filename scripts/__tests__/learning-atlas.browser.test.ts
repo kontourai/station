@@ -15,6 +15,9 @@ import {
   buildLearningGuide,
   learningClientData,
 } from '../build-learning-guide.mjs';
+import { resolveDocumentationFreshness } from '../lib/documentation-freshness.mjs';
+import { JOB_ENV } from './helpers/freshness-env.js';
+import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
 
 let browser: Browser;
 let atlas: Awaited<ReturnType<typeof buildLearningGuide>>;
@@ -43,7 +46,15 @@ type CaptureVideo = HTMLVideoElement & {
 };
 
 beforeAll(async () => {
-  atlas = await buildLearningGuide({ check: true });
+  // The real ledger runs in the job's own freshness mode, stated explicitly
+  // rather than read from the ambient environment (#2934).
+  atlas = await buildLearningGuide({
+    check: true,
+    freshness: resolveDocumentationFreshness({
+      root: process.cwd(),
+      env: JOB_ENV,
+    }),
+  });
   const manifest = learningClientData(atlas);
   for (const capture of atlas.captures)
     assets.set(`/${capture.url}`, {
@@ -150,8 +161,21 @@ test('a reader follows a concept into its exact module, searches, and returns th
     '## StationInstanceReconciler',
   );
   expect(
-    await page.getByRole('article').getByRole('heading').allTextContents(),
+    await page
+      .getByRole('article')
+      .getByRole('heading', { level: 2 })
+      .allTextContents(),
   ).toEqual(['SessionCommandModule']);
+  await browserExpect(
+    page.getByRole('article').getByRole('heading', {
+      level: 3,
+      name: 'Harness question interaction',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await browserExpect(page.getByRole('article')).toContainText(
+    'requestUserInput',
+  );
   // The panel must render the module map's recorded review state. A merge-queue
   // candidate can legitimately carry a stale record another PR's change caused
   // (freshness is advisory there, #2923), so derive the expected label from
@@ -213,7 +237,7 @@ test('a reader follows a concept into its exact module, searches, and returns th
   ).toHaveText('Station shipped documentation');
   await page.goBack();
   await browserExpect(
-    page.getByRole('article').getByRole('heading'),
+    page.getByRole('article').getByRole('heading', { level: 2 }),
   ).toHaveText('SessionCommandModule');
   await page.getByRole('searchbox').fill('no-such-concept-84721');
   await browserExpect(page.getByRole('status')).toContainText(
@@ -372,7 +396,7 @@ test('narrow reading, keyboard disclosure, and section links preserve visible co
   await browserExpect(page.getByRole('article')).toContainText('indeterminate');
   await page.reload();
   await browserExpect(
-    page.getByRole('article').getByRole('heading'),
+    page.getByRole('article').getByRole('heading', { level: 2 }),
   ).toHaveText('SessionCommandModule');
   await page.goto(
     'http://atlas.test/#doc=docs%2Farchitecture.md&section=data-flow-chat-request',
@@ -489,7 +513,6 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
     kind: 'current',
     state: 'source-reviewed',
     documentDigest: hash(markdown),
-    sourceRevision: 'a'.repeat(40),
     summary: 'The fixture code was reviewed.',
     limits: 'Fixture evidence only.',
     sources: [{ path: 'owner.ts', digest: hash(code) }],
@@ -514,7 +537,6 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
         },
       ],
     }),
-    'docs/learn/review-ledger.json': JSON.stringify({ version: 1, records }),
   };
   let context: BrowserContext | undefined;
   try {
@@ -522,6 +544,7 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
       await mkdir(dirname(join(root, file)), { recursive: true });
       await writeFile(join(root, file), bytes);
     }
+    writeReviewLedger(root, records);
     for (const file of ['index.html', 'atlas.js', 'atlas.css'])
       await copyFile(`docs/learn/${file}`, join(root, 'docs/learn', file));
     const git = (args: string[]) =>
@@ -660,10 +683,7 @@ test('an open reader keeps immutable evidence and rejects lazy content after a s
     records[0].limits = 'A changed review limit without a Markdown change.';
     records[1].limits =
       'A changed module owner review without a Markdown change.';
-    await writeFile(
-      join(root, 'docs/learn/review-ledger.json'),
-      JSON.stringify({ version: 1, records }),
-    );
+    writeReviewLedger(root, records);
     const reviewed = await buildLearningGuide({ root });
     expect(reviewed.documents[0].digest).toBe(rebuilt.documents[0].digest);
     expect(reviewed.documents[0].snapshotDigest).not.toBe(

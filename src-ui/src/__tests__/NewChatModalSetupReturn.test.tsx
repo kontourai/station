@@ -1,4 +1,12 @@
 // @vitest-environment jsdom
+
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
+import type {
+  InstalledSkillExperienceV1,
+  SkillExperienceDefinitionV1,
+  SkillExperienceInventoryV1,
+} from '@kontourai/station-contracts/skill-experience';
 import {
   act,
   cleanup,
@@ -23,11 +31,29 @@ import type { AgentData } from '../contexts/AgentsContext';
 import { bannerStore, useBanners } from '../contexts/banner-store';
 import { navigationStore } from '../contexts/navigation-store';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
+const experienceRead = vi.hoisted(() => ({
+  inventory: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
+  refetch: vi.fn(),
+}));
+vi.mock('../contexts/AuthorityPersistenceContext', () => ({
+  useAuthorityPersistence: () => ({
+    namespace: 'authority-1',
+    status: 'verified',
+  }),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: experienceRead.inventory,
+    refetch: experienceRead.refetch,
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
 }));
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+const screenSize = vi.hoisted(() => ({ mobile: false }));
+vi.mock('../hooks/useIsMobile', () => ({
+  useIsMobile: () => screenSize.mobile,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
@@ -77,6 +103,9 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
         layoutAvailableAgents: [],
         recentSlugs: [],
       }),
+      defaultSelection: {
+        agent: input.agents.find((agent) => agent.available !== false),
+      },
       runtimeLoading: false,
       modelsLoading: false,
       runtimeFetching: fetching,
@@ -190,10 +219,18 @@ async function returnToChat() {
   await screen.findByRole('dialog', { name: 'New Chat' });
 }
 beforeAll(() => {
-  window.matchMedia = vi.fn().mockReturnValue({ matches: false });
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
   Element.prototype.scrollIntoView = vi.fn();
 });
 beforeEach(() => {
+  resetStartChoicesForTests();
+  experienceRead.inventory = { experiences: [], diagnostics: [] };
+  experienceRead.refetch.mockReset().mockResolvedValue(undefined);
+  screenSize.mobile = false;
   authorityCurrent = true;
   readError = undefined;
   fetching = false;
@@ -210,9 +247,87 @@ afterEach(() => {
 });
 
 describe('New Chat repair and return', () => {
+  test('retains source inputs, workspace and model across marketplace setup without installing or starting', async () => {
+    const definition: SkillExperienceDefinitionV1 = JSON.parse(
+      readFileSync(
+        new NodeURL(
+          '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    const entry: InstalledSkillExperienceV1 = {
+      definition,
+      identity: {
+        pluginId: 'example',
+        pluginVersion: '1.0.0',
+        experienceId: definition.id,
+        incarnation: 'installed-1',
+        materialization: 'materialization-1',
+        contentDigest: 'digest-1',
+        definitionDigest: 'definition-1',
+      },
+    };
+    experienceRead.inventory = {
+      executionContract: '1.0',
+      experiences: [entry],
+      diagnostics: [],
+    };
+    const view = harness({ agents: [READY] });
+    fireEvent.click(
+      screen.getByRole('button', { name: new RegExp(definition.title) }),
+    );
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /What would you like to build/ }),
+      { target: { value: 'Keep my visual skill input' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Model:/ }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Choose Chosen model' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Browse marketplaces' }),
+    );
+    await screen.findByRole('button', { name: 'Return to New Chat' });
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().pathname).toBe('/registry'),
+    );
+    experienceRead.inventory = {
+      executionContract: '1.0',
+      experiences: [],
+      diagnostics: [],
+    };
+    await returnToChat();
+    expect(experienceRead.refetch).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole('textbox', { name: /What would you like to build/ }),
+    ).toHaveProperty('value', 'Keep my visual skill input');
+    expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Model: Chosen' })).toBeTruthy();
+    expect(screen.getByText(/selected source changed/)).toBeTruthy();
+    expect(view.onSelect).not.toHaveBeenCalled();
+    expect(view.onClose).not.toHaveBeenCalled();
+  });
+
+  test('phone setup reveals its page and restores the original full chat on return', async () => {
+    screenSize.mobile = true;
+    act(() =>
+      navigationStore.navigate('/', { dock: 'open', maximize: 'true' }),
+    );
+    harness();
+    await openSetup();
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+    await returnToChat();
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+  });
   test('retains intentional Project and Model through repair without selecting or sending', async () => {
     const view = harness();
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Model:/ }));
     fireEvent.click(
@@ -224,9 +339,7 @@ describe('New Chat repair and return', () => {
     view.update({ agents: [READY] });
     await returnToChat();
     expect(navigationStore.getSnapshot().pathname).toBe('/');
-    expect(
-      screen.getByRole('button', { name: 'Workspace: Beta' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Model: Chosen' })).toBeTruthy();
     expect(view.onSelect).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
@@ -354,7 +467,7 @@ describe('New Chat repair and return', () => {
       /workspace.*no longer available/,
     );
     expect(
-      screen.getByRole('button', { name: 'Workspace: Select workspace' }),
+      screen.getByRole('button', { name: 'Project: Select project' }),
     ).toBeTruthy();
     fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
       key: 'Enter',
@@ -432,7 +545,7 @@ describe('New Chat retained context safeguards', () => {
   });
   test('a fresh modal owner removes the suspended banner and discards its choices', async () => {
     const view = harness();
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     await openSetup();
     view.unmount();
@@ -440,9 +553,7 @@ describe('New Chat retained context safeguards', () => {
     expect(
       screen.queryByRole('button', { name: 'Return to New Chat' }),
     ).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Workspace: Alpha' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: Alpha' })).toBeTruthy();
   });
 });
 
@@ -603,3 +714,123 @@ test.each(['cancel', 'authority loss'] as const)(
     }
   },
 );
+
+test('a written goal returns from setup automatically when its selected agent is ready', async () => {
+  const goal = 'Keep the original goal';
+  const view = harness({ startWithDefault: true, initialPrompt: goal });
+  fireEvent.click(screen.getByRole('button', { name: 'Connect this agent' }));
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/),
+  );
+  view.update({ agents: [READY] });
+  await waitFor(() => expect(view.onSelect).toHaveBeenCalledOnce());
+  expect(view.onSelect.mock.calls[0]?.[3]).toBe(goal);
+  expect(navigationStore.getSnapshot().pathname).toBe('/');
+});
+
+test('opening setup commits the destination before retiring dialog history and keeps the returned draft writable', async () => {
+  const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+  try {
+    const view = harness({ agents: [READY] });
+    fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
+      target: { value: '' },
+    });
+    view.update({ agents: [NEEDS_SETUP] });
+    await openSetup();
+    expect(back).not.toHaveBeenCalled();
+    view.update({ agents: [READY] });
+    await returnToChat();
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+      key: 'Enter',
+    });
+    expect(view.onSelect).toHaveBeenCalledOnce();
+  } finally {
+    cleanup();
+    back.mockRestore();
+  }
+});
+
+test('a refused setup navigation restores the draft with feedback instead of leaving a waiting banner', async () => {
+  const view = harness();
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('cancel setup'),
+    (_proceed, cancel) => cancel?.(),
+  );
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Assistant' }));
+    await screen.findByText(/Could not open setup/);
+    expect(screen.getByRole('dialog', { name: 'New Chat' })).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Return to New Chat' }),
+    ).toBeNull();
+    expect(navigationStore.getSnapshot().pathname).toBe('/');
+    expect(view.onSelect).not.toHaveBeenCalled();
+  } finally {
+    unregister();
+  }
+});
+
+test('composer setup returns directly to the retained message and repaired Agent without starting work', async () => {
+  const view = harness({ startSurface: true, agents: [NEEDS_SETUP] });
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'What would you like done?' }),
+    { target: { value: 'Keep my message' } },
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Connect Assistant' }),
+  );
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+  );
+  view.update({ agents: [READY] });
+  fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
+  expect(
+    await screen.findByRole('textbox', { name: 'What would you like done?' }),
+  ).toHaveProperty('value', 'Keep my message');
+  expect(view.onSelect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+  expect(view.onSelect).toHaveBeenCalledOnce();
+  expect(view.onSelect.mock.calls[0][3]).toBe('Keep my message');
+});
+
+// Owner decision 1: setup from Home's composer is handed to this composer,
+// where the setup journey survives the page change. The hand-off must be
+// lossless: the prompt, the project, the Agent and the Model Home's chips
+// showed all come back after setup, and start exactly as chosen.
+test("a hand-off from Home's composer runs setup here and returns with the prompt and every choice intact", async () => {
+  const view = harness({
+    startSurface: true,
+    agents: [NEEDS_SETUP],
+    initialPrompt: 'Keep my Home message',
+    startSelection: {
+      context: 'beta',
+      agentSlug: 'assistant',
+      model: { modelId: 'chosen', providerOptions: { effort: 'high' } },
+    },
+    handoff: { kind: 'repair', agentSlug: 'assistant', route: 'models' },
+  });
+  // The hand-off starts the setup journey by itself: no second click.
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+  );
+  view.update({ agents: [READY] });
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Return to New Chat' }),
+  );
+  expect(
+    await screen.findByRole('textbox', { name: 'What would you like done?' }),
+  ).toHaveProperty('value', 'Keep my Home message');
+  expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Agent: Assistant · Chosen' }),
+  ).toBeTruthy();
+  expect(view.onSelect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+  expect(view.onSelect).toHaveBeenCalledOnce();
+  const call = view.onSelect.mock.calls[0];
+  expect(call[0].slug).toBe('assistant');
+  expect(call[1]).toBe('beta');
+  expect(call[3]).toBe('Keep my Home message');
+  expect(call[4]).toBe('chosen');
+  expect(call[8]).toEqual({ effort: 'high' });
+});

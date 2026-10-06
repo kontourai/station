@@ -132,6 +132,10 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
         emptyContent={emptyContent}
       >
         <AgentsViewEditorPane
+          // The page no longer remounts per selection (#2992), so the pane's
+          // own state — an open overflow menu or delete confirmation — is
+          // scoped to the record here instead.
+          key={editorId ?? 'none'}
           isLoading={isLoading}
           notFound={notFound}
           loadError={loadError}

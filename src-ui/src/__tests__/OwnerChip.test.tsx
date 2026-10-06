@@ -32,8 +32,8 @@ describe('ownerAttributionFromStation (station#2585)', () => {
   });
 
   test('never accepts the OS alias as a row label', () => {
-    expect(accountableHumanFromUser({ name: 'Brian Anderson' })).toBe(
-      'Brian Anderson',
+    expect(accountableHumanFromUser({ name: 'Casey Example' })).toBe(
+      'Casey Example',
     );
     expect(
       accountableHumanFromUser({ alias: 'os-login' } as { name?: string }),

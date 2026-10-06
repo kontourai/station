@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"The setLayout seam is kept: the Files pane still routes through it (now naming its write with from:'pane'), and setLayout writes in place for the layout already on screen. The guidance stands. No prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md","docs/guides/testing.md","src-ui/src/contexts/navigation-store.ts"]}
+  ]
+}

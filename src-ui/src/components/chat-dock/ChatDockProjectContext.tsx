@@ -1,8 +1,10 @@
 import { memo, type RefObject, useRef, useState } from 'react';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { GitBadge } from '../badges/GitBadge';
 import { FolderGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import './ChatDockProjectContext.css';
 
 const loadChatDockProjectSwitcherSheet = () =>
   import('./ChatDockProjectSwitcherSheet').then((module) => ({
@@ -35,6 +37,7 @@ export function ProjectSwitcherOverlay({
   onSwitchProject: (projectSlug: string, projectName: string) => void;
   onClose: () => void;
 }) {
+  const { navigate } = useNavigationActions();
   return (
     <LazyBoundary
       load={loadChatDockProjectSwitcherSheet}
@@ -45,6 +48,7 @@ export function ProjectSwitcherOverlay({
         projects,
         onOpenProject,
         onSwitchProject,
+        onNewProject: () => navigate('/projects/new'),
         onClose,
       }}
       pending={null}
@@ -131,7 +135,9 @@ function ChatDockProjectContextImpl({
   // absent, the tooltip names the project and claims nothing about its folder.
   const projectLabel = projectName || projectSlug;
   const directoryTitle = workingDirectory
-    ? `${projectLabel || 'Project'} — ${workingDirectory}`
+    ? sessionProjectMismatchLabel
+      ? `This chat (${sessionProjectMismatchLabel}) — ${workingDirectory}`
+      : `${projectLabel || 'Project'} — ${workingDirectory}`
     : projectLabel
       ? projectLabel
       : '~ (no project folder set — chats start in your home folder)';
@@ -185,7 +191,17 @@ function ChatDockProjectContextImpl({
             underlined run of monospace text (#1552 D3). */}
         <FolderGlyph className="chat-dock__project-badge-glyph" />
         {projectLabel ? (
-          <span className="chat-dock__project-badge-name">{projectLabel}</span>
+          <span className="chat-dock__project-badge-lines">
+            <span
+              className="chat-dock__project-badge-caption"
+              aria-hidden="true"
+            >
+              New chats
+            </span>
+            <span className="chat-dock__project-badge-name">
+              {projectLabel}
+            </span>
+          </span>
         ) : null}
       </button>
       {isSwitcherOpen && (
@@ -216,7 +232,7 @@ function ChatDockProjectContextImpl({
       ) : null}
       {sessionProjectMismatchLabel && (
         <span className="chat-dock__project-session-name">
-          {sessionProjectMismatchLabel} ·
+          This chat: {sessionProjectMismatchLabel}
         </span>
       )}
       {gitStatus?.isRepo && <GitBadge git={gitStatus} />}

@@ -1,9 +1,21 @@
 {
   "schemaVersion": 1,
   "labels": [
-    { "name": "P1", "color": "d73a4a", "description": "Priority 1 — do next" },
-    { "name": "P2", "color": "fbca04", "description": "Priority 2 — do soon" },
-    { "name": "P3", "color": "c2e0c6", "description": "Priority 3 — backlog" },
+    {
+      "name": "P1",
+      "color": "d73a4a",
+      "description": "Priority 1 — do next"
+    },
+    {
+      "name": "P2",
+      "color": "fbca04",
+      "description": "Priority 2 — do soon"
+    },
+    {
+      "name": "P3",
+      "color": "c2e0c6",
+      "description": "Priority 3 — backlog"
+    },
     {
       "name": "acceptance-needed",
       "color": "0E8A16",
@@ -128,6 +140,16 @@
       "name": "wontfix",
       "color": "ffffff",
       "description": "This will not be worked on"
+    },
+    {
+      "name": "station-autoland",
+      "color": "0e8a16",
+      "description": "Standing owner intent to arm auto-merge after current-head CI succeeds"
+    },
+    {
+      "name": "advisory-review",
+      "color": "5319e7",
+      "description": "Request one advisory engine review of the current head (spends review credits)"
     }
   ]
 }

@@ -168,15 +168,9 @@ function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
 }
 
 /**
- * #1536 F: the gallery seeds exactly ONE Station and reaches it, which is the
- * state whose chip collapsed to its status dot — a fact that does not change
- * while you work, in the row that runs out of width first. So the state and the
- * identity are no longer visible text HERE; they are the accessible name and
- * the tooltip, which is the only channel a dot leaves for the identity.
- *
- * Both are asserted, not just one: the name is what the product's own E2E
- * selectors key on (`/^Manage Stations/`), and the title is what a pointer user
- * can actually read. A chip that dropped either would still pass a class check.
+ * The gallery seeds one connected profile. Pin its visible saved name and
+ * accessible status before capturing so broken connection chrome cannot
+ * become a baseline.
  */
 async function assertGalleryConnectionChrome(page: Page): Promise<void> {
   const chip = page.getByTestId('app-toolbar-connection');
@@ -184,11 +178,9 @@ async function assertGalleryConnectionChrome(page: Page): Promise<void> {
     timeout: 10_000,
   });
   await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
-  // Since #2426 the healthy compact chip shows a short visible Station label
-  // (`Station · <name>`), and the accessible name carries that visible text
-  // after the state (WCAG 2.5.3).
-  const visible = `Station · ${GALLERY_CONNECTION_NAME}`;
-  const named = `Manage Stations — Connected · ${visible}`;
+  // The accessible name contains the visible saved name (WCAG 2.5.3).
+  const visible = GALLERY_CONNECTION_NAME;
+  const named = `Choose Station — Connected · ${visible}`;
   await expect(chip).toHaveAttribute('aria-label', named);
   await expect(chip).toHaveAttribute('title', named);
   await expect(chip.locator('.app-toolbar__conn-label')).toHaveText(visible);
@@ -251,6 +243,8 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    relative "just now" — the one remaining live-clock-derived label this
  *    gallery ever renders a toast for
  *    (`motion-reduced-notification`).
+ *  - The Profile's completed rebuild timestamp. The unavailable-time
+ *    fallback stays visible; only a live "Snapshot rebuilt ..." line is hidden.
  *  - `.chat-dock__mobile-conn` (ChatDockMobileHeader.tsx via
  *    `ChatDockMobileConnection.tsx`): the mobile chat dock's OWN
  *    connected/connecting/error/needs-credential indicator — the same
@@ -276,6 +270,12 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * previously injected style tag) and as close to the shot as practical.
  */
 async function hideVolatileChrome(page: Page) {
+  await page
+    .locator('.profile-usage-status p')
+    .filter({ hasText: /^Snapshot rebuilt / })
+    .evaluateAll((elements) => {
+      for (const element of elements) element.style.visibility = 'hidden';
+    });
   await page.addStyleTag({
     content: `
       .time-filter-wrapper { visibility: hidden !important; }
@@ -1192,12 +1192,12 @@ function overlayDockProjectMismatchHooks(): Pick<
         await expect(badge).toHaveText('');
         await badge.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await page.getByRole('button', { name: 'Switch to Project A' }).click();
-        await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
-        ).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
+          { timeout: 10_000 },
+        );
         // The badge now names the BOUND project (by design it never
         // follows the active session) — while the facts
         // row leads with the session's own, muted, differing project name.
@@ -1287,14 +1287,10 @@ const SCREENS: Screen[] = [
     title: 'Mobile — Activity opened over Chat (#2549)',
     path: '/?surface=activity',
     viewport: MOBILE,
-    waitFor: '.sessions-axis-tabs',
+    waitFor: '.activity-filters, .split-pane__list',
     afterGoto: async (page) => {
-      const tab = page.getByRole('tab', { name: 'By app', exact: true });
-      await tab.click();
-      await expect(tab).toHaveAttribute('aria-selected', 'true');
       for (const control of [
-        tab,
-        page.getByRole('button', { name: 'Start a task', exact: true }),
+        page.getByRole('button', { name: 'New task', exact: true }),
       ]) {
         await expect(control).toBeVisible();
         expect(
@@ -1324,6 +1320,9 @@ const SCREENS: Screen[] = [
       waitFor: '[data-testid="app-toolbar-connection"]',
       afterGoto: async (page) => {
         await page.getByTestId('app-toolbar-connection').click();
+        await page
+          .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+          .click();
         const dialog = page.getByRole('dialog');
         await dialog
           .getByRole('button', { name: 'Add a Station address', exact: true })
@@ -1360,9 +1359,17 @@ const SCREENS: Screen[] = [
         );
         try {
           await page.getByTestId('app-toolbar-connection').click();
+          await page
+            .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+            .click();
           const dialog = page.getByRole('dialog');
           await dialog
-            .getByRole('button', { name: 'Request access', exact: true })
+            .getByRole('button', {
+              name: `More actions for ${GALLERY_CONNECTION_NAME}`,
+            })
+            .click();
+          await dialog
+            .getByRole('menuitem', { name: 'Reconnect', exact: true })
             .click();
           await dialog
             .getByRole('button', { name: 'Request access', exact: true })
@@ -1498,6 +1505,23 @@ const SCREENS: Screen[] = [
         .click();
       const tooltip = page.getByRole('tooltip');
       await expect(tooltip).toBeVisible();
+      await expect
+        .poll(
+          () =>
+            page.locator('.app__main').evaluate((element) => element.scrollTop),
+          {
+            message:
+              'Section navigation must keep the application frame in view',
+          },
+        )
+        .toBe(0);
+      await expect
+        .poll(() =>
+          page
+            .locator('.app-toolbar')
+            .evaluate((element) => element.getBoundingClientRect().top),
+        )
+        .toBeGreaterThanOrEqual(0);
       await tooltip.evaluate(async (element) => {
         await Promise.all(
           element.getAnimations().map((animation) => animation.finished),
@@ -1636,19 +1660,17 @@ const SCREENS: Screen[] = [
     },
     afterGoto: async (page) => {
       try {
-        await page
-          .getByPlaceholder('Search conversations…')
-          .fill('missing-session');
+        await page.getByPlaceholder('Search activity…').fill('missing-session');
         // The margin here covers the read-model fetch's own latency (>6s
         // wall-clock has been observed under host load — that signal is
         // archive#4466, not something this timeout fixes); a repeat-500
         // still fails loudly via the error branch rather than at this
         // timeout.
         await expect(
-          page.getByText('Nothing in sessions matches “missing-session”'),
+          page.getByText('No activity matches “missing-session”'),
         ).toBeVisible({ timeout: 15_000 });
         await expect(
-          page.getByRole('button', { name: 'Clear filter' }),
+          page.getByRole('button', { name: 'Clear search and filters' }),
         ).toBeVisible();
       } finally {
         // `page.route` handlers persist across `page.goto()` for the
@@ -2272,14 +2294,14 @@ const SCREENS: Screen[] = [
         await expect(badge).toHaveText('');
         await badge.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await page
           .getByRole('button', { name: 'Switch to Demo Project' })
           .click();
-        await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
-        ).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
+          { timeout: 10_000 },
+        );
         // Scoped to the badge's own class: the project sidebar (seeded
         // from the same `/api/projects` mock) also renders a same-named
         // button.
@@ -2316,7 +2338,7 @@ const SCREENS: Screen[] = [
         await trigger.waitFor({ timeout: 10_000 });
         await trigger.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await expect(
           page.getByRole('button', { name: 'Switch to Demo Project' }),
@@ -2430,6 +2452,25 @@ const SCREENS: Screen[] = [
     viewport: { width: 320, height: 568 },
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
+      const brand = page.locator('.app-toolbar__brand');
+      await expect(brand).toBeVisible();
+      const geometry = await brand.evaluate((element) => {
+        const toolbar = element.closest('.app-toolbar')!;
+        return {
+          name: element.textContent,
+          available: element.clientWidth,
+          required: element.scrollWidth,
+          gap: getComputedStyle(toolbar).gap,
+          children: Array.from(toolbar.children).map((child) => ({
+            className: child.className,
+            width: child.getBoundingClientRect().width,
+          })),
+        };
+      });
+      expect(
+        geometry.required <= geometry.available + 1,
+        JSON.stringify(geometry),
+      ).toBe(true);
       await expect(page.locator('.chat-dock')).toBeVisible({
         timeout: 10_000,
       });
@@ -2509,6 +2550,12 @@ interface Shot {
   error?: string;
   sha256?: string;
   controls?: Array<{ label: string; disabled: boolean }>;
+  layout?: {
+    appMainScrollTop: number;
+    appMainScrollHeight: number;
+    appMainClientHeight: number;
+    documentScrollY: number;
+  };
 }
 
 function escapeHtml(value: string): string {
@@ -2764,6 +2811,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   try {
     for (const screen of selectedScreens) {
       const file = `${screen.name}.png`;
+      let layout: Shot['layout'];
       try {
         await page.setViewportSize(screen.viewport);
         await page.emulateMedia({
@@ -2841,6 +2889,26 @@ test('build gallery — capture key screens', async ({ page }) => {
               : () => assertGalleryConnectionChrome(page),
           hideVolatileChrome: () => hideVolatileChrome(page),
           screenshot: async () => {
+            // Lazy brand marks can settle after the data skeleton disappears.
+            // A pending or failed mark is an incomplete reference image.
+            await expect(
+              page.locator('.brand-icon[data-brand-key]').filter({
+                hasNot: page.locator('svg, img, .brand-icon__glyph'),
+              }),
+            ).toHaveCount(0, { timeout: 15_000 });
+            if (screen.name === 'settings-info-tip') {
+              layout = await page.evaluate(() => {
+                const main = document.querySelector<HTMLElement>('.app__main');
+                if (!main)
+                  throw new Error('Gallery app main column is missing');
+                return {
+                  appMainScrollTop: main.scrollTop,
+                  appMainScrollHeight: main.scrollHeight,
+                  appMainClientHeight: main.clientHeight,
+                  documentScrollY: window.scrollY,
+                };
+              });
+            }
             if (screen.name !== 'settings-info-tip') {
               await page.mouse.move(0, 0);
             }
@@ -2893,6 +2961,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           file,
           ok: true,
           controls,
+          layout,
           sha256: createHash('sha256')
             .update(readFileSync(join(GALLERY_DIR, file)))
             .digest('hex'),
@@ -2940,13 +3009,14 @@ test('build gallery — capture key screens', async ({ page }) => {
           // gallery for full coverage.
           selection: requestedScreens,
           screens: shots.map(
-            ({ file, ok, screen, error, sha256, controls }) => ({
+            ({ file, ok, screen, error, sha256, controls, layout }) => ({
               file,
               ok,
               name: screen.name,
               error: error ?? null,
               sha256,
               controls,
+              layout,
             }),
           ),
         },

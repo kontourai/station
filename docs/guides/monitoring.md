@@ -21,6 +21,156 @@ call sites, not proof of a populated collector. The startup owner needs to fix
 this binding before an enabled endpoint alone can establish metric collection:
 [#2755](https://github.com/kontourai/station/issues/2755).
 
+## Profile usage and paired people
+
+The [Profile page](../../src-ui/src/pages/ProfilePage.tsx) puts the current
+identity next to usage on the connected Station. These are different scopes:
+the identity does not make the retained lifetime summary a personal total.
+Lifetime counts combine saved messages with completed external-engine turns.
+Daily graphs and period statistics cover file-memory messages on UTC dates;
+external-engine sessions contribute lifetime totals but no daily distribution.
+The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
+
+[UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
+snapshot on an active read when the previous scan is at least a minute old.
+Concurrent readers join that rebuild. Idle Stations retain the existing
+30-minute startup timer. The Profile page displays the scan timestamp, failed
+refreshes, unavailable engine reads, and skipped message rows. **Rebuild usage**
+forces the existing rescan. Clearing the aggregate is not a history deletion;
+retained transcripts and receipts rebuild it, so the profile does not offer a
+permanent-reset action.
+
+Lifetime summaries preserve historical high-water counters and attribute an
+engine session's model totals to its latest model. They are not a billing
+statement or an exact split of mixed-model sessions. The receipt rollup below
+keeps provider-reported cost, estimates, currencies, pricing snapshots, and
+missing-source coverage separate. Use those receipts for bounded provider/model
+comparisons. Unsupported or unreported figures remain unknown.
+
+Station milestones use this retained summary, not a person's sent-message
+count. A cost milestone does not unlock from unreported engine or saved-assistant
+cost, skipped message records, a failed engine read, or retained measurements
+that the latest scan could not remeasure. Incremental message writes and usage
+enrichment invalidate cost coverage until the next rebuild. Its
+API result supplies `measurementUnavailableReason` and omits numeric progress;
+the UI shows that gap instead of a budget amount or progress bar. A reported
+zero cost remains a real measurement. `snapshot.retainedUsage` compares retained
+message, token and cost totals with the current scan; it is not a claim of
+complete historical coverage. The cost comparison tolerates floating-point
+rounding differences.
+
+| Ingress | Usage the current implementation can observe | Limits |
+| --- | --- | --- |
+| Claude engine | Per-turn input/output/cache tokens and provider-reported USD cost | Cost is a running total. A process that resumes its transcript continues that total; a restart without resume, or a lower figure, starts a new total that is added |
+| Imported Claude transcripts | Input/output/cache tokens accumulated from assistant records | This importer supplies no provider-reported cost |
+| Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
+| Imported OpenCode sessions | Per-turn input, output (reasoning included) and cache read/write tokens, summed from the turn's steps | OpenCode's own cost figure is an estimate from its price catalog, not a provider charge, so it is not imported |
+| Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
+| Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
+| Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
+| ACP, including ACP-backed engines | Reported context occupancy/window | Occupancy is not consumed tokens; arbitrary-currency ACP costs are not projected |
+| Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | The orchestration scan excludes conversations already counted in file memory |
+
+Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
+persisted cursor. Older aggregation cursors recover identities from a bounded
+look-behind when their active user boundary is still available. A late
+turn-duration record closes its known parent turn
+without clearing a newer turn's usage. Unknown or evicted ancestry does not
+close the current turn; the next user boundary can still flush its usage.
+The bounded per-turn conversation window retains all Claude and Muse usage
+observations, including split observations already persisted before this fix.
+Codex session-cumulative observations still use the latest snapshot. This
+repairs [#581](https://github.com/kontourai/station/issues/581); it does not
+expand the window's event or byte limits.
+
+The receipt panel reads an aggregate separately from its drilldown page. Local
+aggregate reads select at most 500 observations; a page selects at most 100.
+Reaching the aggregate limit produces partial coverage. Paired transfer applies
+replacement and deduplication before its separate 500-receipt limit, preserving
+explicit dropped-material coverage instead of failing the entire peer read.
+
+A context-only ACP observation produces no empty token receipt and does not
+count as a consumed-usage report. Codex token snapshots retain one identity
+across engine-process restarts. A Claude cost snapshot keeps one identity per
+running total. A process started with the SDK `resume` option continues the
+total its transcript saved, so its figures replace the previous process's.
+A restart without resume starts a new total. A figure lower than the one it
+would replace also starts a new total; a missing-transcript resume reports
+`0`, for example. The session cost and the receipt rollup use the same rule.
+`session.started` events recorded before this marker existed read as restarts,
+so older resumed sessions can still over-report their cost. The SDK reports
+no starting total, so the rule has two blind spots. A reset or a resume whose
+transcript saved no total undercounts when its first figure already exceeds the
+previous total. A restated total slightly below the last live figure starts a
+new total and overcounts.
+
+Durable event sequence resolves equal Station-observation timestamps,
+and sparse cumulative updates preserve previously reported components.
+Combined counter estimates remain unpriced when their model, price snapshot,
+or inherited component evidence does not support one estimate. These receipts
+are observations; their latest cumulative snapshot is not a per-day consumption
+delta or an exact mixed-model allocation.
+
+These are implementation and captured-wire/fixture boundaries, not a new live
+billing reconciliation across every account and model. The scope declarations
+live in [the shared usage fold](../../packages/shared/src/usage-fold.ts); the
+[receipt fold](../../packages/shared/src/usage-rollup.ts) owns rollup grouping.
+The Muse serve fixture replay also exercises per-answer usage visibility.
+
+### Usage with children
+
+The conversation statistics dialog shows **Usage with children**: one total
+for the conversation and everything that ran under it, and a breakdown (own
+turns, then each subagent and delegated task, nested) with tokens, cost, tool
+uses and duration. Each child says in words whether the total counts it. The
+read is the [conversation usage tree](../reference/session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree),
+and the per-engine rules live in
+[the tree fold](../../packages/shared/src/thread-usage-tree.ts):
+
+| Child | Tokens | Cost | Evidence |
+| --- | --- | --- | --- |
+| Station-delegated task (this Station) | Added | Added | A delegate is its own session with its own receipts |
+| Station-delegated task (paired Station) | Not counted | Not counted | Its usage is recorded on the other Station |
+| Claude Code subagent | Not counted | Already in the parent's | The SDK documents `result.usage` as main-loop only and `total_cost_usd` as covering Task subagents. A measured run matched both. A subagent's own `total_tokens` equals its last request's size, not its consumption, in recorded transcripts, so it is shown as "last request", never as tokens used |
+| Codex subagent | Added | Not counted | Each child is its own thread; in the recorded collab captures the parent's cumulative total is the sum of its own calls only |
+| Muse workflow subagent | Added | Not counted | In the recorded `muse serve` captures the session's cumulative figures exclude the child's usage |
+| Any other engine | Not counted | Not counted | Undeclared; never guessed |
+
+"Not counted" makes the total partial, and the dialog lists why. A subagent's
+own figure is still shown in the breakdown. The token total is input + output
+only, unlike the dialog's own "Total", which adds cache where that is backed;
+the breakdown says whether its input figures exclude cached input, says so when
+that isn't established for an engine, and says the sum mixes measures only when
+two engines are declared to count cached input differently. Costs in different
+currencies, and estimates under different price snapshots, are listed side by
+side and not added together. The tree covers sessions on this Station only.
+
+Delegated tasks are found from the delegation context Station stamps at
+launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+session's `delegate_task` call Station derives the context from the calling
+session's own record; for Station's own agent the runtime attests it from the
+conversation the tool call ran in. A task launched through a caller-less
+station-control process (as a Strands-runtime agent uses) names neither, so it
+is not found and not shown as missing. A task you can't read is never named
+or figured. When Station derived or attested its link to your conversation
+(in hosted mode, a delegate Station couldn't attribute to a bound caller is
+the Station operator's), the total is partial and says how many such tasks
+there are. When the link was only a request's claim, the task is ignored, so
+no one can mark your total partial by naming your conversation. The tree
+refreshes every 15 seconds while the dialog is open, and stops after a 404 or
+422.
+
+**People paired with this Station** reads the existing paired-device registry
+through a captured API/authority scope. Only active interactive devices with an
+approved person binding contribute. Account issuer plus subject (or approved
+tailnet subject) separates people; devices for the same person are grouped.
+Names come from those bindings, not a guessed user-directory alias. The detail
+shows their approved devices and last authenticated request, when recorded.
+An open primary event stream is shown as connected; absence of a reported stream
+is not a claim that every client is offline. A failed registry read hides cached
+profiles. HTTP 401/403 pauses registry polling to avoid consuming the auth-failure
+rate limit; an explicit retry can reauthorize it. This surface grants no access and shares no personal usage statistics.
+
 ## Quick Start
 
 ```bash

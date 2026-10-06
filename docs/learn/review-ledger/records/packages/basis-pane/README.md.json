@@ -1,0 +1,49 @@
+{
+  "path": "packages/basis-pane/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README read. Checked private source package exports, current connected host/action scope, full-versus-page view contract, portable resource ownership and actual Session inventory controls, AppBridge navigation and continuation merge behavior. Removed no-actions/no-links/page-replacement and universal browser-no-fetch overclaims.",
+
+  "limits": "No full protected-reader/server lifecycle audit, live MCP host, provider execution, physical native display, accessibility/visual proof or public package release. Protected authority belongs to the host; package source and tests are not grants.",
+
+  "sources": [
+    "packages/basis-pane/package.json",
+
+    "packages/basis-pane/src/StationBasisPane.tsx",
+
+    "packages/basis-pane/src/index.ts",
+
+    "packages/basis-pane/src/session-inventory-mcp-app.browser.ts",
+
+    "packages/basis-pane/src/session-inventory-mcp-app.ts",
+
+    "packages/basis-pane/src/session-inventory-view.ts",
+
+    "packages/basis-pane/src/task-basis-mcp-app.ts",
+
+    "packages/basis-pane/src/workspace-basis-pane.ts",
+
+    "packages/contracts/src/task-basis-mcp.ts",
+
+    "src-server/tools/station-control-session-inventory-tools.ts",
+
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx"
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+  ]
+}

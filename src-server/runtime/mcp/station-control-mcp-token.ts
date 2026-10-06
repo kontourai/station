@@ -50,6 +50,8 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import { stationControlMcpTokenMinted } from '../../telemetry/metrics.js';
 
 export const STATION_CONTROL_MCP_PATH = '/mcp/station-control';
+export const STATION_KNOWLEDGE_MCP_PATH = '/mcp/station-knowledge';
+export type BuiltinStationApiMcpId = 'station-control' | 'station-knowledge';
 
 /** Default lifetime — 12 hours: generous enough for a long-running Codex or
  * ACP session, but bounded. The token is revoked eagerly on ordinary session
@@ -132,16 +134,17 @@ export const STATION_CONTROL_MCP_HTTP_CHANNELS: readonly StationControlMcpTokenC
 
 interface StationControlMcpTokenEntry {
   sessionId: string;
+  serverId: BuiltinStationApiMcpId;
   expiresAt: number;
   channel: StationControlMcpTokenChannel;
   tenantExecutionContext?: TenantExecutionContext;
+  allowedTools?: readonly string[];
 }
 
 const tokensByDigest = new Map<string, StationControlMcpTokenEntry>();
 // Reverse index so `revokeStationControlMcpToken` doesn't need to scan every
-// live entry — a session only ever holds one live token at a time (each
-// mint call below deletes the session's prior entry first).
-const digestBySession = new Map<string, string>();
+// live entry. Each session holds one live token per built-in API server.
+const digestBySession = new Map<string, Map<BuiltinStationApiMcpId, string>>();
 
 function digest(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -154,7 +157,7 @@ interface MintedStationControlMcpToken {
 
 /**
  * Mint a fresh token scoped to `sessionId` (Station's `threadId`), replacing
- * any prior token that session already held (a session that restarts its
+ * any prior token for that session and server (a session that restarts its
  * codex process — e.g. a resume — gets a fresh credential, and the stale one
  * stops working immediately rather than lingering as a second live token).
  */
@@ -163,19 +166,26 @@ export function mintStationControlMcpToken(
   channel: StationControlMcpTokenChannel,
   ttlMs: number = DEFAULT_TTL_MS,
   tenantExecutionContext?: TenantExecutionContext,
+  allowedTools?: readonly string[],
+  serverId: BuiltinStationApiMcpId = 'station-control',
 ): MintedStationControlMcpToken {
-  const replacedLiveToken = digestBySession.has(sessionId);
-  revokeStationControlMcpToken(sessionId);
+  const replacedLiveToken =
+    digestBySession.get(sessionId)?.has(serverId) ?? false;
+  revokeStationControlMcpToken(sessionId, serverId);
   const token = randomBytes(32).toString('base64url');
   const expiresAt = Date.now() + ttlMs;
   const tokenDigest = digest(token);
   tokensByDigest.set(tokenDigest, {
     sessionId,
+    serverId,
     expiresAt,
     channel,
+    ...(allowedTools !== undefined ? { allowedTools: [...allowedTools] } : {}),
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
   });
-  digestBySession.set(sessionId, tokenDigest);
+  const sessionDigests = digestBySession.get(sessionId) ?? new Map();
+  sessionDigests.set(serverId, tokenDigest);
+  digestBySession.set(sessionId, sessionDigests);
   // Review fix (archive#1195 round 1, LOW): previously declared but never
   // incremented — wired at the single mint choke point (every caller goes
   // through this function) rather than at each call site. `channel`
@@ -199,16 +209,28 @@ export function mintStationControlMcpToken(
  */
 export function verifyStationControlMcpToken(
   candidate: string | undefined | null,
-  options: { channels?: readonly StationControlMcpTokenChannel[] } = {},
+  options: {
+    channels?: readonly StationControlMcpTokenChannel[];
+    serverId?: BuiltinStationApiMcpId;
+  } = {},
 ):
-  | { sessionId: string; tenantExecutionContext?: TenantExecutionContext }
+  | {
+      sessionId: string;
+      tenantExecutionContext?: TenantExecutionContext;
+      allowedTools?: readonly string[];
+    }
   | undefined {
   const verified = verifyStationControlMcpTokenEntry(candidate);
   if (!verified) return undefined;
+  if (options.serverId && verified.serverId !== options.serverId)
+    return undefined;
   if (options.channels && !options.channels.includes(verified.channel))
     return undefined;
   return {
     sessionId: verified.sessionId,
+    ...(verified.allowedTools !== undefined
+      ? { allowedTools: [...verified.allowedTools] }
+      : {}),
     ...(verified.tenantExecutionContext
       ? { tenantExecutionContext: verified.tenantExecutionContext }
       : {}),
@@ -225,7 +247,9 @@ export function verifyStationControlMcpTokenEntry(
 ):
   | {
       sessionId: string;
+      serverId: BuiltinStationApiMcpId;
       channel: StationControlMcpTokenChannel;
+      allowedTools?: readonly string[];
       tenantExecutionContext?: TenantExecutionContext;
     }
   | undefined {
@@ -243,14 +267,19 @@ export function verifyStationControlMcpTokenEntry(
     ) {
       if (entry.expiresAt <= now) {
         tokensByDigest.delete(storedDigest);
-        if (digestBySession.get(entry.sessionId) === storedDigest) {
-          digestBySession.delete(entry.sessionId);
-        }
+        const sessionDigests = digestBySession.get(entry.sessionId);
+        if (sessionDigests?.get(entry.serverId) === storedDigest)
+          sessionDigests.delete(entry.serverId);
+        if (sessionDigests?.size === 0) digestBySession.delete(entry.sessionId);
         return undefined;
       }
       return {
         sessionId: entry.sessionId,
+        serverId: entry.serverId,
         channel: entry.channel,
+        ...(entry.allowedTools !== undefined
+          ? { allowedTools: [...entry.allowedTools] }
+          : {}),
         ...(entry.tenantExecutionContext
           ? { tenantExecutionContext: entry.tenantExecutionContext }
           : {}),
@@ -261,12 +290,18 @@ export function verifyStationControlMcpTokenEntry(
 }
 
 /** Best-effort cleanup on ordinary session stop. Never throws. */
-export function revokeStationControlMcpToken(sessionId: string): void {
-  const existingDigest = digestBySession.get(sessionId);
-  if (existingDigest) {
-    tokensByDigest.delete(existingDigest);
-    digestBySession.delete(sessionId);
+export function revokeStationControlMcpToken(
+  sessionId: string,
+  serverId?: BuiltinStationApiMcpId,
+): void {
+  const sessionDigests = digestBySession.get(sessionId);
+  if (!sessionDigests) return;
+  for (const [id, tokenDigest] of sessionDigests) {
+    if (serverId && id !== serverId) continue;
+    tokensByDigest.delete(tokenDigest);
+    sessionDigests.delete(id);
   }
+  if (sessionDigests.size === 0) digestBySession.delete(sessionId);
 }
 
 /**
@@ -277,8 +312,16 @@ export function revokeStationControlMcpToken(sessionId: string): void {
  * port (see `stationControlSpawnEnv`'s doc comment for why — never
  * `process.env.PORT`, stale under `PORT=0`/auto-allocate).
  */
-export function buildStationControlMcpUrl(port: number, token: string): string {
-  return `http://127.0.0.1:${port}${STATION_CONTROL_MCP_PATH}?token=${encodeURIComponent(token)}`;
+export function buildStationControlMcpUrl(
+  port: number,
+  token: string,
+  serverId: BuiltinStationApiMcpId = 'station-control',
+): string {
+  const path =
+    serverId === 'station-knowledge'
+      ? STATION_KNOWLEDGE_MCP_PATH
+      : STATION_CONTROL_MCP_PATH;
+  return `http://127.0.0.1:${port}${path}?token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -292,8 +335,15 @@ export function buildStationControlMcpUrl(port: number, token: string): string {
  * places. `port` must be the instance's actually-bound port, for the same
  * reason `buildStationControlMcpUrl` says so.
  */
-export function buildStationControlMcpHeaderUrl(port: number): string {
-  return `http://127.0.0.1:${port}${STATION_CONTROL_MCP_PATH}`;
+export function buildStationControlMcpHeaderUrl(
+  port: number,
+  serverId: BuiltinStationApiMcpId = 'station-control',
+): string {
+  const path =
+    serverId === 'station-knowledge'
+      ? STATION_KNOWLEDGE_MCP_PATH
+      : STATION_CONTROL_MCP_PATH;
+  return `http://127.0.0.1:${port}${path}`;
 }
 
 /**
@@ -312,14 +362,17 @@ export function mintStationControlMcpHeaderAuth(
   port: number,
   sessionId: string,
   tenantExecutionContext?: TenantExecutionContext,
+  serverId: BuiltinStationApiMcpId = 'station-control',
 ): { url: string; token: string } {
   const { token } = mintStationControlMcpToken(
     sessionId,
     'http-header-token',
     undefined,
     tenantExecutionContext,
+    undefined,
+    serverId,
   );
-  return { url: buildStationControlMcpHeaderUrl(port), token };
+  return { url: buildStationControlMcpHeaderUrl(port, serverId), token };
 }
 
 /** Test-only reset so suites don't leak state across test files. */

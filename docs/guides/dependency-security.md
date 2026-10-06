@@ -208,7 +208,7 @@ dependency-touching pull request from the moment the registry publishes it — w
 attribute it to, and outside what the expiry warning above can see. The
 scheduled run scans on its own cadence, and a failure files or updates one
 tracking issue through `.github/workflows/main-health.yml`, titled
-`Main pipeline red: Scheduled dependency advisory floor`. The next green
+`Main pipeline red: Repo: Dependency advisory`. The next green
 scheduled run closes it. Renew or remediate the ledger against that tracker
 rather than against whichever pull request happened to gate next.
 
@@ -246,6 +246,83 @@ unattributable dependency input or failed classifier selects all scopes. The
 scheduled scan always covers all scopes. A single registry request serves all
 selected views, avoiding repeated registry-bound npm processes while retaining
 each importer's exact full and production closure.
+
+## 2026-09 grpc-js and DOMPurify floor
+
+The workspace lock selects `@grpc/grpc-js@1.14.5` and `dompurify@3.4.16`.
+These compatible patches address the [optional-client-certificate authentication
+advisory](https://github.com/advisories/GHSA-m9gg-hp2v-232j),
+[handler-error disclosure](https://github.com/advisories/GHSA-f596-whhp-79r4),
+and [detached-subtree sanitizer handlers](https://github.com/advisories/GHSA-p98j-92pf-mc4p).
+The threats are remote callers reaching certificate-based gRPC authentication
+or failing handlers, and untrusted markup reaching in-place sanitization with
+node-removing after-sanitize hooks.
+
+Station's locked gRPC path belongs to the OpenTelemetry exporter client;
+source review found no first-party gRPC server or `getAuthContext` caller.
+The chat HTML renderer sanitizes strings with default options. Plugins receive
+the shared sanitizer API and may supply configuration, so absence of first-party
+in-place hooks does not qualify every plugin. These caller bounds are source
+evidence, not a reproduced Station exploit.
+
+The live advisory floor failed before these patches and passed afterward for
+root, SDK and Shared. The real chat sanitizer and shared-plugin consumer tests
+passed, as did SDK typechecking and the managed frozen install. Minimum release
+age, lifecycle permissions, sanitizer configuration and existing residual
+expiries remain unchanged; no new exception was added.
+
+## 2026-09 Axios floor
+
+The Station workspace override requires Axios 1.20.0 or newer compatible 1.x,
+and its lockfile selects 1.20.0. This fixes the new high-severity advisory floor
+that blocked the Agent SDK merge candidate. The existing advisory policy and
+its accepted residuals are unchanged.
+
+The threat models include an untrusted server returning a crafted redirect
+under Node environment-proxy/NO_PROXY handling (availability), and existing
+same-process prototype pollution changing form serialization or transport
+options. Fully privileged malicious code can already control its process;
+this update does not isolate it or grant new request authority. See the
+[redirect advisory](https://github.com/advisories/GHSA-mghh-pgcx-3jjj) and
+[form-options advisory](https://github.com/advisories/GHSA-x97p-jq2g-jp4f).
+
+A network-free public `axios.toFormData` probe with an inherited `maxDepth: 1`
+failed on 1.18.1 with `ERR_FORM_DATA_DEPTH_EXCEEDED`; 1.20.0 retained the clean
+nested serialization. The live full/production audit views for root, SDK, and
+Shared passed after the update. These are dependency-level evidence, not a
+reproduced remote exploit against Station. Runtime Axios consumers include
+transitive SAP HTTP clients, localtunnel, and PostHog; their configuration and
+network reachability determine which advisory conditions apply.
+
+## 2026-09 gRPC floor
+
+The workspace override requires `@grpc/grpc-js` 1.14.5 or newer compatible
+1.x, and its lockfile selects 1.14.5. The
+[certificate-authentication advisory](https://github.com/advisories/GHSA-m9gg-hp2v-232j)
+identifies 1.14.5 as patched on the 1.14 line.
+
+The threat is an unauthorized client certificate being exposed as authorized
+when a gRPC server permits optional client certificates and uses `getAuthContext`
+for authentication. Station's own server code does not call `getAuthContext`;
+its installed dependency path is the OTLP gRPC exporter. This correction is
+bounded by version and source inspection, not a reproduced remote certificate
+attack against Station. It changes no Station authentication contract or
+advisory-policy exception.
+
+## 2026-09 DOMPurify floor
+
+The root dependency and lockfile select DOMPurify 3.4.16, fixing the
+[in-place hook-detachment advisory](https://github.com/advisories/GHSA-p98j-92pf-mc4p).
+Its threat model is untrusted markup processed in `IN_PLACE` mode with a
+node-removing after-sanitize hook. Station's first-party HTML renderer uses
+string sanitization without those options or hooks; the plug-in bridge exposes
+the underlying sanitizer API. No matching first-party caller was found.
+
+An isolated jsdom probe retained a descendant `onerror` attribute after hook
+detachment on 3.4.15, while 3.4.16 removed it. That proves the library-level
+neutralization difference; it does not execute an attacker script or establish
+an exploitable Station path. The live advisory floor passed after the gRPC and
+DOMPurify corrections without new exceptions.
 
 ## 2026-07 critical/high disposition
 

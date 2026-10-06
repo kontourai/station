@@ -16,11 +16,6 @@ import {
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import {
-  APP_DESTINATION_REGISTRY,
-  type SettingsNavEntry,
-  type SettingsNavGroupId,
-} from '../app-shell/destination-registry';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -29,6 +24,7 @@ import { SectionNav, type SectionNavItem } from '../components/SectionNav';
 import { ExistingSetupImportStepper } from '../components/setup/ExistingSetupImportStepper';
 import {
   describeReadFailure,
+  Empty,
   ErrorState,
   Skeleton,
   SkeletonBlock,
@@ -45,14 +41,12 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../contexts/DeviceSettingsContext';
-import { useNavigationActions } from '../contexts/NavigationContext';
 import {
   useScopedProjectQuery,
   useScopedProjectsQuery,
 } from '../contexts/ProjectsContext';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
-import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useLocale } from '../i18n/LocaleContext';
 import { DeviceSettingsImportVersionError } from '../lib/device-settings-store';
@@ -97,6 +91,11 @@ import {
   type SettingsNavGroup,
   settingsRow,
 } from './settings/settings-catalog';
+import {
+  SETTINGS_PAGES,
+  settingsPageForSection,
+  settingsSectionsForView,
+} from './settings/settings-pages';
 import { buildStationResetPlan } from './settings/station-reset';
 import {
   buildSettingsExportPayload,
@@ -108,34 +107,14 @@ import {
   VoiceFeaturesSection,
 } from './settings/VoiceFeaturesSection';
 
-/**
- * archive#settings-revamp: three registry-driven scope sections
- * (docs/design/settings-architecture.md §5) replace the single flat nav —
- * Station, Defaults, This device. Leaf section DOM ids are
- * unchanged from pre-slice-3 (`useSectionNavigation` deep links and
- * existing tests key off them); only the top-level nav/page grouping
- * restructures. #2182 then dissolved `station-config` — the card those
- * hidden Station fields landed in — into the sections named for what each
- * row decides; `StationConfigSection.tsx` is now the shared renderer for
- * those registry-driven rows rather than a section of its own. "My knowledge
- * store" (archive#settings-revamp: renamed from "Knowledge Store" to
- * disambiguate from the project-scoped and infrastructure-scoped Knowledge
- * surfaces, docs/design/settings-architecture.md §3) stays its own
- * top-level card outside every scope group.
- */
-// The nav strip lists sections in `SETTINGS_SECTIONS` order (archive#1826
-// ordered that list by what a person came here to do: the sections with
-// controls first — System, Shared answers — then the read-mostly surfaces,
-// the Station host report and the Diagnostics bundle), and the page body
-// below must mount them in the SAME order. That is two statements, not one:
-// the nav derives its order from the catalog, but the body's order is the
-// sequence of JSX blocks in this file, written by hand. Nothing forces them
-// to agree — #2182 briefly mounted its two new cards at the top of This
-// Station while the nav listed them near the bottom — so
-// `settings-catalog-completeness.test.tsx` holds them together, comparing the
-// rendered anchors against what `settingsSectionNavItems` actually lists.
 const ALL_LEAF_SECTION_IDS = SETTINGS_SECTIONS.map(({ id }) => id);
-const ALL_SETTINGS_VIEWS = ['overview', ...ALL_LEAF_SECTION_IDS];
+const ALL_SETTINGS_VIEWS = [
+  ...new Set([
+    'overview',
+    ...SETTINGS_PAGES.map(({ id }) => id),
+    ...ALL_LEAF_SECTION_IDS,
+  ]),
+];
 
 /**
  * How long a Settings save may stay in flight before the UI stops waiting.
@@ -290,7 +269,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightAnnouncement, setHighlightAnnouncement] = useState('');
   const { activeSection, hrefForSection, navigateToSection } =
-    useSectionNavigation(ALL_SETTINGS_VIEWS, 'overview', {
+    useSectionNavigation(ALL_SETTINGS_VIEWS, 'general', {
       queryKey: 'view',
       legacyQueryKey: 'section',
       clearHighlightOnNavigate: true,
@@ -380,23 +359,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         )
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
-        : // #2182 review M-b: the SAME gate on the direct-view path. It used
-          // to select `[activeSection]` unconditionally, so a non-operator on
-          // `?view=plugin-visibility` had the section "selected" while
-          // `PluginVisibilitySection` rendered nothing for them — and the
-          // This Station caption printed over the empty box. With the gate the
-          // view selects nothing: the body is empty, which is what the
-          // section's own refusal already rendered, and no caption claims a
-          // box that is not there.
-          //
-          // Operator status is not known synchronously: nothing is selectable
-          // until the directory query settles. For an OPERATOR landing here
-          // that interval now renders no section and no caption, then the
-          // section once the answer arrives (or its error, with Retry). It rendered no section before this fix
-          // either (the section returns null while pending), so the only
-          // change in the interval is that the caption no longer precedes
-          // content that may never come. Fail-closed, and no content flashes.
-          [activeSection].filter(operatorMayView),
+        : settingsSectionsForView(activeSection).filter(operatorMayView),
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
@@ -641,8 +604,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const {
     errors: validationErrors,
     warnings: validationWarnings,
-    isValid,
+    isValid: stationConfigValid,
   } = getSettingsValidation(config);
+  const projectModelIncomplete =
+    !!selectedProjectSlug &&
+    typeof projectOverride?.values.defaultLLMProvider === 'string' &&
+    !!projectOverride.values.defaultLLMProvider &&
+    (typeof projectOverride.values.defaultModel !== 'string' ||
+      !projectOverride.values.defaultModel.trim());
+  const isValid = stationConfigValid && !projectModelIncomplete;
 
   const exportSettings = () => {
     const payload = buildSettingsExportPayload(config);
@@ -687,7 +657,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             (savedConfig as Record<string, unknown>)[key] !==
             (config as Record<string, unknown>)[key],
         )
-        .map((key) => [key, (config as Record<string, unknown>)[key]]),
+        .map((key) => {
+          const value = (config as Record<string, unknown>)[key];
+          // Region's empty input inherits; null is the route's clear signal.
+          return [key, key === 'region' && value === '' ? null : value];
+        }),
     ) as Partial<AppConfig>;
     const { logLevel, ...plainChanges } = changed;
     const plainWrite =
@@ -754,9 +728,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         (plainWrite !== undefined && plainOutcome.status === 'fulfilled') ||
         (logLevelWrite !== undefined && logLevelOutcome.status === 'fulfilled');
       if (hasSaved) {
+        // Preserve draft spelling until readback, including '' for cleared Region.
         const written = {
           ...(plainWrite !== undefined && plainOutcome.status === 'fulfilled'
-            ? plainChanges
+            ? Object.fromEntries(
+                Object.keys(plainChanges).map((key) => [
+                  key,
+                  (config as Record<string, unknown>)[key],
+                ]),
+              )
             : {}),
           ...(logLevelWrite &&
           logLevelOutcome.status === 'fulfilled' &&
@@ -889,11 +869,21 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             one place and then move it. */}
         <div className="section-nav-rail">
           <SettingsSectionNav
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
             activeSection={activeSection}
             hrefForSection={hrefForSection}
             navigateToSection={navigateToSection}
           />
-          <div className="section-nav-rail__body">
+          <div
+            className="section-nav-rail__body"
+            id={
+              !ALL_LEAF_SECTION_IDS.includes(activeSection as never)
+                ? `section-${activeSection}`
+                : undefined
+            }
+            tabIndex={-1}
+          >
             {/*
           Review M2: this branch used to be the skeleton alone, and
           `useConfigSnapshot` discarded the query error — so a failed initial
@@ -947,53 +937,62 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           </div>
         )}
 
-        {/* ── Section Nav ── */}
-        <input
-          type="text"
-          className="settings__search"
-          placeholder="Filter settings…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Filter settings"
-        />
         <div className="section-nav-rail">
           <SettingsSectionNav
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
             activeSection={activeSection}
             hrefForSection={hrefForSection}
             navigateToSection={navigateToSection}
           />
-          <div className="section-nav-rail__body">
+          <div
+            className="section-nav-rail__body"
+            id={
+              !ALL_LEAF_SECTION_IDS.includes(activeSection as never)
+                ? `section-${activeSection}`
+                : undefined
+            }
+            tabIndex={-1}
+          >
+            {searchQuery.trim() && visibleSections.size === 0 && (
+              <div role="status">
+                <Empty label={`No settings match “${searchQuery}”.`} />
+              </div>
+            )}
             {/* #2144 slice 3: which document the page is showing values for.
             Outside every scope group because it re-attributes rows in more
             than one of them, and the sentence beside it names exactly what a
             project may override — the selector governs attribution for the
             whole page, but only these settings are a project's to change. */}
-            <div className="settings__project-scope">
-              <label
-                className="settings__project-scope-label"
-                htmlFor="settings-project-scope"
-              >
-                Show settings for:
-              </label>
-              <select
-                id="settings-project-scope"
-                className="editor-select"
-                value={selectedProjectSlug ?? ''}
-                onChange={(event) => selectProject(event.target.value || null)}
-              >
-                <option value="">Station only</option>
-                {projectList.map((project) => (
-                  <option key={project.slug} value={project.slug}>
-                    {project.name ?? project.slug}
-                  </option>
-                ))}
-              </select>
-              <span className="settings__field-hint">
-                A project can override its new-chat workspace and its default
-                model connection and model. Every other setting on this page
-                belongs to the Station.
-              </span>
-            </div>
+            {(sectionVisible('agent-runs') ||
+              sectionVisible('permissions')) && (
+              <div className="settings__project-scope">
+                <label
+                  className="settings__project-scope-label"
+                  htmlFor="settings-project-scope"
+                >
+                  Defaults for
+                </label>
+                <select
+                  id="settings-project-scope"
+                  className="editor-select"
+                  value={selectedProjectSlug ?? ''}
+                  onChange={(event) =>
+                    selectProject(event.target.value || null)
+                  }
+                >
+                  <option value="">All projects</option>
+                  {projectList.map((project) => (
+                    <option key={project.slug} value={project.slug}>
+                      {project.name ?? project.slug}
+                    </option>
+                  ))}
+                </select>
+                <span className="settings__field-hint">
+                  Projects can override the model and new-chat workspace.
+                </span>
+              </div>
+            )}
 
             {/* ── Station scope ── */}
             {groupVisible('this-station') && (
@@ -1002,7 +1001,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 className="settings__scope-group"
               >
                 <p className="settings__scope-caption">
-                  Saved to this Station — every client sees the same values.
+                  Saved to this Station.
                 </p>
 
                 {sectionVisible('system') && (
@@ -1187,47 +1186,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Control settings"
                 className="settings__scope-group"
               >
-                {/* #2182. This box holds ELEVEN rows and they are not all the
-              same kind of rule, which is why the caption has three clauses
-              rather than one. Each clause is true of at least one row and the
-              three together cover all eleven, so a row added here has to pick
-              one — or the caption needs a fourth. Assigned from what the
-              RUNTIME does with each value, not from its help text:
-
-                • "what agents may do without asking" (2) —
-                  `approval-guardian`, an always-on screener; and
-                  `default-approval-mode`, which is ALSO a fallback: a chat or
-                  its engine connection that names its own posture wins.
-                • "what every run gets" (4) —
-                  `default-agent-instructions`, prepended to the agent's own
-                  prompt and never replaced by it
-                  (`runtime-agent-builder.ts` `createRuntimeInstructions`,
-                  `routes/chat/chat.ts`); `template-variables`, one
-                  Station-wide list substituted into those prompts
-                  (`runtime-template-variables.ts`); `workspace-checkpoints`,
-                  read once when Station starts, so a change applies on the
-                  next start, and only to sessions bound to a project with a
-                  working directory (`turn-checkpoint-capture.ts`); and
-                  `builtin-agent-engine`,
-                  which applies to every run of a BUILT-IN agent only — an
-                  agent bound to its own engine is not carried by it. The
-                  first two reach runs Station builds itself; an external
-                  engine receives its own prompt.
-                • "the values a chat, project or agent inherits when it does
-                  not name its own" (5) — `default-model`, `default-region`,
-                  `default-workspace-isolation`, and the two run ceilings:
-                  `default-max-turns` (`resolveMaxSteps` in `constants.ts`:
-                  agent guardrails, then agent spec, then this) and
-                  `default-max-output-tokens` (`voltagent-adapter.ts`:
-                  `spec.guardrails.maxTokens ?? defaultMaxOutputTokens`).
-
-              2 + 4 + 5 = 11. No "device" clause: the one Station row a DEVICE
-              overrides is `default-chat-font-size`, and that row is in the
-              Chat box, not this one. */}
                 <p className="settings__scope-caption">
-                  Saved to this Station — what agents may do without asking,
-                  what every run gets, and the values a chat, project or agent
-                  inherits when it does not name its own.
+                  Saved to this Station.
                 </p>
 
                 {sectionVisible('permissions') && (
@@ -1248,6 +1208,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     validationErrors={validationErrors}
                     validationWarnings={validationWarnings}
                     onChange={setConfig}
+                    projectOverride={projectOverride}
+                    projectReadReady={selectedProject !== undefined}
                     region={config.region || ''}
                     regionError={validationErrors.region}
                     regionProvenance={provenance?.region}
@@ -1280,16 +1242,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="This device settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this device only — these choices won’t follow you to
-                  another device.
-                </p>
+                <p className="settings__scope-caption">Saved to this device.</p>
 
                 {sectionVisible('appearance') && (
                   <Section icon="◐" title="Appearance" id="section-appearance">
                     <PageRow
                       {...settingsRow('theme')}
-                      description="Toggle between light and dark mode."
                       control={<ThemeToggle />}
                     />
                     {/* archive#3314: the restore path for a section removed via the
@@ -1601,9 +1559,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   </Section>
                 )}
 
-                {sectionVisible('notifications') && (
-                  <NotificationsSection apiBase={currentApiBase} />
-                )}
+                {sectionVisible('notifications') && <NotificationsSection />}
 
                 {sectionVisible('voice') && <VoiceFeaturesSection />}
 
@@ -1618,13 +1574,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('enable-developer-tools')}
-                      // Where the result APPEARS, because it is not here: the row
-                      // this adds opens the This Station group of the navigation
-                      // strip at the top of this page, while the switch itself sits
-                      // in This device further down, and the strip scrolls
-                      // sideways. Nothing else on the page moves, so without the
-                      // sentence the press reads as having done nothing.
-                      description="Show the Developer surface (logs, system, telemetry, memory, archive) on this device. A Developer row appears in the navigation at the top of this page, first under This Station, and Developer joins the sidebar and the command palette. Deep links to /developer keep working either way."
+                      description="Show Developer in Customize and the command palette on this device."
                       control={
                         <Toggle
                           checked={developerToolsEnabled}
@@ -1711,179 +1661,75 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   );
 }
 
-/**
- * The settings section rail, extracted so it can render BEFORE the config
- * read settles (6-OPS-23).
- *
- * Every link here is derived from the static `SETTINGS_SECTIONS` catalog and
- * from the URL — none of it waits on `/api/config/app`. Rendering it only in
- * the loaded branch meant a measured ~16 s during which Settings showed a
- * title and three grey blocks: the page's whole navigable shape was known the
- * whole time and withheld anyway.
- *
- * archive#4463 removed this strip's all-caps `STATION` / `DEFAULTS` /
- * `THIS DEVICE` group-label `<span>`s — two label vocabularies colliding in
- * one control — and left a silent `dividerAfter` in their place. #2144
- * decision 6 brings NAMED groups back, and has to answer that removal rather
- * than ignore it. Two things changed:
- *
- * - The label is a real `<h2>` styled to be unmistakably not a link (see
- *   `.section-nav__group-label`), so the vocabularies no longer share one
- *   visual control. The divider said "the subject changed" to sighted readers
- *   and nothing at all to a screen reader; a heading says it to both and puts
- *   the groups in the heading rotor.
- * - The group names are deliberately ALIGNED with the page below, not
- *   independent of it. This page's structure IS persistence-shaped: its body
- *   is a run of `.settings__scope-group` sections, each opening with the rule
- *   its settings are saved under, and four of the five nav groups map onto
- *   one of those boxes each. "This Station" is its box's caption restated,
- *   and that is the point — a nav that named the page's structure differently
- *   would mislabel a box a reader is about to scroll into. Set up is the one
- *   group with no box, because it holds no sections of this page at all.
- *   archive#4463's collision was two label vocabularies over ONE control, and
- *   what answers it is that a group label is a non-interactive heading and
- *   never a place to press — not that its words have to differ from the
- *   caption's.
- *
- * "Control" is the one group name that is not a storage location, and it has
- * to be: its box is saved on the Station exactly as This Station's is, so a
- * name drawn from persistence could not tell the two apart. What separates
- * them is the rest of its caption — these are the values "used when a chat,
- * project, or agent doesn't set its own value" — and the name states that
- * authority relationship rather than a place.
- *
- * The landmark stays single (`aria-label="Settings sections"`): one
- * navigation with headings inside, not one landmark per group.
- *
- * `SectionNav`, not `Tabs`: these are real, deep-linkable URL sections
- * (`?view=`) navigated via `useSectionNavigation`'s `hrefForSection`, not an
- * in-place tab widget — see `components/SectionNav.tsx`'s docblock for why
- * that distinction is load-bearing (archive#4463). The Set up rows are the
- * exception that proves it: they are ordinary links to other routes, and
- * `SettingsSectionNav` sends them to the navigation store instead of the
- * section resolver.
- */
-/**
- * The nav group order, and the words each one is shown under. Order is the
- * PAGE's order too: every section body below is rendered in this sequence, so
- * the strip a reader skims and the page they scroll agree. Adding a group
- * here without moving its bodies would desynchronise a scroll-spy nav.
- */
-// Sentence case in the DOM; `.section-nav__group-label` is what draws them as
-// small caps. Writing "SET UP" here would put shouted text in the accessibility
-// tree for a purely visual treatment, and some screen readers spell short
-// all-caps strings out letter by letter.
-const NAV_GROUPS = [
-  // Set up holds no settings sections at all — only rows that leave this page
-  // for the surface they name.
-  { id: 'set-up', label: 'Set up' },
-  { id: 'this-station', label: 'This Station' },
-  { id: 'control', label: 'Control' },
-  // The id stays as minted: it is internal, and no URL, registry record or
-  // deep link carries it. The LABEL is the owner decision on #2144 — a
-  // heading reading "You" over a caption that says "Saved to this device
-  // only" named a person where the box names a machine.
-  { id: 'you', label: 'This device' },
-  { id: 'knowledge', label: 'Knowledge' },
-] as const satisfies readonly {
-  // Both vocabularies: a group can hold sections, nav-only rows, or both.
-  // This Station holds both — its sections, plus Developer when this device
-  // has developer tools on.
-  id: SettingsNavGroup | SettingsNavGroupId;
-  label: string;
-}[];
-
-/**
- * The key prefix that separates a nav-only row from a settings section.
- *
- * A nav-only row LEAVES this page, so its key must never be mistaken for a
- * `?view=` value: `useSectionNavigation` validates against
- * `ALL_SETTINGS_VIEWS` and silently falls back to overview for anything else,
- * which would turn "open Agents" into "scroll to the top" with no error
- * anywhere. The prefix cannot collide, because a `SettingsSectionId` is a
- * plain slug and `:` is not in that grammar.
- */
-const NAV_ONLY_KEY_PREFIX = 'nav:';
-
-/** Exported for `SettingsSectionNav.test.tsx` — the nav's shape is worth testing directly, independent of the many hooks a full `SettingsView` render would require mocking. */
+/** Settings navigation stays within this page. Leaf URLs remain supported. */
 export function settingsSectionNavItems(
   hrefForSection: (section: string) => string,
-  navOnlyEntries: readonly SettingsNavEntry[] = APP_DESTINATION_REGISTRY.getSettingsNav(),
 ): SectionNavItem[] {
-  const grouped = NAV_GROUPS.flatMap((group) => {
-    // Nav-only rows come FIRST within their group: they are surfaces, and a
-    // reader scanning for "Agents" or "Developer" is looking for a place, not
-    // a row of this page. Each row is placed by the group the registry gives
-    // it, not by being nav-only — Developer belongs beside this Station's own
-    // sections, not under Set up with the entity lists.
-    const items = [
-      ...navOnlyEntries
-        .filter((entry) => entry.group === group.id)
-        .map((entry) => ({
-          key: `${NAV_ONLY_KEY_PREFIX}${entry.id}`,
-          label: entry.label,
-          href: entry.route,
-        })),
-      ...SETTINGS_SECTIONS.filter((section) => section.group === group.id).map(
-        (section) => ({
-          key: section.id as string,
-          label: section.title as string,
-          href: hrefForSection(section.id),
-        }),
-      ),
-    ];
-    // An empty group renders NO heading: a label naming a group that is not
-    // there is worse than a missing label. This Station's Developer row is
-    // conditional today, and a group could become wholly conditional next.
-    if (items.length === 0) return [];
-    return items.map((item, index) =>
-      index === 0 ? { ...item, groupLabel: group.label } : item,
-    );
-  });
-  return [
-    { key: 'overview', label: 'Overview', href: hrefForSection('overview') },
-    ...grouped,
-  ];
+  return SETTINGS_PAGES.map((page) => ({
+    key: page.id,
+    label: page.title,
+    href: hrefForSection(page.id),
+  }));
 }
 
 function SettingsSectionNav({
   activeSection,
   hrefForSection,
   navigateToSection,
+  searchQuery,
+  onSearchChange,
 }: {
   activeSection: string;
   hrefForSection: (section: string) => string;
   navigateToSection: (section: string) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
 }) {
-  // The narrow hook: this destructure is actions only, and the bare
-  // `useNavigation()` re-renders the strip on every navigation-store write.
-  const { navigate } = useNavigationActions();
-  // The SAME flag set every other advertisement surface filters on, so
-  // Developer appears here exactly when it appears in the palette — and
-  // disappears from the nav, not merely from the old Manage grid, when
-  // developer tools are off. Passing nothing would silently drop it forever.
-  const flags = useSurfaceVisibilityFlags();
-  const items = settingsSectionNavItems(
-    hrefForSection,
-    APP_DESTINATION_REGISTRY.getSettingsNav(flags),
-  );
+  const items = settingsSectionNavItems(hrefForSection);
+  const activePage =
+    SETTINGS_PAGES.find((page) => page.id === activeSection) ??
+    settingsPageForSection(activeSection);
+  const selectedKey = activePage?.id ?? 'overview';
+  const choosePage = (key: string) => {
+    onSearchChange('');
+    navigateToSection(key);
+  };
   return (
-    <SectionNav
-      className="settings__section-nav section-nav--rail"
-      aria-label="Settings sections"
-      items={items}
-      activeKey={activeSection}
-      onNavigate={(key) => {
-        if (!key.startsWith(NAV_ONLY_KEY_PREFIX)) {
-          navigateToSection(key);
-          return;
+    <div className="settings__navigation section-nav--rail">
+      <input
+        type="search"
+        className="settings__search"
+        placeholder="Search settings…"
+        value={searchQuery}
+        onChange={(event) => onSearchChange(event.target.value)}
+        aria-label="Filter settings"
+      />
+      <label className="settings__mobile-section-picker">
+        Settings section
+        <select
+          className="editor-select"
+          value={selectedKey}
+          onChange={(event) => choosePage(event.target.value)}
+        >
+          {selectedKey === 'overview' && (
+            <option value="overview">All settings</option>
+          )}
+          {items.map((item) => (
+            <option key={item.key} value={item.key}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <SectionNav
+        className="settings__section-nav section-nav--rail"
+        aria-label="Settings sections"
+        items={items}
+        activeKey={
+          searchQuery.trim() || selectedKey === 'overview' ? '' : selectedKey
         }
-        // The canonical `navigate`, so the page's unsaved-changes guard is
-        // asked exactly once — leaving Settings with a pending edit through
-        // this row must behave like leaving it any other way (src-ui/AGENTS.md).
-        const target = items.find((item) => item.key === key);
-        if (target) navigate(target.href);
-      }}
-    />
+        onNavigate={choosePage}
+      />
+    </div>
   );
 }

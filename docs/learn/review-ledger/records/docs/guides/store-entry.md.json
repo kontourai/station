@@ -1,0 +1,163 @@
+{
+  "path": "docs/guides/store-entry.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed owner-setup, API key, workload identity, channel profile, upload/reconciliation and bounded group-assignment claims through declared workflows, pinned action inputs and primary provider documentation. Intended names and privacy/ads answers marked as owner decisions, not observed account facts.",
+
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration. Owner account/legal/privacy/age/ads declarations remain unverified decisions; no live store listing certified.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/nightly.yml\",\"ours\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"},\"active\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"},\"active\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"}]\n\nNo native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration. Owner account/legal/privacy/age/ads declarations remain unverified decisions; no live store listing certified.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    ".github/workflows/build-ios.yml",
+
+    ".github/workflows/internal-testflight.yml",
+
+    ".github/workflows/nightly-native-cohort.yml",
+
+    ".github/workflows/nightly-native-stage.yml",
+
+    ".github/workflows/nightly.yml",
+
+    ".github/workflows/publish-release.yml",
+
+    ".github/workflows/release.yml",
+
+    ".github/workflows/testflight-delivery.yml",
+
+    ".gitignore",
+
+    "config/channel-platform-matrix.json",
+
+    "config/release-platform-matrix.json",
+
+    "install.sh",
+
+    "ops/nightly/install-macos.zsh",
+
+    "package.json#/version",
+
+    "schemas/release-artifact-manifest.schema.json",
+
+    "scripts/__tests__/ensure-ios-agent-activity-extension.test.ts",
+
+    "scripts/__tests__/ios-exported-entitlements.test.ts",
+
+    "scripts/__tests__/ios-store-signing-config.test.ts",
+
+    "scripts/__tests__/native-update-feed.test.ts",
+
+    "scripts/__tests__/publish-mobile-feed-transaction.test.ts",
+
+    "scripts/__tests__/release-artifacts.test.ts",
+
+    "scripts/__tests__/release-workflow.test.ts",
+
+    "scripts/app-store-connect-receipt.mjs",
+
+    "scripts/apply-android-release-signing.mjs",
+
+    "scripts/check-ios-store-profile.mjs",
+
+    "scripts/ensure-ios-agent-activity-extension.mjs",
+
+    "scripts/ios-channel-icons.mjs",
+
+    "scripts/ios-exported-entitlements.mjs",
+
+    "scripts/ios-local-release-preflight.mjs",
+
+    "scripts/ios-store-signing-config.mjs",
+
+    "scripts/ios-testflight-channel.mjs",
+
+    "scripts/ios-testflight-delivery-policy.mjs",
+
+    "scripts/ios-testflight-internal-authority.mjs",
+
+    "scripts/ios-testflight-readiness.mjs",
+
+    "scripts/lib/native-release-config.mjs",
+
+    "scripts/lib/release-artifacts.mjs",
+
+    "scripts/lib/release-variants.mjs",
+
+    "scripts/native-update-feed.mjs",
+
+    "scripts/publish-mobile-feed-transaction.sh",
+
+    "scripts/release-artifacts.mjs",
+
+    "scripts/release-platform-matrix.mjs",
+
+    "src-desktop/ios/StationNotificationService/NotificationService.swift",
+
+    "src-desktop/src/lib.rs",
+
+    "src-server/services/notifications/agent-activity-publisher.ts",
+
+    "src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx",
+
+    "src-ui/src/components/CoreUpdateLaunchCheck.tsx"
+  ],
+
+  "checks": [
+    "Prior review receipt (not rerun here): focused: PASS116tests7files2.03s: native-release-config, release-ring-workflow, nightly-cohort-decision, ios-testflight-readiness, app-store-connect-receipt, release-platform-matrix, documentation-foundations",
+
+    "Prior review receipt (not rerun here): matrix: PASS node scripts/release-platform-matrix.mjs; config validation only, no projection as live truth",
+
+    "Prior review receipt (not rerun here): actualAssemblyCli: FAIL exit1 readFileSync is not defined; expected finding, not fixed; no output/assets produced",
+
+    "Prior review receipt (not rerun here): veritas: PASS exit0/0failures/0warnings; proof:repo-governance/lint:check/verification-policy; protected hashes unchanged",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed generated channel/key blocks, Nightly public-manifest-only and coexistence admission, exact pin/channel checks, retained source-archive selector, final-location build and upgrade identity. This consumer is not the new per-platform prebuilt installer; docs preserve that limit.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed affected current owners: native startup callbacks and separate React mount, registered native grant/diagnostic commands and cleanup hooks, native notification feed manage/start/IPC, state-directory profile genesis. Updated readiness/recovery/tray/broker claims; no native/platform delivery proof.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Adds notificationServiceBundleId null for stable and exact Beta/Nightly NotificationService IDs. Mobile/setup docs now require both extensions and all three profiles; no current provider provisioning asserted.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Only frozen upstream delta adds guarded pinned pnpm JS bootstrap on Intel macOS and keeps pinned native setup elsewhere. Tagged native inventory/signing/publication claims unaffected; no hosted execution.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed new NotificationService secret/profile import, target generation/signing, exact extension count, embedded profile/entitlement audits and exported bytes. Mobile/setup corrected; icons and existing artifact/provider distinction retained.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Only adds dist-portable-server generated directory; existing native/package artifact boundaries unchanged.",
+
+    "Prior review receipt (not rerun here): Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Prior review receipt (not rerun here): Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Prior review receipt (not rerun here): Added only a tracked documentation PNG exception; native capture/private artifact rules are unchanged.",
+
+    "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
+
+    "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
+
+    "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
+
+    "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
+
+    "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
+
+    "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+
+    "Primary external documentation reviewed read-only on2026-09-27: Apple API keys https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/ ; Apple screenshot specifications https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/ ; Apple privacy https://developer.apple.com/app-store/user-privacy-and-data-use/ ; Google preview assets https://support.google.com/googleplay/android-developer/answer/9866151 ; Google categories https://support.google.com/googleplay/android-developer/answer/9859673 ; Google deployment-pipeline WIF https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines . No account query or mutation.",
+
+    "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through d1e0facc2: Update evidence now exercises the owning component; no physical update receipt inferred. Version/feed helpers are private; native update validation is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: install.sh gained the archive install, service restart and rollback path; the Nightly installer moved its signing-requirement check into the helper; package.json dropped bearing/forage; lib.rs removed notification_watch. The guide makes no claims about these store-publication inputs, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 adds the install.sh launcher handoff and stage-only mode. #2914 adds `print --` in install-macos.zsh, removes the validateUpdateConfig alias in favor of resolveNativeUpdateAuthority, and drops runBoundedFixture tests. None touches TestFlight/Play authority, secrets, tagging or the out-of-scope list; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

@@ -44,12 +44,32 @@ import {
 } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/workspace-pane-host';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
-import { telemetry, useProjectLayoutQuery } from '@kontourai/station-sdk';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  telemetry,
+  useGitStatusQuery,
+  useProjectLayoutQuery,
+} from '@kontourai/station-sdk';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { CodingWorkbench } from '../components/coding-layout/CodingWorkbench';
+import {
+  hostRendersCodingPane,
+  useCodingWide,
+} from '../components/coding-layout/codingPanels';
+import {
+  resolveCodingStackLocation,
+  useCodingStackSelection,
+} from '../components/coding-layout/codingStackPage';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
 import { useNavigationActions } from '../contexts/NavigationContext';
-import { useIsMobile } from '../hooks/useIsMobile';
+import { useDockFoldsToOneRegion, useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
 import {
   type NativePlatformAdapter,
@@ -58,9 +78,11 @@ import {
 import { LayoutView } from '../views/LayoutView';
 import {
   admitRestoredBrowserPreviewPaneInstance,
+  browserPreviewPaneOrdinal,
   browserPreviewPanePresentationLabel,
   removeRemovedBrowserPreviewPaneState,
 } from '../workspace-panes/browserPreviewPaneInstance';
+import { builtinWorkspacePaneName } from '../workspace-panes/builtinWorkspacePaneCanonical';
 import {
   getBuiltinWorkspacePaneRenderer,
   isCanonicalBuiltinBrowserPreviewDescriptor,
@@ -77,12 +99,14 @@ import { DockOnlyWorkspacePaneNotice } from '../workspace-panes/DockOnlyWorkspac
 import {
   admitRestoredFilePreviewPaneInstance,
   filePreviewPanePresentationLabel,
+  filePreviewPanePresentationPath,
   removeRemovedFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneInstance';
 import { trackMcpAppDisplayModeDecision } from '../workspace-panes/mcpAppDisplayModeTelemetry';
 import { PluginWorkspacePaneSDKBoundary } from '../workspace-panes/PluginWorkspacePaneSDKBoundary';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
+import { WorkspacePaneFrame } from '../workspace-panes/WorkspacePaneFrame';
 import { WorkspacePaneHost } from '../workspace-panes/WorkspacePaneHost';
 import type {
   WorkspacePaneHostCatalogRequest,
@@ -91,6 +115,7 @@ import type {
   WorkspacePaneHostPopOutRequestResult,
 } from '../workspace-panes/WorkspacePaneHostCommands';
 import type { WorkspacePaneHostOpenAction } from '../workspace-panes/WorkspacePaneHostOpenContext';
+import type { WorkspacePaneHostPanePresentation } from '../workspace-panes/WorkspacePaneHostTabs';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import {
@@ -110,7 +135,10 @@ import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
 import { trackCodingFileCompositionReceipt } from './codingFileCompositionTelemetry';
 import { isUnplacedLayoutRecord } from './layout-record-absent';
 import { layoutTypeRegistry } from './layoutRegistry';
-import { resolveProjectLayoutRendererKind } from './project-layout-kind';
+import {
+  resolveLayoutChatPlacement,
+  resolveProjectLayoutRendererKind,
+} from './project-layout-kind';
 
 const loadProjectBasisMcpWorkspacePane = () =>
   import('../workspace-panes/BasisMcpWorkspacePane').then(
@@ -359,6 +387,28 @@ function sameWorkspacePaneInstanceIds(
  * differs anywhere is published, and only a byte-identical one keeps its
  * identity.
  */
+const CHAT_PAGE = { page: 'chat', paneId: null } as const;
+
+/**
+ * Whether a `?paneScope=` names a Project host of this layout, before the
+ * Project's id is known (`workspacePaneHostScopeKey`'s project shape).
+ */
+function paneScopeNamesLayout(
+  paneScope: string | null,
+  layoutId: string,
+): boolean {
+  if (!paneScope) return false;
+  try {
+    const parsed: unknown = JSON.parse(paneScope);
+    return (
+      Array.isArray(parsed) && parsed[0] === 'project' && parsed[2] === layoutId
+    );
+  } catch {
+    return false;
+  }
+}
+const NO_INSTANCES: readonly WorkspacePaneInstance[] = [];
+
 function retainWorkspacePaneHostDocument(
   published: {
     current: { content: string; document: WorkspacePaneHostDocumentV1 } | null;
@@ -373,6 +423,17 @@ function retainWorkspacePaneHostDocument(
 }
 
 /** The one admitted current-layout bridge: exact builtin catalog identity only. */
+/**
+ * The lower panel is one occupant with no tabs and no geometry of its own,
+ * the same standing the chromeless host gives a pane: inline is the only
+ * display mode, and the pane is told so.
+ */
+const LOWER_PANE_PRESENTATION: WorkspacePaneHostPanePresentation = {
+  displayMode: 'inline',
+  availableDisplayModes: ['inline'],
+  requestDisplayMode: (mode) => mode === 'inline',
+};
+
 function BuiltinCodingLayoutHost({
   projectSlug,
   layoutSlug,
@@ -418,6 +479,20 @@ function BuiltinCodingLayoutHost({
     useState<WorkspacePaneHostOpenRefusal | null>(null);
   const [hostInstanceIds, setHostInstanceIds] = useState<ReadonlySet<string>>();
   /**
+   * The host's live panes, in document order: what the Coding stack's Views
+   * menu lists and what a `?pane=` must name to be a drill-in. Moves with
+   * `hostInstanceIds` (membership), not with every document change.
+   */
+  const [hostInstances, setHostInstances] =
+    useState<readonly WorkspacePaneInstance[]>();
+  /** The host's latest document, read when the catalog needs a target group. */
+  const liveHostDocument = useRef<WorkspacePaneHostDocumentV1 | null>(null);
+  /** The pane the host is showing, for a URL that names one it lacks. */
+  const [hostActiveId, setHostActiveId] = useState<string | null>(null);
+  const announcedInstanceIds = useRef<ReadonlySet<string> | undefined>(
+    undefined,
+  );
+  /**
    * Stable sink, and a set identity that moves only when its membership does.
    * Both halves matter: an inline handler made the host re-announce on every
    * render, and a freshly built `Set` made every announcement — including the
@@ -426,14 +501,66 @@ function BuiltinCodingLayoutHost({
    */
   const handleHostDocumentChange = useCallback(
     (next: WorkspacePaneHostDocumentV1) => {
-      setHostInstanceIds((current) => {
-        const ids = new Set(
-          next.instances.map((instance) => instance.instanceId),
-        );
-        return sameWorkspacePaneInstanceIds(current, ids) ? current : ids;
-      });
+      liveHostDocument.current = next;
+      setHostActiveId(next.activeInstanceId);
+      const ids = new Set(
+        next.instances.map((instance) => instance.instanceId),
+      );
+      if (sameWorkspacePaneInstanceIds(announcedInstanceIds.current, ids))
+        return;
+      announcedInstanceIds.current = ids;
+      setHostInstanceIds(ids);
+      setHostInstances(next.instances);
     },
     [],
+  );
+  // The Coding stack (#928): which page the URL names, and whether the
+  // centre shows Chat — the same derivation App suspends the dock's Chat by.
+  const stackSelection = useCodingStackSelection();
+  const bottomOnly = useDockFoldsToOneRegion();
+  const centerChat =
+    resolveLayoutChatPlacement({ type: 'coding' }, { bottomOnly }) === 'center';
+  // Past the wide fold a pane opens beside the centre's Chat (#3040) — only
+  // where the centre HAS Chat; a bottom-only device keeps the drill-in.
+  const wide = useCodingWide() && centerChat;
+  /**
+   * The host's panes render once the reader has drilled in during this mount,
+   * and stay mounted (hidden) after, so a pane keeps its state across the
+   * round trip. Before that nothing renders behind the Chat page: the host's
+   * remembered selection — Files on a fresh layout — would otherwise fetch
+   * on every visit to a page that never shows it, which the Coding tab this
+   * page replaced never did.
+   */
+  const [drillInVisited, setDrillInVisited] = useState(false);
+  const [hostPersistence, setHostPersistence] = useState<
+    'owned' | 'contended' | 'unavailable'
+  >('owned');
+  /**
+   * The Diff rail icon's changed-file count, when the layout already knows
+   * it: the git status the Coding panes (the branch toolbar, the Diff) read
+   * and cache. Read passively — the rail never adds a git read of its own.
+   */
+  const layoutWorkingDirectory = (
+    layout as { config?: Record<string, unknown> | null }
+  ).config?.workingDirectory;
+  const gitStatus = useGitStatusQuery(
+    typeof layoutWorkingDirectory === 'string' && layoutWorkingDirectory.trim()
+      ? { projectSlug, workingDir: layoutWorkingDirectory.trim() }
+      : null,
+    { enabled: false },
+  ).data as
+    | { isRepo?: boolean; changes?: readonly string[] }
+    | null
+    | undefined;
+  const railBadges = useMemo(
+    () =>
+      gitStatus?.isRepo && Array.isArray(gitStatus.changes)
+        ? {
+            [WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID]:
+              gitStatus.changes.length,
+          }
+        : undefined,
+    [gitStatus],
   );
   /**
    * archive#3794: these five are host-effect dependencies
@@ -678,6 +805,34 @@ function BuiltinCodingLayoutHost({
     },
     [catalog.entries, catalog.projectSlug, catalogRequest, hostOpen],
   );
+  /**
+   * The Coding occurrence is the layout's Chat position, which is the stack's
+   * Chat page now — never a drill-in. Refused at the host's open seam, and
+   * left out of the picker below, so it cannot come back as a pane.
+   */
+  const admitOpenInstance = useCallback(
+    (instance: WorkspacePaneInstance) =>
+      !catalog.entries.some(
+        (candidate) =>
+          candidate.descriptor.id === instance.descriptorId &&
+          isCanonicalBuiltinCodingOccurrence(instance, candidate.descriptor),
+      ),
+    [catalog.entries],
+  );
+  const pickerEntries = useMemo(
+    () =>
+      catalog.entries.filter(
+        (candidate) =>
+          !(
+            candidate.instance &&
+            isCanonicalBuiltinCodingOccurrence(
+              candidate.instance,
+              candidate.descriptor,
+            )
+          ),
+      ),
+    [catalog.entries],
+  );
   const codingOccurrence = catalog.entries.find(
     (candidate) =>
       candidate.instance &&
@@ -762,13 +917,56 @@ function BuiltinCodingLayoutHost({
       isCanonicalBuiltinTrustDescriptor(candidate.descriptor),
   );
 
+  /**
+   * Every state before the host can mount — the catalog loading or failing,
+   * an unavailable Coding occurrence, a composition or document that cannot
+   * be admitted — still renders the Chat page, with the state as a notice
+   * above it. App suspends the dock's Chat as soon as it knows the layout is
+   * the built-in Coding one, so a state that rendered only its message would
+   * leave the route with no Chat at all.
+   */
+  const chatOnly = (notice: ReactNode, provisional = false) => (
+    <CodingWorkbench
+      projectId={projectId ?? ''}
+      projectSlug={projectSlug}
+      centerChat={centerChat}
+      wide={wide}
+      // While the catalog loads, a deep link's drill-in is the page it names
+      // (the pane arrives with the host); a state with no host to come is the
+      // Chat page.
+      location={
+        provisional &&
+        stackSelection.pane &&
+        paneScopeNamesLayout(stackSelection.paneScope, layout.id)
+          ? { page: 'drill-in', paneId: stackSelection.pane }
+          : CHAT_PAGE
+      }
+      provisional={provisional}
+      scope={{
+        kind: 'project',
+        projectId: projectId ?? 'pending',
+        layoutId: layout.id,
+      }}
+      instances={NO_INSTANCES}
+      hostDocument={() => null}
+      paneLabel={() => 'Pane'}
+      hostOpen={null}
+      onOpenCatalog={() => undefined}
+      notice={notice}
+    >
+      {null}
+    </CodingWorkbench>
+  );
   if (catalog.isLoading) {
-    return <SkeletonList count={1} label="Loading coding workspace panes" />;
+    return chatOnly(
+      <SkeletonList count={1} label="Loading coding workspace panes" />,
+      true,
+    );
   }
   // #2319: a failed background revalidation keeps the answer it had; only a
   // catalog that never loaded is an error screen.
   if (catalog.isError && catalog.data === undefined) {
-    return (
+    return chatOnly(
       <ErrorState
         title="Could not load coding workspace"
         description="Station could not read this Project’s pane catalog."
@@ -777,7 +975,7 @@ function BuiltinCodingLayoutHost({
             Retry
           </button>
         }
-      />
+      />,
     );
   }
 
@@ -793,7 +991,7 @@ function BuiltinCodingLayoutHost({
           codingOccurrence.rendererResolution,
         )
       : undefined;
-    return (
+    return chatOnly(
       <ErrorState
         title="Coding workspace unavailable"
         description={
@@ -811,7 +1009,7 @@ function BuiltinCodingLayoutHost({
             </button>
           )
         }
-      />
+      />,
     );
   }
   // Layout slugs address routes; the host and its pane occurrences persist the
@@ -847,11 +1045,11 @@ function BuiltinCodingLayoutHost({
     (readinessEntry?.instance && !readinessInstance) ||
     (trustEntry?.instance && !trustInstance)
   ) {
-    return (
+    return chatOnly(
       <ErrorState
         title="Coding workspace unavailable"
         description="Station could not bind its pane occurrences to this layout."
-      />
+      />,
     );
   }
   const fileComposition =
@@ -888,7 +1086,7 @@ function BuiltinCodingLayoutHost({
     fileCompositionControl !== 'legacy' &&
     (!fileBrowserEntry?.instance || !fileComposition?.instance)
   ) {
-    return (
+    return chatOnly(
       <>
         {fileCompositionReceipt ? (
           <CodingFileCompositionReceiptTracker
@@ -899,7 +1097,7 @@ function BuiltinCodingLayoutHost({
           title="Coding file workspace unavailable"
           description="The Workspace Composition file pane could not be admitted. Station did not fall back to the legacy Coding host."
         />
-      </>
+      </>,
     );
   }
   const selectedFileBrowserInstance =
@@ -934,7 +1132,7 @@ function BuiltinCodingLayoutHost({
     diffCompositionControl !== 'legacy' &&
     (!diffEntry?.instance || !diffComposition?.instance)
   ) {
-    return (
+    return chatOnly(
       <>
         {diffCompositionReceipt ? (
           <CodingDiffCompositionReceiptTracker
@@ -945,7 +1143,7 @@ function BuiltinCodingLayoutHost({
           title="Coding Diff workspace unavailable"
           description="The Workspace Composition Diff pane could not be admitted. Station did not fall back to the legacy Coding host."
         />
-      </>
+      </>,
     );
   }
   const selectedDiffInstance = diffComposition?.instance ?? diffInstance;
@@ -999,7 +1197,7 @@ function BuiltinCodingLayoutHost({
     evidenceCompositionControl !== 'legacy' &&
     !evidenceComposition?.document
   ) {
-    return (
+    return chatOnly(
       <>
         {evidenceCompositionReceipts.map((receipt) => (
           <CodingEvidenceCompositionReceiptTracker
@@ -1011,7 +1209,7 @@ function BuiltinCodingLayoutHost({
           title="Coding evidence workspace unavailable"
           description="The Workspace Composition evidence panes could not be admitted. Station did not fall back to the legacy Coding host."
         />
-      </>
+      </>,
     );
   }
   const selectedEvidence = (descriptorId: string) =>
@@ -1030,32 +1228,322 @@ function BuiltinCodingLayoutHost({
     evidenceCompositionControl === 'legacy'
       ? trustInstance
       : selectedEvidence(WORKSPACE_TRUST_PANE_DESCRIPTOR_ID);
-  const document = retainWorkspacePaneHostDocument(
-    publishedDocument,
-    createWorkspacePaneHostBaselineDocument(
-      `builtin-coding-${layoutSlug}`,
-      { kind: 'project', projectId, layoutId: layout.id },
-      [
-        codingInstance,
-        ...(selectedFileBrowserInstance ? [selectedFileBrowserInstance] : []),
-        ...(selectedDiffInstance ? [selectedDiffInstance] : []),
-        ...(terminalInstance ? [terminalInstance] : []),
-        ...(selectedPlanInstance ? [selectedPlanInstance] : []),
-        ...(selectedReadinessInstance ? [selectedReadinessInstance] : []),
-        ...(selectedTrustInstance ? [selectedTrustInstance] : []),
-      ],
-    ),
-  );
-  if (!document) {
-    return (
+  // The Coding occurrence gates the host (above) but is not one of its panes:
+  // the layout's Chat position is the stack's Chat page (`CodingWorkbench`).
+  // A document persisted before the stack still lists it; the host's restore
+  // drops an occurrence its catalog no longer issues and prunes the group it
+  // leaves empty, keeping every other pane and its state
+  // (`restoreWorkspacePaneHostDocument`), so the stored id is reused as is.
+  const drillInInstances = [
+    ...(selectedFileBrowserInstance ? [selectedFileBrowserInstance] : []),
+    ...(selectedDiffInstance ? [selectedDiffInstance] : []),
+    ...(terminalInstance ? [terminalInstance] : []),
+    ...(selectedPlanInstance ? [selectedPlanInstance] : []),
+    ...(selectedReadinessInstance ? [selectedReadinessInstance] : []),
+    ...(selectedTrustInstance ? [selectedTrustInstance] : []),
+  ];
+  const hostScope = {
+    kind: 'project' as const,
+    projectId,
+    layoutId: layout.id,
+  };
+  const document =
+    drillInInstances.length > 0
+      ? retainWorkspacePaneHostDocument(
+          publishedDocument,
+          createWorkspacePaneHostBaselineDocument(
+            `builtin-coding-${layoutSlug}`,
+            hostScope,
+            drillInInstances,
+          ),
+        )
+      : null;
+  if (drillInInstances.length > 0 && !document) {
+    return chatOnly(
       <ErrorState
         title="Coding workspace cannot mount"
         description="Station could not create the required workspace pane host."
-      />
+      />,
     );
   }
+  const location = resolveCodingStackLocation(
+    hostScope,
+    // Unknown until the host reports its live set: trust the URL meanwhile.
+    hostInstances ?? (document ? undefined : []),
+    stackSelection.pane,
+    stackSelection.paneScope,
+    hostActiveId,
+  );
+  if (location.page === 'drill-in' && !drillInVisited) setDrillInVisited(true);
+  const renderPanes = drillInVisited || location.page === 'drill-in';
+  /**
+   * One pane, drawn: the renderer the catalog resolves for its descriptor
+   * (built-in, plugin or MCP), or the state that stands in for one. The
+   * pane host draws every pane with it; past the wide fold the Terminal is
+   * drawn with it by the workbench's lower panel instead (`terminal`), and
+   * the host is handed nothing for that instance, so one terminal is never
+   * mounted twice.
+   */
+  const renderCodingPane = (
+    instance: WorkspacePaneInstance,
+    presentation: WorkspacePaneHostPanePresentation,
+  ): ReactNode => {
+    // #2465: a dock-only pane (the host-global Device pane) is not
+    // another Project's — it is no Project's. Say where it lives. The
+    // same predicate keeps the picker from offering it.
+    const dockOnly = catalog.entries.find(
+      (candidate) =>
+        candidate.descriptor.id === instance.descriptorId &&
+        !isProjectPlaceableWorkspacePane(candidate.descriptor),
+    )?.descriptor;
+    if (dockOnly) {
+      const remove =
+        hostOpen?.close && (hostInstanceIds?.size ?? 0) > 1
+          ? hostOpen.close
+          : undefined;
+      return (
+        <DockOnlyWorkspacePaneNotice
+          descriptor={dockOnly}
+          {...(remove
+            ? { onRemove: () => void remove(instance.instanceId) }
+            : {})}
+        />
+      );
+    }
+    if (!isWorkspacePaneInstanceOwnedByProject(instance, projectId)) {
+      return (
+        <Empty
+          label="Workspace pane unavailable"
+          description="This pane belongs to a different Project."
+        />
+      );
+    }
+    const paneEntry = catalog.entries.find(
+      (candidate) =>
+        candidate.instance?.instanceId === instance.instanceId &&
+        candidate.descriptor.id === instance.descriptorId,
+    );
+    const codeIssuedBasisMcp =
+      isCanonicalBasisMcpWorkspacePaneInstance(instance);
+    const descriptor =
+      paneEntry?.descriptor ??
+      (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
+        ? WORKSPACE_BASIS_PANE_DESCRIPTOR
+        : instance.descriptorId === entry.descriptor.id
+          ? entry.descriptor
+          : instance.descriptorId === fileBrowserEntry?.descriptor.id
+            ? fileBrowserEntry?.descriptor
+            : instance.descriptorId === diffEntry?.descriptor.id
+              ? diffEntry?.descriptor
+              : instance.descriptorId === terminalEntry?.descriptor.id
+                ? terminalEntry?.descriptor
+                : instance.descriptorId === planEntry?.descriptor.id
+                  ? planEntry?.descriptor
+                  : instance.descriptorId === readinessEntry?.descriptor.id
+                    ? readinessEntry?.descriptor
+                    : instance.descriptorId === trustEntry?.descriptor.id
+                      ? trustEntry?.descriptor
+                      : instance.descriptorId ===
+                          filePreviewEntry?.descriptor.id
+                        ? filePreviewEntry?.descriptor
+                        : instance.descriptorId ===
+                            browserPreviewEntry?.descriptor.id
+                          ? browserPreviewEntry.descriptor
+                          : null);
+    const Pane =
+      descriptor &&
+      getBuiltinWorkspacePaneRenderer(
+        descriptor,
+        instance.descriptorId === entry.descriptor.id ? instance : undefined,
+      );
+    if (paneEntry && paneEntry.availability.state !== 'available') {
+      const presentation = presentWorkspacePaneAvailability(
+        paneEntry.availability,
+        paneEntry.rendererGate,
+        paneEntry.rendererResolution,
+      );
+      return (
+        <Empty
+          label={`${paneEntry.descriptor.name} unavailable`}
+          description={`${presentation.reasonLabel}${presentation.actionLabel ? ` Next: ${presentation.actionLabel}.` : ''}`}
+        />
+      );
+    }
+    const mcpRenderer =
+      paneEntry?.selectedRenderer?.renderer.kind === 'mcp-tool-ui'
+        ? paneEntry.selectedRenderer.renderer
+        : null;
+    const pluginRenderer =
+      paneEntry?.selectedRenderer?.renderer.kind === 'plugin-component'
+        ? paneEntry.selectedRenderer
+        : null;
+    const pluginComponent =
+      pluginRenderer?.renderer.kind === 'plugin-component'
+        ? pluginRenderer.renderer
+        : null;
+    const trustedPluginLayout =
+      pluginRenderer && pluginComponent && descriptor
+        ? resolveClientTrustedPluginLayout(descriptor, pluginRenderer, instance)
+        : null;
+    if (codeIssuedBasisMcp) {
+      return (
+        <LazyBoundary
+          load={loadProjectBasisMcpWorkspacePane}
+          componentProps={{ instance, presentation }}
+          pending={<SkeletonList count={1} label="Loading Basis App" />}
+        />
+      );
+    }
+    if (mcpRenderer && descriptor) {
+      const selectedTab = {
+        id: instance.instanceId,
+        label: descriptor.name,
+        description: descriptor.description,
+        component: mcpRenderer,
+        actions: descriptor.actions,
+      };
+      return (
+        <LayoutRenderer
+          componentId={mcpRenderer}
+          layout={{
+            name: descriptor.name,
+            slug: instance.instanceId,
+            tabs: [selectedTab],
+          }}
+          activeTab={selectedTab}
+          activeTabId={selectedTab.id}
+          mcpUiPaneIdentity={{
+            descriptorId: instance.descriptorId,
+            instanceId: instance.instanceId,
+            stateKey: instance.stateKey,
+          }}
+          mcpUiDisplayMode={presentation.displayMode}
+          mcpUiHostAvailableDisplayModes={presentation.availableDisplayModes}
+          onMcpUiRequestDisplayMode={presentation.requestDisplayMode}
+          onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
+        />
+      );
+    }
+    if (
+      trustedPluginLayout &&
+      pluginRenderer &&
+      pluginComponent &&
+      descriptor
+    ) {
+      const pluginName =
+        instance.boundContext?.contribution?.provenance.origin === 'plugin'
+          ? instance.boundContext.contribution.provenance.pluginId
+          : undefined;
+      if (!pluginName || !catalog.projectSlug) {
+        return (
+          <Empty
+            label="Workspace pane unavailable"
+            description="Station could not bind this plugin pane to its owning Project and plugin."
+          />
+        );
+      }
+      const selectedTab = {
+        id: instance.instanceId,
+        label: descriptor.name,
+        description: descriptor.description,
+        component: pluginComponent,
+        actions: descriptor.actions,
+      };
+      const paneLayout = {
+        name: descriptor.name,
+        slug: instance.instanceId,
+        tabs: [selectedTab],
+      };
+      return (
+        <PluginWorkspacePaneSDKBoundary
+          layout={paneLayout}
+          projectSlug={catalog.projectSlug}
+          pluginName={pluginName}
+        >
+          <LayoutRenderer
+            componentId={pluginComponent}
+            trustedPluginLayout={trustedPluginLayout}
+            layout={paneLayout}
+            activeTab={selectedTab}
+            activeTabId={selectedTab.id}
+          />
+        </PluginWorkspacePaneSDKBoundary>
+      );
+    }
+    return Pane ? (
+      <Pane
+        descriptor={descriptor}
+        instance={instance}
+        browserPreviewAvailability={browserPreviewEntry?.availability}
+      />
+    ) : null;
+  };
+  // A File Preview is named by its file (#3047): the rail item says the
+  // name, its tooltip and the panel head's title the whole path.
+  const stackPaneDetail = (instance: WorkspacePaneInstance) =>
+    projectId
+      ? filePreviewPanePresentationPath(
+          projectId,
+          projectSlug,
+          instance,
+          window.localStorage,
+        )
+      : null;
+  const stackPaneLabel = (instance: WorkspacePaneInstance) => {
+    const path = stackPaneDetail(instance);
+    if (path) return path.slice(path.lastIndexOf('/') + 1) || path;
+    const name =
+      presentationLabel(instance) ??
+      builtinWorkspacePaneName(instance.descriptorId) ??
+      'Pane';
+    // A second Browser is "Browser 2": two identical globes on the rail
+    // told the reader nothing (design audit D8).
+    const ordinal = browserPreviewPaneOrdinal(
+      hostInstances ?? document?.instances ?? [],
+      instance,
+    );
+    return ordinal === null ? name : `${name} ${ordinal}`;
+  };
   return (
-    <>
+    <CodingWorkbench
+      projectId={projectId}
+      projectSlug={projectSlug}
+      centerChat={centerChat}
+      wide={wide}
+      location={location}
+      scope={hostScope}
+      instances={hostInstances ?? document?.instances ?? []}
+      hostDocument={() => liveHostDocument.current ?? document!}
+      terminal={
+        terminalInstance
+          ? {
+              instance: terminalInstance,
+              render: () => (
+                <WorkspacePaneFrame
+                  instanceId={terminalInstance.instanceId}
+                  paneName={stackPaneLabel(terminalInstance)}
+                  onRetry={() => true}
+                >
+                  {renderCodingPane(terminalInstance, LOWER_PANE_PRESENTATION)}
+                </WorkspacePaneFrame>
+              ),
+            }
+          : undefined
+      }
+      paneLabel={stackPaneLabel}
+      paneDetail={stackPaneDetail}
+      hostOpen={hostOpen}
+      onOpenCatalog={requestCatalog}
+      browserPreviewAvailability={browserPreviewEntry?.availability}
+      badges={railBadges}
+      popOut={popOut}
+      persistence={document ? hostPersistence : 'owned'}
+      closable={(instance) =>
+        !drillInInstances.some(
+          (builtIn) => builtIn.instanceId === instance.instanceId,
+        )
+      }
+    >
       {fileCompositionReceipt ? (
         <CodingFileCompositionReceiptTracker receipt={fileCompositionReceipt} />
       ) : null}
@@ -1071,221 +1559,42 @@ function BuiltinCodingLayoutHost({
       {(evidenceComposition?.unavailablePanes ?? []).map((entry) => (
         <Empty key={entry.category} {...codingEvidenceUnavailableCopy(entry)} />
       ))}
-      <WorkspacePaneHost
-        document={document}
-        runtime={workspacePaneRuntime.current}
-        compact={compact}
-        onDocumentChange={handleHostDocumentChange}
-        onOpenCatalog={requestCatalog}
-        onOpenActionChange={captureHostOpen}
-        popOut={popOut}
-        operationalEventContext={operationalEventContext}
-        operationalAvailability={operationalAvailability}
-        admitRestoredInstance={admitRestoredInstance}
-        onInstanceRemoved={onInstanceRemoved}
-        presentationLabel={presentationLabel}
-        renderPane={(instance, presentation) => {
-          // #2465: a dock-only pane (the host-global Device pane) is not
-          // another Project's — it is no Project's. Say where it lives. The
-          // same predicate keeps the picker from offering it.
-          const dockOnly = catalog.entries.find(
-            (candidate) =>
-              candidate.descriptor.id === instance.descriptorId &&
-              !isProjectPlaceableWorkspacePane(candidate.descriptor),
-          )?.descriptor;
-          if (dockOnly) {
-            const remove =
-              hostOpen?.close && (hostInstanceIds?.size ?? 0) > 1
-                ? hostOpen.close
-                : undefined;
-            return (
-              <DockOnlyWorkspacePaneNotice
-                descriptor={dockOnly}
-                {...(remove
-                  ? { onRemove: () => void remove(instance.instanceId) }
-                  : {})}
-              />
-            );
+      {document ? (
+        <WorkspacePaneHost
+          document={document}
+          runtime={workspacePaneRuntime.current}
+          compact={compact}
+          // Past the wide fold a pane the host opens itself (a File Preview
+          // from Files) lands beside Chat like a rail pick: the entry is
+          // corrected in place, never pushed (#3040).
+          navigationSelection={wide ? 'replace' : 'explicit'}
+          // A drill-in is its page: the pane and nothing else. No tab strip, no
+          // save notice, no pane-actions chrome — the stack's breadcrumb, rail
+          // and ⋯ carry what the reader needs (`CodingWorkbench`).
+          presentation="chromeless"
+          onPersistenceStatusChange={setHostPersistence}
+          onDocumentChange={handleHostDocumentChange}
+          onOpenCatalog={requestCatalog}
+          onOpenActionChange={captureHostOpen}
+          popOut={popOut}
+          operationalEventContext={operationalEventContext}
+          operationalAvailability={operationalAvailability}
+          admitRestoredInstance={admitRestoredInstance}
+          admitOpenInstance={admitOpenInstance}
+          onInstanceRemoved={onInstanceRemoved}
+          presentationLabel={presentationLabel}
+          renderPane={(instance, presentation) =>
+            hostRendersCodingPane(
+              wide,
+              renderPanes,
+              instance.instanceId,
+              terminalInstance?.instanceId ?? null,
+            )
+              ? renderCodingPane(instance, presentation)
+              : null
           }
-          if (!isWorkspacePaneInstanceOwnedByProject(instance, projectId)) {
-            return (
-              <Empty
-                label="Workspace pane unavailable"
-                description="This pane belongs to a different Project."
-              />
-            );
-          }
-          const paneEntry = catalog.entries.find(
-            (candidate) =>
-              candidate.instance?.instanceId === instance.instanceId &&
-              candidate.descriptor.id === instance.descriptorId,
-          );
-          const codeIssuedBasisMcp =
-            isCanonicalBasisMcpWorkspacePaneInstance(instance);
-          const descriptor =
-            paneEntry?.descriptor ??
-            (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
-              ? WORKSPACE_BASIS_PANE_DESCRIPTOR
-              : instance.descriptorId === entry.descriptor.id
-                ? entry.descriptor
-                : instance.descriptorId === fileBrowserEntry?.descriptor.id
-                  ? fileBrowserEntry?.descriptor
-                  : instance.descriptorId === diffEntry?.descriptor.id
-                    ? diffEntry?.descriptor
-                    : instance.descriptorId === terminalEntry?.descriptor.id
-                      ? terminalEntry?.descriptor
-                      : instance.descriptorId === planEntry?.descriptor.id
-                        ? planEntry?.descriptor
-                        : instance.descriptorId ===
-                            readinessEntry?.descriptor.id
-                          ? readinessEntry?.descriptor
-                          : instance.descriptorId === trustEntry?.descriptor.id
-                            ? trustEntry?.descriptor
-                            : instance.descriptorId ===
-                                filePreviewEntry?.descriptor.id
-                              ? filePreviewEntry?.descriptor
-                              : instance.descriptorId ===
-                                  browserPreviewEntry?.descriptor.id
-                                ? browserPreviewEntry.descriptor
-                                : null);
-          const Pane =
-            descriptor &&
-            getBuiltinWorkspacePaneRenderer(
-              descriptor,
-              instance.descriptorId === entry.descriptor.id
-                ? instance
-                : undefined,
-            );
-          if (paneEntry && paneEntry.availability.state !== 'available') {
-            const presentation = presentWorkspacePaneAvailability(
-              paneEntry.availability,
-              paneEntry.rendererGate,
-              paneEntry.rendererResolution,
-            );
-            return (
-              <Empty
-                label={`${paneEntry.descriptor.name} unavailable`}
-                description={`${presentation.reasonLabel}${presentation.actionLabel ? ` Next: ${presentation.actionLabel}.` : ''}`}
-              />
-            );
-          }
-          const mcpRenderer =
-            paneEntry?.selectedRenderer?.renderer.kind === 'mcp-tool-ui'
-              ? paneEntry.selectedRenderer.renderer
-              : null;
-          const pluginRenderer =
-            paneEntry?.selectedRenderer?.renderer.kind === 'plugin-component'
-              ? paneEntry.selectedRenderer
-              : null;
-          const pluginComponent =
-            pluginRenderer?.renderer.kind === 'plugin-component'
-              ? pluginRenderer.renderer
-              : null;
-          const trustedPluginLayout =
-            pluginRenderer && pluginComponent && descriptor
-              ? resolveClientTrustedPluginLayout(
-                  descriptor,
-                  pluginRenderer,
-                  instance,
-                )
-              : null;
-          if (codeIssuedBasisMcp) {
-            return (
-              <LazyBoundary
-                load={loadProjectBasisMcpWorkspacePane}
-                componentProps={{ instance, presentation }}
-                pending={<SkeletonList count={1} label="Loading Basis App" />}
-              />
-            );
-          }
-          if (mcpRenderer && descriptor) {
-            const selectedTab = {
-              id: instance.instanceId,
-              label: descriptor.name,
-              description: descriptor.description,
-              component: mcpRenderer,
-              actions: descriptor.actions,
-            };
-            return (
-              <LayoutRenderer
-                componentId={mcpRenderer}
-                layout={{
-                  name: descriptor.name,
-                  slug: instance.instanceId,
-                  tabs: [selectedTab],
-                }}
-                activeTab={selectedTab}
-                activeTabId={selectedTab.id}
-                mcpUiPaneIdentity={{
-                  descriptorId: instance.descriptorId,
-                  instanceId: instance.instanceId,
-                  stateKey: instance.stateKey,
-                }}
-                mcpUiDisplayMode={presentation.displayMode}
-                mcpUiHostAvailableDisplayModes={
-                  presentation.availableDisplayModes
-                }
-                onMcpUiRequestDisplayMode={presentation.requestDisplayMode}
-                onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
-              />
-            );
-          }
-          if (
-            trustedPluginLayout &&
-            pluginRenderer &&
-            pluginComponent &&
-            descriptor
-          ) {
-            const pluginName =
-              instance.boundContext?.contribution?.provenance.origin ===
-              'plugin'
-                ? instance.boundContext.contribution.provenance.pluginId
-                : undefined;
-            if (!pluginName || !catalog.projectSlug) {
-              return (
-                <Empty
-                  label="Workspace pane unavailable"
-                  description="Station could not bind this plugin pane to its owning Project and plugin."
-                />
-              );
-            }
-            const selectedTab = {
-              id: instance.instanceId,
-              label: descriptor.name,
-              description: descriptor.description,
-              component: pluginComponent,
-              actions: descriptor.actions,
-            };
-            const paneLayout = {
-              name: descriptor.name,
-              slug: instance.instanceId,
-              tabs: [selectedTab],
-            };
-            return (
-              <PluginWorkspacePaneSDKBoundary
-                layout={paneLayout}
-                projectSlug={catalog.projectSlug}
-                pluginName={pluginName}
-              >
-                <LayoutRenderer
-                  componentId={pluginComponent}
-                  trustedPluginLayout={trustedPluginLayout}
-                  layout={paneLayout}
-                  activeTab={selectedTab}
-                  activeTabId={selectedTab.id}
-                />
-              </PluginWorkspacePaneSDKBoundary>
-            );
-          }
-          return Pane ? (
-            <Pane
-              descriptor={descriptor}
-              instance={instance}
-              browserPreviewAvailability={browserPreviewEntry?.availability}
-            />
-          ) : null;
-        }}
-      />
+        />
+      ) : null}
       <ProjectWorkspacePaneModal
         show={catalogRequest !== null && hostOpen !== null}
         notice={
@@ -1295,7 +1604,7 @@ function BuiltinCodingLayoutHost({
           setCatalogRequest(null);
           setOpenRefusal(null);
         }}
-        entries={catalog.entries}
+        entries={pickerEntries}
         loading={catalog.isLoading}
         error={catalog.isError}
         hasData={catalog.data !== undefined}
@@ -1316,14 +1625,14 @@ function BuiltinCodingLayoutHost({
           Boolean(
             candidate.instance &&
               (hostInstanceIds?.has(candidate.instance.instanceId) ??
-                document.instances.some(
+                document?.instances.some(
                   (instance) =>
                     instance.instanceId === candidate.instance?.instanceId,
                 )),
           )
         }
       />
-    </>
+    </CodingWorkbench>
   );
 }
 

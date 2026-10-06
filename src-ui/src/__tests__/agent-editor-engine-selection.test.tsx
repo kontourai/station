@@ -77,12 +77,12 @@ describe('the engine picker: peer engine rows, with Station spelled as its own c
     const markup = markupFor(form);
     expect(markup).toContain('Station');
     expect(markup).toContain('Codex');
-    expect(markup).toContain('Runs on a model you pick below.');
+    expect(markup).toContain('More about Engine capabilities');
     expect(markup).not.toContain('Use a model connection');
     expect(markup).not.toContain('Use an installed agent CLI');
     // The Station choice describes Station's own engine, never a
     // managed-runtime id presented as "Station".
-    expect(markup).toContain('Runs on a model you pick below.');
+    expect(markup).toContain('More about Engine capabilities');
     expect(markup).not.toContain('value="bedrock-runtime"');
   });
 

@@ -178,10 +178,10 @@ export function countOpenChatAttention(
 }
 
 /**
- * #1582 B9: the chats that are WORK — what "Continue most recent work" and
- * Home's Recent work may name. A chat created and never typed into produced a
- * "Continue most recent work → New chat" card that a reload erased; the store
- * never writes such a chat, so it was never work.
+ * #1582 B9: the chats that are WORK — what Home's Continue card and Recent
+ * work may name. A chat created and never typed into produced a Continue card
+ * naming "New chat" that a reload erased; the store never writes such a chat,
+ * so it was never work.
  *
  * Deliberately a second hook rather than a filter inside `useOpenChats`: the
  * dock inbox and the sidebar's mini-inbox list the chats OPEN IN THIS TAB, and
@@ -207,6 +207,45 @@ export function useOpenWorkChats(
         onlyWork: true,
         ...(resolveModelLabel ? { resolveModelLabel } : {}),
       }),
+    [agents, chats, sessions, resolveModelLabel],
+  );
+}
+
+/**
+ * What the inbox derivation (`useInboxWorkItems`) reads from the open
+ * chats, from ONE store subscription: the chat items, and which execution
+ * each conversation is on now (the tie-breaker `mergeHomeWorkItems` takes,
+ * from the same chat records the dock's derived sessions carried it on).
+ */
+export function useOpenChatInbox(
+  agents: AgentSummary[],
+  sessions: OrchestrationSessionSummary[] = [],
+  resolveModelLabel?: ResolveModelLabel,
+): {
+  items: HomeWorkItem[];
+  currentSessionIdByConversation: ReadonlyMap<string, string>;
+} {
+  const chats = useSyncExternalStore(
+    openChatsStore.subscribe,
+    openChatsStore.getSnapshot,
+    openChatsStore.getSnapshot,
+  );
+  return useMemo(
+    () => ({
+      items: buildActiveChatTaskItems({
+        chats,
+        agents,
+        sessions,
+        ...(resolveModelLabel ? { resolveModelLabel } : {}),
+      }),
+      currentSessionIdByConversation: new Map(
+        Object.values(chats).flatMap((chat) =>
+          chat.conversationId && chat.currentSessionId
+            ? [[chat.conversationId, chat.currentSessionId] as const]
+            : [],
+        ),
+      ),
+    }),
     [agents, chats, sessions, resolveModelLabel],
   );
 }

@@ -1,0 +1,65 @@
+{
+  "path": "docs/design/instance-registry.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed schema/read/publish/lock and production producer/consumer claim review. Distinguished minimal optional metadata validation, adoption/protected-type ordering, atomic rename versus writer locking and post-rename failure, Windows ACL/fsync limits and exact two-child test scope. Corrected Desktop service ownership reporting without automatic attachment; retained separate CLI state and conservative liveness boundaries.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "packages/cli/src/commands/service.ts",
+
+    "packages/shared/src/__tests__/instance-registry-claim.test.ts",
+
+    "packages/shared/src/__tests__/instance-registry.test.ts",
+
+    "packages/shared/src/fs-windows-compat.ts",
+
+    "packages/shared/src/instance-registry.ts",
+
+    "packages/shared/src/lifecycle-events.ts",
+
+    "packages/shared/src/process-identity.mjs",
+
+    "packages/shared/src/runtime-path-resolver.ts",
+
+    "src-desktop/src/lib.rs",
+
+    "src-server/tools/instance-registry-bridge.ts",
+
+    "packages/cli/src/commands/service-liveness.ts",
+
+    "packages/cli/src/commands/service-run.ts",
+
+    "src-server/tools/__tests__/instance-registry-bridge.test.ts",
+
+    "packages/cli/src/__tests__/service-run.test.ts",
+
+    "scripts/__tests__/service-container-command.test.ts",
+
+    "packages/shared/src/station-home-schema.ts"
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing review through d0d9d33f7: Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through e0314c727: service install now records kind (source or archive) and installRoot and runs an archive through current. Upgrade exempts a service from the same install root, and lib.rs dropped notification_watch. Registry producers and consumers, claimInstanceEntry ownership, archive state roots and 'upgrade through its recorded installer' are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds the fixed launcher install, update-home and update status; service liveness publishing moves to service-liveness.ts with a hand-off to the launcher pid during an update; lifecycle.ts forwards STATION_SERVICE_LAUNCHER; the doc's claims (service install producer, installer-owned archives upgrade through the recorded installer, loose archives need manual replacement) still hold; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

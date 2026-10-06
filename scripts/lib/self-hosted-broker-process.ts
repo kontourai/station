@@ -28,6 +28,8 @@ interface SelfHostedBrokerProcessInput {
 
 interface SelfHostedBrokerProcess {
   brokerOrigin: string;
+  processId: number;
+  databasePath: string;
   scope: SelfHostedBrokerScopeV1;
   /** PRIVATE controller-only credential bundle. Never send beyond routing to a browser. */
   bundle: BrokerCredentialBundle;
@@ -45,6 +47,10 @@ interface SelfHostedBrokerProcess {
     expiresAt: number;
   }>;
   preflight: () => Promise<{ status: number; allowOrigin: string | null }>;
+  addScope: (input: {
+    directory: string;
+    scope: SelfHostedBrokerScopeV1;
+  }) => Promise<SelfHostedBrokerProcess>;
   stop: () => Promise<void>;
 }
 
@@ -176,82 +182,120 @@ export async function startSelfHostedBrokerProcess(
       );
     });
     const brokerOrigin = `http://127.0.0.1:${port}`;
-    const readLease = async () => {
-      const response = await fetch(
-        `${brokerOrigin}/broker/v1/stations/status`,
-        {
-          method: 'POST',
-          headers: {
-            Origin: scope.browserOrigin,
-            Authorization: `Bearer ${record.bundle.routing.secret}`,
-            'X-Broker-Credential-Id': record.bundle.routing.id,
-            'Content-Type': 'application/json',
+    const processId = execution.child.pid;
+    if (!processId) throw new Error('Broker process identity unavailable');
+    const scopedBroker = (
+      scope: SelfHostedBrokerScopeV1,
+      record: { bundle: BrokerCredentialBundle },
+      credentialsPath: string,
+    ): SelfHostedBrokerProcess => {
+      const readLease = async () => {
+        const response = await fetch(
+          `${brokerOrigin}/broker/v1/stations/status`,
+          {
+            method: 'POST',
+            headers: {
+              Origin: scope.browserOrigin,
+              Authorization: `Bearer ${record.bundle.routing.secret}`,
+              'X-Broker-Credential-Id': record.bundle.routing.id,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ scope }),
+            signal: AbortSignal.timeout(5_000),
+            redirect: 'error',
           },
-          body: JSON.stringify({ scope }),
-          signal: AbortSignal.timeout(5_000),
-          redirect: 'error',
-        },
-      );
-      if (!response.ok)
-        throw new Error(`broker_request_refused_${response.status}`);
-      return (await response.json()) as {
-        state: string;
-        routingGeneration: number;
-        expiresAt: number;
+        );
+        if (!response.ok)
+          throw new Error(`broker_request_refused_${response.status}`);
+        return (await response.json()) as {
+          state: string;
+          routingGeneration: number;
+          expiresAt: number;
+        };
       };
-    };
-    const preflight = async () => {
-      const response = await fetch(
-        `${brokerOrigin}/broker/v1/stations/status`,
-        {
-          method: 'OPTIONS',
-          headers: {
-            Origin: scope.browserOrigin,
-            'Access-Control-Request-Method': 'POST',
-            'Access-Control-Request-Headers':
-              'Authorization, Content-Type, X-Broker-Credential-Id',
+      const preflight = async () => {
+        const response = await fetch(
+          `${brokerOrigin}/broker/v1/stations/status`,
+          {
+            method: 'OPTIONS',
+            headers: {
+              Origin: scope.browserOrigin,
+              'Access-Control-Request-Method': 'POST',
+              'Access-Control-Request-Headers':
+                'Authorization, Content-Type, X-Broker-Credential-Id',
+            },
+            signal: AbortSignal.timeout(5_000),
+            redirect: 'error',
           },
-          signal: AbortSignal.timeout(5_000),
-          redirect: 'error',
-        },
-      );
+        );
+        return {
+          status: response.status,
+          allowOrigin: response.headers.get('access-control-allow-origin'),
+        };
+      };
       return {
-        status: response.status,
-        allowOrigin: response.headers.get('access-control-allow-origin'),
+        brokerOrigin,
+        processId,
+        databasePath: config.databasePath,
+        scope,
+        bundle: record.bundle,
+        credentialsPath,
+        issueInvitation: (request) => {
+          const owner = new SelfHostedBrokerService(config.databasePath);
+          try {
+            return owner.issueInvitation({
+              scope,
+              routingCredential: record.bundle.routing,
+              brokerOrigin,
+              clientOrigin: request.clientOrigin,
+              stationSigningKeyId: request.stationSigningKeyId,
+              stationSigningGeneration: request.stationSigningGeneration,
+            });
+          } finally {
+            owner.close();
+          }
+        },
+        revokeClientGrant: (grantId) => {
+          const owner = new SelfHostedBrokerService(config.databasePath);
+          try {
+            owner.revokeClientGrant(scope, record.bundle.routing, grantId);
+          } finally {
+            owner.close();
+          }
+        },
+        readLease,
+        preflight,
+        addScope: async (additional) => {
+          input.signal.throwIfAborted();
+          const home = join(additional.directory, 'self-hosted-broker');
+          mkdirSync(home, { mode: 0o700, recursive: true });
+          const credentialsPath = join(home, 'credentials.json');
+          const configPath = join(home, 'config.json');
+          const scope = { ...additional.scope };
+          writeFileSync(
+            configPath,
+            JSON.stringify({
+              ...config,
+              credentialsPath,
+              provision: [scope],
+            }),
+            { flag: 'wx', mode: 0o600 },
+          );
+          await runLabCommand(
+            process.execPath,
+            ['--import', 'tsx', cli, 'init', configPath],
+            process.cwd(),
+          );
+          input.signal.throwIfAborted();
+          const record = JSON.parse(readFileSync(credentialsPath, 'utf8')) as {
+            bundle: BrokerCredentialBundle;
+          };
+          return scopedBroker(scope, record, credentialsPath);
+        },
+        stop,
       };
     };
-    return {
-      brokerOrigin,
-      scope,
-      bundle: record.bundle,
-      credentialsPath,
-      issueInvitation: (request) => {
-        const owner = new SelfHostedBrokerService(config.databasePath);
-        try {
-          return owner.issueInvitation({
-            scope,
-            routingCredential: record.bundle.routing,
-            brokerOrigin,
-            clientOrigin: request.clientOrigin,
-            stationSigningKeyId: request.stationSigningKeyId,
-            stationSigningGeneration: request.stationSigningGeneration,
-          });
-        } finally {
-          owner.close();
-        }
-      },
-      revokeClientGrant: (grantId) => {
-        const owner = new SelfHostedBrokerService(config.databasePath);
-        try {
-          owner.revokeClientGrant(scope, record.bundle.routing, grantId);
-        } finally {
-          owner.close();
-        }
-      },
-      readLease,
-      preflight,
-      stop,
-    };
+    return scopedBroker(scope, record, credentialsPath);
   } catch (primary) {
     try {
       await stop();

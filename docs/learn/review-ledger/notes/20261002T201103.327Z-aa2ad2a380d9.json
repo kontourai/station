@@ -1,0 +1,7 @@
+{
+  "revision": "42c0e9686015ccb23936b0c671313e66cd876395",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-record after the connections and actions-pin merges: docs/reference/api.md took main newest reference drift; this branch shared-work-context delivery was reviewed on the branch and its documented claims were re-checked against the merged bytes.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

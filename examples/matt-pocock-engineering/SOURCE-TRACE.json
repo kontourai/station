@@ -1,0 +1,365 @@
+{
+  "status": "proposal-source-trace",
+  "evidence": [
+    {
+      "experienceId": "to-tickets",
+      "pointer": "/inputs/0",
+      "origin": "skill-declared",
+      "explanation": "The interview needs a plan; synthesis/tickets use existing conversation or an explicit reference.",
+      "source": {
+        "path": "skills/engineering/to-tickets/SKILL.md",
+        "startLine": 7,
+        "endLine": 105
+      }
+    },
+    {
+      "experienceId": "to-tickets",
+      "pointer": "/outputs/0",
+      "origin": "skill-declared",
+      "explanation": "The source specifies the artifact and publication; a draft alone does not establish publication.",
+      "source": {
+        "path": "skills/engineering/to-tickets/SKILL.md",
+        "startLine": 7,
+        "endLine": 105
+      }
+    },
+    {
+      "experienceId": "to-tickets",
+      "pointer": "/requiredContext/0",
+      "origin": "skill-declared",
+      "explanation": "Use current conversation decisions and referenced reviewed outputs; later steps must not invent replacements.",
+      "source": {
+        "path": "skills/engineering/to-tickets/SKILL.md",
+        "startLine": 7,
+        "endLine": 105
+      }
+    },
+    {
+      "experienceId": "to-tickets",
+      "pointer": "/requiredContext/1",
+      "origin": "skill-declared",
+      "explanation": "Read actual project glossary/ADRs; tracker configuration is a prerequisite for spec and ticket publication.",
+      "source": {
+        "path": "skills/engineering/to-tickets/SKILL.md",
+        "startLine": 7,
+        "endLine": 105
+      }
+    },
+    {
+      "experienceId": "to-tickets",
+      "pointer": "/interaction",
+      "origin": "reviewer-inferred",
+      "explanation": "Source obligations remain mandatory; display controls/suitability are the curator interpretation. The 12-question descriptor and canonical-request UI are Station additions with explicit chat fallback.",
+      "source": {
+        "path": "skills/engineering/to-tickets/SKILL.md",
+        "startLine": 7,
+        "endLine": 105
+      }
+    },
+    {
+      "experienceId": "to-tickets",
+      "pointer": "/capabilities",
+      "origin": "reviewer-inferred",
+      "explanation": "Source obligations remain mandatory; display controls/suitability are the curator interpretation. The 12-question descriptor and canonical-request UI are Station additions with explicit chat fallback.",
+      "source": {
+        "path": "skills/engineering/to-tickets/SKILL.md",
+        "startLine": 7,
+        "endLine": 105
+      }
+    },
+    {
+      "experienceId": "to-spec",
+      "pointer": "/inputs/0",
+      "origin": "reviewer-inferred",
+      "explanation": "Optional reference presentation helps locate the already reviewed conversation context; the source does not prescribe a form field."
+    },
+    {
+      "experienceId": "to-spec",
+      "pointer": "/outputs/0",
+      "origin": "skill-declared",
+      "explanation": "The source specifies the artifact and publication; a draft alone does not establish publication.",
+      "source": {
+        "path": "skills/engineering/to-spec/SKILL.md",
+        "startLine": 7,
+        "endLine": 75
+      }
+    },
+    {
+      "experienceId": "to-spec",
+      "pointer": "/requiredContext/0",
+      "origin": "skill-declared",
+      "explanation": "Use current conversation decisions and referenced reviewed outputs; later steps must not invent replacements.",
+      "source": {
+        "path": "skills/engineering/to-spec/SKILL.md",
+        "startLine": 7,
+        "endLine": 75
+      }
+    },
+    {
+      "experienceId": "to-spec",
+      "pointer": "/requiredContext/1",
+      "origin": "skill-declared",
+      "explanation": "Read actual project glossary/ADRs; tracker configuration is a prerequisite for spec and ticket publication.",
+      "source": {
+        "path": "skills/engineering/to-spec/SKILL.md",
+        "startLine": 7,
+        "endLine": 75
+      }
+    },
+    {
+      "experienceId": "to-spec",
+      "pointer": "/interaction",
+      "origin": "reviewer-inferred",
+      "explanation": "Source obligations remain mandatory; display controls/suitability are the curator interpretation. The 12-question descriptor and canonical-request UI are Station additions with explicit chat fallback.",
+      "source": {
+        "path": "skills/engineering/to-spec/SKILL.md",
+        "startLine": 7,
+        "endLine": 75
+      }
+    },
+    {
+      "experienceId": "to-spec",
+      "pointer": "/capabilities",
+      "origin": "reviewer-inferred",
+      "explanation": "Source obligations remain mandatory; display controls/suitability are the curator interpretation. The 12-question descriptor and canonical-request UI are Station additions with explicit chat fallback.",
+      "source": {
+        "path": "skills/engineering/to-spec/SKILL.md",
+        "startLine": 7,
+        "endLine": 75
+      }
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/inputs/0",
+      "origin": "skill-declared",
+      "explanation": "The interview needs a plan; synthesis/tickets use existing conversation or an explicit reference.",
+      "source": {
+        "path": "skills/productivity/grilling/SKILL.md",
+        "startLine": 7,
+        "endLine": 28
+      }
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/outputs/0",
+      "origin": "station-added",
+      "explanation": "Optional presentation of canonical decisions; upstream promises shared understanding, not an exported summary."
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/outputs/1",
+      "origin": "skill-declared",
+      "explanation": "Write resolved terms inline; offer ADRs sparingly under the source criteria.",
+      "source": {
+        "path": "skills/engineering/domain-modeling/SKILL.md",
+        "startLine": 7,
+        "endLine": 74
+      }
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/requiredContext/0",
+      "origin": "skill-declared",
+      "explanation": "Use current conversation decisions and referenced reviewed outputs; later steps must not invent replacements.",
+      "source": {
+        "path": "skills/engineering/domain-modeling/SKILL.md",
+        "startLine": 7,
+        "endLine": 74
+      }
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/requiredContext/1",
+      "origin": "skill-declared",
+      "explanation": "Read actual project glossary/ADRs; tracker configuration is a prerequisite for spec and ticket publication.",
+      "source": {
+        "path": "skills/engineering/domain-modeling/SKILL.md",
+        "startLine": 7,
+        "endLine": 74
+      }
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/interaction",
+      "origin": "reviewer-inferred",
+      "explanation": "Source obligations remain mandatory; display controls/suitability are the curator interpretation. The 12-question descriptor and canonical-request UI are Station additions with explicit chat fallback.",
+      "source": {
+        "path": "skills/productivity/grilling/SKILL.md",
+        "startLine": 7,
+        "endLine": 28
+      }
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/capabilities",
+      "origin": "reviewer-inferred",
+      "explanation": "Source obligations remain mandatory; display controls/suitability are the curator interpretation. The 12-question descriptor and canonical-request UI are Station additions with explicit chat fallback.",
+      "source": {
+        "path": "skills/productivity/grilling/SKILL.md",
+        "startLine": 7,
+        "endLine": 28
+      }
+    },
+    {
+      "experienceId": "grill-me",
+      "pointer": "/inputs/0",
+      "origin": "skill-declared",
+      "explanation": "The interview needs a plan; synthesis/tickets use existing conversation or an explicit reference.",
+      "source": {
+        "path": "skills/productivity/grilling/SKILL.md",
+        "startLine": 7,
+        "endLine": 28
+      }
+    },
+    {
+      "experienceId": "grill-me",
+      "pointer": "/outputs/0",
+      "origin": "station-added",
+      "explanation": "Optional presentation of canonical decisions; upstream promises shared understanding, not an exported summary."
+    },
+    {
+      "experienceId": "grill-me",
+      "pointer": "/requiredContext/0",
+      "origin": "skill-declared",
+      "explanation": "Use current conversation decisions and referenced reviewed outputs; later steps must not invent replacements.",
+      "source": {
+        "path": "skills/productivity/grilling/SKILL.md",
+        "startLine": 7,
+        "endLine": 28
+      }
+    },
+    {
+      "experienceId": "grill-me",
+      "pointer": "/interaction",
+      "origin": "reviewer-inferred",
+      "explanation": "Source obligations remain mandatory; display controls/suitability are the curator interpretation. The 12-question descriptor and canonical-request UI are Station additions with explicit chat fallback.",
+      "source": {
+        "path": "skills/productivity/grilling/SKILL.md",
+        "startLine": 7,
+        "endLine": 28
+      }
+    },
+    {
+      "experienceId": "grill-me",
+      "pointer": "/capabilities",
+      "origin": "reviewer-inferred",
+      "explanation": "Source obligations remain mandatory; display controls/suitability are the curator interpretation. The 12-question descriptor and canonical-request UI are Station additions with explicit chat fallback.",
+      "source": {
+        "path": "skills/productivity/grilling/SKILL.md",
+        "startLine": 7,
+        "endLine": 28
+      }
+    },
+    {
+      "experienceId": "implement",
+      "pointer": "/entrySkillId",
+      "origin": "station-added",
+      "explanation": "Station names this bundled Skill as the explicit visual entry; the upstream Skill name/source mapping remains with the declared Skill."
+    },
+    {
+      "experienceId": "implement",
+      "pointer": "/inputs/0",
+      "origin": "skill-declared",
+      "explanation": "The user names exact specification/tickets and pre-agreed testing seams.",
+      "source": {
+        "path": "skills/engineering/implement/SKILL.md",
+        "startLine": 7,
+        "endLine": 15
+      }
+    },
+    {
+      "experienceId": "implement",
+      "pointer": "/interaction",
+      "origin": "reviewer-inferred",
+      "explanation": "Display stop conditions preserve TDD, checks, code review and current-branch commit obligations; no successful action is inferred from prose.",
+      "source": {
+        "path": "skills/engineering/implement/SKILL.md",
+        "startLine": 7,
+        "endLine": 15
+      }
+    },
+    {
+      "experienceId": "implement",
+      "pointer": "/outputs/0",
+      "origin": "skill-declared",
+      "explanation": "Implementation, review and current-branch commit require actual canonical outcomes.",
+      "source": {
+        "path": "skills/engineering/implement/SKILL.md",
+        "startLine": 7,
+        "endLine": 15
+      }
+    },
+    {
+      "experienceId": "implement",
+      "pointer": "/requiredContext/0",
+      "origin": "station-added",
+      "explanation": "The visual entry requires an explicitly selected Project and retains normal Agent tools/repository policy."
+    },
+    {
+      "experienceId": "implement",
+      "pointer": "/requiredContext/1",
+      "origin": "station-added",
+      "explanation": "A reviewed reference can be supplied in a new conversation or an explicit stage can preserve current context."
+    },
+    {
+      "experienceId": "implement",
+      "pointer": "/capabilities",
+      "origin": "reviewer-inferred",
+      "explanation": "Conversation, Project/file context and artifacts describe suitability; they do not grant write tools or commit authority.",
+      "source": {
+        "path": "skills/engineering/implement/SKILL.md",
+        "startLine": 7,
+        "endLine": 15
+      }
+    },
+    {
+      "experienceId": "grill-me",
+      "pointer": "/entrySkillId",
+      "origin": "station-added",
+      "explanation": "Station names this bundled Skill as the explicit visual entry; the upstream Skill name/source mapping remains with the declared Skill."
+    },
+    {
+      "experienceId": "grill-me",
+      "pointer": "/transitions",
+      "origin": "station-added",
+      "explanation": "Optional authored stages only prepare a composer draft. The user reviews and sends; tickets never trigger implementation automatically."
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/entrySkillId",
+      "origin": "station-added",
+      "explanation": "Station names this bundled Skill as the explicit visual entry; the upstream Skill name/source mapping remains with the declared Skill."
+    },
+    {
+      "experienceId": "grill-with-docs",
+      "pointer": "/transitions",
+      "origin": "station-added",
+      "explanation": "Optional authored stages only prepare a composer draft. The user reviews and sends; tickets never trigger implementation automatically."
+    },
+    {
+      "experienceId": "to-spec",
+      "pointer": "/entrySkillId",
+      "origin": "station-added",
+      "explanation": "Station names this bundled Skill as the explicit visual entry; the upstream Skill name/source mapping remains with the declared Skill."
+    },
+    {
+      "experienceId": "to-spec",
+      "pointer": "/transitions",
+      "origin": "station-added",
+      "explanation": "Optional authored stages only prepare a composer draft. The user reviews and sends; tickets never trigger implementation automatically."
+    },
+    {
+      "experienceId": "to-tickets",
+      "pointer": "/entrySkillId",
+      "origin": "station-added",
+      "explanation": "Station names this bundled Skill as the explicit visual entry; the upstream Skill name/source mapping remains with the declared Skill."
+    },
+    {
+      "experienceId": "to-tickets",
+      "pointer": "/transitions",
+      "origin": "station-added",
+      "explanation": "Optional authored stages only prepare a composer draft. The user reviews and sends; tickets never trigger implementation automatically."
+    }
+  ],
+  "limits": "Spans locate reviewer evidence; they do not establish actual model behavior or publication."
+}

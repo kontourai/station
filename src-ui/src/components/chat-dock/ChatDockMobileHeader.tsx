@@ -5,8 +5,9 @@ import type {
 } from 'react';
 import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
-import { ArrowDownGlyph, MenuGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, FolderGlyph, MenuGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { NewChatAction } from '../NewChatAction';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -81,6 +82,8 @@ interface ChatDockMobileHeaderProps {
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
+  routeLabel?: string;
+  sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
   branchLabel: string | null;
   projectScope?: { name: string; onClear: () => void };
@@ -102,6 +105,8 @@ export function ChatDockMobileHeader({
   showDrawerToggle,
   showConnection,
   sessionTitle,
+  routeLabel,
+  sessionProjectMismatchLabel,
   agentIdentity,
   branchLabel,
   projectScope,
@@ -122,6 +127,19 @@ export function ChatDockMobileHeader({
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const titleDescriptionId = useId();
+  const activityDescriptionId = useId();
+  // The dot on ⋯ used to be decoration only: an unexplained orange mark on
+  // the chat-actions button. It means chats (this one included) are working
+  // or have unread replies — the sheet's Chats row is where they are — so it
+  // says so, as the button's description rather than its name.
+  const activitySummary = [
+    activeCount > 0
+      ? `${activeCount} ${activeCount === 1 ? 'chat' : 'chats'} working`
+      : null,
+    unreadCount > 0 ? `${unreadCount} unread` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
   return (
     <div
       className="chat-dock__header chat-dock__mobile-header"
@@ -170,12 +188,21 @@ export function ChatDockMobileHeader({
             data-dock-drag-passthrough=""
             onClick={() => setIsProjectOpen(true)}
           >
+            {/* Too narrow for words (a long chat title takes the bar), the
+                control shows only its glyph; its aria-label still names the
+                project. The CSS container query decides which shows. */}
+            <span
+              className="chat-dock__mobile-project-glyph"
+              aria-hidden="true"
+            >
+              <FolderGlyph />
+            </span>
             <span className="chat-dock__mobile-project-lines">
               <span
                 className="chat-dock__mobile-project-caption"
                 aria-hidden="true"
               >
-                Project
+                New chats
               </span>
               <span className="chat-dock__mobile-project-name">
                 {projectSwitcher.projectName}
@@ -200,7 +227,9 @@ export function ChatDockMobileHeader({
         className="chat-dock__mobile-identity"
         data-dock-drag-passthrough=""
         aria-label={
-          agentIdentity ? `Switch task — ${agentIdentity.name}` : 'Switch task'
+          agentIdentity
+            ? `Chats and tasks — ${agentIdentity.name}${routeLabel ? ` · via ${routeLabel}` : ''}`
+            : 'Chats and tasks'
         }
         aria-describedby={titleDescriptionId}
         onClick={onOpenTaskSwitcher}
@@ -216,25 +245,49 @@ export function ChatDockMobileHeader({
           {agentIdentity && (
             <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
               {agentIdentity.name}
+              {routeLabel ? ` · via ${routeLabel}` : ''}
+              {sessionProjectMismatchLabel &&
+                ` · ${sessionProjectMismatchLabel}`}
             </span>
           )}
         </span>
       </button>
-      <button
-        ref={chatActionsTriggerRef}
-        type="button"
-        className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
-        aria-haspopup="dialog"
-        aria-expanded={isOverflowOpen}
-        aria-label="Chat actions"
-        data-no-dock-drag=""
-        onClick={() => setIsOverflowOpen((open) => !open)}
-      >
-        <span aria-hidden="true">⋯</span>
-        {(activeCount > 0 || unreadCount > 0) && (
-          <span className="chat-dock__mobile-activity-dot" aria-hidden="true" />
-        )}
-      </button>
+      <div className="chat-dock__mobile-actions">
+        <button
+          ref={chatActionsTriggerRef}
+          type="button"
+          className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
+          aria-haspopup="dialog"
+          aria-expanded={isOverflowOpen}
+          aria-label="Chat actions"
+          aria-describedby={activitySummary ? activityDescriptionId : undefined}
+          title={
+            activitySummary ? `Chat actions — ${activitySummary}` : undefined
+          }
+          data-no-dock-drag=""
+          onClick={() => setIsOverflowOpen((open) => !open)}
+        >
+          <span aria-hidden="true">⋯</span>
+          {activitySummary && (
+            <>
+              <span
+                className="chat-dock__mobile-activity-dot"
+                aria-hidden="true"
+              />
+              <span id={activityDescriptionId} className="sr-only">
+                {activitySummary}
+              </span>
+            </>
+          )}
+        </button>
+        <NewChatAction
+          className="chat-dock__mobile-new"
+          data-no-dock-drag=""
+          onClick={onNewChat}
+        >
+          New
+        </NewChatAction>
+      </div>
       {isOverflowOpen && (
         <LazyBoundary
           load={loadChatDockMobileOverflowSheet}

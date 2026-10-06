@@ -1,5 +1,11 @@
+import {
+  ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import { AUTH_RATE_LIMITED_ERROR_CODE } from '@kontourai/station-contracts/http';
+import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
 import type {
   ProjectInvitationPreview,
   ProjectMembershipScope,
@@ -10,8 +16,11 @@ import { z } from 'zod/v3';
 import {
   attestedProxyPeerAddress,
   getDirectSocketAddress,
+  getRuntimeNativeDeviceProofPrincipal,
+  isRuntimeNativeDeviceProofCurrent,
   RuntimeAuthFailureLimiter,
 } from '../../security/runtime-request-security.js';
+import { readVerifiedNativeVirtualApplicationRequest } from '../../services/connections/virtual-application.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 
@@ -27,7 +36,71 @@ export function createDeploymentAuthenticationRoutes(
 ) {
   const app = new Hono();
   const attempts = new RuntimeAuthFailureLimiter({ maxFailures: 120 });
-  app.use('*', bodyLimit({ maxSize: 32 * 1024 }));
+  const browserBodyLimit = bodyLimit({ maxSize: 32 * 1024 });
+  const nativeAdmissions = new WeakMap<Request, string>();
+  app.use('*', async (c, next) => {
+    const request = c.req.raw;
+    const nativeAttempt =
+      request.method === 'POST' &&
+      new URL(request.url).pathname ===
+        `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/accept-invitation` &&
+      request.headers.has(NATIVE_DEVICE_PROOF_HEADER);
+    if (!nativeAttempt) return browserBodyLimit(c, next);
+    const facts = readVerifiedNativeVirtualApplicationRequest(request);
+    const principal = getRuntimeNativeDeviceProofPrincipal(request);
+    if (
+      !authentication ||
+      !facts ||
+      !principal ||
+      !isRuntimeNativeDeviceProofCurrent(request) ||
+      ['origin', 'cookie', 'cookie2', 'authorization'].some((header) =>
+        request.headers.has(header),
+      ) ||
+      !request.headers.has(APPLICATION_SESSION_NATIVE_HEADER) ||
+      !request.headers.has(APPLICATION_SESSION_NATIVE_PROOF_HEADER)
+    )
+      return c.json({ error: { code: 'native_account_request_invalid' } }, 403);
+    const account = await authentication.service.authenticate(request);
+    if (account.kind !== 'authenticated') {
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+      return c.json(
+        { error: { code: 'account_authentication_required' } },
+        account.kind === 'unavailable' ? 503 : 401,
+      );
+    }
+    if (
+      readVerifiedNativeVirtualApplicationRequest(request) !== facts ||
+      !isRuntimeNativeDeviceProofCurrent(request)
+    )
+      return c.json(
+        { error: { code: 'native_device_proof_device_not_current' } },
+        403,
+      );
+    nativeAdmissions.set(request, principal.deviceId);
+    // Runtime native Device admission already buffered and authenticated these exact <=16KiB bytes.
+    // Preserving this Request also preserves its private peer and Device/account provenance.
+    await next();
+    const current = await authentication.service.authenticate(request);
+    if (
+      current.kind !== 'authenticated' ||
+      current.principal.id !== account.principal.id
+    ) {
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+      return c.json(
+        { error: { code: 'account_authentication_required' } },
+        current.kind === 'unavailable' ? 503 : 401,
+      );
+    }
+    if (
+      readVerifiedNativeVirtualApplicationRequest(request) !== facts ||
+      !isRuntimeNativeDeviceProofCurrent(request)
+    )
+      return c.json(
+        { error: { code: 'native_device_proof_device_not_current' } },
+        403,
+      );
+    return c.res;
+  });
   app.use('*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (!authentication)
@@ -38,15 +111,21 @@ export function createDeploymentAuthenticationRoutes(
     ];
     if (origin && !origins.includes(origin))
       return c.json({ error: { code: 'origin_forbidden' } }, 403);
-    if (c.req.method === 'POST' && (!origin || !origins.includes(origin)))
+    const nativeDeviceId = nativeAdmissions.get(c.req.raw);
+    if (
+      c.req.method === 'POST' &&
+      !nativeDeviceId &&
+      (!origin || !origins.includes(origin))
+    )
       return c.json({ error: { code: 'origin_required' } }, 403);
-    const peer =
-      attestedProxyPeerAddress({
-        environment: c.env,
-        header: (name) => c.req.header(name),
-      }) ??
-      getDirectSocketAddress(c.env) ??
-      '<absent>';
+    const peer = nativeDeviceId
+      ? `native-device:${nativeDeviceId}`
+      : (attestedProxyPeerAddress({
+          environment: c.env,
+          header: (name) => c.req.header(name),
+        }) ??
+        getDirectSocketAddress(c.env) ??
+        '<absent>');
     const retryAfter = attempts.retryAfterSeconds(peer);
     if (retryAfter !== undefined) {
       c.header('Retry-After', String(retryAfter));

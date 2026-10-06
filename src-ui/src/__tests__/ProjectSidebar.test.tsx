@@ -10,7 +10,7 @@
  * `ProjectSidebarReturnFocus.test.tsx`'s mock shape).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
@@ -21,6 +21,7 @@ import { openChatsStore } from '../contexts/open-chats-store';
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 // #928 C2a: the Home row's active state reads `main`'s occupant. `null`
 // is the no-provider mount every other test here uses.
@@ -99,8 +100,8 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useAllActiveChats: () => chats,
 }));
-vi.mock('../contexts/open-chats-store', () => ({
-  useOpenChats: () =>
+vi.mock('../contexts/open-chats-store', () => {
+  const fakeOpenChats = () =>
     Object.entries(chats).map(([id, chat]: [string, any]) => ({
       id,
       chatSessionId: id,
@@ -113,16 +114,25 @@ vi.mock('../contexts/open-chats-store', () => ({
       modelLabel: chat.model ?? 'Model not reported',
       lifecycleLabel: 'Recent',
       updatedAt: 0,
-    })),
-  openChatsStore: {
-    focus: vi.fn(),
-    openCollection: vi.fn(),
-    registerNavigation: ({ openCollection }: any) => {
-      openChatsStore.openCollection = openCollection;
-      return vi.fn();
+      projectSlug: chat.projectSlug,
+      environmentId: chat.environmentId,
+    }));
+  return {
+    useOpenChats: fakeOpenChats,
+    useOpenChatInbox: () => ({
+      items: fakeOpenChats(),
+      currentSessionIdByConversation: new Map(),
+    }),
+    openChatsStore: {
+      focus: vi.fn(),
+      openCollection: vi.fn(),
+      registerNavigation: ({ openCollection }: any) => {
+        openChatsStore.openCollection = openCollection;
+        return vi.fn();
+      },
     },
-  },
-}));
+  };
+});
 vi.mock('../contexts/NavigationContext', () => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
   // the store, optionally through a selector) and `useNavigationActions` (the
@@ -203,11 +213,19 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePromotePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
 }));
 
+import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
+import { RecentChatList } from '../components/chat-start/RecentChatList';
+import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { useGitLocationByThreadId } from '../hooks/useGitLocationByThreadId';
+import { useProjectAccents } from '../hooks/useProjectAccents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import type { HomeWorkItem } from '../views/home/home-view-model';
+import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
 
 // #1765 routed the sidebar status row's command-palette keycap through
 // `useShortcutDisplay`, which throws outside KeyboardShortcutsProvider; an
@@ -369,13 +387,21 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       title: 'Finish release notes',
       agentSlug: 'writer',
     };
+    // The chat is not listed under Open chats here (that section is removed),
+    // so its draft is a Drafts row of its own.
+    deviceSettingsStore.set('sidebarSections', {
+      ...deviceSettingsStore.getSnapshot().sidebarSections,
+      openChatsHidden: true,
+    });
     renderSidebar(<ProjectSidebar />);
 
     act(() => chatDraftsStore.set('session-draft', '  Remember migration  '));
     expect(screen.getByText('Drafts')).toBeTruthy();
     const draft = screen.getByRole('button', {
-      name: /finish release notes.*draft.*remember migration/i,
+      name: /finish release notes.*remember migration/i,
     });
+    // The section names what these are; the row does not say "Draft" again.
+    expect(draft.textContent).not.toMatch(/Draft ·/);
     fireEvent.click(draft);
     expect(openChatsStore.focus).toHaveBeenCalledWith({
       sessionId: 'session-draft',
@@ -386,6 +412,71 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
 
     act(() => chatDraftsStore.set('session-draft', '   '));
     expect(screen.queryByText('Drafts')).toBeNull();
+  });
+
+  /**
+   * D6: a draft typed in an open chat was listed twice — once as the Open
+   * chats row (with its "Unsent draft" chip) and again under Drafts. One chat,
+   * one row: the Open chats row carries it, and Drafts is not rendered for it.
+   */
+  test('a draft in a chat listed under Open chats is not listed again under Drafts', async () => {
+    resetState();
+    chats['session-draft'] = {
+      title: 'Finish release notes',
+      agentSlug: 'writer',
+    };
+    agents.push({ slug: 'writer', name: 'Writer' });
+    renderSidebar(<ProjectSidebar />);
+
+    act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
+    expect(await screen.findByText('Finish release notes')).toBeTruthy();
+    expect(screen.getByText('Open chats')).toBeTruthy();
+    expect(screen.queryByText('Drafts')).toBeNull();
+    expect(screen.queryByText('Remember migration')).toBeNull();
+    expect(screen.getAllByText('Finish release notes')).toHaveLength(1);
+    // Not listed twice must not mean not listed: the one row carries the
+    // draft, as its "Unsent draft" chip.
+    const openChats = document.getElementById('sidebar-open-chats');
+    if (!openChats) throw new Error('Open chats section did not render');
+    const row = within(openChats)
+      .getByText('Finish release notes')
+      .closest('.chat-dock-inbox__item') as HTMLElement;
+    expect(row).toBeTruthy();
+    const chip = row.querySelector('[data-chip="draft"]');
+    expect(chip?.textContent).toBe('Unsent draft');
+  });
+
+  /**
+   * D6's one-row rule must not hide a draft: a collapsed Open chats shows no
+   * rows, so its chats' drafts are listed under Drafts until it is expanded.
+   */
+  test('a draft in a chat under a collapsed Open chats is listed under Drafts', async () => {
+    resetState();
+    chats['session-draft'] = {
+      title: 'Finish release notes',
+      agentSlug: 'writer',
+    };
+    agents.push({ slug: 'writer', name: 'Writer' });
+    deviceSettingsStore.set('sidebarSections', {
+      ...deviceSettingsStore.getSnapshot().sidebarSections,
+      openChatsCollapsed: true,
+    });
+    renderSidebar(<ProjectSidebar />);
+
+    act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
+    const toggle = screen.getByRole('button', { name: 'Open chats' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByText('Drafts')).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: /finish release notes.*remember migration/i,
+      }),
+    ).toBeTruthy();
+
+    // Expanded again, the Open chats row carries it and Drafts lets it go.
+    fireEvent.click(toggle);
+    expect(screen.queryByText('Drafts')).toBeNull();
+    expect(screen.queryByText('Remember migration')).toBeNull();
   });
 });
 
@@ -488,7 +579,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
 
   test('Drafts collapses and removes independently', () => {
     resetState();
-    chats['session-draft'] = { title: 'Draft owner', agentSlug: 'a' };
+    // A draft whose chat is not open in this tab: Drafts is its only row.
     renderSidebar(<ProjectSidebar />);
     act(() => chatDraftsStore.set('session-draft', 'draft text'));
 
@@ -596,7 +687,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
       ).textContent?.trim(),
     );
 
-  test('lists header, Home, Activity, then the projects — and no other destination rows', () => {
+  test('lists Home and Activity before the projects', () => {
     resetState();
     projects.push(
       { id: 'p1', slug: 'station', name: 'Station' },
@@ -610,7 +701,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
   });
 
-  test('removes every configuration destination and both group headers from the panel', () => {
+  test('keeps individual customization destinations out of the panel', () => {
     resetState();
     renderSidebar(<ProjectSidebar />);
 
@@ -623,11 +714,9 @@ describe('ProjectSidebar panel order (#2059)', () => {
       'Registry',
       'Review',
       'Plugins',
-      'Schedule',
       'Developer',
       'Notifications',
       'Settings',
-      'Customize',
       'System',
     ]) {
       expect(
@@ -673,13 +762,83 @@ describe('project row identity (#2150)', () => {
     const row = screen.getByRole('button', { name: /Campfit/ });
     expect(row.textContent).toContain('🏕️');
   });
+
+  test('an image icon is drawn beside the bar, and stays out of the name', () => {
+    resetState();
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: image,
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+    const icon = row.querySelector('.sidebar__project-icon');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.querySelector('img')?.getAttribute('src')).toBe(image);
+  });
+
+  test('a stored value the icon rule refuses is never hotlinked from the row', () => {
+    resetState();
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: 'https://example.com/logo.png',
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.querySelector('img')).toBeNull();
+    // Treated as no icon: the slot is reserved and empty; the bar carries
+    // the colour.
+    expect(row.querySelector('.sidebar__project-icon')).toBeNull();
+    expect(
+      row.querySelector('.sidebar__project-icon-slot')?.childElementCount,
+    ).toBe(0);
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+  });
+
+  test('every expanded row reserves the icon slot, so an icon-less name lines up with an iconed one', () => {
+    resetState();
+    projects.push(
+      {
+        id: 'p1',
+        slug: 'campfit',
+        name: 'Campfit',
+        icon: '🏕️',
+      } as (typeof projects)[number],
+      { id: 'p2', slug: 'ferry', name: 'Ferry' },
+    );
+    renderSidebar(<ProjectSidebar />);
+    for (const name of ['Campfit', 'Ferry']) {
+      const row = screen.getByRole('button', { name });
+      const slot = row.querySelector('.sidebar__project-icon-slot');
+      expect(slot, String(name)).toBeTruthy();
+      // The slot sits directly before the name, and is never named.
+      expect(slot?.nextElementSibling?.className).toBe('sidebar__project-name');
+      expect(slot?.getAttribute('aria-hidden')).toBe('true');
+    }
+    // An icon-less project leaves the slot empty: no dot that could read as
+    // status or presence. Its colour is the bar's alone.
+    const ferry = screen.getByRole('button', { name: 'Ferry' });
+    expect(
+      ferry.querySelector('.sidebar__project-icon-slot')?.childElementCount,
+    ).toBe(0);
+    expect(ferry.querySelector('[data-project-icon]')).toBeNull();
+    expect(
+      ferry.querySelector<HTMLElement>('.sidebar__project-accent')?.style
+        .backgroundColor,
+    ).toBeTruthy();
+  });
 });
 
 /**
  * archive#3202. The per-project badge used to fold the conversation INVENTORY
  * inline in `ProjectSidebar` and count, among other things, unseen finished
  * runs (archive#1781). It now counts one thing — this project's LIVE work,
- * the Sessions list's own "Needs you" + "Active now" lanes scoped to the
+ * the Sessions list's own live lanes (Needs you, Running, Idle) scoped to the
  * project (`project-live-work-model.ts`) — because that is exactly what the
  * project page's Live work section lists, and a badge whose destination shows
  * a different set is the defect archive#3202 was filed about.
@@ -723,7 +882,7 @@ describe('ProjectSidebar live-work badge', () => {
     ).toBeTruthy();
   });
 
-  test('counts a mid-flight turn under Active now, and says which is which', () => {
+  test('counts a mid-flight turn under Running, and says which is which', () => {
     resetState();
     projects.push({ id: 'p1', slug: 'station', name: 'Station' });
     sessions.push(
@@ -747,14 +906,14 @@ describe('ProjectSidebar live-work badge', () => {
     ).toBe('2');
     expect(
       screen.getByRole('button', {
-        name: /station.*needs you: 1 · active now: 1/i,
+        name: /station.*needs you: 1 · running: 1/i,
       }),
     ).toBeTruthy();
   });
 
   /**
    * archive#1781's narrowing survives the move: `answerability` still demotes
-   * an open request nothing can answer. It lands in Active now as
+   * an open request nothing can answer. It lands in Idle as
    * 'Unanswerable' rather than claiming to be yours to act on, which is the
    * Sessions lane model's own rule.
    */
@@ -778,7 +937,7 @@ describe('ProjectSidebar live-work badge', () => {
     renderSidebar(<ProjectSidebar />);
     expect(screen.queryByText(/needs you: /i)).toBeNull();
     expect(
-      screen.getByRole('button', { name: /station.*active now: 1/i }),
+      screen.getByRole('button', { name: /station.*idle: 1/i }),
     ).toBeTruthy();
   });
 
@@ -898,5 +1057,221 @@ describe('ProjectSidebar compact rail chat entry (#1348)', () => {
 
     expect(listener).toHaveBeenCalledOnce();
     unregister();
+  });
+});
+
+/**
+ * One project, one colour, on every surface that paints it: the sidebar row,
+ * the dock's project switcher, the dock's inbox rows and Home's work rows.
+ * `projectAccents` is set-aware, so a surface that allocated over its own
+ * list would give a project another colour; each surface reads the shared
+ * `useProjectAccents` allocation instead.
+ */
+describe('a project wears the same colour everywhere', () => {
+  function Home({ items }: { items: HomeWorkItem[] }) {
+    const lanes = useHomeWorkLanes(items);
+    return (
+      <HomeRecentWorkSection
+        lanes={lanes}
+        workItems={items}
+        workLoading={false}
+        workDegraded={false}
+        workError={false}
+        agents={[]}
+        remoteUnavailable={[]}
+        remoteAuthenticationRequired={[]}
+        onOpen={vi.fn()}
+        onViewActivity={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+  }
+
+  /** The dock's inbox, fed the way `ChatDock` feeds it. */
+  function DockInbox({ items }: { items: HomeWorkItem[] }) {
+    return (
+      <ChatDockInboxPanel
+        items={items}
+        activeChatSessionId={null}
+        openChatSessionIds={[]}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        gitLocationByThreadId={useGitLocationByThreadId()}
+        projectAccentBySlug={useProjectAccents()}
+      />
+    );
+  }
+
+  test('the sidebar, the switcher, the dock inbox and Home agree on beta', async () => {
+    resetState();
+    projects.push(
+      { id: 'p-gamma', slug: 'gamma', name: 'Gamma' },
+      { id: 'p-alpha', slug: 'alpha', name: 'Alpha' },
+      { id: 'p-beta', slug: 'beta', name: 'Beta' },
+    );
+    const betaWork: HomeWorkItem = {
+      id: 'beta-work',
+      kind: 'chat',
+      kindLabel: 'Direct chat',
+      title: 'Tidy the beta release notes',
+      projectLabel: 'Beta',
+      projectSlug: 'beta',
+      agentLabel: 'Codex',
+      modelLabel: 'GPT-5',
+      updatedAt: Date.now() - 60_000,
+      lifecycleLabel: 'Ready',
+      chatSessionId: 'beta-work',
+    };
+
+    const sidebar = renderSidebar(<ProjectSidebar />);
+    const sidebarColour = sidebar.container.querySelector<HTMLElement>(
+      '[title="Open Beta workspace"] .sidebar__project-accent',
+    )?.style.backgroundColor;
+    sidebar.unmount();
+    // Sorted alpha, beta, gamma: beta takes the palette's SECOND colour,
+    // which no allocation over beta alone would give it.
+    expect(sidebarColour).toBe('var(--event-agent-complete)');
+
+    const switcher = renderSidebar(
+      <ChatDockProjectSwitcherSheet
+        anchorRef={{ current: null }}
+        boundProjectSlug="beta"
+        projects={[{ id: 'p-beta', slug: 'beta', name: 'Beta' }]}
+        onOpenProject={vi.fn()}
+        onSwitchProject={vi.fn()}
+        onNewProject={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const switcherColour = switcher.baseElement.querySelector<HTMLElement>(
+      '.chat-dock__project-switcher-accent',
+    )?.style.backgroundColor;
+    switcher.unmount();
+
+    const rowColour = (ui: ReactElement) => {
+      const view = renderSidebar(ui);
+      const colour = view.container.querySelector<HTMLElement>(
+        '.inbox-row__project-accent',
+      )?.style.backgroundColor;
+      view.unmount();
+      return colour;
+    };
+    const dockColour = rowColour(<DockInbox items={[betaWork]} />);
+    const homeColour = rowColour(<Home items={[betaWork]} />);
+    // The sidebar's own Open chats row, rendered by the real sidebar.
+    chats['beta-work'] = {
+      title: 'Tidy the beta release notes',
+      projectSlug: 'beta',
+    };
+    const openChatsView = renderSidebar(<ProjectSidebar />);
+    await openChatsView.findByText('Tidy the beta release notes');
+    const openChatsColour = openChatsView.container.querySelector<HTMLElement>(
+      '#sidebar-open-chats .inbox-row__project-accent',
+    )?.style.backgroundColor;
+    openChatsView.unmount();
+    const recentColour = rowColour(
+      <RecentChatList
+        items={[betaWork]}
+        context="beta"
+        agents={[]}
+        onOpen={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    expect({
+      switcher: switcherColour,
+      dock: dockColour,
+      home: homeColour,
+      openChats: openChatsColour,
+      recent: recentColour,
+    }).toEqual({
+      switcher: sidebarColour,
+      dock: sidebarColour,
+      home: sidebarColour,
+      openChats: sidebarColour,
+      recent: sidebarColour,
+    });
+  });
+
+  test("the sidebar's Open chats and New Chat's recent rows wear a project's icon, and a remote row wears neither mark", async () => {
+    resetState();
+    projects.push({
+      id: 'p-beta',
+      slug: 'beta',
+      name: 'Beta',
+      icon: '🧭',
+    } as (typeof projects)[number]);
+    const local: HomeWorkItem = {
+      id: 'beta-local',
+      kind: 'chat',
+      kindLabel: 'Direct chat',
+      title: 'Local beta work',
+      projectLabel: 'Beta',
+      projectSlug: 'beta',
+      agentLabel: 'Codex',
+      modelLabel: 'GPT-5',
+      updatedAt: Date.now() - 60_000,
+      lifecycleLabel: 'Ready',
+      chatSessionId: 'beta-local',
+    };
+    // The same slug on a peer Station names that Station's project.
+    const remote: HomeWorkItem = {
+      ...local,
+      id: 'beta-remote',
+      title: 'Remote beta work',
+      chatSessionId: 'beta-remote',
+      environmentId: 'peer-1',
+      environmentLabel: 'Peer Station',
+    };
+    const marks = (ui: ReactElement) => {
+      const view = renderSidebar(ui);
+      const rows = [
+        ...view.container.querySelectorAll('[data-testid="inbox-row"]'),
+      ].map((row) => {
+        const mark = row.querySelector('.inbox-row__project-accent');
+        return mark ? (mark.textContent ?? '') : null;
+      });
+      view.unmount();
+      return rows;
+    };
+    // The sidebar's own Open chats rows, rendered by the real sidebar.
+    chats['beta-local'] = { title: 'Local beta work', projectSlug: 'beta' };
+    chats['beta-remote'] = {
+      title: 'Remote beta work',
+      projectSlug: 'beta',
+      environmentId: 'peer-1',
+    };
+    const sidebar = renderSidebar(<ProjectSidebar />);
+    await sidebar.findByText('Remote beta work');
+    const openChatMarks = Object.fromEntries(
+      [
+        ...sidebar.container.querySelectorAll(
+          '#sidebar-open-chats [data-testid="inbox-row"]',
+        ),
+      ].map((row) => [
+        row.querySelector('.inbox-row__title')?.textContent,
+        row.querySelector('.inbox-row__project-accent')?.textContent ?? null,
+      ]),
+    );
+    sidebar.unmount();
+    expect(openChatMarks).toEqual({
+      'Local beta work': '🧭',
+      'Remote beta work': null,
+    });
+    expect(
+      marks(
+        <RecentChatList
+          items={[local, remote]}
+          context="beta"
+          agents={[]}
+          onOpen={vi.fn()}
+          onViewAll={vi.fn()}
+        />,
+      ),
+    ).toEqual(['🧭', null]);
   });
 });

@@ -20,14 +20,22 @@ import { capturePluginConfigurationMutation } from './plugin-configuration-activ
 
 import { join } from 'node:path';
 import { type Context, Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
+import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
-  getSkillRegistryProviders,
 } from '../../providers/registries/registry.js';
+import {
+  RegistryCatalogRefusal,
+  readRegistryCatalogSelection,
+  registrySourceManager,
+} from '../../providers/registries/registry-source-manager.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { localSkillRevisionFromDirectory } from '../../services/agents/skill-revision.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import {
   type StationKitMutationCandidate,
@@ -35,6 +43,7 @@ import {
 } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import { settlePluginCommandEffectsForResponse } from '../../services/plugins/plugin-command-effects.js';
 import {
   findPluginContentLockCycleError,
   pluginContentLockCycleMessage,
@@ -66,6 +75,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { refuseUngrantedCommandChoice } from '../working-directory-authority.js';
 import {
   operatorOnly,
   type PluginPrincipalResolution,
@@ -104,6 +114,18 @@ interface RegistryRouteDeps {
   settleProviderAdapterRetirements?: () => Promise<void>;
 }
 
+const CATALOG_REFUSAL_MESSAGES: Record<RegistryCatalogRefusal['code'], string> =
+  {
+    'source-unavailable':
+      'Selected marketplace is unavailable. Refresh it before trying again.',
+    'source-changed':
+      'Marketplace changed since this selection. Inspect the item again.',
+    'source-authority-changed':
+      'Selected marketplace authority changed. Inspect it again.',
+    'item-unavailable': 'Selected marketplace item is no longer available.',
+    'source-forbidden': 'Selected marketplace is not available to this caller.',
+  };
+
 /** Remove display-only bracket qualifiers without a lazy wildcard regex.
  * Integration manifests are local project input, so this must make one pass
  * even when a malformed name contains many unclosed `[` characters. */
@@ -130,6 +152,18 @@ function stripDisplayNameQualifiers(value: string): string {
   return parts.join('').trim();
 }
 
+/**
+ * Who may install a plugin from the registry: a person (not Station's own
+ * agent tools or another Station), and, because installing runs the package's
+ * code, one with the authority to run commands.
+ */
+function refusePluginInstallCaller(c: Context): Response | undefined {
+  return (
+    refuseInternalControlCaller(c, 'install a plugin') ??
+    refuseUngrantedCommandChoice(c)
+  );
+}
+
 export function createRegistryRoutes(
   configLoader: ConfigLoader,
   refreshACPModes: () => Promise<void>,
@@ -139,6 +173,92 @@ export function createRegistryRoutes(
 ) {
   const app = new Hono();
   const projectHomeDir = configLoader.getProjectHomeDir();
+  const sources = registrySourceManager(projectHomeDir);
+  const manageSources = operatorOnly(deps?.visibility, 'manage marketplaces');
+  app.get(
+    '/sources',
+    manageSources(async (c) => c.json({ success: true, data: sources.list() })),
+  );
+  app.post(
+    '/sources',
+    manageSources(async (c) => {
+      try {
+        return c.json(
+          { success: true, data: sources.add(await c.req.json()) },
+          201,
+        );
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Could not add marketplace. Use a unique name and a supported public HTTPS repository/manifest or absolute local path.',
+          },
+          400,
+        );
+      }
+    }),
+  );
+  app.patch(
+    '/sources/:id',
+    manageSources(async (c) => {
+      const body = await c.req.json().catch(() => null);
+      if (!isRecord(body) || typeof body.enabled !== 'boolean')
+        return c.json(
+          { success: false, error: 'An enabled boolean is required.' },
+          400,
+        );
+      try {
+        return c.json({
+          success: true,
+          data: sources.setEnabled(param(c, 'id'), body.enabled),
+        });
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Marketplace could not be changed. Manage plugin-owned sources through their plugin.',
+          },
+          409,
+        );
+      }
+    }),
+  );
+  app.post(
+    '/sources/:id/refresh',
+    manageSources(async (c) => {
+      try {
+        return c.json({
+          success: true,
+          data: await sources.refresh(param(c, 'id')),
+        });
+      } catch {
+        return c.json(
+          { success: false, error: 'Marketplace is unavailable or disabled.' },
+          409,
+        );
+      }
+    }),
+  );
+  app.delete(
+    '/sources/:id',
+    manageSources(async (c) => {
+      try {
+        sources.remove(param(c, 'id'));
+        return c.json({ success: true });
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only user-added marketplaces can be removed. Manage other sources through their configuration or plugin.',
+          },
+          409,
+        );
+      }
+    }),
+  );
   const layoutCatalog =
     deps?.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
   const pluginInstallDeps = deps
@@ -388,13 +508,20 @@ export function createRegistryRoutes(
         source: 'plugin',
         outcome: mutation.value.success ? 'success' : 'failed',
       });
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       registryOps.add(1, { operation: 'remove-layout', outcome: 'rejected' });
@@ -452,6 +579,12 @@ export function createRegistryRoutes(
         }
       }
 
+      // This provider's install copies a plugin tree into the plugins
+      // directory (`json-manifest-registry.ts` `install`, which the agent
+      // face delegates to), so it is code Station will load: the same
+      // authority as installing a plugin.
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const result = await getAgentRegistryProvider().install(id);
       if (result.success) {
         // Refresh ACP modes so the new agent appears
@@ -506,13 +639,20 @@ export function createRegistryRoutes(
               );
             }
           }
+          // LP-C: the lifecycle released its locks; wait briefly for settlements.
+          const settled = await settlePluginCommandEffectsForResponse(
+            pluginInstallDeps!.projectHomeDir,
+            mutation.value,
+            configurationMutationStatus(mutation.activation, 200),
+          );
           return c.json(
             {
               ...mutation.value,
+              ...settled.fields,
               success: mutation.activation?.status !== 'pending',
               ...configurationActivationPayload(mutation.activation),
             },
-            configurationMutationStatus(mutation.activation, 200),
+            settled.status as ContentfulStatusCode,
           );
         } catch (error: unknown) {
           const message =
@@ -577,6 +717,10 @@ export function createRegistryRoutes(
     '/integrations/install',
     validate(registryInstallSchema),
     async (c) => {
+      // A registry entry is stored as a tool server with the command its
+      // manifest names (a marketplace source can be a device's choice).
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const { id } = getBody(c);
       registryOps.add(1, { operation: 'install-integration', item: id });
 
@@ -631,21 +775,66 @@ export function createRegistryRoutes(
   });
 
   // ── Skill Registry ──────────────────────────────────────
+  const sourceVisible =
+    (c: Context) =>
+    (source: import('@kontourai/station-contracts/catalog').RegistrySource) =>
+      source.origin !== 'plugin' ||
+      deps?.canSeePlugin?.(c, source.owner!) === true;
 
   app.get('/skills', async (c) => {
     registryOps.add(1, { operation: 'list-skills' });
-    const entries = getSkillRegistryProviders();
-    if (entries.length === 0) return c.json({ success: true, data: [] });
-    const results = await Promise.all(
-      entries.map(async (e) => e.provider.listAvailable()),
-    );
-    const seen = new Set<string>();
-    const data = results.flat().filter((item) => {
-      if (seen.has(item.id)) return false;
-      seen.add(item.id);
-      return true;
+    const catalog = await sources.catalog('skills', sourceVisible(c));
+    const installed = (skillService?.listSkills() ?? []).filter((skill) => {
+      if (skill.origin !== 'plugin') return true;
+      const owner = /^(?:plugin|agent-plugin):([^:]+)$/.exec(
+        skill.source ?? '',
+      )?.[1];
+      return !!owner && deps?.canSeePlugin?.(c, owner) === true;
     });
-    return c.json({ success: true, data });
+    const data = catalog.map((item) => {
+      const sameName = installed.find(
+        (skill) => skill.name === item.catalog?.itemId,
+      );
+      const owns =
+        !!sameName &&
+        sameName.provenance?.catalog?.sourceId === item.catalog?.sourceId;
+      return {
+        ...item,
+        installed: owns,
+        ...(PROTOTYPE_AFFECTING_KEYS.includes(item.catalog?.itemId ?? item.id)
+          ? { status: 'unsupported-skill-name' }
+          : sameName && !owns
+            ? { status: 'installed-name-conflict' }
+            : {}),
+      };
+    });
+    const sourceStatus = sources
+      .list()
+      .filter((source) => source.kind === 'skills' && sourceVisible(c)(source));
+    const failed = sourceStatus.filter(
+      (source) => source.enabled && ['error', 'stale'].includes(source.status),
+    );
+    const unavailable =
+      data.length === 0 &&
+      failed.length > 0 &&
+      !sourceStatus.some(
+        (source) => source.enabled && source.status === 'ready',
+      );
+    return c.json(
+      {
+        success: !unavailable,
+        data,
+        sources: sourceStatus,
+        partial: failed.length > 0,
+        ...(unavailable
+          ? {
+              error:
+                'Connected skill marketplaces are unavailable. Refresh their sources.',
+            }
+          : {}),
+      },
+      unavailable ? 503 : 200,
+    );
   });
 
   app.get('/skills/installed', async (c) => {
@@ -657,21 +846,121 @@ export function createRegistryRoutes(
   app.post('/skills/install', validate(skillInstallSchema), async (c) => {
     const { id } = getBody(c);
     registryOps.add(1, { operation: 'install-skill', item: id });
+    if (
+      PROTOTYPE_AFFECTING_KEYS.includes(
+        readRegistryCatalogSelection(id)?.itemId ?? id,
+      )
+    ) {
+      return c.json(
+        {
+          success: false,
+          code: 'unsupported-skill-name',
+          message:
+            'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.',
+        },
+        400,
+      );
+    }
     if (!skillService)
       return c.json(
         { success: false, message: 'SkillService not available' },
         500,
       );
-    const result = await skillService.installSkill(
-      id,
-      configLoader.getProjectHomeDir(),
-    );
-    if (result.success && reloadSkills) await reloadSkills().catch(() => {});
-    return c.json(result, result.success ? 200 : 500);
+    try {
+      const selection = readRegistryCatalogSelection(id);
+      if (selection) {
+        const source = sources
+          .list()
+          .find((source) => source.id === selection.sourceId);
+        if (source && !sourceVisible(c)(source))
+          return c.json(
+            {
+              success: false,
+              message: 'Selected marketplace is not available to this caller.',
+            },
+            403,
+          );
+      } else {
+        const items = (
+          await sources.catalog('skills', sourceVisible(c))
+        ).filter((item) => item.catalog?.itemId === id);
+        if (items.length !== 1)
+          return c.json(
+            {
+              success: false,
+              message:
+                items.length > 1
+                  ? 'Skill name is present in multiple marketplaces. Select its source before installing.'
+                  : 'No available marketplace contains this skill.',
+            },
+            500,
+          );
+        const result = await skillService.installSkill(
+          items[0]!.id,
+          projectHomeDir,
+          undefined,
+          undefined,
+          sourceVisible(c),
+        );
+        if (result.success && reloadSkills)
+          await reloadSkills().catch(() => {});
+        return c.json(result, result.success ? 200 : 500);
+      }
+      const result = await skillService.installSkill(
+        id,
+        configLoader.getProjectHomeDir(),
+        undefined,
+        undefined,
+        sourceVisible(c),
+      );
+      if (result.success && reloadSkills) await reloadSkills().catch(() => {});
+      return c.json(result, result.success ? 200 : 500);
+    } catch (error) {
+      if (error instanceof RegistryCatalogRefusal)
+        return c.json(
+          {
+            success: false,
+            code: error.code,
+            message: CATALOG_REFUSAL_MESSAGES[error.code],
+          },
+          error.code === 'source-forbidden' ? 403 : 409,
+        );
+      if (!(error instanceof UnsupportedRegistrySkillFormatError))
+        return c.json(
+          {
+            success: false,
+            code: 'marketplace-selection-refused',
+            message:
+              'The selected marketplace item could not be installed. Refresh its source and inspect it again.',
+          },
+          409,
+        );
+      return c.json(
+        {
+          success: false,
+          code: 'unsupported-skill-format',
+          message:
+            'This skill uses metadata that Station cannot install. Its original Markdown is available for inspection; ask its publisher for a supported format.',
+        },
+        400,
+      );
+    }
   });
 
   app.delete('/skills/:id', async (c) => {
-    const id = param(c, 'id');
+    const selection = readRegistryCatalogSelection(param(c, 'id'));
+    const id = selection?.itemId ?? param(c, 'id');
+    if (selection) {
+      const detail = await skillService?.getSkill(id);
+      if (detail?.provenance?.catalog?.sourceId !== selection.sourceId)
+        return c.json(
+          {
+            success: false,
+            message: 'Installed skill belongs to another source.',
+          },
+          409,
+        );
+    }
     registryOps.add(1, { operation: 'uninstall-skill', item: id });
     if (!skillService)
       return c.json(
@@ -694,27 +983,161 @@ export function createRegistryRoutes(
         { success: false, message: 'SkillService not available' },
         500,
       );
-    const unresult = await skillService.removeSkill(
-      id,
-      configLoader.getProjectHomeDir(),
-    );
-    if (!unresult.success) return c.json(unresult, 500);
-    const result = await skillService.installSkill(
-      id,
-      configLoader.getProjectHomeDir(),
-    );
+    let result: { success: boolean; message: string };
+    try {
+      const selection = readRegistryCatalogSelection(id);
+      const name = selection?.itemId ?? id;
+      const detail = await skillService.getSkill(name);
+      const provenance = detail.provenance?.catalog;
+      if (
+        !provenance ||
+        (selection && selection.sourceId !== provenance.sourceId)
+      )
+        return c.json(
+          {
+            success: false,
+            message: 'Installed skill has no matching marketplace provenance.',
+          },
+          409,
+        );
+      const source = sources
+        .list()
+        .find((source) => source.id === provenance.sourceId);
+      if (source && !sourceVisible(c)(source))
+        return c.json(
+          {
+            success: false,
+            message:
+              'Installed skill marketplace is not available to this caller.',
+          },
+          403,
+        );
+      const available = await sources.catalog('skills', sourceVisible(c));
+      const selected = available.find(
+        (item) =>
+          item.catalog?.sourceId === provenance.sourceId &&
+          item.catalog.itemId === provenance.itemId,
+      );
+      if (!selected)
+        return c.json(
+          {
+            success: false,
+            message:
+              'Installed skill source is unavailable. The existing package is preserved.',
+          },
+          409,
+        );
+      const revision = await localSkillRevisionFromDirectory(detail.path);
+      result = await skillService.installSkill(
+        selected.id,
+        projectHomeDir,
+        undefined,
+        revision,
+        sourceVisible(c),
+      );
+    } catch (error) {
+      if (
+        error instanceof RegistryCatalogRefusal &&
+        error.code === 'source-forbidden'
+      )
+        return c.json(
+          {
+            success: false,
+            code: error.code,
+            message: CATALOG_REFUSAL_MESSAGES[error.code],
+          },
+          403,
+        );
+      return c.json(
+        {
+          success: false,
+          message:
+            'Skill update refused. The existing package is preserved; refresh the marketplace and inspect it again.',
+        },
+        409,
+      );
+    }
     if (result.success && reloadSkills) await reloadSkills().catch(() => {});
     return c.json(result, result.success ? 200 : 500);
   });
 
   app.get('/skills/:id/content', async (c) => {
-    const id = param(c, 'id');
-    for (const { provider } of getSkillRegistryProviders()) {
-      if (!provider.getContent) continue;
-      const body = await provider.getContent(id);
-      if (body) return c.json({ success: true, data: body });
+    try {
+      const id = param(c, 'id');
+      const selection = readRegistryCatalogSelection(id);
+      if (selection) {
+        const source = sources
+          .list()
+          .find((source) => source.id === selection.sourceId);
+        if (source && !sourceVisible(c)(source))
+          return c.json(
+            {
+              success: false,
+              error: 'Selected marketplace is not available to this caller.',
+            },
+            403,
+          );
+      }
+      const matches = selection
+        ? []
+        : (await sources.catalog('skills', sourceVisible(c))).filter(
+            (item) => item.catalog?.itemId === id,
+          );
+      if (!selection && matches.length !== 1)
+        return c.json(
+          {
+            success: false,
+            error:
+              'Select the skill from its marketplace before inspecting it.',
+          },
+          409,
+        );
+      const selected = await sources.resolve(selection ? id : matches[0]!.id);
+      if (!sourceVisible(c)(selected.entry.source))
+        return c.json(
+          {
+            success: false,
+            error: 'Selected marketplace is not available to this caller.',
+          },
+          403,
+        );
+      if (selected.selection.kind !== 'skills')
+        return c.json(
+          { success: false, error: 'Selected item is not a skill.' },
+          400,
+        );
+      const body = await (
+        selected.entry
+          .provider as import('../../providers/provider-interfaces.js').ISkillRegistryProvider
+      ).getContent?.(selected.selection.itemId);
+      if (body === null || body === undefined)
+        return c.json(
+          { success: false, error: 'Selected skill cannot be inspected.' },
+          404,
+        );
+      if (!sourceVisible(c)(selected.entry.source))
+        return c.json(
+          {
+            success: false,
+            error: 'Selected marketplace is not available to this caller.',
+          },
+          403,
+        );
+      return c.json({
+        success: true,
+        data: body,
+        ...(selection ? { catalog: selected.selection } : {}),
+      });
+    } catch {
+      return c.json(
+        {
+          success: false,
+          error:
+            'Selected marketplace changed or is unavailable. Refresh and select the item again.',
+        },
+        409,
+      );
     }
-    return c.json({ success: false, error: 'Skill not found' }, 404);
   });
 
   // ── Plugin Registry ──────────────────────────────────────
@@ -732,10 +1155,35 @@ export function createRegistryRoutes(
     '/plugins',
     asOperator(async (c) => {
       registryOps.add(1, { operation: 'list-plugins' });
-      const items = await readRegistryPluginAvailability(
-        configLoader.getProjectHomeDir(),
+      const data = await sources.catalog('plugins');
+      const sourceStatus = sources
+        .list()
+        .filter((source) => source.kind === 'plugins');
+      const failed = sourceStatus.filter(
+        (source) =>
+          source.enabled && ['error', 'stale'].includes(source.status),
       );
-      return c.json({ success: true, data: items });
+      const unavailable =
+        data.length === 0 &&
+        failed.length > 0 &&
+        !sourceStatus.some(
+          (source) => source.enabled && source.status === 'ready',
+        );
+      return c.json(
+        {
+          success: !unavailable,
+          data,
+          sources: sourceStatus,
+          partial: failed.length > 0,
+          ...(unavailable
+            ? {
+                error:
+                  'Connected plugin marketplaces are unavailable. Refresh their sources.',
+              }
+            : {}),
+        },
+        unavailable ? 503 : 200,
+      );
     }),
   );
 
@@ -788,7 +1236,7 @@ export function createRegistryRoutes(
   ) => {
     // #2323 S5: the plugin install path for both catalog faces, so the
     // person-only refusal lives here rather than on each route.
-    const refused = refuseInternalControlCaller(c, 'install a plugin');
+    const refused = refusePluginInstallCaller(c);
     if (refused) return refused;
     const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     const {
@@ -869,9 +1317,18 @@ export function createRegistryRoutes(
           );
         }
       }
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        mutation.value.success
+          ? configurationMutationStatus(mutation.activation, 200)
+          : 500,
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           // Activation can only narrow a successful install. It must never
           // turn the installer's `success: false` into a 200/success response:
           // that false success makes Registry optimistically mark the card
@@ -880,9 +1337,7 @@ export function createRegistryRoutes(
             mutation.value.success && mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        mutation.value.success
-          ? configurationMutationStatus(mutation.activation, 200)
-          : 500,
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       if (isRegistryAcquisitionRefusal(error))
@@ -1003,13 +1458,20 @@ export function createRegistryRoutes(
           );
         }
       }
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       const message =

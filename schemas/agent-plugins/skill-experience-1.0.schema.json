@@ -1,0 +1,539 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontour.ai/schemas/agent-plugins/skill-experience/1.0/schema.json",
+  "title": "Station Skill Experience 1.0",
+  "description": "Inert visual skill author definition. Runtime activation, provenance, grants and canonical session state remain host-owned.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "id",
+    "version",
+    "title",
+    "purpose",
+    "example",
+    "authors",
+    "skills",
+    "requiredContext",
+    "capabilities",
+    "inputs",
+    "interaction",
+    "outputs",
+    "presentation"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://kontour.ai/schemas/agent-plugins/skill-experience/1.0/schema.json"
+    },
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "version": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "example": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "authors": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https://[^\\s]+$"
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 254
+          }
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "path", "sha256"],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^(?!.*(?:--|\\.\\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^\\./skills/[a-z0-9][a-z0-9.-]*/SKILL\\.md$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "dependsOn": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "uniqueItems": true
+          },
+          "upstream": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["repository", "revision", "path"],
+            "properties": {
+              "repository": {
+                "type": "string",
+                "maxLength": 2048,
+                "pattern": "^https://[^\\s]+$"
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\\\\\u0000-\\u001f]+$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "requiredContext": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "required", "provenance"],
+        "properties": {
+          "kind": {
+            "enum": ["project", "conversation"]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "provenance": {
+            "$ref": "#/$defs/provenance"
+          }
+        }
+      },
+      "uniqueItems": true
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "enum": ["conversation", "project-read", "file-read", "artifact-output"]
+      },
+      "uniqueItems": true
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 32,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label",
+              "required",
+              "provenance",
+              "kind",
+              "maxLength"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/inputId"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "provenance": {
+                "$ref": "#/$defs/provenance"
+              },
+              "kind": {
+                "const": "text"
+              },
+              "default": {
+                "type": "string",
+                "maxLength": 32000
+              },
+              "minLength": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32000
+              },
+              "maxLength": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32000
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label",
+              "required",
+              "provenance",
+              "kind",
+              "options"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/inputId"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "provenance": {
+                "$ref": "#/$defs/provenance"
+              },
+              "kind": {
+                "const": "single-choice"
+              },
+              "default": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "options": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["value", "label"],
+                  "properties": {
+                    "value": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "label",
+              "required",
+              "provenance",
+              "kind",
+              "maxCount"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/inputId"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "provenance": {
+                "$ref": "#/$defs/provenance"
+              },
+              "kind": {
+                "const": "attachments"
+              },
+              "maxCount": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16
+              }
+            }
+          }
+        ]
+      }
+    },
+    "interaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pattern", "stopConditions", "unsupportedBehavior"],
+      "properties": {
+        "pattern": {
+          "enum": ["interview", "transform", "inspection"]
+        },
+        "questionRounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["answerKinds", "maxQuestionsPerRound"],
+          "properties": {
+            "answerKinds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "items": {
+                "enum": ["text", "single-choice", "multi-choice"]
+              },
+              "uniqueItems": true
+            },
+            "maxQuestionsPerRound": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12
+            }
+          }
+        },
+        "stopConditions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "unsupportedBehavior": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "kind", "required", "provenance"],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "kind": {
+            "enum": ["markdown", "json", "files", "decision-summary"]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "provenance": {
+            "$ref": "#/$defs/provenance"
+          }
+        }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modes", "defaultMode"],
+      "properties": {
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "enum": ["guided", "alongside"]
+          },
+          "uniqueItems": true
+        },
+        "defaultMode": {
+          "enum": ["guided", "alongside"]
+        },
+        "richView": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "kind", "descriptorId"],
+          "properties": {
+            "version": {
+              "const": "1.0"
+            },
+            "kind": {
+              "const": "workspace-pane"
+            },
+            "descriptorId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        }
+      }
+    },
+    "entrySkillId": {
+      "$ref": "#/$defs/id"
+    },
+    "transitions": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["experienceId", "label", "provenance"],
+        "properties": {
+          "experienceId": {
+            "$ref": "#/$defs/id"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "provenance": {
+            "$ref": "#/$defs/provenance"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9](?:[a-z0-9._:-]*[a-z0-9])?$"
+    },
+    "provenance": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["origin", "skillRef", "explanation"],
+          "properties": {
+            "origin": {
+              "const": "skill-declared"
+            },
+            "skillRef": {
+              "$ref": "#/$defs/id"
+            },
+            "explanation": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["origin", "explanation"],
+          "properties": {
+            "origin": {
+              "enum": ["reviewer-inferred", "station-added"]
+            },
+            "explanation": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          }
+        }
+      ]
+    },
+    "inputId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/id"
+        },
+        {
+          "not": {
+            "enum": ["constructor", "prototype", "__proto__"]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "path": "docs/design/station-topology.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Dated topology decision/current-target distinction preserved with explicit deployment and capability limits; principal and instance owners checked.",
+
+  "limits": "Not a full authorization, tenancy, plugin isolation, multi-human room, broker, inference or remote-execution audit. Original product-target promises remain a decision record.",
+
+  "sources": [
+    "packages/shared/src/instance-registry.ts",
+
+    "src-server/routes/orchestration/project-task-rooms.ts",
+
+    "src-server/services/identity/principal-resolver.ts"
+  ],
+
+  "checks": [
+    "Full original body read; bounded actual-owner/caller review. Purpose classification is separate from whole-document semantic review.",
+
+    "Focused batch: 140 tests across 9 files passed; documentation links397, index, MCP98 and Conduit generated parity passed."
+  ]
+}

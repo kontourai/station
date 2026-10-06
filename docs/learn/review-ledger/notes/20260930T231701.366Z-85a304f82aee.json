@@ -1,0 +1,7 @@
+{
+  "revision": "26b51492632d81e2d767e2f4729d214b514403ac",
+
+  "notes": [
+    {"path":"docs/reference/agent-plugins.md","note":"Reviewed ConfigLoader integration callback runtime-overlay delta. Package definitions remain read-only and non-builtin definitions unchanged; plugin overrides/discovery/source precedence and schema rules are unchanged. Built-in identity and custody suites pass; no package execution proof is claimed.","inputs":["docs/reference/agent-plugins.md"]}
+  ]
+}

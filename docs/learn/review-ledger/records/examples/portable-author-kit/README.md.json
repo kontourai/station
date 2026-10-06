@@ -1,0 +1,33 @@
+{
+  "path": "examples/portable-author-kit/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full manifest, Skill/Agent and authoring guide checked; corrected target-source admission to automatic active-local/default loopback only.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/portable-author-kit/agents/portable-author-note/agent.json",
+
+    "examples/portable-author-kit/plugin.json",
+
+    "examples/portable-author-kit/skills/draft-brief/SKILL.md",
+
+    "packages/cli/src/commands/core-api.ts",
+
+    "packages/cli/src/commands/install.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Reviewed source changes: Uses shared envelopeDetailsMessage instead of duplicated formatter; reviewed CLI sentence semantics and inherited SDK refusal documentation. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Integration source review through d72f79b08: #2904 makes core-api requestJson errors carry the envelope's status, code and details without changing the message. Target-source admission (automatic active-local or default loopback only) and the manifest/authoring claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's statements that the preview is reviewed and the CLI submits to the same installation API as the UI, and its local-target rules, still hold. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

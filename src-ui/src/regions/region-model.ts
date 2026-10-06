@@ -1353,3 +1353,80 @@ export function updateRegion(
   }
   return next;
 }
+
+/**
+ * The arrangement as the region SHELLS see it while some surfaces are
+ * suspended — rendered by an owner outside the region model, as Chat is while
+ * the Coding layout's centre holds it (`resolveLayoutChatPlacement`). A read
+ * view, never a write: the record keeps every suspended pane where the user
+ * put it, so leaving the Coding layout brings Chat back exactly as it was.
+ *
+ * Per dock region, a suspended pane leaves `panes`, and the selection moves to
+ * the pane that would succeed it (`normalizeRegionPanes`). A region the
+ * suspension EMPTIES renders nothing — it is hidden, not shown as an empty
+ * chooser (#2153), because the user placed something there that is on screen
+ * elsewhere. A region whose selected pane was suspended loses its maximize:
+ * the maximize was that pane's (Chat's mirror, `dockMirrorDiff`), and
+ * expanding the pane that happens to sit behind it would claim a choice
+ * nobody made. `main` is left alone (Chat never occupies it). Returns the
+ * input by reference when nothing is suspended in it.
+ */
+export function withSuspendedSurfaces(
+  arrangement: RegionArrangement,
+  suspended: readonly string[],
+): RegionArrangement {
+  if (suspended.length === 0) return arrangement;
+  let next = arrangement;
+  for (const id of DOCK_REGION_IDS) {
+    const region = arrangement[id];
+    if (!region.panes.some((pane) => suspended.includes(pane))) continue;
+    const kept = region.panes.filter((pane) => !suspended.includes(pane));
+    const occupantSuspended =
+      region.occupant !== null && suspended.includes(region.occupant);
+    // The neighbour the tab strip would select on a close: the pane after
+    // the suspended one, else the one before it.
+    const index =
+      region.occupant === null ? -1 : region.panes.indexOf(region.occupant);
+    const successor = occupantSuspended
+      ? (region.panes
+          .slice(index + 1)
+          .find((pane) => !suspended.includes(pane)) ??
+        [...region.panes.slice(0, index)]
+          .reverse()
+          .find((pane) => !suspended.includes(pane)) ??
+        null)
+      : region.occupant;
+    const { panes, occupant } = normalizeRegionPanes(id, kept, successor);
+    next = {
+      ...next,
+      [id]: {
+        ...region,
+        panes,
+        occupant,
+        visible: occupant === null ? false : region.visible,
+        maximized:
+          occupant === null || occupantSuspended ? false : region.maximized,
+      },
+    };
+  }
+  return next;
+}
+
+/**
+ * The inverse a WRITE through the suspended view needs: a new tab order
+ * computed from the suspended `panes` (a tab reorder) with every suspended
+ * pane put back at the index it held in the real region, so a reorder made
+ * while Chat is suspended does not drop Chat from the record.
+ */
+export function restoreSuspendedPanes(
+  real: readonly string[],
+  visibleOrder: readonly string[],
+  suspended: readonly string[],
+): readonly string[] {
+  const order = visibleOrder.filter((pane) => !suspended.includes(pane));
+  real.forEach((pane, index) => {
+    if (!suspended.includes(pane)) return;
+    order.splice(Math.min(index, order.length), 0, pane);
+  });
+  return order;
+}

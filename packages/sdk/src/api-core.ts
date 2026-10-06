@@ -3,6 +3,7 @@ import {
   agentId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
+import { resetStationEnvelopeObservations } from './client/station-envelope';
 
 let _apiBase = '';
 const apiBaseWaiters = new Set<() => void>();
@@ -13,6 +14,9 @@ export interface PluginApiIdentity {
 }
 
 export function _setApiBase(apiBase: string) {
+  // Another Station: what the previous one said about the envelope marker
+  // says nothing about this one (#2842).
+  if (apiBase !== _apiBase) resetStationEnvelopeObservations();
   _apiBase = apiBase;
   if (apiBase) {
     for (const resolve of apiBaseWaiters) resolve();

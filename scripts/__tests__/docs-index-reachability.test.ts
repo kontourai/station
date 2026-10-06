@@ -36,11 +36,13 @@ import {
   evaluateDocumentationReview,
 } from '../lib/documentation-review.mjs';
 import { publishImmutableSnapshot } from '../lib/immutable-snapshot.mjs';
+import { readReviewState } from '../lib/review-ledger-store.mjs';
 import {
   forbidAmbientFreshnessMode,
   JOB_ENV,
   pinnedFreshnessEnv,
 } from './helpers/freshness-env.js';
+import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
 
 const makeTempDir = trackTempDirs();
 // Freshness reads here must pin a mode or use the job env explicitly (#2934).
@@ -85,12 +87,13 @@ describe('machine-maintained documentation review boundaries', () => {
       kind: 'generated',
       state: 'source-reviewed',
       documentDigest: documents.get(document)!,
-      sourceRevision: 'b'.repeat(40),
+      documentRevision: 'b'.repeat(40),
       summary: 'Reviewed the generation contract and the historical input.',
       limits: 'Does not independently verify a publication.',
       sources: [dataPath, ...owners].map((path) => ({
         path,
         digest: hash(sources.get(path)!),
+        revision: 'b'.repeat(40),
       })),
       checks: ['Historical generation review.'],
     };
@@ -121,7 +124,7 @@ describe('machine-maintained documentation review boundaries', () => {
       recordedState: 'source-reviewed',
       changed: [],
       documentDigest: f.record.documentDigest,
-      sourceRevision: f.record.sourceRevision,
+      documentRevision: f.record.documentRevision,
       observedChanges: [document, dataPath],
       validation: {
         kind: 'deploy-ledger-projection',
@@ -169,7 +172,7 @@ describe('machine-maintained documentation review boundaries', () => {
         evaluateDocumentationReview(record, f.documents, f.tracked, f.read, {
           requireFresh: true,
         }),
-      ).rejects.toThrow('Documentation review needs refresh');
+      ).rejects.toMatchObject({ code: 'needs-refresh', path: record.path });
     }
   });
 
@@ -321,7 +324,7 @@ describe('machine-maintained documentation review boundaries', () => {
     kind: 'release-note',
     state: 'classified',
     documentDigest: hash('Historical note'),
-    sourceRevision: 'd'.repeat(40),
+    documentRevision: 'd'.repeat(40),
     summary: 'Release intent.',
     limits: 'Publication is not established.',
     sources: [],
@@ -331,7 +334,7 @@ describe('machine-maintained documentation review boundaries', () => {
     const record = note();
     const read = vi.fn();
     const reviews = await compileDocumentationReviews(
-      { version: 1, records: [record] },
+      { version: 2, records: [record] },
       new Map(),
       new Set(),
       read,
@@ -362,7 +365,7 @@ describe('machine-maintained documentation review boundaries', () => {
     ]) {
       await expect(
         compileDocumentationReviews(
-          { version: 1, records: [record] },
+          { version: 2, records: [record] },
           new Map(),
           new Set(),
           vi.fn(),
@@ -372,7 +375,7 @@ describe('machine-maintained documentation review boundaries', () => {
     }
     await expect(
       compileDocumentationReviews(
-        { version: 1, records: [note(), note()] },
+        { version: 2, records: [note(), note()] },
         new Map(),
         new Set(),
         vi.fn(),
@@ -576,10 +579,7 @@ describe('learning atlas', () => {
         ],
       }),
     );
-    await fs.writeFile(
-      join(root, 'docs/learn/review-ledger.json'),
-      JSON.stringify({ version: 1, records: [] }),
-    );
+    writeReviewLedger(root, []);
     for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
       await fs.writeFile(
         join(root, 'docs/learn', asset),
@@ -704,10 +704,7 @@ describe('learning atlas', () => {
       join(root, 'docs/architecture/module-map.md'),
       '## Fixture module\n',
     );
-    await fs.writeFile(
-      join(root, 'docs/learn/review-ledger.json'),
-      JSON.stringify({ version: 1, records: [] }),
-    );
+    writeReviewLedger(root, []);
     await fs.writeFile(
       join(root, 'docs/learn/atlas.json'),
       JSON.stringify({
@@ -792,13 +789,38 @@ describe('learning atlas', () => {
     // #2923: the shared freshness policy decides which stale records block —
     // those this change's own diff touches (scoped), none in the merge queue
     // or on main (advisory), all when the scope is unknown (strict).
-    const ledger = JSON.parse(
-      readFileSync('docs/learn/review-ledger.json', 'utf8'),
-    );
+    const root = process.cwd();
+    const trace = join(makeTempDir('station-review-count-'), 'git.jsonl');
+    const previousTrace = process.env.GIT_TRACE2_EVENT;
+    const { ledger } = (() => {
+      process.env.GIT_TRACE2_EVENT = trace;
+      try {
+        return readReviewState(root, { history: false });
+      } finally {
+        if (previousTrace === undefined) delete process.env.GIT_TRACE2_EVENT;
+        else process.env.GIT_TRACE2_EVENT = previousTrace;
+      }
+    })();
+    const countReadGitCommands = readFileSync(trace, 'utf8')
+      .trim()
+      .split('\n')
+      .flatMap((line) => {
+        const event: { event: string; name: string } = JSON.parse(line);
+        return event.event === 'cmd_name' ? [event.name] : [];
+      });
+    // Counting records needs working-tree discovery, not landing-history replay.
+    expect(countReadGitCommands).toContain('ls-files');
+    expect(
+      countReadGitCommands.filter((command) =>
+        ['log', 'rev-list', 'merge-base', 'cat-file', 'ls-tree'].includes(
+          command,
+        ),
+      ),
+    ).toEqual([]);
     // The real ledger runs in the job's own mode: scoped on a pull request,
     // advisory in the merge queue, on main and in the repo-scans job.
     const result = await checkDocumentationFreshness({
-      root: process.cwd(),
+      root,
       env: JOB_ENV,
     });
     const advisory = formatFreshnessAdvisory(result.policy, result.advisory);
@@ -816,15 +838,17 @@ describe('learning atlas', () => {
       kind: 'current',
       state: 'source-reviewed',
       documentDigest: digest('Guide'),
-      sourceRevision: 'a'.repeat(40),
+      documentRevision: 'a'.repeat(40),
       summary: 'Checked the caller and failure path.',
       limits: 'No live provider was exercised.',
-      sources: [{ path: 'owner.ts', digest: digest('code') }],
+      sources: [
+        { path: 'owner.ts', digest: digest('code'), revision: 'a'.repeat(40) },
+      ],
       checks: ['Focused caller test passed.'],
     };
     const docs = new Map([['guide.md', digest('Guide')]]);
     const files = new Set(['guide.md', 'owner.ts']);
-    const ledger = { version: 1, records: [record] };
+    const ledger = { version: 2, records: [record] };
     const read = async () => 'code';
     expect(
       (await compileDocumentationReviews(ledger, docs, files, read)).get(
@@ -849,7 +873,11 @@ describe('learning atlas', () => {
         async () => 'changed code',
         { requireFresh: true },
       ),
-    ).rejects.toThrow('Documentation review needs refresh');
+    ).rejects.toMatchObject({
+      code: 'needs-refresh',
+      path: 'guide.md',
+      changed: ['owner.ts'],
+    });
     const changedDoc = new Map([['guide.md', digest('Changed guide')]]);
     expect(
       (await compileDocumentationReviews(ledger, changedDoc, files, read)).get(
@@ -861,7 +889,7 @@ describe('learning atlas', () => {
     ).rejects.toThrow('Invalid review source');
     await expect(
       compileDocumentationReviews(
-        { version: 1, records: [record, record] },
+        { version: 2, records: [record, record] },
         docs,
         files,
         read,
@@ -870,7 +898,7 @@ describe('learning atlas', () => {
     expect(
       (
         await compileDocumentationReviews(
-          { version: 1, records: [] },
+          { version: 2, records: [] },
           docs,
           files,
           read,

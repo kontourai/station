@@ -22,8 +22,12 @@ a direct IPv4, IPv6, or IPv4-mapped loopback peer. A public tailnet Host is
 remote even when a Station-owned proxy's next hop is loopback. Every
 non-loopback peer is remote, and missing peer metadata fails closed.
 
-`Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored. Station has no
-generic trusted-proxy mode. Raw Tailscale identity headers are also stripped.
+`Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored as authority:
+they never make a request more local or more trusted. Their presence only
+marks a raw operator-credential use as off-host in the #2894 telemetry below,
+and Station's UI proxy reports when its own client sent one
+(`x-station-proxy-client-forwarded`). Station has no generic trusted-proxy
+mode. Raw Tailscale identity headers are also stripped.
 If `STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN` names the exact HTTPS origin, the
 loopback-only UI proxy accepts Tailscale Serve's sanitized, WhoIs-backed user
 headers for that authority when Funnel is absent, converts them into a bounded
@@ -42,6 +46,60 @@ external reverse proxy or any caller-supplied forwarding header. Keep the
 repository-owned private-tailnet deployment described in the
 [deployment guide](../guides/deployment.md) private, and do not expose it to an
 untrusted network.
+
+Consent decisions are served by a separate listener on its own origin. By
+default review URLs are `http://<request host>:<consent port>`. If
+`STATION_TRUSTED_CONSENT_ORIGIN` names an exact HTTPS origin (for example a
+second Tailscale Serve mapping to the consent port), Station issues review URLs
+at that origin and accepts a decision from it when the request `Host` is that
+name and the `Origin` header equals it exactly, in addition to the existing
+nonce, Fetch Metadata and session checks. The port-pinned
+`http://<host>:<consent port>` path still works alongside it. The HTTPS name
+must be the same hostname as the app's, because the host-only consent cookie is
+not sent across hostnames and a mismatch fails closed as `unauthenticated`. The setting adds no authority: a different
+HTTPS origin is refused, the origin is not an `ALLOWED_ORIGINS` entry, and a
+malformed value (http, path, userinfo, wildcard, IP literal, port 0, trailing-dot host) stops
+startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
+marking it so would break the plain-http consent path. See
+the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
+
+Operator passkey enrollment (#3257, slice S2b) runs on this origin and only when
+`STATION_TRUSTED_CONSENT_ORIGIN` is set; without it enrollment is unavailable
+(an IP-only Station has no remote operator sign-in). A paired browser opens an
+enrollment request and sees a six-digit code; the host operator types that code
+into `station environment operator passkeys approve <code>`, and only then may
+the WebAuthn registration ceremony run. The host listing never prints the code,
+so confirming means comparing the two screens. Properties, each pinned by a test
+in `operator-passkey-enrollment.test.ts`:
+
+- The code is compared in constant time against every pending request, works
+  once, expires after five minutes, and five wrong codes in five minutes lock
+  confirmation (the right code included). At most five requests are live.
+- The request id is a bearer capability bound to the requesting browser's
+  credential; another browser gets the same answer as for an unknown id.
+- Each registration challenge is single-use (taken before verification, so a
+  failed attempt burns it), expires within two minutes, and belongs to one
+  confirmed request. One confirmation enrolls one passkey.
+- The expected origin and RP ID come from the configured origin, never from the
+  request. User verification is required, attestation is `none`, and a
+  cross-origin (framed) ceremony is refused. Every state-changing route also
+  needs the exact `Origin`, `Sec-Fetch-Site: same-origin`, a JSON content type
+  and a paired-device cookie.
+- Any paired device may open a request, so approval is informed: the host sees
+  the requesting device's id, pairing date and scopes (from the pairing
+  registry, not the device-chosen name), an interactive `approve` asks for
+  confirmation, a non-interactive one must name the device (`--device`), and a
+  device that borrows the operator-browser label is shown as a paired device.
+  `deny` can withdraw an approval until the passkey is created.
+- Only the public key is stored, in a private SQLite file created at the first
+  enrollment under the Station home. Logs and metrics carry no code, request id, challenge or credential id.
+- The enrollment state lives in process memory; a restart drops pending
+  requests, and the browser asks again.
+
+Nothing accepts an enrolled passkey yet: sign-in and step-up are later slices.
+Revoking a passkey is a host action (`... passkeys revoke <id>`) until remote
+revoke with a step-up from another passkey (D8) lands. See
+[Enroll an operator passkey](../guides/operator-passkeys.md).
 
 Origin and authentication are independent controls:
 
@@ -73,6 +131,7 @@ malformed identity never produce verified provenance.
 | `GET`/`POST /api/account-auth/**` | Public at the Device gate; account router enforces its own endpoint, account, Origin, body-size, and attempt checks, and refuses unknown operations | Same; account authentication does not grant Device or Project authority | Same |
 | Other explicitly declared authentication contracts: local-secret/bootstrap, relay enrollment, answer sharing, station-control MCP, inbound webhook, and attachment stage upload | Each exact route enforces its own capability; loopback alone does not satisfy it | Same owner-specific checks | An ordinary Device credential does not replace that capability |
 | HTTP routes classified as pairing-scoped, including ordinary `/api/**`, `/agents/**`, `/acp/**`, `/events/**` and chat/invoke/stream routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Subject to current scope and resource authorization |
+| Pairing-scoped routes and the pairing request, access-request, and exchange, declaring (or, absent the header, read as) a client protocol below `minClientProtocol` | `426 client_protocol_unsupported`, before any credential check; a malformed `X-Station-Client-Protocol` is `400` ([admission](#client-api-protocol-admission-2962)) | Same | Same |
 | Unknown HTTP routes without a capability-table entry | `403 insufficient_scope` | Same | Same |
 | Pairing-authenticated HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
@@ -114,7 +173,7 @@ commit or executable identity. Its schema is:
     "serverVersion": "<station package version>",
     "protocolVersion": 1,
     "minClientProtocol": 1,
-    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1 }
+    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1 }
   },
   "capabilities": { "sshEnvironments": true, "webPushNotifications": true }
 }
@@ -122,6 +181,108 @@ commit or executable identity. Its schema is:
 
 The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
+
+### Client API protocol admission (#2962)
+
+A client states the client API protocol it was built against in
+`X-Station-Client-Protocol: <integer>` (`CLIENT_PROTOCOL_HEADER` in
+`packages/contracts/src/environment-security.ts`). Like the client-origin
+header, it is a compatibility signal and never authority. The host enforces
+the same `compatibility` block the handshake advertises, before any
+credential check:
+
+| Request | Answer |
+| --- | --- |
+| Header at or above `minClientProtocol`, including a protocol newer than the host's | Admitted; whether a newer client can use this host is the client's own check |
+| Header absent | Read as protocol 1, so admitted while `minClientProtocol` is 1 and refused once it rises |
+| Header below `minClientProtocol` | `426` with `error.code` `client_protocol_unsupported`, `minClientProtocol`, `serverVersion`, and a sentence telling the reader to update the app |
+| Header present but not one integer from 1 to 9999 (empty, signed, zero-padded, repeated, or larger) | `400` with `error.code` `client_protocol_invalid` |
+
+The check covers every paired-scope route and the public pairing request,
+access-request, and exchange routes, so an outdated client is refused before
+it pairs. It does not cover the public handshake and proof, which an outdated
+client must still reach to learn why; liveness and the direct-loopback
+owner-secret routes, whose callers are launchers governed by the launcher
+protocol; MCP-token, webhook, stage-grant, relay-enrollment, share-token, and
+account-authentication routes, which have their own callers; or Station's own
+attested loopback consumer. The navigation-reached landing page, `/doc`, `/ui`,
+and integration icons are also exempt: browser navigation, iframe/link loads,
+and image elements cannot attach a custom request header. The exemption is
+these declared route IDs, not every route an element might load; attachment,
+MCP UI resource and preview reads through the SDK remain covered.
+
+Both protocol refusals emit `station.auth.failure` within a separate direct-peer
+protocol audit budget (default: 10 audits per 60-second window), with outcome
+`denied` and the refusal code as reason. An unsupported protocol records its
+parsed integer; a malformed value is never copied into the audit. The owner is
+[`runtime-http.ts`](../../src-server/runtime/bootstrap/runtime-http.ts).
+The audit limiter reuses `RuntimeAuthFailureLimiter` with its 1,024-peer cap,
+keyed by the direct socket address. The cap evicts live entries, so an
+attacker holding more than 1,024 distinct socket sources can reset a peer's
+count and exceed 10 audits per window; the bound is per peer only while fewer
+peers are tracked, and memory stays bounded. Exhaustion suppresses only audits: every
+refusal still receives 400/426. Protocol refusals neither consult nor consume
+the authentication budget, so clients sharing a proxy or NAT can correct their
+header and authenticate without being locked out by protocol refusals.
+
+Terminal and voice WebSockets are not covered yet, deliberately. Their
+upgrades never pass the HTTP boundary that runs this check (each socket
+server listens on its own port with its own `verifyClient`), and a browser
+`WebSocket` cannot set a request header, so carriage would need a query
+parameter or subprotocol on both ends. A subprotocol is the wrong vehicle: a host that does not echo an offered subprotocol makes
+the browser fail the connection, so a newer client would lose every older
+host. A query parameter is harmless to older hosts and is the planned
+carriage, added together with the check on each socket's own upgrade path.
+
+Clients send the header from the SDK request seam (which the CLI uses), the
+pairing client, and the connection health probe. The CORS preflight allow-list
+includes it. Same-origin browser requests, Node callers, and host-owned native
+or encrypted relay transports can send it without preflight negotiation.
+Cross-origin browser requests send it only after the host's public handshake
+advertises `compatibility.capabilities.clientProtocolHeader >= 1`. The
+[shared policy](../../packages/shared/src/client-protocol.ts) remembers this
+per origin in process memory and removes the observation when the capability
+is no longer advertised. The UI clears the prior observation when a handshake
+starts. Across both UI
+callers, only the latest-started handshake per origin may restore acceptance;
+its non-OK response, invalid JSON or transport error leaves acceptance cleared.
+An older overlapping success cannot restore it. Older or unobserved hosts
+receive no header and read the request as protocol 1.
+
+The native pairing exchange, which Rust builds itself, remains undeclared.
+Direct `fetch` callers that bypass the SDK seam also remain undeclared, including
+the notification action and local UI identity requests in `src-ui` and the
+`station operate` event stream in the CLI. The ratchet in
+[`client-protocol-admission.test.ts`](../../src-server/runtime/__tests__/client-protocol-admission.test.ts)
+blocks raising `minClientProtocol` above 1 while these four known callers remain
+on its list. Removing an entry requires carriage evidence; the test is not an
+automatic discovery of every caller. Terminal and voice admission needs its
+separate implementation before a raised minimum covers those listeners.
+
+## Separate native relay pilot
+
+The opt-in [native enrollment ceremony](../design/native-relay-enrollment.md)
+and [Device-proof pilot](../guides/deployment-authentication.md) have separate
+source-composed boundaries. They do not extend this document's direct-LAN and
+private-tailnet qualification to an Internet relay or a shipped native journey.
+
+The runtime admits the exact native bootstrap POST leaves only through private,
+current Pion provenance and an approved native installation surface. After
+`begin`, candidate proof fences each ceremony operation. Operator surface approval and pending Device enrollment approval require
+a current real operator credential; a routing grant is transport authority only.
+The server completes enrollment recovery before admission. Credential delivery
+is sealed to the host's enrollment key, with Device binding and activation kept
+separate from account verification.
+
+For the selected native member route, neutral Station observations can use
+current Device proof alone when no account material is supplied. Project and
+shared-work reads still require current account and Project authority. The
+native invitation-acceptance operation verifies both Device and account
+provenance, without a browser cookie or Origin. The fixed native logout retires
+its account continuation and actual provider session; it leaves Device custody
+independent. Ordinary resource writes, operator work and compute are unsupported.
+Desktop and mobile host command registration is source evidence; fresh native
+application enrollment and physical-device acceptance remain separate evidence.
 
 ## Credentialed consumers (station#2051)
 
@@ -314,13 +475,18 @@ default to the historical four-token grant rather than Standard:
   pairing request.
 
 Beyond the presets, the operator adds elevated scopes to an already-paired
-device, never at pairing: in the desktop app (**Paired devices** → the device
-→ **Change access**) or on the Station host with `station environment access
-scope <device> --add|--remove|--set <scope>` (#1796). Both use
+device, never at pairing, on the Station host with `station environment access
+scope <device> --add|--remove|--set <scope>` (#1796). That uses
 `POST /api/pairing/devices/:id/scope`, which only the operator credential
 reaches; the CLI verbs additionally refuse any non-loopback target before
 reading a credential, so a paired remote CLI cannot run them, and there is no
-remote operator authentication. `access:manage` is not grantable this way.
+remote operator authentication. The **Paired devices** panel offers **Change
+access**, but the host desktop app presents its local-grant device credential,
+not the operator credential, so the route answers it 401. From the panel,
+only a browser that presents the operator credential itself, as its saved
+connection credential or pasted for the write, reaches it
+([operator device access](../design/operator-device-access.md), #2894).
+`access:manage` is not grantable this way.
 Each change is sent with the scope it replaces (`expectedScope`) and a
 concurrent change returns 409 `scope_changed` instead of being overwritten;
 the change drops the device's live terminal and voice leases. One such scope,
@@ -335,8 +501,15 @@ the operator. Attribution is exact, from the server-derived actor on the
 decision or beside the start's `host` stamp. The sessions its grant unconfined
 run confined again, because the stamp is checked against the grant at every
 turn start and respawn. A running turn finishes; the next one is confined and
-asks. The exception is a running engine with no decision standing: it keeps
-its start posture until it restarts, and it is listed. Full access from the
+asks. With no decision standing, the confinement change itself makes the next
+turn re-apply the engine's mode confined (#2898), so no engine keeps its start
+posture past its next turn. A turn that started unconfined cannot be extended
+by steering: Station refuses a steer into it (`confinement-changed`), so new
+instructions wait for the confined next turn. Answers to that turn's own
+questions and approval requests still reach it (an accepted residual; Stop
+now ends it). Each session still running
+unconfined is listed until then, and the operator can stop it at once from the
+revocation notice. Full access from the
 operator, another device, or an Agent or Station default on someone else's
 session is listed and left alone. So are live sessions started before
 grantors were recorded (at most 50, with the total).
@@ -345,9 +518,12 @@ Enforcement is a single route -> required-scope table
 (`src-server/security/pairing-route-scopes.ts`) consulted by one piece of
 middleware, never scattered per-handler checks. Every authenticated HTTP route
 family and both the terminal and voice WebSocket upgrade paths are listed;
-GET/HEAD routes require `orchestration:read`, mutating methods require
-`orchestration:operate`, the terminal WebSocket requires `terminal:operate`,
-and the voice WebSocket requires `orchestration:operate`. Pairing-family routes
+Ordinary GET/HEAD routes require `orchestration:read` and ordinary mutating
+methods require `orchestration:operate`; explicit family and leaf rules can
+require a different tier. All `/api/registry/sources` methods require
+`access:manage` plus a separate Station operator principal check in the handlers.
+The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
+requires `orchestration:operate`. Pairing-family routes
 have additional credential-kind and explicit approval-leaf rules described
 above; a generic operate grant cannot reach them. A
 route the table does not recognize fails closed — denied, with a loud server
@@ -363,6 +539,23 @@ is not itself a pairing grant,
 reports `DEFAULT_GRANT_PAIRING_SCOPE` for it: the frozen four tokens, excluding
 `inference:invoke` and later promotions. Operator-specific route authority is a
 separate check, not a claim that this credential carries every scope.
+
+The engine sign-in exception admits a currently verified operator to the profile
+index, account metadata, and registered-profile login leaves. A paired device
+needs explicit `engine:login`. Account metadata projects references, labels,
+authentication state and observed login support; it excludes paths, commands,
+environment, policy and diagnostics. Current authority is checked before private
+work and publication. No new login route admits a default/global account target.
+Codex device codes and Claude browser codes stay within the engine-owned login;
+raw CLI output is private. Saved Claude profiles override both the config root
+and secure-store root so an ambient Keychain namespace cannot select another
+profile's account.
+
+Quota reads remain `access:manage`: they borrow a selected account's stored token
+for an outbound provider request. An engine-login grant alone admits neither
+quota reads nor account creation or manual enrolment metadata. Activity uses the existing management-scoped rollup API even for local-only
+reads; its engine filter does not lower that floor, grant access to another
+principal's receipts or make them per-account billing.
 
 ### Coding routes: command execution and client paths (#2412)
 
@@ -408,6 +601,179 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   The one exception is `GET /api/coding/repos` without a Project, which the
   New Project form uses to ask about a folder that is not a Project yet: it
   answers the operator in person only.
+- **git acts on the Project's own repository, never one a folder points
+  at.** A Project's folders are member-writable, and git picks its
+  repository from the folder it runs in. A `.git` file naming another
+  repository, a symlinked `.git`, a git directory whose entries are links
+  into another repository (down to a single linked loose object) or that
+  borrows its objects (`objects/info/alternates`), and a git directory whose
+  `core.worktree` names a folder above the Project would each make status,
+  log, diff, branches or the repository listing report another repository on
+  the host, and make checkout move that repository's branch and write its
+  files into the Project. So those routes run one discovery, check the pair
+  it reports with
+  [the same verdict Commit and Push require](../../src-server/services/projects/git-directory-confinement.ts),
+  and name that pair (`--git-dir`/`--work-tree`) on every later call
+  ([`git-read-repository.ts`](../../src-server/services/projects/git-read-repository.ts)).
+  The repository that contains the Project from above is used only when the
+  folder above reports the same pair itself. A refused folder answers `409
+  git-dir-outside-project` with a reason that names no host path; the
+  repository listing still lists it, without a branch. Worktree
+  provisioning, its preflight, the independent-review workspace and the
+  review lens policy read require the same of the folder they are given.
+  Checkpoint capture, restore, the checkpoint reads and the delete and
+  prune paths resolve the folder's repository once the same way and run
+  every git call on the Station-owned directory described below; the
+  delete and prune remove files only under the common directory that
+  check reported, through folders that are ordinary folders. STILL OPEN:
+  the pull-request repository context, the workspace identity key, the
+  Task workspace binding and the Project identity and resource reads of a
+  checkout's remotes still let git discover the repository from the folder.
+  They read (a branch name, a remote address, a repository root) and write
+  nothing; through a planted `.git` they report another repository's.
+- **A read runs git on a git directory Station owns, not the repository's.**
+  A repository's config can name programs (a clean filter, a diff driver,
+  an external diff), and it can be rewritten in place, or have a
+  `config.worktree` created beside it, between Station judging it and git
+  reading it. A read therefore builds a git directory of its own
+  ([`git-read-repository.ts`](../../src-server/services/projects/git-read-repository.ts)):
+  the repository's configuration as `git config --list` reported it once
+  (includes resolved, per-worktree configuration folded in,
+  `extensions.worktreeConfig` not carried, so git opens no included file
+  and no `config.worktree` later), its HEAD, a copy of its index, and
+  `objects`, `refs` and `packed-refs` linked back to the repository.
+  `info/attributes`, hooks and reflogs are not carried; in-tree
+  `.gitattributes` can only select a filter or driver the copy does not
+  define. Every command that prints a diff also runs with `--no-ext-diff`
+  and `--no-textconv`. The File Preview's per-file Changes read
+  (`POST /api/projects/:slug/file-preview/changes`) is the same read: it
+  resolves the file's folder against the Project (or the Session's own
+  checkout) the same way, runs its `diff` on the same kind of directory,
+  and answers `503 repository-busy` as below; deterministic tests drive a
+  `.git` file, a linked `.git`, alternates, `core.worktree` above the
+  Project, each program key, and a `config.worktree`, a `.git/config` and
+  a `.git` swapped between the judgement and `git diff` through that route.
+  Measured this round (git 2.50.1, APFS, a process
+  flipping every 20 ms): with `.git/config` rewritten in place to name a
+  clean filter, the planted program ran on 0 of 100 reads (51 answered
+  `repository-config-refused`, 47 `repository-busy`, 2 read the clean
+  config); with a `config.worktree` naming it created and removed under
+  `extensions.worktreeConfig`, 0 of 100 (32 refused, 68 busy). Checkpoint
+  capture, restore and the checkpoint reads run on the same kind of
+  directory; with `.git/config` rewritten every 30 ms, a planted clean
+  filter ran on 0 of 60 automatic captures (38 captured, 22 refused).
+- **A write that must land in the repository (checkout, a `worktree add`
+  for provisioning or the independent review) runs git with its own git
+  directory named and Station's copy as the common directory**
+  (`GIT_COMMON_DIR`). git reads its configuration from the common directory,
+  so the judged copy is the only configuration it has, while HEAD, the
+  index and the HEAD reflog are written where they live, and a new branch,
+  its reflog and a new worktree's entry go through the copy's links into
+  the repository (git names the entry by its real path; measured on
+  git 2.50.1). Measured this round with `.git/config` rewritten in place
+  every 30 ms to name a smudge filter: the previous round's checkout ran it
+  on 41 of 100 checkouts, this one on 0 of 100 (68 checked out, 32 refused
+  the config they met). Deterministic tests rewrite the config after the
+  judgement and before `checkout` and `worktree add` start, and show the
+  checkout, branch and reflog in the repository itself.
+- **A read is checked again after it ran.** git opens the copy's links by
+  path when it runs, so a `.git` swapped after the check, or a folder above
+  the repository renamed away and another put in its place, would still be
+  followed. After a read the routes compare the identity and change times
+  of every folder from the member-writable root down to the repository, the
+  `.git` entry, every directory the check listed, and the files that steer
+  git (`commondir`, `config`, `config.worktree`, `info/attributes`,
+  `packed-refs`, `HEAD`) with what they were before, discard the output on
+  any difference and read again, up to four times; a repository that keeps
+  changing answers `503 repository-busy` with `Retry-After`, which is not a
+  refusal. Measured this round, 500 requests each over status, log, diff,
+  branches and the listing, with nothing of the outside repository in any
+  answer: `.git` flipped between the member's repository and a file naming
+  another (2913 flips), a link to another (2779 flips), and the folder
+  above the repository swapped for one holding such a file (633 flips). The
+  cost: a repository being written continuously reads as changing. A commit
+  every 0.5 s and a `git add` every 0.2 s were answered on 60 of 60 reads
+  each; a tight loop writing a new object every few milliseconds was
+  answered `repository-busy` on 60 of 60. This is a detection, not an
+  atomic open. It relies on the file system recording change times: a
+  folder directly inside the member-writable root is watched by its own
+  change time, which a rename updates on APFS (measured). It does not cover
+  a hard link to another repository's object, which takes an account that
+  can already read it.
+- **A write is checked immediately before it starts, not made atomic, and
+  the moment between that check and git opening the path is open.** A
+  checkout writes HEAD and the index by the repository's own path. Measured
+  this round, 300 checkouts each, `.git` flipped with a 30 ms dwell on each
+  side: swapped for a file naming another repository, the previous round
+  moved that repository's HEAD on 39 of 300, this round on 0 of 300 (git
+  failed on 113 of them); swapped for a link to it, 24 of 300 before and
+  between 0 and 15 of 300 across six runs now (2, 3, 12, 0, 1 and 15; the
+  rate rises with host load, up to about 5%), each reported as
+  `repository-changed-during-write`;
+  with a 200 ms/50 ms dwell, 2 of 300 before this round. No file of the
+  other repository was written into the Project in any of these runs. The
+  numbers fell because the pre-write check is now followed directly by the
+  spawn; they are not zero and are not claimed to be. A checkpoint capture
+  builds its objects in a Station-owned directory
+  (`GIT_OBJECT_DIRECTORY`) and moves them into the repository only after
+  the check: under the link flip the previous round wrote 43 of the
+  Project's objects into the other repository over 80 captures and no ref;
+  this round 0 objects and 0 refs (46 captures refused, 30 degraded, 4
+  refused for HEAD state). The move and the ref write still go by path,
+  as do a checkpoint delete or prune (`rm` under the common directory that
+  was checked) and the branch and worktree entry a `worktree add` writes.
+  Closing these needs git, and Station, to act on an already-opened
+  directory, which neither does.
+- **A nested repository is never entered or reported.** A submodule's git
+  directory and config are the member's own, and with `diff.submodule` set
+  git runs another git inside it. Every command runs with
+  `--ignore-submodules=all`, `diff.ignoreSubmodules=all` and
+  `status.submoduleSummary=false`, so a changed submodule does not appear in
+  status or diff at all, and neither Commit nor a checkpoint records a
+  nested repository's commit (a nested `.git` file can name any repository
+  on the host, whose commit id would otherwise be published).
+- **A Project has worktrees only when its repository is its own.** The
+  registered-worktree reach above is git's worktree list as seen from the
+  Project's folder. A `.git` planted at the Project's root naming another
+  repository would make that repository's checkouts "worktrees of the
+  Project", so
+  [the listing](../../src-server/services/projects/verified-worktrees.ts)
+  answers only when the Project's own repository passes the verdict above;
+  otherwise the Project has none, and every route (file reads and edits,
+  `/exec`, checkout, git reads, a session's workspace directory) answers
+  `403 outside-project` for them. STILL OPEN, by choice: a linked worktree
+  is vouched for by its registration in the repository it belongs to, and a
+  registration left behind by a worktree that was removed without `git
+  worktree prune` vouches for whoever recreates that folder's `.git` file.
+  Station cannot tell that file from the one git wrote.
+- **No git read fetches, and none runs a repository's credential helper.**
+  A repository can declare itself a partial clone with an object missing;
+  any command that touches the object would then fetch it from the
+  repository's own remote and run its own `credential.helper` as the
+  operator. [The git runner](../../src-server/utils/git-exec.ts) gives every
+  command that is not itself a network command no transport
+  (`GIT_ALLOW_PROTOCOL`), no lazy fetch (`GIT_NO_LAZY_FETCH`) and no
+  credential helper. A genuine partial clone (`--filter=blob:none`) is
+  therefore read like any other repository, and a read that needs an object
+  it has not fetched answers `409 object-not-available` instead of fetching.
+  The coding reads, checkout, checkpoints, worktree provisioning and the
+  review workspace also refuse a repository whose own configuration sets an
+  unrecognised `extensions.*` or a key naming a program, a network target
+  or a file git reads by name
+  ([the list and its basis](../../src-server/services/projects/git-repository-config.ts));
+  an `include.path` of a file inside the repository is admitted (resolved
+  once into the copy), one from outside is refused by that name. Commit and
+  Push, which read the repository's configuration themselves and are
+  network commands, refuse every include, a partial clone and every
+  `http.*` key as well. A refusal names the keys and the command that
+  removes them, and for `filter.lfs.*` (`git lfs install --local`) the
+  global install that applies by design. Measured this round on git 2.50.1
+  only. NOT_VERIFIED: older git (`GIT_NO_LAZY_FETCH` is ignored before
+  git 2.45, where the refused transport and the cleared helper are what is
+  relied on; the copy relies on `GIT_COMMON_DIR`, git 2.5 and later, and on
+  `worktree add` naming the new entry by its real path through a link,
+  seen on 2.50.1), newer git, and Git LFS itself (a global `filter.lfs.*`
+  is the operator's configuration and runs as in a terminal; not run here).
 - **Choosing a Project's folder takes the same authority as running
   commands.** The folder is what every route above is confined to, so setting
   `workingDirectory` on `POST /api/projects` or changing it on `PUT
@@ -416,6 +782,125 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   read by both gates). Anyone else gets `403 working-directory-not-granted`
   and nothing is saved; an update that sends the folder the Project already
   has is not a change, and every other Project edit keeps its operate tier.
+  The same rule is applied, as a separate check per route, to these routes and
+  to no others
+  ([`working-directory-authority.ts`](../../src-server/routes/working-directory-authority.ts),
+  reading `mayChooseWorkingDirectory` beside the Project gate); a paired
+  device that lacks `coding:exec` gets the same `403
+  working-directory-not-granted` and nothing happens:
+  - a session start whose `target.workspace` is `{ kind: 'directory' }`:
+    `POST /api/orchestration/chat`, `/chat/delegated`, `/chat/background`,
+    `/conversations/:id/handoff` and `/delegations`;
+  - `POST /api/tasks/:taskId/dispatch` and `POST /api/starter-work/launch`
+    (`start-task`) with a `runtimeConfig.cwd` other than the folder of the
+    Task's own Project (naming that folder is not a choice, and the Project
+    page sends it);
+  - `POST /api/projects/attach` with a `workingDirectory`, and `PUT
+    /api/projects/:slug/identity/execution-root` setting a path (clearing it
+    is not a choice).
+
+  The check fails closed: a request is refused unless it is Station's own
+  server code or the operator in person or a device holding `coding:exec`, so
+  a kind of caller added later is refused until it is decided. `terminal:operate`
+  is not the authority: a `delegation` device and a `standard` device alike
+  need the grant. A `kind: 'project'` target is already confined to that
+  Project's folder and is unchanged, and a station-control tool call is
+  confined by `scopeDispatch`. Not a folder choice, so unchanged: the
+  Project-confined coding routes and the Task `workspaceBinding` paths (below).
+
+  Choosing a command, or code Station will run, takes the same authority,
+  decided by the same check (`refusesWorkingDirectoryChoice`), with its own
+  code, `command-not-granted`, and nothing saved or run. It covers exactly:
+  - `POST /acp/connections`, and `PUT /acp/connections/:id` when `command`,
+    `args` or `cwd` change (an empty `args` or `cwd` is the same as none;
+    renaming, toggling, listing, removing and reconnecting are unchanged;
+    reconnect re-probes the stored command and cannot change it);
+  - `POST /integrations` and `PUT /integrations/:id` when `command` or `args`
+    are set or change, when a record that holds a command but did not launch it
+    (a URL transport) is changed to launch it, and when any value is submitted
+    for `env` or `secretEnv` on a command-launching (stdio) server. The child
+    receives `env` and the resolved secret env as its environment
+    (`mcp-manager.ts` `withResolvedMCPEnvironment`, then the stdio transport),
+    and any variable can steer a launched program (`NODE_OPTIONS`, `PATH`,
+    `BASH_ENV`, `PYTHONPATH`, `LD_PRELOAD`), so there is no key list. Removing a
+    stored key (`removeSecretEnvKeys`) and an empty `env` are not refused, and
+    `env` on a server that launches nothing (a URL transport) is allowed;
+  - `POST /api/plugins/install`, `POST /api/plugins/:name/recover`,
+    `POST /api/plugins/:name/update`, `POST /api/registry/plugins/install` (also
+    reached through `POST /api/registry/agents/install` for a plugin id) and
+    `POST /api/registry/integrations/install` (a marketplace manifest names the
+    command it stores). The existing person-only gate stays; the check is in
+    addition;
+  - `POST /api/projects/:slug/flow/runs/:runId/evidence/command`, which runs the
+    command line the body names;
+  - `PUT /config/app` when `terminalShell` changes. An agent's station-control
+    call (the Station-internal principal, otherwise exempt) may not change it,
+    in the tool (`update_config`) and in the route, as it may not raise the
+    default approval mode to full access;
+  - `/api/secret-bindings`, which the default grant reaches (it includes
+    `access:manage`, which is not `coding:exec`): `POST /:id/bind` with an
+    `integrationId`, `POST /integrations/:id/migrate-stored-env` and its alias
+    `POST /:id/migrate-stored-env`, and `PUT /:id` for a binding that is
+    already bound to a server, when that server launches a command (the same
+    inference as above; a server that cannot be read counts as launching one).
+    A bound value becomes the launched command's environment, so attaching one
+    or changing the value of one that is attached chooses that environment.
+    Unbind, revoke, create, list and get are not refused, and a binding to a URL
+    server or an ACP provider header is not either. A bind is checked before the binding
+    is read, for a missing or hidden binding too (a binding created between the
+    route's read and the service's would otherwise attach unchecked), so a caller
+    without the grant gets `command-not-granted` for a missing, hidden or visible
+    instance binding alike, and one with it gets the service's 404. A bind of a
+    person-owned binding is the one skip: it still gets the service's 400 (it
+    can never be granted to a shared integration, and an owner never changes),
+    because nothing can attach. There is no
+    exemption for a person's own token on a command-launching server: person-owned
+    bindings cannot be created or granted today, and an integration definition
+    declares no per-principal environment variable name (`credentialOwnership` is
+    a flag for per-person OAuth tokens on URL servers, with no env name; a stdio
+    server's `env` keys are instance-level) One device cannot hold both
+    `access:manage` and `coding:exec` (a scope edit cannot re-grant
+    `access:manage`), so in practice only the operator passes these;
+  - `POST /api/registry/agents/install` when the id is not a plugin the plugin
+    resolver knows: the agent face delegates to the same provider `install`
+    that copies a plugin tree into the plugins directory
+    (`json-manifest-registry.ts` `install`, `agentRegistry().install`), which
+    startup and `/api/plugins/reload` would then load, so it takes the same
+    authority as a plugin install.
+
+  The accepted cost: entering an API key for a command-launching tool server
+  from a paired device without `coding:exec` now needs the grant, or the
+  operator on the host. A secret binding is not a way around it.
+
+  Checked and not run-new-code or a command choice: the ACP registry install
+  (the command comes from the built-in registry or an installed plugin), ACP
+  provider settings (a URL and headers), `/api/connections` and `/api/providers`
+  (their `config` names no executable that is read; Claude's executable is the
+  installed copy), scheduler jobs (a prompt for an Agent), Agent definitions
+  (they reference tool servers by id), Skill `command` (a slash-command word),
+  marketplace source management and `POST /api/plugins/preview` (they list
+  and fetch and read a manifest; nothing is executed until an install, which is
+  guarded), `POST /api/projects/:slug/plugin-draft/lease` (it starts a bundler
+  build of the Project folder: the build is Station's own esbuild run in a
+  disposable child (`plugin-draft-build-process.ts`, `plugin-draft-build-child.ts`)
+  with a minimal environment (`PATH`, temp and Windows basics), a Station-owned
+  plugin list and the tsconfig parsed rather than run (`packages/shared/src/build.ts`),
+  so no script, config or package hook from the folder is executed; the bundle is
+  only served, and runs when a viewer's tab loads it), `POST /api/plugins/reload` (reconciles plugins already installed),
+  plugin grants, settings and command effects (they act on already-installed
+  code), and the Agent and skill registry installs (prompts and text). Task
+  `workspaceBinding` paths are not a folder choice either: Task creation
+  (including the starter launch's task) derives the binding from the Project and
+  refuses a contradicting path (`task-graph-service.ts`, pinned by its test), so
+  the folder the Task output reader later reads is always the Project's.
+
+  A saved SSH Environment's dispatch that names no Project is pinned by the
+  sender to a `{ kind: 'directory' }` workspace at the verified project path and
+  travels with this Station's outbound peer credential. The sender cannot know
+  whether the receiver's operator granted that device `coding:exec`, so the
+  folder is still sent, which keeps the granted path working, and a receiver's
+  `403 working-directory-not-granted` is answered here with a fixed sentence
+  (the receiver's own text is never relayed) naming a Project or the grant.
 
 The same owner also gates elevation to the `never` approval posture through
 `mayGrantFullAccess`: an Agent cannot grant full access to itself or another
@@ -425,6 +910,32 @@ separately admitted engine shell or make same-OS-user execution isolated.
 
 What this does not close, stated so nobody assumes it does:
 
+- **Still exposed in the git confinement**, each measured as stated above
+  unless marked NOT_VERIFIED: a `.git` swapped in the moment between the
+  pre-write check and git opening it moves another repository's HEAD on a
+  checkout (0 to 15 of 300 under a 30 ms link flip, rising with host load); the move of a checkpoint's
+  objects, its ref write, its delete and prune, and the branch and worktree
+  entry a `worktree add` writes go by path after the check (0 of 80
+  captures reached another repository under that flip; the `worktree add`
+  writes were not flipped this round); objects are read through links, so a
+  swap during a checkout can serve another repository's content into the
+  files it writes (0 of 600 checkouts wrote one here); a hard link to
+  another repository's object is not a link to the check; a continuously
+  written repository is answered `repository-busy`; a FIFO planted as
+  `.git/config` holds a read for git's 10 s deadline and answers 504; a
+  git failure's `400` body quotes git's command line, host paths included,
+  as it did before this work. NOT_VERIFIED: Linux file systems (ext4, XFS,
+  Btrfs document the change-time behaviour relied on, and a coarse-clock
+  stamp could miss a swap-and-restore inside one tick), Windows (the tests
+  skip there; junctions stand in for links), git other than 2.50.1,
+  hard-linked object stores, Git LFS, reftable repositories as linked
+  worktrees (refused), a Project that is a submodule's checkout.
+- **Accepted, and the only thing this rule leaves open at the
+  `orchestration:operate` tier**: enabling, reconnecting or starting a tool
+  server or engine connection whose command was chosen earlier (by the operator
+  or by a granted device). A device can start what was already stored, and
+  cannot change the command, its arguments, its folder or its environment. It
+  runs no code that was not chosen under the authority above.
 - `terminal:operate` (in the `standard` preset) already opens an interactive
   shell on this host. A `standard` device therefore runs commands whatever the
   Run commands switch says: the switch narrows only devices without the
@@ -886,6 +1397,22 @@ grepping for approvals does not return both. Neither carries device or network
 identity. That is the only signal distinguishing an ordinary first-run approval
 from the residue being exercised, which is why it is covered by tests rather
 than left to inspection.
+
+**Detection for off-host operator-credential use (#2894 S1).** The four
+device-admin routes (`GET /api/pairing/devices`, scope change, revoke and
+record removal) record each raw operator-credential use with its host position.
+A use that is visibly off-host (a non-loopback peer, a non-loopback `Host`, or
+any forwarding header, including Station's UI proxy reporting that its client
+sent one) is still allowed. It is logged at warn with the message `Operator
+credential used off-host for device administration` and the record's `event`
+field `station.pairing.operator_credential_used`, carrying a per-process
+count, and every use is counted in
+`station.device_pairing.operator_credential_uses` by route and position, with
+no device or network identity. The position is telemetry, not proof: a
+same-host proxy or tunnel that strips forwarding headers makes a remote caller
+read as on-host. Refusing the raw credential is a later step of
+[operator device access](../design/operator-device-access.md) and must rest on
+proof of a host-only secret.
 
 **The rest of the family, assessed then.** These were reachable on the
 old floor, each because it was the operator's own panel doing its job before any

@@ -1,0 +1,7 @@
+{
+  "revision": "f76a15fe54ad3db32f5de82a323f84d215d6eda3",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed scheduler browser test delta: empty catalog blocks submit, entering agent setup and browser Back retain job name and instructions. Existing Schedule CRUD and run-history coverage claims remain accurate; executed new journey and baseline mutation/restoration, without claiming successful agent repair from this case.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

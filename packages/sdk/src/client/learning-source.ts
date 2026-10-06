@@ -3,8 +3,8 @@ import {
   KNOWLEDGE_ROOT_IDENTITY_HEADER,
   KNOWLEDGE_ROOT_IDENTITY_MAX_CHARS,
 } from '@kontourai/station-shared/knowledge-root-identity';
-import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson } from './http';
+import { envelopeError } from './api-error-message';
+import { type ClientRequestOptions, getJson, readJsonBody } from './http';
 
 export interface LearningSourceReference {
   rootId: string;
@@ -42,14 +42,15 @@ export async function observeLearningSource(
       },
     },
   );
-  const envelope = (await response.json()) as {
-    success?: boolean;
-    data?: unknown;
-    error?: unknown;
-  };
-  if (!response.ok || envelope.success !== true)
-    throw new Error(
-      apiErrorMessage(envelope, 'Could not inspect the learning source.'),
+  // A refusal whose body is not JSON keeps its status (#2708).
+  const envelope = (await readJsonBody(response)) as
+    | { success?: boolean; data?: unknown; error?: unknown }
+    | undefined;
+  if (!response.ok || envelope?.success !== true)
+    throw envelopeError(
+      response,
+      envelope,
+      'Could not inspect the learning source.',
     );
   const data = envelope.data as LearningSourceObservation | undefined;
   const failures = [

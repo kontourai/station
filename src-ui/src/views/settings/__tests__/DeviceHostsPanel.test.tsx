@@ -26,6 +26,11 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
   }),
 }));
 
+import {
+  chooseOverflow,
+  openOverflow,
+  overflowItems,
+} from '../../../__tests__/helpers/overflow-menu';
 import { DeviceHostsPanel } from '../DeviceHostsPanel';
 
 const HOST = {
@@ -211,7 +216,13 @@ describe('Settings › Device hosts (#1973)', () => {
       });
     });
     mount();
-    await click(await screen.findByRole('button', { name: 'Share devices…' }));
+    // #3045: the row shows two labelled actions; sharing is a menu row.
+    await click(
+      await screen.findByRole('button', {
+        name: 'More actions for Studio Mac',
+      }),
+    );
+    await click(screen.getByRole('menuitem', { name: 'Share devices…' }));
     await screen.findByText('Studio iPhone');
     expect(screen.getByText('Not shared with any Project.')).toBeTruthy();
     await click(screen.getByRole('button', { name: 'Share with Project…' }));
@@ -318,5 +329,60 @@ describe('Settings › Device hosts (#1973)', () => {
       expect.stringContaining('Not checked'),
     ]);
     expect(screen.getByText(/not in your known_hosts/)).toBeTruthy();
+  });
+
+  // Review M3: every action folded out of the host row is still there, in
+  // order, with Remove destructive and last — and each still does its job.
+  test('the host menu holds sharing, Disable hub, Edit and a destructive Remove, and each works', async () => {
+    const calls = stub((method, path) => {
+      if (path === '/api/mobile-devices/shares' && method === 'GET')
+        return json({ success: true, data: [] });
+      if (path.endsWith('/devices'))
+        return json({ success: true, data: { devices: [] } });
+      return json({
+        success: true,
+        data: { hosts: [{ ...HOST, hubEnabled: true }], host: HOST },
+      });
+    });
+    mount();
+    await screen.findByText('Studio Mac');
+    const menuName = 'More actions for Studio Mac';
+
+    expect(overflowItems(openOverflow(menuName))).toEqual([
+      { name: 'Share devices…', danger: false },
+      { name: 'Disable hub', danger: false },
+      { name: 'Edit', danger: false },
+      { name: 'Remove', danger: true },
+    ]);
+    // The disclosure state the visible button used to carry.
+    const share = screen.getByRole('menuitem', { name: 'Share devices…' });
+    expect(share.getAttribute('aria-expanded')).toBe('false');
+    await click(share);
+    openOverflow(menuName);
+    expect(
+      screen
+        .getByRole('menuitem', { name: 'Hide sharing' })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+    await click(screen.getByRole('menuitem', { name: 'Hide sharing' }));
+
+    chooseOverflow(menuName, 'Disable hub');
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (call) =>
+            call.method !== 'GET' &&
+            JSON.stringify(call.body ?? {}).includes('"enabled":false'),
+        ),
+        JSON.stringify(calls.filter((call) => call.method !== 'GET')),
+      ).toBe(true),
+    );
+
+    chooseOverflow(menuName, 'Edit');
+    expect(screen.getByRole('button', { name: 'Save host' })).toBeTruthy();
+    await click(screen.getByRole('button', { name: 'Cancel' }));
+
+    chooseOverflow(menuName, 'Remove');
+    expect(screen.getByRole('button', { name: 'Remove host' })).toBeTruthy();
   });
 });

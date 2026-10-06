@@ -36,6 +36,7 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({

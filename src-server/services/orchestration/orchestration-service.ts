@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
   type AgentExecutionConfig,
@@ -8,16 +9,19 @@ import {
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import type {
-  AttentionInputReplyContext,
-  AttentionRequestInspection,
-  AttentionRequestReference,
+import {
+  ATTENTION_REQUEST_ID_MAX_CHARS,
+  type AttentionInputReplyContext,
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
+import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
 import type {
   ClientOrigin,
   ClientOriginActor,
 } from '@kontourai/station-contracts/client-origin';
+import type { ConnectionRecoveryProjection } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -37,6 +41,7 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
   OrchestrationConversationEventWindow,
+  OrchestrationPeerPendingRequest,
   OrchestrationSendTurnInput,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -44,6 +49,7 @@ import type {
   OrchestrationSessionSummary,
   SessionBoardItem,
   SetApprovalModeResult,
+  SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -53,11 +59,14 @@ import {
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
   ApprovalMode,
+  DelegationProvenance,
   EngineId,
   ProviderSendTurnInput,
   ProviderSession,
+  StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
@@ -96,6 +105,11 @@ import {
   SESSION_LIFECYCLE_TRANSITIONS,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
+import type {
+  SkillExperienceIdentityV1,
+  SkillExperienceInvocationReferenceV1,
+  SkillExperienceStartInputV1,
+} from '@kontourai/station-contracts/skill-experience';
 import {
   INTERNAL_SESSION_READ_SCOPE,
   type InternalSessionReadScope,
@@ -106,6 +120,12 @@ import {
 import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflow';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
+import {
+  readHarnessQuestionnaire,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
+import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
@@ -119,6 +139,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../providers/adapter-shape.js';
 import {
+  AttachmentInputUnsupportedError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
 } from '../../providers/adapter-shape.js';
@@ -186,6 +207,7 @@ import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
@@ -224,14 +246,24 @@ import {
 } from '../projects/project-resource-shadow.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
+import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
-import { ApprovalPosture, approvalKnobSupported } from './approval-posture.js';
+import {
+  ApprovalPosture,
+  type ApprovalPostureDecision,
+  approvalKnobSupported,
+} from './approval-posture.js';
 import {
   type AdoptionConfinement,
   AttachedSessionAdoption,
 } from './attached-session-adoption.js';
+import { resolveContinuationPlace } from './attached-session-continuation-place.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
+import {
+  type ChildWorkTranscriptModule,
+  createChildWorkTranscriptModule,
+} from './child-work-transcript.js';
 import {
   ClientOriginTurnPropagation,
   withClientOrigin,
@@ -259,6 +291,16 @@ import {
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
+import {
+  assertDispatchCwdUnmoved,
+  DISPATCH_CANONICAL_CWD_METADATA_KEY,
+  type DispatchCwdAdmission,
+  type DispatchCwdOrigin,
+  DispatchCwdRefusedError,
+  dispatchCwdMovedError,
+  recordedDispatchCanonicalCwd,
+  withoutDispatchCanonicalCwd,
+} from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
 import type {
   CommandRefusalPhase,
@@ -293,6 +335,7 @@ import {
 } from './native-memory-continuity.js';
 import {
   projectRequestAnswerability,
+  REQUEST_SETTLED_BY_TURN_ABORT_MESSAGE,
   type RequestReplayOutcome,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
@@ -300,6 +343,8 @@ import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge
 import {
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
+  extractPeerPendingRequestObservation,
+  PEER_PENDING_REQUEST_METADATA_KEY,
   projectOrchestrationEventToReadModel,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
@@ -333,6 +378,7 @@ import {
 import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
+  SessionLifecycleClaimRefusedError,
   SessionTurnStartIndeterminateError,
 } from './session-execution-coordinator.js';
 import {
@@ -343,6 +389,7 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   activeTurnIdForEvents,
   createManualSessionTransitionEvent,
+  interruptibleTurnIdForEvents,
   isDeferredRetriableTurnError,
   normalizeCanonicalRuntimeEventLifecycle,
   projectSessionLifecycle,
@@ -366,13 +413,33 @@ import {
   MAX_ASSISTANT_TURN_EVENTS,
   type SessionQueryModule,
 } from './session-query-module.js';
-import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
+import {
+  SessionRecoveryCoordinator,
+  type UsageLimitRecoveryActionResult,
+} from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
 } from './session-turn-boundary.js';
+import {
+  SkillExperienceRuntime,
+  type SkillExperienceSource,
+  SkillExperienceUnavailableError,
+} from './skill-experience-runtime.js';
+import {
+  createStationControlPullRequestDeclarations,
+  type StationControlActiveTurn,
+  type StationControlPullRequestDeclarationOutcome,
+  type StationControlPullRequestDeclarations,
+  type StationControlPullRequestIdentity,
+  StationControlPullRequestUnavailableError,
+} from './station-control-pull-request-declarations.js';
+import {
+  readThreadUsageTree,
+  type ThreadUsageTreeReadOutcome,
+} from './thread-usage-tree-read.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -405,6 +472,7 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
@@ -450,6 +518,8 @@ interface OrchestrationDispatchInternalOptions {
     conversationId: string;
     environmentId: string;
   };
+  /** #3323: see `SessionCommandInternalOptions.delegationProvenance`. */
+  delegationProvenance?: SessionCommandInternalOptions['delegationProvenance'];
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
 }
 
@@ -671,7 +741,10 @@ class DraftDiscardedError extends Error {
   }
 }
 
-export { AdoptionContinuationInProgressError } from './attached-session-adoption.js';
+export {
+  AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
+} from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
 /**
@@ -762,9 +835,26 @@ interface OrchestrationServiceOptions {
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
+  /**
+   * #3429: the Agent and Environment a continued attached conversation runs
+   * as (`adopted-child-execution-binding.ts`). Absent, a continuation has no
+   * Agent and the dock cannot open it.
+   */
+  resolveAdoptedChildExecutionBinding?: ResolveAdoptedChildExecutionBinding;
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
+  ) => Promise<string | undefined>;
+  /**
+   * #2873: the directory an engine connection starts a session in when the
+   * session has none of its own (an ACP connection's `config.cwd`), which
+   * only the adapter otherwise sees. `undefined` when the connection sets
+   * none. Read only for a start a dispatch route admitted by scope; such a
+   * start refuses when this is not wired.
+   */
+  resolveConnectionDefaultCwd?: (
+    provider: string,
+    connectionId: string | undefined,
   ) => Promise<string | undefined>;
   /**
    * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2).
@@ -781,6 +871,11 @@ interface OrchestrationServiceOptions {
    * Loaded per call, like the workspace default above.
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
+  /**
+   * #3157: `AppConfig.usageLimitAutoResume`, loaded per call like the
+   * defaults above. Absent means off: an unattended resume spends quota.
+   */
+  resolveUsageLimitAutoResume?: () => Promise<boolean | undefined>;
   /**
    * #1796: whether the device that granted a session's `host` stamp still
    * holds `approval:full-access` (live, not revoked). Read at every turn
@@ -810,6 +905,18 @@ interface OrchestrationServiceOptions {
       repository: string;
       ref: string;
       nativeId: string;
+      workingDirectory: string;
+    }): Promise<Extract<
+      DeclaredOutputDescriptor,
+      { kind: 'pull-request' }
+    > | null>;
+    /** #3161: the same read for a caller that has no provider-native id. */
+    readIdentity(input: {
+      provider: string;
+      host: string;
+      owner: string;
+      repository: string;
+      ref: string;
       workingDirectory: string;
     }): Promise<Extract<
       DeclaredOutputDescriptor,
@@ -947,6 +1054,78 @@ interface PeerDelegationActivityDispatch {
   target: { kind: 'agent'; id: string };
   projectSlug?: string;
   parentTaskId?: string;
+  /**
+   * The calling conversation from the delegation context the route resolved
+   * for the request, so this Station can attribute the record to the
+   * conversation that launched it.
+   */
+  parentConversationId?: string;
+  /** #3323: how the route came by that context; stamped beside it. */
+  delegationProvenance?: DelegationProvenance;
+}
+
+/**
+ * Bounds on the paired Station's request fields this Station persists, in
+ * Unicode code points (`Array.from`), for the id and the title alike.
+ */
+export const PEER_PENDING_REQUEST_ID_MAX_CHARS = 512;
+export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
+
+/**
+ * A display title past the bound is cut with a visible ellipsis, so a reader
+ * can tell it was shortened; the request id carries identity, not the title.
+ */
+function boundedPeerRequestTitle(title: string): string {
+  return boundedPeerText(title, PEER_PENDING_REQUEST_TITLE_MAX_CHARS);
+}
+
+function boundedPeerText(text: string, max: number): string {
+  const characters = Array.from(text);
+  return characters.length > max
+    ? `${characters.slice(0, max - 1).join('')}…`
+    : text;
+}
+
+/** Only the request types the canonical vocabulary names are stored. */
+function isPeerRequestType(
+  type: string | undefined,
+): type is NonNullable<OrchestrationPeerPendingRequest['type']> {
+  return (
+    type === 'approval' ||
+    type === 'permission' ||
+    type === 'confirmation' ||
+    type === 'input'
+  );
+}
+
+/** Bound on the paired Station's presented question text. */
+export const PEER_PENDING_REQUEST_BODY_MAX_CHARS = 4_000;
+
+/** Every reported field except the local observation time. */
+function samePeerPendingRequest(
+  a: OrchestrationPeerPendingRequest,
+  b: OrchestrationPeerPendingRequest,
+): boolean {
+  return (
+    a.id === b.id &&
+    a.type === b.type &&
+    a.title === b.title &&
+    a.eventId === b.eventId &&
+    a.threadId === b.threadId &&
+    a.body === b.body &&
+    a.callerCanRespond === b.callerCanRespond
+  );
+}
+
+/** What the paired Station's status read reported about its open request. */
+export interface PeerReportedPendingRequest {
+  id: string;
+  type?: string;
+  title?: string;
+  eventId?: string;
+  threadId?: string;
+  body?: string;
+  callerCanRespond?: boolean;
 }
 
 function peerDelegationActivityThreadId(
@@ -1525,6 +1704,8 @@ export class OrchestrationService {
   readonly conversationOpenResolver: ConversationOpenResolver;
   /** Explicit declared-output inventory; separate from transcript/Basis reads. */
   readonly sessionOutputs: SessionOutputsModule;
+  /** #3163: a child's own read-only transcript, resolved from persisted facts. */
+  readonly childWorkTranscripts: ChildWorkTranscriptModule;
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
@@ -1536,6 +1717,12 @@ export class OrchestrationService {
   private readonly nativeOutputDeclarations: ReturnType<
     typeof createNativeOutputDeclarationOperation
   >;
+  /**
+   * #3161: the second admission authority, for a pull request an external
+   * engine declares through Station Control. Its pending handles land in the
+   * same terminal savepoint as the native ones.
+   */
+  private readonly stationControlPullRequests?: StationControlPullRequestDeclarations;
   /** Exact active generation until the ordered durable terminal event commits. */
   private readonly nativeTurnGenerations = new Map<string, string>();
   private readonly consumedAdapterEventStreams =
@@ -1680,6 +1867,24 @@ export class OrchestrationService {
    * in flight for this thread, at all.
    */
   private readonly inFlightSteers = new Set<string>();
+  /**
+   * Threads with a `sendTurn` dispatch between entry and settlement, counted
+   * (one thread can carry several). A turn holds no coordinator claim or turn
+   * fact until `runTurnStart`, after a run of awaits; this is what makes it
+   * visible to `retireNeverRanSession` during that stretch.
+   */
+  private readonly sendTurnsInDispatch = new Map<string, number>();
+  /**
+   * #2898: the confinement of the last turn each live engine accepted, and
+   * that turn's id. A revocation compares it with the confinement that holds
+   * now: an engine whose last turn ran under a confinement that no longer
+   * holds is still unconfined (listed, and its running turn cannot be
+   * steered). Cleared with the engine, like `ApprovalPosture.forgetThread`.
+   */
+  private readonly acceptedTurnConfinement = new Map<
+    string,
+    { turnId: string; confinement: StationConfinement }
+  >();
   private readonly sessionReadModel = new Map<string, ProviderSession>();
   /**
    * #484 phase A follow-up: per-thread verdict cache for the central
@@ -1877,6 +2082,19 @@ export class OrchestrationService {
           }
         : {}),
     });
+    if (options.nativeDeclaredPullRequestResolver) {
+      const resolver = options.nativeDeclaredPullRequestResolver;
+      this.stationControlPullRequests =
+        createStationControlPullRequestDeclarations({
+          activeTurn: (threadId) => this.activeStationControlTurn(threadId),
+          workspaceRoot: (threadId) =>
+            this.sessionReadModel.get(threadId)?.cwd ??
+            this.options.eventStore?.readSessionByThread(threadId)?.cwd,
+          declaredPullRequests: (threadId) =>
+            this.declaredPullRequestsOfSession(threadId),
+          resolver,
+        });
+    }
     // Constructed FIRST: SessionAuthorization holds only raw option values
     // and no back-references, so building it before every other collaborator
     // means no later closure can capture an undefined authz seam.
@@ -1944,6 +2162,9 @@ export class OrchestrationService {
         this.sessionAuthz.canReadSession(threadId, authority),
       isEphemeralSession: (threadId) => this.isEphemeralSession(threadId),
       sessionAttributionFor: (threadId) => this.sessionAttributionFor(threadId),
+      conversationIdForThread: (threadId) =>
+        this.options.eventStore?.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
         (this.options.eventStore?.listEvents(threadId) ?? []).map(
           (event) => event.payload,
@@ -2043,6 +2264,12 @@ export class OrchestrationService {
         ? { flowRunService: options.flowRunService }
         : {}),
       ...(options.listProjects ? { listProjects: options.listProjects } : {}),
+      ...(options.resolveAdoptedChildExecutionBinding
+        ? {
+            resolveExecutionBinding:
+              options.resolveAdoptedChildExecutionBinding,
+          }
+        : {}),
       ...(options.requireTenantExecutionContext !== undefined
         ? {
             requireTenantExecutionContext:
@@ -2276,6 +2503,16 @@ export class OrchestrationService {
           }
         : {}),
     });
+    this.childWorkTranscripts = createChildWorkTranscriptModule({
+      listChildWorkHistory: (threadId) =>
+        (
+          this.options.eventStore
+            ?.listChildWorkHistoryForThreads([threadId])
+            .get(threadId) ?? []
+        ).map((row) => row.payload),
+      canReadSession: (threadId, authority) =>
+        this.sessionAuthz.canReadSession(threadId, authority),
+    });
     this.monitoringBridge = new OrchestrationMonitoringBridge(
       options.monitoringEmitter,
       (threadId) => this.monitoringContextFor(threadId),
@@ -2413,8 +2650,10 @@ export class OrchestrationService {
       logger: options.logger,
     });
     this.credentialProfileRecovery = new CredentialProfileRecovery({
-      dispatchSendTurn: (replay) =>
-        this.dispatch({ type: 'sendTurn', input: replay }),
+      dispatchSendTurn: async (replay) => {
+        await this.parkEndedEngineForReplay(replay.threadId);
+        return this.dispatch({ type: 'sendTurn', input: replay });
+      },
       providerAcceptsResponse: (provider) =>
         this.options.adapterRegistry.get(provider)?.metadata.recovery
           ?.dispatchSettlement === 'provider-response',
@@ -2600,6 +2839,8 @@ export class OrchestrationService {
         credentialRecovery: this.credentialRecovery,
         isCredentialRestarting: (threadId) =>
           this.credentialProfileRecovery.isRestarting(threadId),
+        autoResume: async () =>
+          (await options.resolveUsageLimitAutoResume?.()) === true,
         onOutcome: ({ failureKind, decision, outcome }) => {
           this.usageTelemetry?.trackSessionRecovery({
             failure_kind: failureKind,
@@ -2998,6 +3239,8 @@ export class OrchestrationService {
       );
       let session: ProviderSession;
       try {
+        // #2873: a respawn re-resolves the recorded folder like any start.
+        assertDispatchCwdUnmoved(startInput, startInput.cwd);
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
           this.runEngineSessionStart(startInput.threadId, () =>
             adapter.startSession(startInput),
@@ -3319,6 +3562,7 @@ export class OrchestrationService {
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
     this.nativeOutputGrants.dispose();
+    this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
@@ -3585,9 +3829,145 @@ export class OrchestrationService {
         userId: input.userId,
         ...(input.projectSlug ? { projectSlug: input.projectSlug } : {}),
         ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        ...(input.parentConversationId
+          ? { parentConversationId: input.parentConversationId }
+          : {}),
+        ...(input.parentConversationId && input.delegationProvenance
+          ? {
+              [DELEGATION_PROVENANCE_METADATA_KEY]: input.delegationProvenance,
+            }
+          : {}),
       },
     });
     return threadId;
+  }
+
+  /**
+   * Record the open request the PAIRED Station reported on its delegated-task
+   * status read (`pendingRequest`), or its absence (`null`). Appends one
+   * `session.configured` observation only when it differs from the last one,
+   * so a steady poll writes nothing. The request id names the paired
+   * Station's request; nothing here makes it answerable locally.
+   */
+  recordPeerDelegationPendingRequest(input: {
+    taskId: string;
+    environmentId: string;
+    pendingRequest: PeerReportedPendingRequest | null;
+    /**
+     * Set when the paired Station has just answered `respond` for this
+     * request id: clear the observation only if it still names that request,
+     * so a newer request observed meanwhile is never erased.
+     */
+    resolvedRequestId?: string;
+  }): boolean {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environmentId,
+      input.taskId,
+    );
+    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    const session = this.sessionReadModel.get(threadId) ?? persisted;
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(threadId)
+        .map((event) => event.payload) ?? [];
+    const current = extractPeerPendingRequestObservation(events);
+    if (
+      input.resolvedRequestId !== undefined &&
+      current?.id !== input.resolvedRequestId
+    )
+      return false;
+    const rawId = input.pendingRequest?.id.trim();
+    // An id past the bound is refused, never truncated: a cut id would name
+    // a different (or no) request on the paired Station. Nothing usable is
+    // stored, so the inbox shows the note instead of a decision.
+    const idRefused =
+      rawId !== undefined &&
+      Array.from(rawId).length > PEER_PENDING_REQUEST_ID_MAX_CHARS;
+    if (idRefused)
+      this.options.logger.warn(
+        'Refused a paired Station request id over the stored bound',
+        { threadId, length: rawId.length },
+      );
+    const id = idRefused ? undefined : rawId;
+    const reported = input.pendingRequest;
+    const title = reported?.title?.trim();
+    const body = reported?.body?.trim();
+    // The binding pair is stored only whole and within bounds; a cut id
+    // would name another request, so an over-long one leaves no binding
+    // (the inbox then keeps the note rather than offering an answer).
+    const binding =
+      reported?.eventId &&
+      reported.threadId &&
+      Array.from(reported.eventId).length <= ATTENTION_REQUEST_ID_MAX_CHARS &&
+      Array.from(reported.threadId).length <= ATTENTION_REQUEST_ID_MAX_CHARS
+        ? { eventId: reported.eventId, threadId: reported.threadId }
+        : undefined;
+    const next = id
+      ? {
+          id,
+          ...(isPeerRequestType(reported?.type) ? { type: reported.type } : {}),
+          ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
+          ...(binding ?? {}),
+          ...(body
+            ? {
+                body: boundedPeerText(
+                  body,
+                  PEER_PENDING_REQUEST_BODY_MAX_CHARS,
+                ),
+              }
+            : {}),
+          ...(typeof reported?.callerCanRespond === 'boolean'
+            ? { callerCanRespond: reported.callerCanRespond }
+            : {}),
+          observedAt: new Date().toISOString(),
+        }
+      : null;
+    if (
+      next === null
+        ? current === null || current === undefined
+        : current !== null &&
+          current !== undefined &&
+          samePeerPendingRequest(current, next)
+    )
+      return false;
+    this.projectAndPublishEvent({
+      eventId: `peer-pending-request:${threadId}:${crypto.randomUUID()}`,
+      provider: session.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: { [PEER_PENDING_REQUEST_METADATA_KEY]: next },
+    });
+    return true;
+  }
+
+  /**
+   * The paired Stations this Station recorded as hosting `taskId`
+   * (`recordPeerDelegationActivityDispatch` writes one record per
+   * environment and task) among the records `authority` may read. Empty
+   * when no such record names the task.
+   */
+  async peerDelegationHostingEnvironmentIds(
+    taskId: string,
+    authority: SessionReadScope,
+  ): Promise<string[]> {
+    // Read with the caller's own authority: a record the caller cannot read
+    // names no host for it.
+    const sessions = await this.listSessionReadModel(authority);
+    return [
+      ...new Set(
+        sessions.flatMap((session) =>
+          session.delegation?.environmentKind === 'peer' &&
+          session.delegation.taskId === taskId &&
+          session.delegation.environmentId
+            ? [session.delegation.environmentId]
+            : [],
+        ),
+      ),
+    ];
   }
 
   /** Advance a peer Activity record only from an observed peer lifecycle. */
@@ -4036,6 +4416,42 @@ export class OrchestrationService {
   }
 
   /**
+   * #3412: the Project and directory one Session is bound to, for a reader
+   * allowed to read it, without materializing its transcript: the Project
+   * its start stamped (`firstStartedMetadataOfThread`, which later sparse
+   * reconfiguration cannot shadow) and the loaded or persisted row's `cwd`.
+   * `null` when the authority may not read the Session or Station has no
+   * record of it. A read-only attached Session names no Project here: its
+   * attribution is a correctable later statement, which only the full read
+   * model folds.
+   */
+  readSessionWorkspaceBinding(
+    threadId: string,
+    authority: SessionReadScope,
+  ): { projectSlug?: string; cwd?: string } | null {
+    this.initialize();
+    if (
+      this.isEphemeralSession(threadId) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const session =
+      this.sessionReadModel.get(threadId) ??
+      this.options.eventStore?.readSessionByThread(threadId);
+    if (!session) return null;
+    const projectSlug =
+      session.controlMode === 'read-only-attached'
+        ? undefined
+        : this.firstStartedMetadataOfThread(threadId)?.projectSlug;
+    return {
+      ...(typeof projectSlug === 'string' && projectSlug.length > 0
+        ? { projectSlug }
+        : {}),
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+    };
+  }
+
+  /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.
    */
@@ -4108,7 +4524,12 @@ export class OrchestrationService {
       (event) => event.payload,
     );
 
-    const recovery = this.recoveryCoordinator?.latestProjection(threadId);
+    const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
+    // #3157: a waiting usage-limit resume says whether the setting would let
+    // it run unattended now; the coordinator applies it only at the reset.
+    const recovery = latestRecovery
+      ? await this.projectRecovery(latestRecovery)
+      : undefined;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =
@@ -4140,6 +4561,68 @@ export class OrchestrationService {
       events,
       ...(recovery ? { recovery } : {}),
     };
+  }
+
+  private async projectRecovery(
+    latest: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    return latest.usageLimit && latest.outcome === 'armed'
+      ? await this.withUsageLimitAutoResume(latest)
+      : latest;
+  }
+
+  /**
+   * #3157: the chat banner's own read of a Session's usage-limit recovery,
+   * without the Session's whole event list. `null` when the latest recovery
+   * for the Session is not a usage-limit stop. The caller authorizes the read.
+   */
+  async readUsageLimitRecovery(
+    threadId: string,
+  ): Promise<ConnectionRecoveryProjection | null> {
+    this.initialize();
+    const latest = this.recoveryCoordinator?.latestProjection(threadId);
+    return latest?.usageLimit ? await this.projectRecovery(latest) : null;
+  }
+
+  /**
+   * #3157: the banner's "Resume now" and "Cancel auto-resume". The caller
+   * authorizes the mutation. Each answers with what it did and the projection
+   * as it stands afterward, so a click on a banner that has since settled
+   * reads back the real state instead of acting.
+   */
+  async actOnUsageLimitRecovery(
+    threadId: string,
+    action: 'resume' | 'cancel',
+  ): Promise<{
+    result: UsageLimitRecoveryActionResult;
+    recovery: ConnectionRecoveryProjection | null;
+  }> {
+    this.initialize();
+    const coordinator = this.recoveryCoordinator;
+    const result: UsageLimitRecoveryActionResult = coordinator
+      ? action === 'resume'
+        ? await coordinator.resumeUsageLimitNow(threadId)
+        : await coordinator.cancelUsageLimitWaiting(threadId)
+      : { kind: 'not-waiting' };
+    return { result, recovery: await this.readUsageLimitRecovery(threadId) };
+  }
+
+  /**
+   * #3157: an unreadable setting omits `autoResume` rather than failing the
+   * session read; the coordinator separately treats it as off.
+   */
+  private async withUsageLimitAutoResume(
+    recovery: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    try {
+      return {
+        ...recovery,
+        autoResume:
+          (await this.options.resolveUsageLimitAutoResume?.()) === true,
+      };
+    } catch {
+      return recovery;
+    }
   }
 
   // Conversation lineage/handoff/history forwarders (epic archive#4024,
@@ -4174,6 +4657,16 @@ export class OrchestrationService {
     return this.conversationLineage.currentConversationSessionId(
       conversationId,
     );
+  }
+
+  /** The conversation a successor execution Session continues, if it is one. */
+  successorConversationId(sessionId: string): string | undefined {
+    return this.conversationLineage.successorConversationId(sessionId);
+  }
+
+  /** Every execution Session of a durable conversation, in lineage order. */
+  conversationSessionIds(conversationId: string): string[] {
+    return this.conversationLineage.conversationSessionIds(conversationId);
   }
 
   /**
@@ -4553,6 +5046,23 @@ export class OrchestrationService {
     if (inspected.state !== 'open') return inspected;
     let answerability: ReturnType<typeof projectRequestAnswerability>;
     try {
+      const events =
+        this.options.eventStore
+          ?.listSessionProjectionEvents(reference.threadId, {
+            requestId: reference.requestId,
+          })
+          .map((event) => event.payload) ?? [];
+      // #3071: the request's own row still reads `request.opened` when its
+      // turn was aborted without a resolution being recorded (a log from
+      // before recovery wrote one). The same rule the summary and the
+      // attention feed apply decides it here, so no surface offers Allow/Deny
+      // for a request the others already call settled.
+      if (requestIdsSettledByTurnAbort(events).has(reference.requestId))
+        return {
+          state: 'resolved',
+          reference,
+          message: REQUEST_SETTLED_BY_TURN_ABORT_MESSAGE,
+        };
       answerability = projectRequestAnswerability({
         ...this.observeAnswerability(
           reference.threadId,
@@ -4561,12 +5071,7 @@ export class OrchestrationService {
         ),
         lifecycleState: projectSessionLifecycle({
           session,
-          events:
-            this.options.eventStore
-              ?.listSessionProjectionEvents(reference.threadId, {
-                requestId: reference.requestId,
-              })
-              .map((event) => event.payload) ?? [],
+          events,
         }).lifecycleState,
       });
     } catch {
@@ -4593,6 +5098,50 @@ export class OrchestrationService {
     requestId: string,
   ): RequestReplayOutcome {
     return this.sessionEventReads.readRequestOutcome(threadId, requestId);
+  }
+
+  /**
+   * #3071: why a decision on this request must be refused before any adapter
+   * sees it, or `undefined` when nothing recorded says so.
+   *
+   * A request that is already resolved, or that its turn's abort settled,
+   * has nothing waiting on an answer. Refusing here, rather than leaving it
+   * to whichever adapter holds the thread, is what makes the refusal the
+   * same on every engine and with or without `expectedRequestEventId`: an
+   * adapter restarted since the request was opened does not know the id at
+   * all, and one that still did would be answering for a turn that is gone.
+   *
+   * A request the log has never heard of, or a store that cannot be read,
+   * returns `undefined`: that is not evidence the request ended, and the
+   * existing guards and the adapter still decide.
+   */
+  private settledRequestRefusal(
+    threadId: string,
+    requestId: string,
+  ): string | undefined {
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return undefined;
+    try {
+      const current = eventStore.readCurrentRequestEvent(threadId, requestId);
+      if (current.state !== 'found') return undefined;
+      // A row whose stored method and payload disagree is not evidence of
+      // anything; `inspectRequestEvent` reports it unavailable, and that
+      // guard keeps the decision.
+      const method = current.event.payload.method;
+      if (method !== current.event.method) return undefined;
+      if (method === 'request.resolved')
+        return 'This request has already been resolved.';
+      if (method !== 'request.opened') return undefined;
+      return requestIdsSettledByTurnAbort(
+        eventStore
+          .listSessionProjectionEvents(threadId)
+          .map((event) => event.payload),
+      ).has(requestId)
+        ? REQUEST_SETTLED_BY_TURN_ABORT_MESSAGE
+        : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async readSessionEventPage(
@@ -4766,6 +5315,18 @@ export class OrchestrationService {
     return this.transcriptReads.readSessionUsage(threadId, authority);
   }
 
+  /** #3112: a conversation's usage across every Session in its lineage. */
+  readConversationUsage(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): SessionUsageAggregate {
+    this.initialize();
+    return this.transcriptReads.readConversationUsage(
+      this.conversationLineage.conversationSessionIds(conversationId),
+      authority,
+    );
+  }
+
   /**
    * Every persisted session's usage, for lifetime analytics (archive#3245).
    *
@@ -4787,7 +5348,13 @@ export class OrchestrationService {
   listUsageReceipts(
     authority: SessionReadAuthority,
     stationId: string,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ): {
     receipts: import('@kontourai/station-contracts/usage-rollup').UsageReceipt[];
     nextCursor?: string;
@@ -4797,6 +5364,92 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
+    );
+  }
+
+  /**
+   * One conversation's usage as a tree: its own sessions' receipts, the
+   * subagents they reported, and the delegated tasks launched from it, with
+   * a roll-up total that says what it leaves out. Each conversation is
+   * authorized whole, by {@link canUserReadConversation}; bounded, and
+   * refused past its bound (`too-large`) rather than cut.
+   */
+  readThreadUsageTree(
+    conversationId: string,
+    authority: SessionReadAuthority,
+  ): ThreadUsageTreeReadOutcome {
+    this.initialize();
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return { status: 'not-found' };
+    const sessionFor = (threadId: string) =>
+      this.sessionReadModel.get(threadId) ??
+      eventStore.readSessionByThread(threadId);
+    return readThreadUsageTree(
+      {
+        // Receipts carry a Station id for the cross-Station rollup; the tree
+        // reads only this Station's sessions and never returns the id.
+        stationId: 'local',
+        canReadConversation: (id, scope) =>
+          this.canUserReadConversation(id, scope),
+        conversationThreadIds: (id) =>
+          eventStore.conversationSessions(id).map((entry) => entry.sessionId),
+        listUsageReceiptEventsForThreads: (threadIds, limit) =>
+          eventStore.listUsageReceiptEventsForThreads(threadIds, limit),
+        listChildWorkHistoryForThreads: (threadIds) =>
+          eventStore.listChildWorkHistoryForThreads(threadIds),
+        listSessionsNamingParents: (parentIds, limit) =>
+          eventStore.listSessionsNamingParents(parentIds, limit),
+        conversationForThread: (threadId) =>
+          eventStore.conversationForSession(threadId)?.conversationId ??
+          threadId,
+        describeDelegate: (threadId) => {
+          const persisted = eventStore.readSessionByThread(threadId);
+          const loaded = this.sessionReadModel.get(threadId);
+          if (!persisted && !loaded) return undefined;
+          const provider = (loaded ?? persisted)?.provider;
+          const summary = buildOrchestrationSessionSummary({
+            persisted,
+            loaded,
+            events: eventStore
+              .listSessionProjectionEvents(threadId)
+              .map((event) => event.payload),
+            // Built only to read the delegate's own child-work projection;
+            // nothing here is emitted to a client.
+            answerability: this.observeAnswerability(
+              threadId,
+              provider,
+              new Date().toISOString(),
+            ),
+          });
+          // A session launched with a delegation context but no task record
+          // (an agent messaging another agent) is still a child: project it
+          // through the same one mapping, under its own thread as the task.
+          const item =
+            summary.childWork?.asChild ??
+            projectDelegateChildWork({
+              ...summary,
+              delegation: { taskId: threadId },
+            });
+          if (!item) return undefined;
+          return {
+            item,
+            ...(provider ? { provider } : {}),
+            ...(summary.displayTitle ? { title: summary.displayTitle } : {}),
+            pairedStation: summary.delegation?.environmentKind === 'peer',
+          };
+        },
+        describeConversation: (threadIds) => {
+          const latest = threadIds.at(-1);
+          const provider = latest ? sessionFor(latest)?.provider : undefined;
+          const title = eventStore.conversationTitle(threadIds);
+          return {
+            ...(provider ? { provider } : {}),
+            ...(title ? { title } : {}),
+          };
+        },
+      },
+      conversationId,
+      authority,
     );
   }
 
@@ -5290,9 +5943,16 @@ export class OrchestrationService {
             confinement: _untrustedConfinement,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
+          const admittedStartWorkspace =
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+            readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+            internal?.receiverExecutionAdmission?.admitted ??
+            (await this.adoptedChildAdmittedWorkspace(publicStartInput));
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
-              stripReservedCapabilityMetadata(publicStartInput),
+              withoutDispatchCanonicalCwd(
+                stripReservedCapabilityMetadata(publicStartInput),
+              ),
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
@@ -5302,10 +5962,11 @@ export class OrchestrationService {
             // bound resource path (outside the compat project default) is
             // admitted rather than re-derived, and never forged: the
             // coordinate arrives only via internal options, and the effect
-            // closure below verifies the prepared input against it.
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            // closure below verifies the prepared input against it. #3429:
+            // an adopted child's successor is admitted to the folder its
+            // conversation recorded, re-verified now (see
+            // `adoptedChildAdmittedWorkspace`).
+            admittedStartWorkspace,
             this.options.resolveProjectSessionDirectory,
           );
           // Station #90 lane D (D5): record the Project's local id beside its
@@ -5313,10 +5974,27 @@ export class OrchestrationService {
           startInput = withSessionLocalProjectId(
             startInput,
             this.options.listProjects,
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            admittedStartWorkspace,
           );
+          // #2873: record the canonical folder a scoped dispatch was
+          // admitted into (decided again here, for the directory this start
+          // is bound to), or carry forward the one the conversation's
+          // previous session recorded for this same folder. Written after
+          // the strip above removed any caller-supplied value.
+          const dispatchCanonicalCwd = context.dispatchCwdAdmission
+            ? context.dispatchCwdAdmission.recheck(
+                ...(await this.dispatchCwdBinding(startInput, internal)),
+              )
+            : this.inheritedDispatchCanonicalCwd(startInput);
+          if (dispatchCanonicalCwd !== undefined) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [DISPATCH_CANONICAL_CWD_METADATA_KEY]: dispatchCanonicalCwd,
+              },
+            };
+          }
           // Station #90 lane D (R1): the one start choke point. A start an
           // unverified agent caused (derived at the HTTP seam, carried in the
           // dispatch context) is marked so it acts for no one.
@@ -5388,6 +6066,27 @@ export class OrchestrationService {
               },
             };
           }
+          // #3323: how the dispatch route came by this start's delegation
+          // context, re-stamped after the reserved-key strip removed any
+          // caller-supplied value, and only when the start carries exactly
+          // the context the route resolved: the stamp travels with that
+          // context, so a start with any other context is never stamped.
+          if (
+            internal?.delegationProvenance &&
+            isDeepStrictEqual(
+              startInput.metadata?.delegation,
+              internal.delegationProvenance.context,
+            )
+          ) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [DELEGATION_PROVENANCE_METADATA_KEY]:
+                  internal.delegationProvenance.provenance,
+              },
+            };
+          }
           // #484 phase A: re-stamp the server-minted portable consent
           // marker after the reserved-key strip (which removed any
           // caller-forged value) so the persisted session binding carries
@@ -5454,14 +6153,30 @@ export class OrchestrationService {
           );
           let session: ProviderSession;
           try {
-            const invoke = () =>
-              withTenantExecutionContext(context.tenantExecutionContext, () =>
-                this.runEngineSessionStart(
-                  input.threadId,
-                  () => adapter.startSession(input),
-                  internal?.sessionStartAdmission,
-                ),
+            const invoke = async () => {
+              // #2873: the folder is decided again here, after every
+              // preceding await. From the check to the adapter call nothing
+              // yields: the start boundary below claims synchronously. It
+              // runs outside that boundary, which would record a throw as
+              // an uncertain start.
+              const binding = context.dispatchCwdAdmission
+                ? await this.dispatchCwdBinding(input, internal)
+                : undefined;
+              this.assertDispatchCwdAtSpawn(
+                input,
+                context.dispatchCwdAdmission,
+                binding,
               );
+              return withTenantExecutionContext(
+                context.tenantExecutionContext,
+                () =>
+                  this.runEngineSessionStart(
+                    input.threadId,
+                    () => adapter.startSession(input),
+                    internal?.sessionStartAdmission,
+                  ),
+              );
+            };
             // #484 phase A: the receiver-owned offer/binding recheck runs
             // INSIDE the provider-effect path — after every preceding await
             // and adjacent to the adapter invocation — so a withdrawn offer
@@ -5612,7 +6327,9 @@ export class OrchestrationService {
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
         error instanceof SessionReattachConflictError ||
-        error instanceof ConcurrentEngineStartCapacityError,
+        error instanceof ConcurrentEngineStartCapacityError ||
+        // #2873: a refusal to start, with nothing run.
+        error instanceof DispatchCwdRefusedError,
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -5715,6 +6432,7 @@ export class OrchestrationService {
     | ProviderSession
     | ProviderTurnStartResult
     | SteerTurnResult
+    | SteerInputInspectionResult
     | InterruptTurnResult
     | SetApprovalModeResult
     | undefined
@@ -5724,9 +6442,58 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
       | undefined;
+  }
+
+  private skillExperienceRuntime?: SkillExperienceRuntime;
+  registerSkillExperienceSource(source: SkillExperienceSource): boolean {
+    if (!this.options.eventStore) return false;
+    this.skillExperienceRuntime = new SkillExperienceRuntime(
+      this.options.eventStore,
+      source,
+    );
+    return true;
+  }
+  async readSkillExperience(
+    threadId: string,
+    authority: SessionReadScope,
+    cursor?: string,
+    limit?: number,
+    expected?: { identity: SkillExperienceIdentityV1; eventId: string },
+  ) {
+    if (!this.sessionAuthz.canReadSession(threadId, authority)) return null;
+    if (!this.skillExperienceRuntime)
+      throw new Error('Skill experience execution is unavailable.');
+    const view = await this.skillExperienceRuntime.read(
+      threadId,
+      cursor,
+      limit,
+      expected,
+    );
+    if (
+      !this.sessionAuthz.canReadSession(threadId, authority) ||
+      [...view.history, ...(view.current ? [view.current] : [])].some(
+        (item) => !this.sessionAuthz.canReadSession(item.threadId, authority),
+      )
+    )
+      return null;
+    return view;
+  }
+  private withCurrentSkillExperience<T>(
+    threadId: string,
+    effect: (context?: string) => Promise<T>,
+  ): Promise<T> {
+    if (this.skillExperienceRuntime)
+      return this.skillExperienceRuntime.admitCurrent(threadId, effect);
+    if (
+      this.options.eventStore?.listSkillExperienceEvents(threadId, undefined, 1)
+        .length
+    )
+      throw new Error('Skill experience execution is unavailable.');
+    return effect();
   }
 
   /** Register a server-owned per-turn admission observer. */
@@ -5774,6 +6541,15 @@ export class OrchestrationService {
       ownerAttribution?: StartOwnerAttribution;
       /** #2493: see `SessionCommandContext.fullAccessGrant`. */
       fullAccessGrant?: FullAccessGrant | null;
+      /**
+       * #2915: set only by a caller that already holds `setApprovalMode`
+       * authority on this session. The orchestration command route sets it
+       * for `respondToRequest`, which passed the same route and session
+       * authorization an Auto pick needs there. An edit-mode session answer
+       * records Auto only with it; from any other path it is a one-call
+       * `accept`.
+       */
+      approvalModeAuthority?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5781,6 +6557,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
       | undefined
@@ -5920,6 +6697,16 @@ export class OrchestrationService {
 
     let steerMetricEngine = 'unknown';
     let steerMetricRecorded = false;
+    // Marked in the same synchronous run that entered the dispatch, before any
+    // await, so `retireNeverRanSession` can see a turn that has been accepted
+    // for dispatch but holds no coordinator claim or turn fact yet.
+    const dispatchedTurnThread =
+      command.type === 'sendTurn' ? command.input.threadId : undefined;
+    if (dispatchedTurnThread !== undefined)
+      this.sendTurnsInDispatch.set(
+        dispatchedTurnThread,
+        (this.sendTurnsInDispatch.get(dispatchedTurnThread) ?? 0) + 1,
+      );
     try {
       switch (command.type) {
         case 'adoptSession':
@@ -5934,6 +6721,8 @@ export class OrchestrationService {
             // request's grant, like every other start, and (#1796) who
             // granted it. A grant naming no grantor is refused.
             adoptionConfinement(context?.fullAccessGrant),
+            // #3386: where a conversation no project claims continues.
+            command.target,
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke
@@ -6260,6 +7049,56 @@ export class OrchestrationService {
                         }
                       };
                       assertInputRequestCurrent();
+                      let experienceReference:
+                        | SkillExperienceInvocationReferenceV1
+                        | undefined;
+                      let experienceContext: string | undefined;
+                      if (internal?.skillExperience) {
+                        if (
+                          !this.skillExperienceRuntime ||
+                          !turnInput.clientTurnId
+                        )
+                          throw new Error(
+                            'Skill experience execution requires its supported contract and a client turn id.',
+                          );
+                        await this.skillExperienceRuntime.start(
+                          {
+                            threadId: turnInput.threadId,
+                            clientTurnId: turnInput.clientTurnId,
+                            selection: internal.skillExperience,
+                            hasProject:
+                              typeof this.readLatestSessionStartMetadata(
+                                turnInput.threadId,
+                              )?.projectSlug === 'string',
+                            hasConversation: Boolean(
+                              this.options.eventStore?.firstTurnStartedWithPrompt(
+                                turnInput.threadId,
+                              ) ||
+                                this.options.eventStore?.conversationForSession(
+                                  turnInput.threadId,
+                                )?.predecessorSessionId ||
+                                internal.skillExperience
+                                  .expectedPreviousInvocationEventId,
+                            ),
+                            attachmentCount: turnInput.attachments?.length ?? 0,
+                            questionnaireDelivery:
+                              adapter.provider === 'claude' ||
+                              adapter.provider === 'codex'
+                                ? 'canonical-request'
+                                : 'chat-fallback',
+                          },
+                          async (reference, prompt) => {
+                            experienceReference = reference;
+                            experienceContext = prompt;
+                            turnInput = {
+                              ...turnInput,
+                              displayInput:
+                                turnInput.displayInput ?? command.input.input,
+                              input: `${prompt}\n\n${turnInput.input}`,
+                            };
+                          },
+                        );
+                      }
                       const begun = boundary.beginInvocation(
                         new Date().toISOString(),
                       );
@@ -6286,6 +7125,7 @@ export class OrchestrationService {
                           turnInput.threadId,
                           context?.clientOrigin,
                           context?.principal,
+                          experienceReference,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -6425,13 +7265,53 @@ export class OrchestrationService {
                           throw new ForegroundInvocationUnavailableError();
                         const sendAdapter = () => {
                           assertInputRequestCurrent();
-                          providerInvoked = true;
-                          return nativeForeground
-                            ? runWithNativeForegroundRelay(
-                                nativeForeground,
-                                () => adapter.sendTurn(turnInput),
+                          const effect = (prompt?: string) => {
+                            if (prompt) {
+                              experienceContext = prompt;
+                              turnInput = {
+                                ...turnInput,
+                                displayInput:
+                                  turnInput.displayInput ?? command.input.input,
+                                input: `${prompt}\n\n${turnInput.input}`,
+                              };
+                            }
+                            assertInputRequestCurrent();
+                            this.assertAdapterCurrent(adapter);
+                            providerInvoked = true;
+                            const send = () =>
+                              nativeForeground
+                                ? runWithNativeForegroundRelay(
+                                    nativeForeground,
+                                    () => adapter.sendTurn(turnInput),
+                                  )
+                                : adapter.sendTurn(turnInput);
+                            return adapter.provider === 'station-agent' &&
+                              turnCorrelation &&
+                              experienceContext
+                              ? runWithAuthorizedTurnCorrelation(
+                                  turnCorrelation,
+                                  send,
+                                  nativeMemory,
+                                  experienceContext,
+                                )
+                              : send();
+                          };
+                          return internal?.skillExperience &&
+                            this.skillExperienceRuntime
+                            ? this.skillExperienceRuntime.admitSelection(
+                                internal.skillExperience.identity,
+                                effect,
+                                {
+                                  threadId: turnInput.threadId,
+                                  previousEventId:
+                                    internal.skillExperience
+                                      .expectedPreviousInvocationEventId,
+                                },
                               )
-                            : adapter.sendTurn(turnInput);
+                            : this.withCurrentSkillExperience(
+                                turnInput.threadId,
+                                effect,
+                              );
                         };
                         if (
                           nativeTurn &&
@@ -6496,6 +7376,7 @@ export class OrchestrationService {
                           accepted.turnId,
                           context?.clientOrigin,
                           context?.principal,
+                          experienceReference,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
@@ -6548,7 +7429,8 @@ export class OrchestrationService {
                         }
                         if (
                           !providerInvoked &&
-                          error instanceof ReceiverExecutionRefusal
+                          (error instanceof ReceiverExecutionRefusal ||
+                            error instanceof SkillExperienceUnavailableError)
                         ) {
                           // The post-preparation offer/binding recheck refused
                           // BEFORE the provider effect ran (`providerInvoked`
@@ -6769,6 +7651,10 @@ export class OrchestrationService {
               throw error;
             }
             obtainedResult = result;
+            this.acceptedTurnConfinement.set(turnInput.threadId, {
+              turnId: result.turnId,
+              confinement: turnInput.confinement ?? 'workspace',
+            });
             // Durable provider acceptance is the authoritative no-replay
             // boundary. Everything below is projection/observation and may
             // fail without making this client turn executable again.
@@ -6965,11 +7851,37 @@ export class OrchestrationService {
                 nativeTurnId,
               );
             }
+            this.stationControlPullRequests?.retireSession(command.threadId);
           }
           this.persistReceipt(receipt);
           return { receipt, result: interrupted };
         }
+        case 'inspectSteerInput': {
+          const stored = this.options.eventStore?.readSteerInput(command);
+          const result: SteerInputInspectionResult = stored ?? {
+            outcome: this.options.eventStore ? 'not-received' : 'indeterminate',
+            threadId: command.threadId,
+            clientInputId: command.clientInputId,
+          };
+          this.persistReceipt(receipt);
+          return { receipt, result };
+        }
         case 'steerTurn': {
+          const steerInput = command.clientInputId
+            ? {
+                threadId: command.threadId,
+                clientInputId: command.clientInputId,
+                input: command.input,
+                turnId: command.turnId,
+              }
+            : undefined;
+          const storedSteer =
+            steerInput && this.options.eventStore?.readSteerInput(steerInput);
+          if (storedSteer) {
+            this.persistReceipt(receipt);
+            return { receipt, result: storedSteer };
+          }
+
           // archive#3476: same as interrupt — no engine, therefore no live
           // turn to steer. `no-active-turn` is the existing vocabulary for
           // exactly this and is what the caller would have received anyway
@@ -7059,6 +7971,23 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
+          // #2898: a turn that started unconfined, where `workspace` applies
+          // now (its device grantor lost full access), finishes as it is, but
+          // is not given new instructions: those go in a new turn, which runs
+          // confined. A widening (a recorded `never`) never refuses a steer.
+          if (this.ranUnconfinedNowConfined(command.threadId, activeTurnId)) {
+            const result: SteerTurnResult = {
+              outcome: 'confinement-changed',
+              threadId: command.threadId,
+            };
+            orchestrationSteerDispatches.add(1, {
+              outcome: result.outcome,
+              engine: engineId,
+            });
+            steerMetricRecorded = true;
+            this.persistReceipt(receipt);
+            return { receipt, result };
+          }
           // archive#4075 stage 2 review round 1 (F2, MEDIUM/HIGH): a
           // steer's `turn.started (inputKind:'steer')` reuses the SAME
           // turnId as the turn it steers, so two concurrent steers on one
@@ -7085,6 +8014,19 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
+          if (
+            steerInput &&
+            !this.options.eventStore?.claimSteerInput(steerInput)
+          ) {
+            const result: SteerTurnResult =
+              this.options.eventStore?.readSteerInput(steerInput) ?? {
+                outcome: 'indeterminate',
+                threadId: command.threadId,
+                clientInputId: steerInput.clientInputId,
+              };
+            this.persistReceipt(receipt);
+            return { receipt, result };
+          }
           this.inFlightSteers.add(command.threadId);
           try {
             try {
@@ -7107,17 +8049,18 @@ export class OrchestrationService {
                 context?.principal,
               );
               try {
-                await adapter.steerTurn(
-                  command.threadId,
-                  command.input,
-                  activeTurnId,
-                );
+                await this.withCurrentSkillExperience(command.threadId, () => {
+                  this.assertAdapterCurrent(adapter);
+                  return adapter.steerTurn!(
+                    command.threadId,
+                    command.input,
+                    activeTurnId,
+                  );
+                });
               } catch (steerError) {
-                // Mirrors sendTurn's own `!providerAccepted` branch above
-                // (:3780): the adapter never accepted this steer, so there
-                // is no eventual `turn.started` to attribute — discard the
-                // reservation rather than settling it into a permanently
-                // unmatched `#accepted` entry.
+                // Release transient attribution on a failed acknowledgement.
+                // The durable steer claim stays held because engine acceptance
+                // cannot be ruled out.
                 this.clientOriginTurns.cancel(command.threadId);
                 throw steerError;
               }
@@ -7132,6 +8075,16 @@ export class OrchestrationService {
               }
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
+              if (steerInput) {
+                const result: SteerTurnResult = {
+                  outcome: 'indeterminate',
+                  threadId: command.threadId,
+                  clientInputId: steerInput.clientInputId,
+                };
+                this.persistReceipt(receipt);
+                return { receipt, result };
+              }
+
               if (
                 error instanceof ProviderTurnEndedError ||
                 !this.isAdapterCurrent(adapter)
@@ -7153,6 +8106,22 @@ export class OrchestrationService {
           } finally {
             this.inFlightSteers.delete(command.threadId);
           }
+          if (steerInput) {
+            try {
+              this.options.eventStore!.confirmSteerInput(
+                steerInput,
+                activeTurnId,
+              );
+            } catch {
+              const result: SteerTurnResult = {
+                outcome: 'indeterminate',
+                threadId: command.threadId,
+                clientInputId: steerInput.clientInputId,
+              };
+              this.persistReceipt(receipt);
+              return { receipt, result };
+            }
+          }
           const result: SteerTurnResult = {
             outcome: 'steered',
             threadId: command.threadId,
@@ -7167,6 +8136,17 @@ export class OrchestrationService {
           return { receipt, result };
         }
         case 'respondToRequest': {
+          // #3071: before adapter resolution, so a settled request is
+          // refused by Station with one code whatever holds the thread.
+          const settledRefusal = this.settledRequestRefusal(
+            command.threadId,
+            command.requestId,
+          );
+          if (settledRefusal)
+            throw new RequestEventGuardError(
+              'request_event_changed',
+              settledRefusal,
+            );
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: command.threadId,
             threadProviders: this.threadProviders,
@@ -7174,56 +8154,86 @@ export class OrchestrationService {
             adapters: this.options.adapterRegistry.list(),
           });
           this.assertAdapterCurrent(adapter);
-          if (command.expectedRequestEventId !== undefined) {
-            if (context?.requestCurrent && !context.requestCurrent())
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'Request authority changed before the decision.',
-              );
-            // Adapter resolution can await. Recheck authorization and the exact
-            // current request immediately before its synchronous adapter handoff.
+          const currentQuestionRequest =
+            this.options.eventStore?.readCurrentRequestEvent(
+              command.threadId,
+              command.requestId,
+            );
+          const questionnaire = readHarnessQuestionnaire(
+            currentQuestionRequest?.state === 'found' &&
+              currentQuestionRequest.event.payload.method === 'request.opened'
+              ? currentQuestionRequest.event.payload.payload?.questionnaire
+              : undefined,
+          );
+          if (questionnaire || command.answers !== undefined) {
             if (
-              context?.userId !== undefined &&
-              !this.sessionAuthz.canReadSessionForCommand(
-                command.threadId,
-                context.userId,
-                context.tenantExecutionContext,
-              )
+              !questionnaire ||
+              !command.expectedRequestEventId ||
+              command.decision === 'acceptForSession'
             )
               throw new RequestEventGuardError(
                 'request_verification_unavailable',
-                'This request is no longer available to you.',
+                'Inspect the current question before answering it.',
               );
-            const inspected = this.inspectAttentionRequest(
-              {
-                threadId: command.threadId,
-                requestId: command.requestId,
-                requestEventId: command.expectedRequestEventId,
-              },
-              INTERNAL_SESSION_READ_SCOPE,
-            );
-            if (!inspected || inspected.state === 'unavailable') {
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'This request could not be verified. Inspect it again before responding.',
-              );
-            }
-            if (inspected.state !== 'open')
-              throw new RequestEventGuardError(
-                'request_event_changed',
-                inspected.message,
-              );
-            if (inspected.provider !== adapter.provider)
-              throw new RequestEventGuardError(
-                'request_event_changed',
-                'The request engine changed. Inspect the current request before responding.',
-              );
-            if (!inspected.canRespond)
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'This session cannot currently answer the request.',
-              );
+            if (command.decision === 'accept')
+              validateHarnessQuestionAnswers(questionnaire, command.answers);
+            else if (command.answers !== undefined)
+              throw new Error('A cancelled question cannot carry answers.');
           }
+
+          const assertAnswerCurrent = () => {
+            if (command.expectedRequestEventId !== undefined) {
+              if (context?.requestCurrent && !context.requestCurrent())
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'Request authority changed before the decision.',
+                );
+              // Adapter resolution can await. Recheck authorization and the exact
+              // current request immediately before its synchronous adapter handoff.
+              if (
+                context?.userId !== undefined &&
+                !this.sessionAuthz.canReadSessionForCommand(
+                  command.threadId,
+                  context.userId,
+                  context.tenantExecutionContext,
+                )
+              )
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This request is no longer available to you.',
+                );
+              const inspected = this.inspectAttentionRequest(
+                {
+                  threadId: command.threadId,
+                  requestId: command.requestId,
+                  requestEventId: command.expectedRequestEventId,
+                },
+                INTERNAL_SESSION_READ_SCOPE,
+              );
+              if (!inspected || inspected.state === 'unavailable') {
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This request could not be verified. Inspect it again before responding.',
+                );
+              }
+              if (inspected.state !== 'open')
+                throw new RequestEventGuardError(
+                  'request_event_changed',
+                  inspected.message,
+                );
+              if (inspected.provider !== adapter.provider)
+                throw new RequestEventGuardError(
+                  'request_event_changed',
+                  'The request engine changed. Inspect the current request before responding.',
+                );
+              if (!inspected.canRespond)
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This session cannot currently answer the request.',
+                );
+            }
+          };
+          assertAnswerCurrent();
           // #484 continuation: a portable thread answers a provider request
           // ONLY under a fresh admission naming its exact association —
           // rechecked here, after the request-verification awaits above and
@@ -7271,23 +8281,81 @@ export class OrchestrationService {
               }
             }
           }
+          // #2915: read before the answer resolves the request. An
+          // "Auto-accept file edits for this session" answer lasts until the
+          // user changes mode only because it records Auto, which needs
+          // `setApprovalMode` authority. Without it (the delegated respond
+          // path, the approval inbox) the answer is a one-call `accept`, so
+          // the engine is never switched to acceptEdits with no decision to
+          // undo it. With it, the standing decision is kept: any decision
+          // recorded while the engine takes the answer wins.
+          const editModeAnswer = this.isEditModeSessionAnswer(
+            command,
+            adapter.provider,
+          )
+            ? context?.approvalModeAuthority === true
+              ? { standing: this.approvalPosture.decision(command.threadId) }
+              : 'downgrade'
+            : undefined;
+          const decision =
+            editModeAnswer === 'downgrade' ? 'accept' : command.decision;
           // #2344: an adapter that records the decision itself (the Station
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
-          await (context?.clientOrigin
-            ? adapter.respondToRequest(
-                command.threadId,
-                command.requestId,
-                command.decision,
-                { clientOrigin: context.clientOrigin },
-              )
-            : adapter.respondToRequest(
-                command.threadId,
-                command.requestId,
-                command.decision,
-              ));
+          const requestContext =
+            questionnaire || context?.clientOrigin
+              ? {
+                  ...(context?.clientOrigin
+                    ? { clientOrigin: context.clientOrigin }
+                    : {}),
+                  ...(command.answers ? { answers: command.answers } : {}),
+                  ...(questionnaire && command.expectedRequestEventId
+                    ? { expectedRequestEventId: command.expectedRequestEventId }
+                    : {}),
+                }
+              : undefined;
+          const answer = () => {
+            assertAnswerCurrent();
+            return requestContext
+              ? adapter.respondToRequest(
+                  command.threadId,
+                  command.requestId,
+                  decision,
+                  requestContext,
+                )
+              : adapter.respondToRequest(
+                  command.threadId,
+                  command.requestId,
+                  decision,
+                );
+          };
+          if (
+            command.expectedSkillExperience &&
+            (decision === 'accept' || decision === 'acceptForSession')
+          ) {
+            if (!this.skillExperienceRuntime)
+              throw new SkillExperienceUnavailableError(
+                'Skill experience execution is unavailable.',
+              );
+            await this.skillExperienceRuntime.admitFrame(
+              command.threadId,
+              command.expectedSkillExperience,
+              answer,
+            );
+          } else {
+            await (decision === 'accept' || decision === 'acceptForSession'
+              ? this.withCurrentSkillExperience(command.threadId, answer)
+              : answer());
+          }
           this.assertAdapterCurrentAfterCommand(adapter);
+          if (editModeAnswer && editModeAnswer !== 'downgrade')
+            this.recordEditModeAutoPosture(
+              command.threadId,
+              adapter.provider,
+              editModeAnswer.standing,
+              context,
+            );
           this.persistReceipt(receipt);
           return { receipt, result: undefined };
         }
@@ -7398,16 +8466,130 @@ export class OrchestrationService {
         // #2300/#2324: a retryable adapter refusal's code is forwarded so the
         // client's queue keeps the send for a retry instead of dropping it
         // as a definitive rejection.
+        // An attachment refusal's code is forwarded (NOT retryable) so the
+        // client can say the same send will be refused again instead of
+        // offering a blind retry.
         error instanceof SessionEndedError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
           error instanceof DraftDiscardedError ||
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
-          error instanceof ReceiverExecutionRefusal
+          error instanceof ReceiverExecutionRefusal ||
+          error instanceof AttachmentInputUnsupportedError
           ? error.code
           : retryableAdapterRefusalCode(error),
       );
+    } finally {
+      if (dispatchedTurnThread !== undefined) {
+        const remaining =
+          (this.sendTurnsInDispatch.get(dispatchedTurnThread) ?? 1) - 1;
+        if (remaining > 0)
+          this.sendTurnsInDispatch.set(dispatchedTurnThread, remaining);
+        else this.sendTurnsInDispatch.delete(dispatchedTurnThread);
+      }
+    }
+    // Unreachable (the switch is exhaustive and every arm returns or throws);
+    // a `finally` stops TypeScript proving that for itself.
+    const unhandled: never = command;
+    throw new Error(`Unhandled orchestration command: ${String(unhandled)}`);
+  }
+
+  /**
+   * Stop the engine of a Session that a model-change successor replaced before
+   * it ever ran a turn (see `ConversationLineage`'s `retirePredecessorSessionId`).
+   *
+   * Unlike the `stopSession` command, this is conditional at the moment it
+   * runs. Under the Session's lifecycle lock (the one `sendTurn` queues behind
+   * to start a turn, and the one an idle park re-checks under) it stops only a
+   * Session that still has no turn fact, has no dispatched or active turn, and
+   * is no longer its conversation's current Session. Every check is synchronous
+   * and the stop begins in the same lock hold, so a turn accepted first wins
+   * and one that arrives later cannot invoke its provider until the stop ends.
+   *
+   * Not covered: a send that has resolved this Session but not yet called
+   * `dispatch` (its resolve-to-dispatch gap in the foreground seam) is
+   * invisible here; closing that needs the resolve step to reserve the Session.
+   */
+  async retireNeverRanSession(
+    threadId: string,
+    context?: {
+      userId?: string;
+      tenantExecutionContext?: TenantExecutionContext;
+    },
+  ): Promise<
+    | { stopped: true }
+    | {
+        stopped: false;
+        reason:
+          | 'not_found'
+          | 'ineligible'
+          | 'current_session'
+          | 'turn_in_flight'
+          | 'turn_facts';
+      }
+  > {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (
+      !store ||
+      (context?.userId !== undefined &&
+        !this.sessionAuthz.canReadSessionForCommand(
+          threadId,
+          context.userId,
+          context.tenantExecutionContext,
+        ))
+    )
+      return { stopped: false, reason: 'not_found' };
+    if (
+      this.quarantinedThreads.has(threadId) ||
+      this.isPeerDelegationActivityRecord(threadId) ||
+      this.isReadOnlyAttachedSession(threadId)
+    )
+      return { stopped: false, reason: 'ineligible' };
+    const refusal = ():
+      | {
+          stopped: false;
+          reason: 'current_session' | 'turn_in_flight' | 'turn_facts';
+        }
+      | undefined => {
+      const lineage = store.conversationForSession(threadId);
+      if (
+        !lineage ||
+        store.conversationSessions(lineage.conversationId).at(-1)?.sessionId ===
+          threadId
+      )
+        return { stopped: false, reason: 'current_session' };
+      if (
+        this.sendTurnsInDispatch.has(threadId) ||
+        this.sessionExecutionCoordinator.hasActiveTurn(threadId)
+      )
+        return { stopped: false, reason: 'turn_in_flight' };
+      if (store.hasTurnFacts(threadId))
+        return { stopped: false, reason: 'turn_facts' };
+      return undefined;
+    };
+    const early = refusal();
+    if (early) return early;
+    try {
+      return await this.sessionExecutionCoordinator.runLifecycleTransition(
+        threadId,
+        async () => {
+          const late = refusal();
+          if (late) return late;
+          await this.stopSessionNow(threadId);
+          return { stopped: true } as const;
+        },
+      );
+    } catch (error) {
+      // Only the boundary's own refusal means a turn won; a stop that failed
+      // (a start still in progress, an adapter error) is the caller's to see.
+      if (
+        error instanceof SessionLifecycleClaimRefusedError &&
+        error.reason === 'active-turn'
+      )
+        return { stopped: false, reason: 'turn_in_flight' };
+      throw error;
     }
   }
 
@@ -7681,6 +8863,144 @@ export class OrchestrationService {
     );
     this.discardedEngineExitWaiters.set(threadId, cancelAndSettle);
     return { settled, cancel };
+  }
+
+  /**
+   * #2873: the directory a start is bound to, for the dispatch route's scope
+   * decision. `undefined` where Station chose the directory itself: a
+   * workspace it provisioned for this thread (a worktree), or the home
+   * default. A start with no directory at all is left to its engine
+   * connection, so that connection's default is read instead.
+   */
+  private async dispatchCwdBinding(
+    input: ProviderSessionStartInput,
+    internal: OrchestrationDispatchInternalOptions | undefined,
+  ): Promise<[string | undefined, DispatchCwdOrigin]> {
+    if (
+      internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+      readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+      internal?.receiverExecutionAdmission?.admitted
+    )
+      return [undefined, 'session'];
+    // Truthiness, as the ACP adapter's own chain (`input.cwd || connection`):
+    // an empty `cwd` is no directory, so the connection's default applies.
+    if (input.cwd)
+      return [input.cwdDefaulted ? undefined : input.cwd, 'session'];
+    if (!this.options.resolveConnectionDefaultCwd)
+      throw new DispatchCwdRefusedError(
+        'Station cannot tell where this engine connection would start the session, so it will not start it for an agent.',
+        'station_control_role_required',
+      );
+    const connectionId =
+      typeof input.metadata?.connectionId === 'string'
+        ? input.metadata.connectionId
+        : undefined;
+    return [
+      await this.options.resolveConnectionDefaultCwd(
+        input.provider,
+        connectionId,
+      ),
+      'connection',
+    ];
+  }
+
+  /**
+   * #2873: the last check before an engine is spawned for a new session.
+   * With the route's admission, its decision is run again and must still
+   * name the canonical folder `prepareStart` recorded; without one, a
+   * recorded folder (carried from the conversation's previous session) must
+   * still resolve to itself.
+   */
+  private assertDispatchCwdAtSpawn(
+    input: ProviderSessionStartInput,
+    admission: DispatchCwdAdmission | undefined,
+    binding: [string | undefined, DispatchCwdOrigin] | undefined,
+  ): void {
+    if (!admission || !binding) {
+      assertDispatchCwdUnmoved(input, input.cwd);
+      return;
+    }
+    const recorded = recordedDispatchCanonicalCwd(input.metadata);
+    const current = admission.recheck(...binding);
+    if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
+  }
+
+  /**
+   * #3429: a later session of a conversation Continue in Station created
+   * (its root Session records `continuationSourceThreadId`, written only by
+   * adoption) may start in the folder that conversation was admitted into,
+   * even when that folder is a worktree outside the Project folder. Only
+   * when the start names that exact folder and Project, the conversation
+   * recorded it as `dispatchCanonicalCwd` (server-written), the folder still
+   * resolves to that record, and it still passes adoption's own check (the
+   * Project folder or a genuine worktree of its repository) right now.
+   * Anything else gets no coordinate and meets the ordinary rule.
+   */
+  private async adoptedChildAdmittedWorkspace(
+    input: ProviderSessionStartInput,
+  ): Promise<
+    { threadId: string; projectSlug: string; cwd: string } | undefined
+  > {
+    const store = this.options.eventStore;
+    const projectSlug = input.metadata?.projectSlug;
+    if (!store || !input.cwd || typeof projectSlug !== 'string' || !projectSlug)
+      return undefined;
+    const cwd = resolve(expandTilde(input.cwd));
+    const conversationId =
+      store.conversationForSession(input.threadId)?.conversationId ??
+      input.threadId;
+    if (!store.readSessionByThread(conversationId)?.continuationSourceThreadId)
+      return undefined;
+    const recorded = this.inheritedDispatchCanonicalCwd({ ...input, cwd });
+    if (recorded === undefined) return undefined;
+    try {
+      if (canonicalPath(cwd) !== recorded) return undefined;
+      const place = await resolveContinuationPlace({
+        cwd: recorded,
+        projects: this.options.listProjects?.() ?? [],
+        hosted: this.options.requireTenantExecutionContext?.() === true,
+      });
+      if (place.cwd !== recorded || place.project?.slug !== projectSlug)
+        return undefined;
+    } catch {
+      return undefined;
+    }
+    return { threadId: input.threadId, projectSlug, cwd };
+  }
+
+  /**
+   * #2873: the canonical folder the conversation's previous session
+   * recorded, for a session that starts in that same folder (a continuation
+   * child, or the same thread started again). The newest session with a
+   * start record decides; a different folder carries nothing forward.
+   */
+  private inheritedDispatchCanonicalCwd(
+    input: ProviderSessionStartInput,
+  ): string | undefined {
+    const store = this.options.eventStore;
+    if (!store || !input.cwd) return undefined;
+    const conversationId = store.conversationForSession(
+      input.threadId,
+    )?.conversationId;
+    const threads = conversationId
+      ? store
+          .conversationSessions(conversationId)
+          .map((session) => session.sessionId)
+          .reverse()
+      : [input.threadId];
+    for (const threadId of threads) {
+      const started = store.latestEventByMethod(threadId, 'session.started')
+        ?.payload as { metadata?: Record<string, unknown> } | undefined;
+      if (!started) continue;
+      const recorded = recordedDispatchCanonicalCwd(started.metadata);
+      const cwd = store.readSessionByThread(threadId)?.cwd;
+      return recorded !== undefined &&
+        cwd !== undefined &&
+        resolve(expandTilde(cwd)) === input.cwd
+        ? recorded
+        : undefined;
+    }
+    return undefined;
   }
 
   /**
@@ -8409,6 +9729,7 @@ export class OrchestrationService {
       this.nativeTurnGenerations.delete(threadId);
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
+    this.stationControlPullRequests?.retireSession(threadId);
     this.sessionAdapters.delete(threadId);
     this.threadProviders.delete(threadId);
     this.sessionReadModel.delete(threadId);
@@ -8494,6 +9815,78 @@ export class OrchestrationService {
       this.sessionReadModel.get(threadId)?.provider ??
       this.options.eventStore?.readSessionByThread(threadId)?.provider
     );
+  }
+
+  /**
+   * #2915 (owner decision): an "Auto-accept file edits for this session"
+   * answer lasts until the user changes mode. Whether this answer is one: a
+   * session answer whose grant (`toolRequestSessionGrantFromPayload`, the
+   * computation the approval surfaces and the Claude adapter use) is
+   * `edit-mode`, read from the request as it stands before it is answered.
+   */
+  private isEditModeSessionAnswer(
+    command: {
+      threadId: string;
+      requestId: string;
+      decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+    },
+    provider: EngineId,
+  ): boolean {
+    if (command.decision !== 'acceptForSession') return false;
+    if (!approvalKnobSupported(provider)) return false;
+    let current: ReturnType<EventStore['readCurrentRequestEvent']> | undefined;
+    try {
+      current = this.options.eventStore?.readCurrentRequestEvent(
+        command.threadId,
+        command.requestId,
+      );
+    } catch {
+      return false;
+    }
+    if (current?.state !== 'found') return false;
+    const opened = current.event.payload;
+    return (
+      opened.method === 'request.opened' &&
+      toolRequestSessionGrantFromPayload(opened.payload) === 'edit-mode'
+    );
+  }
+
+  /**
+   * #2915 (owner decision): once the engine has taken an edit-mode answer,
+   * record an `auto` posture decision for the conversation exactly as a
+   * composer pick of Auto would, so the chip, later turns and their metadata
+   * agree with the engine and picking Ask ends it. Only a caller holding
+   * `setApprovalMode` authority gets here (`approvalModeAuthority`). A
+   * standing `auto` or `never` is left alone (the answer never tightens a
+   * posture). `standing` was read before the answer was sent. Any decision
+   * recorded since (Ask, Auto or full access) wins: nothing is recorded, and
+   * the next turn re-applies it.
+   */
+  private recordEditModeAutoPosture(
+    threadId: string,
+    provider: EngineId,
+    standing: ApprovalPostureDecision | undefined,
+    context:
+      | { clientOrigin?: ClientOrigin; principal?: PrincipalRef }
+      | undefined,
+  ): void {
+    if (standing?.approvalMode === 'auto' || standing?.approvalMode === 'never')
+      return;
+    // The compare-and-set admits a pick at least as strict as a newer
+    // decision (Auto over a newer full access), so a newer decision of any
+    // kind is checked here, in the same synchronous step as the append.
+    if (
+      this.approvalPosture.decision(threadId)?.sequence !== standing?.sequence
+    )
+      return;
+    this.recordApprovalModeDecision({
+      threadId,
+      provider,
+      approvalMode: 'auto',
+      basedOnSequence: standing?.sequence ?? null,
+      ...(context?.clientOrigin ? { clientOrigin: context.clientOrigin } : {}),
+      ...(context?.principal ? { principal: context.principal } : {}),
+    });
   }
 
   /**
@@ -8588,10 +9981,13 @@ export class OrchestrationService {
    * of the revoking request) carrying `revocation`; history is never
    * deleted. Recording a decision does not touch a running turn: the next
    * turn start or respawn applies it (`ApprovalPosture.resolve`, where a
-   * decision wins over a start's carried mode). A `host` start stamp stays,
-   * so the next turn runs unconfined but at Ask: the engine asks before
-   * acting. `never` decisions from before decisions carried an actor are
-   * listed as unattributed, never reset.
+   * decision wins over a start's carried mode). A `host` start stamp stays as
+   * written. One this device granted applies as `workspace` from then on
+   * (`readStartConfinementStamp`), so that session's next turn runs
+   * confined; one someone else granted still runs unconfined, at Ask where
+   * an Ask was recorded: the engine asks before acting. `never` decisions
+   * from before decisions carried an actor are listed as unattributed, never
+   * reset.
    */
   async resetFullAccessGrantedBy(input: {
     deviceId: string;
@@ -8775,24 +10171,35 @@ export class OrchestrationService {
       }
     }
     // Sessions this device's grant unconfined. The applied stamp reads the
-    // grant live, so each is confined from the next time Station hands its
-    // engine a posture: every turn while a decision stands (the decision's
-    // mode is re-applied under `workspace`), or its next start or respawn.
-    // A live engine with no decision standing is sent no posture on a turn
-    // (#2144 slice 6), so it keeps what it started with until it restarts:
-    // listed as still unconfined. So is everything when this Station cannot
-    // check the grant. A standing `never` from someone else keeps the
-    // conversation unconfined anyway and is listed as still at full access.
+    // grant live, so each is confined from its next turn: a standing
+    // decision's mode is re-applied under `workspace`, and with no decision
+    // the turn re-applies the mode its engine runs (#2898, the confinement
+    // change exception to #2144 slice 6); or from its next start or respawn.
+    // A running engine whose last turn ran under the confinement that no
+    // longer holds is listed as still unconfined until that next turn, one
+    // entry per running session, so the operator can stop it at once. A
+    // conversation with none such (no engine running, or one already
+    // re-confined by a turn) is listed as re-confined. Everything is
+    // listed as still unconfined when this Station cannot check the grant.
+    // A standing `never` from someone else keeps the conversation unconfined
+    // anyway and is listed as still at full access.
     for (const [conversationId, seed, granted] of grantedConversations) {
       const standing = this.approvalPosture.decision(seed);
       if (standing?.approvalMode === 'never') continue;
+      const running = [...new Set(granted)].filter(
+        (threadId) =>
+          this.sessionAdapters.has(threadId) &&
+          this.ranUnconfinedNowConfined(threadId),
+      );
       if (!this.options.isFullAccessGrantorCurrent)
         stillUnconfined.push({ conversationId, until: 'grant-not-checked' });
-      else if (
-        !standing &&
-        granted.some((threadId) => this.sessionAdapters.has(threadId))
-      )
-        stillUnconfined.push({ conversationId, until: 'engine-restart' });
+      else if (running.length > 0)
+        for (const sessionId of running)
+          stillUnconfined.push({
+            conversationId,
+            sessionId,
+            until: 'next-turn',
+          });
       else reconfined.push({ conversationId });
     }
     // Live `host` sessions started before the grantor was recorded: listed,
@@ -8844,7 +10251,12 @@ export class OrchestrationService {
         entry.conversationId,
         ...threadsOf(entry.conversationId, seed),
       ]);
-      return { ...entry, sessionId: seed, ...(title ? { title } : {}) };
+      // An entry that names its session (a running one) keeps it.
+      return {
+        sessionId: seed,
+        ...entry,
+        ...(title ? { title } : {}),
+      };
     };
     return {
       cause: input.cause,
@@ -8860,6 +10272,111 @@ export class OrchestrationService {
   }
 
   /**
+   * #3161: an external engine's `declare_pull_request` call. The session is
+   * the verified caller's own and the turn is whichever turn it is running
+   * now; the declaration lands when that turn completes.
+   */
+  declareStationControlPullRequest(input: {
+    sessionId: string;
+    pullRequest: StationControlPullRequestIdentity;
+    label?: string;
+  }): Promise<StationControlPullRequestDeclarationOutcome> {
+    if (!this.stationControlPullRequests)
+      throw new StationControlPullRequestUnavailableError('unconfigured');
+    return this.stationControlPullRequests.declare(input);
+  }
+
+  /** The turn the session is running, as the lease for what it declares. */
+  private activeStationControlTurn(
+    threadId: string,
+  ): StationControlActiveTurn | undefined {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.quarantinedThreads.has(threadId)) return undefined;
+    const turnId = this.activeTurnIdOfThread(threadId);
+    if (!turnId) return undefined;
+    return {
+      turnId,
+      adapterId: adapter.provider,
+      isCurrent: () =>
+        this.sessionAdapters.get(threadId) === adapter &&
+        this.isAdapterCurrent(adapter) &&
+        !this.quarantinedThreads.has(threadId) &&
+        this.activeTurnIdOfThread(threadId) === turnId,
+    };
+  }
+
+  private activeTurnIdOfThread(threadId: string): string | undefined {
+    // The fold that keeps a turn live through Codex's deferred-retriable error
+    // (`willRetry`): the engine is still working that turn and will complete
+    // it, so a declaration made in it must not be dropped. A real terminal (a
+    // non-retriable error, an abort, a completion, an exit) still ends it.
+    return interruptibleTurnIdForEvents(
+      (
+        this.options.eventStore?.listEventsByMethods(
+          threadId,
+          ACTIVE_TURN_FOLD_METHODS,
+        ) ?? []
+      ).map((stored) => stored.payload),
+    );
+  }
+
+  /**
+   * Every pull request the session has declared, durable. `null` past the
+   * bound (never a truncated list): the caller refuses rather than repeat a
+   * declaration it could not see.
+   */
+  private declaredPullRequestsOfSession(
+    threadId: string,
+  ): Extract<DeclaredOutputDescriptor, { kind: 'pull-request' }>[] | null {
+    const store = this.options.eventStore;
+    if (!store) return [];
+    const bound = 500;
+    const found: Extract<DeclaredOutputDescriptor, { kind: 'pull-request' }>[] =
+      [];
+    let seen = 0;
+    let after: { sequence: number; declarationId: string } | undefined;
+    let highWater: number | undefined;
+    for (;;) {
+      const page = store.listDeclaredOutputDescriptors({
+        threadId,
+        limit: 50,
+        ...(after ? { after } : {}),
+        ...(highWater === undefined ? {} : { highWater }),
+      });
+      highWater = page.highWater;
+      for (const row of page.rows) {
+        seen += 1;
+        if (seen > bound) return null;
+        const descriptor = row.descriptor as
+          | Record<string, unknown>
+          | undefined;
+        const repository = descriptor?.repository as
+          | Record<string, unknown>
+          | undefined;
+        if (
+          descriptor?.kind === 'pull-request' &&
+          typeof descriptor.provider === 'string' &&
+          typeof descriptor.host === 'string' &&
+          typeof descriptor.ref === 'string' &&
+          typeof descriptor.nativeId === 'string' &&
+          typeof repository?.owner === 'string' &&
+          typeof repository.name === 'string'
+        )
+          found.push({
+            kind: 'pull-request',
+            provider: descriptor.provider,
+            host: descriptor.host,
+            repository: { owner: repository.owner, name: repository.name },
+            ref: descriptor.ref,
+            nativeId: descriptor.nativeId,
+          });
+        after = { sequence: row.sequence, declarationId: row.declarationId };
+      }
+      if (!page.hasMore) return found;
+    }
+  }
+
+  /**
    * #2377 slice C1: whether `threadId` runs unconfined (`host`): its start
    * stamp or a recorded `never`, exactly as its next turn reads it
    * (`ApprovalPosture.standingConfinement`).
@@ -8870,6 +10387,33 @@ export class OrchestrationService {
         threadId,
         this.readStartConfinementStamp(threadId),
       ) === 'host'
+    );
+  }
+
+  /**
+   * #2898: whether `threadId`'s engine last ran a turn unconfined (`host`)
+   * while `workspace` applies now: a NARROWING, such as a host stamp whose
+   * device grantor lost `approval:full-access`. The turn's confinement is
+   * that of the engine's last accepted turn (when `turnId` is given, only if
+   * it is that turn), else the one the engine started under. A widening (a
+   * recorded `never`, a grant given back) is not stale: the turn ran
+   * stricter than what applies now.
+   */
+  private ranUnconfinedNowConfined(threadId: string, turnId?: string): boolean {
+    const accepted = this.acceptedTurnConfinement.get(threadId);
+    const ran =
+      accepted && (turnId === undefined || accepted.turnId === turnId)
+        ? accepted.confinement
+        : this.approvalPosture.standingConfinement(
+            threadId,
+            this.readStartConfinementStampAsWritten(threadId),
+          );
+    return (
+      ran === 'host' &&
+      this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      ) === 'workspace'
     );
   }
 
@@ -9353,6 +10897,7 @@ export class OrchestrationService {
       // #2409: a respawned engine starts at whatever its start resolves, so
       // nothing Station set on the exited one is still in effect.
       this.approvalPosture.forgetThread(event.threadId);
+      this.acceptedTurnConfinement.delete(event.threadId);
     }
     if (
       event.method === 'turn.completed' ||
@@ -9386,26 +10931,34 @@ export class OrchestrationService {
     });
     const declaredOutputs =
       projectedEvent.method === 'turn.completed' && projectedEvent.turnId
-        ? this.nativeOutputDeclarations.takeTerminalAdmissions(
-            projectedEvent.threadId,
-            projectedEvent.turnId,
-            projectedEvent.eventId,
-          )
+        ? [
+            ...this.nativeOutputDeclarations.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ),
+            ...(this.stationControlPullRequests?.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ) ?? []),
+          ]
         : [];
     this.recordProviderTurnBoundary(projectedEvent);
     try {
       this.options.eventStore?.appendEvent(projectedEvent, declaredOutputs);
       if (declaredOutputs.length > 0) {
-        this.nativeOutputDeclarations.commit(
-          declaredOutputs.map((admission) => admission.handle),
-        );
+        const handles = declaredOutputs.map((admission) => admission.handle);
+        // A handle belongs to exactly one operation; the other ignores it.
+        this.nativeOutputDeclarations.commit(handles);
+        this.stationControlPullRequests?.commit(handles);
       }
     } catch (error) {
       // Same-call retry is possible only when SQLite rolled back.  Do not
       // consume a memory handle before its unique durable use index commits.
-      this.nativeOutputDeclarations.rollback(
-        declaredOutputs.map((admission) => admission.handle),
-      );
+      const handles = declaredOutputs.map((admission) => admission.handle);
+      this.nativeOutputDeclarations.rollback(handles);
+      this.stationControlPullRequests?.rollback(handles);
       throw error;
     }
     // The event-store append is the retirement boundary. Do not use an
@@ -9422,6 +10975,10 @@ export class OrchestrationService {
         projectedEvent.threadId,
         projectedEvent.turnId,
       );
+      this.stationControlPullRequests?.retireTerminal(
+        projectedEvent.threadId,
+        projectedEvent.turnId,
+      );
       if (
         this.nativeTurnGenerations.get(projectedEvent.threadId) ===
         projectedEvent.turnId
@@ -9429,6 +10986,10 @@ export class OrchestrationService {
         this.nativeTurnGenerations.delete(projectedEvent.threadId);
       }
     }
+    // An engine that exits mid-turn ends with `session.exited` and no turn
+    // terminal: nothing else would release the session's declaration grants.
+    if (projectedEvent.method === 'session.exited')
+      this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
     if (!isCoalescableDelta(event))
@@ -9614,6 +11175,20 @@ export class OrchestrationService {
     return lifecycle !== undefined && isSessionLifecycleStateAtRest(lifecycle);
   }
 
+  /**
+   * #3157: an engine that marks a failed turn's session `error` (Claude)
+   * refuses another turn on it, so a recovery replay into that Session would
+   * be refused. Parking stops that engine the way an idle one is stopped, and
+   * the replay's own dispatch restarts it in place from its resume cursor.
+   * No-op for a session that can still take a turn, or one parking refuses.
+   */
+  private async parkEndedEngineForReplay(threadId: string): Promise<void> {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.sessionReadModel.get(threadId)?.status !== 'error')
+      return;
+    await this.parkIdleSession(threadId, adapter, Date.now(), 0);
+  }
+
   private parkIdleSession(
     threadId: string,
     adapter: ProviderAdapterShape,
@@ -9660,6 +11235,7 @@ export class OrchestrationService {
         // starts at whatever its own start resolves.
         this.clientOriginTurns.clearThread(threadId);
         this.approvalPosture.forgetThread(threadId);
+        this.acceptedTurnConfinement.delete(threadId);
         this.options.logger.debug('Parked idle session engine', { threadId });
         return true;
       },

@@ -1,0 +1,29 @@
+{
+  "path": "docs/learn/media/inspect-request.webm",
+
+  "sources": [
+    "src-server/routes/orchestration/attention.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-ui/src/components/attention/RequestInspectionDialog.css",
+
+    "src-ui/src/components/attention/RequestInspectionDialog.tsx",
+
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/pages/NotificationsPage.css",
+
+    "src-ui/src/pages/NotificationsPage.tsx",
+
+    "src-ui/src/views/page-layout.css",
+
+    "tests/helpers/exact-request-backend.ts"
+  ],
+
+  "reviewNotes": []
+}

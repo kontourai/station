@@ -132,6 +132,40 @@ export function transcriptCarriesFailureText(
   );
 }
 
+/**
+ * Whether the transcript shows ANY failure surface the reader can see. For a
+ * session whose sends never took (`isFirstSendFailure`) this is the ownership
+ * test: such a session has no turns, so a visible failure in its transcript
+ * can only be about that refused send. The text match above cannot make the
+ * call there — the session record carries only the attribution sentence
+ * ("Station refused the send before it started."), never the refusal's own
+ * words that the transcript's card prints — so both surfaces rendered at once
+ * and gave contradictory advice.
+ */
+export function transcriptShowsFailureSurface(
+  messages: readonly TranscriptMessageText[],
+): boolean {
+  return messages.some(rendersAsFailureSurface);
+}
+
+/**
+ * The banner's closing advice. A session that already ran turns can be
+ * continued; one whose only sends never took has nothing to continue, and
+ * resending the same thing is refused the same way.
+ */
+export function sessionFailureNote(
+  session: Pick<SessionFailureFacts, 'terminalAttribution'> | null | undefined,
+): string {
+  switch (session?.terminalAttribution?.kind) {
+    case 'send_refused':
+      return 'Nothing reached the agent. Change what was refused, then send again.';
+    case 'send_failed':
+      return 'No reply has been recorded. You can send a message to try again.';
+    default:
+      return 'You can send a message to try to continue this chat.';
+  }
+}
+
 function messageText(message: TranscriptMessageText): string {
   return [
     message.content ?? '',

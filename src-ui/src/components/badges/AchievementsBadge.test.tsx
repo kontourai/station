@@ -23,6 +23,26 @@ describe('AchievementsBadge', () => {
     expect(container.childElementCount).toBe(0);
   });
 
+  test('renders the measurement gap without a fabricated budget or progress bar', () => {
+    useAnalytics.mockReturnValue({
+      loading: false,
+      achievements: [
+        {
+          id: 'cost-conscious',
+          name: 'Cost Conscious',
+          unlocked: false,
+          threshold: 0.01,
+          measurementUnavailableReason: 'Engine cost was not reported.',
+          lowerIsBetter: true,
+        },
+      ],
+    });
+    const { container } = render(<AchievementsBadge />);
+    expect(screen.getByText('Engine cost was not reported.')).toBeTruthy();
+    expect(screen.queryByText(/Under budget|Over budget|Progress:/)).toBeNull();
+    expect(container.querySelector('.achievement-progress-bar')).toBeNull();
+  });
+
   test('renders Cost Conscious as a lower-is-better goal with its message precondition', () => {
     useAnalytics.mockReturnValue({
       loading: false,

@@ -1,3 +1,12 @@
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
+import type {
+  BrowserPaneAccessView,
+  BrowserSessionView,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import { expect, type Page } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -52,6 +61,21 @@ const PROJECTS = [
   },
 ];
 
+// Two ready definitions keep New on the chooser path.
+const AGENTS: EnrichedAgentProjection[] = ['claude', 'claude-alternate'].map(
+  (slug) => ({
+    slug: agentId(slug),
+    name: slug === 'claude' ? 'Claude Runtime' : 'Alternate Claude Runtime',
+    description: 'Connected Claude test runtime',
+    source: 'local',
+    model: 'model-selected',
+    execution: {
+      agentConnectionId: engineConnectionId('claude'),
+      modelId: 'model-selected',
+    },
+  }),
+);
+
 async function mockShell(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('station-connect-connections-active', 'ctx');
@@ -78,19 +102,7 @@ async function mockShell(page: Page) {
       return route.fulfill(
         json({
           success: true,
-          data: [
-            {
-              slug: 'claude',
-              name: 'Claude Runtime',
-              description: 'Connected Claude test runtime',
-              source: 'local',
-              model: 'model-selected',
-              execution: {
-                agentConnectionId: 'claude',
-                modelId: 'model-selected',
-              },
-            },
-          ],
+          data: AGENTS,
         }),
       );
     if (path === '/api/connections/agents')
@@ -128,6 +140,31 @@ async function mockShell(page: Page) {
       );
     if (path === '/api/projects')
       return route.fulfill(json({ success: true, data: PROJECTS }));
+    const browserAccessProject = PROJECTS.find(
+      (project) => path === `/api/browser/projects/${project.slug}/access`,
+    );
+    if (route.request().method() === 'GET' && browserAccessProject) {
+      const access: BrowserPaneAccessView = {
+        projectId: browserAccessProject.id,
+        role: 'operator',
+        principalKey: 'operator',
+        operator: true,
+        browser: 'not-ready',
+      };
+      return route.fulfill(json({ success: true, data: access }));
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/browser/sessions' &&
+      PROJECTS.some(
+        (project) =>
+          project.slug ===
+          new URL(route.request().url()).searchParams.get('projectSlug'),
+      )
+    ) {
+      const sessions: BrowserSessionView[] = [];
+      return route.fulfill(json({ success: true, data: sessions }));
+    }
     const projectMatch = path.match(/^\/api\/projects\/([^/]+)$/);
     if (projectMatch) {
       const project = PROJECTS.find((p) => p.slug === projectMatch[1]);
@@ -195,14 +232,21 @@ async function mockShell(page: Page) {
 }
 
 async function bindChatToProject(page: Page, project: string): Promise<void> {
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
-  const modal = page.getByRole('dialog', { name: 'New Chat' });
+  await page
+    .getByRole('region', { name: 'Dock', exact: true })
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
+  const modal = page.getByRole('dialog', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible({ timeout: 15_000 });
-  await page.locator('.new-chat-modal__context-button').click();
-  await page.locator(`[data-context-value="${project}"]`).click();
-  await modal.locator('[data-agent-slug="claude"]').first().click();
+  // The start composer's project chip is remembered: choosing a project
+  // binds the dock to it for new chats, which is what renders the dock's
+  // project-context row. Nothing starts.
+  await modal.getByRole('button', { name: /^Project: / }).click();
+  await page
+    .getByRole('dialog', { name: 'Choose project' })
+    .locator(`[data-context-value="${project}"]`)
+    .click();
+  await modal.press('Escape');
 }
 
 for (const scenario of [
@@ -229,15 +273,17 @@ for (const scenario of [
     // Bind a chat to the scenario's project so the dock renders its
     // project-context row.
     await bindChatToProject(page, scenario.project);
-    await expect(page.getByRole('dialog', { name: 'New Chat' })).toBeHidden();
+    await expect(
+      page.getByRole('dialog', { name: 'New chat', exact: true }),
+    ).toBeHidden();
 
     const badge = page.locator('.chat-dock__project-badge');
     await expect(badge).toBeVisible({ timeout: 15_000 });
-    // The row names the project, and only the project.
-    await expect(badge).toHaveText(scenario.name);
-    await expect(page.locator('.chat-dock__project-context')).toHaveText(
+    await expect(badge).toHaveAccessibleName(scenario.name);
+    await expect(badge.locator('.chat-dock__project-badge-name')).toHaveText(
       scenario.name,
     );
+    await expect(badge).toContainText('New chats');
     // The path arrives whole in the channel that carries it now — same string,
     // same `~` or absolute form, no truncation and no reordering possible.
     await expect(badge).toHaveAttribute(
@@ -277,7 +323,7 @@ test('project-context clicks do not toggle the dock (#1064)', async ({
   await page.waitForTimeout(500);
   expect((await dock.boundingBox())?.height ?? 0).toBe(before);
   // The click did what it is for, so this is not passing on an inert element.
-  await expect(
-    page.getByRole('dialog', { name: 'Switch project' }),
-  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('dialog', { name: 'Projects' })).toBeVisible({
+    timeout: 10_000,
+  });
 });

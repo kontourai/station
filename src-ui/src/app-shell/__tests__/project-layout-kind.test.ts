@@ -7,6 +7,7 @@ import { layoutTypeRegistry } from '../layoutRegistry';
 import {
   LAYOUT_TYPE_REGISTRY_KEYS,
   rendersChatWorkspaceLayout,
+  resolveLayoutChatPlacement,
   resolveProjectLayoutRendererKind,
 } from '../project-layout-kind';
 
@@ -166,5 +167,63 @@ describe('resolveProjectLayoutRendererKind', () => {
     expect(rendersChatWorkspaceLayout({ type: 'coding', config: {} })).toBe(
       false,
     );
+  });
+});
+
+/**
+ * Where a layout route puts Station's one Chat controller. App suspends the
+ * dock's Chat from this and the Coding host mounts its own from it, so a row
+ * that is wrong here is a frame with two controllers or none.
+ */
+describe('resolveLayoutChatPlacement', () => {
+  const withheld = { unavailableTabIds: [] } as never;
+  test.each([
+    ['no layout yet', undefined, false, 'none'],
+    ['the Chat layout', { type: 'chat', config: {} }, false, 'viewport'],
+    [
+      'the Chat layout, bottom-only',
+      { type: 'chat', config: {} },
+      true,
+      'viewport',
+    ],
+    [
+      'the built-in Coding layout',
+      { type: 'coding', config: {} },
+      false,
+      'center',
+    ],
+    // A bottom-only device keeps Chat in its (maximized) dock in PR1.
+    [
+      'the built-in Coding layout, bottom-only',
+      { type: 'coding', config: {} },
+      true,
+      'none',
+    ],
+    [
+      'a plugin-contributed layout typed coding',
+      {
+        type: 'coding',
+        config: {},
+        catalogContribution: contributed('plugin'),
+      },
+      false,
+      'none',
+    ],
+    [
+      'a persisted plugin layout typed coding',
+      { type: 'coding', config: { plugin: 'fixture' } },
+      false,
+      'none',
+    ],
+    [
+      'a withheld layout typed coding (#2090)',
+      { type: 'coding', config: {}, paneReferences: withheld },
+      false,
+      'none',
+    ],
+    ['the tasks layout', { type: 'tasks', config: {} }, false, 'none'],
+    ['an unregistered type', { type: 'custom', config: {} }, false, 'none'],
+  ] as const)('%s', (_name, layout, bottomOnly, expected) => {
+    expect(resolveLayoutChatPlacement(layout, { bottomOnly })).toBe(expected);
   });
 });

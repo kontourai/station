@@ -1,0 +1,197 @@
+{
+  "path": "docs/guides/nightly.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
+
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration. Main merge3c11294f4 structural reconciliation only; combined source review remains pending after immutable merge commit. Both prior distinct reviewed anchors are historical, not new approval: [{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"}},{\"path\":\".github/workflows/nightly.yml\",\"ours\":{\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"}},{\"path\":\"packages/cli/src/commands/lifecycle.ts\",\"ours\":{\"digest\":\"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5\",\"revision\":\"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80\"},\"main\":{\"digest\":\"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc\",\"revision\":\"b49b1db1601f36c9457e0d9d7c766d15be6302f7\"}},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"digest\":\"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}},{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"digest\":\"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2\",\"revision\":\"a71a583813b3f137da6a9716acc7e9b198df5847\"},\"main\":{\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"}}].\n\nAdditional existing main limits (preserved verbatim): No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"neitherMatch\"},{\"path\":\".github/workflows/nightly.yml\",\"ours\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"},\"active\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"oursMatch\"},{\"path\":\"scripts/lib/portable-server-archive.mjs\",\"ours\":{\"path\":\"scripts/lib/portable-server-archive.mjs\",\"digest\":\"1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"main\":{\"path\":\"scripts/lib/portable-server-archive.mjs\",\"digest\":\"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"scripts/lib/portable-server-archive.mjs\",\"digest\":\"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"decision\":\"mainMatch\"},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"},\"active\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"}]\n\nNo native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    ".github/workflows/build-ios.yml",
+
+    ".github/workflows/internal-testflight.yml",
+
+    ".github/workflows/nightly-native-cohort.yml",
+
+    ".github/workflows/nightly-native-stage.yml",
+
+    ".github/workflows/nightly.yml",
+
+    ".github/workflows/portable-nightly-publish.yml",
+
+    ".github/workflows/publish-release.yml",
+
+    ".github/workflows/release.yml",
+
+    ".github/workflows/testflight-delivery.yml",
+
+    ".gitignore",
+
+    "config/channel-platform-matrix.json",
+
+    "config/release-platform-matrix.json",
+
+    "install.sh",
+
+    "ops/nightly/install-macos.zsh",
+
+    "ops/nightly/macos-build-only-artifact.mjs",
+
+    "ops/nightly/macos-build-only-artifact.test.mjs",
+
+    "ops/nightly/macos-build-only-cleanup.test.mjs",
+
+    "ops/release/macos-notarized-artifacts.mjs",
+
+    "ops/release/macos-notarized-artifacts.test.mjs",
+
+    "package.json#/engines",
+
+    "package.json#/scripts/build:desktop",
+
+    "package.json#/scripts/dependencies:ci",
+
+    "packages/cli/src/commands/desktop-companion.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "packages/shared/src/process-identity.mjs",
+
+    "packages/shared/src/windows-path-trust.ts",
+
+    "packages/shared/src/windows-system-utility.mjs",
+
+    "schemas/release-artifact-manifest.schema.json",
+
+    "scripts/__tests__/portable-nightly-publish-workflow.test.ts",
+
+    "scripts/__tests__/release-artifacts.test.ts",
+
+    "scripts/__tests__/release-cohort.test.ts",
+
+    "scripts/__tests__/release-workflow.test.ts",
+
+    "scripts/__tests__/verify-release-cohort.test.ts",
+
+    "scripts/__tests__/windows-nightly.test.ts",
+
+    "scripts/app-store-connect-receipt.mjs",
+
+    "scripts/apply-android-release-signing.mjs",
+
+    "scripts/build-windows-nightly.ps1",
+
+    "scripts/check-ios-store-profile.mjs",
+
+    "scripts/ios-channel-icons.mjs",
+
+    "scripts/ios-local-release-preflight.mjs",
+
+    "scripts/ios-testflight-channel.mjs",
+
+    "scripts/ios-testflight-internal-authority.mjs",
+
+    "scripts/ios-testflight-readiness.mjs",
+
+    "scripts/lib/desktop-server-runtime.mjs",
+
+    "scripts/lib/native-release-config.mjs",
+
+    "scripts/lib/portable-server-archive.mjs",
+
+    "scripts/lib/portable-smoke-diagnostics.mjs",
+
+    "scripts/lib/release-artifacts.mjs",
+
+    "scripts/lib/release-variants.mjs",
+
+    "scripts/lib/station-stop-hint.mjs",
+
+    "scripts/lib/windows-nightly.mjs",
+
+    "scripts/portable-nightly-publication.mjs",
+
+    "scripts/release-artifacts.mjs",
+
+    "scripts/release-cohort-workflow.mjs",
+
+    "scripts/release-cohort.mjs",
+
+    "scripts/release-platform-matrix.mjs",
+
+    "scripts/smoke-portable-server-archive.mjs",
+
+    "scripts/stage-desktop-server-runtime.mjs",
+
+    "scripts/verify-release-cohort.mjs",
+
+    "scripts/verify-windows-installer-upgrade.ps1",
+
+    "src-desktop/Cargo.lock",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/tauri.linux-appimage.conf.json",
+
+    "src-desktop/tauri.linux.conf.json",
+
+    "src-server/security/local-grant-file.ts",
+
+    "src-server/services/notifications/agent-activity-publisher.ts"
+  ],
+
+  "checks": [
+    "Prior review receipt (not rerun here): focused: PASS116tests7files2.03s: native-release-config, release-ring-workflow, nightly-cohort-decision, ios-testflight-readiness, app-store-connect-receipt, release-platform-matrix, documentation-foundations",
+
+    "Prior review receipt (not rerun here): matrix: PASS node scripts/release-platform-matrix.mjs; config validation only, no projection as live truth",
+
+    "Prior review receipt (not rerun here): actualAssemblyCli: FAIL exit1 readFileSync is not defined; expected finding, not fixed; no output/assets produced",
+
+    "Prior review receipt (not rerun here): veritas: PASS exit0/0failures/0warnings; proof:repo-governance/lint:check/verification-policy; protected hashes unchanged",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed generated channel/key blocks, Nightly public-manifest-only and coexistence admission, exact pin/channel checks, retained source-archive selector, final-location build and upgrade identity. This consumer is not the new per-platform prebuilt installer; docs preserve that limit.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed affected current owners: native startup callbacks and separate React mount, registered native grant/diagnostic commands and cleanup hooks, native notification feed manage/start/IPC, state-directory profile genesis. Updated readiness/recovery/tray/broker claims; no native/platform delivery proof.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Adds notificationServiceBundleId null for stable and exact Beta/Nightly NotificationService IDs. Mobile/setup docs now require both extensions and all three profiles; no current provider provisioning asserted.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Only frozen upstream delta adds guarded pinned pnpm JS bootstrap on Intel macOS and keeps pinned native setup elsewhere. Tagged native inventory/signing/publication claims unaffected; no hosted execution.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed new NotificationService secret/profile import, target generation/signing, exact extension count, embedded profile/entitlement audits and exported bytes. Mobile/setup corrected; icons and existing artifact/provider distinction retained.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Only adds dist-portable-server generated directory; existing native/package artifact boundaries unchanged.",
+
+    "Prior review receipt (not rerun here): Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Prior review receipt (not rerun here): Added only a tracked documentation PNG exception; native capture/private artifact rules are unchanged.",
+
+    "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
+
+    "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
+
+    "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
+
+    "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
+
+    "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
+
+    "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+
+    "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Archives now include their executable install.sh for owned upgrades/removal; host-native build, bundled runtime and isolated archive layout retain their existing boundaries. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through e0314c727: the inputs changed in four ways. install.sh gained archive-service stop/switch/restart and recorded ports (#2867). The build-only exclusive output directory moved from a JS helper into the zsh installer's `mkdir` refusal, which still exits with 'already exists'. The designated-requirement check moved into the macos-signing-identity CLI. The notification watch, DMG_CREATION timeout alias and bearing/forage deps were removed. The guide's install, build-only, notarization and archive claims are still accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) adds install.sh STATION_INSTALL_STAGE_ONLY and hand-off to a running launcher service, and copies bin/station-launcher.mjs in portable-server-archive.mjs. lifecycle.ts now passes STATION_SERVICE_LAUNCHER only to the supervised server. 'Check for server updates' (GET /api/system/core-update) now checks an archive's signed public manifest and can apply the update through the fixed launcher. 8b48e2b35 (#2914) only adds `--` to print calls in install-macos.zsh and changes tests. The 'Server source check' bullet said the route only compares source and build stamps and never shows an update as available, which is now wrong for archives. Corrected it: added the archive exception (verified manifest, running and newest versions, apply only when the launcher runs the server, otherwise station upgrade or reinstall) with a link to the cli.md#service section. The install, build-only and rollback prose is still accurate. The route source (src-server/routes/system/archive-update.ts) is not a recorded input; the ledger owner may add it. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

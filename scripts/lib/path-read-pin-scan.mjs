@@ -449,6 +449,35 @@ function readTemplate(source, start) {
   return { parts: undefined, next: source.length };
 }
 
+/** Value imports of the Node URL constructor; arbitrary constructors stay unresolved. */
+function importedUrlConstructors(tokens) {
+  const names = new Set(['URL']);
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].value !== 'import' || tokens[index + 1]?.value !== '{')
+      continue;
+    const close = braceClose(tokens, index + 1);
+    if (
+      close === -1 ||
+      tokens[close + 1]?.value !== 'from' ||
+      tokens[close + 2]?.type !== 'string' ||
+      tokens[close + 2]?.value !== 'node:url'
+    )
+      continue;
+    for (const specifier of splitArguments(tokens.slice(index + 2, close))) {
+      if (specifier[0]?.type !== 'name' || specifier[0]?.value !== 'URL')
+        continue;
+      if (specifier.length === 1) names.add('URL');
+      else if (
+        specifier.length === 3 &&
+        specifier[1].value === 'as' &&
+        specifier[2].type === 'name'
+      )
+        names.add(specifier[2].value);
+    }
+  }
+  return names;
+}
+
 /** Splits a token list on top-level commas. */
 function splitArguments(tokens) {
   const groups = [];
@@ -538,7 +567,7 @@ function evaluateTokens(tokens, context) {
   if (
     first.type === 'name' &&
     first.value === 'new' &&
-    trimmed[1]?.value === 'URL'
+    context.urlConstructors.has(trimmed[1]?.value)
   )
     return evaluateUrl(trimmed.slice(2), context);
 
@@ -940,12 +969,15 @@ function literalTokenValue(group) {
  * Token positions where a supported path expression begins: `helper(`,
  * `path.helper(`, `fileURLToPath(`, and `new URL(`.
  */
-function pathExpressionStarts(tokens) {
+function pathExpressionStarts(tokens, urlConstructors) {
   const starts = [];
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (token.type !== 'name') continue;
-    if (token.value === 'new' && tokens[index + 1]?.value === 'URL') {
+    if (
+      token.value === 'new' &&
+      urlConstructors.has(tokens[index + 1]?.value)
+    ) {
       if (tokens[index + 2]?.value === '(')
         starts.push({ index, openIndex: index + 2 });
       continue;
@@ -980,22 +1012,23 @@ export function readsFileByPath(source) {
  */
 export function scanPathReadPinsInSource(source, { repoPath, root }) {
   const modulePath = join(root, repoPath);
+  // Tokenize once: re-tokenizing the file tail at every call site is
+  // quadratic, and this scan runs on every gate.
+  const tokens = tokenize(source) ?? [];
   const context = {
     modulePath,
     moduleDirectory: dirname(modulePath),
     moduleUrl: pathToFileURL(modulePath).href,
+    urlConstructors: importedUrlConstructors(tokens),
     bindings: collectBindings(source),
     resolving: new Set(),
   };
   const pins = new Set();
-  // Tokenize once: re-tokenizing the file tail at every call site is
-  // quadratic, and this scan runs on every gate.
-  const tokens = tokenize(source) ?? [];
   const lists = scannableTokenLists(tokens);
   const writeTargets = collectWriteTargets(lists, context);
   const admission = { root, repoPath, writeTargets };
   for (const list of lists)
-    for (const start of pathExpressionStarts(list)) {
+    for (const start of pathExpressionStarts(list, context.urlConstructors)) {
       const close = matchingBracket(list, start.openIndex);
       if (close === -1) continue;
       const { value, anchored } = evaluateTokens(

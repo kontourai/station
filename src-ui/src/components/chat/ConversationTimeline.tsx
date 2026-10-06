@@ -10,6 +10,7 @@ import {
   activeTimelineLandmarkIndex,
   conversationTimelineLandmarks,
 } from '../../hooks/orchestration/replay/timeline';
+import { ArrowLeftGlyph, ArrowRightGlyph } from '../icons/Glyph';
 import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
 import './ConversationTimeline.css';
 
@@ -204,25 +205,23 @@ export function ConversationTimeline({
           type="button"
           className="button button--secondary"
           aria-label="Previous turn"
+          title="Previous turn"
           disabled={activeIndex <= 0}
           onClick={() => seekFromControl(activeIndex - 1)}
         >
-          <span className="conversation-timeline__action-full">
-            Previous turn
-          </span>
-          <span className="conversation-timeline__action-compact">
-            Previous
-          </span>
+          {/* #3045: stepping is an icon pair; the row's two labelled actions
+              are Return to latest and Fork. */}
+          <ArrowLeftGlyph />
         </button>
         <button
           type="button"
           className="button button--secondary"
           aria-label="Next turn"
+          title="Next turn"
           disabled={activeIndex < 0 || activeIndex >= landmarks.length - 1}
           onClick={() => seekFromControl(activeIndex + 1)}
         >
-          <span className="conversation-timeline__action-full">Next turn</span>
-          <span className="conversation-timeline__action-compact">Next</span>
+          <ArrowRightGlyph />
         </button>
         <button
           type="button"

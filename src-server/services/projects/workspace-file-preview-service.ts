@@ -594,6 +594,62 @@ export class WorkspaceFilePreviewService {
   }
 
   /**
+   * The confined location of `path` for a per-file git read (the preview's
+   * Changes view). Same normalization, root confinement and anti-symlink
+   * rule as preview(); unlike it, a MISSING file resolves, because a file
+   * deleted from the working tree still has changes against HEAD. Its
+   * nearest existing ancestor is realpath-checked instead. Throws on any
+   * path preview() would refuse; `null` when the workspace itself is gone.
+   */
+  changesTarget(
+    workingDirectory: string,
+    input: string,
+  ): { root: string; target: string; existingAncestor: string } | null {
+    const path = normalizedRelativePath(input);
+    let root: string;
+    try {
+      root = this.fs.realpath(workingDirectory);
+    } catch {
+      return null;
+    }
+    const candidate = resolve(root, path);
+    if (!isWithin(root, candidate))
+      throw new Error('Preview path escapes workspace');
+    let identity: Stats | undefined;
+    try {
+      identity = this.fs.lstat(candidate);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // A path through a regular file (`a.txt/b`) names nothing a preview
+      // could have shown: the same refusal as a directory.
+      if (code === 'ENOTDIR') throw new Error('Preview path must name a file');
+      if (code !== 'ENOENT') throw error;
+    }
+    if (identity?.isSymbolicLink())
+      throw new Error('Preview symlinks are not allowed');
+    if (identity && !identity.isFile())
+      throw new Error('Preview path must name a file');
+    let ancestor = identity ? resolve(candidate, '..') : candidate;
+    for (;;) {
+      try {
+        ancestor = this.fs.realpath(ancestor);
+        break;
+      } catch {
+        const parent = resolve(ancestor, '..');
+        if (parent === ancestor) return null;
+        ancestor = parent;
+      }
+    }
+    if (ancestor !== root && !isWithin(root, ancestor))
+      throw new Error('Preview path escapes workspace');
+    return {
+      root,
+      target: identity ? this.fs.realpath(candidate) : candidate,
+      existingAncestor: ancestor,
+    };
+  }
+
+  /**
    * Which of `paths` preview() would resolve to a regular file. Every path
    * goes through the same root, traversal and anti-symlink resolution as a
    * preview; one it would refuse is simply absent from the answer, so this

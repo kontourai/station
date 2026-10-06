@@ -94,6 +94,7 @@ describe('ChatDockProjectContext directory (station#1146)', () => {
     );
     // And it is not ALSO printed into the row, which is the width this change
     // was reclaiming.
-    expect(row.textContent).toBe('Default');
+    expect(row.textContent).not.toContain('/Users/someone/dev/worktrees/wt-9');
+    expect(row.textContent).toContain('Default');
   });
 });

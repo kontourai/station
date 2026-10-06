@@ -23,6 +23,15 @@ shortcuts are included in Settings export/import; they do not automatically
 synchronize across Devices. The editor is read-only in the mobile layout,
 including narrow desktop windows.
 
+## Return in chat
+
+Choose **Chat settings → Return in chat** on each device. Automatic uses Return
+to send on desktop and to insert a new line on touch devices. You can explicitly
+choose either behavior, including for an attached tablet keyboard. Shift+Return
+always inserts a line; Ctrl/Cmd+Return sends. Return never submits during IME
+composition. During a turn, the shortcut uses the composer's selected Queue or
+Steer mode. This preference is included in device-settings export/import.
+
 ## Dispatch and limits
 
 The registry orders matching shortcuts by priority, then registry order.
@@ -30,6 +39,11 @@ It checks the registered `when` expression and current input/modal state before
 running a handler. An active modal suppresses global registry shortcuts;
 Escape and chat shortcuts have additional input-ownership rules. A visible
 row or saved binding does not bypass those conditions or a browser-reserved key.
+A handler that returns `false` declines the key: it is not prevented, the next
+matching shortcut is tried, and otherwise the browser keeps it. The Coding
+stack's Back/Forward chords decline inside editors that own those keys
+(CodeMirror, the terminal, a contenteditable editor) and when there is
+nowhere to go; in plain text fields they are the stack's Back and Forward.
 
 The editor's replacement dialog considers the first matching enabled command.
 It does not analyze all conditional overlaps or guarantee that restoring a

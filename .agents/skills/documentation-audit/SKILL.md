@@ -16,7 +16,7 @@ pass. Follow the repository's worktree, pre-edit routing, and verification rules
 Start with `npm run docs:impact -- <changed-paths...>` (also included in
 `gate:for`) to find recorded downstream documentation owners. For accumulated
 work, run `npm run docs:impact -- --catch-up --json`: review the changed inputs
-against each page's recorded source revision, not just its last edit date.
+against the history baseline and covering notes, not just its last edit date.
 Account for unmapped changes and preserve the coverage baseline until they are
 resolved. The report is advisory and cannot establish semantic correctness.
 The documentation checks block only stale records that your change touched;
@@ -41,8 +41,8 @@ design and a test file that exists do not establish shipped behavior.
 ## Repository-wide pass
 
 Split the pass into subsystem PRs of roughly 20 to 40 documents, and land
-each one before starting the next. A branch that carries hundreds of reviews
-must re-review every record that later merges from `main` make stale.
+each one before starting the next. Keep each slice small enough to review its changed claims; reviews of unrelated
+landed work do not invalidate the branch's notes.
 
 Inventory every tracked Markdown file with NUL-delimited `git ls-files` output,
 including hidden directories, package/example/fixture READMEs, agent instructions,
@@ -56,13 +56,23 @@ unreviewed set. Do not report an inventory, source-path scan, or passing gate as
 a complete semantic review. Preserve useful historical records with their
 status and successor rather than making old evidence appear current.
 
-Update the [review ledger](../../../docs/learn/review-ledger.json) after the
+Update the [review ledger](../../../docs/learn/review-ledger/) after the
 review, recording scope, code/test owners, checks, and limits. Refresh an
 existing record with `npm run docs:review:record -- <path> --note "<what you
-checked>"` rather than editing its hashes. Keep document
-classification separate from source review. A changed document or supporting
-source invalidates the recorded review; inspect that change before replacing
-its hashes. Do not turn a hash refresh into automatic approval of the prose.
+checked>"` rather than editing its files; commit the reviewed bytes first.
+`--show-delta <path>` prints the input diff since the history baseline.
+`--rereview` remains accepted for a deliberate review of unchanged inputs.
+Drop a citation with `--drop-source`; the command records its review note.
+Keep document classification separate from source review. A changed document
+or supporting source needs an explicit note about the inspected claims.
+
+The ledger keeps human decisions in records and reviews in append-only notes;
+see [ledger layout and merges](../../../docs/guides/documentation.md#ledger-layout-and-merges).
+Two branches reviewing different edits of one source add separate notes and
+leave the shared record untouched. An old branch carrying digest bindings can
+use `node scripts/migrate-review-ledger.mjs --path-only` during its merge of main
+to discard only derived binding conflicts. Resolve conflicting human decisions
+by inspecting both changes.
 
 For a diagram, trace every behavioral edge and boundary; label optional paths
 and distinguish request, event, and storage flows. Check rendered output and

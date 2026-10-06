@@ -1,5 +1,6 @@
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { usageCredentialAccountKey } from '../../providers/app-home/app-home-profiles.js';
 import type { UsageReceiptSource } from '../usage-rollup-service.js';
 import {
   RemoteStationUsageReceiptSource,
@@ -15,6 +16,89 @@ const authority = sessionReadAuthorityFromRequest(
 
 describe('UsageRollupService (station#4135)', () => {
   afterEach(() => vi.useRealTimers());
+  test('an engine filter excludes other provider receipts and aggregate costs', async () => {
+    const receipts = [
+      {
+        id: 'claude-1',
+        occurredAt: '2026-08-10T00:00:00Z',
+        observedAt: '2026-08-10T00:00:00Z',
+        stationId: 'local',
+        provider: 'claude',
+        inputTokens: 10,
+        reportedCost: { amount: 2, currency: 'USD' },
+        pricing: { status: 'unpriced' as const },
+      },
+      {
+        id: 'codex-1',
+        occurredAt: '2026-08-10T00:00:00Z',
+        observedAt: '2026-08-10T00:00:00Z',
+        stationId: 'local',
+        provider: 'codex',
+        inputTokens: 99,
+        reportedCost: { amount: 50, currency: 'USD' },
+        pricing: { status: 'unpriced' as const },
+      },
+    ];
+    const source: UsageReceiptSource = {
+      stationId: 'local',
+      read: async () => ({
+        receipts,
+        aggregateReceipts: receipts,
+        coverage: { stationId: 'local', state: 'complete', window: request },
+      }),
+    };
+    const result = await new UsageRollupService([source]).read(
+      { ...request, provider: 'claude' },
+      authority,
+    );
+    expect(result.receipts.map((r) => r.provider)).toEqual(['claude']);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].inputTokens).toBe(10);
+    expect(result.rows[0].reportedCost?.amount).toBe(2);
+  });
+
+  test.each([null, 'work'])(
+    'account filter %s keeps only attributed receipts and matching aggregates',
+    async (credentialProfileRef) => {
+      const receipts = [undefined, null, 'work', 'personal'].map(
+        (ref, index) => ({
+          id: `account-${index}`,
+          provider: 'codex',
+          stationId: 'local',
+          observedAt: '2026-08-10T00:00:00Z',
+          inputTokens: 10 + index,
+          ...(ref !== undefined
+            ? { accountKey: usageCredentialAccountKey('codex', ref) }
+            : {}),
+          reportedCost: { amount: index + 1, currency: 'USD' },
+          pricing: { status: 'unpriced' as const },
+        }),
+      );
+      const source: UsageReceiptSource = {
+        stationId: 'local',
+        read: async () => ({
+          receipts,
+          aggregateReceipts: receipts,
+          coverage: { stationId: 'local', state: 'complete', window: request },
+        }),
+      };
+      const result = await new UsageRollupService([source]).read(
+        { ...request, provider: 'codex', credentialProfileRef },
+        authority,
+      );
+      expect(result.receipts).toHaveLength(1);
+      expect(result.receipts[0]?.accountKey).toBe(
+        usageCredentialAccountKey('codex', credentialProfileRef),
+      );
+      expect(result.rows[0]?.reportedCost?.amount).toBe(
+        credentialProfileRef === null ? 2 : 3,
+      );
+      expect(result.coverage[0]?.state).toBe('partial');
+      expect(result.coverage[0]?.reason).toContain(
+        'without recorded credential-profile attribution',
+      );
+    },
+  );
 
   test('converts a peer read failure into offline coverage while retaining local receipts', async () => {
     const local: UsageReceiptSource = {
@@ -91,6 +175,7 @@ describe('UsageRollupService (station#4135)', () => {
   });
 
   test('uses the configured bearer only after an exact Station handshake and folds a remote replay once', async () => {
+    let accountKey: unknown = usageCredentialAccountKey('claude', 'work');
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const source = new RemoteStationUsageReceiptSource(
       'peer-a',
@@ -124,6 +209,7 @@ describe('UsageRollupService (station#4135)', () => {
                   stationId: 'peer-a',
                   provider: 'claude',
                   inputTokens: 9,
+                  accountKey,
                   observedAt: '2026-08-20T00:00:00.000Z',
                 },
                 {
@@ -131,6 +217,7 @@ describe('UsageRollupService (station#4135)', () => {
                   stationId: 'peer-a',
                   provider: 'claude',
                   inputTokens: 9,
+                  accountKey,
                   observedAt: '2026-08-20T00:00:00.000Z',
                 },
               ],
@@ -152,6 +239,14 @@ describe('UsageRollupService (station#4135)', () => {
       Authorization: 'Bearer peer-bearer-credential-0123456789abcdef',
     });
     expect(calls[1]?.url).toContain('localOnly=1');
+    expect(result.receipts[0]?.accountKey).toBe(accountKey);
+    accountKey = null;
+    const malformed = await new UsageRollupService([source]).read(
+      request,
+      authority,
+    );
+    expect(malformed.rows).toHaveLength(0);
+    expect(malformed.coverage[0]?.state).toBe('offline');
   });
 
   test('keeps cursors source-owned and rejects a malformed or mismatched peer body', async () => {

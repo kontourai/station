@@ -1,0 +1,61 @@
+{
+  "path": "docs/guides/documentation.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
+
+  "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
+
+  "sources": [
+    ".veritas/repo-map.json",
+
+    ".veritas/repo-standards/default.repo-standards.json",
+
+    ".veritas/attestations/HEAD",
+
+    "scripts/lib/documentation-freshness.mjs",
+
+    "scripts/check-documentation-freshness.mjs",
+
+    "scripts/record-documentation-review.mjs",
+
+    "scripts/docs-freshness-sweep.mjs",
+
+    ".github/workflows/docs-freshness-sweep.yml",
+
+    "scripts/run-repo-scan-suites.mjs",
+
+    "scripts/lib/review-ledger-store.mjs",
+
+    "scripts/lib/review-binding.mjs",
+
+    "scripts/migrate-review-ledger.mjs",
+
+    "scripts/lib/review-history.mjs",
+
+    "scripts/lib/review-git.mjs"
+  ],
+
+  "checks": [
+    "Independently reviewed anchor-check guidance, including local/current-revision scope, historical external links, parser behavior, and semantic-review limits.",
+
+    "Reviewed added guidance to inspect pinned dependency defaults; factory mocks do not establish persisted or emitted fields.",
+
+    "Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed.",
+
+    "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Added and reviewed the Keep reviews fresh section against scripts/lib/documentation-freshness.mjs (mode selection, merge-base scope, edited-entry rule, strict fallback), check-documentation-freshness.mjs, record-documentation-review.mjs (HEAD binding, refusals, capture refresh, dependents), docs-freshness-sweep.mjs and its workflow, and run-repo-scan-suites.mjs; the Veritas paragraph now says a touched stale record blocks. Slice guidance added (#2928). Executed documentation-freshness.test.ts.",
+
+    "Rewrote the mode list: the mode follows the event (ci:fast is advisory in merge_group), scoped includes deletions, advisory covers records whose document or source another change removed, and fork-smoke may fall back to strict without the upstream base. Checked against documentationFreshnessMode, checkDocumentationFreshness (reportMissing), record-documentation-review.mjs (captures first, manifest dependents, option-value refusal) and the title-based sweep lookup. Executed documentation-freshness.test.ts.",
+
+    "Reviewed: documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The Keep reviews fresh modes are unchanged."
+  ]
+}

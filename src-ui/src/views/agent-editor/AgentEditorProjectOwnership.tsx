@@ -1,4 +1,5 @@
 import { agentOwnershipFinding } from '@kontourai/station-contracts/project-reference-integrity';
+import { InfoTip } from '../../components/InfoTip';
 import type { AgentEditorFormProps } from './types';
 
 export function AgentEditorProjectOwnership({
@@ -22,9 +23,14 @@ export function AgentEditorProjectOwnership({
   return (
     <>
       <div className="editor-field">
-        <label className="editor-label" htmlFor="ae-project">
-          Project
-        </label>
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor="ae-project">
+            Project
+          </label>
+          <InfoTip label="Project">
+            A project-owned agent is available only inside its project.
+          </InfoTip>
+        </div>
         <select
           id="ae-project"
           className="editor-select"
@@ -45,9 +51,6 @@ export function AgentEditorProjectOwnership({
             <option value={form.project}>{`${form.project} (missing)`}</option>
           )}
         </select>
-        <span className="editor-hint">
-          A project-owned agent is available only inside its project.
-        </span>
       </div>
       {ownershipFinding && (
         <div className="agent-editor__capability-banner" role="status">

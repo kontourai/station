@@ -255,6 +255,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['surfaceTrustFromVeritasEvidence'],
   },
   {
+    id: 'attached-sessions-outside-projects',
+    title: 'Conversations outside projects',
+    section: 'host-runtime',
+    keywords: ['activity claude code codex transcripts no project attached'],
+    configKeys: ['attachedSessionsOutsideProjects'],
+  },
+  {
     id: 'device-helper-url',
     title: 'Device helper URL',
     section: 'host-runtime',
@@ -324,7 +331,7 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'default-model',
     title: 'Default model',
     section: 'agent-runs',
-    configKeys: ['defaultModel'],
+    configKeys: ['defaultModel', 'defaultLLMProvider'],
   },
   {
     id: 'default-region',
@@ -380,6 +387,12 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Workspace checkpoints',
     section: 'agent-runs',
     configKeys: ['workspaceCheckpoints'],
+  },
+  {
+    id: 'usage-limit-auto-resume',
+    title: 'Resume after usage limits',
+    section: 'agent-runs',
+    configKeys: ['usageLimitAutoResume'],
   },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
   // These two MOVED here from 'appearance'. Their ids are unchanged, so every
@@ -556,9 +569,9 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'mobile-pairing',
-    title: 'Mobile pairing & network discovery',
+    title: 'Device pairing',
     section: 'pairing',
-    configKeys: ['featureSettings'],
+    configKeys: [],
   },
   {
     id: 'open-last-station',
@@ -637,6 +650,7 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'telemetry-destination': 'informational',
   'deployed-build': 'informational',
   'message-context': 'temporary',
+  'mobile-pairing': 'informational',
 };
 
 /**

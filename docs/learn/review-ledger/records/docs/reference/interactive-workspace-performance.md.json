@@ -1,0 +1,45 @@
+{
+  "path": "docs/reference/interactive-workspace-performance.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Contract/derivation, adapter/browser composition and workflow traced. Corrected per-fixture home provisioning and Project Pane target; distinguished elapsed windows from Long Tasks and reference proof from deterministic smoke. No physical reference run.",
+
+  "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
+
+  "sources": [
+    ".github/workflows/ci.yml",
+
+    ".github/workflows/interactive-workspace-performance.yml",
+
+    "scripts/fixtures/interactive-workspace/performance-contract.json",
+
+    "scripts/interactive-workspace-performance.mjs",
+
+    "scripts/interactive-workspace-playwright-adapter.mjs",
+
+    "scripts/lib/interactive-workspace-production-bridge.mjs",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-ui/src/performance/interactive-workspace-performance-bridge.ts",
+
+    "src-ui/src/performance/interactive-workspace-performance-entry.ts",
+
+    "src-ui/src/performance/work-board-performance-driver.ts",
+
+    "tests/helpers/reference-browser-lifecycle.ts",
+
+    "tests/interactive-workspace-performance-bridge.spec.ts"
+  ],
+
+  "checks": [
+    "441 focused tests across 28 files passed. Full local Markdown link check passed; Veritas readiness reported zero failures and warnings. Actual external provider, physical-device and hosted deployment outcomes were not exercised.",
+
+    "Integration source review through e0314c727: ci.yml only added the zsh provisioning step to fast-checks shards and raised their timeout to 65 minutes. performance:workspace:smoke still runs in fast-checks-statics, and the reference workflow is separate and dispatch-only, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) makes four adapter timeout and batch constants module-private in interactive-workspace-playwright-adapter.mjs, with values unchanged. The document's adapter-boundary and NOT_VERIFIED reference claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

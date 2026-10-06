@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   adapter: null as PlatformProfileAdapter | null,
   profileHydrate: async () => {},
   profileRefresh: async () => false,
+  relayProfileListeners: new Set<() => void>(),
   openLastStationOnLaunch: true,
   authorizeDefaultProfile: async (_forgetRememberedSelection?: boolean) =>
     false,
@@ -47,6 +48,12 @@ vi.mock('../platform/native/stationProfileStorage', () => ({
     return {
       hydrate: () => state.profileHydrate(),
       refresh: () => state.profileRefresh(),
+      subscribeRelayRouteProfiles: (listener: () => void) => {
+        state.relayProfileListeners.add(listener);
+        return () => {
+          state.relayProfileListeners.delete(listener);
+        };
+      },
       get: () => null,
       set: () => {},
       remove: () => {},
@@ -371,6 +378,13 @@ describe('PlatformProfile derivation', () => {
         await vi.advanceTimersByTimeAsync(5_000);
       });
       expect(screen.getByTestId('profile-store-epoch').textContent).toBe('1');
+      expect(state.relayProfileListeners.size).toBe(1);
+      act(() => {
+        for (const listener of state.relayProfileListeners) listener();
+      });
+      expect(screen.getByTestId('profile-store-epoch').textContent).toBe('2');
+      cleanup();
+      expect(state.relayProfileListeners.size).toBe(0);
     } finally {
       vi.useRealTimers();
     }

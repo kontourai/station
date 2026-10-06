@@ -1,0 +1,27 @@
+{
+  "path": "docs/design/agent-engine-unification.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Original unification decisions, historical capability snapshots, and later implementation amendments.",
+
+  "limits": "Current matrix/resolver ownership was checked; every adapter channel, UI field, dated probe, and slice completion claim was not revalidated.",
+
+  "sources": [
+    "packages/contracts/src/agent.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-server/services/orchestration/session-agent-resolution.ts"
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "Verified renamed Codex spawn owner preserves full process environment and selected app-home override semantics."
+  ]
+}

@@ -125,6 +125,13 @@ export class RemoteStationTimeoutError extends Error {
 }
 
 /**
+ * In-process only: names a `Response` that came from another Station through
+ * {@link fetchRemoteStation}. It never reaches a client; the runtime's
+ * envelope marker middleware (`installStationEnvelopeMarker`) removes it.
+ */
+export const RELAYED_RESPONSE_HEADER = 'x-station-relayed-response';
+
+/**
  * `fetch` for a request to another Station, bounded by the target's
  * `timeoutMs`, headers and body alike. A timeout is reported as
  * `RemoteStationTimeoutError`; any other failure is rethrown.
@@ -159,10 +166,17 @@ export async function fetchRemoteStation(
     throw error;
   }
   const nullBody = [101, 204, 205, 304].includes(response.status);
+  // #2842: whatever the other Station sent, this response is a relay. The
+  // runtime's envelope marker middleware reads this header and never puts
+  // this Station's marker on it (and removes the peer's), so a route that
+  // returned this response as it is could not present a peer's answer as
+  // this Station's own. Set last, so a peer cannot unset it.
+  const headers = new Headers(response.headers);
+  headers.set(RELAYED_RESPONSE_HEADER, '1');
   return new Response(nullBody ? null : text, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers,
+    headers,
   });
 }
 

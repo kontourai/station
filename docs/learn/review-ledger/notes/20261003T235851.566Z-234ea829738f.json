@@ -1,0 +1,7 @@
+{
+  "revision": "0371f7dc7c6adc213a577809267f86740b64a676",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Reviewed protocol-header guidance against shared client-protocol policy and both UI handshake callers. Each attempt clears prior origin acceptance before fetching and restores only a valid advertisement. Regression and injected removal exercise 404, JSON and transport failures; same-origin and host-owned transport exceptions remain accurate. No browser/device runtime proof.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

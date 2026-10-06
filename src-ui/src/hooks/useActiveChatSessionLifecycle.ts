@@ -1,5 +1,6 @@
 import { useQueryClient } from '@kontourai/station-sdk';
 import { useCallback } from 'react';
+import { showChatPageOrDock } from '../app-shell/chat-placement';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
@@ -165,7 +166,7 @@ export function useLaunchChat(apiBase: string) {
       );
 
       navigation.setActiveChat(sessionId);
-      navigation.setDockState(true);
+      showChatPageOrDock(() => navigation.setDockState(true));
 
       if (initialMessage?.trim()) {
         await sendMessage(sessionId, agentSlug, undefined, initialMessage);

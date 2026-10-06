@@ -1,0 +1,41 @@
+{
+  "path": "tests/AGENTS.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "All named fixture helpers and npm scripts resolve. buildExamplePlugin uses the supported scripts/station-cli.ts bootstrap with windowsHide; pairBrowser and fixture audit helpers exist. Conversation, navigation, dialog, bootstrap, and real-action requirements are preserved as policy.",
+
+  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No live browser install/pairing, device interaction, journey profiling, or production mutation run was performed.",
+
+  "sources": [
+    "docs/guides/testing.md",
+
+    "scripts/station-cli.ts",
+
+    "tests/helpers/connection-fixtures.ts",
+
+    "tests/helpers/fixture-audit.ts",
+
+    "tests/helpers/install-plugin.ts",
+
+    "tests/helpers/runtime-conversation-fixture.ts",
+
+    "tests/live/helpers/station-instance.mjs"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
+
+    "Reviewed source changes: Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Reviewed landing deltas through 111744681: Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged."
+  ]
+}

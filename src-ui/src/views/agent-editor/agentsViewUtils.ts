@@ -83,6 +83,9 @@ type AgentLike = {
   tools: 'clone',
   skills: 'clone',
   project: 'exclude',
+  // #3276: who may use the Agent is an exposure decision, never copied; a
+  // member audience also requires the `project` a clone does not keep.
+  audience: 'exclude',
   delegation: 'exclude',
   streaming: 'exclude',
   commands: 'exclude',
@@ -104,6 +107,7 @@ export function createEmptyAgentForm(
     maxSteps: '',
     tools: {
       mcpServers: [],
+      mcpMode: 'add',
       available: [],
       autoApprove: [],
       unattendedAutoApprove: [],
@@ -152,6 +156,8 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
     maxSteps: agent.maxSteps?.toString() || '',
     tools: {
       mcpServers: agent.toolsConfig?.mcpServers || [],
+      mcpMode: agent.toolsConfig?.mcpMode,
+      mcpLoading: agent.toolsConfig?.mcpLoading,
       available: agent.toolsConfig?.available || [],
       autoApprove: agent.toolsConfig?.autoApprove || [],
       // #2613: carried through, not yet editable here (#2658). Modelled so a
@@ -206,6 +212,8 @@ export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
     maxSteps: agent.maxSteps?.toString() || '',
     tools: {
       mcpServers: [...(agent.toolsConfig?.mcpServers || [])],
+      mcpMode: agent.toolsConfig?.mcpMode,
+      mcpLoading: agent.toolsConfig?.mcpLoading,
       available: [...(agent.toolsConfig?.available || [])],
       autoApprove: [...(agent.toolsConfig?.autoApprove || [])],
       // #2613: a copy starts without the source's unattended opt-in. It is a
@@ -318,7 +326,12 @@ function buildToolsPayload(
   };
 
   put('mcpServers', form.tools.mcpServers);
-  put('available', form.tools.available);
+  if (form.tools.mcpMode !== undefined) next.mcpMode = form.tools.mcpMode;
+  if (form.tools.mcpLoading !== undefined)
+    next.mcpLoading = form.tools.mcpLoading;
+  else delete next.mcpLoading;
+  if (form.toolsAvailableEdited) next.available = [...form.tools.available];
+  else put('available', form.tools.available);
   put('autoApprove', form.tools.autoApprove);
   put('unattendedAutoApprove', form.tools.unattendedAutoApprove);
   // #90 D14: the browser tools are on unless switched off, so only an

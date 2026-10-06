@@ -1,3 +1,4 @@
+import type { SkillExperienceContributionV1 } from './skill-experience.js';
 import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
 /** Published Agent Plugins portable manifest schema supported by Station v1. */
@@ -156,6 +157,7 @@ export interface StationAgentPluginExtensionV1
   build?: string;
   capabilities?: string[];
   commands?: PluginCommandContribution[];
+  experiences?: SkillExperienceContributionV1[];
   links?: unknown;
   agents?: unknown[];
   workspacePanes?: unknown[];

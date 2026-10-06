@@ -3,7 +3,10 @@
  * owns grants, atoms, and write authorization; this module only exchanges the
  * closed browser representations declared by the route boundary.
  */
-import type { ProjectTaskRoomAppendOutcome } from '@kontourai/station-contracts/project-task-room';
+import type {
+  ProjectTaskRoomAppendOutcome,
+  ProjectTaskRoomOutputFeedback,
+} from '@kontourai/station-contracts/project-task-room';
 import { isProjectTaskRoomAppendReceipt } from '@kontourai/station-contracts/project-task-room';
 import {
   type ProjectTaskRoomBrowserCapabilities,
@@ -20,6 +23,7 @@ import {
   type ClientRequestOptions,
   type FetchSseConnection,
   fetchSSE,
+  mutateJson,
 } from './http';
 import { rethrowDeadline } from './request-deadline';
 
@@ -386,6 +390,7 @@ export async function appendProjectTaskRoomHumanMessage(
     proposalId: string;
     text: string;
     occurredAt?: string;
+    expectedTaskCreatedAt?: string;
   },
   opts?: ClientRequestOptions,
 ) {
@@ -393,17 +398,43 @@ export async function appendProjectTaskRoomHumanMessage(
     throw new ProjectTaskRoomProtocolError('Room message intent is invalid');
   return parseAppend(
     await envelope(
-      await authenticatedFetch(
+      await mutateJson(
         `${apiBase}${roomPath(input.taskId, '/messages')}`,
+        'POST',
+        opts,
         {
-          ...opts,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...opts?.headers },
-          body: JSON.stringify({
-            proposalId: input.proposalId,
-            text: input.text,
-            ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
-          }),
+          proposalId: input.proposalId,
+          text: input.text,
+          ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
+          ...(input.expectedTaskCreatedAt
+            ? { expectedTaskCreatedAt: input.expectedTaskCreatedAt }
+            : {}),
+        },
+      ),
+    ),
+  );
+}
+export async function appendProjectTaskRoomOutputFeedback(
+  apiBase: string,
+  input: {
+    taskId: string;
+    proposalId: string;
+    occurredAt: string;
+    feedback: ProjectTaskRoomOutputFeedback;
+  },
+  opts?: ClientRequestOptions,
+) {
+  const { kind: _kind, ...feedback } = input.feedback;
+  return parseAppend(
+    await envelope(
+      await mutateJson(
+        `${apiBase}${roomPath(input.taskId, '/output-feedback')}`,
+        'POST',
+        opts,
+        {
+          proposalId: input.proposalId,
+          occurredAt: input.occurredAt,
+          ...feedback,
         },
       ),
     ),

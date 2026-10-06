@@ -66,6 +66,9 @@ export type BrowserSessionActionKind =
   | 'viewport-changed'
   | 'page-navigated'
   | 'dialog-handled'
+  // A person answered a JavaScript dialog Station held for them (the
+  // actor is that person). A prompt's typed answer is never recorded.
+  | 'dialog-answered'
   // A main-frame navigation that followed someone's input (a link click).
   | 'link-followed'
   // A navigation Station refused because it is one of Station's own
@@ -169,6 +172,13 @@ export interface BrowserSessionActivity {
     message: string;
     accepted: boolean;
     count: number;
+    /**
+     * It was held for a person, and answered automatically because nobody
+     * answered in time. Absent: answered the moment it opened.
+     */
+    unanswered?: true;
+    /** Held for a person, and dismissed when their control ended. */
+    controlEnded?: true;
   };
 }
 
@@ -267,6 +277,8 @@ export type BrowserSessionErrorCode =
   | 'not-live'
   | 'stale-generation'
   | 'no-history-entry'
+  | 'page-busy'
+  | 'screenshot-too-large'
   | 'stopped';
 
 export class BrowserSessionError extends Error {
@@ -291,30 +303,59 @@ const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = {
 
 const DEFAULT_BROWSER_IDLE_SHUTDOWN_MS = 60_000;
 
+/** A person's screenshot of the page must answer within this. */
+const SCREENSHOT_DEADLINE_MS = 10_000;
+/**
+ * The most a screenshot may weigh (decoded bytes). A 4096 px viewport at a
+ * high device scale can exceed it as PNG; it is then taken as JPEG, and
+ * refused (`screenshot-too-large`) if that is still over, never cut.
+ */
+const BROWSER_SCREENSHOT_MAX_BYTES = 16 * 1024 * 1024;
+
 const STORE_VERSION = 2;
 const MAX_STORED_SESSIONS = 500;
 const CLOSED_RETENTION_MS = 24 * 60 * 60 * 1000;
 const PROJECT_SLUG = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
+/**
+ * Why a viewport is refused, naming the field, or undefined when valid. The
+ * one definition behind {@link isValidBrowserViewport}, so the answer an API
+ * caller reads cannot drift from the check that refuses.
+ */
+export function browserViewportProblem(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return 'viewport must be an object with width, height and deviceScaleFactor';
+  const v = value as Record<string, unknown>;
+  for (const key of ['width', 'height'] as const) {
+    const n = v[key];
+    if (n === undefined) return `viewport.${key} is required`;
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 100 || n > 4096)
+      return `viewport.${key} must be an integer from 100 to 4096`;
+  }
+  const scale = v.deviceScaleFactor;
+  if (scale === undefined) return 'viewport.deviceScaleFactor is required';
+  if (
+    typeof scale !== 'number' ||
+    !Number.isFinite(scale) ||
+    scale < 0.5 ||
+    scale > 4
+  )
+    return 'viewport.deviceScaleFactor must be a number from 0.5 to 4';
+  if (v.mobile !== undefined && typeof v.mobile !== 'boolean')
+    return 'viewport.mobile must be a boolean';
+  const unknown = Object.keys(v).find(
+    (key) => !['width', 'height', 'deviceScaleFactor', 'mobile'].includes(key),
+  );
+  if (unknown !== undefined)
+    // The key is caller-supplied; cap what is echoed back.
+    return `viewport.${unknown.length > 64 ? `${unknown.slice(0, 64)}...` : unknown} is not a viewport field`;
+  return undefined;
+}
+
 export function isValidBrowserViewport(
   value: unknown,
 ): value is BrowserViewport {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  const dimension = (n: unknown) =>
-    typeof n === 'number' && Number.isInteger(n) && n >= 100 && n <= 4096;
-  return (
-    dimension(v.width) &&
-    dimension(v.height) &&
-    typeof v.deviceScaleFactor === 'number' &&
-    Number.isFinite(v.deviceScaleFactor) &&
-    v.deviceScaleFactor >= 0.5 &&
-    v.deviceScaleFactor <= 4 &&
-    (v.mobile === undefined || typeof v.mobile === 'boolean') &&
-    Object.keys(v).every((key) =>
-      ['width', 'height', 'deviceScaleFactor', 'mobile'].includes(key),
-    )
-  );
+  return browserViewportProblem(value) === undefined;
 }
 
 export function isValidBrowserProjectId(
@@ -413,6 +454,9 @@ export interface BrowserSessionRegistryOptions {
   newId?: () => string;
   /** Whether a URL is one of this Station's own listeners (D2 wording). */
   isStationAddress?: (url: string) => boolean;
+  /** Test seams for the screenshot bounds. */
+  screenshotDeadlineMs?: number;
+  screenshotMaxBytes?: number;
 }
 
 /** A navigation this soon after someone's input is theirs (a link click). */
@@ -453,6 +497,11 @@ export class BrowserSessionRegistry {
   >();
   /** The URL an explicit navigate is loading, per session. */
   private readonly inflightNavigations = new Map<string, string>();
+  /** A screenshot in flight per session; a second request joins it. */
+  private readonly inflightShots = new Map<
+    string,
+    Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }>
+  >();
   /** Who last sent input into each session, and when. */
   private readonly lastInput = new Map<
     string,
@@ -529,6 +578,89 @@ export class BrowserSessionRegistry {
       target: { ...target },
       generation: entry.generation,
     };
+  }
+
+  /**
+   * A still of the page as it is now (its viewport), for a person to save or
+   * copy. PNG, or JPEG when the PNG would exceed the byte bound. Viewing is
+   * not driving: nothing is recorded. A page that does not answer in time
+   * (a hung script) is `page-busy`.
+   */
+  async captureScreenshot(
+    browserSessionId: string,
+  ): Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }> {
+    // At most one capture per session: concurrent requests (a double click,
+    // two viewers) share the one in flight rather than each asking the page.
+    const inflight = this.inflightShots.get(browserSessionId);
+    if (inflight) return inflight;
+    const shot = this.captureScreenshotOnce(browserSessionId).finally(() => {
+      if (this.inflightShots.get(browserSessionId) === shot)
+        this.inflightShots.delete(browserSessionId);
+    });
+    this.inflightShots.set(browserSessionId, shot);
+    return shot;
+  }
+
+  private async captureScreenshotOnce(
+    browserSessionId: string,
+  ): Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }> {
+    this.assertRunning();
+    this.requireLive(browserSessionId, undefined);
+    const live = this.liveTarget(browserSessionId);
+    if (!live)
+      throw new BrowserSessionError(
+        'not-live',
+        'The session has no running browser.',
+      );
+    const cdp = live.host.cdp();
+    const deadlineMs =
+      this.options.screenshotDeadlineMs ?? SCREENSHOT_DEADLINE_MS;
+    const maxBytes =
+      this.options.screenshotMaxBytes ?? BROWSER_SCREENSHOT_MAX_BYTES;
+    const capture = async (
+      params: { format: 'png' } | { format: 'jpeg'; quality: number },
+    ): Promise<Buffer> => {
+      let timer: NodeJS.Timeout | undefined;
+      const pending = cdp.send<{ data?: unknown }>(
+        'Page.captureScreenshot',
+        params,
+        live.target.cdpSessionId,
+      );
+      try {
+        const shot = await Promise.race([
+          pending,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  new BrowserSessionError(
+                    'page-busy',
+                    'The page did not answer in time.',
+                  ),
+                ),
+              deadlineMs,
+            );
+          }),
+        ]);
+        if (typeof shot?.data !== 'string')
+          throw new BrowserSessionError(
+            'page-busy',
+            'The browser returned no image.',
+          );
+        return Buffer.from(shot.data, 'base64');
+      } finally {
+        if (timer) clearTimeout(timer);
+        pending.catch(() => {});
+      }
+    };
+    const png = await capture({ format: 'png' });
+    if (png.length <= maxBytes) return { mimeType: 'image/png', data: png };
+    const jpeg = await capture({ format: 'jpeg', quality: 85 });
+    if (jpeg.length <= maxBytes) return { mimeType: 'image/jpeg', data: jpeg };
+    throw new BrowserSessionError(
+      'screenshot-too-large',
+      'The screenshot is too large. Choose a smaller viewport and try again.',
+    );
   }
 
   /** Back, forward or reload, within the session's own history. */
@@ -781,19 +913,61 @@ export class BrowserSessionRegistry {
   recordDialog(
     browserSessionId: string,
     generation: number,
-    dialog: { type: string; message: string; accepted: boolean },
+    dialog: {
+      type: string;
+      message: string;
+      accepted: boolean;
+      unanswered?: true;
+      controlEnded?: true;
+    },
   ): void {
     const record = this.sessions.get(browserSessionId);
     if (!record || record.generation !== generation) return;
     this.appendDialog(record, dialog);
   }
 
+  /**
+   * A person answered a dialog Station held for them. Their answer is an
+   * action on the page (it counts as them driving); a prompt's text is not
+   * recorded, only that it was answered.
+   */
+  recordDialogAnswer(
+    browserSessionId: string,
+    generation: number,
+    dialog: { type: string; message: string; accepted: boolean },
+    actor: BrowserSessionActor,
+  ): void {
+    if (actor.kind !== 'operator' && actor.kind !== 'project-admin')
+      throw new BrowserSessionError(
+        'invalid-actor',
+        "Only a person answers a page's dialog.",
+      );
+    const record = this.sessions.get(browserSessionId);
+    if (!record || record.generation !== generation) return;
+    const message = dialog.message.slice(0, 300);
+    this.record(record, 'dialog-answered', actor, {
+      generation,
+      detail: `${dialog.type} ${dialog.accepted ? 'accepted' : 'dismissed'}${message ? `: ${message}` : ''}`,
+    });
+  }
+
   private appendDialog(
     record: BrowserSessionRecord,
-    dialog: { type: string; message: string; accepted: boolean },
+    dialog: {
+      type: string;
+      message: string;
+      accepted: boolean;
+      unanswered?: true;
+      controlEnded?: true;
+    },
   ): void {
+    const how = dialog.unanswered
+      ? 'automatically after nobody answered it'
+      : dialog.controlEnded
+        ? "automatically when the person's control ended"
+        : 'automatically';
     const entry = this.recordPageNoise(record, 'dialog-handled', {
-      detail: `${dialog.type} ${dialog.accepted ? 'accepted' : 'dismissed'} automatically${dialog.message ? `: ${dialog.message}` : ''}`,
+      detail: `${dialog.type} ${dialog.accepted ? 'accepted' : 'dismissed'} ${how}${dialog.message ? `: ${dialog.message}` : ''}`,
     });
     record.activity.lastDialog = {
       seq: entry.seq,
@@ -802,6 +976,8 @@ export class BrowserSessionRegistry {
       message: dialog.message,
       accepted: dialog.accepted,
       count: entry.count ?? 1,
+      ...(dialog.unanswered ? { unanswered: true as const } : {}),
+      ...(dialog.controlEnded ? { controlEnded: true as const } : {}),
     };
   }
 

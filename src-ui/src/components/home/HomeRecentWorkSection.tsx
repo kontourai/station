@@ -1,11 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
-import {
-  PulseStats,
-  type PulseStatTarget,
-  pulseStats,
-} from '../../views/home/blocks/pulse-stats';
-import { bucketByRecency } from '../../views/home/blocks/recency-buckets';
 import {
   olderDraftsLabel,
   splitDraftsByAge,
@@ -13,23 +12,44 @@ import {
 import {
   formatWakeTime,
   type HomeLaneItem,
+  LIVE_LANE_LABELS,
+  type LiveLaneId,
 } from '../../views/home/home-lane-model';
-import { revealHomeRegion } from '../../views/home/home-reveal';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
+import type { WorkFactsById } from '../../views/home/work-facts';
+import { DisclosureToggle } from '../DisclosureToggle';
 import { ReturnGlyph } from '../icons/Glyph';
-import { LazyBoundary } from '../LazyBoundary';
+import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { Empty, ErrorState, SkeletonList } from '../state';
-import { renderHomeWorkRow } from './HomeWorkRow';
+import { type HomeRowContext, renderHomeWorkRow } from './HomeWorkRow';
 
 const SETTLED_PAGE_SIZE = 5;
-const loadSnoozeMenu = () => import('./SnoozeMenu');
 
-const ACTIVE_HEADING_ID = 'home-active-now-heading';
+/** One heading per live lane (`workStatus`) — the pulse counts reveal them. */
+const LIVE_LANES: readonly {
+  id: LiveLaneId;
+  label: string;
+  headingId: string;
+}[] = [
+  {
+    id: 'needsYou',
+    label: LIVE_LANE_LABELS.needsYou,
+    headingId: 'home-needs-you-heading',
+  },
+  {
+    id: 'running',
+    label: LIVE_LANE_LABELS.running,
+    headingId: 'home-running-heading',
+  },
+  { id: 'idle', label: LIVE_LANE_LABELS.idle, headingId: 'home-idle-heading' },
+];
 const FINISHED_HEADING_ID = 'home-recently-finished-heading';
 const SNOOZED_HEADING_ID = 'home-snoozed-shelf-heading';
 
 interface HomeRecentWorkSectionProps {
+  /** The section's element id, the page's skip target. */
+  id?: string;
   /**
    * The lanes, derived ONCE by the host and shared with everything that
    * counts them. Deriving them a second time here would give the counts
@@ -39,17 +59,14 @@ interface HomeRecentWorkSectionProps {
   lanes: HomeWorkLanes;
   /** Whether the host has any work at all — see `HomeWorkContent`. */
   workItems: HomeWorkItem[];
+  /** Status facts by item id, derived by the host beside `workItems`. */
+  workFacts?: WorkFactsById;
   workLoading: boolean;
   workDegraded: boolean;
   workError: boolean;
   agents: readonly SessionIconAgent[];
   remoteUnavailable: { environmentName: string }[];
   remoteAuthenticationRequired: { environmentName: string }[];
-  /** Per-project rows the host's activity chart renders — the "Projects"
-   *  count, which must describe those rows and not a second population. */
-  projectRowCount: number;
-  /** Reveals the host's activity chart, or `null` when it is not rendered. */
-  onShowProjects: (() => void) | null;
   onOpen: (task: HomeWorkItem) => void;
   onViewActivity: () => void;
   onRetry: () => void;
@@ -57,36 +74,43 @@ interface HomeRecentWorkSectionProps {
 
 interface HomeWorkController {
   lanes: HomeWorkLanes;
-  snoozeMenuFor: HomeLaneItem | null;
-  snoozeTriggerRef: React.RefObject<HTMLButtonElement | null>;
   shelfExpanded: boolean;
   settledVisibleCount: number;
-  openSnoozeMenu: (task: HomeLaneItem, trigger: HTMLButtonElement) => void;
-  closeSnoozeMenu: () => void;
   toggleShelf: () => void;
-  expandShelf: () => void;
   showMoreSettled: () => void;
+  detailsFor: string | null;
+  setDetailsFor: (id: string | null) => void;
 }
 
 function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
-  const [snoozeMenuFor, setSnoozeMenuFor] = useState<HomeLaneItem | null>(null);
-  const snoozeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [shelfExpanded, setShelfExpanded] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
+  const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  // A sheet belongs to a row that is on screen. A row that leaves the
+  // rendered lanes (snoozed, discarded, paged out) clears it, so the sheet
+  // cannot reopen unprompted if the row returns.
+  const detailsRowRendered =
+    detailsFor !== null &&
+    [
+      ...lanes.needsYou,
+      ...lanes.running,
+      ...lanes.idle,
+      ...lanes.recentlyFinished,
+      ...(lanes.external ?? []),
+      ...(lanes.drafts ?? []),
+      ...lanes.settled.slice(0, settledVisibleCount),
+    ].some((item) => item.id === detailsFor);
+  useEffect(() => {
+    if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
+  }, [detailsFor, detailsRowRendered]);
   return {
+    detailsFor,
+    setDetailsFor,
     lanes,
-    snoozeMenuFor,
-    snoozeTriggerRef,
     shelfExpanded,
     settledVisibleCount,
-    openSnoozeMenu: (task, trigger) => {
-      snoozeTriggerRef.current = trigger;
-      setSnoozeMenuFor(task);
-    },
-    closeSnoozeMenu: () => setSnoozeMenuFor(null),
     toggleShelf: () => setShelfExpanded((value) => !value),
-    expandShelf: () => setShelfExpanded(true),
     showMoreSettled: () =>
       setSettledVisibleCount((count) => count + SETTLED_PAGE_SIZE),
   };
@@ -94,14 +118,27 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
 
 export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
   const controller = useHomeWorkController(props.lanes);
+  const sectionRef = useRef<HTMLElement>(null);
+  // A row whose lane changes (or whose lane empties) remounts elsewhere;
+  // keep a keyboard user's focus on it. `tabIndex={-1}` is the last-resort
+  // fallback target when the row itself is gone.
+  useRowFocusPreservation(sectionRef, '.chat-dock-inbox__item');
   return (
     <section
+      ref={sectionRef}
+      id={props.id}
       className="home-view__recent"
       aria-labelledby="recent-work-heading"
+      tabIndex={-1}
     >
       <div className="home-view__section-heading">
         <h2 id="recent-work-heading">Recent work</h2>
-        <button type="button" onClick={props.onViewActivity}>
+        {/* A quiet link, not a bordered button (B6): it goes somewhere. */}
+        <button
+          type="button"
+          className="home-view__link"
+          onClick={props.onViewActivity}
+        >
           View Activity
         </button>
       </div>
@@ -154,14 +191,20 @@ function HomeWorkContent({
   workLoading,
   workDegraded,
   workError,
+  workFacts,
   agents,
-  projectRowCount,
-  onShowProjects,
   onOpen,
   onViewActivity,
   onRetry,
   controller,
 }: HomeRecentWorkSectionProps & { controller: HomeWorkController }) {
+  // Decided once for every row: hover chrome on a fine pointer, the 44px
+  // touch chrome on a coarse one (B5).
+  const coarsePointer = useCoarsePointer();
+  // The same row facts the dock's inbox reads, from the same derivations.
+  const gitLocationByThreadId = useGitLocationByThreadId();
+  const projectAccentBySlug = useProjectAccents();
+  const projectIconBySlug = useProjectIcons();
   if (workLoading && !workDegraded) {
     return (
       <SkeletonList count={3} withIcon={false} label="Loading recent work" />
@@ -176,71 +219,25 @@ function HomeWorkContent({
   if (workItems.length === 0) return <RecentWorkEmpty />;
   return (
     <>
-      {/* The counts caption the lanes below rather than heading the page: at
-          full size they outranked the work they describe (station#3122's
-          composed variant, the shape the owner chose). They render only in
-          this branch, so a count can never be shown — or made activatable —
-          for a lane that is not on the page. */}
-      <PulseStats
-        stats={pulseStats(
-          controller.lanes,
-          projectRowCount,
-          statTargets(controller, onShowProjects),
-        )}
-      />
       <HomeWorkLanesContent
         controller={controller}
         agents={agents}
+        // The lanes' own clock (it already ticks), never a `Date.now()` per
+        // row render.
+        context={{
+          now: controller.lanes.now,
+          workFacts,
+          detailsFor: controller.detailsFor,
+          setDetailsFor: controller.setDetailsFor,
+          chrome: coarsePointer ? 'touch' : 'hover',
+          gitLocationByThreadId,
+          projectAccentBySlug,
+          projectIconBySlug,
+        }}
         onOpen={onOpen}
       />
     </>
   );
-}
-
-/**
- * What each count reveals, and only where that thing is actually rendered.
- *
- * Every target is a region of THIS page. Nothing outside Home accepts these
- * populations: Activity takes only a session intent and its project filter
- * is component state with no route parameter, so linking a count there would
- * land the reader on the unfiltered global list under a heading promising a
- * filter — see `home-reveal.ts`.
- */
-function statTargets(
-  controller: HomeWorkController,
-  onShowProjects: (() => void) | null,
-): Record<string, PulseStatTarget> {
-  const { lanes } = controller;
-  const targets: Record<string, PulseStatTarget> = {
-    // The active lane renders unconditionally inside `HomeWorkLanesContent`,
-    // including at zero, so this target always exists in this branch.
-    'Active now': {
-      destination: 'show the Active now lane',
-      onActivate: () => revealHomeRegion(ACTIVE_HEADING_ID),
-    },
-  };
-  if (lanes.recentlyFinished.length > 0) {
-    targets['Just finished'] = {
-      destination: 'show the Recently finished lane',
-      onActivate: () => revealHomeRegion(FINISHED_HEADING_ID),
-    };
-  }
-  if (lanes.snoozed.length > 0) {
-    targets.Snoozed = {
-      destination: 'open the snoozed shelf',
-      onActivate: () => {
-        controller.expandShelf();
-        revealHomeRegion(SNOOZED_HEADING_ID);
-      },
-    };
-  }
-  if (onShowProjects) {
-    targets.Projects = {
-      destination: 'show where the work has been',
-      onActivate: onShowProjects,
-    };
-  }
-  return targets;
 }
 
 function RecentWorkDegraded({ onRetry }: { onRetry: () => void }) {
@@ -274,65 +271,109 @@ function RecentWorkError({ onViewActivity }: { onViewActivity: () => void }) {
 }
 
 /**
- * #1536 C2: Home offered three ways to start a chat with no session — the
- * "Start direct chat" action card, this button, and the dock's own "Start a
- * chat". The card and the dock control both stay; the empty state explains
- * what will appear without claiming an engine is ready.
+ * #1536 C2 / V6: one line, no second door. The start form above this
+ * section is the action; the empty state only says there is nothing yet.
  */
 function RecentWorkEmpty() {
-  return (
-    <Empty
-      variant="prominent"
-      label="Your chats and project work will appear here"
-    />
-  );
+  return <Empty variant="compact" label="Nothing here yet" />;
 }
 
 function HomeWorkLanesContent({
   controller,
   agents,
+  context,
   onOpen,
 }: {
   controller: HomeWorkController;
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   return (
     <>
-      <HomeActiveLane controller={controller} agents={agents} onOpen={onOpen} />
+      {LIVE_LANES.map((lane) => (
+        <HomeLiveLane
+          key={lane.id}
+          lane={lane}
+          controller={controller}
+          agents={agents}
+          context={context}
+          onOpen={onOpen}
+        />
+      ))}
       <HomeRecentlyFinishedLane
         lanes={controller.lanes}
         agents={agents}
+        context={context}
         onOpen={onOpen}
       />
       {controller.lanes.external?.length ? (
-        <details className="home-view__settled-tail">
-          <summary>
-            From other apps ({controller.lanes.external.length})
-          </summary>
-          <p>Conversations started in your coding apps.</p>
+        <HomeFoldedLane
+          label="From other apps"
+          count={controller.lanes.external.length}
+          headingId="home-external-heading"
+        >
           <ul className="home-view__task-list">
             {controller.lanes.external.map((task) =>
-              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+              renderHomeWorkRow({
+                task,
+                isWoken: false,
+                agents,
+                onOpen,
+                context,
+              }),
             )}
           </ul>
-        </details>
+        </HomeFoldedLane>
       ) : null}
       {controller.lanes.drafts?.length ? (
         <HomeDraftsSection
           drafts={controller.lanes.drafts}
           agents={agents}
+          context={context}
           onOpen={onOpen}
         />
       ) : null}
-      <HomeSnoozeMenu controller={controller} />
       <HomeSnoozedShelf controller={controller} />
       <HomeSettledTail
         controller={controller}
         agents={agents}
+        context={context}
         onOpen={onOpen}
       />
     </>
+  );
+}
+
+/**
+ * A lane folded by default (Drafts, From other apps), behind the shared
+ * disclosure toggle; the Snoozed shelf and the dock's folded sections use
+ * the same one (C13).
+ */
+function HomeFoldedLane({
+  label,
+  count,
+  headingId,
+  children,
+}: {
+  label: string;
+  count: number;
+  headingId: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="home-view__settled-tail" aria-labelledby={headingId}>
+      <DisclosureToggle
+        id={headingId}
+        className="home-view__section-toggle"
+        expanded={open}
+        onToggle={() => setOpen((value) => !value)}
+      >
+        <WorkGroupLabel label={label} count={count} />
+      </DisclosureToggle>
+      {open && children}
+    </section>
   );
 }
 
@@ -344,13 +385,16 @@ function HomeWorkLanesContent({
 function HomeDraftsSection({
   drafts,
   agents,
+  context,
   onOpen,
 }: {
   drafts: readonly HomeLaneItem[];
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   const { recent, older } = splitDraftsByAge(drafts, Date.now());
+  const [olderOpen, setOlderOpen] = useState(false);
   const row = (task: HomeLaneItem) =>
     renderHomeWorkRow({
       task,
@@ -358,57 +402,71 @@ function HomeDraftsSection({
       agents,
       onOpen,
       discardDraft: true,
+      context,
     });
   return (
-    <details className="home-view__settled-tail">
-      <summary>Drafts ({drafts.length})</summary>
-      <p>Sessions nothing has been sent to yet.</p>
+    <HomeFoldedLane
+      label="Drafts"
+      count={drafts.length}
+      headingId="home-drafts-heading"
+    >
       <ul className="home-view__task-list">{recent.map(row)}</ul>
       {older.length > 0 && (
-        <details className="home-view__older-drafts">
-          <summary>{olderDraftsLabel(older.length)}</summary>
-          <ul className="home-view__task-list">{older.map(row)}</ul>
-        </details>
+        <div className="home-view__older-drafts">
+          <DisclosureToggle
+            className="home-view__section-toggle"
+            expanded={olderOpen}
+            onToggle={() => setOlderOpen((value) => !value)}
+          >
+            {olderDraftsLabel(older.length)}
+          </DisclosureToggle>
+          {olderOpen && (
+            <ul className="home-view__task-list">{older.map(row)}</ul>
+          )}
+        </div>
       )}
-    </details>
+    </HomeFoldedLane>
   );
 }
 
-function HomeActiveLane({
+function HomeLiveLane({
+  lane,
   controller,
   agents,
+  context,
   onOpen,
 }: {
+  lane: (typeof LIVE_LANES)[number];
   controller: HomeWorkController;
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
-  const { active } = controller.lanes;
+  const items = controller.lanes[lane.id];
+  // Empty live lanes render nothing, like Just finished: three "(0)"
+  // headings would be noise.
+  if (items.length === 0) return null;
   return (
-    <section aria-labelledby={ACTIVE_HEADING_ID}>
-      {/* `tabIndex={-1}`: the "Active now" count reveals this lane, and a
-          reveal that only scrolls leaves a keyboard reader's focus parked
-          where it was. */}
-      <h3
-        id={ACTIVE_HEADING_ID}
-        className="home-view__group-label"
-        tabIndex={-1}
-      >
-        Active now ({active.length})
+    <section aria-labelledby={lane.headingId}>
+      {/* `tabIndex={-1}`: the lane's count reveals this lane, and a reveal
+          that only scrolls leaves a keyboard reader's focus parked where it
+          was. */}
+      <h3 id={lane.headingId} className="home-view__group-label" tabIndex={-1}>
+        <WorkGroupLabel label={lane.label} count={items.length} />
       </h3>
-      {active.length > 0 && (
-        <ul className="home-view__task-list">
-          {active.map((task) =>
-            renderHomeWorkRow({
-              task,
-              isWoken: controller.lanes.isWoken(task.id),
-              agents,
-              onOpen,
-              onSnooze: controller.openSnoozeMenu,
-            }),
-          )}
-        </ul>
-      )}
+      <ul className="home-view__task-list">
+        {items.map((task) =>
+          renderHomeWorkRow({
+            task,
+            isWoken: controller.lanes.isWoken(task.id),
+            agents,
+            onOpen,
+            onSnooze: (task, wakeAt) =>
+              controller.lanes.snooze(task.id, wakeAt),
+            context,
+          }),
+        )}
+      </ul>
     </section>
   );
 }
@@ -416,10 +474,12 @@ function HomeActiveLane({
 function HomeRecentlyFinishedLane({
   lanes,
   agents,
+  context,
   onOpen,
 }: {
   lanes: HomeWorkLanes;
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   if (lanes.recentlyFinished.length === 0) return null;
@@ -433,32 +493,23 @@ function HomeRecentlyFinishedLane({
         className="home-view__group-label"
         tabIndex={-1}
       >
-        Recently finished ({lanes.recentlyFinished.length})
+        <WorkGroupLabel
+          label="Just finished"
+          count={lanes.recentlyFinished.length}
+        />
       </h3>
       <ul className="home-view__task-list">
         {lanes.recentlyFinished.map((task) =>
-          renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+          renderHomeWorkRow({
+            task,
+            isWoken: false,
+            agents,
+            onOpen,
+            context,
+          }),
         )}
       </ul>
     </section>
-  );
-}
-
-function HomeSnoozeMenu({ controller }: { controller: HomeWorkController }) {
-  const { lanes, snoozeMenuFor, snoozeTriggerRef } = controller;
-  if (!snoozeMenuFor) return null;
-  return (
-    <LazyBoundary
-      load={loadSnoozeMenu}
-      componentProps={{
-        itemTitle: snoozeMenuFor.title,
-        now: lanes.now,
-        triggerRef: snoozeTriggerRef,
-        onSnooze: (wakeAt) => lanes.snooze(snoozeMenuFor.id, wakeAt),
-        onClose: controller.closeSnoozeMenu,
-      }}
-      pending={null}
-    />
   );
 }
 
@@ -470,16 +521,14 @@ function HomeSnoozedShelf({ controller }: { controller: HomeWorkController }) {
       className="home-view__snoozed-shelf"
       aria-labelledby={SNOOZED_HEADING_ID}
     >
-      <button
-        type="button"
+      <DisclosureToggle
         id={SNOOZED_HEADING_ID}
         className="home-view__section-toggle"
-        aria-expanded={controller.shelfExpanded}
-        onClick={controller.toggleShelf}
+        expanded={controller.shelfExpanded}
+        onToggle={controller.toggleShelf}
       >
-        <span aria-hidden="true">{controller.shelfExpanded ? '−' : '+'}</span>
-        Snoozed ({lanes.snoozed.length})
-      </button>
+        <WorkGroupLabel label="Snoozed" count={lanes.snoozed.length} />
+      </DisclosureToggle>
       {controller.shelfExpanded && <HomeSnoozedRows controller={controller} />}
     </section>
   );
@@ -518,39 +567,41 @@ function HomeSnoozedRows({ controller }: { controller: HomeWorkController }) {
 function HomeSettledTail({
   controller,
   agents,
+  context,
   onOpen,
 }: {
   controller: HomeWorkController;
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   const { settled } = controller.lanes;
   if (settled.length === 0) return null;
   const visible = settled.slice(0, controller.settledVisibleCount);
-  // "Earlier" used to be one flat run of rows. Bucketing the visible page by
-  // recency is what the composed variant's "Recently" feed did, absorbed into
-  // the list that already exists rather than added beside it as a second one.
-  // Buckets are derived from the VISIBLE page, so "Show more" still governs
-  // how much of the tail is on screen.
-  const buckets = bucketByRecency(visible, controller.lanes.now);
+  // One flat list, newest first (the lane's own order), as on Activity and
+  // in the dock: each row's time ("3h", "2d", "Sep 12") already says when, so
+  // dated sub-headings ("Today", "Yesterday", ...) would be a second set of
+  // names for one lane (design round 2026-10, C2).
   return (
     <section
       className="home-view__settled-tail"
       aria-labelledby="home-settled-tail-heading"
     >
       <h3 id="home-settled-tail-heading" className="home-view__group-label">
-        Earlier
+        <WorkGroupLabel label="Earlier" />
       </h3>
-      {buckets.map((bucket) => (
-        <div key={bucket.label}>
-          <h4 className="home-view__bucket-label">{bucket.label}</h4>
-          <ul className="home-view__task-list">
-            {bucket.items.map((task) =>
-              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
-            )}
-          </ul>
-        </div>
-      ))}
+      <ul className="home-view__task-list">
+        {visible.map((task) =>
+          renderHomeWorkRow({
+            task,
+            isWoken: false,
+            agents,
+            onOpen,
+            size: 'slim',
+            context,
+          }),
+        )}
+      </ul>
       {controller.settledVisibleCount < settled.length && (
         <button
           type="button"

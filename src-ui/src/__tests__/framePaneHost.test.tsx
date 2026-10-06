@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -41,6 +42,9 @@ let latest: FramePaneHost | null = null;
 function Harness({
   granted = ['navigation.dock', 'ui.confirm'],
   active = true,
+  skillExperience,
+  authorizeExperience,
+  generation,
   pluginName = 'demo',
   navigate = navigateMock as
     | ((path: string, params: Record<string, string | null>) => void)
@@ -48,6 +52,9 @@ function Harness({
 }: {
   granted?: readonly string[];
   active?: boolean;
+  skillExperience?: PaneSkillExperienceHost;
+  authorizeExperience?: () => boolean;
+  generation?: number;
   pluginName?: string;
   navigate?:
     | ((path: string, params: Record<string, string | null>) => void)
@@ -57,6 +64,9 @@ function Harness({
     pluginName,
     granted,
     active,
+    skillExperience,
+    authorizeExperience,
+    generation,
     navigate,
     post: (message) => {
       posted.push(message);
@@ -440,4 +450,112 @@ describe('the placement holds no second implementation of a contract member', ()
     expect(code).not.toMatch(/'navigate'/);
     expect(code).toContain('receivePaneHostMessage');
   });
+});
+
+test('the rich frame bridge refuses forged scope, missing permission and stale occurrence before invoking its host', async () => {
+  let current = true;
+  const read = vi.fn(async () => ({ viewJson: '{"current":null}' }));
+  const answer = vi.fn(async () => {});
+  const next = vi.fn(async () => {});
+  const capability = { read, answer, continue: next };
+  const mounted = render(
+    <Harness
+      granted={['agents.invoke']}
+      skillExperience={capability}
+      authorizeExperience={() => current}
+    />,
+  );
+  act(() =>
+    adapter().receive({
+      method: 'pane-host/experience-read',
+      params: { id: 'forged', threadId: 'another-session' },
+    }),
+  );
+  expect(read).not.toHaveBeenCalled();
+  await act(async () => {
+    adapter().receive({
+      method: 'pane-host/experience-read',
+      params: { id: 'read' },
+    });
+  });
+  expect(posted).toContainEqual({
+    method: 'pane-host/experience-result',
+    params: { id: 'read', data: { viewJson: '{"current":null}' } },
+  });
+  act(() =>
+    adapter().receive({
+      method: 'pane-host/experience-answer',
+      params: {
+        id: 'forged-answer',
+        requestId: 'question',
+        requestEventId: 'event',
+        answers: {},
+        pluginId: 'other',
+      },
+    }),
+  );
+  expect(answer).not.toHaveBeenCalled();
+  current = false;
+  act(() =>
+    adapter().receive({
+      method: 'pane-host/experience-continue',
+      params: { id: 'stale', experienceId: 'next', inputs: {} },
+    }),
+  );
+  expect(next).not.toHaveBeenCalled();
+  current = true;
+  mounted.rerender(
+    <Harness
+      granted={[]}
+      skillExperience={capability}
+      authorizeExperience={() => current}
+    />,
+  );
+  act(() =>
+    adapter().receive({
+      method: 'pane-host/experience-read',
+      params: { id: 'revoked' },
+    }),
+  );
+  expect(read).toHaveBeenCalledTimes(1);
+});
+
+test('a rich result belonging to a retired frame document cannot cross into its replacement', async () => {
+  let resolve: ((value: { viewJson: string }) => void) | undefined;
+  const read = vi.fn(
+    () =>
+      new Promise<{ viewJson: string }>((done) => {
+        resolve = done;
+      }),
+  );
+  const capability = { read, answer: async () => {}, continue: async () => {} };
+  const authorize = () => true;
+  const mounted = render(
+    <Harness
+      granted={['agents.invoke']}
+      skillExperience={capability}
+      authorizeExperience={authorize}
+      generation={1}
+    />,
+  );
+  act(() =>
+    adapter().receive({
+      method: 'pane-host/experience-read',
+      params: { id: 'old-document' },
+    }),
+  );
+  mounted.rerender(
+    <Harness
+      granted={['agents.invoke']}
+      skillExperience={capability}
+      authorizeExperience={authorize}
+      generation={2}
+    />,
+  );
+  await act(async () => {
+    resolve!({ viewJson: 'private old invocation' });
+  });
+  expect(
+    posted.filter((value) => value.method === 'pane-host/experience-result'),
+  ).toEqual([]);
 });

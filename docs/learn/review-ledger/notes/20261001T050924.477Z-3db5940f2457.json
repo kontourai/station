@@ -1,0 +1,7 @@
+{
+  "revision": "ee4cdc0f4e402aaa27dd666e010bcecb39946d8e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"CommandPalette.tsx and useActiveChatSessionLifecycle.ts now show Chat through showChatPageOrDock. Corrected the useSendToChat description, which said it always opens the dock; checked the other dock statements (useDockState, setDockState, Dock entry IDs) against the code and they are unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

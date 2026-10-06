@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { selectCodingPane } from './helpers/coding-stack';
 import {
   dismissSetupLauncher,
   seedActiveChats,
@@ -95,8 +96,11 @@ test.describe('Project layout render storm', () => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
     await dismissSetupLauncher(page);
 
-    // The detector only means something if the surface it detects is mounted.
-    await expect(page.locator('.workspace-pane-host')).toBeVisible();
+    // The detector only means something if the surface it detects is mounted:
+    // the Files drill-in (its file tree below), with the conversation kept mounted
+    // (hidden) on the Chat page beside it (#928 coding stack).
+    await selectCodingPane(page, 'Files');
+    await expect(page.locator('#chat-workspace-pane')).toHaveCount(1);
     await expect(page.locator('.file-tree-panel__search-input')).toHaveCount(1);
 
     const records = await sampleSteadyStateMutations(page);
@@ -120,7 +124,20 @@ test.describe('Project layout render storm', () => {
       await page.goto('/projects/dev/layouts/code?chat=conv-1');
       await dismissSetupLauncher(page);
 
-      await expect(page.locator('.workspace-pane-host')).toBeVisible();
+      // A phone lands on the Chat page, which is its maximized dock; the
+      // detector samples a drilled-in pane, as the desktop case does.
+      const dock = page.locator('#chat-dock');
+      await expect(dock).toHaveClass(/is-maximized/, { timeout: 20_000 });
+      await page.getByRole('button', { name: 'Chat actions' }).click();
+      await page
+        .getByRole('menu', { name: 'Chat actions' })
+        .getByRole('menuitem', { name: 'Collapse chat' })
+        .click();
+      await expect(dock).not.toHaveClass(/is-maximized/);
+      await selectCodingPane(page, 'Files');
+      await expect(
+        page.locator('.file-tree-panel__search-input'),
+      ).toBeVisible();
 
       const records = await sampleSteadyStateMutations(page);
       console.log(

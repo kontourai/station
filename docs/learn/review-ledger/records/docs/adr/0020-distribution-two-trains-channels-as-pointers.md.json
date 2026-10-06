@@ -1,0 +1,29 @@
+{
+  "path": "docs/adr/0020-distribution-two-trains-channels-as-pointers.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Accepted decision record for the distribution epic (#2956, #2958): channels as signed pointers over one host stream, a client train and a host stream joined by launcher and client-API protocol ranges with rejection paths, a manifest-only installer, a desktop shell that fetches and verifies the host with the installer verifier, one opt-in service-install capability, and the #2713 answers (never-backwards channel switching with restore/start-fresh escape hatches, consent-based migration to the stable desktop identity, URL-keyed pairing, one channel record per axis).",
+
+  "limits": "Decision record only; no behavior ships with it. Context statements describe origin/main on 2026-09-29 and were checked against the listed sources; the decisions are implemented and proven by #2959-#2962, not by this record.",
+
+  "sources": [
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
+  ],
+
+  "checks": [
+    "Context claims checked against source: launcher protocol constants and refusals (install.sh range refuse; service-launcher-protocol.ts; archive-update.ts; none in src-desktop Rust); client API compat (environment-security.ts STATION_COMPAT_*; compatibility.ts client-side refusal; host records only); home schema downgrade refusal (station-home-schema.ts); install state record read by lifecycle.ts; pinned keys (release-manifest-keys.json); per-channel identities (channel-ports.json). Decisions: owner direction and owner answers of 2026-09-29; engineering additions labeled.",
+
+    "Review fix round: D1 restated as ring-tagged pointers now with promotion as the target (owner), verifier = packages/shared/src/release-manifest.mjs plus install.sh's golden-vector copy only, bundled-host pin (not the startup ticket) becomes a range check, supersedes ADR 0015 in part, channel records described as two agreeing records today with a single-writer target, CLI axes split, host-side refusal needs a client protocol field, D6 split updater keys (owner), engineering additions labeled, alternatives and NOT_VERIFIED added.",
+
+    "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified.",
+
+    "Wording: nightly core reason corrected; lines re-wrapped.",
+
+    "Source ADR 0015 changed by the merged #2957 evidence addendum (e8dc2e22). ADR 0020's NOT_VERIFIED carry-list and the addendum anchor match the landed text (Windows readiness and watchdog timings, stale sidecar entries, shared roots refusing first launch).",
+
+    "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold."
+  ]
+}

@@ -1,4 +1,9 @@
-import { StationHttpError } from '@kontourai/station-sdk/client';
+import { ActionOperationProtocolError } from '@kontourai/station-sdk/action-operations';
+import {
+  AnswerSupportRequestError,
+  DelegationApiError,
+  StationHttpError,
+} from '@kontourai/station-sdk/client';
 import { describe, expect, test } from 'vitest';
 import { userFacingErrorMessage } from '../errorText';
 
@@ -36,6 +41,23 @@ describe('userFacingErrorMessage', () => {
       ),
     ).toBe('Binding revision changed');
     expect(userFacingErrorMessage(new StationHttpError(502))).toBe('HTTP 502');
+  });
+
+  // #2708 A-3b: the SDK's family errors that extend Error carry the same
+  // details, and read the same way.
+  test.each([
+    ['DelegationApiError', () => new DelegationApiError(refusal)],
+    ['AnswerSupportRequestError', () => new AnswerSupportRequestError(refusal)],
+    [
+      'ActionOperationProtocolError',
+      () => new ActionOperationProtocolError(refusal),
+    ],
+  ])('%s reads its reasons from details too', (_name, make) => {
+    const error = make();
+    expect(error.message).toContain('secretEnvKey');
+    expect(userFacingErrorMessage(error)).toBe(
+      'Choose an environment name. Required',
+    );
   });
 
   test('any other error reads as its message, and a non-error as the shared fallback', () => {

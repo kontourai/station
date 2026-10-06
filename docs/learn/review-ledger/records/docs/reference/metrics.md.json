@@ -1,0 +1,37 @@
+{
+  "path": "docs/reference/metrics.md",
+
+  "kind": "generated",
+
+  "state": "classified",
+
+  "summary": "Generated catalog of 309 instrument declarations, literal metadata and source identity. Source is parsed without executing telemetry.",
+
+  "limits": "Declarations do not prove caller recording, SDK binding or collector receipt. Unsupported owner syntax refuses generation.",
+
+  "sources": [
+    "scripts/__tests__/metric-reference.test.ts",
+
+    "scripts/generate-metric-reference.mjs",
+
+    "scripts/lib/learning-markdown.mjs",
+
+    "scripts/lib/learning-source-reader.mjs",
+
+    "scripts/lib/metric-reference-output.mjs",
+
+    "src-server/telemetry/metrics.ts"
+  ],
+
+  "checks": [
+    "47 generator tests passed.",
+
+    "Independent actual CLI refused input/output symlinks, invalid UTF-8, API escapes and runtime re-exports; valid/restored checks passed. Literal metadata round-tripped through the reader DOM.",
+
+    "Reviewed source deltas: Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
+
+    "Reviewed source changes: Added admitted local capture rendering and image-link validation. Existing source-code and metric-table links keep their snapshot route; metadata/source review remains independent.",
+
+    "Regenerated309 metric declaration entries after upstream metric source movement; no emitted-value or dashboard completeness claim."
+  ]
+}

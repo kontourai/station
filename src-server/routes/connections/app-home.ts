@@ -7,15 +7,24 @@
  * so its `/agent/:id/app-home…` path never collides with that file's
  * `/agents` (plural, existing) or `/:id` (catch-all) routes.
  */
+import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
   CredentialProfileApplicationProjection,
   CredentialRecoveryGroupProjection,
+  EngineLoginProfiles,
 } from '@kontourai/station-contracts/connection-recovery';
+import type {
+  EngineAccountLogin,
+  EngineAccounts,
+} from '@kontourai/station-contracts/engine-accounts';
 import { type Context, Hono } from 'hono';
 import { defaultClaudeGlobalConfigDirs } from '../../providers/adapters/claude-skills-materialization.js';
 import {
+  appHomeProfileDir,
+  claudeAppHomeEnv,
   clearAppHomeProfile,
   ensureAppHomeProfile,
   type ImportClaudeGlobalSnapshotResult,
@@ -36,17 +45,26 @@ import {
   defaultCodexGlobalConfigDir,
   detectCodexAuthState,
 } from '../../providers/auth/codex-auth.js';
+import { browserCodeLoginManager } from '../../services/connections/browser-code-login.js';
+import {
+  appHomeActive,
+  connectionSpawnEnv,
+} from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import {
   type EnrolmentEngine,
   enrolmentCommand,
   verifyEnrolment,
 } from '../../services/connections/credential-enrolment.js';
-import { readCredentialUsage } from '../../services/connections/credential-usage.js';
+import {
+  defaultUsageFetchDeps,
+  readCredentialUsage,
+} from '../../services/connections/credential-usage.js';
 import {
   type DeviceCodeLoginManager,
   deviceCodeLoginManager,
 } from '../../services/connections/device-code-login.js';
+import { recordEngineAccountUsage } from '../../services/connections/engine-account-history.js';
 import {
   type EngineLoginCapabilities,
   engineLoginCapabilities,
@@ -190,16 +208,21 @@ export function createAppHomeRoutes(deps?: {
    * engine's CLI. The default probes for real: what an engine supports is not
    * something this file is allowed to assert on its own.
    */
+  isLoginReadCurrent?: (request: Request) => boolean;
   loginCapabilities?: (
     engine: EnrolmentEngine,
   ) => Promise<EngineLoginCapabilities>;
   deviceCodeLogins?: DeviceCodeLoginManager;
+  accountAuth?: typeof verifyEnrolment;
+  accountUsage?: typeof readCredentialUsage;
 }) {
   const app = new Hono();
   const readLoginCapabilities =
     deps?.loginCapabilities ?? ((engine) => engineLoginCapabilities(engine));
   const deviceCodeLogins = () =>
     deps?.deviceCodeLogins ?? deviceCodeLoginManager();
+  const readAccountAuth = deps?.accountAuth ?? verifyEnrolment;
+  const readAccountUsage = deps?.accountUsage ?? readCredentialUsage;
 
   const credentialRecoveryContext = async (
     id: string,
@@ -208,6 +231,11 @@ export function createAppHomeRoutes(deps?: {
         engine?: AppHomeEngine;
         recovery: CredentialRecoveryGroupProjection;
         service: CredentialRecoveryConnectionService;
+        connection: NonNullable<
+          Awaited<
+            ReturnType<CredentialRecoveryConnectionService['getConnection']>
+          >
+        >;
       }
     | undefined
   > => {
@@ -221,7 +249,7 @@ export function createAppHomeRoutes(deps?: {
       return undefined;
     }
     const recovery = await service.getCredentialRecovery(id);
-    return { engine: APP_HOME_ENGINES[id], recovery, service };
+    return { engine: APP_HOME_ENGINES[id], recovery, service, connection };
   };
 
   const credentialRecoveryUnavailable = () => ({
@@ -243,9 +271,378 @@ export function createAppHomeRoutes(deps?: {
     return parsed.success ? parsed.data : undefined;
   };
 
+  const accountTarget = async (id: string, ref: string | undefined) => {
+    const context = await credentialRecoveryContext(id);
+    if (!context?.engine) return undefined;
+    if (ref !== undefined) {
+      if (
+        !profileRefFromParam(ref) ||
+        !context.recovery.profiles.some((p) => p.ref === ref)
+      )
+        return undefined;
+      return {
+        ...context,
+        engine: context.engine,
+        dir: credentialProfileAppHomeDir(
+          context.engine.credentialProfileEngineId,
+          ref,
+        ),
+        ref,
+      };
+    }
+    const engine = context.engine.provider;
+    const homeKey = engine === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME';
+    const env = {
+      ...connectionSpawnEnv(context.connection.config, engine),
+      ...(appHomeActive(context.connection.config)
+        ? engine === 'claude'
+          ? claudeAppHomeEnv(appHomeProfileDir(id))
+          : { [homeKey]: appHomeProfileDir(id) }
+        : {}),
+    };
+    return {
+      ...context,
+      engine: context.engine,
+      dir: env[homeKey]?.trim() || context.engine.globalDir(),
+      env,
+      ref: undefined,
+    };
+  };
+  const currentAccountRequest = (request: Request) =>
+    deps?.isLoginReadCurrent?.(request) === true;
+  const accountRefusal = (c: Context) =>
+    c.json({ error: { code: 'insufficient_scope' } }, 403);
+  const loginProjection = (
+    record: ReturnType<DeviceCodeLoginManager['status']>,
+  ): EngineAccountLogin | undefined => {
+    if (!record) return undefined;
+    const {
+      engine,
+      phase,
+      startedAt,
+      expiresAt,
+      verificationUri,
+      userCode,
+      reason,
+    } = record;
+    return {
+      engine,
+      mechanism: 'device-code',
+      phase,
+      startedAt,
+      expiresAt,
+      ...(verificationUri ? { verificationUri } : {}),
+      ...(userCode ? { userCode } : {}),
+      ...(reason ? { reason } : {}),
+    };
+  };
+  app.get('/agent/:id/accounts', async (c) => {
+    if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    try {
+      const base = await accountTarget(param(c, 'id'), undefined);
+      if (!base) return c.json(credentialRecoveryUnavailable(), 404);
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      const capabilities = await readLoginCapabilities(base.engine.provider);
+      const login = loginMechanisms(capabilities).includes('browser-code')
+        ? 'browser-code'
+        : loginMechanisms(capabilities).includes('device-code')
+          ? 'device-code'
+          : 'unavailable';
+      const accounts: EngineAccounts['accounts'] = [];
+      for (const item of [
+        {
+          ref: null,
+          label: 'Default account',
+          dir: base.dir,
+          env: 'env' in base ? base.env : undefined,
+        },
+        ...base.recovery.profiles.map((p) => ({
+          ref: p.ref,
+          label: p.label || p.ref,
+          dir: credentialProfileAppHomeDir(
+            base.engine.credentialProfileEngineId,
+            p.ref,
+          ),
+        })),
+      ]) {
+        if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+        const state =
+          item.ref === null || existsSync(item.dir)
+            ? (
+                await readAccountAuth(
+                  base.engine.provider,
+                  item.dir,
+                  undefined,
+                  'env' in item ? item.env : undefined,
+                )
+              ).state
+            : 'unauthenticated';
+        accounts.push({
+          ref: item.ref,
+          label: item.label,
+          authState: state,
+          login: item.ref === null ? 'unavailable' : login,
+        });
+      }
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      return c.json({
+        success: true,
+        data: {
+          engine: base.engine.provider,
+          accounts,
+          activeProfileRef: base.recovery.application.activeProfileRef ?? null,
+        } satisfies EngineAccounts,
+      });
+    } catch {
+      return c.json(
+        { success: false, error: 'Accounts could not be loaded.' },
+        500,
+      );
+    }
+  });
+  app.get('/agent/:id/account-usage', async (c) => {
+    if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    const requestStartedAt = new Date().toISOString();
+    try {
+      const target = await accountTarget(
+        param(c, 'id'),
+        c.req.query('profileRef'),
+      );
+      if (!target) return c.json(credentialRecoveryUnavailable(), 404);
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      const env = { ...process.env, ...('env' in target ? target.env : {}) };
+      const data =
+        target.engine.provider === 'claude' && target.ref === undefined
+          ? await readAccountUsage(
+              target.engine.provider,
+              target.dir,
+              defaultUsageFetchDeps({
+                dir:
+                  env.CLAUDE_SECURESTORAGE_CONFIG_DIR ||
+                  env.CLAUDE_CONFIG_DIR ||
+                  target.dir,
+                defaultNamespace:
+                  !env.CLAUDE_SECURESTORAGE_CONFIG_DIR &&
+                  !env.CLAUDE_CONFIG_DIR,
+              }),
+            )
+          : await readAccountUsage(target.engine.provider, target.dir);
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      const history = await recordEngineAccountUsage(
+        {
+          engine: target.engine.provider,
+          connectionId: param(c, 'id'),
+          ref: target.ref ?? null,
+          dir: target.dir,
+        },
+        data,
+        {
+          requestStartedAt,
+          beforeCommit: () => {
+            if (!currentAccountRequest(c.req.raw))
+              throw new Error('Account read authority changed.');
+          },
+        },
+      ).catch(() => ({
+        status: 'unavailable' as const,
+        retentionDays: 30,
+        observations: [],
+      }));
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      return c.json({ success: true, data: { ...data, history } });
+    } catch {
+      return c.json(
+        { success: false, error: 'Account limits could not be loaded.' },
+        500,
+      );
+    }
+  });
+  app.get('/agent/:id/account-login', async (c) => {
+    if (!c.req.query('profileRef'))
+      return c.json(
+        {
+          success: false,
+          error:
+            'Add a saved account to sign in here. The default account is managed by the host CLI.',
+        },
+        400,
+      );
+    if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    const target = await accountTarget(
+      param(c, 'id'),
+      c.req.query('profileRef'),
+    );
+    if (!target) return c.json(credentialRecoveryUnavailable(), 404);
+    if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    const login =
+      target.engine.provider === 'claude'
+        ? browserCodeLoginManager().get(target.dir)
+        : loginProjection(deviceCodeLogins().status(target.dir));
+    return c.json({ success: true, data: { login: login ?? null } });
+  });
+  app.delete('/agent/:id/account-login', async (c) => {
+    if (!c.req.query('profileRef'))
+      return c.json(
+        {
+          success: false,
+          error:
+            'Add a saved account to sign in here. The default account is managed by the host CLI.',
+        },
+        400,
+      );
+    if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    const target = await accountTarget(
+      param(c, 'id'),
+      c.req.query('profileRef'),
+    );
+    if (!target) return c.json(credentialRecoveryUnavailable(), 404);
+    if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    const login =
+      target.engine.provider === 'claude'
+        ? browserCodeLoginManager().cancel(target.dir)
+        : loginProjection(deviceCodeLogins().cancel(target.dir));
+    return c.json({ success: true, data: { login: login ?? null } });
+  });
+  app.post('/agent/:id/account-login', async (c) => {
+    if (!c.req.query('profileRef'))
+      return c.json(
+        {
+          success: false,
+          error:
+            'Add a saved account to sign in here. The default account is managed by the host CLI.',
+        },
+        400,
+      );
+    if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    try {
+      const target = await accountTarget(
+        param(c, 'id'),
+        c.req.query('profileRef'),
+      );
+      if (!target) return c.json(credentialRecoveryUnavailable(), 404);
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      const body: unknown = await c.req.json();
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body) ||
+        Object.keys(body).some((key) => key !== 'code')
+      )
+        return c.json(
+          { success: false, error: 'Invalid sign-in request.' },
+          400,
+        );
+      const code = 'code' in body ? body.code : undefined;
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      if (code !== undefined) {
+        if (typeof code !== 'string' || target.engine.provider !== 'claude')
+          return c.json(
+            { success: false, error: 'Invalid sign-in code.' },
+            400,
+          );
+        const login = browserCodeLoginManager().submit(target.dir, code, () =>
+          currentAccountRequest(c.req.raw),
+        );
+        return c.json({ success: true, data: { login } });
+      }
+      if (target.ref)
+        await ensureCredentialProfileAppHome(
+          target.engine.credentialProfileEngineId,
+          target.ref,
+        );
+      else await mkdir(target.dir, { recursive: true, mode: 0o700 });
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      if (target.engine.provider === 'claude') {
+        const login = await browserCodeLoginManager().start(target.dir, () =>
+          currentAccountRequest(c.req.raw),
+        );
+        if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+        return c.json({ success: true, data: { login } });
+      }
+      const result = await deviceCodeLogins().start(
+        target.engine.provider,
+        target.dir,
+        () => currentAccountRequest(c.req.raw),
+      );
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      if (result.kind === 'started' || result.kind === 'existing')
+        return c.json({
+          success: true,
+          data: { login: loginProjection(result.record) },
+        });
+      return c.json(
+        {
+          success: false,
+          error:
+            'reason' in result
+              ? result.reason
+              : 'Sign-in did not start. Check its status before trying again.',
+          data: { outcome: result.kind },
+        },
+        409,
+      );
+    } catch {
+      return c.json(
+        {
+          success: false,
+          error:
+            'Sign-in could not complete. Check its status before trying again.',
+        },
+        409,
+      );
+    }
+  });
+
   // Credential recovery is a separate management surface. Unlike the legacy
   // app-home status route above, it never returns a profile directory: refs
   // are opaque registry identity only and resolve server-side to hashed paths.
+  app.get('/agent/:id/device-code-profiles', async (c) => {
+    const current = () => deps?.isLoginReadCurrent?.(c.req.raw) === true;
+    const refused = () =>
+      c.json({ error: { code: 'insufficient_scope' } }, 403);
+    if (!current()) return refused();
+    try {
+      const context = await credentialRecoveryContext(param(c, 'id'));
+      if (!context?.engine) return c.json(credentialRecoveryUnavailable(), 404);
+      if (!current()) return refused();
+      const engine = context.engine;
+      const capabilities = await readLoginCapabilities(engine.provider);
+      const mechanisms: Array<'device-code'> = loginMechanisms(
+        capabilities,
+      ).includes('device-code')
+        ? ['device-code']
+        : [];
+      const profiles: EngineLoginProfiles['profiles'] = [];
+      for (const profile of context.recovery.profiles) {
+        if (!current()) return refused();
+        const dir = credentialProfileAppHomeDir(
+          engine.credentialProfileEngineId,
+          profile.ref,
+        );
+        // No target store exists yet: POST creates it before starting login.
+        const authState = existsSync(dir)
+          ? (await verifyEnrolment(engine.provider, dir)).state
+          : 'unauthenticated';
+        profiles.push({
+          ref: profile.ref,
+          ...(profile.label ? { label: profile.label } : {}),
+          authState,
+          mechanisms,
+        });
+      }
+      if (!current()) return refused();
+      return c.json({
+        success: true,
+        data: { profiles } satisfies EngineLoginProfiles,
+      });
+    } catch {
+      return c.json(
+        { success: false, error: 'Sign-in profiles could not be loaded.' },
+        500,
+      );
+    }
+  });
+
   app.get('/agent/:id/credential-recovery', async (c) => {
     try {
       const context = await credentialRecoveryContext(param(c, 'id'));
@@ -725,7 +1122,14 @@ export function createAppHomeRoutes(deps?: {
         dir,
       );
       if (result.kind === 'unsupported') {
-        return c.json({ success: false, error: result.reason }, 409);
+        return c.json(
+          {
+            success: false,
+            error: result.reason,
+            data: { outcome: result.kind },
+          },
+          409,
+        );
       }
       if (
         result.kind === 'already-signed-in' ||
@@ -741,7 +1145,14 @@ export function createAppHomeRoutes(deps?: {
         );
       }
       if (result.kind === 'busy') {
-        return c.json({ success: false, error: result.reason }, 429);
+        return c.json(
+          {
+            success: false,
+            error: result.reason,
+            data: { outcome: result.kind },
+          },
+          429,
+        );
       }
       if (result.kind === 'closed') {
         return c.json(

@@ -13,6 +13,17 @@ import { steerRefusalMessage } from '../utils/steerTurn';
  * `SteerTurnResult` outcome against its exact copy.
  */
 describe('steerRefusalMessage (station#4075 stage 2 review round 2)', () => {
+  it('indeterminate preserves uncertainty without inviting duplicate delivery', () => {
+    const message = steerRefusalMessage({
+      outcome: 'indeterminate',
+      threadId: 'thread-1',
+      clientInputId: 'input-1',
+    });
+    expect(message).toBe(
+      'Steering delivery is unconfirmed. Your message is retained for review and will not be sent again automatically.',
+    );
+  });
+
   it('unsupported-engine names the engine', () => {
     const result: Exclude<SteerTurnResult, { outcome: 'steered' }> = {
       outcome: 'unsupported-engine',
@@ -47,5 +58,30 @@ describe('steerRefusalMessage (station#4075 stage 2 review round 2)', () => {
       'Another steer is in progress — try again in a moment.',
     );
     expect(message).not.toMatch(/ended/i);
+  });
+
+  // #2898: a revoked grant keeps the running turn from being extended.
+  it('confinement-changed says nothing was added and the message waits for a confined turn', () => {
+    const result: Exclude<SteerTurnResult, { outcome: 'steered' }> = {
+      outcome: 'confinement-changed',
+      threadId: 'thread-1',
+    };
+    expect(steerRefusalMessage(result)).toBe(
+      'Access to this conversation changed, so the running turn can’t take new instructions. Your message was not added to it and is kept for the next turn, which runs confined.',
+    );
+  });
+});
+
+// #2898 review: a newer server's outcome this build does not know must still
+// render as a sentence, never as the result object.
+describe('steerRefusalMessage for an outcome this build does not know', () => {
+  it('returns a plain string', () => {
+    const unknown = {
+      outcome: 'a-future-outcome',
+      threadId: 'thread-1',
+    } as unknown as Exclude<SteerTurnResult, { outcome: 'steered' }>;
+    expect(steerRefusalMessage(unknown)).toBe(
+      'The steer was not sent. Your message is kept.',
+    );
   });
 });

@@ -25,6 +25,7 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { AuthorityObservation } from '@kontourai/station-contracts/authority-observation';
 import { useUserLookup } from '@kontourai/station-sdk';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
   QueryClient,
   QueryClientProvider,
@@ -143,8 +144,12 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-const UNAUTHORIZED = new Error(
+// The refusal `getAuthorityObservation` throws for the runtime's 401, pinned
+// in the SDK by `client-fetchers-envelope-a3b.test.ts`.
+const UNAUTHORIZED = new StationHttpError(
+  401,
   'This Station did not accept the presented credential.',
+  { code: 'authentication_required' },
 );
 
 type ProjectList = { id: string; home: string }[];
@@ -1155,78 +1160,86 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     unmount();
   });
 
-  it('revocation re-observes, quarantines persistence, and retains the blob (no silent loss)', async () => {
-    // The production revocation loop, end to end: a live scoped read gets
-    // a 401 → the SDK reports it through the installed resolver → the
-    // store flips the credential → re-observation fails closed.
-    let listRevoked = false;
-    stubFetch(async (url) => {
-      if (url.endsWith('/api/projects')) {
-        if (listRevoked) return new Response('denied', { status: 401 });
-        return listResponse([{ slug: 'shared-slug', name: 'A' }]);
-      }
-      return new Response('not found', { status: 404 });
-    });
-    const harness = createHarness();
-    harness.observationPlan.set('default', async () => OBS_DEFAULT);
-    harness.mountReloadProbe = true;
-    const { unmount } = renderTree(harness);
-    const { id: idA, url: urlA } = await addHome('homea');
-    let revoked = false;
-    harness.observationPlan.set(urlA, async () => {
-      if (revoked) throw UNAUTHORIZED;
-      return OBS_A;
-    });
-    await switchTo(idA);
+  // #2708: revocation is read from the refusal's 401 status, so a 401 worded
+  // any other way revokes just the same.
+  it.each([
+    ["the observation fetcher's 401", UNAUTHORIZED],
+    ['a 401 worded differently', new StationHttpError(401, 'Sign in again.')],
+  ])(
+    'revocation (%s) re-observes, quarantines persistence, and retains the blob (no silent loss)',
+    async (_name, refusal) => {
+      // The production revocation loop, end to end: a live scoped read gets
+      // a 401 → the SDK reports it through the installed resolver → the
+      // store flips the credential → re-observation fails closed.
+      let listRevoked = false;
+      stubFetch(async (url) => {
+        if (url.endsWith('/api/projects')) {
+          if (listRevoked) return new Response('denied', { status: 401 });
+          return listResponse([{ slug: 'shared-slug', name: 'A' }]);
+        }
+        return new Response('not found', { status: 404 });
+      });
+      const harness = createHarness();
+      harness.observationPlan.set('default', async () => OBS_DEFAULT);
+      harness.mountReloadProbe = true;
+      const { unmount } = renderTree(harness);
+      const { id: idA, url: urlA } = await addHome('homea');
+      let revoked = false;
+      harness.observationPlan.set(urlA, async () => {
+        if (revoked) throw refusal;
+        return OBS_A;
+      });
+      await switchTo(idA);
 
-    const reloadProbe = () => screen.getByTestId('reload-probe');
-    await waitFor(() =>
-      expect(probe().getAttribute('data-status')).toBe('verified'),
-    );
-    await waitFor(() =>
-      expect(reloadProbe().getAttribute('data-reload')).toContain(
-        'shared-slug',
-      ),
-    );
-    await waitFor(() =>
+      const reloadProbe = () => screen.getByTestId('reload-probe');
+      await waitFor(() =>
+        expect(probe().getAttribute('data-status')).toBe('verified'),
+      );
+      await waitFor(() =>
+        expect(reloadProbe().getAttribute('data-reload')).toContain(
+          'shared-slug',
+        ),
+      );
+      await waitFor(() =>
+        expect(
+          harness.asyncStorage.data.has(authorityPersistenceKey(NS_A)),
+        ).toBe(true),
+      );
+
+      // Install a saved credential (itself a re-observing generation bump),
+      // then have the live read rejected: the 401 travels the real reporting
+      // path, not a direct store poke.
+      await act(async () => {
+        connections?.setCredential(idA, 'cred-1');
+      });
+      await waitFor(() =>
+        expect(probe().getAttribute('data-status')).toBe('verified'),
+      );
+      const observationCallsBefore = harness.observationCalls.length;
+      expect(observationCallsBefore).toBeGreaterThan(1);
+
+      revoked = true;
+      listRevoked = true;
+      fireEvent.click(screen.getByTestId('reload-refetch'));
+      // The credential transition re-drove observation, which failed closed.
+      await waitFor(() =>
+        expect(probe().getAttribute('data-status')).toBe('unavailable'),
+      );
+      expect(harness.observationCalls.length).toBeGreaterThan(
+        observationCallsBefore,
+      );
+      expect(probe().getAttribute('data-namespace')).toBe('');
+      // The revoked rows are no longer served…
+      await waitFor(() =>
+        expect(reloadProbe().getAttribute('data-reload')).toBe('error'),
+      );
+      // …and the authorized blob is retained verbatim — quarantine, not deletion.
       expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
         true,
-      ),
-    );
-
-    // Install a saved credential (itself a re-observing generation bump),
-    // then have the live read rejected: the 401 travels the real reporting
-    // path, not a direct store poke.
-    await act(async () => {
-      connections?.setCredential(idA, 'cred-1');
-    });
-    await waitFor(() =>
-      expect(probe().getAttribute('data-status')).toBe('verified'),
-    );
-    const observationCallsBefore = harness.observationCalls.length;
-    expect(observationCallsBefore).toBeGreaterThan(1);
-
-    revoked = true;
-    listRevoked = true;
-    fireEvent.click(screen.getByTestId('reload-refetch'));
-    // The credential transition re-drove observation, which failed closed.
-    await waitFor(() =>
-      expect(probe().getAttribute('data-status')).toBe('unavailable'),
-    );
-    expect(harness.observationCalls.length).toBeGreaterThan(
-      observationCallsBefore,
-    );
-    expect(probe().getAttribute('data-namespace')).toBe('');
-    // The revoked rows are no longer served…
-    await waitFor(() =>
-      expect(reloadProbe().getAttribute('data-reload')).toBe('error'),
-    );
-    // …and the authorized blob is retained verbatim — quarantine, not deletion.
-    expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
-      true,
-    );
-    unmount();
-  });
+      );
+      unmount();
+    },
+  );
 
   it('offline with no observation shows zero A rows and retains the blob byte-identical', async () => {
     const harness = createHarness();

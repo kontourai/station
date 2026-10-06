@@ -1,0 +1,53 @@
+{
+  "path": "docs/guides/releasing.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Integration, scheduled full qualification, evidence reuse, bounded repair ownership, landing automation and Preview/Stable promotion. Reviewed workflow/CLI boundaries and focused executable failure controls.",
+
+  "limits": "Scoped source review and local executable tests; no hosted agent, publication, signing, physical-device or external Builder schema admission proof. Existing local receipt schema remains separate.",
+
+  "sources": [
+    ".github/workflows/ci.yml",
+
+    ".github/workflows/full-regression.yml",
+
+    ".github/workflows/merge-queue-regression.yml",
+
+    ".github/workflows/main-qualification.yml",
+
+    ".github/workflows/qualification-repair.yml",
+
+    ".github/workflows/qualification-after-repair.yml",
+
+    ".github/workflows/landing-automation.yml",
+
+    ".github/workflows/nightly.yml",
+
+    ".github/workflows/release.yml",
+
+    ".github/workflows/publish-release.yml",
+
+    ".github/workflows/publish-packages.yml",
+
+    "scripts/qualification-evidence.mjs",
+
+    "scripts/qualification-repair.mjs",
+
+    "scripts/landing-automation.mjs",
+
+    "scripts/__tests__/qualification-evidence.test.ts",
+
+    "scripts/__tests__/qualification-repair.test.ts",
+
+    ".github/workflows/qualification-health.yml",
+
+    "scripts/qualification-health.mjs"
+  ],
+
+  "checks": [
+    "Focused CI/workflow/release tests executed; receipt all-jobs-to-any mutation rejected and restored green; independent report-only review found no remaining P1/P2."
+  ]
+}

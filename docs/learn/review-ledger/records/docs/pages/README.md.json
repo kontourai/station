@@ -1,0 +1,23 @@
+{
+  "path": "docs/pages/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed exact document allowlisting, static rendering, output directory and emitted-link validation against the Pages builder.",
+
+  "limits": "Build behavior only; no hosted deployment or physical product result.",
+
+  "sources": [
+    "docs/pages/public-docs.json",
+
+    "scripts/build-github-pages.mjs",
+
+    "scripts/check-generated-pages-links.mjs"
+  ],
+
+  "checks": [
+    "Read builder, manifest and link-check composition; public content remains explicitly admitted."
+  ]
+}

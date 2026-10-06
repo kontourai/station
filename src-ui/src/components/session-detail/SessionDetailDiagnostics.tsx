@@ -2,7 +2,8 @@ import type { DiagnosticsEntry } from '../../utils/sessionDiagnosticsLog';
 
 /**
  * #1170: demoted, collapsed by default — this is the diagnostic raw log,
- * not the primary content. `entries` is already deduped/coalesced by
+ * not the primary content. It sits inside the detail's Details disclosure,
+ * under the evidence rows, so its own summary names what it is. `entries` is already deduped/coalesced by
  * `buildDiagnosticsLog` (duplicate event names, repeated identical events,
  * and split text-delta fragments) — see that module for why `renderKey`
  * (not `key`) is the React list key. Split out of `MutableSessionDetail`
@@ -21,7 +22,7 @@ export function SessionDetailDiagnostics({
       data-testid="session-diagnostics"
     >
       <summary>
-        Details · {eventCount} event{eventCount === 1 ? '' : 's'}
+        Event log · {eventCount} event{eventCount === 1 ? '' : 's'}
       </summary>
       <div className="sessions-detail__feed" data-testid="session-feed">
         {eventCount === 0 ? (

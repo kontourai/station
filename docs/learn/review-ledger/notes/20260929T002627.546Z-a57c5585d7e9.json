@@ -1,0 +1,7 @@
+{
+  "revision": "fa6d395f60636c40fb32eb1f27204ca7b9871da9",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Combined PR: path-read-pin-boundary.test.ts now compares pin edges against a baseline that includes the spawned-script edges, so the test-full deferral this guide describes does not read as a pin edge adding a lane; the selection claims are unchanged.","inputs":["docs/guides/testing.md"]}
+  ]
+}

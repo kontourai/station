@@ -1,3 +1,4 @@
+import { readRegistryCatalogSelection } from '../../providers/registries/registry-source-manager.js';
 import { assertPluginNameSegment } from './plugin-name.js';
 
 export { assertPluginNameSegment } from './plugin-name.js';
@@ -90,6 +91,12 @@ import {
   pluginActivationDescriptorDigest,
 } from './plugin-activation-plan.js';
 import { captureLocalPluginArtifact } from './plugin-artifact-local.js';
+import {
+  type PluginCommandEffectResponseFields,
+  type PluginCommandWithdrawalCapture,
+  pluginCommandEffectFields,
+  withdrawPluginCommandEffects,
+} from './plugin-command-effects.js';
 import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
@@ -163,6 +170,7 @@ import {
   type PluginPublicServerQuiescence,
   quiescePluginPublicServerModule,
 } from './plugin-public-server.js';
+import { pluginInstallationGeneration } from './plugin-runtime-artifact.js';
 import {
   detectWorkspacePaneCatalogConflicts,
   fetchPluginSource,
@@ -236,6 +244,44 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
   claim?: unknown;
   fresh?: boolean;
 }> {
+  const { resolveSelectedPluginCatalog } = await import(
+    '../../providers/registries/registry-source-manager.js'
+  );
+  const selected = await resolveSelectedPluginCatalog(id);
+  if (selected) {
+    const { provider, itemId } = selected;
+    const resolved = provider.resolvePackage
+      ? await provider.resolvePackage(itemId)
+      : { source: await provider.resolveSource?.(itemId) };
+    if (!resolved?.source)
+      throw new Error('Selected marketplace refused package resolution.');
+    if (
+      selected.packageRevision &&
+      createHash('sha256').update(JSON.stringify(resolved)).digest('hex') !==
+        selected.packageRevision
+    )
+      throw new Error(
+        'Selected marketplace changed during resolution. Inspect it again.',
+      );
+    const bound: IPluginRegistryProvider = {
+      registryKey: provider.registryKey,
+      listAvailable: () => provider.listAvailable(),
+      listInstalled: () => provider.listInstalled(),
+      install: (requested, options) =>
+        provider.install(requested === id ? itemId : requested, options),
+      uninstall: (requested) =>
+        provider.uninstall(requested === id ? itemId : requested),
+      resolvePackage: async (requested) =>
+        provider.resolvePackage?.(requested === id ? itemId : requested) ??
+        null,
+    };
+    return {
+      provider: bound,
+      source: resolved.source,
+      claim: 'claim' in resolved ? resolved.claim : undefined,
+      fresh: true,
+    };
+  }
   const entries = getPluginRegistryProviders() as Array<{
     source?: string;
     provider: IPluginRegistryProvider;
@@ -452,6 +498,10 @@ export function installationHostFor(
 
 export interface InstalledPluginResult extends PluginInstallResult {
   lifecycle?: Awaited<ReturnType<PluginInstallationService['install']>>;
+  /** Present when installing over the plugin withdrew outstanding command effects. */
+  commandEffects?: PluginCommandEffectResponseFields['commandEffects'];
+  dependencyCommandEffects?: PluginCommandEffectResponseFields['dependencyCommandEffects'];
+  commandEffectsUnavailable?: true;
   success: true;
   plugin: {
     name: string;
@@ -518,6 +568,8 @@ interface RemovedDependencyBackup {
   commit?: () => void;
   manifest: PluginManifest;
   grantSnapshot: ReturnType<typeof snapshotPluginGrantEntry>;
+  /** The command effects this dependency's removal withdrew. */
+  commandEffects?: PluginCommandEffectResponseFields;
 }
 
 const completedGrantRollbacks = new WeakSet<PluginGrantMutationScope>();
@@ -1471,7 +1523,7 @@ async function removeOwnedDependencyLifecycles(options: {
               options.projectHomeDir,
               dependency.id,
             );
-            await uninstallInstalledPlugin(
+            const dependencyRemoval = await uninstallInstalledPlugin(
               dependency.id,
               options.managedDeps!,
               {
@@ -1493,6 +1545,11 @@ async function removeOwnedDependencyLifecycles(options: {
               grantSnapshot,
               restoreManaged,
               commit,
+              // The nested uninstall captured inside the dependency's own
+              // content lock; its summary rides up to the parent response.
+              commandEffects: pluginCommandEffectFields({ kind: 'none' }, [
+                dependencyRemoval,
+              ]),
             });
             return;
           }
@@ -1553,6 +1610,15 @@ async function removeOwnedDependencyLifecycles(options: {
             rmSync(dependencyDir, { recursive: true, force: true });
             forgetPluginContentDigest(options.pluginsDir, dependency.id);
             await removePluginHostRecord(options.projectHomeDir, dependency.id);
+            // LP-W (dependency removal): inside this dependency's content lock,
+            // after its tree and grants are gone. Never vetoes the removal.
+            backup.commandEffects = pluginCommandEffectFields(
+              await withdrawPluginCommandEffects(options.projectHomeDir, {
+                pluginId: dependency.id,
+                cause: 'removal',
+                captures: () => true,
+              }),
+            );
             forgetRegistryInstallsForPlugin(
               options.projectHomeDir,
               dependency.id,
@@ -2163,13 +2229,34 @@ export async function synchronizePluginAgentDefinitions(options: {
   }
 }
 
+function sameRegistryCatalogItem(
+  left: string,
+  right: string,
+  leftRegistryKey: string,
+  rightRegistryKey: string,
+): boolean {
+  if (left === right) return true;
+  const a = readRegistryCatalogSelection(left);
+  const b = readRegistryCatalogSelection(right);
+  if (a && b)
+    return (
+      a.sourceId === b.sourceId && a.itemId === b.itemId && a.kind === b.kind
+    );
+  if (leftRegistryKey !== rightRegistryKey) return false;
+  return a
+    ? a.kind === 'plugins' && a.itemId === right
+    : b?.kind === 'plugins' && b.itemId === left;
+}
+
 function assertRegistryAliasAvailable(
   aliases: RegistryInstallAliases,
   registryId: string,
   registryKey: string,
   pluginName: string,
 ): void {
-  const existingAlias = aliases[registryId];
+  const existingAlias = Object.entries(aliases).find(([id, alias]) =>
+    sameRegistryCatalogItem(id, registryId, alias.registryKey, registryKey),
+  )?.[1];
   if (
     existingAlias &&
     (existingAlias.pluginName !== pluginName ||
@@ -2181,7 +2268,15 @@ function assertRegistryAliasAvailable(
   }
 
   for (const [existingRegistryId, alias] of Object.entries(aliases)) {
-    if (existingRegistryId !== registryId && alias.pluginName === pluginName) {
+    if (
+      !sameRegistryCatalogItem(
+        existingRegistryId,
+        registryId,
+        alias.registryKey,
+        registryKey,
+      ) &&
+      alias.pluginName === pluginName
+    ) {
       throw new Error(
         `Plugin '${pluginName}' is already linked to registry item '${existingRegistryId}'`,
       );
@@ -2207,7 +2302,9 @@ function assertRegistryInstallTargetAvailable(
   assertRegistryAliasAvailable(aliases, registryId, registryKey, pluginName);
 
   const pluginDir = join(pluginsDir, pluginName);
-  const existingAlias = aliases[registryId];
+  const existingAlias = Object.entries(aliases).find(([id, alias]) =>
+    sameRegistryCatalogItem(id, registryId, alias.registryKey, registryKey),
+  )?.[1];
   const ownsExistingTarget =
     existingAlias?.pluginName === pluginName &&
     existingAlias.registryKey === registryKey;
@@ -2237,6 +2334,9 @@ function rememberRegistryInstall(
 
   const aliases = readRegistryInstallAliases(projectHomeDir);
   assertRegistryAliasAvailable(aliases, registryId, registryKey, pluginName);
+  for (const [id, alias] of Object.entries(aliases))
+    if (sameRegistryCatalogItem(id, registryId, alias.registryKey, registryKey))
+      delete aliases[id];
   aliases[registryId] = { pluginName, registryKey };
   writeRegistryInstallAliases(projectHomeDir, aliases);
 }
@@ -2347,6 +2447,12 @@ export async function removeDependencyTreesCreatedByThisInstall(
   createdPluginDigests?: ReadonlyMap<string, string>,
   journal?: PackageMcpAdmissionJournal,
   activationSession?: PluginActivationSession,
+  /**
+   * When supplied, a created dependency removed here withdraws its outstanding
+   * command effects inside its content lock. The failed install answers with
+   * an error, so the withdrawal is reported through the operator's list.
+   */
+  projectHomeDir?: string,
 ): Promise<unknown[]> {
   const failures: unknown[] = [];
   // Recursive creation records postorder (leaf before its dependent). Undo in
@@ -2398,7 +2504,15 @@ export async function removeDependencyTreesCreatedByThisInstall(
           return;
         }
         const handled = await rollbackLifecycle?.(name);
-        if (handled !== true) rmSync(target, { recursive: true, force: true });
+        if (handled !== true) {
+          rmSync(target, { recursive: true, force: true });
+          if (projectHomeDir)
+            await withdrawPluginCommandEffects(projectHomeDir, {
+              pluginId: name,
+              cause: 'removal',
+              captures: () => true,
+            });
+        }
       });
       try {
         await Promise.race([
@@ -3724,7 +3838,10 @@ async function installPluginFromSourceUnderContext(
             pluginAcquisitionOrigin({
               projectHomeDir,
               source,
-              registryId: options?.registryId,
+              registryId: options?.registryId
+                ? (readRegistryCatalogSelection(options.registryId)?.itemId ??
+                  options.registryId)
+                : undefined,
               registryKey: options?.registryKey,
             });
           const activationPlan: PluginActivationPlan | undefined = isAgentPlugin
@@ -4052,6 +4169,27 @@ async function installPluginFromSourceUnderContext(
           );
           eventBus?.emit('plugins:grants-changed', { name: pluginName });
         }
+        // LP-W (update, kontourai/station#1419): the replaced generation's
+        // tree and grants are gone and this holds the content lock command
+        // admission takes. Effects admitted against any other generation are
+        // captured. Ledger trouble is reported, never a veto of the install.
+        let commandEffects: PluginCommandWithdrawalCapture = { kind: 'none' };
+        if (hadExistingPlugin) {
+          const digest =
+            permissionArtifact?.digest ??
+            computePluginContentDigest(dirname(pluginDir), basename(pluginDir));
+          const current = digest
+            ? pluginInstallationGeneration({
+                generation: managedLifecycle?.selected.generation,
+                digest,
+              })
+            : null;
+          commandEffects = await withdrawPluginCommandEffects(projectHomeDir, {
+            pluginId: pluginName,
+            cause: 'update',
+            captures: (effect) => effect.installationGeneration !== current,
+          });
+        }
         const droppedDependencyOwnership = retainedDependencyOwnership.filter(
           (entry) => !approvedDependencyIds.has(entry.id),
         );
@@ -4203,6 +4341,10 @@ async function installPluginFromSourceUnderContext(
         return {
           success: true,
           ...(managedLifecycle ? { lifecycle: managedLifecycle } : {}),
+          ...pluginCommandEffectFields(
+            commandEffects,
+            retiredDependencyBackups.map((backup) => backup.commandEffects),
+          ),
           plugin: {
             name: pluginName,
             displayName: manifest.displayName,
@@ -4262,6 +4404,7 @@ async function installPluginFromSourceUnderContext(
               createdPluginDigests,
               deps.packageMcpJournal,
               options?.activationSession,
+              projectHomeDir,
             ),
         );
         await rollbackOwnedGrants(grantScope);
@@ -4497,7 +4640,9 @@ async function uninstallInstalledPluginUnderContext(
   name: string,
   deps: PluginInstallTransactionDeps,
   recovery?: PluginRemovalRecovery,
-): Promise<{ success: true; lifecycle?: unknown }> {
+): Promise<
+  { success: true; lifecycle?: unknown } & PluginCommandEffectResponseFields
+> {
   const requestGrants = publicationGrantRevisions(() =>
     observePluginGrantRevisions(deps.projectHomeDir),
   );
@@ -4531,7 +4676,9 @@ async function uninstallPluginUnderPublication(
   installedPluginName: string,
   recovery?: PluginRemovalRecovery,
   requestGrants?: PluginGrantRevisionSnapshot,
-): Promise<{ success: true; lifecycle?: unknown }> {
+): Promise<
+  { success: true; lifecycle?: unknown } & PluginCommandEffectResponseFields
+> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
   const captured = deps.packageMcpJournal
     ? captureLocalPluginInstallation(
@@ -4830,6 +4977,15 @@ async function uninstallPluginUnderPublication(
       name === installedPluginName ? undefined : name,
     );
     await removePluginHostRecord(projectHomeDir, pluginName);
+    // LP-W (removal, kontourai/station#1419): the plugin's authority is gone
+    // and this still holds its content lock, which command admission takes.
+    // Ledger trouble is reported as commandEffectsUnavailable; it never vetoes
+    // or rolls back the removal (owner decision F1).
+    const commandEffects = await withdrawPluginCommandEffects(projectHomeDir, {
+      pluginId: pluginName,
+      cause: 'removal',
+      captures: () => true,
+    });
 
     eventBus?.emit('plugins:removed', {
       name: pluginName,
@@ -4843,7 +4999,14 @@ async function uninstallPluginUnderPublication(
     };
     if (recovery) recovery.capture(compensateRemoval, finishRemoval);
     else finishRemoval();
-    return { success: true, ...(lifecycle ? { lifecycle } : {}) };
+    return {
+      success: true,
+      ...(lifecycle ? { lifecycle } : {}),
+      ...pluginCommandEffectFields(
+        commandEffects,
+        removedDependencyBackups.map((backup) => backup.commandEffects),
+      ),
+    };
   } catch (error) {
     try {
       await compensateRemoval();
@@ -4947,7 +5110,9 @@ export async function capturePluginRegistryAcquisition(
   const registryAcquisition = policyAdmission
     ? await verifyRegistryAcquisition({
         admission: policyAdmission,
-        registryId: registryId,
+        registryId: registryId
+          ? (readRegistryCatalogSelection(registryId)?.itemId ?? registryId)
+          : undefined,
         registryKey: registryKey,
         fresh: registryObservation?.fresh === true,
         claim: registryObservation?.claim,

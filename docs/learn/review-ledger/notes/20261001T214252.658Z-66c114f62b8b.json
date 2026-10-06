@@ -1,0 +1,7 @@
+{
+  "revision": "ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-reviewed the 2026-10-01 section after the rename to CodingSessionPanelsRecord and the contract comment's reword: the section names coding-panels-record.ts and device-settings.ts by file, not by type, so its claims (fold, replace-not-push, URL-less Terminal, bound 32, parser-validated, direct manipulation, separator bounds) still trace to the source.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","packages/contracts/src/engine-capability-matrix.ts","src-ui/src/App.tsx","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/app-shell/RegionShells.tsx","src-ui/src/app-shell/destination-registry.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/contexts/RegionModelContext.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/hooks/useDockShellChrome.ts","src-ui/src/hooks/useLongPress.ts","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/RegionPaneHost.tsx","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

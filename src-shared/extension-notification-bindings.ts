@@ -1,3 +1,8 @@
+import {
+  EXTENSION_TRANSCRIPT_MARKERS,
+  type ExtensionTranscriptMarkerEmitter,
+} from '@kontourai/station-shared/extension-transcript-markers';
+
 export type ExtensionNotificationConsumer =
   | 'acp.commands.available'
   | 'acp.turn-error-cause'
@@ -6,22 +11,31 @@ export type ExtensionNotificationConsumer =
   | 'ui.kiro.compaction-status'
   | 'ui.kiro.clear-status'
   | 'ui.claude.thinking-tokens'
+  | 'ui.claude.api-retry'
   | 'ui.claude.session-status'
   | 'ui.claude.task-registry'
   | 'ui.claude.task-settled'
-  | 'ui.engine.mcp-status';
+  | 'ui.engine.mcp-status'
+  | 'transcript.marker';
 
 export type ExtensionHandshakeVariant =
   | 'kiro-v2'
   | 'kiro-v3'
   | 'claude-adapter'
-  | 'xai-acp';
+  | 'xai-acp'
+  | ExtensionTranscriptMarkerEmitter;
 
-/** Evidence tags: each names the issue whose live runtime observation backs the tuple(s) it is attached to. */
+/**
+ * Evidence tags identify a runtime observation, a pinned SDK protocol
+ * contract, or (`station-session-source-emitter`) a tuple a Station session
+ * source mints itself, pinned by that source's own tests.
+ */
 export type ExtensionNotificationEvidence =
   | 'station#1815-runtime-observation'
   | 'station#4084-runtime-observation'
-  | 'station#1935-runtime-observation';
+  | 'station#1935-runtime-observation'
+  | 'claude-sdk-api-retry-contract'
+  | 'station-session-source-emitter';
 
 export interface ExtensionNotificationBinding {
   readonly namespace: string;
@@ -80,6 +94,15 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
     consumer: 'acp.turn-error-cause',
     observedAgainst: ['kiro-v2'],
     evidence: 'station#4084-runtime-observation',
+  },
+  {
+    // SDKAPIRetryMessage in the pinned Claude Agent SDK; adapter publishes
+    // only attempt, delay, and a safe display reason from that typed signal.
+    namespace: 'claude-code',
+    type: 'api/retry',
+    consumer: 'ui.claude.api-retry',
+    observedAgainst: ['claude-adapter'],
+    evidence: 'claude-sdk-api-retry-contract',
   },
   {
     namespace: 'claude-code',
@@ -208,9 +231,25 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
   },
 ] as const satisfies readonly ExtensionNotificationBinding[];
 
+/**
+ * station#3415: the transcript-marker tuples come from the projection's own
+ * table, so one entry there both binds a tuple and renders it.
+ */
+const TRANSCRIPT_MARKER_BINDINGS: readonly ExtensionNotificationBinding[] =
+  EXTENSION_TRANSCRIPT_MARKERS.map(({ namespace, type, emitter }) => ({
+    namespace,
+    type,
+    consumer: 'transcript.marker',
+    observedAgainst: [emitter],
+    evidence: 'station-session-source-emitter',
+  }));
+
 export const EXTENSION_NOTIFICATION_BINDINGS: readonly ExtensionNotificationBinding[] =
   Object.freeze(
-    DECLARED_EXTENSION_NOTIFICATION_BINDINGS.map((binding) =>
+    [
+      ...DECLARED_EXTENSION_NOTIFICATION_BINDINGS,
+      ...TRANSCRIPT_MARKER_BINDINGS,
+    ].map((binding) =>
       Object.freeze({
         ...binding,
         observedAgainst: Object.freeze([...binding.observedAgainst]),

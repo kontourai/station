@@ -102,11 +102,20 @@ reconnecting, catch-up, revoked credentials, multiple turns, incomplete history,
 virtualized long history, and reduced motion in both themes. This is browser
 evidence; native lifecycle and device delivery require separate verification.
 
-Chat activity uses one aligned phrase, `Working for m:ss`, before content;
-reported reasoning uses `Thinking for m:ss`. Active tool rows supply their own
-animation, and streamed answer text has a caret. Approval and transport
+Chat activity uses one aligned phrase, `Working for m:ss`: the clock is the
+open turn's, so the timed phrase names the turn, never its current phase.
+Without a clock the row names the phase instead (`Thinking…`, `Working…`), and
+the progress row beneath names a running or last tool. Active tool rows supply
+their own animation, and streamed answer text has a caret. Approval and transport
 recovery have explicit states. A timer measures observed waiting, never an
 estimate of completion.
+
+A replay renders these as inline rows, because that is what its scenarios pin.
+A live chat pane presents the same facts in one floating status pill
+([`ChatStatusPill`](../../src-ui/src/components/status/ChatStatusPill.tsx)):
+approval first, then the live-update connection, then what the turn is doing,
+with the same turn clock. A live-update outage is shown only after it outlasts
+one reconnect cycle (2.5s), so a phone blip does not flash a status.
 
 The separate [reasoning disclosure](../../src-ui/src/components/chat/ReasoningSection.tsx)
 uses a compact summary row. Expanding it shows the text beneath an indented
@@ -132,18 +141,26 @@ to a typed Station event. There is no in-product “accept unique” workflow.
 
 ## Queue vs steer
 
-Two Station nouns. Engine differences live in the adapter and the capability
-matrix; the dock always sees one of these:
+Two Station nouns. The composer distinguishes native steering from safe stop-and-send;
+the adapter mechanisms below do not by themselves establish the dock capability:
 
 | Noun | Station fact | When |
 | --- | --- | --- |
-| **Queue** | `queuedMessages`, drained on `turn.completed` / `runtime.error` as a **new** turn | Muse, Station. Attachments on a busy turn. |
+| **Queue** | `queuedMessages`, drained on `turn.completed` / `runtime.error` as a **new** turn | Any engine when Queue is selected. |
 | **Steer** | `steerTurn` → `turn.started` with `inputKind: 'steer'` | Additional user input on the **open** turn. |
 
-Send-while-busy uses that matrix cell (`sessionAdapterSupportsSteering`), not
-a connection `capabilities` string. A steer fold appends a user row and
-**does not** reset `streamingMessage`. Attachments have no steer channel, so
-they still queue. Durable outbound replay stays durable (`skipInMemoryQueueOnBusy`)
+Native send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
+`capabilities` string. The dock currently enables native steering for Claude
+Code and Codex; ACP uses a safe-waiting fallback because its capability matrix
+also admits interruptive cancel-and-reprompt. A steer fold appends a user row and
+**does not** reset `streamingMessage`. The event-log projection
+(`projectRuntimeEventsToMessages`) keeps the turn open at a steer but emits
+what the engine produced before it as its own assistant row, so the steer
+renders where it happened rather than above the whole turn. The turn's
+provenance and answer eligibility stay on its final row, and so does the
+turn's ownership: a start-less or late event for the turn lands on the row
+after the steer, never on the one before it. Attachments have no steer channel, so
+they remain in the composer until the current turn finishes. Durable outbound replay stays durable (`skipInMemoryQueueOnBusy`)
 and is never collapsed into either path.
 
 Adapter mappings, same Station event:
@@ -154,22 +171,28 @@ Adapter mappings, same Station event:
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
 | Kiro | ACP extension **method** `_session/steer` when the command, arguments or reported agent name match Kiro (additive; not a notification) |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
-| Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive). Also the fallback when the native method returns JSON-RPC -32601. |
+| Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive: it also cancels any tool the prompt was running). Also the fallback when the native method returns JSON-RPC -32601. Its steer `turn.started` carries `steerInterruptedRun: true`, and the steer row says it was sent by stopping the running step. |
 
 Muse still binds one prompt to one process — no live input channel. That is a separate backlog item, not invented here.
 
-The queued-messages chrome already offers **Send as steer** when the live
-provider's matrix allows it.
+The pending-message section starts collapsed. Expanding it reveals each mode,
+status and its explicit Send now action. Send remains separate from Stop. The
+Send-mode picker defaults to Queue; native Steer is available for Claude Code
+and Codex. Other engines hold steering until a supported safe boundary can be
+proven, and currently wait for turn completion. Send now explicitly overrides
+that waiting, stopping immediately and sending after a settled receipt.
 
-While a turn is in flight, Enter **steers** on engines that can (Claude,
-Codex, ACP). A **Queue** control next to Stop holds the draft as a follow-up
-instead. Engines without a live channel, and any send that carries
-attachments, still queue. There is no persistent follow-up-mode setting;
-steer is the default whenever the engine can.
+Return uses the device preference and the selected Send mode. Desktop defaults
+to sending; touch devices default to a new line. Shift+Return adds a line and
+Ctrl/Cmd+Return sends, outside IME composition. Mobile submit controls are icons,
+revealed for a sendable draft while their space stays reserved. See the
+[composer contract](chat-composer.md#turn-activity-and-follow-up-delivery) for
+current interaction and delivery policy. The adapter table above describes
+explicit engine commands, not a promise of native steering on every ACP Session.
 
 ## User-facing execution timeline
 
-Chat actions' **Conversation history** action loads the selected execution in
+Chat actions' **History** action loads the selected execution in
 the same bounded 100-event archive pages and opens it under a synthetic replay
 identity. User-turn landmarks come from the validated tape, not mounted DOM;
 click, pointer drag, previous/next controls, and ordinary button keyboard

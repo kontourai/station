@@ -1,6 +1,9 @@
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { describe, expect, test } from 'vitest';
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import { resolveClaudeMcpServers } from '../adapters/claude-mcp-passthrough.js';
 
@@ -17,6 +20,38 @@ function toolServer(
 }
 
 describe('resolveClaudeMcpServers', () => {
+  test('delivers Knowledge in-process with exact empty selection and no credentials in config', () => {
+    const instance = {
+      connect: async () => undefined,
+      close: async () => undefined,
+    };
+    let selection: readonly string[] | undefined;
+    const result = resolveClaudeMcpServers(
+      [
+        toolServer({
+          id: 'station-knowledge',
+          command: 'node',
+          args: [builtinStationKnowledgeServerPath()],
+          allowedTools: [],
+        }),
+      ],
+      { INTERNAL_API_TOKEN: 'secret' },
+      {
+        knowledgeInProcess: (allowed) => {
+          selection = allowed;
+          return instance;
+        },
+      },
+    );
+    expect(selection).toEqual([]);
+    expect(result.servers['station-knowledge']).toEqual({
+      type: 'sdk',
+      name: 'station-knowledge',
+      instance,
+    });
+    expect(JSON.stringify(result.servers)).not.toContain('secret');
+  });
+
   test('maps a stdio tool server to an SDK stdio McpServerConfig with no env by default', () => {
     const result = resolveClaudeMcpServers([toolServer()]);
     expect(result.skipped).toEqual([]);

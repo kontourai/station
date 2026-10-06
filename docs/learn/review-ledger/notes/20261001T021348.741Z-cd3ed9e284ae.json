@@ -1,0 +1,33 @@
+{
+  "revision": "4c0c94996bcc73fd2dfee7263b4239dfa1b88349",
+
+  "notes": [
+    {"path":"README.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["README.md"]},
+
+    {"path":"docs/guides/development.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/ecosystem-packaging.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/ecosystem-packaging.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/plans/README.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/plans/README.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"packaging/homebrew/README.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["packaging/homebrew/README.md"]},
+
+    {"path":"packaging/manifest/README.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["packaging/manifest/README.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Carried forward after merging origin/main into #2974, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

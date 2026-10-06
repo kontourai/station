@@ -232,6 +232,8 @@ export class TurnStallWatchdog {
     event: Pick<CanonicalRuntimeEvent, 'method' | 'threadId' | 'turnId'> & {
       /** True when this event carries a lifecycle state transition. */
       isStateTransition?: boolean;
+      /** An explicitly normalized engine activity signal, never a heartbeat. */
+      reportedActivity?: boolean;
       /** Only meaningful (and only ever read) for a `runtime.error` event. */
       provider?: CanonicalRuntimeEvent['provider'];
       /** Canonical event timestamp; retained as the watchdog's progress fact. */
@@ -242,6 +244,19 @@ export class TurnStallWatchdog {
     windowMs: number,
     callbacks: TurnStallCallbacks,
   ): void {
+    if (event.reportedActivity) {
+      const watching = this.watched.get(event.threadId);
+      if (watching && (!event.turnId || event.turnId === watching.turnId)) {
+        this.start(
+          event.threadId,
+          watching.turnId,
+          windowMs,
+          callbacks,
+          event.createdAt,
+        );
+      }
+      return;
+    }
     if (event.method === 'runtime.error') {
       // archive#3451 findings 4/6: a genuine (non-deferred) `runtime.error`
       // is a terminal fact this watch must stop timing, exactly like the

@@ -22,11 +22,25 @@ describe('focus-visible outline ratchet', () => {
   it('keeps a global keyboard-focus floor over legacy component rules', () => {
     const css = readFileSync('src-ui/src/index.css', 'utf8');
     expect(css).toContain(':focus-visible');
-    // The floor reads the focus role first (@kontourai/ui 1.14+, a channel
-    // retint, or a white-label theme) and falls back to the accent, so it is
-    // unchanged where no role is defined (#2836). Still 2px, still !important.
+    // The floor follows the accent, so a device accent colours it. Still 2px,
+    // still !important. @kontourai/ui 1.16 always defines --k-focus, so the
+    // focus role takes the ring only where something chose a focus colour: a
+    // white-label theme (data-brand-focus, set by applyBrandingTheme) or a
+    // Dev, Beta or Nightly build. branding-role-cascade.test.ts measures the
+    // painted colours; this pins that both rules survive.
     expect(css).toContain(
-      'outline: 2px solid var(--k-focus, var(--accent-primary)) !important',
+      'outline: 2px solid var(--accent-primary) !important',
     );
+    const focusRole = css.match(
+      /:is\(([^{]*?)\)\s*:where\([^{]*?\):focus-visible\s*\{\s*outline-color: var\(--k-focus\) !important;\s*\}/,
+    );
+    expect(focusRole).not.toBeNull();
+    const scopes = (focusRole?.[1] ?? '').split(',').map((s) => s.trim());
+    expect(scopes).toEqual([
+      ':root[data-brand-focus]',
+      ':root.is-dev-build',
+      ':root[data-app-channel="beta"]',
+      ':root[data-app-channel="nightly"]',
+    ]);
   });
 });

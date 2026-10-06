@@ -1,5 +1,6 @@
 import type {
   BrowserAcquisitionView,
+  BrowserConsoleView,
   BrowserLocalTargetSuggestionsView,
   BrowserLocalTargetView,
   BrowserPaneAccessView,
@@ -87,6 +88,8 @@ export const browserPaneKeys = {
     ['browser-pane', apiBase, 'suggestions', projectSlug] as const,
   settings: (apiBase: string, projectSlug: string) =>
     ['browser-pane', apiBase, 'settings', projectSlug] as const,
+  console: (apiBase: string, browserSessionId: string) =>
+    ['browser-pane', apiBase, 'console', browserSessionId] as const,
 };
 
 /** Per-Project browser permissions (#90 D4). */
@@ -179,6 +182,42 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
             generation === undefined ? { viewport } : { viewport, generation },
         },
       ),
+    /** A person's answer to the dialog the page holds for them. */
+    answerDialog: (
+      browserSessionId: string,
+      answer: { dialogId: string; accept: boolean; promptText?: string },
+    ) =>
+      call<BrowserSessionView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/dialog`,
+        { method: 'POST', body: answer },
+      ),
+    /** Console entries newer than `after` (every retained one when absent). */
+    console: (browserSessionId: string, after?: number, signal?: AbortSignal) =>
+      call<BrowserConsoleView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/console${after === undefined ? '' : `?after=${after}`}`,
+        { signal },
+      ),
+    /** The page as an image (PNG, or JPEG for a very large page). */
+    screenshot: async (browserSessionId: string): Promise<Blob> => {
+      const response = await fetcher(
+        `${root}/sessions/${enc(browserSessionId)}/screenshot`,
+        { method: 'GET' },
+      );
+      const type = response.headers.get('content-type') ?? '';
+      if (!response.ok || !type.startsWith('image/')) {
+        let code: string | undefined;
+        try {
+          const envelope = (await response.json()) as { code?: unknown };
+          if (typeof envelope.code === 'string') code = envelope.code;
+        } catch {
+          // No typed refusal: the status says what there is to say.
+        }
+        throw new BrowserApiError(response.status, code);
+      }
+      return response.blob();
+    },
     reopen: (browserSessionId: string) =>
       call<BrowserSessionView>(
         fetcher,
@@ -298,6 +337,12 @@ export function describeBrowserFailure(error: unknown, typed = ''): string {
       return 'Station’s own ports can never be shared.';
     case 'duplicate':
       return 'That target is already shared with this Project.';
+    case 'no-dialog':
+      return 'That dialog is no longer open on the page.';
+    case 'page-busy':
+      return 'The page did not respond in time.';
+    case 'screenshot-too-large':
+      return 'The page is too large to capture. Choose a smaller viewport and try again.';
     default:
       return 'The browser refused the request.';
   }

@@ -11,6 +11,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { RegistryItem } from '../components/registry/registryCatalogModel';
 import * as remotePluginBundleConsent from '../core/remotePluginBundleConsent';
 
 const installedByTab = {
@@ -67,7 +68,7 @@ const validDemoPreview = () => ({
   dependencies: [],
 });
 
-const registryItems = {
+const registryItems: Record<keyof typeof installedByTab, RegistryItem[]> = {
   agents: [
     {
       id: 'agent-one',
@@ -104,6 +105,20 @@ const registryItems = {
       description: 'Registry skill',
       source: 'GitHub',
     },
+    {
+      id: 'prototype',
+      displayName: 'Prototype',
+      description: 'Build a prototype',
+      source: 'GitHub',
+      status: 'unsupported-skill-name',
+    },
+    {
+      id: 'pr',
+      displayName: 'Pull Request',
+      description: 'Review a pull request',
+      source: 'GitHub',
+      status: 'unsupported-skill-format',
+    },
   ],
   layouts: [
     {
@@ -123,7 +138,7 @@ const registryItems = {
       enabled: false,
     },
   ],
-} as const;
+};
 
 function makeMutation(
   tab: 'agents' | 'integrations' | 'plugins' | 'skills' | 'layouts',
@@ -238,6 +253,24 @@ vi.mock('@kontourai/station-sdk', () => ({
     },
   }),
   useReloadPluginsMutation: () => ({ mutateAsync: reloadPlugins }),
+  useInvalidateQuery: () => vi.fn(),
+  useRegistrySourcesQuery: () => ({
+    data: [],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useRegistrySourceActionMutation: () => ({
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    error: null,
+  }),
+  useRegistrySkillContentQuery: () => ({
+    data: 'Instructions',
+    isLoading: false,
+    error: null,
+  }),
   useRegistryItemsQuery: (tab: string) => ({
     data: emptyTabs.has(tab)
       ? []
@@ -367,7 +400,83 @@ function expectInstalledToast(message: string, pluginName: string) {
   expect(navigateMock).toHaveBeenCalledWith(`/plugins/${pluginName}`);
 }
 
+test('keeps an inspected catalog selection after a catalog refresh changes the available revision', async () => {
+  const { RegistryView } = await import('../views/RegistryView');
+  const view = render(<RegistryView initialTab="skills" />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'View Skill One details' }),
+  );
+  const original = registryItems.skills[0]!.id;
+  registryItems.skills[0]!.id = 'skill-one-new-revision';
+  try {
+    view.rerender(<RegistryView initialTab="skills" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Install to workspace' }),
+    );
+    await waitFor(() =>
+      expect(mutationCalls).toContainEqual(
+        expect.objectContaining({
+          tab: 'skills',
+          id: original,
+          action: 'install',
+        }),
+      ),
+    );
+  } finally {
+    registryItems.skills[0]!.id = original;
+  }
+});
+
 describe('RegistryView', () => {
+  test('keeps unsupported-format skill details available with an explanation and disabled installation', () => {
+    render(<RegistryView initialTab="skills" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Pull Request details' }),
+    );
+    const detail = screen.getByTestId('registry-detail');
+    expect(within(detail).queryByText('Available')).toBeNull();
+    expect(
+      within(detail).getByText(
+        'This skill uses metadata that Station cannot install. Its original Markdown is available for inspection; ask its publisher for a supported format.',
+      ),
+    ).toBeTruthy();
+    const action = within(detail).getByRole('button', { name: 'Unavailable' });
+    expect(action).toHaveProperty('disabled', true);
+    fireEvent.click(action);
+    expect(mutationCalls).toEqual([]);
+  });
+
+  test('keeps unsupported skill details visible without offering installation or blocking a valid sibling', () => {
+    render(<RegistryView initialTab="skills" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Prototype details' }),
+    );
+    const detail = screen.getByTestId('registry-detail');
+    expect(within(detail).queryByText('Available')).toBeNull();
+    expect(
+      within(detail).getByText(
+        'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.',
+      ),
+    ).toBeTruthy();
+    const unavailable = within(detail).getByRole('button', {
+      name: 'Unavailable',
+    });
+    expect(unavailable).toHaveProperty('disabled', true);
+    fireEvent.click(unavailable);
+    expect(mutationCalls).toEqual([]);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Skill One details' }),
+    );
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install to workspace',
+      }),
+    );
+    expect(mutationCalls).toEqual([
+      { tab: 'skills', id: 'skill-one', action: 'install' },
+    ]);
+  });
+
   test('updates the URL when switching Registry tabs', () => {
     render(<RegistryView />);
 

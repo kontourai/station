@@ -5,6 +5,10 @@ import {
   parseProjectTaskRoomBrowserHistory,
   parseProjectTaskRoomBrowserLiveSnapshot,
 } from '@kontourai/station-contracts/project-task-room-browser';
+import {
+  TASK_ROOM_WORK_VERSION,
+  type TaskRoomWorkList,
+} from '@kontourai/station-contracts/task-room-work';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import {
@@ -174,6 +178,22 @@ const messageSchema = z
       .min(1)
       .max(16 * 1024),
     occurredAt: z.string().datetime().optional(),
+    expectedTaskCreatedAt: z.string().min(1).max(40).optional(),
+  })
+  .strict();
+const outputFeedbackSchema = z
+  .object({
+    proposalId: z.string().min(1).max(256),
+    occurredAt: z.string().datetime(),
+    target: z
+      .object({
+        outputId: z.string().min(1).max(256),
+        digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+        taskCreatedAt: z.string().datetime(),
+      })
+      .strict(),
+    review: z.enum(['comment', 'changes-requested', 'accepted']),
+    text: z.string().min(1).max(8192),
   })
   .strict();
 const liveSchema = z.discriminatedUnion('command', [
@@ -259,8 +279,31 @@ const batchSchema = z
  * In particular this schema deliberately has no principal, Project, device,
  * channel, policy, or grant field.
  */
-export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
+export function createProjectTaskRoomRoutes(
+  runtime: ProjectTaskRoomRuntime,
+  work?: {
+    listAgentRequests(
+      taskId: string,
+      request: Request,
+    ): Promise<TaskRoomWorkList>;
+  },
+) {
   const app = new Hono();
+  app.get('/:taskId/room/agent-requests', async (c) => {
+    if (!work)
+      return c.json(
+        { success: false, error: 'Task room agent requests are unavailable.' },
+        404,
+      );
+    const outcome = await work.listAgentRequests(param(c, 'taskId'), c.req.raw);
+    return c.json(
+      {
+        success: outcome.kind === 'available',
+        data: { version: TASK_ROOM_WORK_VERSION, ...outcome },
+      },
+      outcome.kind === 'available' ? 200 : 403,
+    );
+  });
   app.get('/:taskId/room', async (c) => {
     const result = await runtime.discover({
       taskId: param(c, 'taskId'),
@@ -436,6 +479,23 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
       }
     }),
   );
+  app.post(
+    '/:taskId/room/output-feedback',
+    validate(outputFeedbackSchema),
+    async (c) => {
+      const { proposalId, occurredAt, ...feedback } = getBody(c);
+      return response(
+        c,
+        await runtime.outputFeedback({
+          taskId: param(c, 'taskId'),
+          request: c.req.raw,
+          proposalId,
+          occurredAt,
+          feedback: { kind: 'output-feedback', ...feedback },
+        }),
+      );
+    },
+  );
   app.post('/:taskId/room/messages', validate(messageSchema), async (c) => {
     const body = getBody(c);
     return response(
@@ -446,6 +506,9 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
         proposalId: body.proposalId,
         text: body.text,
         ...(body.occurredAt ? { occurredAt: body.occurredAt } : {}),
+        ...(body.expectedTaskCreatedAt
+          ? { expectedTaskCreatedAt: body.expectedTaskCreatedAt }
+          : {}),
       }),
     );
   });

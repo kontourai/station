@@ -1,0 +1,17 @@
+{
+  "revision": "99822caec8da2e28aadac4edeb384374ffb0543d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"activity-nav: ProjectSidebarNav and CommandPalette still consume the destination registry's ordered sidebar/palette projections; their regionSurface entries now call useShowSurfacePage (main placement) instead of showSurface. No module-map claim names the row's toggle, so no prose change.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"activity-nav round 2: destination-registry change is comment-only (regionSurface field doc now names the page opener); CommandPalette comment reworded. Module-map claims about ordered sidebar/palette projections still hold.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"activity-nav round 2: destination-registry change is doc comments only; the activityDeepLink worked example and /activity redirect claims are unchanged.","inputs":["docs/design/pane-or-shell.md"]},
+
+    {"path":"docs/glossary.md","note":"activity-nav round 2: destination-registry change is comment-only; the Surface/destination vocabulary is unchanged.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"activity-nav: CommandPalette change is the Activity navigation entry opening the page (useShowSurfacePage); the SDK reference's palette claim concerns Workspace search mode, unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"activity-nav round 2: CommandPalette change is a comment on the Activity entry; the SDK reference's Workspace search palette claim is unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

@@ -129,6 +129,48 @@ describe('GitHubPullRequestProvider', () => {
     });
   });
 
+  /** The runner's rejection shape (src-server/utils/git-exec.ts). */
+  const runnerFailure = (args: string[], stderr: string) =>
+    Object.assign(
+      new Error(`Command failed: ${['gh', ...args].join(' ')}\n${stderr}`),
+      { stderr, code: 1, cmd: ['gh', ...args].join(' ') },
+    );
+
+  test('an unavailable review snapshot carries gh stderr, never the argv', async () => {
+    const args = ['pr', 'view', '17', '--repo', 'github.com/kontourai/station'];
+    const transport = vi.fn(async (a: string[]) => {
+      if (a[1] === 'view')
+        throw runnerFailure(
+          a,
+          'GraphQL: Could not resolve to a PullRequest with the number of 17. (repository.pullRequest)\n',
+        );
+      return { stdout: '' };
+    });
+    const result = await new GitHubPullRequestProvider(
+      transport,
+      vi.fn().mockResolvedValue({ stdout: '{}' }),
+    ).getReviewSnapshot(context, '17');
+    expect(result.available).toBe(false);
+    expect(result.reason).toBe(
+      'GraphQL: Could not resolve to a PullRequest with the number of 17. (repository.pullRequest)',
+    );
+    expect(result.reason).not.toContain('Command failed');
+    expect(result.reason).not.toContain(args.join(' '));
+  });
+
+  test('a timed-out review read (runner failure, empty stderr) gets a neutral sentence', async () => {
+    const transport = vi.fn(async (a: string[]) => {
+      if (a[1] === 'view') throw runnerFailure(a, '');
+      return { stdout: '' };
+    });
+    const result = await new GitHubPullRequestProvider(
+      transport,
+      vi.fn().mockResolvedValue({ stdout: '{}' }),
+    ).getReviewSnapshot(context, '17');
+    expect(result.available).toBe(false);
+    expect(result.reason).toBe('The review could not be read from GitHub.');
+  });
+
   test('maps a forge refusal without discarding its reason', async () => {
     const transport = vi
       .fn()
@@ -312,7 +354,7 @@ describe('GitHubPullRequestProvider', () => {
             title: 'Title',
             body: null,
             state: 'OPEN',
-            author: { login: 'brian', url: 'https://github.com/brian' },
+            author: { login: 'casey', url: 'https://github.com/casey' },
             headRefName: 'feature',
             baseRefName: 'main',
             commits: [{ oid: 'a' }],
@@ -398,7 +440,7 @@ describe('GitHubPullRequestProvider', () => {
         url: `https://github.com/kontourai/station/pull/${ref ?? '8'}`,
         title: 'Title',
         state: 'OPEN',
-        author: { login: 'brian' },
+        author: { login: 'casey' },
         headRefName: 'feature',
         baseRefName: 'main',
         commits: [],

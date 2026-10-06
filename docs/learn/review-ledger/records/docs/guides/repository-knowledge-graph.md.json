@@ -1,0 +1,47 @@
+{
+  "path": "docs/guides/repository-knowledge-graph.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete graph guide against exporter/importer and public SDK/store callers: attributed purpose, documented-reference edges, input-qualified snapshots, additive history, explicit import/recall boundaries, current source versus recorded evidence and local-candidate release limits. Added actual isolated Station and manifest-entry Kit consumer dogfood findings. Added observed 6.5.0 registry publication and isolated public consumer/update evidence, preserving dated audit findings.",
+
+  "limits": "Actual retained snapshot import/readback: 1149 records, 2089 links; repeat zero creates/links. Source-built Flow Agents candidate 6a24b4ee3fb528ee2abbdba2c861e4b5925a6161 installed through public CLI matched all 123 Kit files and all canonical fields/bytes; full provider projection retained 1149 provenance objects and 2089 labels. Published 6.4.0 failures and local fixes are not a release claim. No live embedding/model/Neo4j/native proof. Later 6.5.0 registry/tag integrity and public installed consumer/update checks were inspected: 30 tests passed, canonical test-store bytes/provenance/link labels preserved and recorded/observed Kit artifact hashes matched. macOS/Node24 only; registry metadata matching is not independent npm attestation verification. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Actual retained snapshot import/readback: 1149 records, 2089 links; repeat zero creates/links. Source-built Flow Agents candidate 6a24b4ee3fb528ee2abbdba2c861e4b5925a6161 installed through public CLI matched all 123 Kit files and all canonical fields/bytes; full provider projection retained 1149 provenance objects and 2089 labels. Published 6.4.0 failures and local fixes are not a release claim. No live embedding/model/Neo4j/native proof. Later 6.5.0 registry/tag integrity and public installed consumer/update checks were inspected: 30 tests passed, canonical test-store bytes/provenance/link labels preserved and recorded/observed Kit artifact hashes matched. macOS/Node24 only; registry metadata matching is not independent npm attestation verification.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"}]",
+
+  "sources": [
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
+
+    "examples/repository-knowledge-graph/README.md",
+
+    "examples/repository-knowledge-graph/graph.mjs",
+
+    "examples/repository-knowledge-graph/ingest.mjs",
+
+    "package.json",
+
+    "packages/contracts/src/knowledge-store.ts",
+
+    "packages/sdk/src/client/knowledge.ts",
+
+    "src-server/knowledge-store/adapters/default-store.ts",
+
+    "src-server/knowledge-store/adapters/shared/frontmatter.ts"
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Clarified that dry run sends no create/link requests while reads can refresh caches; provenance marker is a consistency check, not authenticated writer identity.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Integration source review through e0314c727: package.json only dropped the @kontourai/bearing and @kontourai/forage dependencies, which the guide does not mention. The graph exporter/importer and consumer prose is accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

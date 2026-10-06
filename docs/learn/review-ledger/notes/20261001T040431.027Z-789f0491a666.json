@@ -1,0 +1,7 @@
+{
+  "revision": "08fd77f74f71bf494dbf0ae3171da6e9622ff015",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Checked: the change adds one hidden-by-default composer line and a short-dock reservation cleanup in chat.css; placement.md makes no claim about composer or transcript visibility in short docks. No prose change needed.","inputs":["docs/design/placement.md"]}
+  ]
+}

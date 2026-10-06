@@ -1,0 +1,11 @@
+{
+  "revision": "9785e029ae32c7061de1a85ce63f0dc8dfe6f907",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed compact Tools UI: Station/Add action labels, gear-disclosed harness settings, shield-disclosed approvals, and Advanced browser/workflow controls match source. Selection and delivery behavior are unchanged; owner tests10/10 and static/lint checks passed. Desktop and narrow browser layout checked; no release claim. Agent identity contracts remain unchanged by these visual labels.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed compact Tools UI: Station/Add action labels, gear-disclosed harness settings, shield-disclosed approvals, and Advanced browser/workflow controls match source. Selection and delivery behavior are unchanged; owner tests10/10 and static/lint checks passed. Desktop and narrow browser layout checked; no release claim. Agent identity contracts remain unchanged by these visual labels.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed compact Tools UI: Station/Add action labels, gear-disclosed harness settings, shield-disclosed approvals, and Advanced browser/workflow controls match source. Selection and delivery behavior are unchanged; owner tests10/10 and static/lint checks passed. Desktop and narrow browser layout checked; no release claim. Agent identity contracts remain unchanged by these visual labels.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

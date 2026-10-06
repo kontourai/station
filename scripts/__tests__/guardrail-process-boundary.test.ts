@@ -155,12 +155,16 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     reason:
       'reads the repo-wide channel port assignment; a synthetic tree proves nothing the real assignment does not',
     brokenTree: {
-      // The config read is at module TOP LEVEL (channel-ports.mjs:4-7),
-      // ahead of the guard — so an empty dir fails at import and proves
-      // nothing. Giving the scratch dir the real config gets the process past
-      // that, and `--check` then reaches checkGeneratedChannelPorts, whose
-      // first read is behind the guard.
-      productionFiles: ['config/channel-ports.json'],
+      // Both config reads are at module TOP LEVEL (channel-ports.mjs:4-7 and
+      // the release-manifest keys at channel-ports.mjs:110), ahead of the
+      // guard — so an empty dir fails at import and proves nothing. Giving
+      // the scratch dir both real configs gets the process past that, and
+      // `--check` then reaches checkGeneratedChannelPorts, whose first read
+      // is behind the guard.
+      productionFiles: [
+        'config/channel-ports.json',
+        'config/release-manifest-keys.json',
+      ],
       ownInput: 'packages/shared/src/channel-ports.generated.ts',
       readSite: 'channel-ports.mjs:136-143 (checkGeneratedChannelPorts)',
       guard: 'channel-ports.mjs:146',
@@ -399,14 +403,37 @@ describe('check-markdown-links rejects a broken relative link', () => {
     'docs/guide.md': '# Guide\n',
   };
 
+  /**
+   * The verdict twice: the human run for its exit status (the lane runs
+   * exactly that), and the `--json` run for what was found. Neither
+   * assertion reads the report's wording (#2927).
+   */
+  const check = (dir: string) => {
+    const human = runGuardrail(dir, SCRIPT);
+    const machine = runGuardrail(dir, SCRIPT, {}, ['--json']);
+    expect(machine.status, machine.output).toBe(human.status);
+    return {
+      status: human.status,
+      output: human.output,
+      report: JSON.parse(machine.stdout) as {
+        checkedFiles: number | null;
+        failures: {
+          file: string;
+          line?: number;
+          target: string;
+          reason: string;
+        }[];
+        error: string | null;
+      },
+    };
+  };
+
   it('accepts the clean tree — the negative control', {
     timeout: CASE_TIMEOUT,
   }, () => {
-    const result = runGuardrail(linkRepo(clean), SCRIPT);
-    expect(result.status, result.output).toBe(0);
-    expect(result.stdout).toContain(
-      'Validated local paths and rendered anchors in 2 Markdown files.',
-    );
+    const { status, output, report } = check(linkRepo(clean));
+    expect(status, output).toBe(0);
+    expect(report).toEqual({ checkedFiles: 2, failures: [], error: null });
   });
 
   it('rejects a link whose target does not exist', {
@@ -416,24 +443,33 @@ describe('check-markdown-links rejects a broken relative link', () => {
       ...clean,
       'README.md': '[Guide](docs/missing.md)\n',
     });
-    const result = runGuardrail(dir, SCRIPT);
+    const { status, output, report } = check(dir);
     // `check-markdown-links.mjs` sets `process.exitCode = 1` and returns
     // rather than calling `process.exit(1)`. Nothing had ever proved that
     // still leaves a non-zero status.
-    expect(result.status, result.output).toBe(1);
-    expect(result.stderr).toContain('Broken local Markdown links:');
-    expect(result.stderr).toContain(
-      '- README.md:1: [Guide](docs/missing.md) — missing target',
-    );
+    expect(status, output).toBe(1);
+    expect(report.failures).toEqual([
+      expect.objectContaining({
+        file: 'README.md',
+        line: 1,
+        target: 'docs/missing.md',
+        reason: 'missing target',
+      }),
+    ]);
   });
 
   it('rejects a link that escapes the repository', {
     timeout: CASE_TIMEOUT,
   }, () => {
     const dir = linkRepo({ ...clean, 'README.md': '[Up](../escape.md)\n' });
-    const result = runGuardrail(dir, SCRIPT);
-    expect(result.status, result.output).toBe(1);
-    expect(result.stderr).toContain('— outside repository');
+    const { status, output, report } = check(dir);
+    expect(status, output).toBe(1);
+    expect(report.failures).toEqual([
+      expect.objectContaining({
+        file: 'README.md',
+        reason: 'outside repository',
+      }),
+    ]);
   });
 });
 

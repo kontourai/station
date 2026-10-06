@@ -207,6 +207,34 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     return { ok: true, lease: this.view() };
   }
 
+  /**
+   * A person's keep-alive (not input): extend THEIR current hold, observed
+   * at `observedEpoch`, while they are shown something that needs them. It
+   * never claims and never preempts: anyone else holding, or a stale epoch,
+   * is refused. It cannot outlast the cap measured from their LAST REAL
+   * input (`maxHumanHoldMs`), and does not move that point: with no real
+   * input, control lapses at the cap as it would without keep-alives.
+   */
+  keepHumanAlive(
+    human: HumanController,
+    observedEpoch: number,
+  ): FencedLeaseResult {
+    if (this.disposed)
+      return { ok: false, code: 'surface-closed', lease: this.view() };
+    this.expireIfDue();
+    if (!sameController(human, this.holder))
+      return { ok: false, code: 'not-holder', lease: this.view() };
+    if (observedEpoch !== this.epoch)
+      return { ok: false, code: 'stale-epoch', lease: this.view() };
+    // The cap is enforced by the hold itself: a renewal never reaches past
+    // it, and a hold that reached it has expired above (so the next
+    // keep-alive finds no holder and is refused `not-holder`).
+    const ceiling = this.lastHumanActivityAt + this.maxHumanHoldMs;
+    this.expiresAt = Math.min(this.now() + this.humanHoldMs, ceiling);
+    this.scheduleExpiry();
+    return { ok: true, lease: this.view() };
+  }
+
   /** Extend the holder's lease. Refused when the fence or holder moved. */
   renew(controller: LiveSurfaceController, fence: number): FencedLeaseResult {
     const check = this.isCurrent(fence, controller);

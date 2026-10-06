@@ -51,8 +51,8 @@ export function ProviderTypePicker({
       </DetailHeader>
       <div className="provider-picker-modal__body">
         <p className="provider-picker-modal__desc">
-          Pick the name you recognize. Station will show only the setup it
-          needs.
+          Choose a model service for Station's engine, or an AI app you already
+          use. Each choice opens its own setup.
         </p>
         <input
           type="search"
@@ -64,7 +64,9 @@ export function ProviderTypePicker({
         />
         {presets.length > 0 && (
           <>
-            <div className="provider-overview__group-label">Popular</div>
+            <div className="provider-overview__group-label">
+              Popular model services
+            </div>
             <div className="provider-overview__quickstart-options">
               {presets.map((preset) => (
                 <button
@@ -96,7 +98,9 @@ export function ProviderTypePicker({
         )}
         {types.length > 0 && (
           <>
-            <div className="provider-overview__group-label">More</div>
+            <div className="provider-overview__group-label">
+              More model services
+            </div>
             <div className="provider-overview__quickstart-options">
               {types.map((option) => (
                 <button
@@ -130,7 +134,9 @@ export function ProviderTypePicker({
               now treats as one catalogue. One group, one noun, routing every
               choice into that same Add-engine flow.
             */}
-            <div className="provider-overview__group-label">Engines</div>
+            <div className="provider-overview__group-label">
+              AI apps and other engines
+            </div>
             <div className="provider-overview__quickstart-options">
               {agents.map((connection) => {
                 const presentation = resolveProviderChoicePresentation({

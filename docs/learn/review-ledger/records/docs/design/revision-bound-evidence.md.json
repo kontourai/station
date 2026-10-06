@@ -1,0 +1,35 @@
+{
+  "path": "docs/design/revision-bound-evidence.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed exact-revision and persistence contract review; optional proposed-change lookup is not supplied by the production room bridge, which provides attribution only.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "sources": [
+    "src-server/domain/__tests__/revision-bound-evidence.test.ts",
+
+    "src-server/domain/revision-bound-evidence.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts",
+
+    "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts"
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
+
+    "Reviewed integration deltas: Completed exact-revision and persistence contract review; optional proposed-change lookup is not supplied by the production room bridge, which provides attribution only.",
+
+    "Integration source review through d72f79b08: in event-store.ts, #2904 adds `actor` to `latestApprovalModeDecision` and adds read-only queries for device decision threads, device-granted host starts, conversation titles and unattributed never-decisions. No revision-bound evidence receipt, persistence, restore or proposed-change lookup code changed. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

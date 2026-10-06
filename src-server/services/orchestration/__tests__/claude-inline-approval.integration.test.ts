@@ -22,12 +22,35 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const { mockQuery } = vi.hoisted(() => ({ mockQuery: vi.fn() }));
 
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  deleteSession: vi.fn(),
-  forkSession: vi.fn(),
-  listSessions: vi.fn(),
-  query: mockQuery,
-}));
+// #2932: the adapter reads each permission ask off the engine's stdout. Its
+// real spawn wrapper and tap run over a fake child, and `query` wraps
+// `canUseTool` so each call here first gets a frame on that stdout.
+vi.mock(
+  '../../../providers/adapters/claude-code-spawn.js',
+  async (importOriginal) => {
+    const { fakeEngineProcessModule } = await import(
+      '../../../providers/__tests__/claude-engine-process-test-utils.js'
+    );
+    return fakeEngineProcessModule(
+      await importOriginal<
+        typeof import('../../../providers/adapters/claude-code-spawn.js')
+      >(),
+    );
+  },
+);
+
+vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
+  const { withRecordedClaudeAsks } = await import(
+    '../../../providers/__tests__/claude-engine-process-test-utils.js'
+  );
+  return {
+    deleteSession: vi.fn(),
+    forkSession: vi.fn(),
+    listSessions: vi.fn(),
+    query: (args: { options?: unknown }) =>
+      mockQuery(withRecordedClaudeAsks(args)),
+  };
+});
 
 // Host CLI discovery and version probes: none of that is under test, and all
 // of it would make the result depend on the developer's machine.
@@ -109,11 +132,21 @@ describe('#2316 inline approval card → Claude adapter', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  async function openBashRequest() {
+  async function openBashRequest(
+    toolName = 'Bash',
+    toolInput: Record<string, unknown> = { command: 'ls' },
+    autoApprove: string[] = [],
+  ) {
     await service.dispatch(
       {
         type: 'startSession',
-        input: { threadId: 'claude-inline', provider: 'claude' },
+        input: {
+          threadId: 'claude-inline',
+          provider: 'claude',
+          ...(autoApprove.length
+            ? { agent: { slug: 'question-agent', autoApprove } }
+            : {}),
+        },
       },
       { userId: 'owner-user' },
     );
@@ -121,15 +154,11 @@ describe('#2316 inline approval card → Claude adapter', () => {
     if (typeof canUseTool !== 'function') {
       throw new Error('the Claude adapter did not hand the SDK canUseTool');
     }
-    const permission = canUseTool(
-      'Bash',
-      { command: 'ls' },
-      {
-        signal: new AbortController().signal,
-        toolUseID: 'toolu-inline-1',
-        suggestions: [],
-      },
-    );
+    const permission = canUseTool(toolName, toolInput, {
+      signal: new AbortController().signal,
+      toolUseID: 'toolu-inline-1',
+      suggestions: [],
+    });
     const opened = await eventually(() =>
       eventStore
         .listEvents('claude-inline')
@@ -139,6 +168,88 @@ describe('#2316 inline approval card → Claude adapter', () => {
     if (opened.method !== 'request.opened') throw new Error('unreachable');
     return { permission, opened };
   }
+
+  test('wildcard approval never answers a question; validated answers reach the suspended SDK call', async () => {
+    const input = {
+      questions: [
+        {
+          question: 'Where should we deploy?',
+          header: 'Deployment',
+          multiSelect: true,
+          options: [
+            { label: 'Staging', description: 'Try first' },
+            { label: 'Production', description: 'Release' },
+          ],
+        },
+      ],
+      answers: { 'Where should we deploy?': 'Engine-authored answer' },
+    };
+    const { permission, opened } = await openBashRequest(
+      'AskUserQuestion',
+      input,
+      ['*'],
+    );
+    let settled = false;
+    void permission.then(() => {
+      settled = true;
+    });
+    expect(opened.payload?.questionnaire).toMatchObject({
+      questions: [{ id: '0', multiple: true, allowCustom: true }],
+    });
+    expect(settled).toBe(false);
+    const command = {
+      type: 'respondToRequest' as const,
+      threadId: opened.threadId,
+      requestId: opened.requestId,
+      expectedRequestEventId: opened.eventId,
+      decision: 'accept' as const,
+    };
+    await expect(service.dispatch(command)).rejects.toThrow(
+      'Answer every question',
+    );
+    await expect(
+      service.dispatch({ ...command, decision: 'acceptForSession' }),
+    ).rejects.toThrow('Inspect the current question');
+    await expect(
+      service.dispatch({
+        ...command,
+        answers: { '0': { optionIds: ['unknown'] } },
+      }),
+    ).rejects.toThrow('does not match');
+    await expect(
+      service.dispatch({
+        ...command,
+        expectedRequestEventId: 'stale-event',
+        answers: { '0': { optionIds: ['0'] } },
+      }),
+    ).rejects.toThrow();
+    expect(settled).toBe(false);
+    expect(
+      eventStore.readCurrentRequestEvent(opened.threadId, opened.requestId),
+    ).toMatchObject({ state: 'found', event: { method: 'request.opened' } });
+    await service.dispatch({
+      ...command,
+      answers: {
+        '0': { optionIds: ['0'], custom: 'A separate test environment' },
+      },
+    });
+    await expect(permission).resolves.toMatchObject({
+      behavior: 'allow',
+      updatedInput: {
+        answers: {
+          'Where should we deploy?': 'Staging, A separate test environment',
+        },
+      },
+    });
+    const canUseTool = sessionCanUseTool();
+    await expect(
+      canUseTool(
+        'Bash',
+        { command: 'pwd' },
+        { signal: new AbortController().signal, suggestions: [] },
+      ),
+    ).resolves.toMatchObject({ behavior: 'allow' });
+  });
 
   test('the respondToRequest command the card sends settles the SDK permission with the right decision', async () => {
     const { permission, opened } = await openBashRequest();

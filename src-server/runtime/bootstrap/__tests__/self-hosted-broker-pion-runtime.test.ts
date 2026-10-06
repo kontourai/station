@@ -135,6 +135,7 @@ async function harness(
     wrongIssuer?: boolean;
     application?: VirtualApplication;
     offerBrowserOrigin?: string;
+    dynamicIce?: 'valid' | 'retired' | 'wrong-scope' | 'unavailable';
     observeStatus?: (status: {
       state: string;
       phase: string;
@@ -173,7 +174,37 @@ async function harness(
     answerShouldFail: false,
   };
   let offersServed = 0;
-  const fetchStub = vi.fn(async (url: string) => {
+  const fetchStub = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/ice/configuration')) {
+      expect(new Headers(init?.headers).has('origin')).toBe(false);
+      if (options.dynamicIce === 'unavailable')
+        return new Response(null, { status: 503 });
+      if (options.dynamicIce === 'retired') h.current = null;
+      return jsonResponse({
+        version: 'station-relay-ice-configuration/v1',
+        scope: {
+          stationId:
+            options.dynamicIce === 'wrong-scope'
+              ? 'other-station'
+              : scope.stationId,
+          enrollmentId: scope.enrollmentId,
+          routingGeneration: scope.routingGeneration,
+        },
+        iceTransportPolicy: 'relay',
+        issuedAt: Date.now(),
+        expiresAt: Date.now() + 120_000,
+        iceServers: [
+          {
+            urls: [
+              'turn:turn.example:3478?transport=udp',
+              'turns:turn.example:443?transport=tcp',
+            ],
+            username: 'issued-user',
+            credential: 'issued-end-user-secret',
+          },
+        ],
+      });
+    }
     if (url.endsWith('/leases/register')) {
       return jsonResponse({
         registeredAt: Date.now(),
@@ -287,13 +318,15 @@ async function harness(
       executable: '/bin/false',
       certificatePem: 'cert',
       privateKeyPem: 'key',
-      turn: { url: 'turn:example', username: 'u', password: 'p' },
+      turn: options.dynamicIce
+        ? { source: 'broker' }
+        : { url: 'turn:example', username: 'u', password: 'p' },
       trust: trustOwner,
       issuer,
       heartbeatMs: 30_000,
       renewMs: 60_000,
       pollMs: 1_000,
-      maxPeerLifetimeMs: 60_000,
+      maxPeerLifetimeMs: options.dynamicIce ? 300_000 : 60_000,
       maxPeers: options.maxPeers ?? 4,
       observeStatus: options.observeStatus,
     },
@@ -315,7 +348,7 @@ async function harness(
         failAdmission(new Error('test_answer_body_unparseable'));
       }
     }
-    return origImpl(url);
+    return origImpl(url, init);
   });
   return { h, runtime, startAdapter, fetchStub };
 }
@@ -332,6 +365,51 @@ async function waitFor(
 }
 
 describe('self-hosted broker pion factory', () => {
+  test('dynamic ICE is fetched by the connector before starting each peer and covers its selected deadline', async () => {
+    const { h, runtime, startAdapter, fetchStub } = await harness({
+      dynamicIce: 'valid',
+    });
+    try {
+      await runtime.start();
+      await h.admitted;
+      const started = startAdapter.mock.calls[0]![0];
+      expect(started.turn).toEqual({
+        url: 'turns:turn.example:443?transport=tcp',
+        username: 'issued-user',
+        password: 'issued-end-user-secret',
+      });
+      expect(started.maxLifetimeMs).toBeLessThanOrEqual(115_000);
+      expect(started.maxLifetimeMs).toBeGreaterThan(100_000);
+      expect(
+        fetchStub.mock.calls.some(([url]) =>
+          url.endsWith('/ice/configuration'),
+        ),
+      ).toBe(true);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+  test.each(['retired', 'wrong-scope', 'unavailable'] as const)(
+    'dynamic ICE %s cannot start a Pion peer',
+    async (dynamicIce) => {
+      const { runtime, startAdapter, fetchStub } = await harness({
+        dynamicIce,
+      });
+      try {
+        await runtime.start();
+        await waitFor(() =>
+          fetchStub.mock.calls.some(([url]) =>
+            url.endsWith('/ice/configuration'),
+          ),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(startAdapter).not.toHaveBeenCalled();
+      } finally {
+        await runtime.shutdown().catch(() => {});
+      }
+    },
+  );
+
   test('forwards lifecycle status through Pion composition without implying application readiness', async () => {
     const statuses: Array<{ state: string; phase: string }> = [];
     const { runtime } = await harness({
@@ -579,6 +657,59 @@ describe('self-hosted broker pion factory', () => {
         (entry as { delivered?: unknown[] }).delivered ?? [];
       expect(deliveredAfter.length).toBe(countBefore);
       void received;
+    } finally {
+      h.live = false;
+      await runtime.shutdown().catch(() => undefined);
+    }
+  });
+
+  // #2842: the gated application answers these two refusals itself, outside
+  // the Hono app, so they must carry the marker the app would have added.
+  test("the gated application's own refusals are marked as this Station's answer", async () => {
+    const clientOrigin = 'https://browser.example';
+    const { h, runtime } = await harness({ offerBrowserOrigin: clientOrigin });
+    await runtime.start();
+    try {
+      await h.admitted;
+      const mod = (await import(
+        '@kontourai/station-connect/application-channel'
+      )) as unknown as {
+        __captured: Array<{
+          application: { fetch(request: Request): Promise<Response> };
+        }>;
+      };
+      const base = mod.__captured.length;
+      h.acceptCallback!({
+        send: vi.fn(),
+        close: vi.fn(),
+        subscribe: () => () => undefined,
+      } as never);
+      await waitFor(() => mod.__captured.length > base);
+      const dispatch = mod.__captured.at(-1)!.application.fetch;
+
+      const forbidden = await dispatch(
+        new Request('https://station.example/api/projects', {
+          headers: { Origin: 'https://other.example' },
+        }),
+      );
+      expect(forbidden.status).toBe(403);
+      expect(await forbidden.json()).toEqual({
+        error: { code: 'broker_application_origin_forbidden' },
+      });
+      expect(forbidden.headers.get('x-station-envelope')).toBe('1');
+      expect(forbidden.headers.get('cache-control')).toBe('no-store');
+
+      h.current = null;
+      const retired = await dispatch(
+        new Request('https://station.example/api/projects', {
+          headers: { Origin: clientOrigin },
+        }),
+      );
+      expect(retired.status).toBe(503);
+      expect(await retired.json()).toEqual({
+        error: { code: 'broker_trust_retired' },
+      });
+      expect(retired.headers.get('x-station-envelope')).toBe('1');
     } finally {
       h.live = false;
       await runtime.shutdown().catch(() => undefined);

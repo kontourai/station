@@ -23,7 +23,9 @@ webdriver = ["dep:tauri-plugin-wdio-webdriver"]
 
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
+tauri-plugin = { version = "=2.6.3", features = ["build"] }
 serde_json = "1"
+plist = "=1.10.0"
 
 [dependencies]
 tauri = { version = "=2.11.5", features = ["devtools", "tray-icon", "image-png"] }
@@ -63,16 +65,16 @@ tauri-plugin-log = "=2.9.1"
 dirs = "7"
 # Shared application API; platform-specific native stores are selected below.
 keyring-core = "=1.0.0"
+# Shared native proof and enrollment cryptography; private keys stay in OS custody.
+base64 = "=0.22.1"
+ring = "=0.17.14"
+zeroize = "=1.9.0"
+hpke = { version = "=0.13.0", default-features = false, features = ["alloc", "p256"] }
+serde_jcs = "=0.2.0"
 tauri-plugin-dialog = "=2.7.3"
 tauri-plugin-opener = "=2.5.5"
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
-# Native broker redemption proof keys. `ring` is already locked transitively
-# at this exact release; the direct pin makes this desktop-only authority
-# explicit and keeps key creation/signing on the native side.
-base64 = "=0.22.1"
-ring = "=0.17.14"
-zeroize = "=1.9.0"
 # Self-update (#575). Desktop-only, matching this plugin's own supported
 # platforms (Windows, Linux, macOS). Registration is conditional at runtime
 # on the build carrying a usable `plugins.updater` config — see
@@ -141,6 +143,10 @@ tauri-plugin-station-agent-activity = { path = "plugins/agent-activity" }
 # Tailscale MagicDNS); std::net::ToSocketAddrs bypasses that resolver.
 jni = "0.21"
 ndk-context = "0.1"
+
+[target."cfg(target_os = \"ios\")".dependencies]
+objc2 = "=0.6.4"
+objc2-foundation = "=0.3.2"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2"

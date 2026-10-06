@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
-import { FULL_REGRESSION_TIMEOUT_MS } from '../verification-lanes.mjs';
+import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -26,6 +26,10 @@ type WorkflowJob = {
   with?: Record<string, unknown>;
   steps?: WorkflowStep[];
   'timeout-minutes'?: number;
+  strategy?: {
+    'fail-fast'?: boolean;
+    matrix?: { include?: Array<{ phases: string }> };
+  };
 };
 
 type Workflow = {
@@ -52,205 +56,159 @@ function githubExpression(expression: string): string {
 }
 
 describe('promotion full-regression workflow', () => {
-  test('has one reusable exact-SHA implementation and no automatic trigger', () => {
+  test('qualifies every canonical phase against one immutable source without cancelling siblings', () => {
     const reusable = workflow('full-regression.yml');
     expect(Object.keys(reusable.on ?? {})).toEqual(['workflow_call']);
     expect(reusable.on?.workflow_call?.inputs?.source_sha).toMatchObject({
       required: true,
       type: 'string',
     });
-
-    const gate = reusable.jobs?.['full-regression'] ?? {};
-    expect(gate.uses).toBeUndefined();
-    expect(gate['timeout-minutes']).toBe(340);
-    expect(source('full-regression.yml')).not.toContain('timeout-minutes: 150');
-    const validate = namedStep(gate, 'Validate immutable source identity');
-    expect(validate.run).toContain('^[0-9a-f]{40}$');
-    expect(validate['timeout-minutes']).toBe(2);
-    const checkout = gate.steps?.find((step) =>
-      step.uses?.startsWith('actions/checkout@'),
+    const jobs = reusable.jobs ?? {};
+    const resolveSource = namedStep(
+      jobs.resolve,
+      'Resolve exact-source evidence',
     );
-    expect(checkout?.with).toMatchObject({
-      ref: githubExpression('inputs.source_sha'),
-      'fetch-depth': 0,
-      'persist-credentials': false,
+    expect(resolveSource.run).toBe(
+      'node scripts/qualification-evidence.mjs resolve',
+    );
+    expect(resolveSource.env).toMatchObject({
+      SOURCE_SHA: githubExpression('inputs.source_sha'),
+      ALLOW_REUSE: githubExpression('inputs.allow_reuse'),
     });
-    expect(checkout?.['timeout-minutes']).toBe(10);
-    const receipts = namedStep(gate, 'Retain exact-SHA completion receipts');
-    expect(receipts['timeout-minutes']).toBe(10);
-    const proveCheckout = namedStep(
-      gate,
-      'Prove checkout matches the requested source',
-    );
-    expect(proveCheckout['timeout-minutes']).toBe(2);
-    expect(
-      namedStep(gate, 'Prove checkout matches the requested source').run,
-    ).toContain('git rev-parse HEAD');
-    const gateSteps = gate.steps ?? [];
-    const actionlint = namedStep(gate, 'Install pinned actionlint');
-    const ciFast = workflow('ci.yml').jobs?.['fast-checks-statics'] ?? {};
-    expect(actionlint).toEqual(namedStep(ciFast, 'Install pinned actionlint'));
-    expect(actionlint).not.toHaveProperty('continue-on-error');
-    const actionlintIndex = gateSteps.indexOf(actionlint);
-    const dependenciesIndex = gateSteps.findIndex(
-      (step) => step.run === 'npm run dependencies:ci',
-    );
-    const zsh = namedStep(
-      gate,
-      'Provision and preflight zsh for process-heavy installer fixtures',
-    );
-    const zshIndex = gateSteps.indexOf(zsh);
-    const completionIndex = gateSteps.findIndex(
-      (step) => step.name === 'Run canonical completion gate',
-    );
-    expect(actionlintIndex).toBeGreaterThan(-1);
-    expect(dependenciesIndex).toBeGreaterThan(actionlintIndex);
-    expect(zshIndex).toBeGreaterThan(dependenciesIndex);
-    expect(gateSteps[dependenciesIndex]['timeout-minutes']).toBe(15);
-    expect(zsh['timeout-minutes']).toBe(5);
-    expect(zsh.run).toContain('if [[ ! -x /bin/zsh ]]; then');
-    expect(zsh.run).toContain('apt-get install --yes zsh');
-    expect(zsh.run).toContain('test -x /bin/zsh');
-    expect(zsh.run).toContain('/bin/zsh --version');
-    expect(completionIndex).toBeGreaterThan(dependenciesIndex);
-    expect(
-      namedStep(gate, 'Install Chromium for full-corpus browser assertions')
-        .run,
-    ).toContain('npx playwright install chromium');
-    // #1459 changed this step's shape deliberately: it now pipes the gate
-    // through `tee` so the verdict report below can read the captured stdout.
-    // The whole script is pinned EXACTLY, not by parts: a set of `toContain`
-    // assertions passes for `... | tee ... || true`, for a trailing `exit 0`,
-    // for `set +e`, and for `npm run full:regression:raw` — every one of which
-    // silently detaches the job's failure signal from the gate's own exit
-    // status, which is the property this step exists to hold. `set -o pipefail`
-    // is load-bearing for the same reason: it is NOT the default for a GitHub
-    // `run` block (`bash -e {0}`), and without it the pipeline reports `tee`'s
-    // status and a red gate passes the job.
-    const completionStep = namedStep(gate, 'Run canonical completion gate');
-    const completionRun = completionStep.run;
-    expect(completionRun?.trim()).toBe(
-      'set -o pipefail\nnpm run full:regression | tee "$RUNNER_TEMP/full-regression.stdout.log"',
-    );
-    expect(completionStep).not.toHaveProperty('continue-on-error');
-    // The report step reads this step's own outcome; without the id there is
-    // nothing for `steps.gate.outcome` to resolve to and a gate that died
-    // before printing a verdict is reported as a parsing problem.
-    expect(completionStep.id).toBe('gate');
-    const verdictReport = namedStep(gate, 'Report the completion gate verdict');
-    expect(verdictReport.if).toBe('always()');
-    expect(verdictReport['timeout-minutes']).toBe(2);
-    // Exact, for the same reason the gate step is exact: a trailing
-    // `|| true`, a swapped script, or a dropped argument must be visible.
-    expect(verdictReport.run?.trim()).toBe(
-      [
-        'node scripts/verification-gate-summary.mjs \\',
-        '  --stdout-file "$RUNNER_TEMP/full-regression.stdout.log" \\',
-        `  --gate-outcome "${githubExpression('steps.gate.outcome')}"`,
-      ].join('\n'),
-    );
-    // Both steps must name the SAME capture file, or the report renders an
-    // empty summary for a run whose verdict was captured elsewhere.
-    expect(verdictReport.run).toContain(
-      '--stdout-file "$RUNNER_TEMP/full-regression.stdout.log"',
-    );
-    expect(gateSteps.indexOf(verdictReport)).toBeGreaterThan(completionIndex);
-    // The job's own deadline is the last-resort backstop once every phase
-    // has its own; this proves it actually covers the bounded worst case
-    // rather than merely stating a number, so drift here fails loudly
-    // instead of silently narrowing a completed gate's real margin.
-    const chromium = namedStep(
-      gate,
-      'Install Chromium for full-corpus browser assertions',
-    );
-    const setupNode = gate.steps?.find((step) =>
-      step.uses?.startsWith('actions/setup-node@'),
-    );
-    expect(setupNode?.['timeout-minutes']).toBe(5);
-    expect(actionlint['timeout-minutes']).toBe(5);
-    // Every step in this list must declare `timeout-minutes`: no `?? 0`
-    // fallback, so an added or edited pre-gate/publication step without one
-    // silently drops out of the bound instead of failing this assertion.
-    const boundedSteps = [
-      validate,
-      checkout,
-      setupNode,
-      actionlint,
-      gateSteps[dependenciesIndex],
-      zsh,
-      chromium,
-      proveCheckout,
-      verdictReport,
-      receipts,
-    ];
-    for (const step of boundedSteps) {
-      expect(typeof step?.['timeout-minutes']).toBe('number');
+    const covered: string[] = [];
+    for (const id of [
+      'static',
+      'ordinary',
+      'process-heavy',
+      'exclusive',
+      'android-viewport',
+    ]) {
+      const job = jobs[id];
+      expect(job.needs).toBe('resolve');
+      expect(job.if).toBe("needs.resolve.outputs.reuse_run == ''");
+      const checkout = job.steps?.find((step) =>
+        step.uses?.startsWith('actions/checkout@'),
+      );
+      expect(checkout?.with).toMatchObject({
+        ref: githubExpression('inputs.source_sha'),
+        'persist-credentials': false,
+      });
+      expect(job['timeout-minutes']).toBeGreaterThan(0);
+      if (id === 'android-viewport') {
+        expect(
+          job.steps?.some((step) => step.run === 'npm run test:android'),
+        ).toBe(true);
+        continue;
+      }
+      const run = namedStep(job, 'Run full-regression phases');
+      expect(run.run?.trim()).toBe(
+        'set -o pipefail\nread -r -a phases <<< "$PHASES"\nnode scripts/run-full-regression-phases.mjs "${phases[@]}" 2>&1 \\\n  | tee "$RUNNER_TEMP/full-regression.log"',
+      );
+      expect(run).not.toHaveProperty('continue-on-error');
+      expect(job['timeout-minutes']).toBeGreaterThanOrEqual(
+        run['timeout-minutes'] ?? Infinity,
+      );
+      const matrix = job.strategy?.matrix?.include;
+      if (matrix) {
+        expect(job.strategy?.['fail-fast']).toBe(false);
+        expect(run.env?.PHASES).toBe(githubExpression('matrix.phases'));
+      }
+      const selections = matrix?.map((row) => row.phases) ?? [
+        run.env?.PHASES ?? '',
+      ];
+      if (id === 'process-heavy')
+        expect(
+          selections
+            .map(
+              (selection) =>
+                selection.match(/--process-heavy-shard=(\d+\/\d+)/u)?.[1],
+            )
+            .sort(),
+        ).toEqual(['1/2', '2/2']);
+      for (const selection of selections)
+        covered.push(
+          ...selection
+            .split(/\s+/u)
+            .filter((argument) => argument.startsWith('--phase='))
+            .map((phase) => phase.replace(/^--phase=/u, '')),
+        );
+      if (id !== 'static') {
+        expect(
+          namedStep(job, 'Prepare the corpus prerequisites').run,
+        ).toContain('--phase=browser-prerequisite --phase=sdk-builds');
+        const shell = namedStep(
+          job,
+          'Provision and preflight zsh for process-heavy installer fixtures',
+        );
+        expect(shell.run).toContain('test -x /bin/zsh');
+        expect(
+          namedStep(job, 'Install Chromium for full-corpus browser assertions')
+            .run,
+        ).toContain('exit 1');
+      }
     }
-    const boundedSetupMinutes = boundedSteps.reduce(
-      (total, step) => total + (step?.['timeout-minutes'] as number),
-      0,
+    expect(covered.sort()).toEqual(
+      [
+        ...FULL_REGRESSION_PHASES.map((phase) => phase.id).filter(
+          (id) => id !== 'browser-prerequisite',
+        ),
+        'test-full-process-heavy',
+      ].sort(),
     );
-    const phaseMinutes = FULL_REGRESSION_TIMEOUT_MS / 60_000;
-    expect(gate['timeout-minutes']).toBeGreaterThanOrEqual(
-      boundedSetupMinutes + phaseMinutes,
+    const final = jobs.qualification;
+    expect(final.if).toBe('always() && !cancelled()');
+    expect(final.needs).toEqual([
+      'resolve',
+      'static',
+      'ordinary',
+      'process-heavy',
+      'exclusive',
+      'android-viewport',
+    ]);
+    const attest = namedStep(
+      final,
+      'Require every qualification job to succeed',
     );
-    const manifest = JSON.parse(
-      readFileSync(resolve(root, 'package.json'), 'utf8'),
-    );
-    expect(manifest['trust-reconcile-manifest']).toContainEqual({
-      id: 'full-regression',
-      command: 'npm run full:regression',
+    expect(attest.run).toBe('node scripts/qualification-evidence.mjs attest');
+    expect(attest.env).toMatchObject({
+      NEEDS: githubExpression('toJSON(needs)'),
+      SOURCE_SHA: githubExpression('inputs.source_sha'),
+      REUSE_RUN: githubExpression('needs.resolve.outputs.reuse_run'),
     });
-    expect(manifest.scripts['full:regression:raw']).toContain(
-      'npm run proof:repo-governance',
-    );
-    expect(manifest.scripts['full:regression:raw']).toContain(
-      'npm run test:full:raw',
-    );
-    expect(source('full-regression.yml')).not.toContain(
-      'run: npm run test:connected-agents',
-    );
-    expect(source('full-regression.yml')).not.toContain(
-      'node scripts/veritas-readiness-evidence.mjs',
-    );
+    expect(attest).not.toHaveProperty('continue-on-error');
   });
 
-  test('retains hidden canonical receipts as required promotion evidence', () => {
-    const gate =
-      workflow('full-regression.yml').jobs?.['full-regression'] ?? {};
-    const retain = namedStep(gate, 'Retain exact-SHA completion receipts');
-    expect(retain.if).toBe('always()');
+  test('requires an exact-source qualification receipt before promotion', () => {
+    const retain = namedStep(
+      workflow('full-regression.yml').jobs?.qualification ?? {},
+      'Retain exact-SHA completion receipts',
+    );
     expect(retain.with).toMatchObject({
+      path: 'source-qualification.json',
       'if-no-files-found': 'error',
-      'include-hidden-files': true,
-      'retention-days': 14,
+      'retention-days': 30,
     });
-    expect(String(retain.with?.path)).toContain(
-      '.kontourai/verification-receipts/',
-    );
-    expect(String(retain.with?.path)).toContain(
-      '.kontourai/verification-output/',
-    );
-    expect(String(retain.with?.path)).toContain(
-      '.kontourai/verification-phase-records/',
-    );
-    expect(source('full-regression.yml')).not.toContain('continue-on-error');
+    expect(retain.with?.name).toContain(githubExpression('inputs.source_sha'));
+    expect(retain).not.toHaveProperty('continue-on-error');
   });
 
-  test('the keep-going audit retains its own verification output, not just a log tail (#1531)', () => {
-    const steps = workflow('full-regression.yml').jobs?.['full-regression']
-      ?.steps as Array<{ name?: string; with?: Record<string, unknown> }>;
-    const retain = steps.find(
-      (step) => step.name === 'Retain the keep-going diagnostic',
-    );
-    expect(retain, 'the audit retain step exists').toBeTruthy();
-    const path = String(retain?.with?.path);
-    expect(path).toContain('full-regression-audit.log');
-    // The reporter's stdout tail truncates; the per-request output directory
-    // is where each failing suite's assertion text actually lives.
-    expect(path).toContain('.kontourai/verification-output/');
-    expect(path).toContain('.kontourai/verification-phase-records/');
-    expect(retain?.with?.['include-hidden-files']).toBe(true);
+  test('retains bounded per-job failure diagnostics without making them qualification evidence', () => {
+    const jobs = workflow('full-regression.yml').jobs ?? {};
+    for (const id of [
+      'static',
+      'ordinary',
+      'process-heavy',
+      'exclusive',
+      'android-viewport',
+    ]) {
+      const retain = namedStep(jobs[id], 'Retain failure diagnostics');
+      expect(retain.if).toBe('failure()');
+      expect(retain.with?.['if-no-files-found']).toBe('ignore');
+      expect(String(retain.with?.path)).toContain(
+        id === 'android-viewport' ? 'test-results/' : 'full-regression.log',
+      );
+      expect(retain.with?.name).toContain(githubExpression('github.job'));
+    }
   });
 
   test('keeps manual dispatch while excluding ordinary PR and main-push runs', () => {

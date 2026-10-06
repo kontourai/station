@@ -4,10 +4,7 @@
 import { act, render } from '@testing-library/react';
 import { useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  resetScrollMemoryForTests,
-  useScrollRestoration,
-} from '../useScrollRestoration';
+import { useScrollRestoration } from '../useScrollRestoration';
 
 /**
  * SHELL-07, measured on the audited build:
@@ -115,7 +112,6 @@ function installResizeObserver() {
 
 describe('useScrollRestoration', () => {
   beforeEach(() => {
-    resetScrollMemoryForTests();
     vi.useFakeTimers();
   });
 
@@ -125,7 +121,9 @@ describe('useScrollRestoration', () => {
   });
 
   test('restores the position across a route swap that collapses the container', () => {
-    const { container, rerender } = render(<Harness routeKey="/settings" />);
+    const { container, rerender } = render(
+      <Harness routeKey="/restore-origin" />,
+    );
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
     scroller.userScrollTo(3000);
@@ -134,14 +132,14 @@ describe('useScrollRestoration', () => {
     // Leaving: React replaces the route with a skeleton, so the container has
     // nothing left to scroll.
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/registry" />);
+    rerender(<Harness routeKey="/restore-away" />);
     scroller.setCapacity(972);
     poll();
     expect(scroller.element.scrollTop).toBe(0);
 
     // Returning: the route mounts empty and fills in over several seconds.
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/settings" />);
+    rerender(<Harness routeKey="/restore-origin" />);
     poll(2);
     expect(scroller.element.scrollTop).toBe(0);
 
@@ -156,14 +154,16 @@ describe('useScrollRestoration', () => {
     // for up to eight seconds, precisely while the route was assembling. It
     // now waits for the content to say it grew.
     const resize = installResizeObserver();
-    const { container, rerender } = render(<Harness routeKey="/settings" />);
+    const { container, rerender } = render(
+      <Harness routeKey="/resize-origin" />,
+    );
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
     scroller.userScrollTo(3000);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/registry" />);
+    rerender(<Harness routeKey="/resize-away" />);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/settings" />);
+    rerender(<Harness routeKey="/resize-origin" />);
 
     resize.fire();
     expect(scroller.element.scrollTop).toBe(0);
@@ -177,14 +177,16 @@ describe('useScrollRestoration', () => {
   test('never writes a scrollTop the container cannot hold', () => {
     // The capacity check is what removes the write-then-read-back probe: a
     // write that would be clamped is never issued at all.
-    const { container, rerender } = render(<Harness routeKey="/settings" />);
+    const { container, rerender } = render(
+      <Harness routeKey="/capacity-origin" />,
+    );
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
     scroller.userScrollTo(3000);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/registry" />);
+    rerender(<Harness routeKey="/capacity-away" />);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/settings" />);
+    rerender(<Harness routeKey="/capacity-origin" />);
 
     const writes: number[] = [];
     const real = Object.getOwnPropertyDescriptor(
@@ -216,7 +218,9 @@ describe('useScrollRestoration', () => {
     // happen. `navigationStore.navigate` dispatches `popstate` synchronously
     // while the outgoing route is still mounted, so that is where the last
     // position is caught.
-    const { container, rerender } = render(<Harness routeKey="/settings" />);
+    const { container, rerender } = render(
+      <Harness routeKey="/intent-origin" />,
+    );
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
     scroller.programmaticScrollTo(3000); // no `scroll` event dispatched
@@ -225,52 +229,56 @@ describe('useScrollRestoration', () => {
     });
 
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/registry" />);
+    rerender(<Harness routeKey="/intent-away" />);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/settings" />);
+    rerender(<Harness routeKey="/intent-origin" />);
     scroller.setCapacity(8428);
     poll();
     expect(scroller.element.scrollTop).toBe(3000);
   });
 
   test('a route the user has never opened starts at the top', () => {
-    const { container, rerender } = render(<Harness routeKey="/settings" />);
+    const { container, rerender } = render(
+      <Harness routeKey="/fresh-origin" />,
+    );
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
     scroller.userScrollTo(3000);
 
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/guidance" />);
+    rerender(<Harness routeKey="/fresh-destination" />);
     scroller.setCapacity(5000);
     poll();
     expect(scroller.element.scrollTop).toBe(0);
   });
 
   test('a route the user scrolled back to the top of stays at the top', () => {
-    const { container, rerender } = render(<Harness routeKey="/settings" />);
+    const { container, rerender } = render(<Harness routeKey="/top-origin" />);
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
     scroller.userScrollTo(3000);
     scroller.userScrollTo(0);
 
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/registry" />);
+    rerender(<Harness routeKey="/top-away" />);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/settings" />);
+    rerender(<Harness routeKey="/top-origin" />);
     scroller.setCapacity(8428);
     poll();
     expect(scroller.element.scrollTop).toBe(0);
   });
 
   test('gives up rather than jumping the user after the retry window closes', () => {
-    const { container, rerender } = render(<Harness routeKey="/settings" />);
+    const { container, rerender } = render(
+      <Harness routeKey="/deadline-origin" />,
+    );
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
     scroller.userScrollTo(3000);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/registry" />);
+    rerender(<Harness routeKey="/deadline-away" />);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/settings" />);
+    rerender(<Harness routeKey="/deadline-origin" />);
 
     poll(40); // 10s, past the 8s window
     scroller.setCapacity(8428);
@@ -279,14 +287,16 @@ describe('useScrollRestoration', () => {
   });
 
   test('stops waiting as soon as the user scrolls for themselves', () => {
-    const { container, rerender } = render(<Harness routeKey="/settings" />);
+    const { container, rerender } = render(
+      <Harness routeKey="/interruption-origin" />,
+    );
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
     scroller.userScrollTo(3000);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/registry" />);
+    rerender(<Harness routeKey="/interruption-away" />);
     scroller.setCapacity(0);
-    rerender(<Harness routeKey="/settings" />);
+    rerender(<Harness routeKey="/interruption-origin" />);
 
     poll();
     act(() => {

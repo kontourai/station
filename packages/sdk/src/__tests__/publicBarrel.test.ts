@@ -29,7 +29,6 @@ const PUBLIC_QUERY_DOMAINS = [
   'agentAdmin',
   'answerShares',
   'analytics',
-  'answerShares',
   'attention',
   'board',
   'catalog',
@@ -53,10 +52,12 @@ const PUBLIC_QUERY_DOMAINS = [
   'pullRequests',
   'reviewEvidence',
   'scheduler',
+  'skillExperiences',
   'skills',
   'sshEnvironments',
   'systemRuntime',
   'taskGraph',
+  'taskRoomWork',
   'trustBundles',
   'veritasReadiness',
   'workflowTasks',
@@ -151,6 +152,9 @@ const PUBLIC_DOMAIN_EXCLUSIONS: Record<string, string[]> = {
     // hook there defeats the Pane contract's no-default-bundle-cost boundary.
     'useProjectWorkspacePanesQuery',
     'useProjectWorkspaceFilePreviewQuery',
+    // The File Preview's Changes read lives beside the preview read, at
+    // `@kontourai/station-sdk/workspace-file-preview`, for the same reason.
+    'useProjectWorkspaceFileChangesQuery',
   ],
 };
 
@@ -519,6 +523,13 @@ describe('sdk public barrel re-exports the Workspace Pane contract API (#1369/#1
       'function',
     );
     expect(typeof previewSdk.previewProjectWorkspaceFile).toBe('function');
+    // The Changes read and its busy classifier travel with the preview read.
+    expect('useProjectWorkspaceFileChangesQuery' in sdk).toBe(false);
+    expect(typeof previewSdk.useProjectWorkspaceFileChangesQuery).toBe(
+      'function',
+    );
+    expect(typeof previewSdk.readProjectWorkspaceFileChanges).toBe('function');
+    expect(typeof previewSdk.isRepositoryBusyError).toBe('function');
   });
 
   it('publishes every host-action hook through the documented Pane subpath', async () => {

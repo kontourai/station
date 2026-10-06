@@ -1,0 +1,35 @@
+{
+  "path": "docs/plans/documentation-code-audit.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Completed source audit scope, executed verification limits, linked follow-up work and owner-approved documentation policy activation in this branch.",
+
+  "limits": "Purpose and recorded evidence reviewed; no exhaustive semantic certification or live provider/device proof; policy activation is limited to the approved additions in this branch.",
+
+  "sources": [],
+
+  "checks": [
+    "Proposal reviewed against actual override trial receipts: default-only failure warned; required candidate caught recorded drift, exact restoration removed that evidence failure. Protected policy remained unchanged.",
+
+    "Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
+
+    "Reviewed integration deltas: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
+
+    "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7:  Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained.",
+
+    "Reviewed landing deltas through 111744681:  Read the changed document in context; its purpose and prior evidence limits remain.",
+
+    "Landing review through 64452b7f0: "
+  ]
+}

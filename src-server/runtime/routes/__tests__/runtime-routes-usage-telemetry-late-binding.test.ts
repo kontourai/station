@@ -42,9 +42,13 @@ vi.mock('../runtime-route-support.js', () => ({
 
 // The runtime's credential policy has its own boundary suite; this test is
 // about route composition, so ingress is a no-op here.
-vi.mock('../../bootstrap/runtime-http.js', () => ({
+vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => ({
   configureRuntimeHttp: () => undefined,
   configureRuntimeRouteClassificationGate: () => undefined,
+  // Real: it holds no credential policy, and composition installs it itself.
+  installStationEnvelopeMarker: (
+    await importOriginal<typeof import('../../bootstrap/runtime-http.js')>()
+  ).installStationEnvelopeMarker,
   LOOPBACK_DEVICE_SESSION_COOKIE: 'station-device',
   SECURE_DEVICE_SESSION_COOKIE: '__Host-station-device',
 }));

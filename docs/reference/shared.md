@@ -15,12 +15,61 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
+- `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
+- `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
 [package README](../../packages/shared/README.md) for distribution and build
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
+
+## Skill experience validation
+
+`@kontourai/station-shared/skill-experience-author` owns
+`readValidatedSkillExperiences` and `validateAuthoredSkillExperiences`.
+The reader returns typed definitions after closed-schema and bounded,
+contained bundled Skill validation; the validation wrapper discards that result.
+The author build and installed inventory use the same reader. It does not
+activate a package, grant resources, or authorize execution. Installed identity
+and current admission remain with the server's package journal/loader. See the
+[experience contract](skill-experiences.md) for the exact bounds and refusal path.
+
+## Skill experience authoring
+
+`@kontourai/station-shared/skill-experience-workflow` exports local
+`inspectSkillLibrary`, `skillExperiencePackageDigest` and
+`readSkillExperienceReview`, `reviewSkillExperiencePackage`, plus the inspection/review types. These Node
+filesystem helpers emit bounded source review leads and validate author
+assertions against actual package/source/transcript bytes. They do not run a
+model, grant tools, install a plugin or establish runtime/release qualification.
+Use the [author learning path](../guides/authoring-skill-experiences.md) for
+proposal, preview, evaluation and revision review.
+
+## Harness question helpers
+
+`@kontourai/station-shared/harness-questions` owns the browser-safe
+`readHarnessQuestionnaire`, `validateHarnessQuestionAnswers` and
+`harnessAnswerTexts` helpers. They parse bounded descriptors, validate a
+complete answer batch and translate selected IDs to display labels/custom
+text. They do not authorize a reply or prove engine delivery. Stable types
+come from `@kontourai/station-contracts/harness-questions`.
+
+## Request settlement
+
+`@kontourai/station-shared/request-settlement` owns
+[`requestIdsSettledByTurnAbort`](../../packages/shared/src/request-settlement.ts):
+given one session's events in order, the ids of the requests their turn's
+abort settled without a `request.resolved`. A recovery abort
+(`turn.aborted` with `recoveryTerminal`) settles every unresolved request
+opened since that turn started and before a different turn started; any
+abort, or a
+`turn.completed` with `finishReason: 'cancelled'`, settles only the requests
+whose `request.opened` names that turn. It reads five fields and accepts
+untyped event records. The server's session summary, attention feed and
+request inspection apply it, as do the CLI's `approvals` and `operate`; a
+client that folds `request.opened` / `request.resolved` itself should too.
+The [Session API](session-api.md#respondtorequest) states the behavior.
 
 ---
 
@@ -96,7 +145,7 @@ interface PluginPreview {
 }
 
 interface PluginComponent {
-  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   name?: string; // declared display name, e.g. a Pane's `name`
   detail?: string;
@@ -241,6 +290,8 @@ interface ToolDef {
     intervalMs?: number;
   };
   exposedTools?: string[];
+  /** #3279: each person connects their own account (see the API reference). */
+  credentialOwnership?: { owner: 'principal'; allowInstanceFallback?: boolean };
 }
 
 interface ToolPermissions {
@@ -439,6 +490,7 @@ interface ProjectConfig {
   workingDirectory?: string;
   defaultProviderId?: string;
   defaultModel?: string;
+  defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;
@@ -449,6 +501,23 @@ interface ProjectConfig {
   updatedAt: string;
 }
 ```
+
+`defaultAgent` supplies the new-chat choice when there is no remembered Agent
+for that Station access and project. The remembered choice takes precedence;
+No project has its own remembered choice. Create/update requests accept `null`
+to clear `defaultAgent`; stored and read configuration omit the cleared field.
+
+`icon` is either a short glyph (an emoji or symbol of at most 16 UTF-16 code
+units, with at least one visible character; no `/`, `\`, `:`, control
+character, bidirectional control or unpaired surrogate; and no leading `~`) or
+a base64 PNG, JPEG, WebP or ICO `data:` URL whose bytes match its type and
+number at most 128 KiB. [`projectIconProblem`](../../packages/contracts/src/project.ts)
+is that rule; `POST /api/projects` and `PUT /api/projects/:slug` refuse any
+other value with 400, so a path or remote URL is never stored, and
+`ProjectService` applies it to a new icon from any other caller. `''` or `null`
+in a request clears the icon, and the stored record then omits it. An update
+that does not name `icon` leaves the stored one alone, including an older value
+the rule now refuses; the UI does not draw such a value.
 
 `agents` is optional by design: `undefined` means the project can use all
 known agents, while an explicit empty array means the project exposes no agents.
@@ -959,9 +1028,15 @@ The [builder](../../packages/shared/src/build.ts) owns containment and dependenc
 preparation. Managed workspace builds require the managed dependency setup;
 standalone plugins use the helper's constrained npm preparation. This can write
 dependencies and outputs. Its exact external allowlist includes root SDK and
-the SDK client/voice entries, not every SDK subpath. A build does not install,
+the SDK agent/client/voice entries, not every SDK subpath. A build does not install,
 authorize or activate a plugin. `--dev` in the example build file selects one
 build; it is not a watcher.
+
+Portable Agent Plugins can also declare inert visual Skill definitions. The
+author builder validates their referenced files and exact bundled Skill identity
+before bundling or returning a no-bundle result. See the
+[authoring contract](skill-experiences.md) for bounds, refusal diagnostics, and
+the separate runtime activation work.
 
 ```ts
 interface BuildResult {

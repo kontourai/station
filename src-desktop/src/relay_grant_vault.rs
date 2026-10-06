@@ -471,8 +471,11 @@ struct OsKeyring;
 impl RelayGrantBackend for OsKeyring {
     fn get(&mut self, account: &str) -> Result<Option<String>, String> {
         super::initialize_credential_store()?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|error| format!("open OS relay credential entry: {error}"))?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|error| format!("open OS relay credential entry: {error}"))?;
         match entry.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring_core::Error::NoEntry) => Ok(None),
@@ -482,8 +485,11 @@ impl RelayGrantBackend for OsKeyring {
 
     fn set(&mut self, account: &str, value: &str) -> Result<(), String> {
         super::initialize_credential_store()?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|error| format!("open OS relay credential entry: {error}"))?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|error| format!("open OS relay credential entry: {error}"))?;
         entry
             .set_password(value)
             .map_err(|error| format!("write OS relay credential entry: {error}"))
@@ -491,8 +497,11 @@ impl RelayGrantBackend for OsKeyring {
 
     fn delete(&mut self, account: &str) -> Result<(), String> {
         super::initialize_credential_store()?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|error| format!("open OS relay credential entry: {error}"))?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|error| format!("open OS relay credential entry: {error}"))?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
             Err(error) => Err(format!("delete OS relay credential entry: {error}")),

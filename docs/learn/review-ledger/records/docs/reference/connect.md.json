@@ -1,0 +1,185 @@
+{
+  "path": "docs/reference/connect.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed current documented-claim review. Previous declaration/health/endpoint/CLI review unchanged by source hashes. Finished store selection and legacy migration, React asynchronous broker activation, profile normalization, pairing offer/QR/exchange/cookie/native host custody and revocation admission callers. Corrected setActive boolean/refusals, React Promise<void>, retained migration key, source-ranked candidate ordering, server-versus-decoder HTTP difference and blanket existing-socket revocation wording. Public endpoint ownership limitation retained without further security probing.",
+
+  "limits": "Selected documented claims only, not all broker protocols, transport implementation branches or provider/device behaviors. Existing fixture tests are not physical/native storage, cookie lifetime, reachable network, endpoint ownership or live revocation proof. Revocation rejects new authenticated admission; existing streams retain their own currentness boundaries. No new live authority/security probe or external write. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/reference/connect.md\",\"ours\":{\"digest\":\"ad846f392757bb43cd6e8a6ca3dc3f5b08cf0734908ad3b9fdc0775615fea04e\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"digest\":\"4a1c148347a0e32b16f87d176255ce36c9a05abf2a59208ad260477123388821\",\"revision\":\"daeb0902d1d0d28457a61b01e6dbdaab13fc0888\"}},{\"path\":\"src-ui/src/contexts/ApiBaseContext.tsx\",\"ours\":{\"digest\":\"8069807d592f2aeb22ec5fdd999dcb4574f134c7bfcb7fdfea1e02c51a410ef3\",\"revision\":\"2835c77d95f1902ec333eee0c5f57d19fd9f5077\"},\"main\":{\"digest\":\"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"packages/connect/src/core/connectionProfile.ts\",\"ours\":{\"digest\":\"210a68855cbdedde33a5923eef58a28b35ecbb1746f1c809e0837b4512e1ea66\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"eec25316fc25c09952dd52cdb2ae379a3d6a0872bb6762d3fc5cd38df92e6142\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"ours\":{\"digest\":\"319457cad042e01307526040fad469b533aa6a72d18bacb241cf9dc789613167\",\"revision\":\"e07612aa080603f8c715a4a92a7dcc8dfc18838e\"},\"main\":{\"digest\":\"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"}},{\"path\":\"packages/connect/package.json\",\"ours\":{\"digest\":\"f9a3187cebc1e432ca28f10546e12fb42089b27fe8229b8c12bf90d996790b80\",\"revision\":\"7dc84da36281cace63d55fbd59fac3f64fcb3721\"},\"main\":{\"digest\":\"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca\",\"revision\":\"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0\"}},{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"ours\":{\"digest\":\"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb\",\"revision\":\"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7\"},\"main\":{\"digest\":\"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"}},{\"path\":\"src-ui/src/lib/serverHealth.ts\",\"ours\":{\"digest\":\"3e98f09cd0321015f1511d66853409f26eab6667a54be0b38fe9c4c8e37188b2\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"c0840b525e21f5cc637007f2a5047f9629c2d147d87167e6cd470d22c365711d\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"ours\":{\"digest\":\"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"packages/connect/src/react/ConnectionsContext.tsx\",\"ours\":{\"digest\":\"01252ac9f259e9bf636a39404b02bf1a2854b5ca78c3561d65419898f975a4d5\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"43c0fcf9366c3f522547ae38456d82fd9b4f8c366f520b1c3c6079a3d737857b\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"ours\":{\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"digest\":\"7630d2fb80f1b276380fe77d10fde800259aad3a67c0412293dc50547dd2a43c\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"packages/connect/src/react/ConnectionManagerModal.tsx\",\"ours\":{\"digest\":\"665565e945581e5d1e491355e93f78ada7741b7ccd879e0f720963eccfbc0a34\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"digest\":\"f2751d812d1740911ae56233002d8697f6eeccc82c3e26d57e8d3a3fda1aa987\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"packages/connect/src/core/types.ts\",\"ours\":{\"digest\":\"1a69c7971eda8664c5bdbd272d474dde9e9bd46f191fc319b08f008cf6e35675\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"1e4b1904628f0f00a704c81c4f7cd8c4f26c8988b99aa7aabb833e4d9f89dc81\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"}},{\"path\":\"src-server/security/runtime-request-security.ts\",\"ours\":{\"digest\":\"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"packages/contracts/src/environment-security.ts\",\"ours\":{\"digest\":\"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"main\":{\"digest\":\"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486\",\"revision\":\"91d79c3f0ce9ca5ae304e4248b67b6189103016e\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Selected documented claims only, not all broker protocols, transport implementation branches or provider/device behaviors. Existing fixture tests are not physical/native storage, cookie lifetime, reachable network, endpoint ownership or live revocation proof. Revocation rejects new authenticated admission; existing streams retain their own currentness boundaries. No new live authority/security probe or external write.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/reference/connect.md\",\"ours\":{\"digest\":\"908f3599f7bc2739e2efaacdb9756ae177a293123bf564aba2680b7fd0cd743b\",\"revision\":\"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666\"},\"main\":{\"digest\":\"5177a7569eef2e2401d24bb0be4ea4dff99287719b8990176cda0d1887b9e982\",\"revision\":\"45349f9ef03de948da85f70c2dde2477832fac1a\"},\"active\":{\"digest\":\"908f3599f7bc2739e2efaacdb9756ae177a293123bf564aba2680b7fd0cd743b\",\"revision\":\"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/connect/package.json\",\"ours\":{\"path\":\"packages/connect/package.json\",\"digest\":\"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/connect/package.json\",\"digest\":\"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca\",\"revision\":\"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0\"},\"active\":{\"path\":\"packages/connect/package.json\",\"digest\":\"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"ours\":{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"digest\":\"319457cad042e01307526040fad469b533aa6a72d18bacb241cf9dc789613167\",\"revision\":\"e07612aa080603f8c715a4a92a7dcc8dfc18838e\"},\"main\":{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"digest\":\"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"active\":{\"path\":\"packages/connect/src/__tests__/nativeApplicationTransport.test.ts\",\"digest\":\"319457cad042e01307526040fad469b533aa6a72d18bacb241cf9dc789613167\",\"revision\":\"e07612aa080603f8c715a4a92a7dcc8dfc18838e\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/connect/src/core/connectionProfile.ts\",\"ours\":{\"path\":\"packages/connect/src/core/connectionProfile.ts\",\"digest\":\"210a68855cbdedde33a5923eef58a28b35ecbb1746f1c809e0837b4512e1ea66\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"path\":\"packages/connect/src/core/connectionProfile.ts\",\"digest\":\"eec25316fc25c09952dd52cdb2ae379a3d6a0872bb6762d3fc5cd38df92e6142\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"active\":{\"path\":\"packages/connect/src/core/connectionProfile.ts\",\"digest\":\"210a68855cbdedde33a5923eef58a28b35ecbb1746f1c809e0837b4512e1ea66\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"ours\":{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"digest\":\"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb\",\"revision\":\"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7\"},\"main\":{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"digest\":\"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"active\":{\"path\":\"packages/connect/src/core/nativeApplicationTransport.ts\",\"digest\":\"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb\",\"revision\":\"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/connect/src/core/types.ts\",\"ours\":{\"path\":\"packages/connect/src/core/types.ts\",\"digest\":\"1a69c7971eda8664c5bdbd272d474dde9e9bd46f191fc319b08f008cf6e35675\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"path\":\"packages/connect/src/core/types.ts\",\"digest\":\"1e4b1904628f0f00a704c81c4f7cd8c4f26c8988b99aa7aabb833e4d9f89dc81\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"active\":{\"path\":\"packages/connect/src/core/types.ts\",\"digest\":\"1a69c7971eda8664c5bdbd272d474dde9e9bd46f191fc319b08f008cf6e35675\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/connect/src/react/ConnectionManagerModal.tsx\",\"ours\":{\"path\":\"packages/connect/src/react/ConnectionManagerModal.tsx\",\"digest\":\"665565e945581e5d1e491355e93f78ada7741b7ccd879e0f720963eccfbc0a34\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"path\":\"packages/connect/src/react/ConnectionManagerModal.tsx\",\"digest\":\"1b517a7aa90ee9370552911c00f8dd1d2cddd53f5179fb0a4593222c238e9088\",\"revision\":\"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0\"},\"active\":{\"path\":\"packages/connect/src/react/ConnectionManagerModal.tsx\",\"digest\":\"665565e945581e5d1e491355e93f78ada7741b7ccd879e0f720963eccfbc0a34\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"ours\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"f6c7ef50e01865453b0bad6b05abb11b715c84bf05e789273b92b920e93b4058\",\"revision\":\"9dbe4f65b46fcab127f36e9d878a2c535f381fec\"},\"active\":{\"path\":\"packages/connect/src/react/ConnectionManagerModalContent.tsx\",\"digest\":\"e23424734239a2fcf4ad5341447aebbdded6da432c8bdedc24955f19b8ba7309\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/connect/src/react/ConnectionsContext.tsx\",\"ours\":{\"path\":\"packages/connect/src/react/ConnectionsContext.tsx\",\"digest\":\"01252ac9f259e9bf636a39404b02bf1a2854b5ca78c3561d65419898f975a4d5\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"path\":\"packages/connect/src/react/ConnectionsContext.tsx\",\"digest\":\"43c0fcf9366c3f522547ae38456d82fd9b4f8c366f520b1c3c6079a3d737857b\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"active\":{\"path\":\"packages/connect/src/react/ConnectionsContext.tsx\",\"digest\":\"01252ac9f259e9bf636a39404b02bf1a2854b5ca78c3561d65419898f975a4d5\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/security/runtime-request-security.ts\",\"ours\":{\"path\":\"src-server/security/runtime-request-security.ts\",\"digest\":\"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"path\":\"src-server/security/runtime-request-security.ts\",\"digest\":\"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"},\"active\":{\"path\":\"src-server/security/runtime-request-security.ts\",\"digest\":\"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"decision\":\"oursMatch\"},{\"path\":\"src-ui/src/contexts/ApiBaseContext.tsx\",\"ours\":{\"path\":\"src-ui/src/contexts/ApiBaseContext.tsx\",\"digest\":\"8069807d592f2aeb22ec5fdd999dcb4574f134c7bfcb7fdfea1e02c51a410ef3\",\"revision\":\"2835c77d95f1902ec333eee0c5f57d19fd9f5077\"},\"main\":{\"path\":\"src-ui/src/contexts/ApiBaseContext.tsx\",\"digest\":\"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"active\":{\"path\":\"src-ui/src/contexts/ApiBaseContext.tsx\",\"digest\":\"8069807d592f2aeb22ec5fdd999dcb4574f134c7bfcb7fdfea1e02c51a410ef3\",\"revision\":\"2835c77d95f1902ec333eee0c5f57d19fd9f5077\"},\"decision\":\"oursMatch\"},{\"path\":\"src-ui/src/lib/serverHealth.ts\",\"ours\":{\"path\":\"src-ui/src/lib/serverHealth.ts\",\"digest\":\"3e98f09cd0321015f1511d66853409f26eab6667a54be0b38fe9c4c8e37188b2\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"path\":\"src-ui/src/lib/serverHealth.ts\",\"digest\":\"c0840b525e21f5cc637007f2a5047f9629c2d147d87167e6cd470d22c365711d\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"active\":{\"path\":\"src-ui/src/lib/serverHealth.ts\",\"digest\":\"3e98f09cd0321015f1511d66853409f26eab6667a54be0b38fe9c4c8e37188b2\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"decision\":\"oursMatch\"},{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"ours\":{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"digest\":\"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"digest\":\"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"active\":{\"path\":\"src-ui/src/platform/native/stationProfileStorage.ts\",\"digest\":\"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"decision\":\"oursMatch\"}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}},{\"path\":\"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx\",\"ours\":{\"path\":\"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx\",\"digest\":\"350b990b0790316bf3a703f35ae3a4e2c6aa388c8580b80d7c696f2c81e16d59\",\"revision\":\"fc7857beb8210ea8db44cf3ffe50ae30b3aca057\"},\"theirs\":{\"path\":\"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx\",\"digest\":\"0daf870839a1a2f932dd84c38cf9d27e86dbd21f5c61f139eb51898d9c99ea7c\",\"revision\":\"6783c3816613cd15f9daaa85a1bfad0b77056d6c\"},\"active\":{\"path\":\"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx\",\"digest\":\"0daf870839a1a2f932dd84c38cf9d27e86dbd21f5c61f139eb51898d9c99ea7c\",\"revision\":\"6783c3816613cd15f9daaa85a1bfad0b77056d6c\"}}]",
+
+  "sources": [
+    "packages/cli/src/commands/core-api.ts",
+
+    "packages/cli/src/commands/environment.ts",
+
+    "packages/connect/package.json",
+
+    "packages/connect/src/__tests__/ConnectionStore.broker-route.test.ts",
+
+    "packages/connect/src/__tests__/ConnectionStore.test.ts",
+
+    "packages/connect/src/__tests__/devicePairing.test.ts",
+
+    "packages/connect/src/__tests__/nativeApplicationTransport.test.ts",
+
+    "packages/connect/src/__tests__/nativeEnrollmentExchange.test.ts",
+
+    "packages/connect/src/core/connectionCandidates.ts",
+
+    "packages/connect/src/core/connectionFailureClassification.ts",
+
+    "packages/connect/src/core/ConnectionHealthCoordinator.ts",
+
+    "packages/connect/src/core/connectionIndicator.ts",
+
+    "packages/connect/src/core/connectionProfile.ts",
+
+    "packages/connect/src/core/ConnectionStore.ts",
+
+    "packages/connect/src/core/ConnectionSupervisor.ts",
+
+    "packages/connect/src/core/devicePairing.ts",
+
+    "packages/connect/src/core/environmentProof.ts",
+
+    "packages/connect/src/core/nativeApplicationTransport.ts",
+
+    "packages/connect/src/core/nativeConnectionShared.ts",
+
+    "packages/connect/src/core/nativeEnrollmentExchange.ts",
+
+    "packages/connect/src/core/nativeEnrollmentFailure.ts",
+
+    "packages/connect/src/core/nativeRelayLink.ts",
+
+    "packages/connect/src/core/storage.ts",
+
+    "packages/connect/src/core/types.ts",
+
+    "packages/connect/src/index.ts",
+
+    "packages/connect/src/react/connection-manager-modal-utils.ts",
+
+    "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
+
+    "packages/connect/src/react/ConnectionManagerModal.tsx",
+
+    "packages/connect/src/react/ConnectionManagerModalContent.tsx",
+
+    "packages/connect/src/react/ConnectionsContext.tsx",
+
+    "packages/connect/src/react/ConnectionStatusDot.tsx",
+
+    "packages/connect/src/react/DevicePairingPanel.tsx",
+
+    "packages/connect/src/react/pairingCompletion.ts",
+
+    "packages/connect/src/react/QRScanner.tsx",
+
+    "packages/connect/src/react/useConnectionStatus.ts",
+
+    "packages/connect/src/react/useHostUrl.ts",
+
+    "packages/contracts/src/environment-security.ts",
+
+    "packages/contracts/src/native-relay-link.ts",
+
+    "packages/sdk/src/client/http.ts",
+
+    "src-desktop/src/native_relay_link_intake.rs",
+
+    "src-server/routes/operations/voice.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/security/runtime-request-security.ts",
+
+    "src-server/security/websocket-auth.ts",
+
+    "src-server/services/ssh/__tests__/device-pairing-service.test.ts",
+
+    "src-server/services/ssh/__tests__/environment-security-service.test.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/services/ssh/environment-security-service.ts",
+
+    "src-server/services/terminal/terminal-ws-server.ts",
+
+    "src-ui/src/contexts/ApiBaseContext.tsx",
+
+    "src-ui/src/lib/serverHealth.ts",
+
+    "src-ui/src/platform/native/__tests__/nativeRelayEnrollmentClient.test.ts",
+
+    "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayEnrollmentClient.ts",
+
+    "src-ui/src/platform/native/pairingTransport.ts",
+
+    "src-ui/src/platform/native/stationProfileStorage.ts",
+
+    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
+
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts",
+
+    "packages/sdk/src/client/client-protocol.ts",
+
+    "src-ui/src/__tests__/serverHealth.test.ts",
+
+    "src-ui/src/__tests__/compatibility.test.ts"
+  ],
+
+  "checks": [
+    "Full original document text read; exact inspected and remaining scope retained in HANDOFF.md. Documentation-only change.",
+
+    "Real PluginWorkspacePaneSDKBoundary to SDKAdapter to SDKProvider fixture: 9 tests, exit 0, 4.52s; controlled surrounding providers and no network. Confirms observed default-host gaps, not desired feature support.",
+
+    "Focused existing checks: 91 tests across ConnectionStore, useConnectionStatus, integration-copy parsers and Agent resolver; 4 files, exit 0, 2.64s.",
+
+    "First-plugin guide manifest and entrypoint extracted verbatim: actual schema parser and buildPlugin production/dev controls exit 0; no dependency install or Station installation/activation.",
+
+    "153 TS/TSX/JS/JSON fences parse, exit 0; syntax only. Initial 8 SDK pseudo-signature/multiple-JSX parse failures were corrected or explicitly marked text; retained original failure receipt.",
+
+    "Local paths and rendered anchors validated in396 Markdown files, exit0. Repository/public hygiene and public contract examples exit0; public checks apply only to10 admitted documents, not semantic certification of these5 references.",
+
+    "Frozen staged-document readiness exit0,0 failures/0 warnings, veritas-1790478448046. Commit bdbb325a0c2b735e8b522f4bbcade27fecc46fe7 contains exactly the5 owned Markdown files; worktree clean.",
+
+    "Continuation 2026-09-27: Connect supervisor/health/pairing/proof/security-service/scope-editor 127 tests in 6 files pass (6.22s). SDK/CLI/checkpoint/feedback/telemetry 223 tests in 10 files pass (14.18s); tests use controlled fixtures, not production secrets or providers.",
+
+    "Continuation 2026-09-27: 153 fences pass syntax parsing; local paths and rendered anchors pass in 396 Markdown files; readiness veritas-1790515051946: 0 failures, 0 warnings. Exactly two Markdown files committed, no runtime or shared-ledger change.",
+
+    "Frozen upstream0bc65b9f0 merged locally; all14 changed previously recorded owner files inspected with explicit delta dispositions before digest refresh. Connect README browser identity/selfHostedBrowser additions inspected separately; no merge commit is proposed for cherry-pick.",
+
+    "Frozen-source checks:267 tests/13 files passed(18.20s),39 MCP-page/Connect-relay-consumer tests passed(1.62s),154 TS/TSX/JS/JSON fences parse,407 Markdown local paths/anchors pass. Veritas1790516770624:0failures0warnings. Fixtures do not establish live provider or physical/native/relay delivery.",
+
+    "Final Contracts/Connect combined fixture selection:277 tests/9 files PASS,30.92s. No physical/native or live-network pairing executed.",
+
+    "Final four-document bytes:407 Markdown paths/anchors PASS;154 reference/example syntax fences PASS;git diff --check PASS. Veritas1790527733697:0 failures0 warnings. Three owned documentation-only commits; no runtime edits or external writes.",
+
+    "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Required merge-queue recovery through 421517851: Added native-application source entry through actual verified-answer/openChannel/fetch owner, with host signaling/trust recheck/lifetime inputs and no direct fallback. Device/account/Project authority and ordinary UI activation remain separate.. Changed inputs reviewed: docs/reference/connect.md, packages/connect/package.json, src-server/runtime/bootstrap/runtime-http.ts, packages/connect/src/core/nativeApplicationTransport.ts, packages/connect/src/core/nativeConnectionShared.ts, packages/connect/src/__tests__/nativeApplicationTransport.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: ApiBaseContext.tsx only lost a comment about the deleted legacy notification_watch. The resolver still supplies no mutationAllowed guard, as documented, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added `station environment access devices|scope|scopes` over a shared loopback operator channel. It keeps the non-loopback refusal, now with wider message wording. It added PAIRING_SCOPE_DESCRIPTIONS, isPairingScopeGrantable and FullAccessRevocationReport to environment-security, deviceHoldsScope/deviceHoldsFullAccess, and a FullAccessRevocationNotice rendered from the scope-change and revoke route responses. Those responses now add fullAccessRevocation or fullAccessRevocationError. The documented access list/approve/deny flow and its loopback refusal, the offer/exchange/cookie claims, and the revocation paragraph are unchanged. The revocation paragraph says revoke does not recall delivered data or guarantee cancellation of dispatched effects, and the reset records new Ask decisions without interrupting a running turn. The new scope verbs and the revocation reset are not described here, but no current claim is contradicted. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 changes runtime-http.ts, runtime-routes.ts and runtime-request-security.ts. A credential that verifyCredential recognizes but authorizeCredential refuses (an ordinary device on /api/pairing outside the approval leaves, or a mutation on /api/environments/peers) now gets 403 insufficient_scope instead of 401. Unrecognized and revoked credentials still get 401. The doc's claims hold: a 401 goes to credential-required recovery, 401/403 authentication-failed is terminal, and a revoked credential fails later admission. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

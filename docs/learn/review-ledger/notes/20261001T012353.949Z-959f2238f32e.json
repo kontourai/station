@@ -1,0 +1,7 @@
+{
+  "revision": "2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Delta review limited to TaskWorkspaceView composition and its ProjectTaskRoom section: room panes are mounted earlier in Direct, with unchanged provider, capability checks and ownership. Other module sources are unchanged by this slice. No new runtime/provider/device evidence or full-program completion is claimed.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

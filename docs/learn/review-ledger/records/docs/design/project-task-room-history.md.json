@@ -1,0 +1,39 @@
+{
+  "path": "docs/design/project-task-room-history.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed durable event projection, worker, route and history adapter review; corrected channel/principal disclosure and bounded JSON counting claims.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "sources": [
+    "src-server/routes/orchestration/project-task-rooms.ts",
+
+    "src-server/services/orchestration/__tests__/project-task-live-work-history-adapter.test.ts",
+
+    "src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/project-task-room-history-worker.ts",
+
+    "src-server/services/orchestration/project-task-room-history.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts"
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
+
+    "Reviewed integration deltas: Completed durable event projection, worker, route and history adapter review; corrected channel/principal disclosure and bounded JSON counting claims.",
+
+    "Integration source review through d72f79b08: #2904 adds EventStore queries for approval-mode decision actors, device-granted host starts, conversation titles and unattributed never decisions. It leaves the Project Task room event projection, worker, route and bounded JSON counting this document describes untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

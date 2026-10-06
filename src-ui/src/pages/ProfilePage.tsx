@@ -1,3 +1,4 @@
+import { MS_PER_DAY } from '@kontourai/station-contracts/time';
 import { AuthStatusBadge } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { ActivityTimeline } from '../components/ActivityTimeline';
@@ -6,52 +7,45 @@ import { AchievementsBadge } from '../components/badges/AchievementsBadge';
 import { UserIcon } from '../components/icons/UserIcon';
 import { UserDetailModal } from '../components/modals/UserDetailModal';
 import { InsightsDashboard } from '../components/monitoring/InsightsDashboard';
+import { StationPeoplePanel } from '../components/profile/StationPeoplePanel';
 import {
   describeReadFailure,
   Empty,
   ErrorState,
   SkeletonBlock,
 } from '../components/state';
+import {
+  buildTrendDays,
+  describeDailyHistoryGap,
+} from '../components/usage-stats/period';
 import { UsageRollupPanel } from '../components/usage-stats/UsageRollupPanel';
 import { UsageStatsPanel } from '../components/usage-stats/UsageStatsPanel';
+import { describeCostCoverage } from '../components/usage-stats/UsageSummaryCards';
 import { useAnalytics } from '../contexts/AnalyticsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import './ProfilePage.css';
 import '../views/page-layout.css';
 
-type UsageByDateEntry = {
-  cost?: number;
-  messages?: number;
-};
-
 function buildUsageGraphPoints(
   usageStats: NonNullable<ReturnType<typeof useAnalytics>['usageStats']>,
 ) {
-  const byDateEntries = Object.entries(
-    (usageStats.byDate || {}) as Record<string, UsageByDateEntry>,
-  ).sort(([left], [right]) => left.localeCompare(right));
-
-  if (byDateEntries.length > 0) {
-    return byDateEntries.slice(-14).map(([date, stats]) => ({
-      label: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-      }),
-      value: stats.messages || 0,
-    }));
-  }
-
-  if (usageStats.lifetime.totalMessages > 0) {
-    return [
-      {
-        label: 'All time',
-        value: usageStats.lifetime.totalMessages,
-      },
-    ];
-  }
-
-  return [];
+  const now = new Date();
+  const to = now.toISOString().slice(0, 10);
+  const from = new Date(now.getTime() - 13 * MS_PER_DAY)
+    .toISOString()
+    .slice(0, 10);
+  const days = buildTrendDays(usageStats.byDate, from, to);
+  if (!days.some((day) => day.recorded)) return [];
+  return days.map((day) => ({
+    ...day,
+    label: new Date(`${day.date}T12:00:00Z`).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    }),
+    value: day.messages,
+  }));
 }
 
 function ProfileUsageGraph({
@@ -70,9 +64,7 @@ function ProfileUsageGraph({
     >
       <div className="profile-usage-graph__header">
         <span className="profile-card__section-title">Usage activity</span>
-        <span className="profile-usage-graph__caption">
-          {points.length > 1 ? 'Recent activity' : 'Usage snapshot'}
-        </span>
+        <span className="profile-usage-graph__caption">Last 14 UTC days</span>
       </div>
 
       {points.length === 0 ? (
@@ -86,18 +78,25 @@ function ProfileUsageGraph({
               <span />
             </div>
           }
-          label="No usage data yet"
+          label="Daily activity not recorded in the last 14 days"
         />
       ) : (
         <div className="profile-usage-graph__bars">
           {points.map((point) => (
-            <div key={point.label} className="profile-usage-graph__column">
+            <div key={point.date} className="profile-usage-graph__column">
               <div
                 className="profile-usage-graph__bar"
                 style={{
-                  height: `${Math.max((point.value / maxValue) * 100, 12)}%`,
+                  height:
+                    point.value > 0
+                      ? `${(point.value / maxValue) * 6}rem`
+                      : '2px',
                 }}
-                title={`${point.label}: ${point.value.toLocaleString()} messages`}
+                title={
+                  point.recorded
+                    ? `${point.label}: ${point.value.toLocaleString()} recorded messages`
+                    : `${point.label}: no daily record`
+                }
               />
               <span className="profile-usage-graph__label">{point.label}</span>
             </div>
@@ -109,7 +108,7 @@ function ProfileUsageGraph({
 }
 
 export function ProfilePage() {
-  const { usageStats, loading, error, refresh } = useAnalytics();
+  const { usageStats, loading, error, refresh, rescan } = useAnalytics();
   const { user } = useAuth();
 
   const achievementLinks = pluginRegistry.getLinks('achievements');
@@ -117,6 +116,27 @@ export function ProfilePage() {
   const totalMessages = usageStats?.lifetime.totalMessages || 0;
   const totalCost = usageStats?.lifetime.totalCost || 0;
   const [showUserLookup, setShowUserLookup] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildError, setRebuildError] = useState<Error | null>(null);
+  const costCoverage = describeCostCoverage(
+    usageStats?.lifetime.engineUsageCoverage,
+  );
+  const historyGap = describeDailyHistoryGap(
+    usageStats?.lifetime.engineUsageCoverage,
+  );
+  const rebuild = async () => {
+    setRebuilding(true);
+    setRebuildError(null);
+    try {
+      await rescan();
+    } catch (failure) {
+      setRebuildError(
+        failure instanceof Error ? failure : new Error(String(failure)),
+      );
+    } finally {
+      setRebuilding(false);
+    }
+  };
 
   // Header first, skeleton only the awaited body (6-OPS-23). The whole page —
   // eyebrow, name, every section heading — used to be replaced by the string
@@ -157,6 +177,55 @@ export function ProfilePage() {
   return (
     <div className="profile-page">
       <div className="profile-container">
+        <div className="profile-usage-status">
+          <div>
+            <p>Usage on this Station · updates while this page is open.</p>
+            <p>
+              {usageStats?.snapshot?.rescannedAt
+                ? `Snapshot rebuilt ${new Date(usageStats.snapshot.rescannedAt).toLocaleString()}`
+                : 'Snapshot rebuild time unavailable'}
+            </p>
+            <p>
+              Counts combine saved messages and completed engine turns. Costs
+              may combine estimates and provider reports; they are not a billing
+              statement.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            disabled={rebuilding}
+            onClick={() => void rebuild()}
+          >
+            {rebuilding ? 'Rebuilding…' : 'Rebuild usage'}
+          </Button>
+        </div>
+        {(error || rebuildError) && (
+          <ErrorState
+            variant="compact"
+            title="Usage refresh failed"
+            description={`Showing the last available snapshot. ${describeReadFailure(rebuildError || error)}`}
+            action={
+              <Button
+                size="sm"
+                onClick={rebuildError ? () => void rebuild() : refresh}
+              >
+                Retry
+              </Button>
+            }
+          />
+        )}
+        {usageStats?.snapshot?.engineUsage === 'unavailable' && (
+          <p role="alert">
+            Engine usage could not be read during the last rebuild. These totals
+            may be incomplete.
+          </p>
+        )}
+        {usageStats?.snapshot?.skippedMessages > 0 && (
+          <p role="alert">
+            {usageStats.snapshot.skippedMessages} saved message records could
+            not be read during the last rebuild.
+          </p>
+        )}
         <div className="profile-card">
           <div className="profile-card__edit-btn">
             <AuthStatusBadge expanded />
@@ -200,10 +269,10 @@ export function ProfilePage() {
                     </h2>
                     {usageStats?.lifetime.firstMessageDate && (
                       <span className="profile-card__title">
-                        Joined{' '}
+                        First daily record (UTC){' '}
                         {new Date(
                           usageStats.lifetime.firstMessageDate,
-                        ).toLocaleDateString()}
+                        ).toLocaleDateString(undefined, { timeZone: 'UTC' })}
                       </span>
                     )}
                   </div>
@@ -218,30 +287,26 @@ export function ProfilePage() {
                 </div>
               </div>
               <p className="profile-hero-subtitle">
-                {totalMessages === 0
-                  ? 'Start your journey with your first message'
-                  : totalMessages === 1
-                    ? "🎉 You've sent your first message!"
-                    : totalMessages < 10
-                      ? `${totalMessages} messages sent - you're getting started!`
-                      : totalMessages < 100
-                        ? `${totalMessages} messages - you're on a roll!`
-                        : `${totalMessages} messages - power user! 🚀`}
+                {totalMessages.toLocaleString()} messages and engine turns
+                recorded on this Station
               </p>
               {totalCost > 0 && (
                 <div className="profile-hero-badges">
                   <div className="profile-badge profile-badge-primary">
-                    💰 ${totalCost.toFixed(2)} spent
-                  </div>
-                  <div className="profile-badge profile-badge-secondary">
-                    📊 ${(totalCost / Math.max(totalMessages, 1)).toFixed(4)}
-                    /msg
+                    ${totalCost.toFixed(2)} recorded cost
                   </div>
                 </div>
               )}
+              {costCoverage && <p>{costCoverage}</p>}
               <ProfileUsageGraph usageStats={usageStats ?? null} />
+              <p>Daily history covers Station-recorded messages only.</p>
+              {historyGap && <p>{historyGap}</p>}
             </div>
           </div>
+        </div>
+
+        <div className="profile-card">
+          <StationPeoplePanel />
         </div>
 
         <div className="profile-stats-grid">

@@ -1,0 +1,25 @@
+{
+  "revision": "9bb90045b7aeb926e7003b27fc4fd62252638524",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed permission-denial follow-through in paired profiles: typed HTTP status controls the interval policy, 401/403 pauses automatic polling, scoped keys and HTTP authority guards remain in place, and cached names stay hidden on error. Real QueryClient tests verify one denied request over a minute, an explicit retry caller receiving the new data, and polling resuming after success. Prior accounting and source-completeness limits remain open.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the opt-in refetchIntervalForError callback at the real query owner. Existing numeric refetchInterval consumers, infinite-query page shapes, cancellation and cache semantics are unchanged; undefined preserves the numeric interval and false pauses it. Paired registry reads use typed StationHttpError for 401/403. SDK/UI typechecks and 14 focused query/profile tests passed; published consumer availability still requires release.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Focused delta review of the SDK/query-core dependency: the new error-specific interval policy changes neither integration authority, installed-version requirements nor hosted/commercial acceptance. Existing integration reading routes and limits remain accurate.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Focused delta review: opt-in query error polling does not alter Dialog geometry, focus/history ownership, viewport predicates, or narrow/coarse-pointer behavior. Existing numeric query consumers retain their defaults; this guide needs no prose change.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Focused delta review: the error-specific polling policy does not affect branding resolution, theme selection, installed UI exports or accent contrast. Existing numeric intervals and branding cache behavior are unchanged; no prose change is needed.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/user/work-board.md","note":"Focused delta review: the optional error interval policy has no Work Board caller and does not alter cached Board resolution, conflict refusal, cleanup or refresh behavior. Existing numeric polling defaults remain unchanged.","inputs":["docs/user/work-board.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the SDK reference/query-core delta against the policy. The typed error policy stays inside SDK query ownership, imports no app internals and has real cache plus retry-caller evidence. Existing policy remains accurate.","inputs":["packages/sdk/AGENTS.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the permission-denial polling delta against the monitoring completeness findings. It prevents repeated denied registry reads; it does not close Insights file omission or collector attribution gaps.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"Focused review of the query-core source delta: an opt-in client error interval policy changes no backend layering, scheduler, route or validation convention. Existing patterns remain accurate.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Focused review of the query-core source delta: the refusal interval policy stays in the canonical React Query owner and introduces no component fetch lifecycle. Existing numeric intervals, mutation, cache and cancellation behavior are preserved; paired profiles use typed HTTP status.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

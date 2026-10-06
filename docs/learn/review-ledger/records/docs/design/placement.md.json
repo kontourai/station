@@ -1,0 +1,181 @@
+{
+  "path": "docs/design/placement.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
+
+  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
+
+  "sources": [
+    "packages/contracts/src/device-settings.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "packages/contracts/src/workspace-composition.ts",
+
+    "packages/contracts/src/workspace-home-role.ts",
+
+    "packages/contracts/src/workspace-layout-pane.ts",
+
+    "packages/contracts/src/workspace-pane-host.ts",
+
+    "packages/contracts/src/workspace-pane.ts",
+
+    "packages/sdk/src/components/LayoutHeader.tsx",
+
+    "src-ui/src/__tests__/region-model.test.ts",
+
+    "src-ui/src/app-shell/destination-registry.ts",
+
+    "src-ui/src/app-shell/project-layout-kind.ts",
+
+    "src-ui/src/app-shell/ProjectLayoutRenderer.tsx",
+
+    "src-ui/src/app-shell/RegionShells.tsx",
+
+    "src-ui/src/App.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/components/chat-dock/DockShell.tsx",
+
+    "src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/components/chat/ChatMarkdownAnchor.tsx",
+
+    "src-ui/src/components/chat/MarkdownLinkContext.ts",
+
+    "src-ui/src/components/dialog-history.ts",
+
+    "src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx",
+
+    "src-ui/src/components/header/RegionToolbarControls.tsx",
+
+    "src-ui/src/components/header/useRegionSurfaceMenu.ts",
+
+    "src-ui/src/components/project-sidebar/pill-region-open.ts",
+
+    "src-ui/src/components/project-sidebar/pill-region-placement.ts",
+
+    "src-ui/src/components/project-sidebar/ProjectLayoutChipMenu.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx",
+
+    "src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx",
+
+    "src-ui/src/contexts/__tests__/RegionModelContext-deep-link.test.tsx",
+
+    "src-ui/src/contexts/__tests__/RegionModelContext-phone-layer-guard.test.tsx",
+
+    "src-ui/src/contexts/__tests__/RegionModelContext-phone-layer-reload-id.test.tsx",
+
+    "src-ui/src/contexts/__tests__/RegionModelContext-phone-layer.test.tsx",
+
+    "src-ui/src/contexts/navigation-store.ts",
+
+    "src-ui/src/contexts/RegionModelContext.tsx",
+
+    "src-ui/src/contexts/useDismissPhoneLayer.ts",
+
+    "src-ui/src/contexts/useOpenInRegion.ts",
+
+    "src-ui/src/contexts/useShowSurface.ts",
+
+    "src-ui/src/hooks/useDockShellChrome.ts",
+
+    "src-ui/src/hooks/useIsMobile.ts",
+
+    "src-ui/src/hooks/useLongPress.ts",
+
+    "src-ui/src/hooks/useUnsavedGuard.tsx",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/layouts/index.tsx",
+
+    "src-ui/src/lib/device-settings-store.ts",
+
+    "src-ui/src/regions/__tests__/region-arrangement-record.test.ts",
+
+    "src-ui/src/regions/region-arrangement-record.ts",
+
+    "src-ui/src/regions/region-model.ts",
+
+    "src-ui/src/regions/region-surface-panes.ts",
+
+    "src-ui/src/views/LayoutView.tsx",
+
+    "src-ui/src/views/PersonalBoardView.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/RegionChromeBar.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/RegionEmptyChooser.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/RegionPaneHost.layoutPane.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/RegionPaneHost.openInRegion.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/RegionPaneHost.tabs.test.tsx",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx",
+
+    "src-ui/src/workspace-panes/AgentsWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/LayoutPaneTitles.tsx",
+
+    "src-ui/src/workspace-panes/LayoutWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/RegionChooserPanel.tsx",
+
+    "src-ui/src/workspace-panes/RegionChromeBar.tsx",
+
+    "src-ui/src/workspace-panes/RegionEmptyChooser.tsx",
+
+    "src-ui/src/workspace-panes/RegionPaneHost.tsx",
+
+    "src-ui/src/workspace-panes/useDockProject.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneHostController.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneHostStorage.ts",
+
+    "tests/helpers/css-cascade-fixture.ts"
+  ],
+
+  "checks": [
+    "Prior receipt, retained without rerun: Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
+
+    "Prior receipt, retained without rerun: 289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
+
+    "Prior receipt, retained without rerun: Reviewed source changes: Removed unused dockCanSupply and its test-only context constant. Real region admission still uses canonical occurrence plus Project binding; placement prose now names the current callers.",
+
+    "Prior receipt, retained without rerun: Removed unused dockCanSupply and its test-only context constant. Real region admission still uses canonical occurrence plus Project binding; placement prose now names the current callers.",
+
+    "Source+caller review completed at frozen upstream f3954615e / integrated6fa523e4d; prior record source changes inspected before replacing hashes. No moving-main chase.",
+
+    "Executed: static gate chain PASS including26example conformance and zero new a11y violations; docs links PASS415Markdown files; diff whitespace PASS.",
+
+    "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
+
+    "Executed initial placement focused12files:180PASS,2FAIL,1SKIP in52.15s. RegionToolbarControls geometry failed its explicit missing worktree Chromium prerequisite. RegionPaneHost.project first case timed out after5000ms waiting for initial lazy ambient Chat mount; remaining11cases in that file passed. Cause remains unknown (cold import timing is only a hypothesis).",
+
+    "Executed after root-authorized prerequisite configuration: PLAYWRIGHT_BROWSERS_PATH=$HOME/Library/Caches/ms-playwright npm run test:focused -- src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx:34PASS/1SKIP in22.40s. Pinned Chromium1234/151.0.7922.34 ran geometry; skipped item is the intentional missing-prerequisite sentinel. No failed lazy-mount rerun.",
+
+    "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+
+    "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c adds a .chat-stream-status[data-chat-decision-delivery] column-layout rule to chat.css. The document's CSS claims (dock and maximized region ownership) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2919) unexports agentIdentityFromSession and AMBIENT_CHAT_DOCK_DOCUMENT_ID, removes createAmbientChatDockPaneDocument and its two tests. RegionPaneHost.test.tsx still pins the literal 'station:workspace-pane-host:v2:ambient:chat-dock' key and adoptLegacyChatDockDocument, and renderAmbientChatPane in ChatDock.tsx is unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

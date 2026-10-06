@@ -1,4 +1,7 @@
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import {
@@ -11,11 +14,14 @@ import {
 } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
+import { projectedRuntimeErrorRaw } from '../../utils/chatErrorTranslation';
 import { serverTurnLive } from '../../utils/conversation-activity';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
-import { extractUIBlocks } from '../../utils/uiBlocks';
-import { upsertToolResultBlocks } from './messageParts';
+import {
+  conversationPartToContentParts,
+  stitchWindowWithLiveEvents,
+} from './conversationTranscriptParts';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
 import {
@@ -56,6 +62,102 @@ function isLiveFailureMarker(message: ChatMessage): boolean {
     .startsWith(CHAT_ERROR_MARKER_PREFIX);
 }
 
+interface ProjectedTurnFailure {
+  turnId: string;
+  startedAt: number;
+  /** The turn's projected `runtime.error`, when it shows one. */
+  failure?: { code?: string; message: string };
+}
+
+/** Each projected turn's first moment and the failure it shows, if any. */
+function projectedTurnFailures(
+  projected: readonly ChatMessage[],
+): ProjectedTurnFailure[] {
+  const turns = new Map<string, ProjectedTurnFailure>();
+  for (const message of projected) {
+    if (
+      typeof message.turnId !== 'string' ||
+      typeof message.timestamp !== 'number'
+    )
+      continue;
+    const part = message.contentParts?.find(
+      (candidate) => candidate.runtimeError === true,
+    );
+    const failure = part
+      ? {
+          code: part.runtimeErrorCode,
+          message: projectedRuntimeErrorRaw(part.content ?? ''),
+        }
+      : undefined;
+    const turn = turns.get(message.turnId);
+    if (!turn) {
+      turns.set(message.turnId, {
+        turnId: message.turnId,
+        startedAt: message.timestamp,
+        failure,
+      });
+      continue;
+    }
+    turn.startedAt = Math.min(turn.startedAt, message.timestamp);
+    turn.failure ??= failure;
+  }
+  return [...turns.values()].sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/**
+ * #2985: a cold open reads a failed turn twice — its `runtime.error` event,
+ * and the `[SYSTEM_EVENT] [CHAT_ERROR] …` message the agent's conversation
+ * store kept. The stored copy has no turn identity, and its words need not be
+ * the event's (a failure with no status persists the transport sentence while
+ * the event carries the engine's), so no comparison of text pairs them and
+ * both rendered.
+ *
+ * A stored marker belongs to the newest turn that had started when it was
+ * written. When that turn's projection shows a failure, the marker is given
+ * the turn's identity and the event's code and message — the marker the live
+ * path appends — so the turn-identified arbitration below keeps it as the one
+ * card, with its Send again. A turn that already has an identified marker
+ * needs no second one. Outside the projected window (an older page not read
+ * yet) there is no such turn, and the marker stays as it is.
+ */
+function adoptStoredFailureMarkers(
+  messages: readonly ChatMessage[],
+  turns: readonly ProjectedTurnFailure[],
+): ChatMessage[] {
+  const markedTurnIds = new Set(
+    messages
+      .filter((message) => isLiveFailureMarker(message))
+      .map((message) => message.turnId)
+      .filter((turnId): turnId is string => typeof turnId === 'string'),
+  );
+  return messages.flatMap((message) => {
+    if (
+      !isLiveFailureMarker(message) ||
+      message.turnId !== undefined ||
+      typeof message.timestamp !== 'number'
+    ) {
+      return [message];
+    }
+    let owner: ProjectedTurnFailure | undefined;
+    for (const turn of turns) {
+      if (turn.startedAt > message.timestamp) break;
+      owner = turn;
+    }
+    if (!owner?.failure) return [message];
+    if (markedTurnIds.has(owner.turnId)) return [];
+    markedTurnIds.add(owner.turnId);
+    const { code, message: reason } = owner.failure;
+    return [
+      {
+        ...message,
+        turnId: owner.turnId,
+        content: `${CHAT_ERROR_MARKER_PREFIX}${code ? `:${code}` : ''}] ${reason}`,
+        contentParts: undefined,
+      },
+    ];
+  });
+}
+
 function isLiveSupplementalMessage(message: ChatMessage): boolean {
   return Boolean(
     message.ephemeral ||
@@ -93,6 +195,7 @@ function openTurnInWindow(
       open = { turnId: event.turnId, createdAt: event.createdAt };
     } else if (
       (TURN_TERMINAL_METHODS.includes(event.method) &&
+        !isDeferredRetriableTurnError(event) &&
         event.turnId === open?.turnId) ||
       (event.method === 'session.state-changed' &&
         event.interruptedTurnBoundary?.boundaryId)
@@ -251,25 +354,16 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   ]);
   const stitchedEvents = useMemo(() => {
     if (replay) return window.events;
-    const watermark =
-      windowWatermark ??
-      Math.max(0, ...window.events.map((item) => item.sequence));
-    const threadIds = new Set([
-      session.id,
-      session.currentSessionId,
-      ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
-    ]);
-    const events = [...window.events];
-    const persistedIds = new Set(
-      window.events.map((item) => item.event.eventId).filter(Boolean),
-    );
-    for (const item of liveEvents) {
-      if (item.sequence <= watermark || !threadIds.has(item.event.threadId))
-        continue;
-      if (persistedIds.has(item.event.eventId)) continue;
-      events.push(item);
-    }
-    return events.sort((left, right) => left.sequence - right.sequence);
+    return stitchWindowWithLiveEvents({
+      windowEvents: window.events,
+      watermark: windowWatermark,
+      liveEvents,
+      threadIds: new Set([
+        session.id,
+        session.currentSessionId,
+        ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
+      ]),
+    });
   }, [
     replay,
     window.events,
@@ -488,46 +582,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           .filter((part) => part.type === 'text')
           .map((part) => part.text ?? '')
           .join(''),
-        contentParts: message.parts.flatMap((part) => {
-          const mapped = {
-            type: part.type,
-            content: part.text,
-            url: part.url,
-            blobRef: part.blobRef,
-            mediaType: part.mediaType,
-            name: part.name,
-            toolCallId: part.toolCallId,
-            sourceEventId: part.sourceEventId,
-            toolName: part.toolName,
-            args: part.args,
-            result: part.result,
-            output: part.output,
-            error: part.error,
-            cancelled: part.cancelled,
-            state: part.state,
-            isError: part.isError,
-            progressMessage: part.progressMessage,
-            runtimeError: part.runtimeError,
-            runtimeErrorCode: part.runtimeErrorCode,
-            needsApproval: part.needsApproval,
-            approvalId: part.approvalId,
-            approvalThreadId: part.approvalThreadId,
-            approvalEventId: part.approvalEventId,
-            approvalStatus: part.approvalStatus,
-          };
-          // Preserve the same tool-result identity and sanitized blocks as
-          // the live renderer when the completed turn enters durable replay.
-          return part.type === 'tool-invocation' &&
-            part.sourceEventId &&
-            part.toolCallId
-            ? upsertToolResultBlocks(
-                [mapped],
-                part.toolCallId,
-                part.sourceEventId,
-                extractUIBlocks(part.output),
-              )
-            : [mapped];
-        }),
+        contentParts: message.parts.flatMap(conversationPartToContentParts),
         timestamp: message.metadata?.timestamp,
         model: message.metadata?.model ?? undefined,
         modelOptions: message.metadata?.modelOptions,
@@ -545,6 +600,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
               ?.agentIcon
           : undefined,
         sourceEventId: message.metadata?.sourceEventId,
+        ...(message.metadata?.steerInterruptedRun
+          ? { steerInterruptedRun: true }
+          : {}),
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
       }));
@@ -686,8 +744,12 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // Matched on turn identity, not on text: two turns can fail the same
     // way, and a global text match would collapse them. A marker with no
     // turn identity keeps the text-comparison fallback it had before.
+    const markerMessages = adoptStoredFailureMarkers(
+      session.messages,
+      projectedTurnFailures(visibleProjected),
+    );
     const markerFailureTurnIds = new Set(
-      session.messages
+      markerMessages
         .filter((message) => isLiveFailureMarker(message))
         .map((message) => message.turnId)
         .filter((turnId): turnId is string => typeof turnId === 'string'),
@@ -720,7 +782,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const projectedFailureText = visibleProjected
       .map(transcriptMessageText)
       .join('\n');
-    const supplementalMessages = session.messages.filter((message) => {
+    const supplementalMessages = markerMessages.filter((message) => {
       if (!isLiveSupplementalMessage(message)) return false;
       if (!isLiveFailureMarker(message)) return true;
       // A turn-identified marker owns its failure's one visible element —

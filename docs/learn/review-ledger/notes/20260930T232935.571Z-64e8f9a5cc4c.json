@@ -1,0 +1,7 @@
+{
+  "revision": "a989e51f737e2bed93b379db3032a6cb04c940d1",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed shared Empty replacement in delegated profile view. Only the no-profile presentation changed; SDK query, authority split and login behavior are unchanged. Focused mounted UI test, UI typecheck and state-primitives ratchet pass.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

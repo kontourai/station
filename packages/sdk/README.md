@@ -18,6 +18,21 @@ Trusted server modules may also import the re-exported
 event observation. The host retains consumer identity, grants, projection, and
 settlement authority; see the plugin guide's durable operational-event section.
 
+## Choose an SDK surface
+
+Use the root and documented UI subpaths for plug-in hooks, components, and host
+integration. Use `@kontourai/station-sdk/agent` for headless Agent definitions,
+execution, delegation, decisions, observation, and outputs. `/client` remains
+the broader React-free Station API entry. All reuse canonical contracts and
+client owners. The Agent entry adds no runtime, automatic retry policy, or
+global selected Station.
+
+See [Agent development](../../docs/guides/agent-development.md), the
+[headless example](../../examples/headless-agent/README.md), and
+[ADR 0021](../../docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md).
+The Agent entry is present in this source checkout; published versions must
+include it in their export map. The package still has its existing React peers.
+
 ## Installation
 
 ```bash
@@ -59,6 +74,26 @@ Import `@kontourai/station-sdk/workspace-pane` for the opt-in portable Pane
 contract. The [Workspace Pane authoring guide](../../docs/guides/workspace-pane-authoring.md)
 covers descriptor identity, capabilities, placement, actions, alternatives,
 provenance/version/lifecycle, and `npm run workspace-pane:conformance`.
+
+## Visual skill experiences
+
+The React-free `/client` entry reads installed experience inventory and immutable
+Session history, and carries an explicit source-bound start through canonical
+foreground chat. The canonical inventory and Session reader is a static import
+of that entry and validates each successful feature response before exposing
+data. The SDK root supplies the corresponding
+React Query hooks.
+Inventory without `executionContract: '1.0'` remains a preview; source identity
+and invocation preconditions are revalidated before execution.
+
+The opt-in `/workspace-pane` helper `createSkillExperiencePaneHost` connects an
+isolated, self-rendering declared pane to its host-bound read, question answer
+and stage preparation methods. It receives no credential or arbitrary HTTP
+bridge. See the [public contract](../../docs/reference/skill-experiences.md),
+[SDK reference](../../docs/reference/sdk.md#visual-skill-experiences) and
+[independent rich example](../../examples/rich-skill-experience/README.md).
+Use a published release containing these exports; local source and controlled
+tests do not establish registry publication or native rendering.
 
 ## Source distribution and host requirements
 
@@ -593,3 +628,9 @@ install Station's theme.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+
+The source-only additive `engine-accounts` entry provides authority-partitioned
+account, quota, sign-in and engine-activity hooks. See the
+[engine account query contract](../../docs/reference/sdk.md#engine-account-queries)
+and use a package release that contains these exports.

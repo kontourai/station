@@ -257,7 +257,13 @@ export function renderLearningDocument(
       createElement(
         'span',
         { className: 'capture-revision' },
-        `Captured at ${capture.capturedRevision.slice(0, 12)}; reviewed at ${capture.reviewedRevision.slice(0, 12)}.`,
+        capture.historyChanges !== undefined
+          ? `Captured at ${capture.capturedRevision.slice(0, 12)}; source reviews are recorded in append-only notes.${capture.historyUnavailable ? ` ${capture.historyUnavailable}` : ` Review history since ${capture.reviewBaseline?.slice(0, 12) ?? 'the ledger baseline'}.`}`
+          : `Captured at ${capture.capturedRevision.slice(0, 12)}; sources reviewed at ${[
+              ...new Set(
+                capture.sources.map((source) => source.revision.slice(0, 12)),
+              ),
+            ].join(', ')}.`,
       ),
       capture.changed.length
         ? createElement(

@@ -1,0 +1,7 @@
+{
+  "revision": "397b4cb16ee64b1693eddff490ac75947d250436",
+
+  "notes": [
+    {"path":"docs/guides/workspace-packages.md","note":"Upstream record taken on merge; the registry change is the Files pane's write marker. No prose change.","inputs":["package.json","pnpm-workspace.yaml","src-server/runtime/routes/runtime-routes.ts","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}

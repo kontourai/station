@@ -1,0 +1,7 @@
+{
+  "revision": "08fd77f74f71bf494dbf0ae3171da6e9622ff015",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked: the composer text covers conversation references and dragging; the change affects only a short-dock send-failure line and adds no user-facing step. No prose change needed.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

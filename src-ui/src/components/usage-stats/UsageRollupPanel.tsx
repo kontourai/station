@@ -8,7 +8,7 @@ import {
   useUsageRollupQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
-import { SkeletonBlock } from '../state';
+import { Empty, SkeletonBlock } from '../state';
 import './UsageRollupPanel.css';
 
 type Days = 7 | 14 | 30;
@@ -48,13 +48,13 @@ export function UsageRollupPanel() {
   const [cursor, setCursor] = useState<string | undefined>();
   const [showCoverage, setShowCoverage] = useState(false);
   const [showReceipts, setShowReceipts] = useState(false);
-  const { data, isLoading, error } = useUsageRollupQuery({
+  const { data, isLoading, error, refetch } = useUsageRollupQuery({
     days,
     groupBy,
     cursor,
     pageSize: 25,
   });
-  const coverage = data?.coverage ?? [];
+  const coverage = error ? [] : (data?.coverage ?? []);
   const hasGap =
     coverage.length === 0 || coverage.some((item) => item.state !== 'complete');
   const neverReported = !isLoading && !error && coverage.length === 0;
@@ -78,11 +78,15 @@ export function UsageRollupPanel() {
           }
           onClick={() => setShowCoverage(true)}
         >
-          {neverReported
-            ? 'Usage never reported'
-            : hasGap
-              ? 'Coverage incomplete'
-              : 'Coverage complete'}
+          {error
+            ? 'Coverage unavailable'
+            : isLoading
+              ? 'Loading coverage'
+              : neverReported
+                ? 'Usage never reported'
+                : hasGap
+                  ? 'Coverage incomplete'
+                  : 'Coverage complete'}
         </button>
       </div>
       <div className="usage-rollup__controls">
@@ -123,7 +127,12 @@ export function UsageRollupPanel() {
       {isLoading ? (
         <SkeletonBlock count={3} label="Loading usage receipts" />
       ) : error ? (
-        <p role="alert">Usage rollup could not be loaded.</p>
+        <div role="alert">
+          Usage rollup could not be loaded.{' '}
+          <button type="button" onClick={() => void refetch()}>
+            Retry
+          </button>
+        </div>
       ) : (
         <>
           <div className="usage-rollup__table-wrap">
@@ -143,7 +152,9 @@ export function UsageRollupPanel() {
                 {(data?.rows ?? []).map((row: UsageRollupRow) => (
                   <tr key={row.key}>
                     <th scope="row">
-                      {row.model ?? row.provider ?? row.stationId ?? row.key}
+                      {row.key.startsWith(`${groupBy}:`)
+                        ? row.key.slice(groupBy.length + 1)
+                        : row.key}
                     </th>
                     <td>{tokens(row.inputTokens)}</td>
                     <td>{tokens(row.outputTokens)}</td>
@@ -198,9 +209,11 @@ export function UsageRollupPanel() {
               Gaps are not zero usage. Counts and freshness describe only what
               Station observed in each provider window.
             </p>
-            {coverage.length === 0 && (
-              <p>No Station or provider reported usage for this window.</p>
+            {!isLoading && !error && coverage.length === 0 && (
+              <Empty label="Usage not reported for this window" />
             )}
+            {error && <p>Coverage could not be refreshed.</p>}
+            {isLoading && <SkeletonBlock count={1} label="Loading coverage" />}
             {coverage.map((item: UsageCoverage) => (
               <div key={item.stationId}>
                 <p>
@@ -236,7 +249,7 @@ export function UsageRollupPanel() {
           </div>
         </div>
       )}
-      {showReceipts && (
+      {showReceipts && !error && (
         <div
           className="usage-rollup__drawer"
           role="dialog"

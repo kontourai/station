@@ -1,0 +1,41 @@
+{
+  "path": "docs/reference/settings-deep-links.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed route parsing, registry delivery, platform/mount limits, focus restoration and bounded streamed-answer buffering.",
+
+  "limits": "Browser/source and focused test evidence; no physical native-device result. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/reference/settings-deep-links.md\",\"ours\":{\"digest\":\"504697512af473efd0be4ba655151406b11450e87e3bbe497a7ac3d03ec88434\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"},\"theirs\":{\"digest\":\"504697512af473efd0be4ba655151406b11450e87e3bbe497a7ac3d03ec88434\",\"revision\":\"d6a3158c22a62d9530592c6366a1624790ee9401\"},\"active\":{\"digest\":\"504697512af473efd0be4ba655151406b11450e87e3bbe497a7ac3d03ec88434\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"}},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"},\"theirs\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"}},{\"path\":\"src-server/generated/settings-registry.json\",\"ours\":{\"path\":\"src-server/generated/settings-registry.json\",\"digest\":\"7b9514e37d3049f9d8acfeaecc66b3a0a84752667ed62749e43ad8ca1832c70e\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"},\"theirs\":{\"path\":\"src-server/generated/settings-registry.json\",\"digest\":\"7b9514e37d3049f9d8acfeaecc66b3a0a84752667ed62749e43ad8ca1832c70e\",\"revision\":\"d6a3158c22a62d9530592c6366a1624790ee9401\"},\"active\":{\"path\":\"src-server/generated/settings-registry.json\",\"digest\":\"7b9514e37d3049f9d8acfeaecc66b3a0a84752667ed62749e43ad8ca1832c70e\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"}},{\"path\":\"src-ui/src/views/SettingsView.tsx\",\"ours\":{\"path\":\"src-ui/src/views/SettingsView.tsx\",\"digest\":\"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"},\"theirs\":{\"path\":\"src-ui/src/views/SettingsView.tsx\",\"digest\":\"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef\",\"revision\":\"00bada2726c33a49f7edc8803d08831b46b6deb3\"},\"active\":{\"path\":\"src-ui/src/views/SettingsView.tsx\",\"digest\":\"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"}}]",
+
+  "sources": [
+    "docs/architecture/module-map.md",
+
+    "scripts/gen-settings-registry.ts",
+
+    "src-server/generated/settings-registry.json",
+
+    "src-ui/src/views/SettingsView.tsx",
+
+    "src-ui/src/views/settings/settings-deep-link.ts"
+  ],
+
+  "checks": [
+    "Reviewed actual 5-second mount deadline and 1.4-second highlight; corrected character/event/thread/global bounds and transient-versus-terminal flush behavior. Focused settings checks passed.",
+
+    "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map.md changes are limited to the CollaborativeEditorPane to ProjectTaskRoom replacement and the PluginForegroundRuns removal. No settings or deep-link section changed, and the reference does not link the removed anchors. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

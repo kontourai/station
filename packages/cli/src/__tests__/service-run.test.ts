@@ -1,13 +1,31 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { once } from 'node:events';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  claimHostOwner,
   readInstanceRegistry,
+  removeInstance,
   upsertInstance,
+  writeInstanceRegistry,
 } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
-import type { CollectedChildStatus } from '../commands/lifecycle.js';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import type {
+  CollectedChildStatus,
+  InstanceStateRecord,
+  StartOptions,
+} from '../commands/lifecycle.js';
 import { superviseService } from '../commands/service-run.js';
 
 // The supervisor base was the fixed path `/tmp/station-service`. The
@@ -124,6 +142,8 @@ function makeSupervisor(options: {
     // Hermetic: the real publisher writes to `lifecycle.baseDir`, a shared
     // /tmp path here. Liveness publication has its own temp-home tests.
     publishServiceLiveness,
+    claimServiceHost: () => ({ won: true, published: false }),
+    serviceHostIsOwned: () => true,
     // Hermetic by default: without this stub the production fallback runs
     // REAL lsof against the harness's fabricated ports, so whatever happens
     // to be listening on the host leaks into these tests (caught by the
@@ -193,9 +213,12 @@ describe('service supervisor', () => {
       exit,
       onSignal: (signal, listener) => signals.set(signal, listener),
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
+      serviceHostIsOwned: () => true,
       start,
       stop,
     });
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
     signals.get('SIGTERM')?.();
     await Promise.resolve();
     expect(stop).not.toHaveBeenCalled();
@@ -206,6 +229,7 @@ describe('service supervisor', () => {
     expect(stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(exit).toHaveBeenCalledWith(0);
   });
@@ -226,9 +250,12 @@ describe('service supervisor', () => {
       exit,
       onSignal: (signal, listener) => signals.set(signal, listener),
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
+      serviceHostIsOwned: () => true,
       start,
       stop,
     });
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
     signals.get('SIGTERM')?.();
     signals.get('SIGTERM')?.();
     await Promise.resolve();
@@ -261,6 +288,8 @@ describe('service supervisor', () => {
       onSignal: (signal, listener) => signals.set(signal, listener),
       processIsAlive: () => true,
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
+      serviceHostIsOwned: () => true,
       setTimer,
       start: vi.fn().mockResolvedValue(undefined),
       stop,
@@ -270,6 +299,7 @@ describe('service supervisor', () => {
       expect(stop).toHaveBeenCalledWith({
         instanceName: 'service-test',
         stateHome: SERVICE_BASE,
+        generation: null,
       }),
     );
 
@@ -287,6 +317,8 @@ describe('service supervisor', () => {
 
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
+      serviceHostIsOwned: () => true,
       collect,
       exit,
       onSignal: (signal, listener) => signals.set(signal, listener),
@@ -319,6 +351,8 @@ describe('service supervisor', () => {
 
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
+      serviceHostIsOwned: () => true,
       collect,
       exit,
       processIsAlive: () => true,
@@ -347,6 +381,8 @@ describe('service supervisor', () => {
 
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
+      serviceHostIsOwned: () => true,
       collect,
       exit,
       onSignal: (signal, listener) => signals.set(signal, listener),
@@ -373,6 +409,7 @@ describe('service supervisor', () => {
     expect(stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(exit).toHaveBeenCalledWith(0);
   });
@@ -389,6 +426,9 @@ describe('service supervisor', () => {
     await superviseService(
       { ...lifecycle, allowedOrigins: ['https://kontour.example.ts.net'] },
       {
+        publishServiceLiveness: vi.fn(),
+        claimServiceHost: () => ({ won: true, published: false }),
+        serviceHostIsOwned: () => true,
         collect,
         exit,
         onSignal: (signal, listener) => signals.set(signal, listener),
@@ -418,6 +458,8 @@ describe('service supervisor', () => {
 
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
+      serviceHostIsOwned: () => true,
       exit,
       onSignal: vi.fn(),
       setTimer,
@@ -429,6 +471,7 @@ describe('service supervisor', () => {
     expect(stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(exit).toHaveBeenCalledWith(1);
   });
@@ -437,6 +480,8 @@ describe('service supervisor', () => {
     const exit = vi.fn();
     await superviseService(lifecycle, {
       publishServiceLiveness: vi.fn(),
+      claimServiceHost: () => ({ won: true, published: false }),
+      serviceHostIsOwned: () => true,
       collect: vi.fn().mockResolvedValue({
         found: false,
         healthy: false,
@@ -546,6 +591,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
@@ -574,6 +620,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
   });
@@ -596,6 +643,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
@@ -626,6 +674,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -707,6 +756,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
@@ -750,6 +800,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -781,6 +832,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -816,6 +868,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
   });
 
@@ -888,6 +941,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
   });
 
@@ -908,6 +962,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
@@ -969,6 +1024,7 @@ describe('service supervisor', () => {
  * ever wrote a live service record.
  */
 describe('supervised service liveness (station#3064)', () => {
+  const makeTempDir = trackTempDirs();
   const serviceLifecycle = (baseDir: string) => ({
     baseDir,
     homeSource: '--base' as const,
@@ -989,21 +1045,31 @@ describe('supervised service liveness (station#3064)', () => {
       {
         port: 3242,
         type: 'service',
+        status: 'installing',
+        pid: process.ppid,
+        birth: lookupProcessBirthFingerprint(process.ppid)!,
         env: { ALLOWED_ORIGINS: 'https://paired.example' },
       },
       home,
     );
 
+    let pidAtStart: number | undefined;
     await superviseService(serviceLifecycle(home), {
       collect: readyCollect() as never,
       exit: vi.fn(),
       onSignal: vi.fn(),
       processIsAlive: () => true,
       setTimer: vi.fn(() => 1 as never),
-      start: vi.fn().mockResolvedValue(undefined),
+      start: vi.fn(async () => {
+        pidAtStart = readInstanceRegistry(home).instances['service-test'].pid;
+      }),
       stop: vi.fn(),
     });
 
+    expect(
+      pidAtStart,
+      'supervisor must take installer reservation before starting Station',
+    ).toBe(process.pid);
     const entry = readInstanceRegistry(home).instances['service-test'];
     // The signal Desktop's decide_home_ownership selects on: service-typed,
     // with a live pid. Before this change nothing produced one, so the
@@ -1139,26 +1205,417 @@ describe('supervised service liveness (station#3064)', () => {
     expect(entry.status).not.toBe('stopped');
   });
 
-  test('a run with no installed service entry mints nothing', async () => {
-    // Own-type-only by design: `service run` without an install must not
-    // create the record `service install` owns (its absence of env would
-    // otherwise suppress the manifest origin-migration bridge). Disclosed
-    // limit: such a run stays invisible home-wide.
-    const home = mkdtempSync(join(tmpdir(), 'station-svc-live-'));
+  test('waits with capped polling and logs only ownership state changes (#2961)', async () => {
+    const home = makeTempDir('station-svc-live-');
+    upsertInstance(
+      'desktop-sidecar-7',
+      {
+        port: 38141,
+        type: 'sidecar',
+        status: 'starting',
+        pid: process.ppid,
+        birth: lookupProcessBirthFingerprint(process.ppid)!,
+      },
+      home,
+    );
+    const start = vi.fn().mockResolvedValue(undefined);
+    const stop = vi.fn();
+    const exit = vi.fn();
+    const signals = new Map<string, () => void>();
+    const ticks: Array<() => void> = [];
+    const delays: number[] = [];
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const supervision = superviseService(serviceLifecycle(home), {
+      exit,
+      start,
+      stop,
+      onSignal: (signal, listener) => signals.set(signal, listener),
+      setTimer: (callback, delay) => {
+        ticks.push(callback);
+        delays.push(delay);
+        return 1 as never;
+      },
+    });
+    for (let i = 0; i < 6; i++) {
+      await vi.waitFor(() => expect(ticks.length).toBe(1));
+      ticks.shift()!();
+    }
+    await vi.waitFor(() => expect(delays).toHaveLength(7));
+    expect(delays).toEqual([5000, 10000, 20000, 30000, 30000, 30000, 30000]);
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(start).not.toHaveBeenCalled();
+    expect(exit).not.toHaveBeenCalled();
+    signals.get('SIGTERM')!();
+    await supervision;
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+    expect(
+      stop,
+      'waiting must never stop the foreign owner',
+    ).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
 
+  test('fresh-home supervisor fences a concurrent sidecar before Station starts (#2961)', async () => {
+    const home = makeTempDir('station-svc-live-');
+    let contender: ReturnType<typeof claimHostOwner> | undefined;
+    const start = vi.fn(async () => {
+      contender = claimHostOwner('concurrent-desktop', {
+        home,
+        type: 'sidecar',
+        ownerPids: [process.ppid],
+        publish: () => null,
+      });
+    });
+    const exit = vi.fn();
     await superviseService(serviceLifecycle(home), {
-      collect: readyCollect() as never,
-      exit: vi.fn(),
+      collect: readyCollect(),
+      exit,
       onSignal: vi.fn(),
+      start,
+      stop: vi.fn(),
+      needsBuildForInstance: () => false,
       processIsAlive: () => true,
       setTimer: vi.fn(() => 1 as never),
-      start: vi.fn().mockResolvedValue(undefined),
-      stop: vi.fn(),
     });
-
     expect(
-      readInstanceRegistry(home).instances['service-test'],
-    ).toBeUndefined();
+      contender,
+      'a concurrent sidecar must be refused before Station starts',
+    ).toMatchObject({
+      won: false,
+      reason: 'host-owned',
+      owners: [{ id: 'service-test', type: 'service', pid: process.pid }],
+    });
+    expect(start).toHaveBeenCalledOnce();
+    expect(exit).not.toHaveBeenCalled();
+    expect(readInstanceRegistry(home).instances['service-test']).toMatchObject({
+      type: 'service',
+      pid: process.pid,
+      birth: lookupProcessBirthFingerprint(process.pid),
+      status: 'running',
+    });
+  });
+
+  test('readiness publication refusal stops Station then waits and reclaims (#2961)', async () => {
+    const home = makeTempDir('station-svc-live-');
+    upsertInstance('service-test', { port: 3242, type: 'service' }, home);
+    let host: ChildProcess | undefined;
+    const start = vi.fn(async () => {
+      host = spawn(
+        process.execPath,
+        [
+          '-e',
+          "require('node:http').createServer((req,res) => res.end('host')).listen(0,'127.0.0.1', function() {console.log(this.address().port)});",
+        ],
+        { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      await once(host.stdout!, 'data');
+    });
+    const stop = vi.fn(async () => {
+      const exited = once(host!, 'exit');
+      host!.kill();
+      await exited;
+    });
+    const exit = vi.fn();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const collect = readyCollect().mockImplementation(async () => {
+      // A conflicting owner appears after startup but before readiness publication.
+      if (start.mock.calls.length === 1) {
+        upsertInstance(
+          'other-desktop',
+          { port: 38141, type: 'sidecar', pid: process.ppid },
+          home,
+        );
+      }
+      return instanceStatus(okChild(host!.pid!), okChild(host!.pid!));
+    });
+    const ticks: Array<() => void> = [];
+    try {
+      const supervision = superviseService(serviceLifecycle(home), {
+        collect,
+        exit,
+        onSignal: vi.fn(),
+        start,
+        stop,
+        needsBuildForInstance: () => false,
+        processIsAlive: () => true,
+        setTimer: (callback) => {
+          ticks.push(callback);
+          return 1 as never;
+        },
+      });
+      await vi.waitFor(() => expect(ticks).toHaveLength(1));
+      expect(stop).toHaveBeenCalledWith({
+        instanceName: 'service-test',
+        stateHome: home,
+        generation: null,
+      });
+      expect(exit).not.toHaveBeenCalled();
+      expect(errors).toHaveBeenCalledWith(
+        expect.stringContaining('lost its home ownership fence'),
+      );
+      expect(
+        readInstanceRegistry(home).instances['service-test'].pid,
+      ).toBeUndefined();
+      expect(
+        host?.exitCode !== null || host?.signalCode !== null,
+        'refused publication must reap the running host',
+      ).toBe(true);
+      ticks.shift()!();
+      await vi.waitFor(() => expect(ticks).toHaveLength(1));
+      expect(start).toHaveBeenCalledTimes(1);
+      upsertInstance(
+        'other-desktop',
+        { port: 38141, type: 'sidecar', status: 'stopped' },
+        home,
+      );
+      ticks.shift()!();
+      await supervision;
+      expect(start).toHaveBeenCalledTimes(2);
+      expect(exit).not.toHaveBeenCalled();
+      expect(readInstanceRegistry(home).instances['service-test'].status).toBe(
+        'running',
+      );
+    } finally {
+      errors.mockRestore();
+      if (host && host.exitCode === null && host.signalCode === null) {
+        const exited = once(host, 'exit');
+        host.kill();
+        await exited;
+      }
+    }
+  });
+
+  test.each([
+    'replacement',
+    'installing',
+    'missing',
+    'birth',
+    'id',
+    'type',
+  ] as const)(
+    'after readiness, %s ownership loss reaps Station, waits, and reclaims (#2961)',
+    async (loss) => {
+      const home = makeTempDir('station-svc-loss-');
+      const ticks: Array<() => void> = [];
+      const delays: number[] = [];
+      const signals = new Map<string, () => void>();
+      const exit = vi.fn();
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let host: ChildProcess | undefined;
+      let replacement: ChildProcess | undefined;
+      const reap = async (child: ChildProcess | undefined) => {
+        if (!child || child.exitCode !== null || child.signalCode !== null)
+          return;
+        const exited = once(child, 'exit');
+        child.kill();
+        await exited;
+      };
+      const start = vi.fn(async () => {
+        host = spawn(
+          process.execPath,
+          [
+            '-e',
+            "require('node:http').createServer((req,res) => res.end('host')).listen(0,'127.0.0.1', function() {console.log(this.address().port)});",
+          ],
+          { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        await once(host.stdout!, 'data');
+      });
+      const stop = vi.fn(async () => {
+        await reap(host);
+      });
+      try {
+        await superviseService(serviceLifecycle(home), {
+          collect: vi.fn(async () =>
+            instanceStatus(
+              okChild(host!.pid!),
+              okChild(host!.pid!),
+              `boot-${start.mock.calls.length}`,
+            ),
+          ),
+          exit,
+          onSignal: (signal, listener) => signals.set(signal, listener),
+          start,
+          stop,
+          needsBuildForInstance: () => false,
+          processIsAlive: () => true,
+          setTimer: (callback, delay) => {
+            ticks.push(callback);
+            delays.push(delay);
+            return 1 as never;
+          },
+        });
+        const retiredHost = host!;
+        expect(
+          readInstanceRegistry(home).instances['service-test'].status,
+        ).toBe('running');
+        replacement = spawn(
+          process.execPath,
+          ['-e', "console.log('ready'); setInterval(() => {}, 1000)"],
+          { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        await once(replacement.stdout!, 'data');
+        const registry = readInstanceRegistry(home);
+        const ownEntry = registry.instances['service-test'];
+        delete registry.instances['service-test'];
+        const sameIdReplacement =
+          loss === 'replacement' || loss === 'installing';
+        if (sameIdReplacement)
+          registry.instances['service-test'] = {
+            ...ownEntry,
+            pid: replacement.pid!,
+            birth: lookupProcessBirthFingerprint(replacement.pid!)!,
+            status: loss === 'installing' ? 'installing' : 'running',
+          };
+        if (loss === 'birth')
+          registry.instances['service-test'] = {
+            ...ownEntry,
+            birth: 'different-generation',
+          };
+        if (loss === 'id') registry.instances['renamed-owner'] = ownEntry;
+        if (loss === 'type')
+          registry.instances['service-test'] = {
+            ...ownEntry,
+            type: 'worktree',
+          };
+        // All non-replacement cases retain a different live home owner so the
+        // assertions distinguish waiting from an immediate successful restart.
+        if (!sameIdReplacement)
+          registry.instances.replacement = {
+            port: 38141,
+            type: 'sidecar',
+            pid: replacement.pid!,
+            birth: lookupProcessBirthFingerprint(replacement.pid!)!,
+            status: 'running',
+          };
+        writeInstanceRegistry(registry, home);
+        const replacementEntry =
+          readInstanceRegistry(home).instances[
+            sameIdReplacement ? 'service-test' : 'replacement'
+          ];
+        ticks.shift()!();
+        await vi.waitFor(() => expect(stop).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(ticks).toHaveLength(1));
+        expect(
+          retiredHost.exitCode !== null || retiredHost.signalCode !== null,
+          'ownership loss must reap the running host',
+        ).toBe(true);
+        expect(exit).not.toHaveBeenCalled();
+        expect(start).toHaveBeenCalledOnce();
+        if (loss === 'birth') {
+          expect(
+            readInstanceRegistry(home).instances['service-test'],
+          ).toMatchObject({
+            pid: process.pid,
+            birth: 'different-generation',
+            status: 'running',
+          });
+        }
+        expect(
+          readInstanceRegistry(home).instances[
+            sameIdReplacement ? 'service-test' : 'replacement'
+          ],
+        ).toEqual(replacementEntry);
+        for (let tick = 0; tick < 3; tick++) {
+          ticks.shift()!();
+          await vi.waitFor(() => expect(ticks).toHaveLength(1));
+        }
+        expect(start).toHaveBeenCalledOnce();
+        expect(stop).toHaveBeenCalledOnce();
+        expect(exit).not.toHaveBeenCalled();
+        expect(delays.slice(-3)).toEqual([5000, 10000, 20000]);
+        expect(
+          errors.mock.calls.filter(([message]) =>
+            String(message).includes('lost its home ownership fence'),
+          ),
+        ).toHaveLength(1);
+        await reap(replacement);
+        if (!sameIdReplacement) removeInstance('service-test', home);
+        if (loss === 'id') removeInstance('renamed-owner', home);
+        ticks.shift()!();
+        await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(ticks).toHaveLength(1));
+        expect(
+          readInstanceRegistry(home).instances['service-test'],
+        ).toMatchObject({ pid: process.pid, status: 'running' });
+        expect(exit).not.toHaveBeenCalled();
+        signals.get('SIGTERM')!();
+        await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+      } finally {
+        await reap(host);
+        await reap(replacement);
+        errors.mockRestore();
+      }
+    },
+  );
+
+  test('a transient registry read error after readiness keeps Station running (#2961)', async () => {
+    const home = makeTempDir('station-svc-read-');
+    const ticks: Array<() => void> = [];
+    const start = vi.fn().mockResolvedValue(undefined);
+    const stop = vi.fn();
+    const exit = vi.fn();
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await superviseService(serviceLifecycle(home), {
+        collect: readyCollect(),
+        start,
+        stop,
+        exit,
+        needsBuildForInstance: () => false,
+        onSignal: vi.fn(),
+        processIsAlive: () => true,
+        setTimer: (callback) => {
+          ticks.push(callback);
+          return 1 as never;
+        },
+      });
+      const path = join(home, 'instances.json');
+      const registryBytes = readFileSync(path);
+      writeFileSync(path, '{unreadable');
+      ticks.shift()!();
+      await vi.waitFor(() => expect(ticks).toHaveLength(1));
+      expect(warnings).toHaveBeenCalledWith(
+        expect.stringContaining('continuing until a successful read'),
+      );
+      expect(stop).not.toHaveBeenCalled();
+      expect(exit).not.toHaveBeenCalled();
+      writeFileSync(path, registryBytes);
+      ticks.shift()!();
+      await vi.waitFor(() => expect(ticks).toHaveLength(1));
+      expect(start).toHaveBeenCalledOnce();
+      expect(stop).not.toHaveBeenCalled();
+      expect(exit).not.toHaveBeenCalled();
+      expect(warnings).toHaveBeenCalledOnce();
+    } finally {
+      warnings.mockRestore();
+    }
+  });
+
+  test('refuses startup with a corrupt service registry (#2961)', async () => {
+    const home = makeTempDir('station-svc-live-');
+    writeFileSync(join(home, 'instances.json'), '{broken');
+    const start = vi.fn().mockResolvedValue(undefined);
+    const exit = vi.fn();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await superviseService(serviceLifecycle(home), {
+        collect: readyCollect() as never,
+        exit,
+        onSignal: vi.fn(),
+        processIsAlive: () => true,
+        setTimer: vi.fn(() => 1 as never),
+        start,
+        stop: vi.fn(),
+      });
+      expect(start).not.toHaveBeenCalled();
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(errors).toHaveBeenCalledWith(
+        expect.stringContaining('could not claim its home'),
+      );
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   test('never adopts a foreign-typed entry at the same id', async () => {
@@ -1169,18 +1626,237 @@ describe('supervised service liveness (station#3064)', () => {
       home,
     );
 
-    await superviseService(serviceLifecycle(home), {
+    const signals = new Map<string, () => void>();
+    const supervision = superviseService(serviceLifecycle(home), {
       collect: readyCollect() as never,
       exit: vi.fn(),
-      onSignal: vi.fn(),
+      onSignal: (signal, listener) => signals.set(signal, listener),
       processIsAlive: () => true,
       setTimer: vi.fn(() => 1 as never),
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn(),
     });
 
+    signals.get('SIGTERM')!();
+    await supervision;
     const entry = readInstanceRegistry(home).instances['service-test'];
     expect(entry.type).toBe('worktree');
     expect(entry.port).toBe(4000);
   });
+});
+
+describe('supervisor generation cleanup through real lifecycle stop (#2961)', () => {
+  const makeTempDir = trackTempDirs();
+  test.each(['loss tick', 'readiness refusal', 'SIGTERM'] as const)(
+    '%s reaps only its spawned child and preserves the replacement records',
+    async (trigger) => {
+      const home = makeTempDir('station-svc-generation-');
+      ensureStationHomeSchemaSync(home);
+      const archive = makeTempDir('station-svc-archive-');
+      writeFileSync(
+        join(archive, '.station-prebuilt-archive'),
+        'station-prebuilt-archive-v1\n',
+      );
+      writeFileSync(
+        join(archive, '.station-release.json'),
+        JSON.stringify({
+          schemaVersion: 2,
+          sha: 'a'.repeat(40),
+          ref: 'v0.0.0',
+          createdAt: '2026-09-26T00:00:00.000Z',
+          channel: 'stable',
+          releaseChannel: 'stable',
+          prerelease: false,
+        }),
+      );
+      vi.resetModules();
+      vi.spyOn(process, 'cwd').mockReturnValue(archive);
+      vi.stubEnv('STATION_ROOT', '');
+      vi.stubEnv('STATION_HOME', home);
+      const { superviseService: supervise } = await import(
+        '../commands/service-run.js'
+      );
+      const { inspectProcessFingerprint } = await import(
+        '../commands/platform.js'
+      );
+      const { getInstanceStatePath } = await import('../commands/helpers.js');
+      const statePath = getInstanceStatePath('service-test', home);
+      mkdirSync(join(statePath, '..'), { recursive: true, mode: 0o700 });
+      const children: ChildProcess[] = [];
+      const spawnChild = async () => {
+        const child = spawn(
+          process.execPath,
+          ['-e', "console.log('ready'); setInterval(() => {}, 1000)"],
+          { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        children.push(child);
+        await once(child.stdout!, 'data');
+        return child;
+      };
+      const publishGeneration = (
+        child: ChildProcess,
+        bootId: string,
+      ): InstanceStateRecord => {
+        const fingerprint = inspectProcessFingerprint(child.pid!);
+        expect(
+          fingerprint,
+          'real child identity must be readable',
+        ).not.toBeNull();
+        const record: InstanceStateRecord = {
+          instanceId: 'service-test',
+          bootId,
+          serverPid: child.pid!,
+          uiPid: child.pid!,
+          serverFingerprint: fingerprint!,
+          uiFingerprint: fingerprint!,
+          serverPort: 45211,
+          uiPort: 45215,
+          host: '127.0.0.1',
+          baseDir: home,
+          homeSource: '--base',
+          cwd: archive,
+          build: null,
+          startedAt: new Date().toISOString(),
+          statePath,
+          lifecycleJournal: join(home, `${bootId}.jsonl`),
+        };
+        const content = JSON.stringify(record);
+        writeFileSync(statePath, content, { mode: 0o600 });
+        const identity = statSync(statePath);
+        return {
+          ...record,
+          stateContent: content,
+          stateIdentity: { dev: identity.dev, ino: identity.ino },
+        };
+      };
+      const ticks: Array<() => void> = [];
+      const signals = new Map<string, () => void>();
+      const exit = vi.fn();
+      let oldChild!: ChildProcess;
+      let replacement!: ChildProcess;
+      let replacementContent!: string;
+      let replacementEntry!: ReturnType<
+        typeof readInstanceRegistry
+      >['instances'][string];
+      const replace = async () => {
+        replacement = await spawnChild();
+        publishGeneration(replacement, 'replacement-boot');
+        upsertInstance(
+          'service-test',
+          {
+            port: 45211,
+            type: 'service',
+            status: 'running',
+            pid: replacement.pid!,
+            birth: lookupProcessBirthFingerprint(replacement.pid!)!,
+          },
+          home,
+        );
+        replacementContent = readFileSync(statePath, 'utf8');
+        replacementEntry = readInstanceRegistry(home).instances['service-test'];
+      };
+      try {
+        const start = vi.fn(async (options: StartOptions = {}) => {
+          oldChild = await spawnChild();
+          options.onSpawned!(publishGeneration(oldChild, 'old-boot'));
+        });
+        const collect = vi.fn(async () => {
+          if (trigger === 'readiness refusal') {
+            await replace();
+            upsertInstance(
+              'replacement-desktop',
+              {
+                port: 45221,
+                type: 'sidecar',
+                pid: replacement.pid!,
+                birth: lookupProcessBirthFingerprint(replacement.pid!)!,
+                status: 'running',
+              },
+              home,
+            );
+          }
+          return instanceStatus(
+            okChild(oldChild.pid!),
+            okChild(oldChild.pid!),
+            'old-boot',
+          );
+        });
+        const supervision = supervise(
+          { ...lifecycle, baseDir: home, serverPort: 45211, uiPort: 45215 },
+          {
+            start,
+            collect,
+            exit,
+            needsBuildForInstance: () => false,
+            desktopCompanion: { check: vi.fn() },
+            launcherLink: null,
+            onSignal: (signal, listener) => signals.set(signal, listener),
+            setTimer: (callback) => {
+              ticks.push(callback);
+              return 1 as never;
+            },
+          },
+        );
+        if (trigger === 'readiness refusal') {
+          await vi.waitFor(() => expect(ticks).toHaveLength(1), {
+            timeout: 20000,
+          });
+        } else {
+          await supervision;
+          await replace();
+          if (trigger === 'loss tick') ticks.shift()!();
+          else signals.get('SIGTERM')!();
+        }
+        await vi.waitFor(
+          () => {
+            if (trigger === 'SIGTERM') expect(exit).toHaveBeenCalledWith(0);
+            else expect(ticks).toHaveLength(1);
+          },
+          { timeout: 20000 },
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(
+          replacement.exitCode,
+          'replacement child must remain alive',
+        ).toBeNull();
+        expect(
+          replacement.signalCode,
+          'replacement child must not be signalled',
+        ).toBeNull();
+        await vi.waitFor(
+          () =>
+            expect(
+              oldChild.exitCode !== null || oldChild.signalCode !== null,
+              'old child must be dead after generation cleanup',
+            ).toBe(true),
+          { timeout: 20000 },
+        );
+        expect(
+          readFileSync(statePath, 'utf8'),
+          'replacement lifecycle record must remain intact',
+        ).toBe(replacementContent);
+        expect(readInstanceRegistry(home).instances['service-test']).toEqual(
+          replacementEntry,
+        );
+        if (trigger !== 'SIGTERM') {
+          signals.get('SIGTERM')!();
+          await supervision;
+        }
+        await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+      } finally {
+        for (const child of children) {
+          if (child.exitCode === null && child.signalCode === null) {
+            const exited = once(child, 'exit');
+            child.kill();
+            await exited;
+          }
+        }
+        vi.restoreAllMocks();
+        vi.unstubAllEnvs();
+        vi.resetModules();
+      }
+    },
+    30000,
+  );
 });

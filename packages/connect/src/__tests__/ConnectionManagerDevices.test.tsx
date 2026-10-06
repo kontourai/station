@@ -30,6 +30,7 @@ function setup({
   originIsStation,
   hasLocalStation,
   initialPanel,
+  includeOtherStation = false,
 }: {
   allowManualCredentials?: boolean;
   hostAppName?: string;
@@ -38,9 +39,13 @@ function setup({
   originIsStation?: boolean;
   hasLocalStation?: boolean;
   initialPanel?: 'list' | 'pair-host';
+  includeOtherStation?: boolean;
 } = {}) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
-  store.add('Remote Station', 'https://station.example.test');
+  const current = store.add('Remote Station', 'https://station.example.test');
+  if (includeOtherStation)
+    store.add('Other Station', 'https://other.station.example.test');
+  store.setActive(current.id);
   render(
     <ConnectionsProvider store={store}>
       <ConnectionManagerModalContent
@@ -56,6 +61,7 @@ function setup({
       />
     </ConnectionsProvider>,
   );
+  return store;
 }
 
 afterEach(() => {
@@ -175,7 +181,7 @@ describe('Connection Manager paired devices', () => {
 
     expect(
       await screen.findByText(
-        /Station Desktop manages the operator credential for device changes/,
+        /Station Desktop can list devices but does not hold the operator credential/,
       ),
     ).toBeTruthy();
     expect(
@@ -187,13 +193,33 @@ describe('Connection Manager paired devices', () => {
   it('hides host-only Station management on a client-only device', () => {
     // The phone shape: the origin is not a Station and the device has no
     // Station of its own (station#2205).
-    setup({ originIsStation: false, hasLocalStation: false });
+    const store = setup({
+      originIsStation: false,
+      hasLocalStation: false,
+      includeOtherStation: true,
+    });
+    const currentId = store.getActive()?.id;
+    expect(currentId).toBeDefined();
 
     expect(
       screen.queryByText('Connect another device to this Station'),
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Paired devices' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Add a Station address' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View details for Other Station' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Switch to Other Station' }),
+    ).toBeTruthy();
+    expect(store.getActive()?.id).toBe(currentId);
+    expect(screen.queryByRole('button', { name: 'Paired devices' })).toBeNull();
+    expect(
+      screen.queryByText('Connect another device to this Station'),
+    ).toBeNull();
   });
 
   it('keeps host Station management on a native desktop that supervises a local Station', () => {

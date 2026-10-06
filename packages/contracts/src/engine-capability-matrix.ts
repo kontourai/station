@@ -466,6 +466,15 @@ export interface ComposerImageSupport {
   attachable: boolean;
   /** Present exactly when `attachable` is false; safe to show a user. */
   refusal?: string;
+  /**
+   * Present only when `attachable` is true but nothing has CONFIRMED that the
+   * image will be read: the connected engine has not reported its answer yet,
+   * or it accepts images engine-wide while the selected model's own support
+   * is unknown (an engine may then drop the image before the model sees it).
+   * Safe to show a user at attach time; it states what is unknown, never a
+   * guess in either direction.
+   */
+  caveat?: string;
 }
 
 export interface ComposerImageSupportInputs {
@@ -511,6 +520,13 @@ export interface ComposerImageSupportInputs {
   modelSupport?: ModelImageSupport;
   /** The selected model, named in a model-level refusal. */
   modelLabel?: string;
+  /**
+   * The connected engine routes to models from more than one provider, so an
+   * engine-wide image "yes" says nothing about the selected model (OpenCode
+   * swaps an image for an error text when its model lacks image input). Only
+   * then does an unknown per-model answer earn an attach-time caveat.
+   */
+  modelSupportVaries?: boolean;
 }
 
 /**
@@ -562,6 +578,28 @@ export function resolveComposerImageSupport(
         ? `${inputs.modelLabel} cannot see images. Pick a model that accepts image input.`
         : 'This model cannot see images. Pick a model that accepts image input.',
     };
+  }
+  // An observation-backed engine is attachable before it has been observed
+  // (see `observedImagePrompt`), and a live "yes" is the ENGINE's answer, not
+  // the selected model's. Both are unknowns the user should see at attach
+  // time rather than discover after sending.
+  if (
+    matrix.imageInput.state === 'session' &&
+    matrix.imageInput.basis === 'runtime_observation'
+  ) {
+    const engine = inputs.connectionLabel ?? 'This engine';
+    if (inputs.observedImagePrompt === undefined) {
+      return {
+        attachable: true,
+        caveat: `${engine} has not reported whether it accepts images yet. Station checks when you send.`,
+      };
+    }
+    if (inputs.modelSupportVaries && inputs.modelSupport !== 'yes') {
+      return {
+        attachable: true,
+        caveat: `${engine} accepts images, but Station can't confirm ${inputs.modelLabel ?? 'the selected model'} can read them.`,
+      };
+    }
   }
   return { attachable: true };
 }

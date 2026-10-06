@@ -29,6 +29,7 @@ import {
 } from '../WorkspacePaneHostOpenContext';
 import { workspacePaneHostTabIdentity } from '../workspacePaneHostIdentity';
 import type { WorkspacePaneHostLockManager } from '../workspacePaneHostLease';
+import { workspacePaneHostScopeKey } from '../workspacePaneHostNavigation';
 import type { WorkspacePaneHostOpenOutcome } from '../workspacePaneHostOpenOutcome';
 import { WorkspacePaneHostRuntime } from '../workspacePaneHostRuntime';
 import {
@@ -2572,4 +2573,138 @@ test('a lease re-election that restores an unchanged document writes nothing', a
   });
 
   expect(writes).toEqual([]);
+});
+
+/**
+ * #928 coding stack: in the Coding layout the ABSENCE of `?pane=` is a page
+ * (the Chat page). A catalog refresh that revokes the host's selected pane
+ * must not navigate the reader off it; with a pane already named, the host
+ * keeps that name current exactly as the default mode does.
+ */
+test.each([
+  ['no pane named: the URL is left alone and no entry is pushed', false],
+  ['a pane named for this host: the successor replaces it', true],
+] as const)(
+  "'explicit' selection on an authoritative replacement — %s",
+  async (_name, named) => {
+    const revokedDocument = (): WorkspacePaneHostDocumentV1 => ({
+      ...flatHostDocument(two.instanceId),
+      instances: [two, three],
+      root: {
+        type: 'tabs',
+        id: 'flat',
+        instanceIds: [two.instanceId, three.instanceId],
+        selectedInstanceId: two.instanceId,
+      },
+    });
+    const initial = flatHostDocument(one.instanceId);
+    navigationStore.navigate(
+      '/projects/project/layouts/layout',
+      named
+        ? {
+            pane: one.instanceId,
+            paneScope: workspacePaneHostScopeKey(initial.scope),
+          }
+        : { pane: null, paneScope: null },
+    );
+    const host = (document: WorkspacePaneHostDocumentV1) => (
+      <WorkspacePaneHost
+        document={document}
+        navigationSelection="explicit"
+        renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+      />
+    );
+    const { rerender } = render(host(initial));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const index = navigationStore.getHistoryIndex();
+
+    await act(async () => {
+      rerender(host(revokedDocument()));
+      await Promise.resolve();
+    });
+
+    const pane = new URL(window.location.href).searchParams.get('pane');
+    if (named) {
+      expect(pane).toBe(two.instanceId);
+    } else {
+      expect(pane).toBeNull();
+      expect(navigationStore.getHistoryIndex()).toBe(index);
+    }
+  },
+);
+
+test("'explicit' selection still makes a user's tab choice a history entry", async () => {
+  navigationStore.navigate('/projects/project/layouts/layout', {
+    pane: null,
+    paneScope: null,
+  });
+  render(
+    <WorkspacePaneHost
+      document={flatHostDocument(one.instanceId)}
+      navigationSelection="explicit"
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const index = navigationStore.getHistoryIndex();
+  fireEvent.click(screen.getByRole('tab', { name: 'Two' }));
+  expect(navigationStore.getHistoryIndex()).toBe(index + 1);
+  expect(new URL(window.location.href).searchParams.get('pane')).toBe(
+    two.instanceId,
+  );
+});
+
+test("'replace' selection: a user's tab choice corrects the entry in place rather than pushing one (#3040)", async () => {
+  navigationStore.navigate('/projects/project/layouts/layout', {
+    pane: null,
+    paneScope: null,
+  });
+  render(
+    <WorkspacePaneHost
+      document={flatHostDocument(one.instanceId)}
+      navigationSelection="replace"
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const index = navigationStore.getHistoryIndex();
+  fireEvent.click(screen.getByRole('tab', { name: 'Two' }));
+  expect(navigationStore.getHistoryIndex()).toBe(index);
+  expect(new URL(window.location.href).searchParams.get('pane')).toBe(
+    two.instanceId,
+  );
+});
+
+test("'explicit' selection: closing the named pane corrects the entry in place, so Back never lands on the closed pane", async () => {
+  const initial = flatHostDocument(one.instanceId);
+  navigationStore.navigate('/projects/project/layouts/layout', {
+    pane: one.instanceId,
+    paneScope: workspacePaneHostScopeKey(initial.scope),
+  });
+  render(
+    <WorkspacePaneHost
+      document={initial}
+      navigationSelection="explicit"
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const index = navigationStore.getHistoryIndex();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Close One' }));
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  const pane = new URL(window.location.href).searchParams.get('pane');
+  expect(pane).not.toBeNull();
+  expect(pane).not.toBe(one.instanceId);
+  expect(navigationStore.getHistoryIndex()).toBe(index);
 });

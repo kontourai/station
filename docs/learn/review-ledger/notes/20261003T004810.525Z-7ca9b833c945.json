@@ -1,0 +1,7 @@
+{
+  "revision": "0bb3d22cb3fd4e595af5045e594dbca34404f977",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed native invitation retry and saved grant recovery against NativeRelayLinkReview and mounted intake test; same-generation grants now require explicit removal before redemption.","inputs":["docs/guides/connections.md"]}
+  ]
+}

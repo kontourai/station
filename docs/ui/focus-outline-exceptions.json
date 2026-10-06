@@ -52,11 +52,6 @@
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
     },
     {
-      "path": "src-ui/src/components/coding-layout/CodingLayout.css",
-      "selector": ".coding-layout__terminal-tab-rename",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
       "path": "src-ui/src/components/coding-layout/FileTreePanel.css",
       "selector": ".file-tree-panel__search-input",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."

@@ -276,11 +276,47 @@ describe('UI-block provenance — writer/server inventory ratchet (station#1399 
     expect(discovered).toEqual([...PINNED_MESSAGE_SERVE_FILES].sort());
   });
 
-  it.each(PINNED_MESSAGE_SERVE_FILES)(
-    '%s sanitizes served messages via sanitizeConversationMessagesUIBlockProvenance',
+  // #3159: the serve-time sanitizer lives in the one shared reader
+  // (`conversation-message-reader.ts`), which every message-serving route
+  // obtains its read from. The guarantee is unchanged: every route that
+  // serves chat history serves it through that sanitizing reader, and the
+  // reader sanitizes every non-empty result it returns.
+  const MESSAGE_READER =
+    'src-server/routes/chat/conversation-message-reader.ts';
+  const PINNED_MESSAGE_READER_CONSUMERS = [
+    ...PINNED_MESSAGE_SERVE_FILES,
+    'src-server/routes/chat/conversation-reference-read.ts',
+  ];
+
+  it('the shared message reader sanitizes every non-empty result via sanitizeConversationMessagesUIBlockProvenance', () => {
+    const source = readSourceForScanning(join(REPO_ROOT, MESSAGE_READER));
+    expect(source).toContain('sanitizeConversationMessagesUIBlockProvenance');
+    // Every `messages:` the reader returns is either sanitized or empty.
+    const returned = [
+      ...source.matchAll(/return\s*\{\s*messages:\s*([^,}\n]+)/g),
+    ].map((match) => match[1]!.trim());
+    // #3112: the lineage's Sessions are read (store, then runtime
+    // projection, each) into one list that is sanitized once; the other
+    // answer is the empty one.
+    expect(returned).toHaveLength(2);
+    for (const value of returned)
+      expect(
+        value === '[]' || value.startsWith('sanitizeServedMessages('),
+      ).toBe(true);
+    expect(source).toMatch(
+      /const sanitizeServedMessages = \([^)]*\)[^=]*=>\s*sanitizeConversationMessagesUIBlockProvenance\(/,
+    );
+  });
+
+  it.each(PINNED_MESSAGE_READER_CONSUMERS)(
+    '%s serves messages only through the sanitizing shared reader',
     (relativePath) => {
       const source = readSourceForScanning(join(REPO_ROOT, relativePath));
-      expect(source).toContain('sanitizeConversationMessagesUIBlockProvenance');
+      expect(source).toContain('createConversationMessageReader');
+      // No second, unsanitized read path: a serving route never reads the
+      // memory store's messages itself.
+      if (relativePath !== 'src-server/routes/chat/conversations.ts')
+        expect(source).not.toMatch(/\.getMessages\(/);
     },
   );
 });

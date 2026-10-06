@@ -405,3 +405,116 @@
   line-height: 1.4;
   white-space: nowrap;
 }
+
+.skill-library__intro {
+  margin: 0;
+  padding: var(--k-space-3) var(--k-space-4);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+  color: var(--k-text-muted);
+}
+
+.skill-library__welcome {
+  display: grid;
+  gap: var(--k-space-4);
+  width: min(100%, 40rem);
+  padding: var(--k-space-5);
+  color: var(--k-text);
+}
+
+.skill-library__welcome h2,
+.skill-library__welcome h3,
+.skill-overview h3 {
+  margin: 0;
+  font-size: var(--k-text-lg);
+}
+
+.skill-library__welcome p,
+.skill-overview p {
+  margin: 0;
+  color: var(--k-text-muted);
+  line-height: var(--k-leading-loose);
+}
+
+.skill-library__next,
+.skill-overview__section {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+}
+
+.skill-library__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.skill-overview {
+  display: grid;
+  gap: var(--k-space-4);
+  min-width: 0;
+  color: var(--k-text);
+}
+
+.skill-overview__description {
+  font-size: var(--k-text-lg);
+}
+
+.skill-overview__inputs {
+  display: grid;
+  gap: var(--k-space-3);
+  margin: 0;
+}
+
+.skill-overview__inputs dt {
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-md);
+}
+
+.skill-overview__inputs dd {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: var(--k-space-1) 0 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.skill-overview__instructions summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.skill-overview__instructions summary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.skill-overview__instructions pre {
+  margin: var(--k-space-2) 0 0;
+  padding: var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-loose);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.skill-editor__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-5);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

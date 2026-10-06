@@ -1,6 +1,8 @@
+import type { PluginCommandEffectContent } from '@kontourai/station-contracts/plugin-command-effect';
 import {
   useAgentsQuery,
   useMessageSearchQuery,
+  usePluginsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
 import {
@@ -18,16 +20,22 @@ import {
 } from 'react';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
+import { activeChatsStore } from '../contexts/active-chats-store';
+import {
   evaluateShortcutWhen,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { navigationStore } from '../contexts/navigation-store';
 import {
   openChatIdentitiesSnapshot,
   openChatsStore,
 } from '../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
-import { useShowSurface } from '../contexts/useShowSurface';
+import { useShowSurfacePage } from '../contexts/useShowSurface';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
@@ -47,6 +55,7 @@ import { LazyBoundary } from './LazyBoundary';
 import { requestNewBoard } from './project-sidebar/new-board-events';
 import { Empty, ErrorState, SkeletonBlock } from './state';
 import './CommandPalette.css';
+import { showChatPageOrDock } from '../app-shell/chat-placement';
 import type {
   formatSettingsMessage,
   localizedSettingsTargetLabel,
@@ -63,6 +72,10 @@ import {
   type PaletteCommand,
   rankCommands,
 } from './command-palette-utils';
+import {
+  type InstalledPluginCommandSource,
+  projectPluginPaletteCommands,
+} from './plugin-command-registry';
 
 /** `dock.session1` … `dock.session9` — the ⌘1–⌘9 chat-switch bindings. */
 const SESSION_SWITCH_SHORTCUT = /^dock\.session[1-9]$/;
@@ -173,7 +186,7 @@ const SearchIcon = (
 );
 
 export function CommandPalette() {
-  const showSurface = useShowSurface();
+  const showSurfacePage = useShowSurfacePage();
   const [open, setOpen] = useState(false);
   const [workspaceSearch, setWorkspaceSearch] = useState(false);
   const [messageSearch, setMessageSearch] = useState<LegacySearchData>();
@@ -187,6 +200,11 @@ export function CommandPalette() {
     actionLabel?: string;
   } | null>(null);
   const [frecencyNotice, setFrecencyNotice] = useState<string | null>(null);
+  // #1418/#1419: surfaces a refusal or an abort settled for a plugin
+  // command, e.g. "Unsaved changes blocked this navigation."
+  const [pluginCommandNotice, setPluginCommandNotice] = useState<string | null>(
+    null,
+  );
   // Settings has a broad registry and contracts dependency. Keep it out of
   // the shell entry chunk: this projection is useful only while the palette
   // is open, and the actual Settings route stays independently lazy.
@@ -208,6 +226,9 @@ export function CommandPalette() {
     setDockState,
     selectedProject,
     selectedProjectLayout,
+    activeChat,
+    activeConversation,
+    isDockOpen,
   } = useNavigation();
   const { getAllShortcuts } = useShortcutRegistry();
   const { isMobile, isDesktop } = usePlatformProfile();
@@ -272,6 +293,18 @@ export function CommandPalette() {
   const { data: agents = [] } = useAgentsQuery();
   const { data: projects = [] } = useScopedProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
+  // #1418/#1419: read fresh at apply time too (`currentGeneration` below),
+  // never from a row captured when the palette opened.
+  const { data: plugins = [] } = usePluginsQuery() as {
+    data: InstalledPluginCommandSource[];
+  };
+  const { apiBase } = useApiBase();
+  // Captured once per render for the plugin command effect coordinator
+  // (station#1418/#1419 review round 2, HIGH): a settlement retried after a
+  // Station switch must authenticate for the SAME Station its admission was
+  // captured under, or fail fast — never go out silently unauthenticated
+  // against whichever Station is active by the time it finally retries.
+  const pluginCommandEffectRequestScope = useHostRequestAuthorityScope();
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
   // session, and eight of those rows ran a handler that returns without doing
@@ -292,6 +325,175 @@ export function CommandPalette() {
     subscribeToOpenChats,
     openChatIdentitiesSnapshot,
     openChatIdentitiesSnapshot,
+  );
+  // #1418/#1419 review, MEDIUM: a global "focused chat" signal DOES exist —
+  // navigationStore's `activeChat`/`activeConversation` name it, and
+  // `toolActivityNotifications.ts` already treats them as the on-screen chat
+  // while a Chat surface is showing (`isDockOpen`). `getChatKeyForExecutionSession`
+  // resolves either identifier (chat key, execution session id, or
+  // conversationId) against the registered chats the same way that reader
+  // does. Gated on `isDockOpen` so this never claims a chat is focused while
+  // no Chat surface is actually showing it, and it never guesses among
+  // several open chats — only the one navigationStore itself calls active.
+  //
+  // Forward coupling (#1418/#1419 review round 2, MEDIUM): `isDockOpen` is
+  // incomplete — a full-screen Chat surface never sets it, so a plugin
+  // seed-composer command run while Chat is full-screen wrongly sees no
+  // active chat here. The sibling branch fix/reduce-tool-toasts-20260924
+  // (not merged; do not import it from here) adds
+  // `src-ui/src/hooks/orchestration/chatForeground.ts` with
+  // `isChatInForeground`, which covers both cases. Switch this gate to it
+  // once that branch merges.
+  const activeChatId = useMemo(() => {
+    if (!isDockOpen) return null;
+    const resolved =
+      (activeChat
+        ? activeChatsStore.getChatKeyForExecutionSession(activeChat)
+        : undefined) ??
+      (activeConversation
+        ? activeChatsStore.getChatKeyForExecutionSession(activeConversation)
+        : undefined) ??
+      null;
+    // Read `openChats` (rather than only listing it as a dependency): it
+    // recomputes this whenever `activeChatsStore` changes — exactly when a
+    // stale resolution here (e.g. a chat's conversationId just got assigned)
+    // needs recomputing — and it never claims a chat still registered under
+    // a stale key is "focused" once it is actually gone from the open list.
+    if (resolved && !openChats.some((chat) => chat.sessionId === resolved)) {
+      return null;
+    }
+    return resolved;
+  }, [isDockOpen, activeChat, activeConversation, openChats]);
+  const pluginPaletteCommands = useMemo(
+    () =>
+      projectPluginPaletteCommands(plugins, {
+        activeChatId,
+        hasProject: Boolean(selectedProject),
+        // No global "current session"/"current task" concept reaches the
+        // palette either (#1361 gap, same reasoning as above); never claim
+        // availability this surface cannot prove.
+        hasSession: false,
+        hasTask: false,
+        destinationIds: new Set(
+          APP_DESTINATION_REGISTRY.getPalette(surfaceVisibilityFlags).map(
+            (destination) => destination.id,
+          ),
+        ),
+        occupiedCommandIds: new Set(),
+      }),
+    [plugins, activeChatId, selectedProject, surfaceVisibilityFlags],
+  );
+  const pluginGenerationByName = useMemo(
+    () => new Map(plugins.map((plugin) => [plugin.name, plugin])),
+    [plugins],
+  );
+  const runPluginCommand = useCallback(
+    (command: (typeof pluginPaletteCommands)[number]) => {
+      const { contribution, pluginName, installationGeneration } = command;
+      if (!installationGeneration) return;
+      const currentGeneration = () =>
+        pluginGenerationByName.get(pluginName)?.installationGeneration ??
+        undefined;
+      const notify = (message: string) => setPluginCommandNotice(message);
+      const context =
+        selectedProject || activeChatId
+          ? {
+              ...(selectedProject ? { projectSlug: selectedProject } : {}),
+              ...(activeChatId ? { activeChatSessionId: activeChatId } : {}),
+            }
+          : undefined;
+      if (contribution.intent.kind === 'navigate') {
+        const surfaceId = contribution.intent.surfaceId;
+        void import('./plugin-command-effect-transport').then(
+          ({ getPluginCommandEffectCoordinator }) => {
+            getPluginCommandEffectCoordinator().runCommand({
+              apiBase,
+              requestScope: pluginCommandEffectRequestScope,
+              pluginId: pluginName,
+              commandId: contribution.id,
+              installationGeneration,
+              target: { kind: 'destination', destinationId: surfaceId },
+              context,
+              currentGeneration,
+              notify,
+              apply: (content: PluginCommandEffectContent) => {
+                if (content.kind !== 'navigate') return false;
+                const destination = APP_DESTINATION_REGISTRY.get(
+                  content.destinationId,
+                );
+                if (!destination) return false;
+                // Match a built-in palette destination: region surfaces use
+                // the page verb, which updates the RegionModel directly and
+                // does not enter navigate()'s asynchronous guard flow. Guard
+                // preflight below remains specific to route destinations.
+                if (destination.regionSurface) {
+                  showSurfacePage(destination.regionSurface);
+                  return true;
+                }
+                // Owner decision (#1419): a plugin-command navigation settles
+                // `aborted` with a notice rather than opening the async
+                // discard-changes dialog `navigate()` would otherwise run —
+                // the local effect stays one synchronous step. Answered for
+                // THIS target: `wouldNavigationGuardBlock` shares the exact
+                // predicate `navigate()` itself uses, so a guard that would
+                // never actually run (same pathname, no guard registered)
+                // never blocks this command either.
+                if (
+                  navigationStore.wouldNavigationGuardBlock(destination.route)
+                ) {
+                  notify(
+                    'Unsaved changes are blocking navigation. This command was cancelled.',
+                  );
+                  return false;
+                }
+                if (destination.palette?.params) {
+                  navigate(destination.route, destination.palette.params);
+                } else {
+                  navigate(destination.route);
+                }
+                return true;
+              },
+            });
+          },
+        );
+        return;
+      }
+      // contribution.intent.kind === 'seed-composer' (the registry marks
+      // every other kind unavailable, so `run` never reaches this otherwise).
+      if (!activeChatId) return;
+      const draft = activeChatsStore.captureComposerDraft(activeChatId);
+      if (!draft) {
+        notify('This chat is no longer open. The command was cancelled.');
+        return;
+      }
+      void import('./plugin-command-effect-transport').then(
+        ({ getPluginCommandEffectCoordinator }) => {
+          getPluginCommandEffectCoordinator().runCommand({
+            apiBase,
+            requestScope: pluginCommandEffectRequestScope,
+            pluginId: pluginName,
+            commandId: contribution.id,
+            installationGeneration,
+            target: { kind: 'composer', sessionId: activeChatId },
+            context,
+            currentGeneration,
+            notify,
+            apply: (content: PluginCommandEffectContent) =>
+              content.kind === 'seed-composer' &&
+              draft.replaceInputIfUnchanged(content.text),
+          });
+        },
+      );
+    },
+    [
+      apiBase,
+      pluginCommandEffectRequestScope,
+      activeChatId,
+      selectedProject,
+      pluginGenerationByName,
+      navigate,
+      showSurfacePage,
+    ],
   );
   const frecency = useSyncExternalStore(
     commandFrecencyStorage.subscribe,
@@ -401,7 +603,7 @@ export function CommandPalette() {
       label: 'Open chat dock',
       group: 'Actions',
       keywords: ['chat', 'dock', 'open', 'new'],
-      run: () => setDockState(true),
+      run: () => showChatPageOrDock(() => setDockState(true)),
     });
     // archive#2652: the tour is re-triggerable from here, which is also what
     // its last step tells the user. `requestFirstRunTour` dispatches the same
@@ -473,12 +675,38 @@ export function CommandPalette() {
         group: 'Navigation',
         keywords: destination.keywords ? [...destination.keywords] : undefined,
         run: () => {
+          // A `regionSurface` destination is a place (Activity; Home, when a
+          // palette entry is registered for it): go to its page, the same
+          // verb as its sidebar row.
           if (destination.regionSurface) {
-            showSurface(destination.regionSurface);
+            showSurfacePage(destination.regionSurface);
             return;
           }
           if (params) navigate(destination.route, { ...params });
           else navigate(destination.route);
+        },
+      });
+    }
+
+    // Plugin commands (#1418/#1419): a row is not authority — every effect
+    // still needs the server's own admission — so an unavailable row stays
+    // visible with an exact reason rather than disappearing or silently
+    // failing when chosen.
+    for (const command of pluginPaletteCommands) {
+      const unavailableReason = command.unavailableReason;
+      list.push({
+        id: command.paletteId,
+        label: command.contribution.title,
+        group: 'Plugins',
+        keywords: [
+          command.pluginName,
+          ...(command.contribution.keywords ?? []),
+        ],
+        detail: unavailableReason ?? command.contribution.subtitle,
+        disabled: unavailableReason !== null,
+        run: () => {
+          if (unavailableReason !== null) return;
+          runPluginCommand(command);
         },
       });
     }
@@ -718,7 +946,9 @@ export function CommandPalette() {
     settingsCommands,
     settingsLocaleFormatter,
     locale,
-    showSurface,
+    pluginPaletteCommands,
+    runPluginCommand,
+    showSurfacePage,
   ]);
 
   const ranked = useMemo(
@@ -892,6 +1122,12 @@ export function CommandPalette() {
         {frecencyNotice && (
           <div className="command-palette__pane-notice" role="status">
             {frecencyNotice}
+          </div>
+        )}
+
+        {pluginCommandNotice && (
+          <div className="command-palette__pane-notice" role="status">
+            {pluginCommandNotice}
           </div>
         )}
 

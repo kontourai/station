@@ -32,6 +32,12 @@ export interface CanonicalSkillSource {
   root: string;
   /** Captured first-party source generation, checked at disclosure time. */
   isCurrent?: () => boolean;
+  /** Host-observed identity of the installed artifact captured at discovery. */
+  packageRevision?: {
+    incarnation: string;
+    materialization: string;
+    contentDigest: string;
+  };
   /** Source label surfaced in skill listings (e.g. 'flow-agents'). */
   label: CanonicalSkillSourceLabel;
   /** Version of the providing package, when known. */

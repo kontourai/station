@@ -6,6 +6,33 @@ split is the key to everything else in this guide — see
 rationale ("why sqlite-vec") and [docs/design/knowledge-foundation.md](../design/knowledge-foundation.md)
 for the implementation contract.
 
+## Agent tools
+
+Add **Station Knowledge** in an agent’s Tools tab to read and capture records.
+The Station role includes it by default. This small MCP contains
+`list_knowledge_roots`, `list_knowledge_records`, `get_knowledge_record`,
+`add_knowledge_record`, and `search_knowledge`. Search needs an embedding
+connection; listing and reading records do not.
+
+Station Control retains index rebuild and migration controls, plus its existing
+search tool for compatibility. Capture creates a new raw record and never
+replaces a record. A session’s owner must have access to the selected store;
+Project writes also require edit access. Personal stores belong to the local
+operator. Session-backed conversation stores remain read only.
+
+Claude receives an in-process server. Codex and ACP receive separate,
+short-lived Knowledge credentials for the local HTTP endpoint; ACP requires
+observed HTTP MCP support. Native agents use a local HTTP connection only
+inside an active, authorized turn. Credentials are scoped to the session and
+server, and session stop revokes them. HTTP custody does not claim bound
+session attribution; capture records its assurance and omits a session ID
+unless the connection is bound. Per-tool restrictions retain the engine’s
+existing support limits, including ACP’s refusal of individual selections.
+
+The [data tool registrations](../../src-server/tools/station-knowledge-tools.ts)
+and [native caller bridge](../../src-server/runtime/mcp/station-knowledge-native-tools.ts)
+own these paths.
+
 ## Two layers: store vs. index
 
 **Store records are authoritative.** File-backed roots use Station adapters

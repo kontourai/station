@@ -1,0 +1,15 @@
+{
+  "path": "docs/strategy/constitution.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Human-owned product principles and design constraints.",
+
+  "limits": "Goals such as plugin/core parity and evidence-gated work are expectations, not proof that every current feature meets them. Policy text is preserved; implementation must be checked independently.",
+
+  "sources": [],
+
+  "checks": []
+}

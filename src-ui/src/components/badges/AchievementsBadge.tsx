@@ -37,7 +37,7 @@ export function AchievementsBadge({
       <div className="achievements-header">
         <h3 className="achievements-title">
           <span>🏆</span>
-          <span>Achievements</span>
+          <span>Station milestones</span>
         </h3>
         <div className="achievements-header-actions">
           {links.map((link) => (
@@ -130,36 +130,41 @@ function AchievementCard({
 
         <div className="achievement-description">{achievement.description}</div>
 
-        {!achievement.unlocked && achievement.threshold && (
-          <div>
-            <div className="achievement-progress-header">
-              <span>Progress: {progressPercent}%</span>
-              <span>
-                {achievement.lowerIsBetter
-                  ? `${achievement.progress <= achievement.threshold ? 'Under budget' : 'Over budget'}: $${achievement.progress?.toFixed(4)} / $${achievement.threshold.toFixed(4)}`
-                  : `${achievement.progress?.toLocaleString()} / ${achievement.threshold.toLocaleString()}`}
-              </span>
-            </div>
-            {achievement.precondition && (
+        {achievement.measurementUnavailableReason && (
+          <p>{achievement.measurementUnavailableReason}</p>
+        )}
+        {!achievement.unlocked &&
+          !achievement.measurementUnavailableReason &&
+          achievement.threshold && (
+            <div>
               <div className="achievement-progress-header">
-                <span>{achievement.precondition.label}</span>
+                <span>Progress: {progressPercent}%</span>
                 <span>
-                  {achievement.precondition.current.toLocaleString()} /{' '}
-                  {achievement.precondition.threshold.toLocaleString()}
+                  {achievement.lowerIsBetter
+                    ? `${achievement.progress <= achievement.threshold ? 'Under budget' : 'Over budget'}: $${achievement.progress?.toFixed(4)} / $${achievement.threshold.toFixed(4)}`
+                    : `${achievement.progress?.toLocaleString()} / ${achievement.threshold.toLocaleString()}`}
                 </span>
               </div>
-            )}
-            <div className="achievement-progress-bar">
-              <div
-                className="achievement-progress-fill"
-                style={{
-                  backgroundColor: getProgressColor(),
-                  width: `${progressPercent}%`,
-                }}
-              />
+              {achievement.precondition && (
+                <div className="achievement-progress-header">
+                  <span>{achievement.precondition.label}</span>
+                  <span>
+                    {achievement.precondition.current.toLocaleString()} /{' '}
+                    {achievement.precondition.threshold.toLocaleString()}
+                  </span>
+                </div>
+              )}
+              <div className="achievement-progress-bar">
+                <div
+                  className="achievement-progress-fill"
+                  style={{
+                    backgroundColor: getProgressColor(),
+                    width: `${progressPercent}%`,
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {achievement.unlocked && achievement.unlockedAt && (
           <div className="achievement-unlocked-date">

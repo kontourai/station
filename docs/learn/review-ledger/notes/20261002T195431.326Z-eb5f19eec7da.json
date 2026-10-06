@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed the current native enrollment owner and route-profile mounted test. The changed copy only clarifies an unconfirmed device-setup step; trust, enrollment, approval, account and Project authority flows are unchanged. Focused UI test passed; installed-shell qualification remains separate.","inputs":["docs/design/native-relay-enrollment.md"]}
+  ]
+}

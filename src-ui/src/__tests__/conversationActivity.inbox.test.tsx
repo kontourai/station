@@ -132,15 +132,19 @@ describe('#2309 inbox running state from the conversation record', () => {
 
   it('a turn in a lineage child renders Running, though the newest row is the idle root', () => {
     renderInbox(rows(OPEN), chat({ conversationActivity: OPEN }));
-    const active = screen.getByRole('region', { name: 'Active now' });
-    // The in-motion chip ('Running' renders as "Active").
-    expect(within(active).getByText('Active')).not.toBeNull();
+    const active = screen.getByRole('region', { name: 'Running' });
+    // The status line reads "Running", the lane's own word.
+    expect(
+      within(active).getByText('Running', { selector: '.inbox-row__word' }),
+    ).not.toBeNull();
   });
 
   it('with only the session rows carrying the record (the chat has none yet), the row still renders Running', () => {
     renderInbox(rows(OPEN), chat({}));
-    const active = screen.getByRole('region', { name: 'Active now' });
-    expect(within(active).getByText('Active')).not.toBeNull();
+    const active = screen.getByRole('region', { name: 'Running' });
+    expect(
+      within(active).getByText('Running', { selector: '.inbox-row__word' }),
+    ).not.toBeNull();
   });
 
   it('a finished turn does not render Running, though local status still says sending', () => {
@@ -148,10 +152,13 @@ describe('#2309 inbox running state from the conversation record', () => {
       rows(CLOSED),
       chat({ status: 'sending', conversationActivity: CLOSED }),
     );
-    // The row is still listed (the chat is open), without the in-motion chip.
+    // The row is still listed (the chat is open), without the in-motion status.
     expect(
       screen.getByLabelText('Lineage inbox chat, No project'),
     ).not.toBeNull();
-    expect(screen.queryByText('Active')).toBeNull();
+    expect(
+      document.querySelector('.inbox-row__status[data-tone="active"]'),
+    ).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Running' })).toBeNull();
   });
 });

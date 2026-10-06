@@ -1,0 +1,7 @@
+{
+  "revision": "397b4cb16ee64b1693eddff490ac75947d250436",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"After merging origin/main (fac321f9fd): re-read the wide-fold, audit-round and delta-round text against ProjectLayoutRenderer (replace selection, Browser ordinal, one Terminal mount), ChatDock (Needs-you), navigation-store (in-place write, marker, preserveChatProjectDefault), device-settings contract/store (codingPanels), workspacePaneHostController (replace). Claims hold; no prose change in this record.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

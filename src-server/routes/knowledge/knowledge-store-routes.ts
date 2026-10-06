@@ -42,6 +42,7 @@ import { join } from 'node:path';
 import type {
   KnowledgeRootScope,
   KnowledgeStoreProvider,
+  KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
 import { Hono } from 'hono';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
@@ -55,6 +56,7 @@ import { errorMessage } from '../schemas/schemas.js';
 
 interface KnowledgeStoreRouteDeps {
   store: KnowledgeStoreProvider;
+  mayReadRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean;
   /** Station home dir — same accessor `knowledge-index-routes.ts` already uses
    * (`context.configLoader.getProjectHomeDir()`). */
   dataDir: string;
@@ -95,7 +97,11 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
   app.get('/roots', async (c) => {
     try {
       const roots = await deps.store.listRoots();
-      return c.json({ success: true, data: roots });
+      const mayReadRoot = deps.mayReadRoot;
+      const visibleRoots = mayReadRoot
+        ? roots.filter((root) => mayReadRoot(c.req.raw, root))
+        : roots;
+      return c.json({ success: true, data: visibleRoots });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }

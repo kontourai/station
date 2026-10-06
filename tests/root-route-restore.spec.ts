@@ -18,7 +18,7 @@ import { expect, type Page, test } from '@playwright/test';
  * during the pending window is caught, not just at sampled instants.
  *
  * The settled destination remains `/`; the derived project/layout is exposed
- * only as an explicit Open last project action.
+ * only as an explicit Last project action.
  */
 
 const STATUS_READY = JSON.stringify({
@@ -290,11 +290,11 @@ test.describe('Root route restore (#223, product, mocked)', () => {
     await expect(newProjectModalOverlay(page)).toHaveCount(0);
 
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/\/$/);
     await expect(
-      page.getByRole('button', { name: /Open last project/i }),
+      page.getByRole('button', { name: /^Last project/ }),
     ).toBeVisible();
 
     expect(await wasModalEverMounted(page)).toBe(false);
@@ -326,13 +326,13 @@ test.describe('Root route restore (#223, product, mocked)', () => {
     await expect(newProjectModalOverlay(page)).toHaveCount(0);
 
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/\/$/);
     // Priority 2: with nothing persisted, the continuation is the first
     // project, named by its record rather than its slug.
     await expect(
-      page.getByRole('button', { name: /Open last project/i }),
+      page.getByRole('button', { name: /^Last project/ }),
     ).toContainText('Dev');
 
     expect(await wasModalEverMounted(page)).toBe(false);
@@ -370,7 +370,7 @@ test.describe('Root route restore (#223, product, mocked)', () => {
     // layout) rather than resolving to project-new — the stale slug is
     // never a match in the loaded `projects` list.
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/\/$/);
 

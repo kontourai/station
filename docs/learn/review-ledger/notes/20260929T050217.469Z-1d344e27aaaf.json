@@ -1,0 +1,17 @@
+{
+  "revision": "0d0a38055b9253d9c0d40f5d4315b929cb41c3f7",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Review through 0d0a38055: .veritas/repo-standards/default.repo-standards.json is restored to main's bytes (the documentation rule's context-link path edit was reverted because protected-standards changes require an owner policy-change attestation); this page makes no claim about that context link, so the prose is accurate. Source review is separate from executed test evidence.","inputs":[".veritas/README.md"]},
+
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Review through 0d0a38055: .veritas/repo-standards/default.repo-standards.json is restored to main's bytes (the documentation rule's context-link path edit was reverted because protected-standards changes require an owner policy-change attestation); this page makes no claim about that context link, so the prose is accurate. Source review is separate from executed test evidence.","inputs":[".veritas/init-plans/documentation-maintenance.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Review through 0d0a38055: .veritas/repo-standards/default.repo-standards.json is restored to main's bytes (the documentation rule's context-link path edit was reverted because protected-standards changes require an owner policy-change attestation); this page makes no claim about that context link, so the prose is accurate. Source review is separate from executed test evidence.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/development.md","note":"Review through 0d0a38055: .veritas/repo-standards/default.repo-standards.json is restored to main's bytes (the documentation rule's context-link path edit was reverted because protected-standards changes require an owner policy-change attestation); this page makes no claim about that context link, so the prose is accurate. Source review is separate from executed test evidence.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"Review through 0d0a38055: .veritas/repo-standards/default.repo-standards.json is restored to main's bytes (the documentation rule's context-link path edit was reverted because protected-standards changes require an owner policy-change attestation); this page makes no claim about that context link, so the prose is accurate. Source review is separate from executed test evidence.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Review through 0d0a38055: .veritas/repo-standards/default.repo-standards.json is restored to main's bytes (the documentation rule's context-link path edit was reverted because protected-standards changes require an owner policy-change attestation); this page makes no claim about that context link, so the prose is accurate. Source review is separate from executed test evidence.","inputs":["docs/guides/testing.md"]}
+  ]
+}

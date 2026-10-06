@@ -1,0 +1,35 @@
+{
+  "revision": "3a12d2273b4b8b1e024523d6eb396d6ec3c703fb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/contexts/evidence-governance/CONTEXT.md"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/contexts/operations/CONTEXT.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/design/event-store-ledger-migration.md"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/design/project-task-room-history.md"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/design/revision-bound-evidence.md"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/design/shared-working-state.md"]},
+
+    {"path":"docs/glossary.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/config.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["docs/reference/shared.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Re-record after merging main: event-store.ts now derives conversation titles via derivedConversationTitle, provider.ts adds ATTACHMENT_INPUT_UNSUPPORTED_CODE (already documented in contracts.md). Checked the affected docs make no 80-character title claim and keep no exhaustive refusal-code list.","inputs":["packages/contracts/AGENTS.md"]}
+  ]
+}

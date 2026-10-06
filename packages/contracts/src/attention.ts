@@ -23,6 +23,7 @@ export type AttentionRequestInspection =
       openedAt: string;
       answerability: RequestAnswerability;
       canRespond: boolean;
+      requiresAnswers?: boolean;
     }
   | {
       state: 'changed' | 'resolved' | 'unavailable';
@@ -116,7 +117,9 @@ export interface ApprovalAttentionItem extends AttentionItemBase {
  * existing `gate-blocked` kind is a Flow-gate verdict with a run/gate
  * source shape a session-level block does not have.
  */
-export interface NeedsInputAttentionItem extends AttentionItemBase {
+export interface NeedsInputAttentionItem
+  extends AttentionItemBase,
+    AttentionSessionEnvironment {
   kind: 'needs_input';
   /** Exact input question; never an approval/permission decision. */
   inputReference?: AttentionRequestReference;
@@ -125,8 +128,78 @@ export interface NeedsInputAttentionItem extends AttentionItemBase {
   requestType?: AttentionRequestType;
 }
 
+/**
+ * Where the task behind a session-derived waiting item runs, when that is a
+ * PAIRED Station rather than this one. Read off the session's own
+ * `OrchestrationDelegationContext` (`environmentKind`/`environmentName`), the
+ * same record the Activity detail decides "peer" from, so the inbox and the
+ * detail cannot disagree.
+ *
+ * A peer item's `source.threadId` names this Station's compact lifecycle
+ * record of the task, not a session that can take input: a local reply or a
+ * chat opened against it reaches nothing. A consumer that sees
+ * `environmentKind: 'peer'` must not offer a local reply; the item's
+ * `openHref` then lands on the Activity detail, which says where the task is
+ * answered.
+ *
+ * ABSENT means this Station runs the task — or the server predates the
+ * field. Such a server still refuses a local turn on a peer record ("Peer
+ * delegation Activity records are read-only."), so a reply sent through an
+ * older server fails visibly rather than reaching another session.
+ */
+export interface AttentionSessionEnvironment {
+  environmentKind?: 'peer';
+  /** The paired Station's saved Environment name, when the record carries one. */
+  environmentName?: string;
+  /**
+   * The open request the paired Station last reported for this task
+   * (`OrchestrationDelegationContext.peerPendingRequest`). It names the
+   * request ON THE PAIRED STATION: a consumer answers it only through
+   * `POST /api/orchestration/delegations/:taskId/respond` with
+   * `environmentId`, never through the local request inspection route or a
+   * local `respondToRequest`. Absent when the paired Station reported no open
+   * request, or this Station has not observed one (an older record, or a
+   * status read that has not run yet).
+   */
+  peerRequestReference?: AttentionPeerRequestReference;
+  /**
+   * Whether the caller this read answers passes the two gates this Station
+   * applies before that respond route's handler: the HTTP boundary
+   * (credential and pairing scope for that path) and the station-control
+   * dispatch scope with `approve`. The handler can still refuse (an inbound
+   * delegation peer, hosted mode, an environment it cannot resolve or that
+   * is not the task's recorded host), and so can the paired Station. Absent
+   * means not evaluated, and fails closed.
+   */
+  viewerCanRespond?: boolean;
+}
+
+/** See `AttentionSessionEnvironment.peerRequestReference`. */
+export interface AttentionPeerRequestReference {
+  environmentId: string;
+  taskId: string;
+  requestId: string;
+  requestType?: AttentionRequestType;
+  /**
+   * `delegatedInputAnswers`: the paired Station's Session and event id for
+   * the request, so an answer to an `input` request can be bound to it
+   * (`expectedInputRequest` on the delegated `continue`). Absent when the
+   * paired Station did not report them; no bound answer is then possible.
+   */
+  threadId?: string;
+  requestEventId?: string;
+  /**
+   * The paired Station's own check of this Station's credential on the
+   * route that answers the request. `false` means it would refuse; absent
+   * means it did not say (an older Station).
+   */
+  callerCanRespond?: boolean;
+}
+
 /** See `NeedsInputAttentionItem` — same request-evidence projection, review_pending kind. */
-export interface ReviewPendingAttentionItem extends AttentionItemBase {
+export interface ReviewPendingAttentionItem
+  extends AttentionItemBase,
+    AttentionSessionEnvironment {
   kind: 'review_pending';
   requestReference?: AttentionRequestReference;
   source: { threadId: string };

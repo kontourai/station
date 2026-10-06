@@ -1,0 +1,61 @@
+{
+  "path": "docs/user/concepts.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the complete concept guide against work/session, engine, pairing, terminal-readiness, evidence and telemetry owners. Corrected continued-turn identity, reserved Station Agent engine choice and startup/background network limits.",
+
+  "limits": "Source-backed product explanation, not live external engine, paired-device, release or workflow acceptance. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"digest\":\"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64\",\"revision\":\"0bf65df71b04f48768c1f5bdb16db77e361a3177\"},\"main\":{\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"},\"theirs\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"}}]",
+
+  "sources": [
+    "docs/architecture/module-map.md",
+
+    "docs/privacy-policy.md",
+
+    "packages/cli/src/commands/lifecycle-doctor.ts",
+
+    "packages/contracts/src/agent-identity.ts",
+
+    "packages/contracts/src/session-lifecycle.ts",
+
+    "packages/sdk/src/client/execution.ts",
+
+    "src-server/adapters/node-pty-adapter.ts",
+
+    "src-server/domain/agent-registry.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/services/orchestration/session-command-module.ts"
+  ],
+
+  "checks": [
+    "Independent continuation wording review accepted.",
+
+    "Final entry-point review followed the affected canonical module/contract owners; no matching hash or file count was used as semantic proof.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+
+    "The public-site check caught a link to a draft outside its allowlist. Link explicitly to the repository working copy; retain the incomplete/unapproved policy qualification.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged. Execution errors retain observed HTTP/envelope fields; opaque intermediary bodies are not typed terminal Station refusals. Successful dispatch/receipt semantics and explicit indeterminate outcomes remain. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map.md replaced CollaborativeEditorPane with ProjectTaskRoom and dropped PluginForegroundRuns. The concepts guide neither links module-map nor mentions those modules, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904's session-command-module change only adds the starter's clientOrigin to the startSession receipt. The guide's continued-turn identity, engine choice, receipt and startup-network claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion in packages/cli/src/commands/lifecycle-doctor.ts module-private. The change only removes an export: doctor output is unchanged. The guide's `station doctor` and terminal-readiness claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

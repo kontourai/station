@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -9,9 +10,13 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { buildOrchestrationItems } from '../views/home/home-view-model';
+import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 const NOW = Date.parse('2026-07-27T18:00:00Z');
 
@@ -40,9 +45,9 @@ const items = [
   item('done', 'Completed', NOW - 180_000),
   // Terminal and past the shared linger window, so it genuinely belongs to
   // "Earlier". (This row was a 'Recent' chat before archive#3227 A6 unified
-  // the grouping with the desktop lanes — an idle-but-open chat is Active
-  // now, not history, so a non-terminal fixture can no longer stand in for
-  // the Earlier group.)
+  // the grouping with the desktop lanes — an idle-but-open chat is live
+  // (Idle), not history, so a non-terminal fixture can no longer stand in
+  // for the Earlier group.)
   item('earlier', 'Failed', NOW - 60 * 60_000),
 ];
 
@@ -77,7 +82,7 @@ describe('ChatDockInboxPanel', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders activity groups in order with lifecycle status chips', () => {
+  it('renders activity groups in order with their status words', () => {
     renderPanel();
 
     const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
@@ -87,18 +92,250 @@ describe('ChatDockInboxPanel', () => {
       ),
     ).map((node) => node.textContent?.replace(/^[+−]/, ''));
 
+    // Empty live groups (Idle here) are omitted; the historic groups keep
+    // their always-present headers.
     expect(labels).toEqual([
-      'Active now',
+      'Needs you',
+      'Running',
       'Just finished',
-      'Snoozed (0)',
+      'Snoozed · 0',
       'Earlier',
     ]);
-    expect(screen.getByText('Active')).not.toBeNull();
-    expect(screen.getByText('Attention needed')).not.toBeNull();
+    // The Running row's chip says the lane's word, never "Active".
+    expect(
+      within(screen.getByRole('region', { name: 'Running' })).getByText(
+        'Running',
+        { selector: '.inbox-row__word' },
+      ),
+    ).not.toBeNull();
+    expect(screen.queryByText('Active')).toBeNull();
+    expect(screen.getByText('Waiting on you')).not.toBeNull();
     expect(screen.getByText('Done')).not.toBeNull();
   });
 
-  it('#2310: lists a Draft under its own group, chipped, not in Active now, and still openable', async () => {
+  it('files an idle Ready session under Idle — not Running, and never an "Active now" group', () => {
+    // The owner's report: "'Active' feels incorrect when there's no
+    // activity". A Ready session has no turn in flight; it must not sit
+    // under a heading that claims activity.
+    const ready = item('ready', 'Ready', NOW - 30 * 60_000);
+    renderPanel({
+      items: [...items, ready],
+      openChatSessionIds: [...items, ready].map((entry) => entry.id),
+    });
+
+    const rowName = 'ready title, ready project';
+    const idle = screen.getByRole('region', { name: 'Idle' });
+    expect(within(idle).getByRole('button', { name: rowName })).not.toBeNull();
+    const running = screen.getByRole('region', { name: 'Running' });
+    expect(within(running).queryByRole('button', { name: rowName })).toBeNull();
+    expect(
+      within(running).getByRole('button', {
+        name: 'active title, active project',
+      }),
+    ).not.toBeNull();
+    expect(
+      within(screen.getByRole('region', { name: 'Needs you' })).getByRole(
+        'button',
+        { name: 'attention title, attention project' },
+      ),
+    ).not.toBeNull();
+    expect(screen.queryByRole('region', { name: 'Active now' })).toBeNull();
+    // Reading order: Needs you, Running, Idle, then history.
+    const labels = Array.from(
+      document.querySelectorAll(
+        '.chat-dock-inbox__group-label, .chat-dock-inbox__section-toggle',
+      ),
+    ).map((node) => node.textContent?.replace(/^[+−]/, ''));
+    expect(labels).toEqual([
+      'Needs you',
+      'Running',
+      'Idle',
+      'Just finished',
+      'Snoozed · 0',
+      'Earlier',
+    ]);
+  });
+
+  describe('focus survives a server-driven lane move', () => {
+    // A move out of Running is held (useHeldLifecycles) so a blip never
+    // jumps the row; the lane move — and the focus hand-off — land once the
+    // hold elapses. Only timers and Date are faked: the focus hook's
+    // microtask must still run.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+    const settleHold = () =>
+      act(() => {
+        vi.advanceTimersByTime(LIFECYCLE_HOLD_MS);
+      });
+
+    it('keeps focus on a row that moves Running -> Idle (its Running lane empties)', () => {
+      const running = item('moving', 'Running', NOW - 60_000);
+      const other = item('other', 'Ready', NOW - 5 * 60_000);
+      const view = renderPanel({
+        items: [running, other],
+        openChatSessionIds: [],
+      });
+      const rowName = 'moving title, moving project';
+      screen.getByRole('button', { name: rowName }).focus();
+      expect(document.activeElement?.getAttribute('aria-label')).toBe(rowName);
+
+      // The turn ends: same row, now Idle — a different section, so the
+      // focused button is unmounted and a new one mounted under Idle.
+      view.rerender(
+        <ChatDockInboxPanel
+          {...view.props}
+          items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+        />,
+      );
+      // Held: still under Running and still focused, no jump yet.
+      expect(
+        within(screen.getByRole('region', { name: 'Running' })).getByRole(
+          'button',
+          { name: rowName },
+        ),
+      ).toBe(document.activeElement);
+      settleHold();
+      expect(screen.queryByRole('region', { name: 'Running' })).toBeNull();
+      const idle = screen.getByRole('region', { name: 'Idle' });
+      expect(document.activeElement).toBe(
+        within(idle).getByRole('button', { name: rowName }),
+      );
+    });
+
+    it('does not steal focus back after the user deliberately blurred to the page', async () => {
+      const running = item('moving', 'Running', NOW - 60_000);
+      const other = item('other', 'Ready', NOW - 5 * 60_000);
+      const view = renderPanel({
+        items: [running, other],
+        openChatSessionIds: [],
+      });
+      const row = screen.getByRole('button', {
+        name: 'moving title, moving project',
+      });
+      row.focus();
+      // Clicking non-focusable space: focus goes nowhere, no focusin.
+      row.blur();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(document.activeElement).toBe(document.body);
+
+      view.rerender(
+        <ChatDockInboxPanel
+          {...view.props}
+          items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+        />,
+      );
+      settleHold();
+      expect(screen.getByRole('region', { name: 'Idle' })).toBeTruthy();
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it('still restores after a window/tab switch (focusout with the row still focused)', async () => {
+      const running = item('moving', 'Running', NOW - 60_000);
+      const other = item('other', 'Ready', NOW - 5 * 60_000);
+      const view = renderPanel({
+        items: [running, other],
+        openChatSessionIds: [],
+      });
+      const rowName = 'moving title, moving project';
+      const row = screen.getByRole('button', { name: rowName });
+      row.focus();
+      // What a window/tab switch looks like: focusout to nowhere, but the
+      // element stays connected and stays document.activeElement.
+      row.dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: null }),
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(document.activeElement).toBe(row);
+
+      view.rerender(
+        <ChatDockInboxPanel
+          {...view.props}
+          items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+        />,
+      );
+      settleHold();
+      expect(document.activeElement).toBe(
+        within(screen.getByRole('region', { name: 'Idle' })).getByRole(
+          'button',
+          { name: rowName },
+        ),
+      );
+    });
+
+    it('falls back to the next row when the focused row disappears', () => {
+      const a = item('a', 'Running', NOW - 60_000);
+      const b = item('b', 'Running', NOW - 2 * 60_000);
+      const view = renderPanel({ items: [a, b], openChatSessionIds: [] });
+      screen.getByRole('button', { name: 'a title, a project' }).focus();
+      view.rerender(<ChatDockInboxPanel {...view.props} items={[b]} />);
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'b title, b project' }),
+      );
+    });
+  });
+
+  describe('unsent composer draft cue', () => {
+    afterEach(() => {
+      for (const key of ['ready', 'never-prompted', 'conv-42', 'agent:1700'])
+        chatDraftsStore.clear(key);
+    });
+
+    it('marks a row whose open chat holds unsent composer text, and clears with the text', () => {
+      const ready = item('ready', 'Ready', NOW - 30 * 60_000);
+      chatDraftsStore.set('ready', 'half a thought');
+      renderPanel({ items: [ready], openChatSessionIds: ['ready'] });
+
+      const row = screen.getByRole('button', {
+        name: 'ready title, ready project, unsent draft',
+      });
+      expect(within(row).getByText('Unsent draft')).not.toBeNull();
+
+      // The cue reads the composer's own store: sending/clearing the text
+      // removes it without a re-render from the host.
+      act(() => chatDraftsStore.clear('ready'));
+      expect(screen.queryByText('Unsent draft')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'ready title, ready project' }),
+      ).not.toBeNull();
+    });
+
+    it('reads the chat store key (chatSessionId), not the row id', () => {
+      // Real merged rows carry a conversation id as `id` and the composer's
+      // store key as `chatSessionId`; the composer writes under the latter.
+      const merged = {
+        ...item('conv-42', 'Ready', NOW - 30 * 60_000),
+        chatSessionId: 'agent:1700',
+      };
+      chatDraftsStore.set('conv-42', 'text under the WRONG key');
+      renderPanel({ items: [merged], openChatSessionIds: ['agent:1700'] });
+      expect(screen.queryByText('Unsent draft')).toBeNull();
+
+      act(() => chatDraftsStore.set('agent:1700', 'text under the store key'));
+      expect(screen.getByText('Unsent draft')).not.toBeNull();
+    });
+
+    it('whitespace-only text is not a draft, and a Draft-lifecycle row keeps its single Draft chip', () => {
+      const ready = item('ready', 'Ready', NOW - 30 * 60_000);
+      const draft = item('never-prompted', 'Draft', NOW - 5 * 60_000);
+      chatDraftsStore.set('ready', '   ');
+      chatDraftsStore.set('never-prompted', 'first words');
+      renderPanel({
+        items: [ready, draft],
+        openChatSessionIds: ['ready', 'never-prompted'],
+      });
+      expect(screen.queryByText('Unsent draft')).toBeNull();
+    });
+  });
+
+  it('#2310: lists a Draft under its own group, chipped, not in a live group, and still openable', async () => {
     const onFocusChat = vi.fn();
     const draft = item('never-prompted', 'Draft', NOW - 5 * 60_000);
     renderPanel({
@@ -114,18 +351,23 @@ describe('ChatDockInboxPanel', () => {
       ),
     ).map((node) => node.textContent?.replace(/^[+−]/, ''));
     expect(labels).toEqual([
-      'Active now',
-      'Just finished',
+      'Needs you',
+      'Running',
       'Drafts',
-      'Snoozed (0)',
+      'Just finished',
+      'Snoozed · 0',
       'Earlier',
     ]);
 
     const rowName = 'never-prompted title, never-prompted project';
-    const activeNow = screen.getByRole('region', { name: 'Active now' });
-    expect(
-      within(activeNow).queryByRole('button', { name: rowName }),
-    ).toBeNull();
+    for (const live of ['Needs you', 'Running']) {
+      expect(
+        within(screen.getByRole('region', { name: live })).queryByRole(
+          'button',
+          { name: rowName },
+        ),
+      ).toBeNull();
+    }
     const drafts = screen.getByRole('region', { name: 'Drafts' });
     expect(within(drafts).getByText('Draft')).not.toBeNull();
 
@@ -242,9 +484,10 @@ describe('ChatDockInboxPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze active title' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
 
     const snoozedToggle = screen.getByRole('button', {
-      name: 'Snoozed (1)',
+      name: 'Snoozed · 1',
     });
     fireEvent.click(snoozedToggle);
 
@@ -258,22 +501,28 @@ describe('ChatDockInboxPanel', () => {
     ).not.toBeNull();
   });
 
-  it('plain snooze remains a one-tap 30 minute action', () => {
+  it('snooze opens the duration choice; nothing is snoozed until one is chosen (D7)', () => {
+    renderPanel({ items: [items[0]] });
+    const snooze = screen.getByRole('button', { name: 'Snooze active title' });
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(snooze);
+    // The click alone snoozed nothing: the row is still here, the store empty.
+    expect(
+      JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
+    ).toEqual({});
+    expect(
+      screen.getByRole('menu', { name: 'Snooze active title' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
+    expect(
+      JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
+    ).toEqual({ active: NOW + 3_600_000 });
+  });
+
+  it('chooses a longer duration from the same choice', () => {
     renderPanel({ items: [items[0]] });
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze active title' }),
-    );
-    expect(
-      JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
-    ).toEqual({ active: NOW + 30 * 60_000 });
-  });
-
-  it('chooses a longer duration from the adjacent snooze menu', () => {
-    renderPanel({ items: [items[0]] });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Choose snooze duration for active title',
-      }),
     );
     fireEvent.click(screen.getByRole('menuitem', { name: '3 hours' }));
     expect(
@@ -283,14 +532,18 @@ describe('ChatDockInboxPanel', () => {
 
   it('moves focus to the adjacent row before snoozing the focused row (#1054)', () => {
     renderPanel();
-    const snooze = screen.getByRole('button', { name: 'Snooze active title' });
+    // Needs you ("attention") reads first, Running ("active") next.
+    const snooze = screen.getByRole('button', {
+      name: 'Snooze attention title',
+    });
     snooze.focus();
 
     fireEvent.click(snooze);
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
 
     expect(document.activeElement).toBe(
       screen.getByRole('button', {
-        name: 'attention title, attention project',
+        name: 'active title, active project',
       }),
     );
     expect(document.activeElement).not.toBe(document.body);
@@ -299,15 +552,17 @@ describe('ChatDockInboxPanel', () => {
   it('moves focus to the adjacent row before closing the focused row (#1054)', () => {
     const onCloseChat = vi.fn();
     renderPanel({ onCloseChat });
-    const close = screen.getByRole('button', { name: 'Close active title' });
+    const close = screen.getByRole('button', {
+      name: 'Close attention title',
+    });
     close.focus();
 
     fireEvent.click(close);
 
-    expect(onCloseChat).toHaveBeenCalledWith('active');
+    expect(onCloseChat).toHaveBeenCalledWith('attention');
     expect(document.activeElement).toBe(
       screen.getByRole('button', {
-        name: 'attention title, attention project',
+        name: 'active title, active project',
       }),
     );
     expect(document.activeElement).not.toBe(document.body);
@@ -348,6 +603,7 @@ describe('ChatDockInboxPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze store-x title' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
     first.unmount();
 
     // The real promotion moment: `ActiveChatsStore.assignConversationId`
@@ -365,7 +621,7 @@ describe('ChatDockInboxPanel', () => {
       activeChatSessionId: null,
     });
 
-    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed (1)' });
+    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
     expect(
       screen.getByRole('button', {
@@ -393,6 +649,7 @@ describe('ChatDockInboxPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze conv-stable title' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
     first.unmount();
 
     // Reopened: same `id` (conversationId), brand-new `chatSessionId`.
@@ -406,7 +663,7 @@ describe('ChatDockInboxPanel', () => {
       activeChatSessionId: null,
     });
 
-    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed (1)' });
+    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
     expect(
       screen.getByRole('button', {
@@ -459,6 +716,31 @@ describe('ChatDockInboxPanel', () => {
       '2020-06-15T12:00:00.000Z',
     );
     expect(onOpenSession).not.toHaveBeenCalled();
+  });
+
+  it('opens a paired-Station record in Activity and opens no chat on the peer conversation', async () => {
+    const onOpenConversation = vi.fn().mockResolvedValue(true);
+    const onOpenSession = vi.fn();
+    const [peerItem] = buildOrchestrationItems(
+      [peerRecordSummary({ displayTitle: 'Verify on the peer' })] as never,
+      [],
+    );
+    renderPanel({
+      items: [peerItem],
+      activeChatSessionId: null,
+      openChatSessionIds: [],
+      onOpenConversation,
+      onOpenSession,
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Verify on the peer/ }),
+    );
+
+    await waitFor(() =>
+      expect(onOpenSession).toHaveBeenCalledWith('peer-delegation:abc'),
+    );
+    expect(onOpenConversation).not.toHaveBeenCalled();
   });
 
   it('opens session details and identifies outside work when Station cannot rehydrate', () => {
@@ -551,15 +833,18 @@ describe('ChatDockInboxPanel', () => {
     const epochItem = item('epoch', 'Recent', 0);
     renderPanel({ items: [epochItem] });
 
-    // A 0-updatedAt, non-terminal item sits in "Active now" (archive#3227
-    // A6: the shared lane partition classes every not-finished item as
-    // active regardless of recency), which is always expanded — the row is
-    // reachable directly.
+    // A 0-updatedAt, non-terminal item sits in "Idle" (archive#3227 A6: the
+    // shared lane partition keeps every not-finished item live regardless
+    // of recency), which is always expanded — the row is reachable directly.
     expect(
       screen.getByRole('button', { name: 'epoch title, epoch project' }),
     ).not.toBeNull();
     expect(screen.queryByText(/\d+d$/)).toBeNull();
-    expect(screen.getByText('now')).not.toBeNull();
+    // No timestamp means no time and no "last activity": the row says Idle
+    // and nothing it cannot back.
+    const row = screen.getByTestId('inbox-row');
+    expect(row.querySelector('.inbox-row__time')).toBeNull();
+    expect(screen.getByTestId('inbox-row-status').textContent).toBe('Idle');
   });
 
   it('persists collapsible section state', () => {
@@ -619,10 +904,11 @@ describe('ChatDockInboxPanel answerability basis (station#1783)', () => {
   });
 
   it('speaks the user’s language, not the wire enum', () => {
-    // Every sibling chip translates (`Running` -> "Active", `Completed` ->
-    // "Done"); `Unanswerable` was the only member leaking its enum text.
+    // Sibling chips translate where the enum is not user vocabulary
+    // (`Completed` -> "Done"); `Unanswerable` was the only member leaking its
+    // enum text.
     renderPanel({ items: [unanswerableItem()] });
-    expect(screen.getByText("Can't answer here")).toBeTruthy();
+    expect(screen.getByText('Elsewhere')).toBeTruthy();
     expect(screen.queryByText('Unanswerable')).toBeNull();
   });
 

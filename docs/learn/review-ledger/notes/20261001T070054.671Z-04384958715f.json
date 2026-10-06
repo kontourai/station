@@ -1,0 +1,13 @@
+{
+  "revision": "696c2f58183288700f8b9afe00126fb7c8b1efb2",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"docs/ui/responsive-action-surfaces.txt: the ChatDockInboxRows.tsx and ChatInboxHoverCard.tsx evidence now states what the code does on touch (Details plus one direct action: Discard on a Draft, otherwise snooze, otherwise close; the rest as labelled buttons in the Details sheet, each tested through the sheet). No entry was added or removed; the responsive ratchet passes (152 action surfaces, 112 covered). This document does not enumerate inventory entries, so its text stands.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"docs/ui/responsive-action-surfaces.txt: the ChatDockInboxRows.tsx and ChatInboxHoverCard.tsx evidence now states what the code does on touch (Details plus one direct action: Discard on a Draft, otherwise snooze, otherwise close; the rest as labelled buttons in the Details sheet, each tested through the sheet). No entry was added or removed; the responsive ratchet passes (152 action surfaces, 112 covered). This document does not enumerate inventory entries, so its text stands.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"docs/ui/responsive-action-surfaces.txt: the ChatDockInboxRows.tsx and ChatInboxHoverCard.tsx evidence now states what the code does on touch (Details plus one direct action: Discard on a Draft, otherwise snooze, otherwise close; the rest as labelled buttons in the Details sheet, each tested through the sheet). No entry was added or removed; the responsive ratchet passes (152 action surfaces, 112 covered). This document does not enumerate inventory entries, so its text stands.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"docs/ui/responsive-action-surfaces.txt: the ChatDockInboxRows.tsx and ChatInboxHoverCard.tsx evidence now states what the code does on touch (Details plus one direct action: Discard on a Draft, otherwise snooze, otherwise close; the rest as labelled buttons in the Details sheet, each tested through the sheet). No entry was added or removed; the responsive ratchet passes (152 action surfaces, 112 covered). This document does not enumerate inventory entries, so its text stands.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

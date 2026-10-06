@@ -26,7 +26,7 @@ const openPullRequest = {
   title: 'Seven',
   body: null,
   state: 'OPEN',
-  author: { login: 'brian' },
+  author: { login: 'casey' },
   headRefName: 'feature',
   baseRefName: 'main',
   commits: [],
@@ -355,7 +355,7 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
         // so a longer list is refused rather than served partially.
         '101',
         '--json',
-        'number,headRefName,mergeable',
+        'number,headRefName,mergeable,headRepositoryOwner',
       ],
     ]);
     expect(gh.count('auth')).toBe(1);

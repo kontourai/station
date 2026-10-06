@@ -1,0 +1,7 @@
+{
+  "revision": "586180539945f147e2cf80adc3feae611c18c799",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Spec edits only re-target renamed controls (History, single New chat, Continue card); the mobile switcher journey and Chat actions claims still hold.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

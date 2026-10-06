@@ -1,0 +1,21 @@
+{
+  "revision": "c54c7d893a4ae5f0229550fa54e8ebbc3f7b1565",
+
+  "notes": [
+    {"path":"docs/design/conduit-runtime-integration.md","note":"Source review only: compared the recorded lockfile revision with current pnpm-lock.yaml. The only changes add @hpke/core and canonicalize plus the HPKE transitive dependency; locked Conduit and framework versions used by the conformance projection are unchanged, so the version-bound evidence and generator claims remain accurate. No framework/provider invocation or runtime execution inferred.","inputs":["docs/design/conduit-runtime-integration.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Source review only: compared the recorded lockfile revision with current pnpm-lock.yaml. Changes add @hpke/core and canonicalize dependencies in other workspace importers; no shared package export map or source-distribution behavior changed. The compatibility-export and explicit-subpath claims remain accurate.","inputs":["docs/reference/shared.md"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Source review only: compared its recorded lockfile revision with current pnpm-lock.yaml. Changes add @hpke/core and canonicalize; the pinned node-pty version, empty Linux artifact manifest, allowlist and staging path are unchanged. No Linux build, host load or PTY execution inferred.","inputs":["packaging/node-pty-prebuilds/README.md"]},
+
+    {"path":"scripts/__tests__/fixtures/sbom/README.md","note":"Source review only: compared its recorded package.json revision with current package.json. Root direct dependencies @hpke/core and canonicalize were added; the SPDX schema fixture, upstream revision, license text and CycloneDX library-backed schema source are unchanged. No SBOM generation or validation execution inferred.","inputs":["scripts/__tests__/fixtures/sbom/README.md"]},
+
+    {"path":"packages/contracts/README.md","note":"Source review only: compared its recorded package.json revision with current packages/contracts/package.json. The export map adds ./relay-ice and ./native-relay-enrollment, both targeting .ts source under src; the README's direct-subpath, source-distribution and non-service contract boundaries remain accurate. No published npm package compatibility inferred.","inputs":["packages/contracts/README.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed full changed recorded contract export and reference inputs. Additive relay-ice and native-relay-enrollment direct TS exports preserve source-distribution instructions; current reference separates declarations from pilot/capability-gated runtime owners. Source-only review, no published package or runtime/physical qualification inferred.","inputs":["packages/contracts/AGENTS.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed full canonical SDK reference delta and latest recorded RelayRouteProfiles caller change: native proof/context and fixed control/read boundaries remain correctly described; account invitation input is masked and auto-transform-disabled while existing acceptance adapter remains unchanged. Corrected deadline prose expressly includes invitation-acceptance preparation, consistent with current() guards in NativeApplicationSessionClient. SDK interface alone is distinguished from mounted source UI and absent fresh/physical/provider proof. Source review with prior focused tests, not fresh installed enrollment or physical Nightly acceptance.","inputs":["packages/sdk/AGENTS.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed full canonical SDK reference delta and latest recorded RelayRouteProfiles caller change: native proof/context and fixed control/read boundaries remain correctly described; account invitation input is masked and auto-transform-disabled while existing acceptance adapter remains unchanged. Corrected deadline prose expressly includes invitation-acceptance preparation, consistent with current() guards in NativeApplicationSessionClient. SDK interface alone is distinguished from mounted source UI and absent fresh/physical/provider proof. Source review with prior focused tests, not fresh installed enrollment or physical Nightly acceptance.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

@@ -394,7 +394,13 @@ const skillDirectoryName = z
   });
 
 export const skillInstallSchema = z.object({
-  id: skillDirectoryName,
+  id: z.union([
+    skillDirectoryName,
+    z
+      .string()
+      .max(1500)
+      .regex(/^catalog\.[A-Za-z0-9_-]+$/),
+  ]),
 });
 
 export const skillCreateSchema = z.object({

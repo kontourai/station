@@ -45,6 +45,18 @@ import { describe, expect, test, vi } from 'vitest';
 import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
 import { ResponsiveDialogHeader } from '../components/ResponsiveDialogSurface';
 
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
 const SRC_UI_ROOT = path.resolve(__dirname, '..');
 
 function readSource(relativePath: string): string {
@@ -56,7 +68,6 @@ function readSource(relativePath: string): string {
 // family for the same pattern before inventing a one-off fix").
 const HEADER_CONSUMERS = [
   'components/chat-dock/ChatDockProjectSwitcherSheet.tsx',
-  'components/home/SnoozeMenu.tsx',
   'components/chat-dock/ChatDockMobileOverflowSheet.tsx',
   'components/chat-dock/ComposerActionsMenu.tsx',
   // #2059: `ProjectSidebarStatus` was this family's sidebar member through its
@@ -179,7 +190,7 @@ describe('shared dialog header (station#1825 item 1)', () => {
         onClose={vi.fn()}
       />,
     );
-    const dialog = screen.getByRole('dialog', { name: 'Switch project' });
+    const dialog = screen.getByRole('dialog', { name: 'Projects' });
     const header = dialog.querySelector('.responsive-dialog-header');
     expect(header).toBeTruthy();
     const closeButton = screen.getByRole('button', {

@@ -10,7 +10,7 @@ export function useKeyboardShortcut(
   key: string,
   modifiers: ('cmd' | 'ctrl' | 'shift' | 'alt')[],
   description: string,
-  handler: () => void,
+  handler: () => void | boolean,
   enabled = true,
   priority = 0,
   when?: KeyboardShortcut['when'],

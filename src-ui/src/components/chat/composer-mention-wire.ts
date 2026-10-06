@@ -3,6 +3,7 @@ import {
   parseComposerMentions,
   parseComposerSessionReferences,
   safeSessionReferenceLabel,
+  sessionReferenceReadInstruction,
 } from './composer-mentions';
 
 const TOKEN_PREFIX = '@[m:';
@@ -94,5 +95,12 @@ export function expandComposerMentions(
     text += `@${JSON.stringify(fullPath)}`;
     cursor = mention.canonicalEnd;
   }
-  return { text: text + value.slice(cursor) };
+  return {
+    text:
+      text +
+      value.slice(cursor) +
+      sessionReferenceReadInstruction(
+        references.map((reference) => reference.conversationId),
+      ),
+  };
 }

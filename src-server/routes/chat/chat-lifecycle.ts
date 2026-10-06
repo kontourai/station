@@ -1,6 +1,7 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { SpanStatusCode } from '@opentelemetry/api';
 import { STATION_ENGINE_PROVIDER } from '../../../src-shared/monitoring-keys.js';
+import { CHAT_ERROR_MARKER_PREFIX } from '../../runtime/conversation/chat-error-marker.js';
 import { resolveManagedModelIdentity } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import {
@@ -172,7 +173,9 @@ export async function finalizeChatRequest({
     end: () => void;
   };
   /**
-   * The raw failure message from `streamPrimaryAgentChat`'s outer catch,
+   * The outward-safe failure text from `streamPrimaryAgentChat`'s outer
+   * catch (`outwardTurnFailureText`: a status sentence, Station's abort
+   * constant, or the fixed generic — never the provider's own message),
    * when the turn errored before producing any output. Undefined on every
    * successful (or partially-successful, `accumulatedText`-bearing) turn.
    * Used only to persist a reload-safe failure marker (archive#191 R2) — never
@@ -226,8 +229,8 @@ export async function finalizeChatRequest({
 
   // archive#191 R2 persistence-gap fix: a failed turn that produced zero output
   // otherwise persists nothing at all, so the translated error a user saw
-  // live silently vanishes on reload. Persist a raw, untranslated system
-  // marker using the existing `[SYSTEM_EVENT]`-prefixed user-role message
+  // live silently vanishes on reload. Persist an untranslated system
+  // marker (its text already outward-safe, see `turnFailureText`) using the existing `[SYSTEM_EVENT]`-prefixed user-role message
   // convention (see `conversation-manager.ts`'s `add-system-message`), plus
   // a `[CHAT_ERROR]` sub-marker so `ChatDockBody.tsx`'s `SystemEventMessage`
   // render path can distinguish this from any other `[SYSTEM_EVENT]` (e.g.
@@ -238,8 +241,9 @@ export async function finalizeChatRequest({
   // `isFileBackedAgent` since `memoryAdapter` is the same conversation
   // storage for both (see `runtime-agent-builder.ts`'s
   // `context.memoryAdapters.set(agentSlug, bundle.memoryAdapter)`).
-  // Translation itself stays client-side (`chatErrorTranslation.ts`) — this
-  // is intentionally the raw message.
+  // Translation itself stays client-side (`chatErrorTranslation.ts`). The
+  // marker is served to the browser (conversation messages and export) and
+  // indexed with the transcript, so it must never hold provider text.
   if (
     !accumulatedText &&
     turnFailureText &&
@@ -255,7 +259,7 @@ export async function finalizeChatRequest({
           parts: [
             {
               type: 'text',
-              text: `[SYSTEM_EVENT] [CHAT_ERROR] ${turnFailureText}`,
+              text: `${CHAT_ERROR_MARKER_PREFIX}${turnFailureText}`,
             },
           ],
         },

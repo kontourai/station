@@ -165,8 +165,9 @@ export const KNOWN_WORKSPACE_PANE_DECLARATIONS = Object.freeze([
   //
   // Two omissions are the design, not oversights:
   //
-  // - NO `requirements.hostCapabilities`. Browser Preview declares
-  //   `local-browser-preview` because the desktop shell renders it; a
+  // - NO `requirements.hostCapabilities`. The retired `1.0` Browser Preview
+  //   declared `local-browser-preview` because the desktop shell rendered
+  //   it (#90 wave 2 dropped it with the streamed server Chromium); a
   //   captured PNG renders anywhere, so gating this pane on a desktop
   //   capability would refuse a surface that works.
   // - NO `context`. Every other entry declares `project: 'present'` because

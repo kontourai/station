@@ -243,7 +243,19 @@ describe('listThreadRecordsWithObjectStatus', () => {
           new Map(checkpoints.map(({ checkpointId }) => [checkpointId, 'ok'])),
       } as never,
       'thread-bounded',
-      { maxRecords: 8, diffConcurrency: 2, maxChangedFiles: 1, runGit },
+      {
+        maxRecords: 8,
+        diffConcurrency: 2,
+        maxChangedFiles: 1,
+        runGit,
+        // The scripted runner stands in for git over a root that is not a
+        // repository; so does this for opening it.
+        openRepository: (async (
+          root: string,
+          _options: unknown,
+          run: (repository: { top: string; repoArgs: string[] }) => unknown,
+        ) => run({ top: root, repoArgs: [] })) as never,
+      },
     );
 
     expect(served).toHaveLength(8);

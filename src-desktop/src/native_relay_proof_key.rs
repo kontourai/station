@@ -180,9 +180,10 @@ trait SecretBackend: Send + Sync {
 struct KeyringSecretBackend;
 
 impl KeyringSecretBackend {
-    fn entry(account: &str) -> ProofResult<keyring_core::Entry> {
+    fn entry(account: &str) -> ProofResult<crate::native_secure_entry::NativeSecureEntry> {
         super::initialize_credential_store().map_err(|_| ProofKeyError::Store)?;
-        keyring_core::Entry::new(KEYRING_SERVICE, account).map_err(|_| ProofKeyError::Store)
+        crate::native_secure_entry::NativeSecureEntry::new(KEYRING_SERVICE, account)
+            .map_err(|_| ProofKeyError::Store)
     }
 }
 
@@ -298,6 +299,14 @@ impl NativeRelayProofKeyVault {
         self.inner.sign_es256_p1363(owner, &challenge.proof)
     }
 
+    pub(crate) fn sign_invitation_observation_es256_p1363(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeInvitationObservationChallenge,
+    ) -> ProofResult<Vec<u8>> {
+        self.inner.sign_es256_p1363(owner, &challenge.proof)
+    }
+
     pub(crate) fn sign_native_request_es256_p1363(
         &self,
         owner: &NativeProofKeyOwner,
@@ -350,6 +359,14 @@ impl MemoryNativeRelayProofKeyVault {
         if owner != &challenge.owner {
             return Err(ProofKeyError::InvalidChallenge);
         }
+        self.inner.sign_es256_p1363(owner, &challenge.proof)
+    }
+
+    pub(crate) fn sign_invitation_observation_es256_p1363(
+        &self,
+        owner: &NativeProofKeyOwner,
+        challenge: &NativeInvitationObservationChallenge,
+    ) -> ProofResult<Vec<u8>> {
         self.inner.sign_es256_p1363(owner, &challenge.proof)
     }
 
@@ -714,6 +731,148 @@ impl NativeBrokerRedemptionChallenge {
     }
 }
 
+pub(crate) const SUPERSEDED_SCOPE_OBSERVE_PATH: &str =
+    "/broker/v1/native/grants/observe-superseded-scope";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeObservedScope {
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: String,
+    pub(crate) routing_generation: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeSupersededScopeObservation {
+    pub(crate) version: String,
+    pub(crate) request_nonce: String,
+    pub(crate) scope: NativeObservedScope,
+    pub(crate) disposition: String,
+    pub(crate) lease_revision: u64,
+}
+
+/// A closed invitation-authenticated observation, never a grant request.
+pub(crate) struct NativeInvitationObservationChallenge {
+    proof: NativeBrokerRedemptionChallenge,
+    body: Zeroizing<Vec<u8>>,
+    scope: NativeObservedScope,
+}
+
+impl NativeInvitationObservationChallenge {
+    pub(crate) fn from_invitation(
+        owner: &NativeProofKeyOwner,
+        public: &NativeProofKeyPublicMetadata,
+        invitation: &NativeBrokerRedemptionInvitation,
+        old_generation: u64,
+        now_seconds: u64,
+    ) -> ProofResult<Self> {
+        let mut bytes = [0_u8; 32];
+        SystemRandom::new()
+            .fill(&mut bytes)
+            .map_err(|_| ProofKeyError::Signing)?;
+        let nonce = URL_SAFE_NO_PAD.encode(bytes);
+        validate_invitation(owner, public, invitation, &nonce)?;
+        for identifier in [&invitation.station_id, &invitation.enrollment_id] {
+            if Uuid::parse_str(identifier)
+                .map_err(|_| ProofKeyError::InvalidChallenge)?
+                .to_string()
+                != *identifier
+            {
+                return Err(ProofKeyError::InvalidChallenge);
+            }
+        }
+        let invitation_id = URL_SAFE_NO_PAD
+            .decode(&invitation.invitation_id)
+            .map_err(|_| ProofKeyError::InvalidChallenge)?;
+        if invitation_id.len() != 16
+            || URL_SAFE_NO_PAD.encode(&invitation_id) != invitation.invitation_id
+        {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        if !invitation.broker_origin.starts_with("https://")
+            || old_generation == 0
+            || old_generation >= invitation.routing_generation
+            || now_seconds > 9_007_199_254_740_961
+            || invitation.expires_at <= now_seconds.saturating_mul(1000)
+        {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        let current = NativeObservedScope {
+            station_id: invitation.station_id.clone(),
+            enrollment_id: invitation.enrollment_id.clone(),
+            routing_generation: invitation.routing_generation,
+        };
+        let scope = NativeObservedScope {
+            routing_generation: old_generation,
+            ..current.clone()
+        };
+        let surface = serde_json::json!({"kind":"station-native", "appIdentifier": owner.app_identifier(), "channel": owner.channel_label(), "clientInstanceId": owner.client_instance_id(), "keyThumbprint": public.thumbprint()});
+        let body = serde_json::to_vec(&serde_json::json!({
+            "version":"station-broker-native-superseded-scope-observe/v1",
+            "scope":current, "surface":surface, "supersededScope":scope,
+            "requestNonce":nonce, "proofPublicKey":public.jwk()
+        }))
+        .map_err(|_| ProofKeyError::InvalidChallenge)?;
+        let claims = serde_json::json!({
+            "version":"station-broker-native-invitation-request-proof/v1",
+            "aud":invitation.broker_origin, "brokerOrigin":invitation.broker_origin,
+            "purpose":"station-native-superseded-scope-observe-v1", "method":"POST",
+            "path":SUPERSEDED_SCOPE_OBSERVE_PATH, "invitationId":invitation.invitation_id,
+            "scope":current, "surface":surface,
+            "stationSigningKeyId":invitation.station_signing_key_id,
+            "stationSigningGeneration":invitation.station_signing_generation,
+            "bodySha256":URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &body)),
+            "ath":URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, invitation.invitation_secret.as_bytes())),
+            "jti":nonce, "iat":now_seconds, "exp":now_seconds + 30
+        });
+        let header = serde_json::to_vec(&NativeRedemptionProtectedHeader {
+            alg: "ES256",
+            typ: "station-broker-native-invitation-request+jws",
+        })
+        .map_err(|_| ProofKeyError::InvalidChallenge)?;
+        let payload = serde_json::to_vec(&claims).map_err(|_| ProofKeyError::InvalidChallenge)?;
+        Ok(Self {
+            proof: NativeBrokerRedemptionChallenge {
+                signing_input: format!(
+                    "{}.{}",
+                    URL_SAFE_NO_PAD.encode(header),
+                    URL_SAFE_NO_PAD.encode(payload)
+                ),
+                key_thumbprint: public.thumbprint().to_owned(),
+                nonce,
+            },
+            body: Zeroizing::new(body),
+            scope,
+        })
+    }
+    pub(crate) fn body(&self) -> &[u8] {
+        &self.body
+    }
+    pub(crate) fn compact_jws(&self, signature: &[u8]) -> ProofResult<String> {
+        self.proof.compact_jws(signature)
+    }
+    pub(crate) fn validate_response(
+        &self,
+        bytes: &[u8],
+    ) -> ProofResult<NativeSupersededScopeObservation> {
+        if bytes.len() > 4096 {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        let result: NativeSupersededScopeObservation =
+            serde_json::from_slice(bytes).map_err(|_| ProofKeyError::InvalidChallenge)?;
+        if result.version != "station-broker-native-superseded-scope-observed/v1"
+            || result.request_nonce != self.proof.nonce
+            || result.scope != self.scope
+            || result.disposition != "superseded-generation-not-admitted"
+            || result.lease_revision > 9_007_199_254_740_991
+        {
+            return Err(ProofKeyError::InvalidChallenge);
+        }
+        Ok(result)
+    }
+}
+
 /// Pre-grant courier actions cannot redeem invitations or authorize work.
 #[derive(Clone, Copy)]
 pub(crate) enum NativeBrokerKeyCandidateAction {
@@ -925,7 +1084,10 @@ impl NativeKeyCandidateResponse {
             || result.expires_at <= now_ms
             || request_deadline_ms <= now_ms
             || result.expires_at > challenge.invitation.expires_at
-            || result.expires_at > now_ms.saturating_add(60_000)
+            || result.expires_at
+                > now_ms.saturating_add(60_000).saturating_add(
+                    crate::native_station_key_custody::CANDIDATE_CLOCK_SKEW_SECONDS * 1000,
+                )
         {
             return Err(ProofKeyError::BrokerTransport);
         }
@@ -1033,6 +1195,7 @@ pub(crate) enum NativeBrokerRequestBody<'a> {
         nonce: &'a str,
     },
     Retire,
+    IceConfiguration,
     Renew {
         renewal_id: &'a str,
         expected_expires_at: u64,
@@ -1132,6 +1295,15 @@ impl NativeBrokerRequestProofChallenge {
                     scope,
                     surface,
                     nonce,
+                }),
+            ),
+            NativeBrokerRequestBody::IceConfiguration => (
+                "/broker/v1/native/ice/configuration",
+                "station-native-ice-configuration-v1",
+                serde_json::to_vec(&NativeRequestRetireBody {
+                    version: "station-relay-ice-configuration/v1",
+                    scope,
+                    surface,
                 }),
             ),
             NativeBrokerRequestBody::Retire => (
@@ -1423,7 +1595,7 @@ fn validate_native_request_identity(
                 && offer_sdp.as_bytes().len() <= 128 * 1024
         }
         NativeBrokerRequestBody::Read { nonce } => valid_request_token(nonce),
-        NativeBrokerRequestBody::Retire => true,
+        NativeBrokerRequestBody::Retire | NativeBrokerRequestBody::IceConfiguration => true,
         NativeBrokerRequestBody::Renew { renewal_id, .. } => valid_request_token(renewal_id),
     };
     if !valid_origin
@@ -1648,6 +1820,94 @@ mod tests {
         signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_FIXED, uncompressed)
             .verify(challenge.signing_input.as_bytes(), signature_bytes)
             .unwrap();
+    }
+
+    #[test]
+    fn invitation_scope_observation_has_a_distinct_body_bound_signature_and_closed_response() {
+        let owner = make_owner(
+            NativeProofKeyChannel::Stable,
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let vault = MemoryNativeRelayProofKeyVault::new();
+        let public = vault.create(&owner).unwrap();
+        let mut input = invitation(&"I".repeat(43));
+        input.station_id = "22222222-2222-4222-8222-222222222222".into();
+        input.enrollment_id = "33333333-3333-4333-8333-333333333333".into();
+        input.invitation_id = "A".repeat(22);
+        input.expires_at = 1_700_000_060_000;
+        let challenge = NativeInvitationObservationChallenge::from_invitation(
+            &owner,
+            &public,
+            &input,
+            8,
+            1_700_000_000,
+        )
+        .unwrap();
+        let signature = vault
+            .sign_invitation_observation_es256_p1363(&owner, &challenge)
+            .unwrap();
+        verify_signature(&public, &challenge.proof, &signature);
+        let jws = challenge.compact_jws(&signature).unwrap();
+        let parts: Vec<_> = jws.split('.').collect();
+        let header: serde_json::Value =
+            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).unwrap()).unwrap();
+        let claims: serde_json::Value =
+            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).unwrap()).unwrap();
+        let body: serde_json::Value = serde_json::from_slice(challenge.body()).unwrap();
+        assert_eq!(
+            header["typ"],
+            "station-broker-native-invitation-request+jws"
+        );
+        assert_eq!(
+            claims["purpose"],
+            "station-native-superseded-scope-observe-v1"
+        );
+        assert_eq!(claims["aud"], input.broker_origin);
+        assert_eq!(
+            claims["bodySha256"],
+            URL_SAFE_NO_PAD.encode(ring::digest::digest(
+                &ring::digest::SHA256,
+                challenge.body()
+            ))
+        );
+        assert_eq!(claims["jti"], body["requestNonce"]);
+        assert!(claims.get("grantId").is_none());
+        assert!(!String::from_utf8_lossy(challenge.body()).contains(&"I".repeat(43)));
+        let response = serde_json::json!({"version":"station-broker-native-superseded-scope-observed/v1", "requestNonce":body["requestNonce"], "scope":body["supersededScope"], "disposition":"superseded-generation-not-admitted", "leaseRevision":3});
+        assert!(challenge
+            .validate_response(&serde_json::to_vec(&response).unwrap())
+            .is_ok());
+        for key in ["version", "requestNonce", "disposition", "scope"] {
+            let mut wrong = response.clone();
+            wrong[key] = serde_json::json!("secret-trap");
+            assert!(challenge
+                .validate_response(&serde_json::to_vec(&wrong).unwrap())
+                .is_err());
+        }
+        let mut extra = response.clone();
+        extra["credential"] = serde_json::json!("secret-trap");
+        assert!(challenge
+            .validate_response(&serde_json::to_vec(&extra).unwrap())
+            .is_err());
+        for generation in [0, 9, 10] {
+            assert!(NativeInvitationObservationChallenge::from_invitation(
+                &owner,
+                &public,
+                &input,
+                generation,
+                1_700_000_000
+            )
+            .is_err());
+        }
+        input.broker_origin = "http://127.0.0.1".into();
+        assert!(NativeInvitationObservationChallenge::from_invitation(
+            &owner,
+            &public,
+            &input,
+            8,
+            1_700_000_000
+        )
+        .is_err());
     }
 
     #[test]
@@ -1921,7 +2181,7 @@ mod tests {
             1999
         );
         let mut too_far = envelope.clone();
-        too_far["expiresAt"] = serde_json::json!(61001);
+        too_far["expiresAt"] = serde_json::json!(66001);
         assert!(response(200, &too_far)
             .parse(&challenge, 1000, 90000)
             .is_err());
@@ -2035,6 +2295,59 @@ mod tests {
             assert!(NativeKeyCandidateTransport::new()
                 .send_result(&challenge, &signature, 1000, || 1000)
                 .is_err());
+        }
+    }
+
+    #[test]
+    fn key_candidate_transport_accepts_broker_clock_skew_without_extending_host_deadline() {
+        let vault = MemoryNativeRelayProofKeyVault::new();
+        let owner = make_owner(
+            NativeProofKeyChannel::Stable,
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let public = vault.create(&owner).unwrap();
+        let local_now = 1000;
+        let deadline = local_now + 10_000;
+        for (server_ahead, accepted) in [(0, true), (200, true), (5000, true), (5001, false)] {
+            let body = serde_json::json!({
+                "version":"station-broker-native-key-candidate-result/v1",
+                "expiresAt":local_now + server_ahead + 60_000,"candidate":null,
+            })
+            .to_string();
+            let (origin, server) = candidate_http_server(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .into_bytes(),
+                std::time::Duration::ZERO,
+            );
+            let mut input = invitation(&"A".repeat(43));
+            input.broker_origin = origin;
+            let challenge = NativeBrokerKeyCandidateChallenge::from_invitation(
+                &owner,
+                &public,
+                input,
+                &URL_SAFE_NO_PAD.encode([7_u8; 32]),
+                NativeBrokerKeyCandidateAction::Request,
+            )
+            .unwrap();
+            let signature = vault
+                .sign_key_candidate_es256_p1363(&owner, &challenge)
+                .unwrap();
+            let result = NativeKeyCandidateTransport::new().send_result(
+                &challenge,
+                &signature,
+                deadline,
+                || local_now,
+            );
+            server.join().unwrap();
+            assert_eq!(result.is_ok(), accepted, "server ahead {server_ahead}ms");
+            if let Ok(result) = result {
+                assert_eq!(result.expires_at, deadline);
+                assert!(result.candidate.is_none());
+            }
         }
     }
 
@@ -2274,6 +2587,48 @@ mod tests {
             server.join().unwrap();
             assert!(redirect_sink.accept().is_err());
         }
+    }
+
+    #[test]
+    fn native_ice_request_has_one_fixed_body_path_and_purpose() {
+        let bearer = "S".repeat(43);
+        let key_thumbprint = "T".repeat(43);
+        let signing_key_id = "K".repeat(43);
+        let challenge = NativeBrokerRequestProofChallenge::from_request_with_jti(
+            NativeBrokerRequestIdentity {
+                broker_origin: "https://broker.example",
+                grant_id: "grant-12345678",
+                station_id: "11111111-1111-4111-8111-111111111111",
+                enrollment_id: "22222222-2222-4222-8222-222222222222",
+                routing_generation: 1,
+                app_identifier: "io.kontourai.station",
+                channel: "dev",
+                client_instance_id: "33333333-3333-4333-8333-333333333333",
+                key_thumbprint: &key_thumbprint,
+                station_signing_key_id: &signing_key_id,
+                station_signing_generation: 3,
+                bearer_secret: &bearer,
+            },
+            NativeBrokerRequestBody::IceConfiguration,
+            1000,
+            [7; 32],
+        )
+        .unwrap();
+        assert_eq!(challenge.path(), "/broker/v1/native/ice/configuration");
+        let body: serde_json::Value = serde_json::from_slice(challenge.body()).unwrap();
+        assert_eq!(body["version"], "station-relay-ice-configuration/v1");
+        assert_eq!(body.as_object().unwrap().len(), 3);
+        assert_eq!(body["scope"]["routingGeneration"], 1);
+        assert_eq!(
+            body["surface"]["clientInstanceId"],
+            "33333333-3333-4333-8333-333333333333"
+        );
+        assert!(!String::from_utf8_lossy(challenge.body()).contains(&bearer));
+        let payload = challenge.signing_input.split('.').nth(1).unwrap();
+        let claims: serde_json::Value =
+            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap();
+        assert_eq!(claims["purpose"], "station-native-ice-configuration-v1");
+        assert_eq!(claims["path"], "/broker/v1/native/ice/configuration");
     }
 
     #[test]

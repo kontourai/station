@@ -1,0 +1,7 @@
+{
+  "revision": "b32a5620fe462b45e737680f849e03d1bfd7602a",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Resolved integration conflict by retaining the upstream ACP binding, verified against current adapter bytes and actual guardian handling. Plan/question/network-user asks remain explicit; inventory/read scope is unchanged. Both append-only histories and other source bindings are retained; no new publication or platform qualification.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

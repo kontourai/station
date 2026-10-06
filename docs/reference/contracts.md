@@ -22,23 +22,33 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 | Module | Owns |
 |---|---|
+| `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
-| `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
+| `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
+| `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
+| `@kontourai/station-contracts/native-device-proof` | Native Device request-proof version, header, approved binding, exact one-use claims and the host-proposed binding candidate (provisional canonical UUIDv4 ID, approved Device ID, full surface and Device public JWK; no secret); `NativeDeviceProofBindingReadbackV1` projects operator-only historical binding data and separate current Device-binding status; `NativeDeviceProofSelfReceiptV1` reuses that public tuple for the owning current Device bearer through a distinct protected read; `NativeDeviceProofSelfReceiptErrorV1` versions its closed lookup/refusal codes so an unrelated HTTP error cannot establish binding absence; protocol data grants no Device, account or Project authority and supplies no runtime admission |
 | `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
+| `@kontourai/station-contracts/native-relay-enrollment` | Native challenge/candidate, fixed HPKE recipient, ciphertext delivery, signed activation/status, retained fixed request and owned transition/resume DTOs. Declarations grant no authority; server/native/UI owners compose them separately, and no Device bearer crosses renderer IPC |
+| `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
+| `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
-| `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata; routing authority is separate from signing trust, account identity and Project permission |
+| `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
+| `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
+| `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
+| `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
+| `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
@@ -49,7 +59,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
-| `@kontourai/station-contracts/project` | Project config and metadata |
+| `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations and administration projections |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
@@ -58,20 +68,43 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
+| `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+`AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
+configuration; omission preserves the prior engine-specific behavior.
+`AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
+loading. The session resolver carries these as `toolServerMode` and
+`toolServerLoading`. A resolved server's `allowedTools` contains exact original
+MCP names (empty means none); `disabledTools` excludes names independently, and
+`toolNames` is catalog metadata for known-tool exclusions. See the
+[Agent Tools guide](../guides/agents.md#mcp-tool-configuration) for delivery limits.
+
 `OrchestrationSessionSummary.openRequestIds` is present when the server reads
 its durable request state. An empty array means no requests remain open;
-absence means that server did not report this projection.
+absence means that server did not report this projection. A request settled
+by its turn's abort is not listed, and does not set `pendingReview`, whether
+or not a `request.resolved` was recorded for it; the
+[Session API](session-api.md#respondtorequest) says which aborts settle which
+requests.
 
 `OrchestrationSessionSummary.currentSessionId` names the current durable
 execution child for the row's conversation, including when no turn is open.
 It is omitted when the current child is outside the caller's readable scope.
 `lastRuntimeErrorMessage` carries the current terminal error when the event
 fold can prove one; `lastTurnAbortReason` carries a non-recovery abort's
-reason. A later successful terminal clears them.
+reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
+is `true` when that terminal error carried an engine adapter's
+`UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
+queued follow-ups on it until a turn starts or the user sends one.
+
+`ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
+not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
+chat banner reads it through the Session API's
+[usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -102,6 +135,38 @@ retirement records; its unavailable forms contain no protected owner identity.
 Station does not turn feedback, an accepted request, or transport success into
 a promotion verdict. An empty effect-observation set means not observed, never
 successful.
+
+## Native relay and account composition
+
+The [native relay link contract](../../packages/contracts/src/native-relay-link.ts)
+distinguishes public first contact from an invitation already bound to the
+installation's proof key. Its receiving `NativeRelayLinkDelivery` omits the
+invitation secret and exposes only routing metadata and a pending handle.
+The [publication codec](../../packages/connect/src/core/nativeRelayLink.ts) and
+[native intake](../../src-desktop/src/native_relay_link_intake.rs) own parsing
+and lifetime checks; declarations neither create a proof key nor approve a
+surface. Origin hints are not Station identity. The existing operator surface
+approval and independent signing-key comparison remain mandatory before the
+separate native grant and account/Device/Project flows.
+
+The [native enrollment contract](../../packages/contracts/src/native-relay-enrollment.ts)
+separates installation routing proof, recipient/Device/account keys, operator
+approval and signed activation. A prepared fixed request names its peer and
+retained request handle; an active host result names an owned transition and
+configured profile revision. Resume metadata is only a hint until the host
+checks the exact owned transition. The [mounted owners](../design/native-relay-enrollment.md)
+implement that validation; importing a declaration does not enable ingress.
+
+The [application-session contract](../../packages/contracts/src/application-session.ts)
+has a distinct native target without browser Origin and a fixed native revoke
+leaf. Its revocation result confirms remote provider revocation only after the
+real owner validates it. [ProjectInvitationAcceptance](../../packages/contracts/src/project-membership.ts)
+returns exact Project scope and `grantsDeviceAccess: false`; membership is not
+inferred from transport success. The provider's optional
+[pending enrollment registration hook](../../packages/contracts/src/deployment-authentication.ts)
+is server-private, invitation-gated and returns a still-pending real person.
+Unsupported providers fail closed; it neither invents a principal nor changes
+browser cookie flows.
 
 ## Scheduler deferral events
 
@@ -142,7 +207,7 @@ server-owned caller declares it, and no production caller does today
 builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
-`progressSilence` (below) shows "No output for …" and the stall notice with a
+`progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
 Stop button, and the user decides. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
@@ -239,6 +304,17 @@ names its own id, which happens when Station cleans up a send whose caller
 aborted after it was accepted, or interrupts a recovered turn. A queued send
 still waiting when the engine ends is recorded with its message and then
 aborted (`engine-ended-before-start`).
+
+An ACP send whose attachments the engine cannot take (images when its
+`initialize` handshake did not advertise `promptCapabilities.image`, or any
+non-image file) is refused before any engine effect with
+`ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
+`provider`). Unlike the two codes above it is not retryable: the same send is
+refused again. An ACP steer delivered by the cancel + re-prompt fallback, for
+an engine without a native steer method, cancels the running prompt and any
+tool it was running. Its steer `turn.started` carries
+`steerInterruptedRun: true` so a client can say why that step shows as
+cancelled.
 
 Muse through `muse serve` (#2452). The Station runtime drives each Muse
 session through one `muse serve` (MSP) host, and everything above about
@@ -406,6 +482,10 @@ an explicit unsupported/unavailable reason. `PullRequest.headSha` and
 `baseSha` are optional because a provider that omits exact revisions must not
 be presented as current by inference.
 
+`TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
+opt-in to move a Task to `done` when every pull request kept on it is merged;
+a Task store that carries it is refused by Station builds that predate it.
+
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
@@ -450,19 +530,66 @@ compatibility with adapters that do not implement in-app review.
 and indeterminate attempts. A forge review is not a Station gate verdict.
 `PullRequestMergeInput.expectedHeadSha` optionally constrains merge admission to
 the inspected revision; review-origin merges observe the resulting provider state.
+The snapshot's optional `checks` and `reviewComments` are observations too.
+`checks` lists the provider's CI for the observed head (GitHub's check runs and
+commit statuses, GitLab's head pipeline only when it ran on that head); an
+entry the reader cannot classify makes it `partial` rather than guessed, and
+so does a GitHub rollup beyond the reader's 1000-context payload cap (`gh pr
+view` pages the rollup itself; the cap bounds the snapshot, and only a rollup
+past it is cut). A GitLab merged-results pipeline runs
+on a merge commit the merge-request payload never names, so it is reported
+`unavailable` with that reason rather than tied to the observed head.
+`reviewComments` carries inline comments with their diff side and line, `line`
+null once the forge no longer maps the comment onto the diff; `subject` is
+`file` for a comment on the file as a whole, whose `line` is null without being
+outdated. Either field absent means the server did not observe it, and
+`unavailable` carries the reason; neither is an empty list standing in for
+"none".
 
 `PullRequestBranchMergeability` on `pull-request-provider` is a conflict
-indicator's read: one open pull request's ref, source branch and mergeability,
+indicator's read: one open pull request's ref, source branch, optional
+`sourceOwner` (GitHub's head repository owner), and mergeability,
 and nothing a review needs. The GitHub adapter serves at most 100 and refuses
 a longer list as unavailable rather than serving part of it. The optional
 `IPullRequestProvider.listOpenPullRequestMergeability` answers it for a
 repository; the route refuses a provider without it rather than falling back
 to the full list. See the [GitHub adapter](../../src-server/services/pull-requests/github-pull-request-provider.ts).
 
+`PullRequestClientContext.pushTargetOwner` optionally reports the local branch's
+configured push repository owner. The resolver chooses `branch.<b>.pushRemote`,
+then `remote.pushDefault`, then the branch's upstream remote, then `origin`,
+and reads `git remote get-url --push` so a `pushurl` is honored. This does not
+change the repository resolved for PR reads. Unrecognized push URLs, detached
+checkouts, or failed push-target reads omit the owner. `/context` projects only
+declared client fields; checkout paths and PR-opening head/base facts stay private.
+
+The session conflict chip matches the local `branch`, never the upstream branch
+name. When both owners are known it also requires `pushTargetOwner` and
+`sourceOwner` to match case-insensitively. Missing either owner retains branch-only
+matching. GitLab does not report `sourceOwner`, so its behavior is unchanged.
+See the [resolver](../../src-server/services/pull-requests/pull-request-repository-context-resolver.ts)
+and [chip integration tests](../../src-ui/src/__tests__/SessionPullRequestConflictChip.pushurl.test.tsx).
+
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their
-separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
+separate meaning. `needs_input` and `review_pending` items may also carry the
+optional `environmentKind: 'peer'` and `environmentName` fields
+(`AttentionSessionEnvironment`). They mark a delegated task that runs on a
+paired Station, where a local reply cannot reach it. The fields are additive.
+Their absence means the task runs on this Station, or the server predates them.
+`peerRequestReference` names the paired Station's open request (`environmentId`,
+`taskId`, `requestId`, `requestType`), and `viewerCanRespond` reports this
+Station's checks on the delegated `respond` route. Both are additive and
+optional; neither feeds the local request routes. The source is
+`OrchestrationDelegationContext.peerPendingRequest` on the orchestration
+subpath, copied from the paired Station's status read and never derived here.
+With the `delegatedInputAnswers` capability (`StationCapabilityFlags` on the
+environment-security subpath) the reference also carries the paired Station's
+`threadId`, `requestEventId` and `callerCanRespond`, and
+`OrchestrationPeerPendingRequest` the matching `eventId`, `threadId`, `body`
+and `callerCanRespond`. All are optional; their absence means an older Station
+or no report, and clients then offer no bound answer. `OrchestrationSendTurnInput.expectedInputRequest` is a
 constraint, not a grant, and is removed before the adapter receives input.
 
 The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)
@@ -529,3 +656,43 @@ operator-configured browser identity choices, their declared POST begin-login
 paths and availability. These are presentation/capability facts, not identity
 claims, Device grants or Project membership. Secret references and provider
 configuration remain private to Station's operator composition.
+
+### Engine account observation history
+
+`EngineAccountUsage.history` optionally exposes 30 days of hourly allowance
+observations, including unknown readings as gaps. It stores no raw responses,
+identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
+engine/profile observation from the applied process environment. Its absence
+means account attribution is unknown; consumers must not infer the current
+active account. These fields are observations, never billing or routing authority.
+
+
+### Usage observation provenance
+
+`@kontourai/station-contracts/usage-rollup` owns `UsageReceipt`, `UsageCoverage`,
+and `UsageRollup`. A receipt's optional `sourceSequence` is durable order within
+its Station/thread, not a provider-clock timestamp or an authorization grant.
+Same-source cumulative replacements use that order and preserve omitted
+measured components. Older peers can omit it and retain timestamp ordering.
+Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
+`aggregateReceipts` is bounded logical transfer material, separate from the
+receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
+for limits and observation-window semantics.
+
+
+## Immutable Task output review
+
+`@kontourai/station-contracts/project-task-room` defines
+`ProjectTaskRoomOutputFeedback`: `kind: 'output-feedback'`, an exact
+`target: {outputId, digest, taskCreatedAt}`, `review` and nonempty `text`.
+The digest is `sha256:` plus 64 lowercase hexadecimal characters and the Task
+creation time is canonical ISO UTC. Review values are `comment`,
+`changes-requested` and `accepted`; all are human speech, never a Task status
+transition or workflow approval. The browser DTO retains this target and the
+attributed human actor in ordinary room history.
+
+Room records accept legacy `station.project-task-room/v2` and new
+`station.project-task-room/v3`; output feedback requires v3 and an operator
+principal. Existing records retain their exact bytes and integrity digests.
+See the [API review contract](api.md#review-an-immutable-task-output) for the
+per-room old-writer fence and permanent duplicate identity behavior.

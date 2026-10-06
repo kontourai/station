@@ -1,0 +1,7 @@
+{
+  "revision": "b2f50f803b524348c434b47dd69b5c158bfe45bb",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed Customize owner failure/retry and focus restoration: the eager recovery Dialog is portalled outside the footer, offers Retry/Reload/Close, avoids a synthetic recovery history entry, and passes the original footer trigger to the successfully loaded chooser. The isolated owner regression fails before the fix and passes with the real shared LazyBoundary and actual chooser, alongside the38case footer/dialog/boundary suite and UI typecheck. The guide topic hierarchy, routes, scope writes, and ordinary dialog journey remain unchanged and accurate; no prose change is needed for canonical load-failure recovery.","inputs":["docs/design/settings-architecture.md"]}
+  ]
+}

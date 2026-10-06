@@ -33,7 +33,12 @@ import { describe, expect, test } from 'vitest';
  */
 
 type Result = 'success' | 'failure' | 'cancelled' | 'skipped';
-type Job = { needs?: string | string[]; if?: string; uses?: string };
+type Job = {
+  needs?: string | string[];
+  if?: string;
+  uses?: string;
+  strategy?: { matrix?: { shard?: string | number[] } };
+};
 type Context = {
   event: string;
   repository: string;
@@ -42,6 +47,7 @@ type Context = {
 type State = {
   results: Map<string, Result>;
   outputs: Map<string, Record<string, string>>;
+  shards: Map<string, number[]>;
 };
 
 const root = resolve(import.meta.dirname, '../..');
@@ -76,7 +82,7 @@ function ancestors(
 function evaluate(
   source: string,
   lookup: (path: string[]) => unknown,
-  functions: Record<string, () => boolean>,
+  functions: Record<string, (argument?: unknown) => unknown>,
 ): unknown {
   const tokens =
     source.match(
@@ -103,11 +109,12 @@ function evaluate(
     if (token === 'false') return false;
     if (peek() === '(') {
       next();
+      const argument = peek() === ')' ? undefined : or();
       expect_(')');
       // GitHub function names are case-insensitive.
       const fn = functions[token.toLowerCase()];
       if (!fn) throw new Error(`unmodelled function ${token}() in ${source}`);
-      return fn();
+      return fn(argument);
     }
     const path = [token];
     while (peek() === '.' || peek() === '[') {
@@ -184,7 +191,11 @@ function simulate(
     resolve?: (id: string, state: State) => Result | undefined;
   } = {},
 ): State {
-  const state: State = { results: new Map(), outputs: new Map() };
+  const state: State = {
+    results: new Map(),
+    outputs: new Map(),
+    shards: new Map(),
+  };
   const pending = new Set(Object.keys(jobs));
   while (pending.size) {
     const ready = [...pending].find((id) =>
@@ -254,6 +265,20 @@ function simulate(
         : cancelled && jobs[ready].uses === undefined
           ? 'cancelled'
           : 'skipped';
+    const matrix = jobs[ready].strategy?.matrix?.shard;
+    if (runs && matrix !== undefined) {
+      const expanded =
+        typeof matrix === 'string'
+          ? evaluate(
+              matrix.replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, ''),
+              lookup,
+              { fromjson: (value) => JSON.parse(String(value)) },
+            )
+          : matrix;
+      if (!Array.isArray(expanded))
+        throw new Error('shard matrix must expand to an array');
+      state.shards.set(ready, expanded);
+    }
     state.results.set(ready, result);
     state.outputs.set(
       ready,
@@ -355,7 +380,39 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       for (const part of PARTS)
         expect(state.results.get(part), part).toBe('success');
       expect(state.results.get('fast-checks')).toBe('success');
+      expect(state.shards.get('fast-checks-shard')).toEqual([1, 2, 3, 4]);
       expect(aggregatorPartResults(jobs, state)).toBe(0);
+    },
+  );
+
+  test.each([1, 2, 4])(
+    'the base verdict accepts %i planned legs on PRs and merge groups',
+    (count) => {
+      for (const context of [
+        sameRepositoryPr,
+        { ...sameRepositoryPr, event: 'merge_group' },
+      ]) {
+        const state = simulate(jobs, context, {
+          outputs: {
+            'fast-checks-plan': {
+              legacy: 'false',
+              shards: JSON.stringify(
+                Array.from({ length: count }, (_, i) => i + 1),
+              ),
+              'shard-count': String(count),
+            },
+          },
+        });
+        expect(state.shards.get('fast-checks-shard')).toEqual(
+          count === 1 ? [1] : count === 2 ? [1, 2] : [1, 2, 3, 4],
+        );
+        expect(aggregatorPartResults(jobs, state)).toBe(0);
+        const skipped = simulate(jobs, context, {
+          outputs: { 'fast-checks-plan': { legacy: 'false' } },
+          outcomes: { 'fast-checks-shard': 'skipped' },
+        });
+        expect(aggregatorPartResults(jobs, skipped)).toBe(1);
+      }
     },
   );
 

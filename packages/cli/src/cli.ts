@@ -56,6 +56,7 @@ import {
   explainFullAccessRefusal,
   explainRequestFailure,
 } from './commands/errors.js';
+import { runExperienceCommand } from './commands/experience.js';
 import { exportConfig } from './commands/export.js';
 import {
   DEFAULT_SERVER_PORT,
@@ -185,6 +186,7 @@ export interface ParsedLifecycleArgs {
   features?: string;
   force: boolean;
   allowSharedHome: boolean;
+  watch: boolean;
   homeSource: LifecycleHomeSource;
   host?: string;
   instanceName?: string;
@@ -348,6 +350,7 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
     clearAllowedOrigins: args.includes('--clear-allowed-origins'),
     force: args.includes('--force'),
     allowSharedHome: args.includes('--allow-shared-home'),
+    watch: args.includes('--watch'),
     allowDefaultHomeClean: args.includes('--allow-default-home-clean'),
     confirm: args.includes('--confirm'),
   };
@@ -793,6 +796,9 @@ function buildProgram(
   register('plugin', async (args) => {
     const [sub, ...subArgs] = args;
     switch (sub) {
+      case 'experience':
+        runExperienceCommand(subArgs);
+        break;
       case 'install': {
         const parsed = parseCoreArgs(subArgs);
         const skipArg = subArgs.find((a) => a.startsWith('--skip='));
@@ -949,6 +955,7 @@ function buildProgram(
       consentPort: lifecycleArgs.consentPort,
       logFile: lifecycleArgs.logFile,
       build: lifecycleArgs.buildFlag,
+      watch: lifecycleArgs.watch,
       force: lifecycleArgs.force,
       allowSharedHome: lifecycleArgs.allowSharedHome,
       intent: lifecycleArgs.stopIntent,

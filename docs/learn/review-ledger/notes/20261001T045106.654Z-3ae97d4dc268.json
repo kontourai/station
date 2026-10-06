@@ -1,0 +1,7 @@
+{
+  "revision": "100a6d435ec361324bcaa95f248ecc06a1bbd995",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Merged tree: module-map changed on main (work board) and on this branch (Browser session service, shared live-surface keep-alive). Re-read 'Live frames and human input share a transport budget': still one frame request per visible viewer (useLiveSurface framePath) with no shared transport or admission policy. This branch adds a console poll and a capped keep-alive request to the same connection budget, which the section's concern already covers; no prose change.","inputs":["docs/architecture/abstraction-review.md"]}
+  ]
+}

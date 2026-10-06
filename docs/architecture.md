@@ -436,9 +436,10 @@ package READMEs for supported entry points.
 
 #### Attached external session follow
 
-Station discovers supported Claude and Codex transcripts through its Session
-sources. A `read-only-attached` record imports observed history without taking
-over the external process. Missing files or stale observations do not prove that
+Station discovers supported Claude Code and Codex transcripts, Grok Build
+sessions and OpenCode's session database through its Session sources. A
+`read-only-attached` record imports observed history without taking over the
+external process. Missing files or stale observations do not prove that
 the external engine is live or controllable.
 
 Command ownership checks refuse mutations of the original attached execution.
@@ -457,6 +458,12 @@ setup. Its [README](../packages/sdk/README.md), [reference](reference/sdk.md)
 and package exports own the current surface. Host-context hooks and remote-query
 hooks have different return shapes and prerequisites; follow their declarations
 and current host integration.
+
+The headless [Agent entry](../packages/sdk/src/agent/index.ts) re-exports the
+canonical Agent authoring and execution clients. It excludes UI dependencies;
+plug-in UI stays on the root and owning UI subpaths. Both share contract and
+transport owners. See [Agent development](guides/agent-development.md) and
+[ADR 0021](adr/0021-separate-plugin-and-agent-sdk-surfaces.md).
 
 ### `packages/connect/` — `@kontourai/station-connect`
 

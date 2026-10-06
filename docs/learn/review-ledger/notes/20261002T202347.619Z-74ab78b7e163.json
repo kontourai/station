@@ -1,0 +1,11 @@
+{
+  "revision": "57e1daf6e0d4fe2c366e51d67e20c1a70587966f",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Final convergence delta review: equivalent 768px-or-short-coarse responsive blocks were consolidated to the existing count with relative rule order retained; the action-role color rules follow mobile rules explicitly. Actual320/390/desktop checks confirmed no horizontal overflow,44px phone targets, stable hidden-submit geometry and correct light/dark action colors. The headless SDK now uses central envelopeError plus ChatHttpError, preserving status/code/details/RetryAfter;153 SDK/HTTP tests and unchanged error/mobile ratchets passed. The remaining claims in this owner retain their earlier scope and limits. Changed inputs: src-ui/src/components/chat/chat.css.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Final convergence delta review: equivalent 768px-or-short-coarse responsive blocks were consolidated to the existing count with relative rule order retained; the action-role color rules follow mobile rules explicitly. Actual320/390/desktop checks confirmed no horizontal overflow,44px phone targets, stable hidden-submit geometry and correct light/dark action colors. The headless SDK now uses central envelopeError plus ChatHttpError, preserving status/code/details/RetryAfter;153 SDK/HTTP tests and unchanged error/mobile ratchets passed. The remaining claims in this owner retain their earlier scope and limits. Changed inputs: packages/sdk/src/client/orchestration.ts.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Final composer style/source review: equivalent media rules consolidated with explicit action-role color precedence. Controlled actual-component browser checks320/390/desktop confirmed no overflow,44px phone targets, stable concealed-submit geometry and both themes. Existing browser/device/engine proof limits remain; no new provider or packaged-release claim. Mobile CSS ratchet remains106/106 with no baseline increase.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

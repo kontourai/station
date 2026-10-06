@@ -15,24 +15,31 @@ mod desktop_installation;
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+mod native_enrollment;
+mod native_enrollment_host;
+mod native_enrollment_peer;
+mod native_relay_ice;
 #[cfg(not(mobile))]
 mod notification_feed;
-// Foundation only: this module owns native proof-key custody and signing but
-// is intentionally not registered as renderer IPC or wired to app traffic.
-// Host account proof-key custody. Separate keyring namespace from the relay
-// routing proof key; no Tauri IPC is registered for it yet.
-#[cfg(not(mobile))]
+// Proof keys remain host-only; bounded account and Device operations are IPC.
+mod native_account_operations;
 pub(crate) mod native_account_proof_key;
-#[cfg(not(mobile))]
+mod native_application_peer;
+// Device identity custody metadata (station#2893): the versioned
+// keyring companion for paired credentials and the current-identity resolver.
+pub(crate) mod native_device_binding_candidate;
+pub(crate) mod native_device_custody;
+pub(crate) mod native_device_proof_key;
+pub(crate) mod native_proof_key_core;
+#[cfg(target_os = "ios")]
+mod native_relay_ios_launch;
 mod native_relay_key_approval;
-#[cfg(not(mobile))]
+mod native_relay_link_intake;
 pub(crate) mod native_relay_proof_key;
-#[cfg(not(mobile))]
 mod native_relay_redemption;
-#[cfg(not(mobile))]
+mod native_secure_entry;
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
-#[cfg(not(mobile))]
 mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
@@ -383,7 +390,9 @@ const NATIVE_HTTP_PER_ORIGIN_STREAM_LIMIT: usize = 12;
 /// (see `native_http_agent_config` and `native_http_send_body_budget`): at most
 /// resolve 10s + connect 15s (+ up to 15s more for a TLS handshake whose peer
 /// goes silent) + request headers 15s + response headers 20s = 75s for a
-/// bodiless request. A request with a body adds its send-body budget,
+/// bodiless request. Foreground chat dispatch gets 60s for response headers
+/// instead of 20s, adding at most 40s to these bounds. A request with a body
+/// adds its send-body budget,
 /// `max(120s, body_len / 32 KiB/s)`, plus ureq's 1s `Expect: 100-continue`
 /// wait: 196s up to 3.75 MiB, rising to about 14 minutes (75s + 768s + 1s)
 /// for the 24 MiB `NATIVE_HTTP_BODY_LIMIT`.
@@ -433,6 +442,24 @@ struct NativeCredentialReference {
 struct NativeCommandError {
     code: &'static str,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capacity: Option<NativeHttpCapacitySnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeHttpCapacitySnapshot {
+    pending_requests: usize,
+    pending_limit: usize,
+    active_requests: usize,
+    active_limit: usize,
+    origin_requests: usize,
+    origin_request_limit: usize,
+    origin_streams: usize,
+    origin_stream_limit: usize,
+    retry_after_ms: u64,
+    occupants: Vec<NativeHttpOccupantSnapshot>,
+    queue_head: Option<NativeHttpOccupantSnapshot>,
 }
 
 impl NativeCommandError {
@@ -440,6 +467,7 @@ impl NativeCommandError {
         Self {
             code,
             message: message.into(),
+            capacity: None,
         }
     }
 }
@@ -482,7 +510,7 @@ impl From<NativeCommandError> for String {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
-struct CredentialProfileStore {
+pub(crate) struct CredentialProfileStore {
     schema_version: u8,
     revision: u64,
     default_profile: Option<String>,
@@ -568,6 +596,7 @@ struct NativeProfileAuthorizationReceipt {
 struct NativeCredentialBinding {
     exact_origin: String,
     environment_id: String,
+    relay_route: Option<NativeStationRelayRoute>,
 }
 
 #[derive(Clone, Default)]
@@ -596,6 +625,12 @@ struct PendingPairingCredential {
     exact_origin: String,
     environment_id: String,
     client_instance_id: String,
+    /// Device id/kind captured from the AUTHENTICATED pairing response while
+    /// the bearer was still host-held (station#2893). The renderer-visible
+    /// device projection is never an authority for these values, and they are
+    /// never re-read from renderer state at commit time.
+    device_id: String,
+    device_kind: String,
     expires_at: SystemTime,
     phase: NativePairingPhase,
 }
@@ -715,9 +750,165 @@ enum NativeHttpMessage {
     },
 }
 
+#[derive(Debug)]
 struct NativeHttpBrokerFailure {
     code: &'static str,
     detail: Option<String>,
+}
+
+/// One owner-bound native HTTP exchange can feed either the renderer's
+/// existing Tauri channel or a private host collector. Keeping the protocol
+/// engine behind this sink preserves its admission, custody and cancellation
+/// checks for both callers.
+trait NativeHttpMessageSink {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure>;
+}
+
+impl NativeHttpMessageSink for Channel<NativeHttpMessage> {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
+        Channel::send(self, message).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
+    }
+}
+
+struct NativeHttpDeadlineGuard {
+    stop: std::sync::mpsc::SyncSender<()>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl NativeHttpDeadlineGuard {
+    fn start(
+        deadline: Instant,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        cancellations: NativeHttpCancellation,
+    ) -> Self {
+        let (stop, stopped) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            if stopped
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .is_err()
+            {
+                cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                let (state, changed) = &*cancellations.0;
+                if let Ok(_state) = state.lock() {
+                    changed.notify_all();
+                }
+            }
+        });
+        Self {
+            stop,
+            worker: Some(worker),
+        }
+    }
+}
+
+impl Drop for NativeHttpDeadlineGuard {
+    fn drop(&mut self) {
+        let _ = self.stop.try_send(());
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+const NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT: usize = 4 * 1024;
+const NATIVE_DEVICE_SELF_RECEIPT_BODY_DEADLINE: Duration = Duration::from_secs(45);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NativeReceiptCollectorPhase {
+    Body,
+    Ended,
+    Failed,
+}
+
+/// Validates the exact response/chunk/end stream produced by the shared
+/// native HTTP owner. No transport error detail is retained for IPC output.
+#[derive(Default)]
+struct NativeReceiptMessageCollector {
+    phase: Option<NativeReceiptCollectorPhase>,
+    status: Option<u16>,
+    declared_body_length: Option<u64>,
+    body: Vec<u8>,
+    error_code: Option<&'static str>,
+    oversized: bool,
+}
+
+impl NativeReceiptMessageCollector {
+    fn finish(self) -> Result<(u16, Vec<u8>), &'static str> {
+        if self.oversized {
+            return Err("response_too_large");
+        }
+        if let Some(code) = self.error_code {
+            return Err(code);
+        }
+        if self.phase != Some(NativeReceiptCollectorPhase::Ended) {
+            return Err("response_incomplete");
+        }
+        let Some(status) = self.status else {
+            return Err("response_incomplete");
+        };
+        if self
+            .declared_body_length
+            .is_some_and(|length| length != self.body.len() as u64)
+        {
+            return Err("response_truncated");
+        }
+        Ok((status, self.body))
+    }
+}
+
+impl NativeHttpMessageSink for NativeReceiptMessageCollector {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
+        match message {
+            NativeHttpMessage::Response {
+                status,
+                body_length,
+                ..
+            } if self.phase.is_none() => {
+                if body_length
+                    .is_some_and(|length| length > NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT as u64)
+                {
+                    self.oversized = true;
+                    self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                    return Err(NativeHttpBrokerFailure::coded("response_too_large"));
+                }
+                self.status = Some(status);
+                self.declared_body_length = body_length;
+                self.phase = Some(NativeReceiptCollectorPhase::Body);
+                Ok(())
+            }
+            NativeHttpMessage::Chunk { bytes }
+                if self.phase == Some(NativeReceiptCollectorPhase::Body) =>
+            {
+                if self.body.len().saturating_add(bytes.len())
+                    > NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT
+                {
+                    self.oversized = true;
+                    self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                    return Err(NativeHttpBrokerFailure::coded("response_too_large"));
+                }
+                self.body.extend_from_slice(&bytes);
+                Ok(())
+            }
+            NativeHttpMessage::End if self.phase == Some(NativeReceiptCollectorPhase::Body) => {
+                self.phase = Some(NativeReceiptCollectorPhase::Ended);
+                Ok(())
+            }
+            NativeHttpMessage::Error { code, .. }
+                if self.phase != Some(NativeReceiptCollectorPhase::Ended) =>
+            {
+                if self.error_code.is_none() {
+                    self.error_code = Some(code);
+                }
+                self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                Ok(())
+            }
+            _ => {
+                self.error_code = Some("invalid_response_sequence");
+                self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                Err(NativeHttpBrokerFailure::coded("invalid_response_sequence"))
+            }
+        }
+    }
 }
 
 struct NativeHttpTransportDetail {
@@ -755,6 +946,7 @@ struct NativeHttpAdmissionState {
     /// the request id, which a later request may reuse).
     orphaned_calls: std::collections::HashMap<u64, NativeOrphanedHttpCall>,
     next_call_token: u64,
+    last_capacity_log: Option<Instant>,
     /// Every admission-slot release made through `NativeHttpSlot` or an
     /// abandon, so tests can prove a slot is released exactly once.
     #[cfg(test)]
@@ -767,13 +959,67 @@ struct NativeOrphanedHttpCall {
     liveness: bool,
 }
 
+struct NativeHttpRequestObservation {
+    started_at: Instant,
+    method: String,
+    route: &'static str,
+}
+
+fn native_http_route_category(path: &str) -> &'static str {
+    // Fixed categories only: URLs can carry private IDs or one-use receipts.
+    [
+        "orchestration",
+        "sessions",
+        "config",
+        "plugins",
+        "system",
+        "tasks",
+        "projects",
+        "agents",
+        "monitoring",
+        "scheduler",
+        "notifications",
+        "connections",
+        "events",
+        "auth",
+        "uploads",
+        "files",
+        "knowledge",
+        "registry",
+    ]
+    .into_iter()
+    .find(|category| {
+        path.strip_prefix("/api/").is_some_and(|tail| {
+            tail == *category
+                || tail
+                    .strip_prefix(category)
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    })
+    .unwrap_or("other")
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeHttpOccupantSnapshot {
+    method: String,
+    route_category: &'static str,
+    age_ms: u64,
+    phase: &'static str,
+    stream: bool,
+    same_origin: bool,
+}
+
 struct NativePendingHttpRequest {
     request_id: String,
+    observation: Option<NativeHttpRequestObservation>,
     origin: String,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 struct NativeActiveHttpRequest {
+    observation: Option<NativeHttpRequestObservation>,
+    phase: &'static str,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     origin: String,
     /// Whether this reservation draws on the stream allowance rather than the
@@ -922,15 +1168,27 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
                     && matches!(bytes[14].to_ascii_lowercase(), b'1'..=b'8')
                     && matches!(bytes[19].to_ascii_lowercase(), b'8' | b'9' | b'a' | b'b')
             };
-            if profile.credential_ref.is_some()
-                || profile.configuration_state != "unconfigured"
+            let custody_valid = match profile.configuration_state.as_str() {
+                "unconfigured" => profile.credential_ref.is_none(),
+                "requires-auth" | "configured" => {
+                    profile.credential_ref.is_some()
+                        && profile.local_service.is_none()
+                        && profile._environment_id.as_deref() == Some(route.station_id.as_str())
+                        && profile
+                            .client_instance_id
+                            .as_deref()
+                            .is_some_and(safe_identifier)
+                }
+                _ => false,
+            };
+            if !custody_valid
                 || profile.setup_source != "manual"
                 || !safe_origin(&profile.endpoint)
                 || !safe_origin(&route.broker_origin)
                 || !safe_identifier(&route.station_id)
                 || !safe_identifier(&route.enrollment_id)
             {
-                return Err("invalid or configured Station relay profile".to_string());
+                return Err("invalid Station relay profile".to_string());
             }
         } else {
             selectable_names.insert(profile.name.to_lowercase());
@@ -1007,6 +1265,7 @@ fn profile_credential_binding(
     profile: &CredentialProfile,
 ) -> Result<NativeCredentialBinding, String> {
     Ok(NativeCredentialBinding {
+        relay_route: profile.relay_route.clone(),
         exact_origin: exact_origin(&profile.endpoint)?,
         environment_id: profile
             ._environment_id
@@ -1141,6 +1400,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     }
 }
 
+#[cfg(test)]
 fn invalidate_active_profile_receipt_after_credential_delete(
     authority: &mut NativeProfileAuthorityState,
     reference: &NativeCredentialReference,
@@ -1268,10 +1528,12 @@ fn initialize_credential_store() -> Result<(), String> {
     Err("This desktop platform has no supported OS credential store; Station will not fall back to plaintext storage.".to_string())
 }
 
-fn credential_entry(reference: &NativeCredentialReference) -> Result<keyring_core::Entry, String> {
+fn credential_entry(
+    reference: &NativeCredentialReference,
+) -> Result<native_secure_entry::NativeSecureEntry, String> {
     initialize_credential_store()?;
     let account = credential_account(reference)?;
-    keyring_core::Entry::new(STATION_CREDENTIAL_SERVICE, &account)
+    native_secure_entry::NativeSecureEntry::new(STATION_CREDENTIAL_SERVICE, &account)
         .map_err(|error| format!("create OS credential entry: {error}"))
 }
 
@@ -1332,31 +1594,9 @@ fn credential_vault_delete_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<(), String> {
-    let reference = authorized_credential_reference(app, authority)?;
-    match credential_entry(&reference)?.delete_credential() {
-        Ok(()) => {
-            let mut state = authority
-                .0
-                .lock()
-                .map_err(|_| "Station native authority is unavailable".to_string())?;
-            invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
-            Ok(())
-        }
-        Err(error) if is_missing_credential(&error) => {
-            let mut state = authority
-                .0
-                .lock()
-                .map_err(|_| "Station native authority is unavailable".to_string())?;
-            invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
-            Ok(())
-        }
-        Err(error) => Err(format!("delete OS credential: {error}")),
-    }
+    credential_vault_delete_with_host(&AppProfileWriteHost::new(app)?, authority, None)
 }
 
-/// A retired reference may be supplied only after the host proves no profile
-/// still owns it. This supports key rotation without reopening arbitrary
-/// read/write/delete access to every keyring account.
 #[tauri::command]
 async fn credential_vault_delete_unreferenced(
     app: AppHandle,
@@ -1372,22 +1612,63 @@ fn credential_vault_delete_unreferenced_blocking(
     app: &AppHandle,
     reference: NativeCredentialReference,
 ) -> Result<(), String> {
-    credential_reference_key(&reference)?;
-    let contents = read_station_profile_contents(app)?;
-    let store = parse_station_profile_store(&contents)?;
-    if store.profiles.iter().any(|profile| {
-        profile
-            .credential_ref
-            .as_ref()
-            .is_some_and(|owned| owned.kind == reference.kind && owned.id == reference.id)
-    }) {
-        return Err("refusing to delete a credential still owned by a saved Station".to_string());
+    credential_vault_delete_with_host(
+        &AppProfileWriteHost::new(app)?,
+        &NativeProfileAuthority::default(),
+        Some(&reference),
+    )
+}
+
+fn credential_vault_delete_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    unreferenced: Option<&NativeCredentialReference>,
+) -> Result<(), String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
+    )?;
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    if let Some(reference) = unreferenced {
+        credential_reference_key(reference)?;
+        if store
+            .profiles
+            .iter()
+            .any(|profile| profile.credential_ref.as_ref() == Some(reference))
+        {
+            return Err("refusing to delete a credential still owned by a saved Station".into());
+        }
+        // New callers can retire legacy unreferenced credentials; published CAS
+        // removals already carry a durable intent, so cold recovery needs no renderer reference.
+        native_device_custody::stage_unreferenced_retirement(host.custody(), &path, reference)?;
+    } else if state.active.is_some() {
+        native_device_custody::stage_active_retirement(host.custody(), &path, &store, &state)?;
+        state.active = None;
+    } else if !native_device_custody::has_pending_retirements(host.custody(), &path)? {
+        return Err("Station has no active credential or pending retirement".into());
     }
-    match credential_entry(&reference)?.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(error) if is_missing_credential(&error) => Ok(()),
-        Err(error) => Err(format!("delete OS credential: {error}")),
-    }
+    native_device_custody::retry_retirements(host.custody(), &path, &store, &state, unreferenced)
+}
+
+fn retry_device_custody_retirements_for_app(app: &AppHandle) -> Result<(), String> {
+    let host = AppProfileWriteHost::new(app)?;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
+    )?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    native_device_custody::retry_retirements(host.custody(), &path, &store, &state, None)
 }
 
 /// The native host records the selected Station/reference after validating the full
@@ -1403,13 +1684,11 @@ fn station_profile_authorize_active_internal(
     authority: &NativeProfileAuthority,
     profile_name: &str,
 ) -> Result<NativeProfileAuthorizationReceipt, String> {
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-    let mut state = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())?;
-    let receipt = authorize_active_profile_in_state(&mut state, &store, profile_name)?;
-    drop(state);
+    let receipt = station_profile_authorize_with_host(
+        &AppProfileWriteHost::new(app)?,
+        authority,
+        profile_name,
+    )?;
     // The renderer may have attempted its bounded readiness proof before the
     // active credential was available. Reuse its mounted retry subscription
     // once the host has committed the selected profile.
@@ -1418,6 +1697,30 @@ fn station_profile_authorize_active_internal(
     #[cfg(mobile)]
     let _ = app.emit("station://startup-readiness-retry", ());
     Ok(receipt)
+}
+
+fn station_profile_authorize_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    profile_name: &str,
+) -> Result<NativeProfileAuthorizationReceipt, String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
+    )?;
+    let profile = selected_profile_from_store(&store, profile_name)?;
+    if profile.credential_ref.as_ref().is_some_and(|reference| {
+        native_device_custody::has_active_retirement(host.custody(), &path, reference)
+            .unwrap_or(true)
+    }) {
+        return Err("Station credential retirement is pending".into());
+    }
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    authorize_active_profile_in_state(&mut state, &store, profile_name)
 }
 
 fn authorize_active_profile_in_state(
@@ -2183,28 +2486,33 @@ fn replace_station_profile_store(
         .map_err(|error| format!("replace saved Station metadata: {error}"))
 }
 
-fn authorized_credential_reference(
-    app: &AppHandle,
-    authority: &NativeProfileAuthority,
-) -> Result<NativeCredentialReference, NativeCommandError> {
-    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
-    // read takes `profiles.json.lock`, and the writer holds that lock while it
-    // takes this mutex; taking them in the other order here would let a
-    // concurrent write and this read stall each other until the lock wait
-    // expires (the commands run off the main thread since #2469).
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-    let state = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())?;
+/// The full host-authorized active-Station custody context, extracted from
+/// `authorized_credential_reference` so the Device identity resolver
+/// (station#2893) revalidates the exact same profile-lock/authorization
+/// discipline instead of a parallel weaker one. `client_instance_id` stays
+/// optional: CLI-written profiles legitimately lack it, and ordinary bearer
+/// use must not depend on custody metadata.
+struct AuthorizedProfileContext {
+    reference: NativeCredentialReference,
+    exact_origin: String,
+    environment_id: String,
+    client_instance_id: Option<String>,
+    binding_id: String,
+    profile_revision: u64,
+}
+
+fn authorized_profile_context_in_store(
+    state: &NativeProfileAuthorityState,
+    store: &CredentialProfileStore,
+) -> Result<AuthorizedProfileContext, NativeCommandError> {
     let selected = state.active.clone().ok_or_else(|| {
         NativeCommandError::new(
             "no_active_profile",
             "Station has no host-authorized active Station",
         )
     })?;
-    profile_bindings_are_authorized(&state, &store)?;
-    let profile = selected_profile_from_store(&store, &selected.name)?;
+    profile_bindings_are_authorized(state, store)?;
+    let profile = selected_profile_from_store(store, &selected.name)?;
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
         return Err(NativeCommandError::new(
             "credential_binding_changed",
@@ -2248,13 +2556,19 @@ fn authorized_credential_reference(
             "the active Station origin or Environment binding changed",
         ));
     }
-    Ok(selected.reference)
+    Ok(AuthorizedProfileContext {
+        exact_origin: binding.exact_origin.clone(),
+        environment_id: binding.environment_id.clone(),
+        reference: selected.reference,
+        client_instance_id: profile.client_instance_id.clone(),
+        binding_id: selected.binding_id,
+        profile_revision: store.revision,
+    })
 }
 
 /// The host-authorized active Station's exact origin, when there is one.
 /// Native consumers pair it with `native_credential_for_origin`, which
 /// re-validates the whole binding before any bearer is read.
-#[cfg(not(mobile))]
 pub(crate) fn native_active_station_origin(app: &AppHandle) -> Option<String> {
     let authority = app.try_state::<NativeProfileAuthority>()?;
     let state = authority.0.lock().ok()?;
@@ -2281,6 +2595,179 @@ pub(crate) fn native_credential_for_origin(
     credential_entry(&reference)?
         .get_password()
         .map_err(|error| format!("read OS credential store: {error}"))
+}
+
+/// Rust-internal current Device identity resolution for the host-authorized
+/// active Station (station#2893). It never exposes identity through IPC. A
+/// legacy credential with a missing or malformed companion yields the
+/// specific `MetadataMissing`/`MetadataMalformed` refusal while ordinary
+/// HTTP credential use above keeps reading the bare bearer. The standalone
+/// resolver uses the same store-read-before-mutex order as bearer reads;
+/// candidate creation uses the already-locked variant below.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn resolve_current_device_identity_for_active_station(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+    expected_revision: u64,
+    expected_epoch: &str,
+) -> Result<native_device_custody::CurrentDeviceIdentity, native_device_custody::DeviceCustodyError>
+{
+    resolve_current_device_identity_with_host(
+        &AppProfileWriteHost::new(app)
+            .map_err(native_device_custody::DeviceCustodyError::NotAuthorized)?,
+        authority,
+        expected_revision,
+        expected_epoch,
+    )
+}
+
+/// Active host-authorized Device identity while a caller already owns the
+/// saved-profile file lock. The callback runs with the authority mutex held;
+/// callers must preserve the profile-file -> authority lock order. This lets
+/// a compound native operation reuse one parsed profile snapshot instead of
+/// recursively taking `profiles.json`'s lock. Its path comes from that same
+/// locked snapshot: resolving the mobile path again would retake its genesis lock.
+pub(crate) fn with_active_device_identity_in_locked_profile<T>(
+    app: &AppHandle,
+    store: &CredentialProfileStore,
+    profile_path: &std::path::Path,
+    operation: impl FnOnce(
+        &native_device_custody::CurrentDeviceIdentity,
+        &str,
+        &str,
+        &str,
+        &str,
+    ) -> Result<T, String>,
+) -> Result<T, String> {
+    use native_device_custody::DeviceCustodyError;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or_else(|| "Station native authority is unavailable".to_owned())?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable".to_owned())?;
+    let host = AppProfileWriteHost::new(app)
+        .map_err(|_| DeviceCustodyError::NotAuthorized("profile_unavailable".into()).to_string())?;
+    let context = authorized_profile_context_in_store(&state, store)
+        .map_err(|error| DeviceCustodyError::NotAuthorized(error.code.to_owned()).to_string())?;
+    if native_device_custody::has_active_retirement(
+        host.custody(),
+        profile_path,
+        &context.reference,
+    )
+    .map_err(|_| DeviceCustodyError::MetadataStore.to_string())?
+    {
+        return Err(DeviceCustodyError::NotAuthorized("credential_retiring".into()).to_string());
+    }
+    struct Reader<'a>(&'a dyn native_device_custody::PairingCustodyWriter);
+    impl native_device_custody::CustodyMetadataStore for Reader<'_> {
+        fn read(&self, account: &str) -> Result<Option<String>, String> {
+            self.0.read_metadata(account)
+        }
+    }
+    let identity = native_device_custody::resolve_current_device_identity(
+        host.custody().owner(),
+        &state,
+        store,
+        |reference| {
+            host.custody()
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
+        },
+        &Reader(host.custody()),
+    )
+    .map_err(|error| error.to_string())?;
+    let active_name = state
+        .active
+        .as_ref()
+        .map(|active| active.name.as_str())
+        .ok_or_else(|| "Station native authority is unavailable".to_owned())?;
+    let client_instance_id = context
+        .client_instance_id
+        .as_deref()
+        .ok_or_else(|| "Station native client instance is unavailable".to_owned())?;
+    let result = operation(
+        &identity,
+        active_name,
+        client_instance_id,
+        &context.exact_origin,
+        &context.environment_id,
+    )?;
+    let current = native_device_custody::resolve_current_device_identity(
+        host.custody().owner(),
+        &state,
+        store,
+        |reference| {
+            host.custody()
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
+        },
+        &Reader(host.custody()),
+    )
+    .map_err(|error| error.to_string())?;
+    if current != identity {
+        return Err("Station Device identity changed during candidate creation".into());
+    }
+    Ok(result)
+}
+
+fn resolve_current_device_identity_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    expected_revision: u64,
+    expected_epoch: &str,
+) -> Result<native_device_custody::CurrentDeviceIdentity, native_device_custody::DeviceCustodyError>
+{
+    use native_device_custody::DeviceCustodyError;
+    let denied = |_| DeviceCustodyError::NotAuthorized("profile_stale".into());
+    let path = host.path().map_err(denied)?;
+    let _lock = host.lock(&path).map_err(denied)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path)
+            .map_err(|_| DeviceCustodyError::NotAuthorized("profile_unavailable".into()))?,
+    )
+    .map_err(denied)?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| DeviceCustodyError::NotAuthorized("authority_unavailable".into()))?;
+    if store.revision != expected_revision
+        || state
+            .active
+            .as_ref()
+            .map(|active| active.binding_id.as_str())
+            != Some(expected_epoch)
+    {
+        return Err(DeviceCustodyError::NotAuthorized("profile_stale".into()));
+    }
+    let custody = host.custody();
+    let context = authorized_profile_context_in_store(&state, &store)
+        .map_err(|_| DeviceCustodyError::NotAuthorized("profile_stale".into()))?;
+    if native_device_custody::has_active_retirement(custody, &path, &context.reference)
+        .map_err(|_| DeviceCustodyError::MetadataStore)?
+    {
+        return Err(DeviceCustodyError::NotAuthorized(
+            "credential_retiring".into(),
+        ));
+    }
+    struct Reader<'a>(&'a dyn native_device_custody::PairingCustodyWriter);
+    impl native_device_custody::CustodyMetadataStore for Reader<'_> {
+        fn read(&self, account: &str) -> Result<Option<String>, String> {
+            self.0.read_metadata(account)
+        }
+    }
+    native_device_custody::resolve_current_device_identity(
+        custody.owner(),
+        &state,
+        &store,
+        |reference| {
+            custody
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
+        },
+        &Reader(custody),
+    )
 }
 
 /// Decodes `%XX` escapes in one pass so the refusal below sees what the
@@ -2368,6 +2855,14 @@ fn authorized_profile_for_origin(
         .0
         .lock()
         .map_err(|_| "Station native authority is unavailable".to_string())?;
+    authorized_direct_profile_for_origin_in_store(&state, &store, origin)
+}
+
+fn authorized_direct_profile_for_origin_in_store(
+    state: &NativeProfileAuthorityState,
+    store: &CredentialProfileStore,
+    origin: &str,
+) -> Result<NativeCredentialReference, NativeCommandError> {
     let selected = state.active.clone().ok_or_else(|| {
         NativeCommandError::new(
             "no_active_profile",
@@ -2376,6 +2871,12 @@ fn authorized_profile_for_origin(
     })?;
     profile_bindings_are_authorized(&state, &store)?;
     let profile = selected_profile_from_store(&store, &selected.name)?;
+    if profile.relay_route.is_some() {
+        return Err(NativeCommandError::new(
+            "native_relay_direct_http_refused",
+            "Station native relay profiles cannot use direct bearer HTTP",
+        ));
+    }
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
         return Err(NativeCommandError::new(
             "credential_binding_changed",
@@ -2470,6 +2971,9 @@ fn scoped_profile_for_origin_in_store(
     profile_bindings_are_authorized(state, store).map_err(|_| native_request_binding_stale())?;
     let profile = selected_profile_from_store(store, &selected.name)
         .map_err(|_| native_request_binding_stale())?;
+    if profile.relay_route.is_some() {
+        return Err(native_request_binding_stale());
+    }
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
         return Err(native_request_binding_stale());
     }
@@ -2531,6 +3035,11 @@ fn native_header_allowlisted(name: &str) -> bool {
             // native still owns the bearer and refuses every authority-bearing
             // renderer header below.
             | "x-station-client-origin"
+            // `CLIENT_PROTOCOL_HEADER` in
+            // `packages/contracts/src/environment-security.ts` (#2962): the
+            // client API protocol this build speaks. A compatibility signal
+            // the host may refuse on; it carries no authority.
+            | "x-station-client-protocol"
             | "x-station-client-session"
             | "x-station-plugin"
             | "x-abort-reason"
@@ -2552,6 +3061,11 @@ fn native_response_headers(
                     | "last-modified"
                     | "retry-after"
                     | "x-request-id"
+                    // `STATION_ENVELOPE_HEADER` in `packages/contracts/src/http.ts`:
+                    // Station's own-answer marker, read by the SDK's
+                    // `isStationAnswer` to tell its refusals from an
+                    // intermediary's (#2842, #3166). Carries no authority.
+                    | "x-station-envelope"
             )
             .then(|| value.to_str().ok().map(|value| (name, value.to_string())))
             .flatten()
@@ -2613,6 +3127,8 @@ fn admit_native_http_request(
     active.insert(
         request_id.to_string(),
         NativeActiveHttpRequest {
+            observation: None,
+            phase: "awaiting-response",
             cancel,
             origin: origin.to_string(),
             stream: is_stream,
@@ -2656,6 +3172,7 @@ fn reserve_native_http_request(
     origin: &str,
     is_stream_request: bool,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    observation: Option<NativeHttpRequestObservation>,
 ) -> Result<NativeHttpSlot, NativeCommandError> {
     use std::sync::atomic::Ordering;
 
@@ -2674,18 +3191,136 @@ fn reserve_native_http_request(
         ));
     }
     if is_stream_request {
-        return admit_native_http_request(&mut state.active, request_id, origin, true, cancel)
-            .map(|()| NativeHttpSlot::admitted(cancellations, request_id))
-            .map_err(native_http_capacity_refusal);
+        admit_native_http_request(&mut state.active, request_id, origin, true, cancel)
+            .map_err(native_http_capacity_refusal)?;
+        state
+            .active
+            .get_mut(request_id)
+            .expect("request was admitted")
+            .observation = observation;
+        return Ok(NativeHttpSlot::admitted(cancellations, request_id));
     }
 
     if state.pending_reads.len() >= NATIVE_HTTP_PENDING_READ_LIMIT {
-        return Err(native_http_capacity_refusal(
-            "native Station request queue capacity reached".to_string(),
+        let mut occupants: Vec<_> = state
+            .active
+            .values()
+            .filter(|request| !request.liveness)
+            .filter_map(|request| {
+                request
+                    .observation
+                    .as_ref()
+                    .map(|observation| NativeHttpOccupantSnapshot {
+                        method: observation.method.clone(),
+                        route_category: observation.route,
+                        age_ms: observation
+                            .started_at
+                            .elapsed()
+                            .as_millis()
+                            .min(u64::MAX as u128) as u64,
+                        phase: request.phase,
+                        stream: request.stream,
+                        same_origin: request.origin == origin,
+                    })
+            })
+            .collect();
+        occupants.sort_by_key(|request| (request.stream, std::cmp::Reverse(request.age_ms)));
+        let queue_head = state.pending_reads.front().and_then(|request| {
+            request
+                .observation
+                .as_ref()
+                .map(|observation| NativeHttpOccupantSnapshot {
+                    method: observation.method.clone(),
+                    route_category: observation.route,
+                    age_ms: observation
+                        .started_at
+                        .elapsed()
+                        .as_millis()
+                        .min(u64::MAX as u128) as u64,
+                    phase: "waiting-for-admission",
+                    stream: false,
+                    same_origin: request.origin == origin,
+                })
+        });
+        let capacity = NativeHttpCapacitySnapshot {
+            pending_requests: state.pending_reads.len(),
+            pending_limit: NATIVE_HTTP_PENDING_READ_LIMIT,
+            active_requests: native_http_non_liveness_active_count(&state.active),
+            active_limit: NATIVE_HTTP_GLOBAL_REQUEST_LIMIT,
+            origin_requests: state
+                .active
+                .values()
+                .filter(|request| request.origin == origin && !request.stream && !request.liveness)
+                .count(),
+            origin_request_limit: NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT,
+            origin_streams: state
+                .active
+                .values()
+                .filter(|request| request.origin == origin && request.stream && !request.liveness)
+                .count(),
+            origin_stream_limit: NATIVE_HTTP_PER_ORIGIN_STREAM_LIMIT,
+            retry_after_ms: 250,
+            occupants,
+            queue_head,
+        };
+        let mut error = native_http_capacity_refusal(format!(
+            "Native request queue is full: {}/{} waiting; {}/{} active across Stations; \
+             {}/{} ordinary requests and {}/{} event streams active for this Station. \
+             This request has not been sent.",
+            capacity.pending_requests,
+            capacity.pending_limit,
+            capacity.active_requests,
+            capacity.active_limit,
+            capacity.origin_requests,
+            capacity.origin_request_limit,
+            capacity.origin_streams,
+            capacity.origin_stream_limit,
         ));
+        for occupant in capacity.occupants.iter().take(3) {
+            error.message.push_str(&format!(
+                " Active request: {} {} ({}s, {}, {}, {}).",
+                occupant.method,
+                occupant.route_category,
+                occupant.age_ms / 1000,
+                occupant.phase,
+                if occupant.stream {
+                    "stream"
+                } else {
+                    "ordinary"
+                },
+                if occupant.same_origin {
+                    "this Station"
+                } else {
+                    "another Station"
+                },
+            ));
+        }
+        if let Some(head) = &capacity.queue_head {
+            error.message.push_str(&format!(
+                " Queue head: {} {} ({}s, {}).",
+                head.method,
+                head.route_category,
+                head.age_ms / 1000,
+                if head.same_origin {
+                    "this Station"
+                } else {
+                    "another Station"
+                }
+            ));
+        }
+        if state
+            .last_capacity_log
+            .is_none_or(|last| last.elapsed() >= Duration::from_secs(5))
+        {
+            log::warn!("{}", error.message);
+            state.last_capacity_log = Some(Instant::now());
+        }
+        error.capacity = Some(capacity);
+        return Err(error);
     }
 
     state.pending_reads.push_back(NativePendingHttpRequest {
+        observation,
         request_id: request_id.to_string(),
         origin: origin.to_string(),
         cancel: std::sync::Arc::clone(&cancel),
@@ -2713,6 +3348,8 @@ fn reserve_native_http_request(
             state.active.insert(
                 request_id.to_string(),
                 NativeActiveHttpRequest {
+                    observation: pending.observation,
+                    phase: "awaiting-response",
                     cancel: pending.cancel,
                     origin: pending.origin,
                     stream: false,
@@ -2786,6 +3423,8 @@ fn reserve_native_http_liveness_probe(
     state.active.insert(
         request_id.to_string(),
         NativeActiveHttpRequest {
+            observation: None,
+            phase: "awaiting-response",
             cancel,
             origin: origin.to_string(),
             stream: false,
@@ -3103,20 +3742,44 @@ fn native_http_send_body_budget(body_len: usize, floor: Duration, min_rate: u64)
 }
 
 /// Applies the per-request send-body budget through ureq's request-level
-/// configuration; every other timeout stays the agent's.
-fn native_http_request_with_send_body_budget(
+/// configuration. Foreground dispatch waits for provider acceptance before headers.
+fn native_http_request_with_budgets(
     agent: &ureq::Agent,
     request: ureq::http::Request<Vec<u8>>,
     floor: Duration,
     min_rate: u64,
+    response_budget: Duration,
+    foreground_response_budget: Duration,
+    global_budget: Option<Duration>,
+    response_body_budget: Option<Duration>,
 ) -> ureq::http::Request<Vec<u8>> {
     let budget = native_http_send_body_budget(request.body().len(), floor, min_rate);
+    let path = request.uri().path();
+    let foreground = request.method() == ureq::http::Method::POST
+        && (matches!(
+            path,
+            "/api/orchestration/chat"
+                | "/api/orchestration/chat/delegated"
+                | "/api/orchestration/chat/background"
+        ) || path
+            .strip_prefix("/api/orchestration/chat/")
+            .and_then(|rest| rest.strip_suffix("/continue"))
+            .is_some_and(|id| !id.is_empty() && !id.contains('/')));
+    let response_budget = if foreground {
+        foreground_response_budget
+    } else {
+        response_budget
+    };
     agent
         .configure_request(request)
         .timeout_send_body(Some(budget))
+        .timeout_recv_response(Some(response_budget))
+        .timeout_global(global_budget)
+        .timeout_recv_body(response_body_budget)
         .build()
 }
 const NATIVE_HTTP_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
+const NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
     ureq::Agent::config_builder()
@@ -3313,7 +3976,25 @@ fn station_native_http_request_blocking(
     authority: NativeProfileAuthority,
     cancellations: NativeHttpCancellation,
     request: NativeHttpRequest,
-    channel: Channel<NativeHttpMessage>,
+    mut channel: Channel<NativeHttpMessage>,
+) -> Result<(), NativeCommandError> {
+    station_native_http_request_to_sink_blocking(
+        app,
+        authority,
+        cancellations,
+        request,
+        &mut channel,
+        None,
+    )
+}
+
+fn station_native_http_request_to_sink_blocking(
+    app: AppHandle,
+    authority: NativeProfileAuthority,
+    cancellations: NativeHttpCancellation,
+    request: NativeHttpRequest,
+    sink: &mut (impl NativeHttpMessageSink + ?Sized),
+    body_deadline: Option<Instant>,
 ) -> Result<(), NativeCommandError> {
     use std::io::Read;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -3404,6 +4085,9 @@ fn station_native_http_request_blocking(
         validate_native_liveness_probe(&method, is_stream_request, &parsed_url)?;
     }
     let cancel = Arc::new(AtomicBool::new(false));
+    let _deadline_guard = body_deadline.map(|deadline| {
+        NativeHttpDeadlineGuard::start(deadline, Arc::clone(&cancel), cancellations.clone())
+    });
     // The slot guard owns the admission from here on: moved into the exchange
     // below and released exactly once on every path, including a panic
     // (station#2327).
@@ -3421,6 +4105,11 @@ fn station_native_http_request_blocking(
             &origin,
             is_stream_request,
             Arc::clone(&cancel),
+            Some(NativeHttpRequestObservation {
+                started_at: Instant::now(),
+                method: method.clone(),
+                route: native_http_route_category(parsed_url.path()),
+            }),
         )?
     };
     let result = (|| -> Result<(), NativeHttpBrokerFailure> {
@@ -3458,11 +4147,20 @@ fn station_native_http_request_blocking(
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let agent = native_http_agent();
-        let request = native_http_request_with_send_body_budget(
+        let response_body_budget =
+            body_deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
+        if response_body_budget.is_some_and(|budget| budget.is_zero()) {
+            return Err(NativeHttpBrokerFailure::coded("response_timeout"));
+        }
+        let request = native_http_request_with_budgets(
             &agent,
             request,
             NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT,
             NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC,
+            NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
+            NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            response_body_budget,
+            response_body_budget,
         );
         run_admitted_native_http_exchange(
             slot,
@@ -3481,24 +4179,37 @@ fn station_native_http_request_blocking(
                 )
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
                 let open_stream = native_response_is_open_stream(response.headers());
+                let (state_lock, _) = &*cancellations.0;
+                if let Ok(mut state) = state_lock.lock() {
+                    if let Some(active) = state.active.get_mut(&request_id) {
+                        active.phase = if open_stream {
+                            "receiving-event-stream"
+                        } else {
+                            "receiving-body"
+                        };
+                    }
+                }
+
                 let status = response.status().as_u16();
-                channel
-                    .send(NativeHttpMessage::Response {
-                        status,
-                        headers: native_response_headers(response.headers()),
-                        // Chunked, close-delimited, and transparently decompressed
-                        // responses do not have an exact wire length. Preserve a
-                        // declared ordinary body length so the WebView can reject a
-                        // clean-looking EOF that actually truncated JSON (#2265).
-                        body_length: response.body().content_length(),
-                    })
-                    .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
+                sink.send(NativeHttpMessage::Response {
+                    status,
+                    headers: native_response_headers(response.headers()),
+                    // Chunked, close-delimited, and transparently decompressed
+                    // responses do not have an exact wire length. Preserve a
+                    // declared ordinary body length so the WebView can reject a
+                    // clean-looking EOF that actually truncated JSON (#2265).
+                    body_length: response.body().content_length(),
+                })
+                .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 let mut reader = response.body_mut().as_reader();
                 let mut buffer = [0_u8; 16 * 1024];
                 let mut total = 0_usize;
                 loop {
                     if cancel.load(Ordering::SeqCst) {
                         return Err(NativeHttpBrokerFailure::coded("cancelled"));
+                    }
+                    if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                        return Err(NativeHttpBrokerFailure::coded("response_timeout"));
                     }
                     let read = match reader.read(&mut buffer) {
                         Ok(read) => read,
@@ -3510,7 +4221,10 @@ fn station_native_http_request_blocking(
                                 std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
                             ) =>
                         {
-                            continue
+                            if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                                return Err(NativeHttpBrokerFailure::coded("response_timeout"));
+                            }
+                            continue;
                         }
                         Err(error) => {
                             return Err(NativeHttpBrokerFailure::transport(
@@ -3533,11 +4247,10 @@ fn station_native_http_request_blocking(
                         &reference,
                     )
                     .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-                    channel
-                        .send(NativeHttpMessage::Chunk {
-                            bytes: buffer[..read].to_vec(),
-                        })
-                        .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
+                    sink.send(NativeHttpMessage::Chunk {
+                        bytes: buffer[..read].to_vec(),
+                    })
+                    .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 }
                 revalidate_native_http_profile(
                     &app,
@@ -3547,15 +4260,21 @@ fn station_native_http_request_blocking(
                     &reference,
                 )
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-                channel
-                    .send(NativeHttpMessage::End)
+                sink.send(NativeHttpMessage::End)
                     .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 Ok(())
             },
         )
     })();
     if let Err(failure) = result {
-        let _ = channel.send(NativeHttpMessage::Error {
+        let failure = if failure.code == "cancelled"
+            && body_deadline.is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            NativeHttpBrokerFailure::coded("response_timeout")
+        } else {
+            failure
+        };
+        let _ = sink.send(NativeHttpMessage::Error {
             code: failure.code,
             detail: failure.detail,
         });
@@ -4190,6 +4909,8 @@ fn station_native_pairing_exchange_blocking(
             exact_origin: origin,
             environment_id: response.environment_id.clone(),
             client_instance_id,
+            device_id: device.id.clone(),
+            device_kind: device.kind.clone(),
             expires_at: now + Duration::from_secs(120),
             phase: NativePairingPhase::AwaitingRequiresAuth,
         },
@@ -4365,10 +5086,340 @@ fn credential_vault_commit_pairing_internal(
     pending: &NativePendingPairingCredentials,
     handle: &str,
 ) -> Result<(), String> {
-    // The saved-Station read comes before the pending mutex for the same
-    // lock-order reason as `authorized_credential_reference`: the writer holds
-    // `profiles.json.lock` (mobile) while it takes this mutex.
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    credential_vault_commit_pairing_with_host(
+        &AppProfileWriteHost::new(app)?,
+        authority,
+        pending,
+        handle,
+    )
+}
+
+fn publish_authenticated_native_enrollment(
+    app: &AppHandle,
+    authenticated: &native_enrollment_host::AuthenticatedEnrollmentActivation,
+    cancelled: impl Fn() -> Result<bool, String>,
+) -> Result<u64, String> {
+    let route = authenticated.route();
+    let name = &route.context.profile.profile_name;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let pending = app
+        .try_state::<NativePendingPairingCredentials>()
+        .ok_or("Station pairing state is unavailable")?;
+    let reference = authenticated.reference();
+    let mut store = parse_station_profile_store(&station_profile_store_read_with_host(
+        &AppProfileWriteHost::new(app)?,
+        &authority,
+    )?)?;
+    let profile = selected_profile_from_store(&store, name)?;
+    if store.revision != route.context.profile.revision
+        || exact_origin(&profile.endpoint)? != route.context.profile.station_endpoint
+        || profile.client_instance_id.as_deref() != Some(&route.surface.client_instance_id)
+    {
+        return Err("The enrollment profile changed before publication".into());
+    }
+    authenticated.assert_current(app, store.revision)?;
+    if profile
+        .credential_ref
+        .as_ref()
+        .is_some_and(|value| value != reference)
+    {
+        return Err("The enrollment cannot replace another credential".into());
+    }
+    if profile.credential_ref.as_ref() == Some(reference)
+        && profile.configuration_state == "configured"
+    {
+        if cancelled()? {
+            return Err("The enrollment was cancelled".into());
+        }
+        station_profile_authorize_active_internal(app, &authority, name)?;
+        return Ok(store.revision);
+    }
+    let handle = reference.id.clone();
+    let resumed = profile.credential_ref.as_ref() == Some(reference)
+        && profile.configuration_state == "requires-auth";
+    if !resumed && profile.credential_ref.is_some() {
+        return Err("The enrollment profile is not fresh".into());
+    }
+    let entry = PendingPairingCredential {
+        credential: authenticated.credential().into(),
+        reference: reference.clone(),
+        exact_origin: route.context.profile.station_endpoint.clone(),
+        environment_id: route.scope.station_id.clone(),
+        client_instance_id: route.surface.client_instance_id.clone(),
+        device_id: authenticated.device_id().into(),
+        device_kind: "device".into(),
+        expires_at: SystemTime::now() + Duration::from_secs(120),
+        phase: if resumed {
+            NativePairingPhase::RequiresAuthPersisted {
+                profile_name: name.clone(),
+            }
+        } else {
+            NativePairingPhase::AwaitingRequiresAuth
+        },
+    };
+    {
+        let mut entries = pending
+            .0
+            .lock()
+            .map_err(|_| "Station pairing state is unavailable")?;
+        if entries.len() >= 128 && !entries.contains_key(&handle) {
+            return Err("Station pairing capacity reached".into());
+        }
+        entries.insert(handle.clone(), entry);
+    }
+    if resumed {
+        let mut state = authority
+            .0
+            .lock()
+            .map_err(|_| "Station native authority is unavailable")?;
+        state.bindings.remove(&credential_reference_key(reference)?);
+        state
+            .transitioning
+            .insert(credential_reference_key(reference)?);
+    } else {
+        if cancelled()? {
+            return Err("The enrollment was cancelled".into());
+        }
+        let next = native_enrollment_next_store(
+            &store,
+            name,
+            reference,
+            &route.scope.station_id,
+            &route.surface.client_instance_id,
+            "requires-auth",
+        )?;
+        station_profile_store_write_internal(
+            app,
+            &authority,
+            &pending,
+            next,
+            store.revision,
+            Some(handle.clone()),
+        )?;
+        store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    }
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    authenticated.assert_current(app, store.revision)?;
+    credential_vault_commit_pairing_internal(app, &authority, &pending, &handle)?;
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    authenticated.assert_current(app, store.revision)?;
+    let next = native_enrollment_next_store(
+        &store,
+        name,
+        reference,
+        &route.scope.station_id,
+        &route.surface.client_instance_id,
+        "configured",
+    )?;
+    station_profile_store_write_internal(
+        app,
+        &authority,
+        &pending,
+        next,
+        store.revision,
+        Some(handle),
+    )?;
+    station_profile_authorize_active_internal(app, &authority, name)?;
+    let published = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    if authenticated
+        .assert_current(app, published.revision)
+        .is_err()
+    {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment owner changed during publication".into());
+    }
+    Ok(published.revision)
+}
+
+fn native_enrollment_next_store(
+    current: &CredentialProfileStore,
+    name: &str,
+    reference: &NativeCredentialReference,
+    station_id: &str,
+    client_instance_id: &str,
+    state: &str,
+) -> Result<String, String> {
+    let mut next = current.clone();
+    next.revision = next
+        .revision
+        .checked_add(1)
+        .ok_or("Station revision overflow")?;
+    let profile = next
+        .profiles
+        .iter_mut()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or("The enrollment profile is missing")?;
+    profile.credential_ref = Some(reference.clone());
+    profile._environment_id = Some(station_id.into());
+    profile.client_instance_id = Some(client_instance_id.into());
+    profile.configuration_state = state.into();
+    profile.updated_at = now_millis_f64()?;
+    serde_json::to_string(&next).map_err(|_| "The enrollment profile update is invalid".into())
+}
+
+fn native_enrollment_terminal_profile_current(
+    app: &AppHandle,
+    name: &str,
+    expected_revision: u64,
+) -> Result<(), String> {
+    let path = station_profiles_path(app)?;
+    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "The enrollment profile is unavailable")?,
+    )?;
+    native_enrollment_terminal_profile_check(&store, name, expected_revision)
+}
+
+fn native_enrollment_terminal_profile_check(
+    store: &CredentialProfileStore,
+    name: &str,
+    expected_revision: u64,
+) -> Result<(), String> {
+    let profile = selected_profile_from_store(store, name)?;
+    if store.revision != expected_revision
+        || profile.credential_ref.is_some()
+        || profile.configuration_state != "unconfigured"
+    {
+        return Err("native_enrollment_operation_refused".into());
+    }
+    Ok(())
+}
+
+fn native_enrollment_owned_revision(
+    app: &AppHandle,
+    name: &str,
+    original_revision: u64,
+    reference: Option<&NativeCredentialReference>,
+    origin: &str,
+    station_id: &str,
+    client_instance_id: &str,
+    cancel_requested: bool,
+) -> Result<u64, String> {
+    let path = station_profiles_path(app)?;
+    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "The enrollment profile is unavailable")?,
+    )?;
+    let profile = selected_profile_from_store(&store, name)?;
+    if exact_origin(&profile.endpoint)? != origin
+        || profile.client_instance_id.as_deref() != Some(client_instance_id)
+    {
+        return Err("The enrollment profile owner changed".into());
+    }
+    if store.revision == original_revision {
+        if profile.credential_ref.is_some() && profile.credential_ref.as_ref() != reference {
+            return Err("The enrollment cannot replace another credential".into());
+        }
+        return Ok(store.revision);
+    }
+    let owned = reference.is_some()
+        && profile.credential_ref.as_ref() == reference
+        && profile._environment_id.as_deref() == Some(station_id)
+        && ["requires-auth", "configured"].contains(&profile.configuration_state.as_str());
+    let retired = cancel_requested
+        && reference.is_some()
+        && profile.credential_ref.is_none()
+        && profile._environment_id.is_none()
+        && profile.configuration_state == "unconfigured";
+    if store.revision > original_revision
+        && ((owned && store.revision <= original_revision.saturating_add(2))
+            || (retired && store.revision <= original_revision.saturating_add(3)))
+    {
+        Ok(store.revision)
+    } else {
+        Err("The enrollment profile revision changed outside its owned transaction".into())
+    }
+}
+
+fn retire_owned_native_enrollment(
+    app: &AppHandle,
+    name: &str,
+    reference: &NativeCredentialReference,
+) -> Result<(), String> {
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let pending = app
+        .try_state::<NativePendingPairingCredentials>()
+        .ok_or("Station pairing state is unavailable")?;
+    let current = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    let Some(profile) = current
+        .profiles
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+    else {
+        return Ok(());
+    };
+    if profile.credential_ref.as_ref() != Some(reference) {
+        return Ok(());
+    }
+    let mut next = current.clone();
+    next.revision = next
+        .revision
+        .checked_add(1)
+        .ok_or("Station revision overflow")?;
+    let profile = next
+        .profiles
+        .iter_mut()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or("The enrollment profile is missing")?;
+    profile.credential_ref = None;
+    profile._environment_id = None;
+    profile.configuration_state = "unconfigured".into();
+    profile.updated_at = now_millis_f64()?;
+    station_profile_store_write_internal(
+        app,
+        &authority,
+        &pending,
+        serde_json::to_string(&next).map_err(|_| "The enrollment retirement is invalid")?,
+        current.revision,
+        None,
+    )?;
+    Ok(())
+}
+
+fn credential_vault_commit_pairing_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    pending: &NativePendingPairingCredentials,
+    handle: &str,
+) -> Result<(), String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
+    )?;
+    credential_vault_commit_pairing_with_custody(authority, pending, handle, &store, host.custody())
+}
+
+/// Desktop commit core (station#2893). The custody writer owns both the
+/// bearer write and the companion write; the phase may only advance to
+/// `KeyringWritten` — the gate that later authorizes the profile publication
+/// and with it any future proof eligibility — after BOTH succeeded. A
+/// companion failure leaves the entry at `RequiresAuthPersisted` and the
+/// authority still `transitioning`, so nothing publishes; a retry against the
+/// SAME pending handle revalidates the same host-held tuple and rewrites both
+/// records, repairing any partial state. A successfully committed credential
+/// is never cleaned up merely because its pending handle later expires.
+fn credential_vault_commit_pairing_with_custody(
+    authority: &NativeProfileAuthority,
+    pending: &NativePendingPairingCredentials,
+    handle: &str,
+    store: &CredentialProfileStore,
+    custody: &dyn native_device_custody::PairingCustodyWriter,
+) -> Result<(), String> {
     let mut pending = pending
         .0
         .lock()
@@ -4381,7 +5432,7 @@ fn credential_vault_commit_pairing_internal(
         NativePairingPhase::RequiresAuthPersisted { profile_name } => profile_name.clone(),
         _ => return Err("Station pairing handle is not awaiting keyring commitment".to_string()),
     };
-    pairing_profile_matches(&store, &profile_name, entry, "requires-auth")?;
+    pairing_profile_matches(store, &profile_name, entry, "requires-auth")?;
     let reference_key = credential_reference_key(&entry.reference)?;
     let state = authority
         .0
@@ -4395,7 +5446,38 @@ fn credential_vault_commit_pairing_internal(
     entry.phase = NativePairingPhase::CredentialRemoved {
         profile_name: profile_name.clone(),
     };
-    if let Err(error) = write_credential_password(&entry.reference, &entry.credential) {
+    // The custody tuple comes ONLY from this host-held pending entry, whose
+    // device id/kind were captured from the authenticated pairing exchange —
+    // never from the renderer-visible device projection.
+    let custody_metadata = native_device_custody::NativeDeviceCustodyMetadata::for_pairing(
+        custody.owner(),
+        &entry.reference,
+        &entry.credential,
+        &entry.exact_origin,
+        &entry.environment_id,
+        &entry.client_instance_id,
+        &entry.device_id,
+        &entry.device_kind,
+    );
+    let metadata = match custody_metadata {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            if entry.expires_at > SystemTime::now() {
+                entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
+            }
+            return Err(error);
+        }
+    };
+    if let Err(error) = custody.write_bearer(&entry.reference, &entry.credential) {
+        if entry.expires_at > SystemTime::now() {
+            entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
+        }
+        return Err(error);
+    }
+    if let Err(error) = custody.write_metadata(&metadata) {
+        // The bearer may already be in place; the retry below rewrites both.
+        // Until this phase reaches KeyringWritten nothing publishes, so the
+        // partial state cannot become proof-eligible.
         if entry.expires_at > SystemTime::now() {
             entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
         }
@@ -4992,26 +6074,35 @@ fn lock_station_profiles_for_app(
     lock_station_profiles_legacy(path)
 }
 
-/// Reconstructs Station-key approval authority from the current native profile
-/// while holding the same interprocess lock used by profile writers. A broker
-/// offer or renderer-supplied route cannot supply this snapshot.
-#[cfg(not(mobile))]
-struct AppNativeTrustProfileProvider<'a> {
-    app: &'a AppHandle,
+#[derive(Clone, Copy, PartialEq)]
+enum NativeTrustProfilePurpose {
+    Enrollment,
+    ExistingTrust,
 }
 
-#[cfg(not(mobile))]
+/// Reconstructs Station-key authority under the profile writer's interprocess lock.
+/// A broker offer or renderer-supplied route cannot supply this snapshot.
+struct AppNativeTrustProfileProvider<'a> {
+    app: &'a AppHandle,
+    purpose: NativeTrustProfilePurpose,
+}
+
 impl<'a> AppNativeTrustProfileProvider<'a> {
     pub(crate) fn enrollment(app: &'a AppHandle) -> Self {
-        Self { app }
+        Self {
+            app,
+            purpose: NativeTrustProfilePurpose::Enrollment,
+        }
     }
 
     pub(crate) fn existing_trust(app: &'a AppHandle) -> Self {
-        Self { app }
+        Self {
+            app,
+            purpose: NativeTrustProfilePurpose::ExistingTrust,
+        }
     }
 }
 
-#[cfg(not(mobile))]
 impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustProfileProvider<'_> {
     fn with_current_profile<T, F>(
         &self,
@@ -5039,18 +6130,19 @@ impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustPr
             expected_profile_revision,
             &self.app.config().identifier,
             native_app_channel(&self.app.config().identifier, cfg!(debug_assertions)),
+            self.purpose,
         )?;
         operation(snapshot)
     }
 }
 
-#[cfg(not(mobile))]
 fn native_trust_profile_snapshot_in_store(
     store: &CredentialProfileStore,
     expected_binding: &native_station_key_custody::TrustProfileBinding,
     expected_profile_revision: u64,
     app_identifier: &str,
     channel: &str,
+    purpose: NativeTrustProfilePurpose,
 ) -> native_station_key_custody::CandidateResult<
     native_station_key_custody::LockedTrustProfileSnapshot,
 > {
@@ -5077,11 +6169,26 @@ fn native_trust_profile_snapshot_in_store(
         station_id: route.station_id.clone(),
         enrollment_id: route.enrollment_id.clone(),
     };
+    let fresh = profile.configuration_state == "unconfigured"
+        && profile.setup_source == "manual"
+        && profile.credential_ref.is_none();
+    // Device activation publishes its credential without replacing Station-key trust.
+    // Reading or revoking that trust must retain the exact saved Station binding.
+    let enrolled = purpose == NativeTrustProfilePurpose::ExistingTrust
+        && profile.setup_source == "manual"
+        && matches!(
+            profile.configuration_state.as_str(),
+            "requires-auth" | "configured"
+        )
+        && profile
+            .credential_ref
+            .as_ref()
+            .is_some_and(|reference| credential_reference_key(reference).is_ok())
+        && profile._environment_id.as_deref() == Some(expected_binding.station_id.as_str())
+        && profile_credential_binding(profile).is_ok();
     if store.revision != expected_profile_revision
         || actual != *expected_binding
-        || profile.configuration_state != "unconfigured"
-        || profile.setup_source != "manual"
-        || profile.credential_ref.is_some()
+        || !(fresh || enrolled)
     {
         return Err(CandidateError::ProfileStale);
     }
@@ -5135,17 +6242,88 @@ mod native_trust_profile_snapshot_tests {
             7,
             "io.kontourai.station",
             "stable",
+            NativeTrustProfilePurpose::ExistingTrust,
         )
         .unwrap();
         assert_eq!(snapshot.binding, expected);
         assert_eq!(snapshot.revision, 7);
+        let mut configured = store.clone();
+        configured.profiles[0].configuration_state = "configured".into();
+        configured.profiles[0].credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".into(),
+            id: "owned-enrollment-credential".into(),
+        });
+        configured.profiles[0]._environment_id = Some(expected.station_id.clone());
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &configured,
+                &expected,
+                7,
+                "io.kontourai.station",
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust,
+            )
+            .expect("existing Station trust remains readable after Device activation")
+            .binding,
+            expected
+        );
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &configured,
+                &expected,
+                7,
+                "io.kontourai.station",
+                "stable",
+                NativeTrustProfilePurpose::Enrollment,
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        for state in ["requires-auth", "configured"] {
+            configured.profiles[0].configuration_state = state.into();
+            assert!(native_trust_profile_snapshot_in_store(
+                &configured,
+                &expected,
+                7,
+                "io.kontourai.station",
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust,
+            )
+            .is_ok());
+        }
+        for invalid in [
+            "missing-reference",
+            "foreign-environment",
+            "unsupported-reference",
+        ] {
+            let mut changed = configured.clone();
+            match invalid {
+                "missing-reference" => changed.profiles[0].credential_ref = None,
+                "foreign-environment" => {
+                    changed.profiles[0]._environment_id = Some("foreign-station".into())
+                }
+                _ => changed.profiles[0].credential_ref.as_mut().unwrap().kind = "foreign".into(),
+            }
+            assert_eq!(
+                native_trust_profile_snapshot_in_store(
+                    &changed,
+                    &expected,
+                    7,
+                    "io.kontourai.station",
+                    "stable",
+                    NativeTrustProfilePurpose::ExistingTrust,
+                ),
+                Err(CandidateError::ProfileStale),
+                "{invalid}"
+            );
+        }
         assert_eq!(
             native_trust_profile_snapshot_in_store(
                 &store,
                 &expected,
                 6,
                 "io.kontourai.station",
-                "stable"
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust
             ),
             Err(CandidateError::ProfileStale)
         );
@@ -5157,7 +6335,8 @@ mod native_trust_profile_snapshot_tests {
                 &wrong_route,
                 7,
                 "io.kontourai.station",
-                "stable"
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust
             ),
             Err(CandidateError::ProfileStale)
         );
@@ -5169,7 +6348,8 @@ mod native_trust_profile_snapshot_tests {
                 &renamed,
                 7,
                 "io.kontourai.station",
-                "stable"
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust
             ),
             Err(CandidateError::ProfileStale)
         );
@@ -5312,26 +6492,30 @@ fn station_profile_store_read_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<String, String> {
-    let path = station_profiles_path(app)?;
-    validate_station_profile_store(&path)?;
+    station_profile_store_read_with_host(&AppProfileWriteHost::new(app)?, authority)
+}
+
+fn station_profile_store_read_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+) -> Result<String, String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
     match read_station_profile_store(&path) {
         Ok(contents) => {
             let store = parse_station_profile_store(&contents)?;
             let mut state = authority
                 .0
                 .lock()
-                .map_err(|_| "Station native authority is unavailable".to_string())?;
+                .map_err(|_| "Station native authority is unavailable")?;
             profile_bindings_are_authorized(&state, &store)?;
-            // A read is the only trust-on-first-observation path. It accepts
-            // externally configured CLI profiles, but never promotes a
-            // crash-left `requires-auth` record into native authority.
             observe_configured_profile_bindings(&mut state, &store)?;
             Ok(contents)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(EMPTY_STATION_PROFILE_STORE.to_string())
+            Ok(EMPTY_STATION_PROFILE_STORE.into())
         }
-        Err(error) => Err(format!("read saved Station metadata: {error}")),
+        Err(_) => Err("saved Station storage is unavailable".into()),
     }
 }
 
@@ -5352,17 +6536,19 @@ fn station_profile_store_write_internal(
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
     let result = station_profile_store_write_with_host(
-        &AppProfileWriteHost(app),
+        &AppProfileWriteHost::new(app)?,
         authority,
         pending,
         contents,
         expected_revision,
         pairing_handle,
     );
-    #[cfg(not(mobile))]
     {
         let app = app.clone();
         let _ = tauri::async_runtime::spawn_blocking(move || {
+            if retry_device_custody_retirements_for_app(&app).is_err() {
+                log::warn!("native credential retirement remains pending");
+            }
             if let Err(error) = native_relay_redemption::retry_pending_cleanup_for_app(&app) {
                 log::warn!(
                     "could not resume native relay grant cleanup after profile write: {error:?}"
@@ -5384,6 +6570,7 @@ trait ProfileWriteHost {
         current: &CredentialProfileStore,
         next: &CredentialProfileStore,
     ) -> Result<(), String>;
+    fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter;
     fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String>;
     fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
         generated
@@ -5391,16 +6578,28 @@ trait ProfileWriteHost {
     fn notify(&self) {}
 }
 
-struct AppProfileWriteHost<'a>(&'a AppHandle);
+struct AppProfileWriteHost<'a> {
+    app: &'a AppHandle,
+    custody: native_device_custody::DesktopPairingCustody,
+}
+
+impl<'a> AppProfileWriteHost<'a> {
+    fn new(app: &'a AppHandle) -> Result<Self, String> {
+        Ok(Self {
+            app,
+            custody: native_device_custody::DesktopPairingCustody::for_app(app)?,
+        })
+    }
+}
 
 impl ProfileWriteHost for AppProfileWriteHost<'_> {
     fn path(&self) -> Result<std::path::PathBuf, String> {
-        station_profiles_path(self.0)
+        station_profiles_path(self.app)
     }
     fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            ensure_station_profile_store_genesis(self.0, root)
+            ensure_station_profile_store_genesis(self.app, root)
         }
         #[cfg(mobile)]
         {
@@ -5409,30 +6608,25 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
         }
     }
     fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> {
-        lock_station_profiles_for_app(self.0, path)
+        lock_station_profiles_for_app(self.app, path)
     }
     fn invalidate_removed_routes(
         &self,
         current: &CredentialProfileStore,
         next: &CredentialProfileStore,
     ) -> Result<(), String> {
-        #[cfg(not(mobile))]
-        {
-            relay_grant_vault::invalidate_removed_routes(self.0, current, next)?;
-            native_relay_redemption::stage_removed_profile_routes(self.0, current, next)
-        }
-        #[cfg(mobile)]
-        {
-            let _ = (current, next);
-            Ok(())
-        }
+        relay_grant_vault::invalidate_removed_routes(self.app, current, next)?;
+        native_relay_redemption::stage_removed_profile_routes(self.app, current, next)
+    }
+    fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter {
+        &self.custody
     }
     fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
         crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)])
     }
     fn notify(&self) {
         #[cfg(not(mobile))]
-        notify_startup_readiness_if_waiting(self.0);
+        notify_startup_readiness_if_waiting(self.app);
     }
 }
 
@@ -5583,6 +6777,12 @@ fn station_profile_store_write_with_host(
         // Post-transition prepublication errors must reach the rollback below.
         // Grant invalidation still precedes profile publication: a failed
         // later write must never revive a revoked grant.
+        native_device_custody::stage_removed_credentials(
+            host.custody(),
+            &path,
+            &current_store,
+            &next_store,
+        )?;
         host.invalidate_removed_routes(&current_store, &next_store)?;
         let generated_staged = path.with_extension(format!(
             "{}.{}.tmp",
@@ -5637,14 +6837,14 @@ fn station_profile_store_write_with_host(
             let entry = entries
                 .get(handle)
                 .ok_or_else(|| "native pairing credential handle is missing".to_string())?;
-            if let NativePairingPhase::KeyringWritten { .. } = entry.phase {
+            if let NativePairingPhase::KeyringWritten { ref profile_name } = entry.phase {
                 let key = credential_reference_key(&entry.reference)?;
                 state.bindings.insert(
                     key.clone(),
-                    NativeCredentialBinding {
-                        exact_origin: entry.exact_origin.clone(),
-                        environment_id: entry.environment_id.clone(),
-                    },
+                    profile_credential_binding(selected_profile_from_store(
+                        &next_store,
+                        profile_name,
+                    )?)?,
                 );
                 state.transitioning.remove(&key);
                 entries.remove(handle);
@@ -5696,7 +6896,6 @@ async fn station_profile_store_write(
     .await
 }
 
-#[cfg(not(mobile))]
 fn now_millis_f64() -> Result<f64, String> {
     Ok(SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -6707,7 +7906,7 @@ fn station_local_self_provision_blocking(
         {
             return Err("invalid local self-provision response".to_string().into());
         }
-        native_pairing_device_response(exchange.device)?;
+        let device = native_pairing_device_response(exchange.device)?;
 
         let reference = NativeCredentialReference {
             kind: "station-bearer".to_string(),
@@ -6734,6 +7933,8 @@ fn station_local_self_provision_blocking(
                     exact_origin: origin.clone(),
                     environment_id: exchange.environment_id.clone(),
                     client_instance_id: client_instance_id.clone(),
+                    device_id: device.id,
+                    device_kind: device.kind,
                     expires_at: now + Duration::from_secs(120),
                     phase: NativePairingPhase::AwaitingRequiresAuth,
                 },
@@ -7997,69 +9198,86 @@ fn profile_lock_birth_bridge(
         .ok_or(RegistryBridgeFailure::Protocol)
 }
 
+/// A live host owner that refused this desktop's claim, as the bridge reports
+/// it: registry id, host type, and registered port. Path-free by design.
+#[cfg(not(mobile))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct HostClaimOwner {
+    id: String,
+    #[serde(rename = "type")]
+    owner_type: String,
+    port: u16,
+}
+
+/// The outcome of the one atomic host-owner claim (ADR 0020 D4). The shared
+/// module decides it under the registry lock, so `owners` is the same
+/// observation that refused the claim — there is no separate ownership read.
+#[cfg(not(mobile))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct HostClaim {
+    ok: bool,
+    claimed: bool,
+    owners: Vec<HostClaimOwner>,
+}
+
+#[cfg(not(mobile))]
+fn parse_host_claim_output(output: &[u8]) -> Result<HostClaim, RegistryBridgeFailure> {
+    let claim: HostClaim =
+        serde_json::from_slice(output).map_err(|_| RegistryBridgeFailure::Protocol)?;
+    if claim.ok && (claim.owners.is_empty() || !claim.claimed) {
+        Ok(claim)
+    } else {
+        Err(RegistryBridgeFailure::Protocol)
+    }
+}
+
+/// Reserves this desktop's sidecar slot through the shared host-owner claim.
+/// The bridge records this desktop (its parent) as the claimant.
 #[cfg(not(mobile))]
 fn claim_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
     instance: serde_json::Value,
-) -> Result<bool, RegistryBridgeFailure> {
+) -> Result<HostClaim, RegistryBridgeFailure> {
     let output = invoke_registry_bridge(
         resource_dir,
         "claimSidecar",
         serde_json::json!({"home":home,"id":id,"instance":instance}),
     )?;
-    let value: serde_json::Value =
-        serde_json::from_slice(&output).map_err(|_| RegistryBridgeFailure::Protocol)?;
-    value
-        .get("claimed")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or(RegistryBridgeFailure::Protocol)
+    parse_host_claim_output(&output)
 }
 
-// Write counterparts are kept at the same narrow bridge seam for Phase 3's
-// handshake/restart/teardown lifecycle wiring. They intentionally have no
-// startup caller in Phase 2.
+/// Publishes the listening child through the same claim. It refuses, rather
+/// than re-creating the record, while another live host owns the home.
 #[cfg(not(mobile))]
-fn upsert_registry_bridge(
+fn publish_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
     instance: serde_json::Value,
-) -> Result<(), RegistryBridgeFailure> {
-    invoke_registry_bridge(
+) -> Result<HostClaim, RegistryBridgeFailure> {
+    let output = invoke_registry_bridge(
         resource_dir,
-        "upsert",
+        "publishSidecar",
         serde_json::json!({ "home": home, "id": id, "instance": instance }),
-    )
-    .map(|_| ())
+    )?;
+    parse_host_claim_output(&output)
 }
 
+/// Releases this desktop's sidecar record. The bridge removes it only when
+/// this desktop recorded it or its recorded child is provably gone.
 #[cfg(not(mobile))]
-fn update_registry_status_bridge(
-    resource_dir: &Path,
-    home: &Path,
-    id: &str,
-    status: &str,
-    pid: Option<u32>,
-) -> Result<(), RegistryBridgeFailure> {
-    invoke_registry_bridge(
-        resource_dir,
-        "updateStatus",
-        serde_json::json!({ "home": home, "id": id, "status": status, "pid": pid }),
-    )
-    .map(|_| ())
-}
-
-#[cfg(not(mobile))]
-fn remove_registry_bridge(
+fn release_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
 ) -> Result<(), RegistryBridgeFailure> {
     invoke_registry_bridge(
         resource_dir,
-        "remove",
+        "releaseSidecar",
         serde_json::json!({ "home": home, "id": id }),
     )
     .map(|_| ())
@@ -8344,32 +9562,87 @@ fn owner_owns_reapable_child(owner: DesktopOwner) -> bool {
     owner == DesktopOwner::Sidecar
 }
 
-/// Window destruction is not application exit: preview and workspace pop-out
-/// windows are ordinary Station windows. Sidecar teardown is intentionally
-/// wired only from `RunEvent::Exit` below.
+/// Maps the atomic host claim straight to this desktop's owner. A won claim
+/// is the only way to `Sidecar`. A claim refused by exactly one live service
+/// reports that service (never attaching to it); any other refusal — another
+/// desktop's sidecar, several owners, an id held by a foreign process — or a
+/// bridge failure selects no owner and spawns nothing.
 #[cfg(not(mobile))]
-fn owner_after_preparation(
+fn owner_for_host_claim(claim: Result<HostClaim, RegistryBridgeFailure>) -> DesktopOwner {
+    let Ok(claim) = claim else {
+        return DesktopOwner::None;
+    };
+    if claim.claimed {
+        return DesktopOwner::Sidecar;
+    }
+    match claim.owners.as_slice() {
+        [owner] if owner.owner_type == "service" => DesktopOwner::Service {
+            id: owner.id.clone(),
+            port: owner.port,
+        },
+        _ => DesktopOwner::None,
+    }
+}
+
+/// The claim is the launch decision, including when preparation skipped a
+/// service-owned home. If that service exited, release the reservation: the
+/// home still needs preparation before any sidecar can run.
+#[cfg(not(mobile))]
+fn owner_after_launch_claim(
     preparation: PrepareRuntimeKind,
-    decision: HomeOwnershipDecision,
+    claim: impl FnOnce() -> Result<HostClaim, RegistryBridgeFailure>,
+    release: impl FnOnce(),
 ) -> DesktopOwner {
-    let owner = owner_for_decision(decision);
-    if preparation == PrepareRuntimeKind::ServiceOwned {
-        // A service observed before preparation may exit before this second
-        // ownership read. Never turn that race into an unprepared sidecar.
-        adoptable_refreshed_owner(owner)
+    let owner = owner_for_host_claim(claim());
+    if preparation == PrepareRuntimeKind::ServiceOwned && owner == DesktopOwner::Sidecar {
+        release();
+        DesktopOwner::Unowned
     } else {
         owner
     }
 }
 
 #[cfg(not(mobile))]
+fn launch_owner(
+    preparation: PrepareRuntimeKind,
+    resource_dir: &Path,
+    station_home: &Path,
+    registry_id: &str,
+) -> DesktopOwner {
+    owner_after_launch_claim(
+        preparation,
+        || {
+            claim_sidecar_registry_bridge(
+                resource_dir,
+                station_home,
+                registry_id,
+                serde_json::json!({"type":"sidecar","status":"starting","port":0}),
+            )
+        },
+        || {
+            let _ = release_sidecar_registry_bridge(resource_dir, station_home, registry_id);
+        },
+    )
+}
+
+/// Setup starts a supervisor thread only for the desktop that won the claim.
+#[cfg(not(mobile))]
+fn start_owned_sidecar<T>(owner: DesktopOwner, start: impl FnOnce() -> T) -> Option<T> {
+    owner_owns_reapable_child(owner).then(start)
+}
+
+/// Window destruction is not application exit: preview and workspace pop-out
+/// windows are ordinary Station windows. Sidecar teardown is intentionally
+/// wired only from `RunEvent::Exit` below.
+#[cfg(not(mobile))]
 fn window_destruction_requests_sidecar_teardown() -> bool {
     false
 }
 
+/// A sidecar becomes Running only when its publish won the host claim.
 #[cfg(not(mobile))]
-fn registry_claim_allows_running(result: Result<(), RegistryBridgeFailure>) -> bool {
-    result.is_ok()
+fn registry_claim_allows_running(result: Result<HostClaim, RegistryBridgeFailure>) -> bool {
+    matches!(result, Ok(HostClaim { claimed: true, .. }))
 }
 
 #[cfg(not(mobile))]
@@ -9674,7 +10947,6 @@ async fn commit_startup_readiness(
     result
 }
 
-#[cfg(not(mobile))]
 fn renderer_mount_label_admitted(label: &str) -> bool {
     label == "main"
 }
@@ -10251,10 +11523,22 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // The ambient read lives at the edge so the builder stays a pure function
     // of its inputs -- otherwise its tests would pass or fail depending on the
     // developer's own STATION_ROOT.
-    build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
-        .spawn()
-        .map(|child| (child, boot_id))
-        .map_err(|error| format!("launch Station sidecar: {error}"))
+    let mut child =
+        build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
+            .spawn()
+            .map_err(|error| format!("launch Station sidecar: {error}"))?;
+    // Record the child before waiting for Listening: after desktop death its
+    // watchdog may still be shutting down, so the child must retain the fence.
+    if !registry_claim_allows_running(publish_sidecar_registry_bridge(
+        &context.launch.resource_dir,
+        &context.launch.station_home,
+        &context.registry_id,
+        serde_json::json!({"type":"sidecar","status":"starting","port":context.launch.pinned_port.unwrap_or(0),"pid":child.id()}),
+    )) {
+        terminate_desktop_child(&mut child);
+        return Err("Station could not fence its spawned sidecar; the child was stopped.".into());
+    }
+    Ok((child, boot_id))
 }
 
 #[cfg(not(mobile))]
@@ -10405,6 +11689,26 @@ fn run_sidecar_supervisor(
             return;
         }
         generation += 1;
+        // Setup claimed the home for the first generation. Every later one
+        // re-claims before it spawns: an exited child released the record,
+        // and a manual restart's record names a reaped child, so another
+        // desktop or a service may own the home now. A lost claim never
+        // spawns.
+        if generation > 1 && !reclaim_sidecar_host(&supervisor) {
+            let mut status = supervisor
+                .status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            status.phase = bundled_server_state::ServerPhase::Failed;
+            status.fail_closed = true;
+            status.api_base = None;
+            status.port = None;
+            status.message = "Another Station server now owns this home.".into();
+            status.detail = Some("The home-scoped registry refused this desktop's restart claim; Station did not start a second server.".into());
+            drop(status);
+            crate::tray::kick(&app);
+            return;
+        }
         let child = match spawn_sidecar_child(&supervisor.context) {
             Ok((mut child, boot_id)) => {
                 if let Some(stdout) = child.stdout.take() {
@@ -10445,7 +11749,7 @@ fn run_sidecar_supervisor(
             }
         };
         if !child {
-            let _ = remove_registry_bridge(
+            let _ = release_sidecar_registry_bridge(
                 &supervisor.context.launch.resource_dir,
                 &supervisor.context.launch.station_home,
                 &supervisor.context.registry_id,
@@ -10472,7 +11776,7 @@ fn run_sidecar_supervisor(
             match rx.recv_timeout(Duration::from_millis(150)) {
                 Ok(SupervisorMessage::Shutdown) => {
                     reap_sidecar(&supervisor);
-                    let _ = remove_registry_bridge(
+                    let _ = release_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
@@ -10502,14 +11806,14 @@ fn run_sidecar_supervisor(
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
                         .as_ref()
                         .map(Child::id);
-                    if !registry_claim_allows_running(upsert_registry_bridge(
+                    if !registry_claim_allows_running(publish_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
                         serde_json::json!({"type":"sidecar","status":"running","port":port,"pid":pid,"startedAt":format!("{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())}),
                     )) {
                         reap_sidecar(&supervisor);
-                        let _ = remove_registry_bridge(
+                        let _ = release_sidecar_registry_bridge(
                             &supervisor.context.launch.resource_dir,
                             &supervisor.context.launch.station_home,
                             &supervisor.context.registry_id,
@@ -10573,7 +11877,7 @@ fn run_sidecar_supervisor(
                         // fail-closed marker written immediately before exit
                         // must win over retry classification.
                         drain_sidecar_stderr(&supervisor);
-                        let _ = remove_registry_bridge(
+                        let _ = release_sidecar_registry_bridge(
                             &supervisor.context.launch.resource_dir,
                             &supervisor.context.launch.station_home,
                             &supervisor.context.registry_id,
@@ -10598,7 +11902,7 @@ fn run_sidecar_supervisor(
                 }
                 Err(RecvTimeoutError::Disconnected) => {
                     reap_sidecar(&supervisor);
-                    let _ = remove_registry_bridge(
+                    let _ = release_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
@@ -10608,6 +11912,19 @@ fn run_sidecar_supervisor(
             }
         }
     }
+}
+
+/// Re-claims this desktop's sidecar slot before a respawn, through the same
+/// atomic host claim setup used.
+#[cfg(not(mobile))]
+fn reclaim_sidecar_host(supervisor: &Arc<ServerSupervisor>) -> bool {
+    let claim = claim_sidecar_registry_bridge(
+        &supervisor.context.launch.resource_dir,
+        &supervisor.context.launch.station_home,
+        &supervisor.context.registry_id,
+        serde_json::json!({"type":"sidecar","status":"starting","port":0}),
+    );
+    owner_owns_reapable_child(owner_for_host_claim(claim))
 }
 
 #[cfg(not(mobile))]
@@ -10666,6 +11983,17 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return;
     };
+    if shut_down_owned_sidecar(&state) {
+        crate::tray::kick(app);
+    }
+}
+
+/// The ownership-gated half of teardown, separated from the `AppHandle` so it
+/// is directly testable. Only a desktop that won the sidecar claim asks its
+/// supervisor to reap a child; a service-owned (or unowned) desktop signals
+/// nothing. Returns whether a shutdown was requested.
+#[cfg(not(mobile))]
+fn shut_down_owned_sidecar(state: &DesktopServerState) -> bool {
     if !owner_owns_reapable_child(
         state
             .owner
@@ -10673,10 +12001,10 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone(),
     ) {
-        return;
+        return false;
     }
     if state.supervisor.shutting_down.swap(true, Ordering::SeqCst) {
-        return;
+        return false;
     }
     apply_supervisor_input(&state.supervisor, SupervisorInput::ShutdownRequested);
     let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
@@ -10692,7 +12020,7 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
     {
         let _ = handle.join();
     }
-    crate::tray::kick(app);
+    true
 }
 
 /// `STATION_DESKTOP_LOG_LEVEL` selects the desktop shell's log verbosity
@@ -10969,8 +12297,9 @@ If a stable instance is running, this launch will focus its window and exit.",
         .plugin(tauri_plugin_notification::init())
         // Native OS dialogs for the consent broker (station#3677 PR 3): the
         // approval surface must be chrome webview JS cannot script.
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_dialog::init());
+    #[cfg(not(target_os = "ios"))]
+    let builder = builder.plugin(tauri_plugin_deep_link::init());
     // Mobile-only haptic feedback (station#1954). Capability report marks
     // haptics unsupported off-mobile so the webview never calls it there.
     #[cfg(mobile)]
@@ -10984,11 +12313,16 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())
         .manage(NativeHttpCancellation::default())
-        .manage(NativePairingExchangeCancellation::default());
+        .manage(NativePairingExchangeCancellation::default())
+        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
+        .manage(native_relay_link_intake::NativeRelayLinkState::default())
+        .manage(native_application_peer::NativeApplicationPeers::default())
+        .manage(native_enrollment_peer::NativeEnrollmentPeers::default())
+        .manage(native_enrollment_host::NativeEnrollmentHost::default())
+        .manage(native_account_operations::NativeAccountOperations::default());
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
-        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -11009,6 +12343,26 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_redemption::station_native_device_binding_candidate,
+        native_relay_redemption::station_native_device_binding_self_receipt,
+        native_application_peer::station_native_application_peer_prepare,
+        native_application_peer::station_native_application_peer_open,
+        native_application_peer::station_native_application_peer_read,
+        native_application_peer::station_native_application_peer_sign,
+        native_application_peer::station_native_application_peer_close,
+        native_account_operations::station_native_account_challenge_prepare,
+        native_account_operations::station_native_account_exchange_prepare,
+        native_account_operations::station_native_account_request_headers,
+        native_account_operations::station_native_account_accept_invitation_prepare,
+        native_account_operations::station_native_account_revoke_prepare,
+        native_relay_link_intake::station_native_link_delivery_mode,
+        native_relay_link_intake::station_native_pairing_link_take,
+        native_relay_link_intake::station_native_relay_link_take,
+        native_relay_link_intake::station_native_relay_link_cancel,
+        native_relay_link_intake::station_native_relay_link_begin,
+        native_relay_link_intake::station_native_relay_link_redeem,
+        native_relay_link_intake::station_native_relay_link_recovery_preview,
+        native_relay_link_intake::station_native_relay_link_recovery_reset,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
@@ -11026,6 +12380,26 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_relay_redemption::station_native_relay_signal_diagnostic_open,
         native_relay_redemption::station_native_relay_signal_diagnostic_read,
         native_relay_redemption::station_native_relay_application_binding,
+        native_relay_redemption::station_native_relay_enrollment_binding,
+        native_enrollment_peer::station_native_enrollment_peer_prepare,
+        native_enrollment_peer::station_native_enrollment_peer_open,
+        native_enrollment_peer::station_native_enrollment_peer_read,
+        native_enrollment_peer::station_native_enrollment_peer_close,
+        native_relay_ice::station_native_relay_ice_configuration,
+        native_enrollment_host::station_native_enrollment_begin_prepare,
+        native_enrollment_host::station_native_enrollment_challenge_accept,
+        native_enrollment_host::station_native_enrollment_login_prepare,
+        native_enrollment_host::station_native_enrollment_finalize_prepare,
+        native_enrollment_host::station_native_enrollment_delivery_accept,
+        native_enrollment_host::station_native_enrollment_activate_prepare,
+        native_enrollment_host::station_native_enrollment_activation_accept,
+        native_enrollment_host::station_native_enrollment_transition_current,
+        native_enrollment_host::station_native_enrollment_status_prepare,
+        native_enrollment_host::station_native_enrollment_status_accept,
+        native_enrollment_host::station_native_enrollment_cancel_prepare,
+        native_enrollment_host::station_native_enrollment_abort,
+        native_enrollment_host::station_native_enrollment_pending_accept,
+        native_enrollment_host::station_native_enrollment_resume,
         native_relay_redemption::station_native_relay_application_open,
         native_relay_redemption::station_native_relay_application_read,
         relay_grant_vault::relay_client_grant_store,
@@ -11071,6 +12445,65 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_redemption::station_native_device_binding_candidate,
+        native_relay_redemption::station_native_device_binding_self_receipt,
+        native_application_peer::station_native_application_peer_prepare,
+        native_application_peer::station_native_application_peer_open,
+        native_application_peer::station_native_application_peer_read,
+        native_application_peer::station_native_application_peer_sign,
+        native_application_peer::station_native_application_peer_close,
+        native_account_operations::station_native_account_challenge_prepare,
+        native_account_operations::station_native_account_exchange_prepare,
+        native_account_operations::station_native_account_request_headers,
+        native_account_operations::station_native_account_accept_invitation_prepare,
+        native_account_operations::station_native_account_revoke_prepare,
+        native_relay_link_intake::station_native_link_delivery_mode,
+        native_relay_link_intake::station_native_pairing_link_take,
+        native_relay_link_intake::station_native_relay_link_take,
+        native_relay_link_intake::station_native_relay_link_cancel,
+        native_relay_link_intake::station_native_relay_link_begin,
+        native_relay_link_intake::station_native_relay_link_redeem,
+        native_relay_link_intake::station_native_relay_link_recovery_preview,
+        native_relay_link_intake::station_native_relay_link_recovery_reset,
+        native_relay_key_approval::station_native_relay_key_approval_prepare,
+        native_relay_key_approval::station_native_relay_key_approval_begin,
+        native_relay_key_approval::station_native_relay_key_approval_pending,
+        native_relay_key_approval::station_native_relay_key_approval_cancel,
+        native_relay_key_approval::station_native_relay_key_approval_approve,
+        native_relay_key_approval::station_native_relay_key_approval_revoke,
+        native_relay_key_approval::station_native_relay_key_approval_status,
+        native_relay_redemption::station_native_relay_grant_redeem,
+        native_relay_redemption::station_native_relay_grant_status,
+        native_relay_redemption::station_native_relay_grant_renew,
+        native_relay_redemption::station_native_relay_grant_revoke,
+        native_relay_redemption::station_native_relay_grant_cleanup_pending,
+        native_relay_redemption::station_native_relay_grant_cleanup_retry,
+        native_relay_redemption::station_native_relay_application_binding,
+        native_relay_redemption::station_native_relay_enrollment_binding,
+        native_enrollment_peer::station_native_enrollment_peer_prepare,
+        native_enrollment_peer::station_native_enrollment_peer_open,
+        native_enrollment_peer::station_native_enrollment_peer_read,
+        native_enrollment_peer::station_native_enrollment_peer_close,
+        native_relay_ice::station_native_relay_ice_configuration,
+        native_enrollment_host::station_native_enrollment_begin_prepare,
+        native_enrollment_host::station_native_enrollment_challenge_accept,
+        native_enrollment_host::station_native_enrollment_login_prepare,
+        native_enrollment_host::station_native_enrollment_finalize_prepare,
+        native_enrollment_host::station_native_enrollment_delivery_accept,
+        native_enrollment_host::station_native_enrollment_activate_prepare,
+        native_enrollment_host::station_native_enrollment_activation_accept,
+        native_enrollment_host::station_native_enrollment_transition_current,
+        native_enrollment_host::station_native_enrollment_status_prepare,
+        native_enrollment_host::station_native_enrollment_status_accept,
+        native_enrollment_host::station_native_enrollment_cancel_prepare,
+        native_enrollment_host::station_native_enrollment_abort,
+        native_enrollment_host::station_native_enrollment_pending_accept,
+        native_enrollment_host::station_native_enrollment_resume,
+        native_relay_redemption::station_native_relay_application_open,
+        native_relay_redemption::station_native_relay_application_read,
+        relay_grant_vault::relay_client_grant_store,
+        relay_grant_vault::relay_client_grant_revoke,
+        relay_grant_vault::relay_client_grant_metadata,
         open_external_link,
         credential_vault_delete,
         credential_vault_delete_unreferenced,
@@ -11086,12 +12519,12 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_profile_store_write
     ]);
 
-    builder
+    let app = builder
         .setup(move |app| {
-            #[cfg(not(mobile))]
             {
                 let app = app.handle().clone();
                 let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if retry_device_custody_retirements_for_app(&app).is_err() { log::warn!("native credential retirement remains pending"); }
                     if let Err(error) =
                         native_relay_redemption::retry_pending_cleanup_for_app(&app)
                     {
@@ -11235,27 +12668,15 @@ If a stable instance is running, this launch will focus its window and exit.",
                         registry_id: format!("desktop-sidecar-{}", std::process::id()),
                     },
                 });
-                let ownership = decide_home_ownership_from_runtime(&resource_dir, &station_home);
-                let mut owner = owner_after_preparation(preparation_kind, ownership);
-                // Reserve before the child is launched.  The shared module
-                // performs this compare-and-set under its mutation lock, so
-                // two desktops cannot both win a home-scoped sidecar slot.
-                if owner == DesktopOwner::Sidecar {
-                    let context = &supervisor.context;
-                    let claimed = claim_sidecar_registry_bridge(
-                        &resource_dir,
-                        &station_home,
-                        &context.registry_id,
-                        serde_json::json!({"type":"sidecar","status":"starting","port":0}),
-                    )
-                    .map_err(|error| {
-                        log::error!("desktop registry bridge could not claim the sidecar slot: {error:?}");
-                        error
-                    })
-                    .unwrap_or(false);
-                    log::info!("desktop sidecar registry claim: claimed={claimed}");
-                    if !claimed { owner = DesktopOwner::None; }
-                }
+                // Reserve before the child is launched. The shared module
+                // decides the home's single host owner under its mutation
+                // lock — refusing any other live sidecar or service — and
+                // returns the winner, so there is no separate ownership read
+                // for a service to slip past (#2961).
+                let owner = launch_owner(
+                    preparation_kind, &resource_dir, &station_home, &supervisor.context.registry_id,
+                );
+                log::info!("desktop atomic host claim selected {owner:?}");
                 let (readiness, effects) = startup_readiness::transition(
                     &startup_readiness::StartupReadiness::default(),
                     startup_readiness::ReadinessInput::Begin {
@@ -11282,10 +12703,12 @@ If a stable instance is running, this launch will focus its window and exit.",
                 notification_feed::start(app.handle())?;
                 if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) { reveal_main_window(app.handle()); }
                 if !cfg!(debug_assertions) { arm_startup_deadline(app.handle().clone(), 1); }
-                if owner == DesktopOwner::Sidecar {
+                if let Some(handle) = start_owned_sidecar(owner.clone(), || {
                     let app_handle = app.handle().clone();
                     let handle = thread::Builder::new().name("station-sidecar-supervisor".into()).spawn(move || run_sidecar_supervisor(supervisor, app_handle, rx))
                         .expect("failed to start Station sidecar supervisor thread");
+                    handle
+                }) {
                     *app.state::<DesktopServerState>().supervisor.thread.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(handle);
                 }
             }
@@ -11294,8 +12717,24 @@ If a stable instance is running, this launch will focus its window and exit.",
             Ok(())
         })
         .build(context)
-        .expect("error while building tauri application")
-        .run(|app, event| {
+        .expect("error while building tauri application");
+    #[cfg(target_os = "ios")]
+    {
+        let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
+        state.start_expiry_worker();
+        if let Err(stage) = native_relay_ios_launch::install(app.handle().clone()) {
+            state.unavailable();
+            log::error!("Station native relay URL launch delivery is unavailable ({stage}).");
+        }
+    }
+    app.run(|app, event| {
+            #[cfg(target_os = "ios")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                native_relay_link_intake::receive_opened(app, urls);
+            }
+            if let tauri::RunEvent::Exit = &event {
+                app.state::<native_relay_link_intake::NativeRelayLinkState>().stop();
+            }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
                 if code.is_none() || *code == Some(0) {
@@ -11351,7 +12790,11 @@ mod tests {
     use super::*;
 
     #[cfg(not(mobile))]
+    use native_device_custody::PairingCustodyWriter as _;
+
+    #[cfg(not(mobile))]
     struct WriterTestHost {
+        custody: MemoryCustodyWriter,
         path: std::path::PathBuf,
         staged_path: Option<std::path::PathBuf>,
         fail_invalidation: bool,
@@ -11380,6 +12823,9 @@ mod tests {
             } else {
                 Ok(())
             }
+        }
+        fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter {
+            &self.custody
         }
         fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
             if self.fail_postpublication_trust {
@@ -11427,12 +12873,15 @@ mod tests {
                 exact_origin: "https://one.example".into(),
                 environment_id: "environment-one".into(),
                 client_instance_id: "11111111-1111-4111-8111-111111111111".into(),
+                device_id: "55555555-5555-4555-8555-555555555555".into(),
+                device_kind: "device".into(),
                 expires_at: SystemTime::now() + Duration::from_secs(120),
                 phase: NativePairingPhase::AwaitingRequiresAuth,
             },
         );
         let contents = r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"test-host-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#.to_string();
         let host = WriterTestHost {
+            custody: MemoryCustodyWriter::default(),
             path: path.clone(),
             staged_path: None,
             fail_invalidation: false,
@@ -11724,6 +13173,8 @@ mod tests {
                 exact_origin: exact_origin("http://127.0.0.1:3141").unwrap(),
                 environment_id: "environment-local".into(),
                 client_instance_id: client_instance_id.into(),
+                device_id: "66666666-6666-4666-8666-666666666666".into(),
+                device_kind: "device".into(),
                 expires_at: SystemTime::now() + Duration::from_secs(120),
                 phase: NativePairingPhase::AwaitingRequiresAuth,
             },
@@ -11826,6 +13277,660 @@ mod tests {
         ));
     }
 
+    // ---- Device identity custody metadata (station#2893) ----
+    #[cfg(not(mobile))]
+    struct MemoryCustodyWriter {
+        owner: native_device_custody::NativeDeviceCustodyOwner,
+        bearer: std::sync::Mutex<std::collections::HashMap<String, String>>,
+        metadata: native_device_custody::MemoryCustodyMetadataStore,
+        fail_metadata: bool,
+        fail_delete_metadata: bool,
+        fail_journal: bool,
+        unreadable_refs: std::collections::HashSet<String>,
+        delete_attempts: std::sync::atomic::AtomicUsize,
+    }
+
+    #[cfg(not(mobile))]
+    impl Default for MemoryCustodyWriter {
+        fn default() -> Self {
+            Self {
+                owner: native_device_custody::NativeDeviceCustodyOwner::fixture(),
+                bearer: Default::default(),
+                metadata: Default::default(),
+                fail_metadata: false,
+                fail_delete_metadata: false,
+                fail_journal: false,
+                unreadable_refs: Default::default(),
+                delete_attempts: Default::default(),
+            }
+        }
+    }
+
+    #[cfg(not(mobile))]
+    impl native_device_custody::PairingCustodyWriter for MemoryCustodyWriter {
+        fn owner(&self) -> &native_device_custody::NativeDeviceCustodyOwner {
+            &self.owner
+        }
+        fn read_bearer(
+            &self,
+            reference: &NativeCredentialReference,
+        ) -> Result<Option<String>, String> {
+            if self.unreadable_refs.contains(&reference.id) {
+                return Err("injected unreadable legacy credential".into());
+            }
+            Ok(self.bearer.lock().unwrap().get(&reference.id).cloned())
+        }
+        fn read_metadata(&self, account: &str) -> Result<Option<String>, String> {
+            Ok(self.metadata.lock().get(account).cloned())
+        }
+        fn write_journal(&self, account: &str, value: &str) -> Result<(), String> {
+            if self.fail_journal {
+                return Err("injected retirement journal failure".into());
+            }
+            self.metadata.lock().insert(account.into(), value.into());
+            Ok(())
+        }
+        fn write_bearer(
+            &self,
+            reference: &NativeCredentialReference,
+            password: &str,
+        ) -> Result<(), String> {
+            self.bearer
+                .lock()
+                .unwrap()
+                .insert(reference.id.clone(), password.into());
+            Ok(())
+        }
+        fn write_metadata(
+            &self,
+            metadata: &native_device_custody::NativeDeviceCustodyMetadata,
+        ) -> Result<(), String> {
+            if self.fail_metadata {
+                return Err("injected metadata failure".into());
+            }
+            let account =
+                native_device_custody::metadata_account(&self.owner, &metadata.reference)?;
+            self.metadata
+                .lock()
+                .insert(account, serde_json::to_string(metadata).unwrap());
+            Ok(())
+        }
+        fn delete_bearer(&self, reference: &NativeCredentialReference) -> Result<(), String> {
+            self.delete_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.bearer.lock().unwrap().remove(&reference.id);
+            Ok(())
+        }
+        fn delete_metadata(&self, reference: &NativeCredentialReference) -> Result<(), String> {
+            self.delete_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if self.fail_delete_metadata {
+                return Err("injected metadata deletion failure".into());
+            }
+            self.metadata
+                .lock()
+                .remove(&native_device_custody::metadata_account(
+                    &self.owner,
+                    reference,
+                )?);
+            Ok(())
+        }
+    }
+
+    #[cfg(not(mobile))]
+    const CUSTODY_DEVICE_ID: &str = "77777777-7777-4777-8777-777777777777";
+    #[cfg(not(mobile))]
+    const CUSTODY_STATION_ID: &str = "11111111-1111-4111-8111-111111111111";
+    #[cfg(not(mobile))]
+    const CUSTODY_CLIENT_ID: &str = "33333333-3333-4333-8333-333333333333";
+    #[cfg(not(mobile))]
+    const CUSTODY_BEARER: &str = "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+
+    #[cfg(not(mobile))]
+    fn custody_pairing_fixture() -> (
+        tempfile::TempDir,
+        WriterTestHost,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        NativePairingExchangeSuccess,
+    ) {
+        use std::io::{Read, Write};
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        ensure_station_profile_store_root(root).unwrap();
+        std::fs::create_dir(root.join("config")).unwrap();
+        write_profile_store_genesis_marker(root).unwrap();
+        let path = root.join("config/profiles.json");
+        write_empty_station_profile_store(&path).unwrap();
+        let host = WriterTestHost {
+            path,
+            custody: Default::default(),
+            staged_path: None,
+            fail_invalidation: false,
+            fail_postpublication_trust: false,
+        };
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut bytes = [0; 2048];
+                let count = stream.read(&mut bytes).unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&bytes[..count]);
+                if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]);
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    if request.len() >= end + 4 + length {
+                        let body: serde_json::Value =
+                            serde_json::from_slice(&request[end + 4..end + 4 + length]).unwrap();
+                        assert_eq!(body["clientInstanceId"], CUSTODY_CLIENT_ID);
+                        break;
+                    }
+                }
+            }
+            let body = serde_json::json!({ "environmentId": CUSTODY_STATION_ID, "credential": CUSTODY_BEARER, "device": { "id": CUSTODY_DEVICE_ID, "name": "Owner laptop", "scope": "orchestration:read", "kind": "device", "createdAt": 1.0, "lastUsedAt": null, "revokedAt": null }}).to_string();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+        let pending = NativePendingPairingCredentials::default();
+        let request = NativePairingExchangeRequest {
+            endpoint: origin.clone(),
+            development_http_origin: None,
+            offer_id: "offer".into(),
+            proof: "proof".into(),
+            request_id: "request".into(),
+            client_instance_id: CUSTODY_CLIENT_ID.into(),
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            browser_session: false,
+        };
+        let origin = validate_native_pairing_exchange_request(&request).unwrap();
+        let result = station_native_pairing_exchange_blocking(
+            pending.clone(),
+            request,
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+        server.join().unwrap();
+        let NativePairingExchangeResult::Success(success) = result else {
+            panic!("pairing failed")
+        };
+        (
+            directory,
+            host,
+            NativeProfileAuthority::default(),
+            pending,
+            success,
+        )
+    }
+
+    #[cfg(not(mobile))]
+    fn custody_first_cas(
+        host: &WriterTestHost,
+        authority: &NativeProfileAuthority,
+        pending: &NativePendingPairingCredentials,
+        success: &NativePairingExchangeSuccess,
+    ) -> CredentialProfileStore {
+        let origin = pending
+            .0
+            .lock()
+            .unwrap()
+            .get(&success.credential_handle)
+            .unwrap()
+            .exact_origin
+            .clone();
+        let current = parse_station_profile_store(
+            &station_profile_store_read_with_host(host, authority).unwrap(),
+        )
+        .unwrap();
+        let contents = serde_json::json!({ "schemaVersion": 1, "revision": current.revision + 1, "defaultProfile": null, "projectProfiles": {}, "profiles": [{ "schemaVersion": 1, "name": "paired", "endpoint": origin, "credentialRef": success.credential_ref, "environmentId": success.environment_id, "clientInstanceId": CUSTODY_CLIENT_ID, "setupSource": "paired", "configurationState": "requires-auth", "createdAt": 1, "updatedAt": 1 }] }).to_string();
+        station_profile_store_write_with_host(
+            host,
+            authority,
+            pending,
+            contents.clone(),
+            current.revision,
+            Some(success.credential_handle.clone()),
+        )
+        .unwrap();
+        parse_station_profile_store(&contents).unwrap()
+    }
+
+    #[cfg(not(mobile))]
+    fn custody_second_cas(
+        host: &WriterTestHost,
+        authority: &NativeProfileAuthority,
+        pending: &NativePendingPairingCredentials,
+        success: &NativePairingExchangeSuccess,
+        mut store: CredentialProfileStore,
+    ) -> Result<(), String> {
+        let expected_revision = store.revision;
+        store.revision += 1;
+        store.profiles[0].configuration_state = "configured".into();
+        station_profile_store_write_with_host(
+            host,
+            authority,
+            pending,
+            serde_json::to_string(&store).unwrap(),
+            expected_revision,
+            Some(success.credential_handle.clone()),
+        )
+    }
+
+    #[cfg(not(mobile))]
+    fn custody_published_fixture() -> (
+        tempfile::TempDir,
+        WriterTestHost,
+        NativeProfileAuthority,
+        NativeCredentialReference,
+    ) {
+        let (directory, host, authority, pending, success) = custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        (directory, host, authority, success.credential_ref)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_exchange_commit_publication_and_cold_identity_are_owner_bound() {
+        let (_directory, host, authority, pending, success) = custody_pairing_fixture();
+        let mut projection = serde_json::to_value(&success).unwrap();
+        assert!(!projection.to_string().contains(CUSTODY_BEARER));
+        projection["device"]["id"] = serde_json::json!(uuid::Uuid::new_v4().to_string());
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        assert!(!pending
+            .0
+            .lock()
+            .unwrap()
+            .contains_key(&success.credential_handle));
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &cold, "paired").unwrap();
+        let identity =
+            resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id)
+                .unwrap();
+        assert_eq!(identity.device_id, CUSTODY_DEVICE_ID);
+        assert_ne!(
+            serde_json::json!(identity.device_id),
+            projection["device"]["id"]
+        );
+        assert!(
+            resolve_current_device_identity_with_host(&host, &cold, 1, &receipt.binding_id)
+                .is_err()
+        );
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &success.credential_ref)
+                .unwrap();
+        let mut record: serde_json::Value =
+            serde_json::from_str(host.custody.metadata.lock().get(&account).unwrap()).unwrap();
+        let original_record = record.clone();
+        for (field, value) in [
+            ("appIdentifier", "io.kontourai.station.other"),
+            ("channel", "stable"),
+        ] {
+            record = original_record.clone();
+            record["owner"][field] = serde_json::json!(value);
+            let other: native_device_custody::NativeDeviceCustodyOwner =
+                serde_json::from_value(record["owner"].clone()).unwrap();
+            assert_ne!(
+                native_device_custody::metadata_account(&other, &success.credential_ref).unwrap(),
+                account
+            );
+            host.custody
+                .metadata
+                .lock()
+                .insert(account.clone(), record.to_string());
+            assert!(matches!(
+                resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id),
+                Err(native_device_custody::DeviceCustodyError::MetadataMismatch(
+                    "native owner"
+                ))
+            ));
+        }
+        record = original_record;
+        record["deviceId"] = serde_json::json!("");
+        host.custody
+            .metadata
+            .lock()
+            .insert(account, record.to_string());
+        assert!(matches!(
+            resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id),
+            Err(native_device_custody::DeviceCustodyError::MetadataMalformed)
+        ));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_partial_write_blocks_publication_and_same_handle_repairs_it() {
+        let (_directory, mut host, authority, pending, success) = custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        host.custody.fail_metadata = true;
+        assert!(credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle
+        )
+        .is_err());
+        assert!(custody_second_cas(&host, &authority, &pending, &success, store.clone()).is_err());
+        assert_eq!(stored_revision(&host.path), 1);
+        host.custody.fail_metadata = false;
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        host.fail_invalidation = true;
+        assert!(custody_second_cas(&host, &authority, &pending, &success, store.clone()).is_err());
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        assert!(station_profile_authorize_with_host(&host, &cold, "paired").is_err());
+        host.fail_invalidation = false;
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_active_delete_retries_after_failure_and_cold_reload_without_reauthorizing() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        host.custody.fail_delete_metadata = true;
+        assert!(credential_vault_delete_with_host(&host, &authority, None).is_err());
+        assert!(authority.0.lock().unwrap().active.is_none());
+        assert!(station_profile_authorize_with_host(&host, &authority, "paired").is_err());
+        host.custody.fail_delete_metadata = false;
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        credential_vault_delete_with_host(&host, &cold, None).unwrap();
+        assert!(cold.0.lock().unwrap().active.is_none());
+        assert!(host.custody.read_bearer(&reference).unwrap().is_none());
+        assert!(
+            !native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_removal_records_intent_before_ack_and_cold_cleanup_refuses_replacement() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        let store = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        let mut removed = store.clone();
+        removed.revision += 1;
+        removed.profiles.clear();
+        host.custody.fail_journal = true;
+        assert!(station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None
+        )
+        .is_err());
+        assert_eq!(stored_revision(&host.path), 2);
+        host.custody.fail_journal = false;
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None,
+        )
+        .unwrap();
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), "replacement".into());
+        let cold = NativeProfileAuthority::default();
+        assert!(credential_vault_delete_with_host(&host, &cold, None).is_err());
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some("replacement")
+        );
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), CUSTODY_BEARER.into());
+        credential_vault_delete_with_host(&host, &cold, None).unwrap();
+        assert!(host.custody.read_bearer(&reference).unwrap().is_none());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_republished_active_reference_cannot_be_deleted_by_old_retirement() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        host.custody.fail_delete_metadata = true;
+        assert!(credential_vault_delete_with_host(&host, &authority, None).is_err());
+        host.custody.fail_delete_metadata = false;
+        let mut republished = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        republished.revision = 3;
+        republished.profiles[0].updated_at = 3.0;
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&republished).unwrap(),
+            2,
+            None,
+        )
+        .unwrap();
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        assert!(credential_vault_delete_with_host(&host, &cold, None).is_err());
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &reference).unwrap();
+        assert!(host.custody.metadata.lock().contains_key(&account));
+        republished.revision = 4;
+        republished.profiles.clear();
+        station_profile_store_write_with_host(
+            &host,
+            &cold,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&republished).unwrap(),
+            3,
+            None,
+        )
+        .unwrap();
+        credential_vault_delete_with_host(&host, &cold, Some(&reference)).unwrap();
+        assert!(!host.custody.metadata.lock().contains_key(&account));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_unreadable_legacy_replacement_is_published_with_manual_quarantine() {
+        let (_directory, mut host, authority, original) = custody_published_fixture();
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &original).unwrap();
+        host.custody.metadata.lock().remove(&account);
+        host.custody.unreadable_refs.insert(original.id.clone());
+        let (_other_directory, _other_host, _other_authority, pending, success) =
+            custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        assert_eq!(stored_revision(&host.path), 4);
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &cold, "paired").unwrap();
+        assert_eq!(
+            resolve_current_device_identity_with_host(&host, &cold, 4, &receipt.binding_id)
+                .unwrap()
+                .device_id,
+            CUSTODY_DEVICE_ID
+        );
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert!(host
+            .custody
+            .bearer
+            .lock()
+            .unwrap()
+            .contains_key(&original.id));
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        host.custody.unreadable_refs.remove(&original.id);
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(original.id.clone(), "replacement".into());
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert_eq!(
+            host.custody.read_bearer(&original).unwrap().as_deref(),
+            Some("replacement")
+        );
+        host.custody.bearer.lock().unwrap().remove(&original.id);
+        host.custody.unreadable_refs.insert(original.id.clone());
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        host.custody.unreadable_refs.remove(&original.id);
+        let attempts = host
+            .custody
+            .delete_attempts
+            .load(std::sync::atomic::Ordering::SeqCst);
+        credential_vault_delete_with_host(&host, &cold, Some(&original)).unwrap();
+        assert_eq!(
+            host.custody
+                .delete_attempts
+                .load(std::sync::atomic::Ordering::SeqCst),
+            attempts
+        );
+        assert!(
+            !native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        assert!(host
+            .custody
+            .read_bearer(&success.credential_ref)
+            .unwrap()
+            .is_some());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_journal_windows_blob_floor_refuses_oversize_before_profile_publication() {
+        let (_directory, host, authority, _reference) = custody_published_fixture();
+        let mut current = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        for number in 0..4 {
+            let mut legacy = current.profiles[0].clone();
+            legacy.name = format!("legacy-{number}");
+            let reference = NativeCredentialReference {
+                kind: "station-bearer".into(),
+                id: format!("legacy-{number}:{}", "x".repeat(500)),
+            };
+            host.custody
+                .bearer
+                .lock()
+                .unwrap()
+                .insert(reference.id.clone(), CUSTODY_BEARER.into());
+            legacy.credential_ref = Some(reference);
+            current.profiles.push(legacy);
+        }
+        // A real cold CLI-profile observation, followed by the public CAS owner.
+        std::fs::write(&host.path, serde_json::to_string(&current).unwrap()).unwrap();
+        station_profile_store_read_with_host(&host, &authority).unwrap();
+        let mut removed = current;
+        removed.revision = 3;
+        removed.profiles.clear();
+        let before = std::fs::read(&host.path).unwrap();
+        assert!(station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None
+        )
+        .unwrap_err()
+        .contains("journal is full"));
+        assert_eq!(std::fs::read(&host.path).unwrap(), before);
+        assert_eq!(host.custody.bearer.lock().unwrap().len(), 5);
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_legacy_bearer_stays_available_while_missing_metadata_refuses_identity() {
+        let (_directory, host, authority, reference) = custody_published_fixture();
+        let receipt = station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &reference).unwrap();
+        host.custody.metadata.lock().remove(&account);
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some(CUSTODY_BEARER)
+        );
+        assert!(matches!(
+            resolve_current_device_identity_with_host(&host, &authority, 2, &receipt.binding_id),
+            Err(native_device_custody::DeviceCustodyError::MetadataMissing)
+        ));
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), "replaced".into());
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some("replaced")
+        );
+    }
+
     #[cfg(not(mobile))]
     #[test]
     fn profile_writer_does_not_roll_back_after_publication_or_delete_foreign_stage() {
@@ -11902,21 +14007,27 @@ mod tests {
 
     #[test]
     #[cfg(not(mobile))]
-    fn service_attachment_never_claims_an_unprepared_home_after_service_exit() {
+    fn service_exit_during_preparation_releases_claim_without_spawning() {
+        let released = std::cell::Cell::new(false);
         assert_eq!(
-            owner_after_preparation(
+            owner_after_launch_claim(
                 PrepareRuntimeKind::ServiceOwned,
-                HomeOwnershipDecision::SpawnSidecar
+                || parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#),
+                || released.set(true),
             ),
             DesktopOwner::Unowned
         );
+        assert!(
+            released.get(),
+            "an unprepared home must release its won reservation"
+        );
         assert_eq!(
-            owner_after_preparation(
+            owner_after_launch_claim(
                 PrepareRuntimeKind::ServiceOwned,
-                HomeOwnershipDecision::ServiceOwnsHome {
-                    id: "owned-service".into(),
-                    port: 4123
-                }
+                || {
+                    parse_host_claim_output(br#"{"ok":true,"claimed":false,"owners":[{"id":"owned-service","type":"service","port":4123}]}"#)
+                },
+                || panic!("a losing claim has no reservation to release"),
             ),
             DesktopOwner::Service {
                 id: "owned-service".into(),
@@ -11924,9 +14035,10 @@ mod tests {
             }
         );
         assert_eq!(
-            owner_after_preparation(
+            owner_after_launch_claim(
                 PrepareRuntimeKind::Absent,
-                HomeOwnershipDecision::SpawnSidecar
+                || parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#),
+                || panic!("a prepared winner keeps its reservation"),
             ),
             DesktopOwner::Sidecar
         );
@@ -12280,13 +14392,9 @@ mod tests {
             .map(|offset| recovery + offset)
             .expect("recovery exits setup successfully instead of returning a Tauri setup error");
         let ownership = source[preparation..]
-            .find("let ownership = decide_home_ownership_from_runtime")
+            .find("let owner = launch_owner(")
             .map(|offset| preparation + offset)
             .expect("setup selects ownership only on the prepared path");
-        let claim = source[preparation..]
-            .find("let claimed = claim_sidecar_registry_bridge")
-            .map(|offset| preparation + offset)
-            .expect("setup claims a sidecar only after ownership selection");
         let supervisor = source[preparation..]
             .find("let supervisor = Arc::new(ServerSupervisor")
             .map(|offset| preparation + offset)
@@ -12301,7 +14409,6 @@ mod tests {
                 && recovery < recovery_return
                 && recovery_return < supervisor
                 && supervisor < ownership
-                && ownership < claim
                 && supervisor < tray,
             "a runtime refusal must exit through native recovery before ownership, claim, supervisor, or tray start"
         );
@@ -13184,16 +15291,127 @@ mod tests {
         }
     }
 
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn losing_launch_claim_starts_no_supervisor_or_child() {
+        use std::os::unix::fs::PermissionsExt;
+        let resources = tempfile::tempdir().expect("resources");
+        let home = tempfile::tempdir().expect("home");
+        std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        std::fs::create_dir(resources.path().join("dist-server")).unwrap();
+        let loader = checkout.join("node_modules/tsx/dist/esm/api/index.cjs");
+        let source = checkout.join("src-server/tools/instance-registry-bridge.ts");
+        std::fs::write(registry_bridge_script_path(resources.path()), format!(
+            "require({}).register(); import({}).then(m => m.runInstanceRegistryBridge()).catch(e => {{ console.error(e); process.exit(1); }});",
+            serde_json::to_string(&loader).unwrap(),
+            serde_json::to_string(&format!("file://{}", source.display())).unwrap(),
+        )).unwrap();
+        for owner_type in ["service", "sidecar"] {
+            let registry = home.path().join("instances.json");
+            std::fs::write(&registry, serde_json::json!({
+                "version": 1, "instances": { "winner": {
+                    "type": owner_type, "port": 38141, "pid": std::process::id(), "status": "running"
+                }}
+            }).to_string()).unwrap();
+            std::fs::set_permissions(&registry, std::fs::Permissions::from_mode(0o600)).unwrap();
+            let before = std::fs::read(&registry).unwrap();
+            let owner = launch_owner(
+                PrepareRuntimeKind::Absent,
+                resources.path(),
+                home.path(),
+                "loser",
+            );
+            assert_eq!(
+                owner,
+                if owner_type == "service" {
+                    DesktopOwner::Service {
+                        id: "winner".into(),
+                        port: 38141,
+                    }
+                } else {
+                    DesktopOwner::None
+                },
+                "the atomic claim must decide launch ownership"
+            );
+            let started = start_owned_sidecar(owner, || {
+                thread::spawn(|| {
+                    let mut child = Command::new("node")
+                        .args(["-e", "process.exit(0)"])
+                        .spawn()
+                        .unwrap();
+                    child.wait().unwrap()
+                })
+            });
+            assert!(
+                started.is_none(),
+                "a losing desktop must start no supervisor and spawn no child"
+            );
+            assert_eq!(
+                std::fs::read(&registry).unwrap(),
+                before,
+                "the loser must preserve the winning record"
+            );
+        }
+    }
+
     #[cfg(not(mobile))]
     #[test]
     fn sidecar_claim_admits_only_one_launcher() {
-        assert!(
-            registry_claim_allows_running(Ok(())),
-            "first launcher owns the sidecar slot"
+        // Exact bridge outputs (`sidecarClaimOutput` in
+        // instance-registry-bridge.ts) for the winner and the two kinds of
+        // loser. Only the winner may start a supervisor or reap a child.
+        let won = parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#);
+        let lost_to_desktop = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"desktop-sidecar-41","type":"sidecar","port":38141}]}"#,
         );
-        assert!(
-            !registry_claim_allows_running(Err(RegistryBridgeFailure::Invocation)),
-            "second launcher must not launch after a rejected atomic claim"
+        let lost_to_service = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"default","type":"service","port":3141}]}"#,
+        );
+        let lost_to_two = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"a","type":"service","port":1},{"id":"b","type":"service","port":2}]}"#,
+        );
+        assert!(registry_claim_allows_running(won.clone()));
+        assert_eq!(owner_for_host_claim(won), DesktopOwner::Sidecar);
+        for (loser, expected) in [
+            (lost_to_desktop, DesktopOwner::None),
+            (
+                lost_to_service,
+                DesktopOwner::Service {
+                    id: "default".into(),
+                    port: 3141,
+                },
+            ),
+            (lost_to_two, DesktopOwner::None),
+            (Err(RegistryBridgeFailure::Invocation), DesktopOwner::None),
+        ] {
+            assert!(!registry_claim_allows_running(loser.clone()));
+            let owner = owner_after_launch_claim(
+                PrepareRuntimeKind::Absent,
+                || loser,
+                || panic!("a losing desktop has no claim to release"),
+            );
+            assert_eq!(owner, expected);
+            let started = start_owned_sidecar(owner, || {
+                thread::spawn(|| {
+                    let mut child = Command::new("node")
+                        .args(["-e", "process.exit(0)"])
+                        .spawn()
+                        .expect("spawn child");
+                    child.wait().expect("reap child")
+                })
+            });
+            assert!(
+                started.is_none(),
+                "a losing desktop must start no supervisor and spawn no child"
+            );
+        }
+        assert_eq!(
+            parse_host_claim_output(
+                br#"{"ok":true,"claimed":true,"owners":[{"id":"x","type":"service","port":1}]}"#
+            ),
+            Err(RegistryBridgeFailure::Protocol),
+            "a won claim that also names an owner is contradictory"
         );
     }
 
@@ -13230,7 +15448,12 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn registry_publication_failure_prevents_running_sidecar_status() {
-        assert!(registry_claim_allows_running(Ok(())));
+        assert!(registry_claim_allows_running(parse_host_claim_output(
+            br#"{"ok":true,"claimed":true,"owners":[]}"#
+        )));
+        assert!(!registry_claim_allows_running(parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[]}"#
+        )));
         assert!(
             !registry_claim_allows_running(Err(RegistryBridgeFailure::Invocation)),
             "a rejected registry claim must prevent the sidecar from becoming Running"
@@ -13323,33 +15546,120 @@ mod tests {
         );
     }
 
+    /// A managed desktop state whose supervisor tracks a REAL child process,
+    /// with a stand-in supervisor thread that answers `Shutdown` exactly as
+    /// `run_sidecar_supervisor` does: by reaping through `reap_sidecar`.
+    #[cfg(all(not(mobile), unix))]
+    fn teardown_fixture(owner: DesktopOwner) -> (DesktopServerState, u32, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("test home");
+        let (tx, rx) = channel();
+        let child = Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let supervisor = Arc::new(ServerSupervisor {
+            child: Mutex::new(Some(child)),
+            status: Arc::new(Mutex::new(BundledServerStatus::initial(
+                "out".into(),
+                "err".into(),
+            ))),
+            stderr_reader: Mutex::new(None),
+            shutting_down: AtomicBool::new(false),
+            tx,
+            thread: Mutex::new(None),
+            context: SidecarRuntimeContext {
+                launch: SidecarLaunchContext {
+                    resource_dir: temp.path().into(),
+                    station_root: temp.path().into(),
+                    station_home: temp.path().into(),
+                    home: temp.path().display().to_string(),
+                    shell_path: String::new(),
+                    channel: None,
+                    pinned_port: None,
+                    supervisor_birth: "test-birth".into(),
+                    instance_id: "desktop-sidecar-test".into(),
+                },
+                registry_id: "desktop-sidecar-test".into(),
+            },
+        });
+        let worker = supervisor.clone();
+        let handle = thread::spawn(move || {
+            if let Ok(SupervisorMessage::Shutdown) = rx.recv() {
+                reap_sidecar(&worker);
+            }
+        });
+        *supervisor.thread.lock().unwrap() = Some(handle);
+        let state = DesktopServerState {
+            owner: Mutex::new(owner),
+            supervisor,
+            readiness: Mutex::new(startup_readiness::StartupReadiness::default()),
+            startup_commit_claim: Mutex::new(StartupCommitClaim::default()),
+            ownership_checked_at: Mutex::new(Some(Instant::now())),
+        };
+        (state, pid, temp)
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    fn process_exists(pid: u32) -> bool {
+        Command::new("/bin/kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
     #[cfg(all(not(mobile), unix))]
     #[test]
     fn teardown_reaps_the_owned_sidecar_without_signalling_an_attached_service() {
-        let mut sidecar = Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
-            .spawn()
-            .unwrap();
-        let mut attached_service = Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
-            .spawn()
-            .unwrap();
-        assert!(owner_owns_reapable_child(DesktopOwner::Sidecar));
-        terminate_desktop_child(&mut sidecar);
+        let (sidecar, sidecar_pid, _sidecar_home) = teardown_fixture(DesktopOwner::Sidecar);
+        assert!(shut_down_owned_sidecar(&sidecar));
         assert!(
-            sidecar.try_wait().unwrap().is_some(),
-            "desktop-owned sidecar must be reaped"
+            sidecar.supervisor.child.lock().unwrap().is_none() && !process_exists(sidecar_pid),
+            "desktop-owned sidecar must be reaped on quit"
         );
-        assert!(!owner_owns_reapable_child(DesktopOwner::Service {
-            id: "service-a".into(),
-            port: 38141
-        }));
-        assert!(
-            attached_service.try_wait().unwrap().is_none(),
-            "attached service must not be signalled"
-        );
-        let _ = attached_service.kill();
-        let _ = attached_service.wait();
+
+        for owner in [
+            DesktopOwner::Service {
+                id: "service-a".into(),
+                port: 38141,
+            },
+            DesktopOwner::Unowned,
+            DesktopOwner::None,
+        ] {
+            let (state, pid, _home) = teardown_fixture(owner.clone());
+            assert!(
+                !shut_down_owned_sidecar(&state),
+                "{owner:?} must not request a shutdown"
+            );
+            assert!(
+                !state.supervisor.shutting_down.load(Ordering::SeqCst),
+                "{owner:?} must not start supervisor shutdown"
+            );
+            let alive = state
+                .supervisor
+                .child
+                .lock()
+                .unwrap()
+                .as_mut()
+                .map(|child| child.try_wait().unwrap().is_none())
+                .unwrap_or(false);
+            assert!(
+                alive && process_exists(pid),
+                "quitting a desktop whose owner is {owner:?} must not signal the host process"
+            );
+            // Release the stand-in supervisor and the fixture process.
+            let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
+            if let Some(handle) = state.supervisor.thread.lock().unwrap().take() {
+                let _ = handle.join();
+            }
+            let leftover = state.supervisor.child.lock().unwrap().take();
+            if let Some(mut child) = leftover {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
     }
 
     #[cfg(not(mobile))]
@@ -13659,6 +15969,45 @@ mod tests {
         );
         assert!(command_station_script_path(&context.resource_dir)
             .ends_with("dist-server/command-station.js"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_spawn_publishes_child_before_listening() {
+        let temp = tempfile::tempdir().unwrap();
+        let resources = temp.path().join("resources");
+        std::fs::create_dir_all(resources.join("dist-server")).unwrap();
+        std::fs::write(
+            resources.join("dist-server/command-station.js"),
+            "setInterval(() => {}, 1000);",
+        )
+        .unwrap();
+        // Transport fixture captures the real Rust spawn caller's publication.
+        // The TS bridge suite owns actual locked claim and PID-birth semantics.
+        std::fs::write(resources.join("dist-server/instance-registry-bridge.js"), r#"
+          const fs = require('node:fs');
+          const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+          fs.writeFileSync(require('node:path').join(input.home, 'publication.json'), JSON.stringify(input));
+          console.log(JSON.stringify({ok:true,claimed:true,owners:[]}));
+        "#).unwrap();
+        let mut launch = sample_sidecar_context(None);
+        launch.resource_dir = resources;
+        launch.station_home = temp.path().into();
+        launch.station_root = temp.path().into();
+        let context = SidecarRuntimeContext {
+            launch,
+            registry_id: "reserved-desktop".into(),
+        };
+        let (mut child, _) = spawn_sidecar_child(&context).unwrap();
+        let publication = std::fs::read_to_string(temp.path().join("publication.json"));
+        terminate_desktop_child(&mut child);
+        let publication: serde_json::Value = serde_json::from_str(
+            &publication.expect("spawn must publish child ownership before Listening"),
+        )
+        .unwrap();
+        assert_eq!(publication["instance"]["pid"], child.id());
+        assert_eq!(publication["instance"]["status"], "starting");
+        assert_eq!(publication["id"], "reserved-desktop");
     }
 
     #[cfg(not(mobile))]
@@ -14366,6 +16715,7 @@ mod tests {
             "https://station.example.test",
             false,
             cancel(),
+            None,
         )
         .expect("the first request is admitted");
 
@@ -14375,6 +16725,7 @@ mod tests {
             "https://station.example.test",
             false,
             cancel(),
+            None,
         )
         .expect_err("a duplicate request id is refused");
 
@@ -14405,6 +16756,8 @@ mod tests {
             state.active.insert(
                 format!("seed-{index}"),
                 NativeActiveHttpRequest {
+                    observation: None,
+                    phase: "awaiting-response",
                     cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     origin: origin.to_string(),
                     stream: false,
@@ -14430,6 +16783,7 @@ mod tests {
                 origin,
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
             .unwrap();
             first_tx.send("queued-first").unwrap();
@@ -14445,6 +16799,7 @@ mod tests {
                 origin,
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
             .unwrap();
             admitted_tx.send("queued-second").unwrap();
@@ -14493,6 +16848,7 @@ mod tests {
                 origin,
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
             .unwrap();
             admitted_tx.send(request_id).unwrap();
@@ -14655,6 +17011,80 @@ mod tests {
     }
 
     #[test]
+    fn native_receipt_message_collector_requires_complete_bounded_response() {
+        let mut collector = NativeReceiptMessageCollector::default();
+        collector
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: Some(2),
+            })
+            .unwrap();
+        collector
+            .send(NativeHttpMessage::Chunk {
+                bytes: b"{}".to_vec(),
+            })
+            .unwrap();
+        collector.send(NativeHttpMessage::End).unwrap();
+        assert_eq!(collector.finish().unwrap(), (200, b"{}".to_vec()));
+
+        let mut truncated = NativeReceiptMessageCollector::default();
+        truncated
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: Some(3),
+            })
+            .unwrap();
+        truncated
+            .send(NativeHttpMessage::Chunk {
+                bytes: b"{}".to_vec(),
+            })
+            .unwrap();
+        truncated.send(NativeHttpMessage::End).unwrap();
+        assert_eq!(truncated.finish(), Err("response_truncated"));
+
+        let mut oversized = NativeReceiptMessageCollector::default();
+        oversized
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: None,
+            })
+            .unwrap();
+        assert_eq!(
+            oversized
+                .send(NativeHttpMessage::Chunk {
+                    bytes: vec![b'x'; NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT + 1],
+                })
+                .unwrap_err()
+                .code,
+            "response_too_large"
+        );
+        assert_eq!(oversized.finish(), Err("response_too_large"));
+
+        let mut reordered = NativeReceiptMessageCollector::default();
+        assert_eq!(
+            reordered.send(NativeHttpMessage::End).unwrap_err().code,
+            "invalid_response_sequence"
+        );
+        assert_eq!(reordered.finish(), Err("invalid_response_sequence"));
+    }
+
+    #[test]
+    fn native_http_deadline_guard_cancels_a_slow_header_exchange() {
+        let cancel = new_cancel_flag();
+        let guard = NativeHttpDeadlineGuard::start(
+            Instant::now() + Duration::from_millis(100),
+            std::sync::Arc::clone(&cancel),
+            NativeHttpCancellation::default(),
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(cancel.load(std::sync::atomic::Ordering::SeqCst));
+        drop(guard);
+    }
+
+    #[test]
     fn native_http_liveness_flag_is_refused_outside_the_identity_probe() {
         let identity = url::Url::parse("https://station.example.test/api/system/identity").unwrap();
         let other =
@@ -14684,6 +17114,7 @@ mod tests {
                 origin,
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
             .unwrap_err()
         });
@@ -14784,6 +17215,7 @@ mod tests {
                 origin,
                 false,
                 cancel,
+                None,
             ));
         });
         admitted_rx
@@ -14847,9 +17279,15 @@ mod tests {
     fn native_http_uncancelled_call_returns_its_result_and_keeps_its_slot() {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
-        let mut slot =
-            reserve_native_http_request(&cancellations, "read", origin, false, new_cancel_flag())
-                .unwrap();
+        let mut slot = reserve_native_http_request(
+            &cancellations,
+            "read",
+            origin,
+            false,
+            new_cancel_flag(),
+            None,
+        )
+        .unwrap();
         let outcome =
             run_native_http_call_cancellable(&mut slot, &new_cancel_flag(), || "response").unwrap();
         assert!(matches!(
@@ -15077,6 +17515,7 @@ mod tests {
             &origin,
             false,
             std::sync::Arc::clone(&cancel),
+            None,
         )
         .unwrap();
         let request = ureq::http::Request::builder()
@@ -15217,9 +17656,15 @@ mod tests {
     fn native_http_exchange_releases_a_completed_slot_once() {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
-        let slot =
-            reserve_native_http_request(&cancellations, "done", origin, false, new_cancel_flag())
-                .unwrap();
+        let slot = reserve_native_http_request(
+            &cancellations,
+            "done",
+            origin,
+            false,
+            new_cancel_flag(),
+            None,
+        )
+        .unwrap();
         let handled = std::cell::Cell::new(false);
         run_admitted_native_http_exchange(
             slot,
@@ -15249,6 +17694,7 @@ mod tests {
             origin,
             false,
             std::sync::Arc::clone(&cancel),
+            None,
         )
         .unwrap();
         let (release_call, call) = blocked_native_call();
@@ -15287,6 +17733,7 @@ mod tests {
             origin,
             false,
             new_cancel_flag(),
+            None,
         )
         .unwrap();
         let failure = run_admitted_native_http_exchange(
@@ -15310,6 +17757,7 @@ mod tests {
             origin,
             false,
             new_cancel_flag(),
+            None,
         )
         .unwrap();
         let panicked = std::thread::spawn(move || {
@@ -15453,7 +17901,16 @@ mod tests {
             .uri(format!("{origin}/api/uploads"))
             .body(vec![0_u8; body_len])
             .unwrap();
-        let request = native_http_request_with_send_body_budget(&agent, request, floor, min_rate);
+        let request = native_http_request_with_budgets(
+            &agent,
+            request,
+            floor,
+            min_rate,
+            NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
+            NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            None,
+            None,
+        );
         let result = agent
             .run(request)
             .map(|response| response.status().as_u16());
@@ -15487,6 +17944,131 @@ mod tests {
             matches!(error, ureq::Error::Timeout(ureq::Timeout::SendBody)),
             "expected a send-body timeout, got {error:?}"
         );
+    }
+
+    #[test]
+    fn native_http_receipt_body_budget_times_out_a_stalled_loopback_response() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 2048];
+            let read = connection.read(&mut request).unwrap();
+            assert!(read > 0);
+            std::thread::sleep(Duration::from_millis(150));
+            connection
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\nx")
+                .unwrap();
+            // Keep the declared body incomplete so only the bounded body
+            // reader can release the caller before the fixture closes.
+            std::thread::sleep(Duration::from_secs(1));
+        });
+        let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
+        let request = ureq::http::Request::builder()
+            .method("GET")
+            .uri(format!(
+                "{origin}/api/auth/native-device-bindings/receipt/receipt"
+            ))
+            .body(Vec::new())
+            .unwrap();
+        let request = native_http_request_with_budgets(
+            &agent,
+            request,
+            Duration::from_secs(1),
+            1024,
+            NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
+            NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            Some(Duration::from_millis(350)),
+            Some(Duration::from_millis(350)),
+        );
+        let started = Instant::now();
+        let mut response = agent
+            .run(request)
+            .expect("the fixture sends response headers");
+        let result = response
+            .body_mut()
+            .with_config()
+            .limit(NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT as u64)
+            .read_to_vec();
+        assert!(result.is_err(), "a declared incomplete body must time out");
+        assert!(
+            started.elapsed() < Duration::from_millis(430),
+            "receipt body wait exceeded its per-request deadline: {:?}",
+            started.elapsed()
+        );
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_http_foreground_dispatch_receives_delayed_headers_within_its_own_budget() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        for (method, path, foreground) in [
+            ("POST", "/api/orchestration/chat", true),
+            ("POST", "/api/orchestration/chat/delegated", true),
+            ("POST", "/api/orchestration/chat/background", true),
+            ("POST", "/api/orchestration/chat/thread-1/continue", true),
+            ("GET", "/api/orchestration/chat", false),
+            ("POST", "/api/orchestration/chat/other", false),
+            ("POST", "/api/config", false),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let (mut connection, _) = listener.accept().unwrap();
+                connection
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut received = Vec::new();
+                let mut buf = [0_u8; 1024];
+                while !received.windows(4).any(|w| w == b"\r\n\r\n") {
+                    let count = connection.read(&mut buf).unwrap();
+                    assert!(count > 0);
+                    received.extend_from_slice(&buf[..count]);
+                }
+                std::thread::sleep(Duration::from_millis(300));
+                let _ =
+                    connection.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
+            });
+            let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
+            let request = ureq::http::Request::builder()
+                .method(method)
+                .uri(format!("{origin}{path}"))
+                .body(Vec::new())
+                .unwrap();
+            let request = native_http_request_with_budgets(
+                &agent,
+                request,
+                Duration::from_secs(1),
+                1024,
+                Duration::from_millis(100),
+                Duration::from_secs(2),
+                None,
+                None,
+            );
+            let result = agent.run(request);
+            server.join().unwrap();
+            if foreground {
+                assert_eq!(
+                    result
+                        .expect("foreground dispatch receives delayed headers")
+                        .status(),
+                    204,
+                    "{method} {path}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        result,
+                        Err(ureq::Error::Timeout(ureq::Timeout::RecvResponse))
+                    ),
+                    "ordinary request retains its deadline: {method} {path}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -15529,6 +18111,8 @@ mod tests {
                 state.active.insert(
                     format!("global-{index}"),
                     NativeActiveHttpRequest {
+                        observation: None,
+                        phase: "awaiting-response",
                         cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                         origin: format!("https://station-{index}.example.test"),
                         stream: true,
@@ -15543,6 +18127,7 @@ mod tests {
             "https://stream.example.test",
             true,
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            None,
         )
         .unwrap_err();
         assert_eq!(stream_refusal.code, "transport_capacity");
@@ -15555,6 +18140,7 @@ mod tests {
                 "https://read.example.test",
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
         });
         wait_for_pending_native_reads(&cancellations, 1);
@@ -15571,11 +18157,39 @@ mod tests {
     #[test]
     fn native_http_pending_read_queue_is_bounded() {
         let cancellations = NativeHttpCancellation::default();
+        fill_native_read_allowance(&cancellations, "https://station.example.test");
         {
             let (state_lock, _) = &*cancellations.0;
             let mut state = state_lock.lock().unwrap();
+            state.active.get_mut("seed-0").unwrap().observation =
+                Some(NativeHttpRequestObservation {
+                    started_at: Instant::now() - Duration::from_secs(30),
+                    method: "GET".to_string(),
+                    route: native_http_route_category("/api/config/private-canary?secret=canary"),
+                });
+            state.active.get_mut("seed-0").unwrap().phase = "receiving-body";
+            admit_native_http_request(
+                &mut state.active,
+                "healthy-stream",
+                "https://station.example.test",
+                true,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            )
+            .unwrap();
+            let stream = state.active.get_mut("healthy-stream").unwrap();
+            stream.observation = Some(NativeHttpRequestObservation {
+                started_at: Instant::now() - Duration::from_secs(1800),
+                method: "GET".to_string(),
+                route: "monitoring",
+            });
+            stream.phase = "receiving-event-stream";
             for index in 0..NATIVE_HTTP_PENDING_READ_LIMIT {
                 state.pending_reads.push_back(NativePendingHttpRequest {
+                    observation: Some(NativeHttpRequestObservation {
+                        started_at: Instant::now() - Duration::from_secs(15),
+                        method: "GET".to_string(),
+                        route: "system",
+                    }),
                     request_id: format!("pending-{index}"),
                     origin: "https://station.example.test".to_string(),
                     cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -15589,13 +18203,51 @@ mod tests {
             "https://station.example.test",
             false,
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            None,
         )
         .unwrap_err();
         assert_eq!(refusal.code, "transport_capacity");
+        let wire_error = serde_json::to_value(&refusal).unwrap();
+        assert_eq!(wire_error["capacity"]["pendingRequests"], 64);
+        assert_eq!(wire_error["capacity"]["pendingLimit"], 64);
+        assert_eq!(wire_error["capacity"]["activeRequests"], 9);
+        assert_eq!(wire_error["capacity"]["activeLimit"], 32);
+        assert_eq!(wire_error["capacity"]["originRequests"], 8);
+        assert_eq!(wire_error["capacity"]["originRequestLimit"], 8);
+        assert_eq!(wire_error["capacity"]["originStreams"], 1);
+        assert_eq!(wire_error["capacity"]["originStreamLimit"], 12);
+        assert_eq!(wire_error["capacity"]["retryAfterMs"], 250);
         assert_eq!(
-            refusal.message,
-            "native Station request queue capacity reached"
+            wire_error["capacity"]["occupants"][0]["routeCategory"],
+            "config"
         );
+        assert_eq!(
+            wire_error["capacity"]["occupants"][0]["phase"],
+            "receiving-body"
+        );
+        assert_eq!(wire_error["capacity"]["occupants"][0]["sameOrigin"], true);
+        assert!(
+            wire_error["capacity"]["occupants"][0]["ageMs"]
+                .as_u64()
+                .unwrap()
+                >= 30_000
+        );
+        assert_eq!(
+            wire_error["capacity"]["queueHead"]["routeCategory"],
+            "system"
+        );
+        assert_eq!(
+            wire_error["capacity"]["queueHead"]["phase"],
+            "waiting-for-admission"
+        );
+        assert!(refusal.message.contains("64/64 waiting"));
+        assert!(refusal.message.contains("GET config (30s, receiving-body"));
+        assert!(!wire_error.to_string().contains("canary"));
+        assert!(refusal.message.contains("This request has not been sent"));
+        let (state_lock, _) = &*cancellations.0;
+        let state = state_lock.lock().unwrap();
+        assert_eq!(state.pending_reads.len(), 64);
+        assert!(!state.active.contains_key("pending-overflow"));
     }
 
     #[test]
@@ -15781,6 +18433,255 @@ mod tests {
           "schemaVersion":1,"revision":9007199254740992,"defaultProfile":null,"projectProfiles":{},"profiles":[]
         }"#;
         assert!(parse_station_profile_store(unsafe_revision).is_err());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_enrollment_profile_publication_preserves_custody_and_denies_direct_http() {
+        let (_directory, path, authority, pending, handle, _, host) = writer_pairing_fixture();
+        let station = "22222222-2222-4222-8222-222222222222";
+        let client = "11111111-1111-4111-8111-111111111111";
+        let reference = {
+            let mut entries = pending.0.lock().unwrap();
+            let entry = entries.get_mut(&handle).unwrap();
+            entry.environment_id = station.into();
+            entry.reference.id = format!("native-enrollment:{}", uuid::Uuid::new_v4());
+            entry.reference.clone()
+        };
+        let fresh = serde_json::json!({
+            "schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},
+            "profiles":[{"schemaVersion":1,"name":"relay","endpoint":"https://one.example",
+                "relayRoute":{"brokerOrigin":"https://broker.example","stationId":station,
+                    "enrollmentId":"33333333-3333-4333-8333-333333333333"},
+                "clientInstanceId":client,"setupSource":"manual","configurationState":"unconfigured",
+                "createdAt":1,"updatedAt":1}]
+        }).to_string();
+        station_profile_store_write_with_host(&host, &authority, &pending, fresh, 0, None).unwrap();
+        let current =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert!(
+            native_enrollment_terminal_profile_check(&current, "relay", current.revision).is_ok()
+        );
+        assert!(
+            native_enrollment_terminal_profile_check(&current, "relay", current.revision + 1)
+                .is_err()
+        );
+        let staged = native_enrollment_next_store(
+            &current,
+            "relay",
+            &reference,
+            station,
+            client,
+            "requires-auth",
+        )
+        .unwrap();
+        let delivered_profile = parse_station_profile_store(&staged).unwrap();
+        assert!(native_enrollment_terminal_profile_check(
+            &delivered_profile,
+            "relay",
+            delivered_profile.revision
+        )
+        .is_err());
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            staged,
+            1,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        let staged =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(staged.profiles[0].configuration_state, "requires-auth");
+        assert!(station_profile_authorize_with_host(&host, &authority, "relay").is_err());
+        let configured = native_enrollment_next_store(
+            &staged,
+            "relay",
+            &reference,
+            station,
+            client,
+            "configured",
+        )
+        .unwrap();
+        assert!(station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            configured.clone(),
+            2,
+            None
+        )
+        .is_err());
+        credential_vault_commit_pairing_with_host(&host, &authority, &pending, &handle).unwrap();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            configured,
+            2,
+            Some(handle),
+        )
+        .unwrap();
+        let cold = NativeProfileAuthority::default();
+        let configured = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &cold).unwrap(),
+        )
+        .unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &cold, "relay").unwrap();
+        let identity =
+            resolve_current_device_identity_with_host(&host, &cold, 3, &receipt.binding_id)
+                .unwrap();
+        assert_eq!(identity.device_id, "55555555-5555-4555-8555-555555555555");
+        assert_eq!(
+            configured.profiles[0]._environment_id.as_deref(),
+            Some(station)
+        );
+        assert!(!serde_json::to_string(&configured)
+            .unwrap()
+            .contains("secret-never-leaves-native-state"));
+        let state = cold.0.lock().unwrap();
+        assert!(authorized_profile_context_in_store(&state, &configured).is_ok());
+        assert!(authorized_direct_profile_for_origin_in_store(
+            &state,
+            &configured,
+            "https://one.example"
+        )
+        .is_err());
+        assert!(scoped_profile_for_origin_in_store(
+            &state,
+            &configured,
+            &receipt.binding_id,
+            "https://one.example"
+        )
+        .is_err());
+        let mut selected = configured.clone();
+        selected.default_profile = Some("relay".into());
+        selected
+            .project_profiles
+            .insert("project".into(), "relay".into());
+        assert!(parse_station_profile_store(&serde_json::to_string(&selected).unwrap()).is_err());
+        drop(state);
+        let original = read_station_profile_store(&path).unwrap();
+        for remove in [true, false] {
+            let mut changed = configured.clone();
+            changed.revision += 1;
+            if remove {
+                changed.profiles[0].relay_route = None;
+            } else {
+                changed.profiles[0]
+                    .relay_route
+                    .as_mut()
+                    .unwrap()
+                    .broker_origin = "https://substitute.example".into();
+            }
+            assert!(station_profile_store_write_with_host(
+                &host,
+                &cold,
+                &pending,
+                serde_json::to_string(&changed).unwrap(),
+                3,
+                None,
+            )
+            .is_err());
+            assert_eq!(read_station_profile_store(&path).unwrap(), original);
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_enrollment_profile_fix_preserves_direct_pairing_http_authority() {
+        let (_directory, path, authority, pending, handle, contents, host) =
+            writer_pairing_fixture();
+        let station = "22222222-2222-4222-8222-222222222222";
+        pending
+            .0
+            .lock()
+            .unwrap()
+            .get_mut(&handle)
+            .unwrap()
+            .environment_id = station.into();
+        let mut contents: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        contents["profiles"][0]["environmentId"] = serde_json::json!(station);
+        let contents = contents.to_string();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            contents,
+            0,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        credential_vault_commit_pairing_with_host(&host, &authority, &pending, &handle).unwrap();
+        let mut store =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        store.revision += 1;
+        store.profiles[0].configuration_state = "configured".into();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&store).unwrap(),
+            1,
+            Some(handle),
+        )
+        .unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &authority, "pending").unwrap();
+        let state = authority.0.lock().unwrap();
+        assert!(authorized_direct_profile_for_origin_in_store(
+            &state,
+            &store,
+            "https://one.example"
+        )
+        .is_ok());
+        assert!(scoped_profile_for_origin_in_store(
+            &state,
+            &store,
+            &receipt.binding_id,
+            "https://one.example"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn native_enrollment_profile_parser_rejects_incomplete_or_foreign_custody() {
+        let valid = serde_json::json!({
+            "schemaVersion":1,"revision":3,"defaultProfile":null,"projectProfiles":{},
+            "profiles":[{"schemaVersion":1,"name":"relay","endpoint":"https://one.example",
+                "relayRoute":{"brokerOrigin":"https://broker.example",
+                    "stationId":"22222222-2222-4222-8222-222222222222",
+                    "enrollmentId":"33333333-3333-4333-8333-333333333333"},
+                "credentialRef":{"kind":"station-bearer","id":"native-enrollment:opaque"},
+                "environmentId":"22222222-2222-4222-8222-222222222222",
+                "clientInstanceId":"11111111-1111-4111-8111-111111111111",
+                "setupSource":"manual","configurationState":"configured","createdAt":1,"updatedAt":1}]
+        });
+        assert!(parse_station_profile_store(&valid.to_string()).is_ok());
+        for (field, value) in [
+            ("configurationState", serde_json::json!("unconfigured")),
+            ("credentialRef", serde_json::Value::Null),
+            (
+                "environmentId",
+                serde_json::json!("44444444-4444-4444-8444-444444444444"),
+            ),
+            ("clientInstanceId", serde_json::json!("malformed")),
+            (
+                "localService",
+                serde_json::json!({"instanceId":"other","baseDir":"/private/other","serverPort":3210,"uiPort":5210}),
+            ),
+        ] {
+            let mut invalid = valid.clone();
+            invalid["profiles"][0][field] = value;
+            assert!(
+                parse_station_profile_store(&invalid.to_string()).is_err(),
+                "{field}"
+            );
+        }
+        let mut invalid = valid;
+        invalid["profiles"][0]["relayRoute"]["brokerOrigin"] =
+            serde_json::json!("http://broker.example");
+        assert!(parse_station_profile_store(&invalid.to_string()).is_err());
     }
 
     #[test]
@@ -15979,6 +18880,7 @@ mod tests {
                 "https://basis.example",
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
         });
         wait_for_pending_native_reads(&cancellations, 1);
@@ -16253,6 +19155,8 @@ mod tests {
             exact_origin: "https://one.example".to_string(),
             environment_id: "environment-one".to_string(),
             client_instance_id: "11111111-1111-4111-8111-111111111111".to_string(),
+            device_id: "55555555-5555-4555-8555-555555555555".to_string(),
+            device_kind: "device".to_string(),
             expires_at: SystemTime::now() + Duration::from_secs(60),
             phase: NativePairingPhase::RequiresAuthPersisted {
                 profile_name: "pending".to_string(),
@@ -17751,10 +20655,38 @@ mod tests {
         assert!(native_header_allowlisted("x-station-plugin"));
         assert!(native_header_allowlisted("x-abort-reason"));
         assert!(native_header_allowlisted("X-Station-Client-Origin"));
+        assert!(native_header_allowlisted("X-Station-Client-Protocol"));
         assert!(!native_header_allowlisted("authorization"));
         assert!(!native_header_allowlisted("cookie"));
         assert!(!native_header_allowlisted("x-station-device-id"));
         assert!(NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT);
+    }
+
+    #[test]
+    fn native_response_headers_forward_the_station_envelope_marker_only_from_the_allowlist() {
+        // Pinned beside `STATION_ENVELOPE_HEADER` in packages/contracts/src/http.ts.
+        let mut headers = ureq::http::HeaderMap::new();
+        headers.insert("content-type", "application/json".parse().unwrap());
+        headers.insert("X-Station-Envelope", "1".parse().unwrap());
+        headers.insert("set-cookie", "session=secret".parse().unwrap());
+        headers.insert("www-authenticate", "Bearer".parse().unwrap());
+        headers.insert("x-station-device-id", "device".parse().unwrap());
+
+        let forwarded = native_response_headers(&headers);
+
+        assert_eq!(
+            forwarded.get("x-station-envelope").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            forwarded.get("content-type").map(String::as_str),
+            Some("application/json")
+        );
+        assert_eq!(
+            forwarded.len(),
+            2,
+            "unexpected forwarded headers: {forwarded:?}"
+        );
     }
 
     #[test]

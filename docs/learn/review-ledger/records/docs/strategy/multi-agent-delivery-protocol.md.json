@@ -1,0 +1,19 @@
+{
+  "path": "docs/strategy/multi-agent-delivery-protocol.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Read the complete record, its purpose and evidence boundaries; retained the stated rationale and linked current owners.",
+
+  "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
+
+  "sources": [],
+
+  "checks": [
+    "Read the complete protocol; clearly marked retired merge/background-runner rules and retained independent review/fault-evidence practices.",
+
+    "Reviewed integration deltas: Reviewed upstream retirement of a test with no real attestation producer; claim-evidence classification remains a review rule, not an automated scan guarantee."
+  ]
+}

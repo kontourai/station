@@ -1,0 +1,9 @@
+{
+  "revision": "c780533aa14fbce199898ac95f9c168e73d466a2",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Picker state follow-up: canonical SkeletonList/Empty/FilteredEmpty replace bespoke loading/empty copy. Real clear-filter interaction preserves message prefix/suffix and invokes no agent. Three focused composer/conversation/Task-view files pass 60 tests. State-primitives gate passes unchanged ceilings; no browser geometry or live-provider proof inferred.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Picker state follow-up: canonical SkeletonList/Empty/FilteredEmpty replace bespoke loading/empty copy. Real clear-filter interaction preserves message prefix/suffix and invokes no agent. Three focused composer/conversation/Task-view files pass 60 tests. State-primitives gate passes unchanged ceilings; no browser geometry or live-provider proof inferred.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

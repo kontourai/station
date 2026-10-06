@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/ai-ui-bridge-expansion.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "June design and recorded phased implementation; current form sender linked and overbroad harmlessness claim narrowed to the markup boundary.",
+
+  "limits": "Contract/renderer/form-submit/foreground callers checked. Dated live evidence not rerun; no full validation, content safety, provenance, action authorization, or MCP-UI sandbox audit.",
+
+  "sources": [
+    "packages/contracts/src/ui-block.ts",
+
+    "src-server/runtime/tools/vended-tool-compat.ts",
+
+    "src-ui/src/components/chat/ChatMessageList.tsx",
+
+    "src-ui/src/components/chat/UIBlockRenderer.tsx",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/hooks/useActiveChatSessions.ts",
+
+    "src-ui/src/lib/foregroundMessageDispatch.ts"
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Dated producer-seam investigation byte-identical; trust-model overclaim narrowed separately.",
+
+    "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d72f79b08: #2904 changes useActiveChatSessionMessaging only on the full-access-refusal branch (idle rollback, restored draft, refusal card, explicit resend at the current mode). The current form sender link and the markup-boundary harmlessness claim are unchanged. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

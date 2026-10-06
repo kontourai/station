@@ -24,6 +24,7 @@ business rules in your application and use a documented Station boundary.
 | Your task | Start here | Evidence to retain |
 | --- | --- | --- |
 | Call Station from another application | [API reference](../reference/api.md), [SDK reference](../reference/sdk.md), [contracts](../reference/contracts.md) | Exact client/server versions, authenticated request, expected result, and a refused unauthorized request |
+| Define and execute Agents from code | [Agent development](agent-development.md), [headless example](../../examples/headless-agent/README.md) | Public headless bundle, authorized execution, refused unauthorized request, observed lifecycle and uncertainty |
 | Add a workspace experience or tool | [Build your first plugin](build-your-first-plugin.md), [plugin guide](plugins.md) | Installed example, declared permissions, successful use, revocation, and removal behavior |
 | Automate an operator workflow | [CLI reference](../reference/cli.md) | Exact command, exit status, retry behavior, and redacted output |
 | Supply deployment account authentication | [Authentication adapters](deployment-authentication.md) | Exact provider contract, current session verification, refusal and revocation evidence; Project membership remains separate |
@@ -72,8 +73,11 @@ references, and measure recovery time and recoverable data loss.
 ## First cloud target: AWS
 
 AWS remains the first planned commercial deployment profile. A [private GCP
-development recipe](../../deploy/gcp-dev/README.md) supports testing in an
-existing Google Cloud organization while keeping the same portability boundaries. Start with one small EC2 instance for a
+development recipe](../../deploy/gcp-dev/README.md) retains historical testing
+in an existing Google Cloud organization. Its foreground `service run`
+supervisor self-claims a fresh home without policy registration and waits while
+another live owner holds that home. Current image and cloud qualification remain
+separate from that startup contract. Start with one small EC2 instance for a
 persistent private development environment, using the existing local storage
 contracts. The larger service mapping below is an evolution target, not a
 prerequisite for testing, a provisioned deployment, or a claim that Station

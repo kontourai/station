@@ -4,15 +4,30 @@ import { useGitStatusQuery } from '@kontourai/station-sdk';
 import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
 import { useSessionInventoryQuery } from '@kontourai/station-sdk/session-inventory';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { relativeTime } from '../../utils/relativeTime';
+import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import type { WorkFacts } from '../../views/home/work-facts';
+import { workStatus } from '../../views/home/work-status';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import {
-  hasLifecycleChip,
-  LifecycleStatusChip,
-} from '../home/LifecycleStatusChip';
+  InboxRowStatusGlyph,
+  WorkStatusLineText,
+} from '../inbox-row/InboxRowStatus';
+import { hostLayerOf, OverlayLayerContext } from '../overlay-layer';
+import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../ResponsiveDialogSurface';
 import './ChatInboxHoverCard.css';
 
 /** Hover-card geometry: fixed width, clamped into the viewport beside the row. */
@@ -51,7 +66,8 @@ function sourceLabel(source: 'explicit' | 'branch-derived' | 'task-declared') {
 
 /**
  * The inbox row's hover card: the session's metadata — project, machine,
- * branch, engine, status, pull requests — plus its basis inventory.
+ * branch, agent, status, pull requests — plus its basis inventory. A section
+ * with nothing to say is absent, not a heading over "unavailable".
  *
  * Display-only by contract: `pointer-events: none` and `role="tooltip"`, so
  * the card never intercepts the pointer (moving across rows never fights an
@@ -69,13 +85,18 @@ function sourceLabel(source: 'explicit' | 'branch-derived' | 'task-declared') {
 export function ChatInboxHoverCard({
   item,
   now,
+  facts,
   gitLocation,
+  projectAccent,
+  projectIcon,
   anchor,
   onClose,
   id,
 }: {
   item: HomeWorkItem;
   now: number;
+  /** The row's status facts, so the card's status word is the row's. */
+  facts?: WorkFacts;
   /**
    * The row's local session working directory and its Project (#2412: git
    * reads name the Project), resolved by the host from its own session
@@ -87,6 +108,9 @@ export function ChatInboxHoverCard({
    * being answered by this machine's git.
    */
   gitLocation?: GitReadLocation;
+  /** The row's project colour and icon, for the Project row's mark. */
+  projectAccent?: string;
+  projectIcon?: string;
   /** The row element the card anchors beside (measured once on mount). */
   anchor: HTMLElement;
   onClose: () => void;
@@ -97,11 +121,182 @@ export function ChatInboxHoverCard({
    */
   id: string;
 }) {
-  const scope = useHostRequestAuthorityScope();
   const cardRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<React.CSSProperties>({
     visibility: 'hidden',
   });
+
+  // Position once from the anchor's rect; flip to the left side when the row
+  // sits against the viewport's right edge (the dock can dock either side).
+  useLayoutEffect(() => {
+    const rect = anchor.getBoundingClientRect();
+    const height = cardRef.current?.offsetHeight ?? 0;
+    const top = Math.min(
+      Math.max(VIEWPORT_MARGIN, rect.top),
+      Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN),
+    );
+    const fitsRight =
+      rect.right + CARD_GAP + CARD_WIDTH <= window.innerWidth - VIEWPORT_MARGIN;
+    const left = fitsRight
+      ? rect.right + CARD_GAP
+      : Math.max(VIEWPORT_MARGIN, rect.left - CARD_GAP - CARD_WIDTH);
+    setPosition({ top, left, visibility: 'visible' });
+  }, [anchor]);
+
+  // The card is fixed-positioned: any scroll (the inbox's own scroll included)
+  // detaches it from its anchor, and a tooltip that has lost its anchor is a
+  // lie about the row under it. Close instead of following.
+  useEffect(() => {
+    const onScroll = () => onClose();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      ref={cardRef}
+      id={id}
+      className="chat-dock-inbox-hover-card"
+      style={position}
+      role="tooltip"
+      data-testid="inbox-row-hover-card"
+    >
+      <ChatInboxCardBody
+        item={item}
+        now={now}
+        facts={facts}
+        gitLocation={gitLocation}
+        projectAccent={projectAccent}
+        projectIcon={projectIcon}
+      />
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * The same card as a dismissible sheet/popover, for chromes with no hover
+ * (the mobile sheet, Home). Opened by the row's Details action, so touch
+ * and keyboard users reach every fact the tooltip shows.
+ */
+export function ChatInboxDetailsSheet({
+  item,
+  now,
+  facts,
+  gitLocation,
+  projectAccent,
+  projectIcon,
+  triggerRef,
+  onClose,
+  actions,
+}: {
+  item: HomeWorkItem;
+  now: number;
+  facts?: WorkFacts;
+  gitLocation?: GitReadLocation;
+  projectAccent?: string;
+  projectIcon?: string;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+  /**
+   * The row's actions that are not shown beside it on a touch chrome, as a
+   * menu list the row builds (`.menu-surface` groups of `.menu-row`s).
+   * Absent renders nothing: a sheet with no such action has no list.
+   */
+  actions?: React.ReactNode;
+}) {
+  // The sheet belongs to its row, so it is a popover — unless the row sits
+  // inside a surface that already owns a higher layer (the mobile task
+  // switcher is a dialog). A popover-layer sheet opened from there would be
+  // painted UNDER the switcher it was opened from. Read from the computed
+  // layer of whatever hosts the trigger, not from which host this is.
+  const overlay = useContext(OverlayLayerContext);
+  const [layer] = useState<'popover' | 'dialog'>(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return 'popover';
+    const popoverLayer = Number.parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--layer-surface-popover',
+      ),
+      10,
+    );
+    return Number.isFinite(popoverLayer) &&
+      hostLayerOf(trigger, overlay) > popoverLayer
+      ? 'dialog'
+      : 'popover';
+  });
+  return (
+    <ResponsiveDialogSurface
+      layer={layer}
+      ariaLabel={`Details for ${item.title}`}
+      onClose={onClose}
+      returnFocusTarget={triggerRef.current}
+      anchorRef={triggerRef}
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      panelClassName="composer-popover-panel chat-dock-inbox-details"
+    >
+      <ResponsiveDialogHeader
+        title={item.title}
+        closeLabel="Close details"
+        onClose={onClose}
+      />
+      <div
+        className="chat-dock-inbox-details__body"
+        data-testid="inbox-row-details"
+      >
+        <ChatInboxCardBody
+          item={item}
+          now={now}
+          facts={facts}
+          gitLocation={gitLocation}
+          projectAccent={projectAccent}
+          projectIcon={projectIcon}
+          showTitle={false}
+        />
+        {actions}
+      </div>
+    </ResponsiveDialogSurface>
+  );
+}
+
+/**
+ * What the card says, shared by its two chromes: the hover/focus tooltip
+ * beside a row, and the details sheet a touch row opens (there is no hover
+ * on a phone, and Home has no tooltip host). Everything the row's fixed line
+ * budget leaves out is here in full: the model, the kind of item, its
+ * folder, when it last made progress, and the whole failure or
+ * unanswerable reason, unclamped.
+ */
+function ChatInboxCardBody({
+  item,
+  now,
+  facts,
+  gitLocation,
+  projectAccent,
+  projectIcon,
+  showTitle = true,
+}: {
+  item: HomeWorkItem;
+  now: number;
+  facts?: WorkFacts;
+  gitLocation?: GitReadLocation;
+  projectAccent?: string;
+  projectIcon?: string;
+  showTitle?: boolean;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const status = workStatus(item, now, facts);
 
   // Git facts resolve against the row's LOCAL working directory, supplied by
   // the host (see the prop docblock).
@@ -155,43 +350,6 @@ export function ChatInboxHoverCard({
     );
   }, [basisScope, inventory.data]);
 
-  // Position once from the anchor's rect; flip to the left side when the row
-  // sits against the viewport's right edge (the dock can dock either side).
-  useLayoutEffect(() => {
-    const rect = anchor.getBoundingClientRect();
-    const height = cardRef.current?.offsetHeight ?? 0;
-    const top = Math.min(
-      Math.max(VIEWPORT_MARGIN, rect.top),
-      Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN),
-    );
-    const fitsRight =
-      rect.right + CARD_GAP + CARD_WIDTH <= window.innerWidth - VIEWPORT_MARGIN;
-    const left = fitsRight
-      ? rect.right + CARD_GAP
-      : Math.max(VIEWPORT_MARGIN, rect.left - CARD_GAP - CARD_WIDTH);
-    setPosition({ top, left, visibility: 'visible' });
-  }, [anchor]);
-
-  // The card is fixed-positioned: any scroll (the inbox's own scroll included)
-  // detaches it from its anchor, and a tooltip that has lost its anchor is a
-  // lie about the row under it. Close instead of following.
-  useEffect(() => {
-    const onScroll = () => onClose();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
-      document.removeEventListener('keydown', onKeyDown, true);
-    };
-  }, [onClose]);
-
   // A section that has nothing to say renders NOTHING — not a heading over
   // silence. The heading appears only while a read is in flight (named gap),
   // after a failed read (named gap), or over real facts.
@@ -233,7 +391,7 @@ export function ChatInboxHoverCard({
         </p>
       ) : links.error ? (
         <p className="chat-dock-inbox-hover-card__gap">
-          Pull request links unavailable.
+          Pull requests unavailable
         </p>
       ) : prLinks.length > 0 ? (
         <>
@@ -288,66 +446,87 @@ export function ChatInboxHoverCard({
     .flatMap((group) => group.gaps)
     .find((gap) => gap.length > 0);
   const basisEnabled = Boolean(basisScope && scope?.isCurrent());
-  const basisSection = basisScope ? (
-    <section className="chat-dock-inbox-hover-card__section" aria-label="Basis">
-      <h4>Basis</h4>
-      {!basisEnabled || inventory.error || !basisModel ? (
-        <p className="chat-dock-inbox-hover-card__gap">Basis unavailable.</p>
-      ) : inventory.isLoading ? (
-        <p className="chat-dock-inbox-hover-card__gap">
-          Reading session basis…
-        </p>
-      ) : basisGroups.length === 0 ? (
-        <p className="chat-dock-inbox-hover-card__gap">
-          No basis recorded for this session.
-        </p>
-      ) : (
-        <>
-          <ul className="chat-dock-inbox-hover-card__groups">
-            {basisGroups.map((group) => (
-              <li key={group.key}>
-                {group.label}
-                <b>{group.count ?? String(group.items.length)}</b>
-              </li>
-            ))}
-          </ul>
-          <ul className="chat-dock-inbox-hover-card__basis-items">
-            {basisPreviews.map((viewItem) => (
-              <li key={viewItem.key}>
-                <bdi>{viewItem.label}</bdi>
-                {viewItem.classification === 'kept' && (
-                  <span className="chat-dock-inbox-hover-card__kept">Kept</span>
-                )}
-              </li>
-            ))}
-          </ul>
-          {basisGap && (
-            <p className="chat-dock-inbox-hover-card__gap">{basisGap}</p>
-          )}
-        </>
-      )}
-    </section>
-  ) : null;
+  // Rendered only over a failed read (a named gap) or real groups: a read
+  // still in flight, and a session with nothing recorded, add no section.
+  const basisUnavailable =
+    basisEnabled && !inventory.isLoading && (inventory.error || !basisModel);
+  const basisSection =
+    basisScope && (basisUnavailable || basisGroups.length > 0) ? (
+      <section
+        className="chat-dock-inbox-hover-card__section"
+        aria-label="Basis"
+      >
+        <h4>Basis</h4>
+        {basisUnavailable ? (
+          <p className="chat-dock-inbox-hover-card__gap">Basis unavailable</p>
+        ) : (
+          <>
+            <ul className="chat-dock-inbox-hover-card__groups">
+              {basisGroups.map((group) => (
+                <li key={group.key}>
+                  {group.label}
+                  <b>{group.count ?? String(group.items.length)}</b>
+                </li>
+              ))}
+            </ul>
+            <ul className="chat-dock-inbox-hover-card__basis-items">
+              {basisPreviews.map((viewItem) => (
+                <li key={viewItem.key}>
+                  <bdi>{viewItem.label}</bdi>
+                  {viewItem.classification === 'kept' && (
+                    <span className="chat-dock-inbox-hover-card__kept">
+                      Kept
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {basisGap && (
+              <p className="chat-dock-inbox-hover-card__gap">{basisGap}</p>
+            )}
+          </>
+        )}
+      </section>
+    ) : null;
 
-  return createPortal(
-    <div
-      ref={cardRef}
-      id={id}
-      className="chat-dock-inbox-hover-card"
-      style={position}
-      role="tooltip"
-      data-testid="inbox-row-hover-card"
-    >
-      <p className="chat-dock-inbox-hover-card__title">
-        <bdi>{item.title}</bdi>
-      </p>
+  const lastProgressAt = Date.parse(
+    item.turnProgress?.lastProgressEventAt ?? '',
+  );
+  // "Model not reported" is a gap, not a model; the row names the agent
+  // alone rather than an agent beside a sentence about what it lacks.
+  const modelLabel =
+    item.modelLabel && item.modelLabel !== 'Model not reported'
+      ? item.modelLabel
+      : null;
+  return (
+    <>
+      {showTitle && (
+        <p className="chat-dock-inbox-hover-card__title">
+          <bdi>{item.title}</bdi>
+        </p>
+      )}
       <dl className="chat-dock-inbox-hover-card__meta">
         <div>
           <dt>Project</dt>
           <dd>
+            {/* Decorative: the name beside it is the project. */}
+            <ProjectIcon
+              project={{ name: item.projectLabel, icon: projectIcon }}
+              accent={projectAccent}
+              size={14}
+              className="chat-dock-inbox-hover-card__project-mark"
+            />
             <bdi>{item.projectLabel}</bdi>
           </dd>
         </div>
+        {item.cwdLabel && (
+          <div>
+            <dt>Folder</dt>
+            <dd>
+              <bdi>{item.cwdLabel}</bdi>
+            </dd>
+          </div>
+        )}
         {item.environmentLabel && (
           <div>
             <dt>Machine</dt>
@@ -357,35 +536,60 @@ export function ChatInboxHoverCard({
           </div>
         )}
         <div>
-          <dt>Engine</dt>
+          <dt>Agent</dt>
           <dd>
-            {item.controlMode === 'read-only-attached'
-              ? `Started in ${item.agentLabel}`
-              : `${item.agentLabel} · ${item.modelLabel}`}
+            <bdi>
+              {[item.agentLabel, modelLabel].filter(Boolean).join(' · ')}
+            </bdi>
           </dd>
         </div>
         <div>
           <dt>Status</dt>
           <dd className="chat-dock-inbox-hover-card__status">
-            {hasLifecycleChip(item.lifecycleLabel) ? (
-              <LifecycleStatusChip lifecycle={item.lifecycleLabel} />
-            ) : null}
-            {item.updatedAt > 0 && (
-              <span>{relativeTime(item.updatedAt, now)}</span>
-            )}
+            {/* The row's own status line, from the same ladder call. */}
+            <span
+              className="chat-dock-inbox-hover-card__status-word"
+              data-tone={status.tone}
+            >
+              <InboxRowStatusGlyph rung={status.rung} />
+              {/* A failure's cause is the notice below, in full, not a
+                  second copy on this line. */}
+              {status.rung === 'failed' ? (
+                status.word
+              ) : (
+                <WorkStatusLineText status={status} />
+              )}
+            </span>
           </dd>
         </div>
+        {item.updatedAt > 0 && (
+          <div>
+            <dt>Updated</dt>
+            <dd title={absoluteTime(item.updatedAt)}>
+              {relativeTime(item.updatedAt, now)}
+            </dd>
+          </div>
+        )}
+        {lastProgressAt > 0 && (
+          <div>
+            <dt>Last progress</dt>
+            <dd title={absoluteTime(lastProgressAt)}>
+              {relativeTime(lastProgressAt, now)}
+            </dd>
+          </div>
+        )}
       </dl>
-      {(item.failureNotice || item.unanswerableNotice) && (
+      {/* The reason the row only hints at: why it failed, why nothing here
+          can answer, where it was started. */}
+      {(status.detail || status.reason) && (
         <p className="chat-dock-inbox-hover-card__notice">
-          {item.failureNotice ?? item.unanswerableNotice}
+          {status.detail ?? status.reason}
         </p>
       )}
       {gitSection}
       {prSection}
       {basisSection}
-    </div>,
-    document.body,
+    </>
   );
 }
 

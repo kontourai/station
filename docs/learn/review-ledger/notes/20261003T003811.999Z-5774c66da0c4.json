@@ -1,0 +1,19 @@
+{
+  "revision": "01c8161b147ae157927f5d9f60ec07ea9d2c6065",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Rechecked exact-source promotion statement after preserving the existing policy markers. Integration/qualification split remains unchanged; hosted/local receipt distinction is retained.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/development.md","note":"Rechecked exact-source promotion statement after preserving the existing policy markers. Integration/qualification split remains unchanged; hosted/local receipt distinction is retained.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Rechecked exact-source promotion statement after preserving the existing policy markers. Integration/qualification split remains unchanged; hosted/local receipt distinction is retained.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Rechecked exact-source promotion statement after preserving the existing policy markers. Integration/qualification split remains unchanged; hosted/local receipt distinction is retained.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Rechecked exact-source promotion statement after preserving the existing policy markers. Integration/qualification split remains unchanged; hosted/local receipt distinction is retained.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Rechecked exact-source promotion statement after preserving the existing policy markers. Integration/qualification split remains unchanged; hosted/local receipt distinction is retained.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Rechecked exact-source promotion statement after preserving the existing policy markers. Integration/qualification split remains unchanged; hosted/local receipt distinction is retained.","inputs":["tests/AGENTS.md"]}
+  ]
+}

@@ -19,6 +19,7 @@ import {
   DEFERRED_COMPOSITE_KEYS,
 } from './composite-editors';
 import type { RegistryRowComponentProps } from './registry-row-types';
+import { SettingDescription } from './SettingDescription';
 import { SettingRowStatus } from './SettingRowStatus';
 import {
   settingsCatalogEntryForConfigKey,
@@ -130,7 +131,7 @@ export function renderSettingRow({
           key={key}
           {...row}
           label={catalogEntry?.title ?? definition.label}
-          description={definition.description}
+          description={<SettingDescription definition={definition} />}
           status={badge}
           control={
             <input
@@ -157,7 +158,7 @@ export function renderSettingRow({
           key={key}
           {...row}
           label={catalogEntry?.title ?? definition.label}
-          description={definition.description}
+          description={<SettingDescription definition={definition} />}
           status={badge}
           control={
             <Toggle
@@ -177,7 +178,7 @@ export function renderSettingRow({
           key={key}
           {...row}
           label={catalogEntry?.title ?? definition.label}
-          description={definition.description}
+          description={<SettingDescription definition={definition} />}
           status={badge}
           control={
             <input
@@ -204,7 +205,7 @@ export function renderSettingRow({
           key={key}
           {...row}
           label={catalogEntry?.title ?? definition.label}
-          description={definition.description}
+          description={<SettingDescription definition={definition} />}
           status={badge}
           control={
             <select

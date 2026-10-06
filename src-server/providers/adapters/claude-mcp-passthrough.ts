@@ -50,7 +50,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import {
-  isBuiltinStationControl,
+  builtinStationApiServerId,
   withStationControlRuntimeEnv,
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
@@ -78,6 +78,7 @@ export interface ClaudeStationControlDelivery {
    * preferred: its caller credential is `bound` and never leaves Station.
    */
   inProcess?: () => unknown;
+  knowledgeInProcess?: (allowedTools?: readonly string[]) => unknown;
   /** Passed to the stdio child so its REST calls keep their tenant. */
   tenantExecutionContext?: TenantExecutionContext;
 }
@@ -118,7 +119,28 @@ export function resolveClaudeMcpServers(
       // ever handed to a server that IS the canonical built-in match, so a
       // third-party server never sees STATION_API_BASE/STATION_PORT
       // either, not only the token.
-      const builtin = isBuiltinStationControl(server.id, toolDef);
+      const builtin = builtinStationApiServerId(server.id, toolDef);
+      if (builtin === 'station-knowledge') {
+        if (!stationControl.knowledgeInProcess) {
+          skipped.push({
+            id: server.id,
+            reason: 'delivery-failed',
+            detail: 'session-bound Knowledge delivery is unavailable',
+          });
+          continue;
+        }
+        const selected = server.disabledTools?.length
+          ? (server.allowedTools ?? server.toolNames ?? []).filter(
+              (name) => !server.disabledTools!.includes(name),
+            )
+          : server.allowedTools;
+        servers[server.id] = {
+          type: 'sdk',
+          name: server.id,
+          instance: stationControl.knowledgeInProcess(selected) as never,
+        };
+        continue;
+      }
       // Station #90 lane D: the built-in is served in-process when the
       // runtime wires it, so no credential reaches the CLI's argv.
       if (builtin && stationControl.inProcess) {

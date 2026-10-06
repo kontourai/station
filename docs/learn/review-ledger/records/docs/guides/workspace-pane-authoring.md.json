@@ -1,0 +1,45 @@
+{
+  "path": "docs/guides/workspace-pane-authoring.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete authoring guide against public SDK parser/catalog/renderer selector and route composition. Verified contribution snapshot matching and current standard-data metadata-only presentation, separate plugin/MCP paths, persisted declarations and Home-role boundary. Clarified that the conformance fixture neither mounts a plugin nor executes an MCP resource.",
+
+  "limits": "EXECUTED PASS: public workspace-pane:conformance and focused real route-view fixture tests. No new real plugin approval, arbitrary MCP resource, browser sandbox, Home-role security or native-device qualification; linked security owners retain those boundaries.",
+
+  "sources": [
+    "packages/contracts/src/workspace-pane-renderer-selection.ts",
+
+    "packages/contracts/src/workspace-pane.ts",
+
+    "packages/sdk/src/workspace-pane.ts",
+
+    "scripts/workspace-pane-conformance.ts",
+
+    "src-server/routes/plugins/plugin-home-role-routes.ts",
+
+    "src-server/services/plugins/workspace-home-role-service.ts",
+
+    "src-server/services/projects/workspace-pane-catalog.ts",
+
+    "src-server/services/projects/workspace-pane-known-declarations.ts",
+
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneStandardDataView.tsx",
+
+    "src-ui/src/workspace-panes/layoutContributionIdentity.ts"
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Corrected stale no-production-writer comment against actual distinct-origin consent route; emitted JavaScript unchanged."
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://kontour.ai/schemas/agent-plugins/skill-experience/1.0/schema.json",
+  "schemaVersion": "1.0",
+  "id": "inspect-onboarding",
+  "version": "1.0.0",
+  "title": "Review project onboarding",
+  "purpose": "Find actionable documentation gaps using actual project configuration.",
+  "example": "Review README.md against this project\u2019s setup scripts.",
+  "authors": [
+    {
+      "name": "Example independent author"
+    }
+  ],
+  "skills": [
+    {
+      "id": "inspect-onboarding",
+      "name": "inspect-onboarding",
+      "path": "./skills/inspect-onboarding/SKILL.md",
+      "sha256": "f28c1804a6c64d083c7b4c3a34a2e36c62ad090b439c4b044cc3978c617ebefe"
+    }
+  ],
+  "requiredContext": [
+    {
+      "kind": "project",
+      "required": true,
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "inspect-onboarding",
+        "explanation": "The source specifies the document, project read and Markdown report; missing access stops the inspection."
+      }
+    }
+  ],
+  "capabilities": [
+    "conversation",
+    "project-read",
+    "file-read",
+    "artifact-output"
+  ],
+  "inputs": [
+    {
+      "id": "document",
+      "kind": "text",
+      "label": "Onboarding document path",
+      "required": true,
+      "maxLength": 2048,
+      "minLength": 1,
+      "default": "README.md",
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "inspect-onboarding",
+        "explanation": "The source specifies the document, project read and Markdown report; missing access stops the inspection."
+      }
+    }
+  ],
+  "interaction": {
+    "pattern": "inspection",
+    "stopConditions": [
+      "Stop if the selected document or project access is unavailable.",
+      "Ask before execution or changes; this entry only reads."
+    ],
+    "unsupportedBehavior": [
+      "Does not execute setup commands or prove build/runtime success."
+    ]
+  },
+  "outputs": [
+    {
+      "id": "report",
+      "label": "Confirmed gaps and unverified steps",
+      "kind": "markdown",
+      "required": true,
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "inspect-onboarding",
+        "explanation": "The source specifies the document, project read and Markdown report; missing access stops the inspection."
+      }
+    }
+  ],
+  "presentation": {
+    "modes": ["guided", "alongside"],
+    "defaultMode": "guided"
+  }
+}

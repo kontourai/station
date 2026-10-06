@@ -1,0 +1,7 @@
+{
+  "revision": "130532907fd0b55c300e350391837f8e98598473",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the new attached-Claude caveat against the existing observation completeness findings. It names a separate reproduced importer/window gap; the guide's Insights and collector gaps remain accurate and unclosed.","inputs":["docs/architecture/abstraction-review.md"]}
+  ]
+}

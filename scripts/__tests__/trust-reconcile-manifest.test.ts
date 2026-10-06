@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
@@ -106,7 +107,7 @@ function runPreflight(command: string, summary?: string) {
 }
 
 describe('Station trust-reconcile manifest', () => {
-  it('keeps the package verify command, manifest, and required CI lane aligned', () => {
+  it('keeps local trust reconciliation distinct from hosted source qualification', () => {
     expect(packageJson.scripts['trust-reconcile-verify']).toBe(
       'npm run full:regression',
     );
@@ -121,19 +122,16 @@ describe('Station trust-reconcile manifest', () => {
     );
     expect(ci).toContain('uses: ./.github/workflows/full-regression.yml');
     expect(ci).not.toContain('run: npm run full:regression');
-    // #1459 moved the completion step to a block scalar so the gate can be
-    // piped through `tee` (under `set -o pipefail`) for the verdict report.
-    // The property this pin exists for is unchanged and is what it still
-    // asserts: the manifest command is INVOKED exactly once in the completion
-    // workflow, and nowhere in ci.yml. Line-anchored, because a bare substring
-    // also counts every mention in a comment — and this workflow's comments
-    // discuss the command at length — so a second real invocation could be
-    // added while a comment was deleted and the count would not move. The
-    // negative lookahead keeps `full:regression:raw` out of the count.
+    const hosted = load(completion) as {
+      on: { workflow_call: { inputs: { source_sha: { required: boolean } } } };
+      jobs: { qualification: { steps: Array<{ run?: string }> } };
+    };
+    expect(hosted.on.workflow_call.inputs.source_sha.required).toBe(true);
     expect(
-      completion.match(/^\s*npm run full:regression\b(?!:)/gm),
-    ).toHaveLength(1);
-    expect(completion).toContain('workflow_call:');
+      hosted.jobs.qualification.steps.some(
+        (step) => step.run === 'node scripts/qualification-evidence.mjs attest',
+      ),
+    ).toBe(true);
     expect(ci).toContain('id: fast_ci');
   });
 
@@ -148,5 +146,11 @@ describe('Station trust-reconcile manifest', () => {
     const advisory = runPreflight('npm run ci:extended');
     expect(advisory.status).toBe(1);
     expect(advisory.stderr).toContain('not in the reconcile manifest');
+
+    const hosted = runPreflight(
+      'node scripts/qualification-evidence.mjs attest',
+    );
+    expect(hosted.status).toBe(1);
+    expect(hosted.stderr).toContain('not in the reconcile manifest');
   });
 });

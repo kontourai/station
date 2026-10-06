@@ -2845,3 +2845,135 @@ it('holds real controller ownership until a durable room receipt settles after r
     database.close();
   }
 });
+
+it('feedback preserves legacy bytes, fences downgraded writers and replays permanent identities after output deletion and retention', async () => {
+  const path = databasePath();
+  let retained = false;
+  let authorized = true;
+  const options: Parameters<typeof history>[1] = {
+    limits: {
+      retentionRecords: 2,
+      retentionBytes: 1024 * 1024,
+      maxIdentities: 20,
+    },
+    capabilities: {
+      resolve: async (input) =>
+        authorized ? capabilities.resolve(input) : { kind: 'revoked' },
+    },
+    outputFeedbackTargets: {
+      validate: async () => (retained ? 'admitted' : 'denied'),
+    },
+  };
+  let room = history(path, options);
+  try {
+    await room.open({ grant: grant('discover') });
+    expect((await room.append(message('legacy'))).kind).toBe('committed');
+    const db = new DatabaseSync(path);
+    const legacy = db
+      .prepare(
+        'SELECT record_json FROM project_task_room_records WHERE proposal_id=?',
+      )
+      .get('legacy') as { record_json: string };
+    const feedback = {
+      grant: grant('message-write'),
+      intent: {
+        proposalId: 'review',
+        occurredAt: '2026-10-03T00:00:00.000Z',
+        body: {
+          kind: 'output-feedback' as const,
+          target: {
+            outputId: 'output-1',
+            digest: `sha256:${'a'.repeat(64)}` as const,
+            taskCreatedAt: '2026-10-01T00:00:00.000Z',
+          },
+          review: 'accepted' as const,
+          text: 'Reviewed this exact version.',
+        },
+      },
+    };
+    expect(await room.append(feedback)).toEqual({ kind: 'denied' });
+    expect(
+      db
+        .prepare(
+          'SELECT proposal_id FROM project_task_room_records WHERE proposal_id=?',
+        )
+        .get('review'),
+    ).toBeUndefined();
+    retained = true;
+    const first = await room.append(feedback);
+    expect(first.kind).toBe('committed');
+    const mixed = await room.read({ grant: grant('history-read') });
+    expect(mixed.kind).toBe('available');
+    if (mixed.kind !== 'available') throw new Error('expected mixed history');
+    expect(mixed.records.map((record) => record.schemaVersion)).toEqual([
+      'station.project-task-room/v2',
+      'station.project-task-room/v3',
+    ]);
+    expect(
+      db
+        .prepare(
+          'SELECT record_json FROM project_task_room_records WHERE proposal_id=?',
+        )
+        .get('legacy'),
+    ).toEqual(legacy);
+    // This is the exact old writer INSERT seam, independent of parent validation.
+    expect(() =>
+      db
+        .prepare(
+          "INSERT INTO project_task_room_records(channel_id,epoch,seq,proposal_id,proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes) SELECT channel_id,epoch,99,'downgrade',proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes FROM project_task_room_records WHERE proposal_id='legacy'",
+        )
+        .run(),
+    ).toThrow('room requires v3 writer');
+    retained = false;
+    expect(await room.append(feedback)).toEqual({
+      kind: 'duplicate',
+      receipt: first.kind === 'committed' ? first.receipt : undefined,
+    });
+    expect(
+      await room.append({
+        ...feedback,
+        intent: {
+          ...feedback.intent,
+          body: { ...feedback.intent.body, text: 'Changed statement' },
+        },
+      }),
+    ).toEqual({ kind: 'rejected', reason: 'idempotency-conflict' });
+    expect(
+      await room.append({
+        ...feedback,
+        intent: { ...feedback.intent, proposalId: 'fresh' },
+      }),
+    ).toEqual({ kind: 'denied' });
+    await room.append(message('suffix-1'));
+    await room.append(message('suffix-2'));
+    expect(
+      db
+        .prepare(
+          'SELECT record_json FROM project_task_room_records WHERE proposal_id=?',
+        )
+        .get('review'),
+    ).toBeUndefined();
+    expect(await room.append(feedback)).toEqual({
+      kind: 'duplicate',
+      receipt: first.kind === 'committed' ? first.receipt : undefined,
+    });
+    await room.close();
+    room = history(path, options);
+    expect(await room.append(feedback)).toEqual({
+      kind: 'duplicate',
+      receipt: first.kind === 'committed' ? first.receipt : undefined,
+    });
+    expect(() =>
+      db
+        .prepare(
+          "INSERT INTO project_task_room_records(channel_id,epoch,seq,proposal_id,proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes) SELECT channel_id,epoch,99,'downgrade-after-restart',proposal_digest,envelope_digest,checkpoint_digest,json_set(record_json,'$.schemaVersion','station.project-task-room/v2'),record_bytes FROM project_task_room_records WHERE proposal_id='suffix-2'",
+        )
+        .run(),
+    ).toThrow('room requires v3 writer');
+    authorized = false;
+    expect(await room.append(feedback)).toEqual({ kind: 'denied' });
+    db.close();
+  } finally {
+    await room.close();
+  }
+});

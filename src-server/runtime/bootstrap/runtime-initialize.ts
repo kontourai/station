@@ -15,6 +15,7 @@ import {
   type UsagePricingSnapshotCapture,
 } from '../../analytics/usage-pricing-snapshot-capture.js';
 import {
+  type EngineAgentCatalog,
   loadOrCreateAgentRegistry,
   reconcilePluginEngineConnections,
 } from '../../domain/agent-registry.js';
@@ -22,7 +23,10 @@ import { DEFAULT_SYSTEM_PROMPT } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
-import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
+import {
+  AcpAdapter,
+  acpConnectionDefaultCwd,
+} from '../../providers/adapters/acp-adapter.js';
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
@@ -73,8 +77,10 @@ import {
   createEnvironmentRuntimeResourcePostureProbe,
   type RuntimeResourcePostureProbe,
 } from '../../services/infra/resource-posture.js';
+import { createAdoptedChildExecutionBindingResolver } from '../../services/orchestration/adopted-child-execution-binding.js';
 import {
   AttachedSessionFollowService,
+  attachedSessionsOutsideProjectsEnabled,
   resolveAttachedProjectRoots,
 } from '../../services/orchestration/attached-session-follow-service.js';
 import type { CredentialProfileRecoveryAdapter } from '../../services/orchestration/credential-recovery-module.js';
@@ -172,6 +178,9 @@ export interface InitializeRuntimeDeps {
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
     | 'deviceHoldsFullAccess'
+    // #3429: this Station's Environment, which a continued attached
+    // conversation records as its execution binding.
+    | 'readExistingRecord'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -186,11 +195,14 @@ export interface InitializeRuntimeDeps {
     saveIntegration: (id: string, def: ToolDef) => Promise<void>;
     hasIntegration: (id: string) => Promise<boolean>;
     /** Agent-record enumeration for boot-time engine adoption. */
-    listAgents: () => Promise<Array<{ slug: string }>>;
+    listAgents: EngineAgentCatalog['listAgents'];
     mutateAgent: (slug: string, updater: (current: any) => any) => Promise<any>;
   };
   storageAdapter: FileStorageAdapter;
   skillService: {
+    listSkillExperiences?: import('../../services/orchestration/skill-experience-runtime.js').SkillExperienceSource['listSkillExperiences'];
+    withSkillExperience?: import('../../services/orchestration/skill-experience-runtime.js').SkillExperienceSource['withSkillExperience'];
+    enableExperienceExecution?: () => void;
     discoverSkills: (...args: any[]) => Promise<void>;
     /** archive#895 wave A: resolve a skill id to its installed on-disk directory. */
     getSkill: (id: string) => Promise<{ path?: string }>;
@@ -445,8 +457,15 @@ export async function initializeRuntime(
     // and no test could reach it.
     mintStationControlMcpAuth: (threadId, tenantExecutionContext) =>
       mintStationControlMcpHeaderAuth(port, threadId, tenantExecutionContext),
-    revokeStationControlMcpAuth: (threadId: string) =>
-      revokeStationControlMcpToken(threadId),
+    mintStationKnowledgeMcpAuth: (threadId, tenantExecutionContext) =>
+      mintStationControlMcpHeaderAuth(
+        port,
+        threadId,
+        tenantExecutionContext,
+        'station-knowledge',
+      ),
+    revokeStationControlMcpAuth: (threadId: string, serverId) =>
+      revokeStationControlMcpToken(threadId, serverId),
   });
   let stationAgentsReady = false;
   const stationAgentAdapter = new StationAgentAdapter({
@@ -598,6 +617,25 @@ export async function initializeRuntime(
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
+    // #3429: a continued attached conversation runs as its engine's own
+    // Agent on this Station's Environment, so the dock can open it.
+    resolveAdoptedChildExecutionBinding:
+      createAdoptedChildExecutionBindingResolver({
+        configLoader,
+        readEnvironmentId: async () =>
+          (await deps.environmentSecurityService.readExistingRecord())
+            .environmentId,
+      }),
+    // #2873: where an ACP connection would start a session that has no
+    // directory of its own, read from the same config the adapter reads, so
+    // a scoped dispatch is decided on the directory it will run in.
+    resolveConnectionDefaultCwd: async (provider, connectionId) => {
+      if (provider !== 'acp') return undefined;
+      const connection = (
+        (await configLoader.loadACPConfig()) as ACPConfig
+      ).connections.find((candidate) => candidate.id === connectionId);
+      return connection ? acpConnectionDefaultCwd(connection) : undefined;
+    },
     resolveProjectSessionDirectory: createProjectSessionDirectoryResolver(
       configLoader.getProjectHomeDir(),
       storageAdapter,
@@ -610,6 +648,9 @@ export async function initializeRuntime(
     // per call for the same reason as the workspace default above.
     resolveStationDefaultApprovalMode: async () =>
       (await configLoader.loadAppConfig()).defaultApprovalMode,
+    // #3157: read when a usage-limit resume is armed and when it is due.
+    resolveUsageLimitAutoResume: async () =>
+      (await configLoader.loadAppConfig()).usageLimitAutoResume,
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched
@@ -655,6 +696,17 @@ export async function initializeRuntime(
     >,
     logger,
   });
+  if (
+    deps.skillService.withSkillExperience &&
+    deps.skillService.listSkillExperiences &&
+    orchestrationService.registerSkillExperienceSource({
+      listSkillExperiences: () => deps.skillService.listSkillExperiences!(),
+      withSkillExperience: (identity, effect, permission) =>
+        deps.skillService.withSkillExperience!(identity, effect, permission),
+    })
+  )
+    deps.skillService.enableExperienceExecution?.();
+
   orchestrationService.initialize();
 
   // archive#1501, seam S5 (`docs/design/portable-project-identity.md`
@@ -675,6 +727,11 @@ export async function initializeRuntime(
     invalidateSessionOwner: (threadId) =>
       orchestrationService.invalidateSessionOwner(threadId),
     listProjects: () => storageAdapter.listProjects(),
+    // #3386: the operator's "Conversations outside projects" setting.
+    outsideProjectsEnabled: () =>
+      attachedSessionsOutsideProjectsEnabled(() =>
+        configLoader.loadAppConfig(),
+      ),
     resolveProjectRoots: () =>
       resolveAttachedProjectRoots(storageAdapter.listProjects(), (slug) =>
         resolveProjectWorkspacePath(slug, {

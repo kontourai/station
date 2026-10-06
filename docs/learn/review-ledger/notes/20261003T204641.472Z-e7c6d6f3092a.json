@@ -1,0 +1,7 @@
+{
+  "revision": "09c6f7979363346b0182ff0900d5bb0c21ddb0e1",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed device-settings.ts at 09c6f79793: only equivalent Return help copy changed. Region arrangement, placement destinations, persistence and page verbs are unchanged, so the placement design claims remain accurate. Focused contracts/SDK/readiness suites pass 28/28 after seven baseline failures.","inputs":["docs/design/placement.md"]}
+  ]
+}

@@ -29,8 +29,9 @@ installs the same static starter from it.
 
 The [Library component](src/index.tsx) ships three static document rows. Their
 `indexed` labels and chunk counts are sample values, not ingestion evidence.
-The **Ask with selected sources** button only opens the chat Dock and calls
-`onShowChat`; there is no selection model or source payload in that handler.
+The **Ask with selected sources** button only opens the chat Dock through
+`useNavigation()` and calls `onShowChat`; there is no selection model or
+source payload in that handler.
 **Source coverage** displays guidance, not measured freshness or citation checks.
 
 The [manifest](plugin.json) declares `starter-docs` for the older Knowledge

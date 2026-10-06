@@ -1,0 +1,7 @@
+{
+  "revision": "ef15fc62c61748cb117b869396034ca69c24e599",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed the behavior-neutral removal of an unused server quota-window type re-export; contracts retain the public window type and reader/route behavior is unchanged. Prior metadata capture and permission evidence still applies.","inputs":["docs/guides/connections.md"]}
+  ]
+}

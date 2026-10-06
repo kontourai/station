@@ -1,13 +1,26 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { CHANNEL_PORTS, RELEASE_RINGS } from '../channel-ports.mjs';
 import {
+  bundleInstallerCore,
+  checkInstallPs1Script,
   checkInstallScript,
+  INSTALL_PS1_PATH,
   INSTALL_SCRIPT_PATH,
+  renderInstallPs1Script,
   renderInstallScript,
+  syncInstallPs1Script,
   syncInstallScript,
 } from '../install-script-generated.mjs';
 
@@ -178,6 +191,140 @@ describe('install.sh generated blocks', () => {
   });
 });
 
+function scratchPs1Copy(): string {
+  const path = join(
+    makeTempDir('station-install-ps1-generated-'),
+    'install.ps1',
+  );
+  copyFileSync(INSTALL_PS1_PATH, path);
+  return path;
+}
+
+/** The base64 core block of an install.ps1 text, decoded. */
+function embeddedCore(script: string): string {
+  const match = /^\$StationInstallerCore = @'\n([A-Za-z0-9+/=\n]+)\n'@$/m.exec(
+    script,
+  );
+  if (!match) throw new Error('no installer core block');
+  return Buffer.from(match[1].replace(/\n/g, ''), 'base64').toString('utf8');
+}
+
+describe('install.ps1 generated blocks (#2675 slice W)', () => {
+  it('matches what the generator renders from its sources', () => {
+    expect(() => checkInstallPs1Script()).not.toThrow();
+  });
+
+  it('embeds the bundled installer core, which carries the pinned keys and exports the verifier', () => {
+    const script = readFileSync(INSTALL_PS1_PATH, 'utf8');
+    const core = embeddedCore(script);
+    expect(core).toBe(bundleInstallerCore());
+    // The pinned public keys travel inside the bundle, not as a second copy.
+    const config = JSON.parse(
+      readFileSync(join(root, 'config/release-manifest-keys.json'), 'utf8'),
+    );
+    for (const key of config.keys) {
+      expect(core).toContain(key.keyId);
+      expect(core).toContain(key.publicKeySpkiPem.split('\n')[1] as string);
+    }
+    const dir = makeTempDir('station-install-ps1-core-');
+    const path = join(dir, 'core.cjs');
+    writeFileSync(path, core);
+    const loaded = createRequire(import.meta.url)(path);
+    expect(typeof loaded.verifyInstallManifest).toBe('function');
+    expect(typeof loaded.runInstaller).toBe('function');
+  });
+
+  it('projects the pinned win32-x64 Node.js zip and the installable channels', () => {
+    const script = readFileSync(INSTALL_PS1_PATH, 'utf8');
+    const runtime = JSON.parse(
+      readFileSync(
+        join(root, 'config/portable-server-node-runtime.json'),
+        'utf8',
+      ),
+    );
+    const pin = runtime.distributions['win32-x64'];
+    expect(script).toContain(`$PinnedNodeFile = '${pin.file}'\n`);
+    expect(script).toContain(`$PinnedNodeSha256 = '${pin.sha256}'\n`);
+    expect(script).toContain(`$PinnedNodeOrigin = '${runtime.origin}'\n`);
+    expect(script).toContain(
+      `$PinnedNodeEntry = '${pin.file.replace(/\.zip$/, '')}/node.exe'\n`,
+    );
+    expect(script).toContain(
+      "$InstallableRuntimeChannels = @('stable', 'beta', 'nightly')\n",
+    );
+    // Each generated name is assigned exactly once, so nothing after the
+    // blocks can shadow them.
+    for (const name of [
+      'InstallableRuntimeChannels',
+      'PinnedNodeVersion',
+      'PinnedNodeOrigin',
+      'PinnedNodeFile',
+      'PinnedNodeEntry',
+      'PinnedNodeSha256',
+      'StationInstallerCore',
+    ])
+      expect(
+        script
+          .split('\n')
+          .filter((line) => line.trim().startsWith(`$${name} =`)),
+      ).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      'a hand-edited Node.js pin',
+      "$PinnedNodeSha256 = '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541'",
+      "$PinnedNodeSha256 = '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e542'",
+    ],
+    [
+      'a hand-edited channel list',
+      "@('stable', 'beta', 'nightly')",
+      "@('stable', 'beta', 'nightly', 'dev')",
+    ],
+  ])('fails the check for %s, and --sync restores it', (_name, from, to) => {
+    const path = scratchPs1Copy();
+    const pristine = readFileSync(path, 'utf8');
+    expect(pristine.split(from)).toHaveLength(2);
+    writeFileSync(path, pristine.replace(from, to));
+    expect(() => checkInstallPs1Script(path)).toThrow(
+      /Generated install\.ps1 blocks are stale/,
+    );
+    syncInstallPs1Script(path);
+    expect(readFileSync(path, 'utf8')).toBe(pristine);
+  });
+
+  it('fails the check for a hand-edited installer core byte', () => {
+    const path = scratchPs1Copy();
+    const pristine = readFileSync(path, 'utf8');
+    const core = embeddedCore(pristine);
+    const tampered = core.replace(
+      'refusing to downgrade Station',
+      'refusing to downgrade Stati0n',
+    );
+    expect(tampered).not.toBe(core);
+    const encode = (text: string) =>
+      (
+        Buffer.from(text)
+          .toString('base64')
+          .match(/.{1,120}/g) ?? []
+      ).join('\n');
+    writeFileSync(path, pristine.replace(encode(core), encode(tampered)));
+    expect(readFileSync(path, 'utf8')).not.toBe(pristine);
+    expect(() => checkInstallPs1Script(path)).toThrow(
+      /Generated install\.ps1 blocks are stale/,
+    );
+  });
+
+  it('refuses a script whose generated markers are missing', () => {
+    const pristine = readFileSync(INSTALL_PS1_PATH, 'utf8');
+    expect(() =>
+      renderInstallPs1Script(
+        pristine.replace('# END GENERATED INSTALLER CORE\n', ''),
+      ),
+    ).toThrow(/install\.ps1 must contain exactly one INSTALLER CORE block/);
+  });
+});
+
 describe('install-script:check as a process', () => {
   // The gate verify:static:raw runs is the CLI, not the exported functions, so
   // run it as a child and read its exit status in both directions.
@@ -221,5 +368,44 @@ describe('install-script:check as a process', () => {
     const result = runCheck(copy);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/stale/i);
+  });
+
+  it('exits non-zero, naming install.ps1, when only install.ps1 drifts', () => {
+    // A checkout copy with the installer core's sources and this checkout's
+    // node_modules, so the child bundles the core as the real gate does.
+    const copy = makeTempDir('station-install-check-ps1-');
+    for (const path of [
+      'scripts/install-script-generated.mjs',
+      'scripts/channel-ports.mjs',
+      'scripts/lib/module-entry.mjs',
+      'config/channel-ports.json',
+      'config/release-manifest-keys.json',
+      'config/portable-server-node-runtime.json',
+      'packages/shared/src/portable-server-targets.mjs',
+      'packages/shared/src/release-manifest.mjs',
+      'packages/shared/src/release-rings.generated.mjs',
+      'packages/shared/src/channel-ports.generated.ts',
+      'packages/shared/src/release-manifest-keys.generated.ts',
+      'packages/shared/src/windows-path-trust.ts',
+      'packages/shared/src/windows-system-utility.mjs',
+      'packages/shared/src/installer',
+      'install.sh',
+    ])
+      cpSync(join(root, path), join(copy, path), { recursive: true });
+    symlinkSync(join(root, 'node_modules'), join(copy, 'node_modules'));
+    writeFileSync(
+      join(copy, 'install.ps1'),
+      readFileSync(INSTALL_PS1_PATH, 'utf8').replace(
+        "$PinnedNodeVersion = '24.21.0'",
+        "$PinnedNodeVersion = '24.21.1'",
+      ),
+    );
+    const stale = runCheck(copy);
+    expect(stale.status).not.toBe(0);
+    expect(stale.stderr).toContain('Generated install.ps1 blocks are stale');
+
+    copyFileSync(INSTALL_PS1_PATH, join(copy, 'install.ps1'));
+    const fresh = runCheck(copy);
+    expect(fresh.status, fresh.stderr).toBe(0);
   });
 });

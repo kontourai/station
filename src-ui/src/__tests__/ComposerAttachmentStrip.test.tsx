@@ -120,7 +120,9 @@ describe('ComposerAttachmentStrip', () => {
     expect(
       screen.queryByRole('button', { name: 'Retry screenshot.webp' }),
     ).toBeNull();
-    screen.getByRole('button', { name: 'Cancel screenshot.webp' }).click();
+    screen
+      .getByRole('button', { name: 'Stop uploading screenshot.webp' })
+      .click();
     expect(cancel).toHaveBeenCalledWith('a1');
     expect(retry).not.toHaveBeenCalled();
   });
@@ -145,7 +147,7 @@ describe('ComposerAttachmentStrip', () => {
         onReplaceFile={vi.fn()}
       />,
     );
-    expect(screen.getByText('Choose file again to retry')).toBeTruthy();
+    expect(screen.getByText('Choose the file again')).toBeTruthy();
     expect(screen.getByLabelText('Choose expired.txt again')).toBeTruthy();
   });
 
@@ -171,10 +173,96 @@ describe('ComposerAttachmentStrip', () => {
       />,
     );
 
-    expect(screen.getByText('Retry required before sending')).toBeTruthy();
+    expect(screen.getByText("Upload didn't finish")).toBeTruthy();
     expect(screen.queryByText('retryable')).toBeNull();
+    // × already removes the chip; a second "Cancel" beside it did the same
+    // thing under another name.
+    expect(
+      screen.queryByRole('button', { name: /^(Cancel|Stop uploading) / }),
+    ).toBeNull();
     screen.getByRole('button', { name: 'Retry screenshot.webp' }).click();
     expect(retry).toHaveBeenCalledWith('a1');
+  });
+
+  test('says an upload EXPIRED, rather than a bare retry demand, when its stage TTL lapsed', () => {
+    const retry = vi.fn();
+    render(
+      <ComposerAttachmentStrip
+        attachments={[attachment()]}
+        stages={[
+          {
+            clientAttachmentId: 'a1',
+            name: 'screenshot.webp',
+            mimeType: 'image/webp',
+            size: 1_048_576,
+            state: 'retryable',
+            progress: 0,
+            expired: true,
+            error: 'Attachment stage expired. Retry or choose the file again.',
+          },
+        ]}
+        onRemove={vi.fn()}
+        onRetry={retry}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Upload expired')).toBeTruthy();
+    screen
+      .getByRole('button', { name: 'Upload again screenshot.webp' })
+      .click();
+    expect(retry).toHaveBeenCalledWith('a1');
+  });
+
+  test('a full staging capacity says so and offers no Retry that cannot succeed', () => {
+    render(
+      <ComposerAttachmentStrip
+        attachments={[attachment()]}
+        stages={[
+          {
+            clientAttachmentId: 'a1',
+            name: 'screenshot.webp',
+            mimeType: 'image/webp',
+            size: 1_048_576,
+            state: 'failed',
+            progress: 0,
+            capacityFull: true,
+            error: 'Attachment staging capacity is full.',
+          },
+        ]}
+        onRemove={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Upload limit reached')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^(Retry|Upload again) / }),
+    ).toBeNull();
+  });
+
+  test('an image chip says the engine refused images instead of "ready"', () => {
+    render(
+      <ComposerAttachmentStrip
+        attachments={[attachment()]}
+        stages={[
+          {
+            clientAttachmentId: 'a1',
+            name: 'screenshot.webp',
+            mimeType: 'image/webp',
+            size: 1_048_576,
+            state: 'complete',
+            progress: 1,
+            delivery: 'staged',
+          },
+        ]}
+        onRemove={vi.fn()}
+        imagesRefused
+      />,
+    );
+    expect(screen.getByText('Not accepted here')).toBeTruthy();
+    expect(screen.queryByText('Ready')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Remove screenshot.webp' }),
+    ).toBeTruthy();
   });
 });
 

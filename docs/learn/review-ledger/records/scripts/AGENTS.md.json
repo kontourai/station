@@ -1,0 +1,61 @@
+{
+  "path": "scripts/AGENTS.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
+
+  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"scripts/vitest-resource-manifest.mjs\",\"ours\":{\"path\":\"scripts/vitest-resource-manifest.mjs\",\"digest\":\"c0df746ba009eddacc6104707576396e7e2810a347ca7f4dd52b46445bfa3941\",\"revision\":\"fa447997e733e00b082b05e7c709a08a38820b5d\"},\"main\":{\"path\":\"scripts/vitest-resource-manifest.mjs\",\"digest\":\"943d988ad2c8143c452ba68fa8ff9c39887d89cb9a3cc01fe4334957306e7af1\",\"revision\":\"8cb0d9b4d83f8bc6e8cf68c8b37f7b44ba60a677\"},\"active\":{\"path\":\"scripts/vitest-resource-manifest.mjs\",\"digest\":\"c0df746ba009eddacc6104707576396e7e2810a347ca7f4dd52b46445bfa3941\",\"revision\":\"fa447997e733e00b082b05e7c709a08a38820b5d\"},\"decision\":\"neitherMatch\"}]\n\nAdditional existing main limits (preserved verbatim): Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/guides/code-quality.md\",\"ours\":{\"path\":\"docs/guides/code-quality.md\",\"digest\":\"96a55448c92106cb87224425635a37fa97882c1c52da11aa3a1fe31a7e56cbba\",\"revision\":\"a1478b242401c5da824956478bd77fef1f4dfa51\"},\"main\":{\"path\":\"docs/guides/code-quality.md\",\"digest\":\"e55382f741c8ed1783b7aa5848beb764fe08cf95326319aa21e9de4d0ed6427f\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"docs/guides/code-quality.md\",\"digest\":\"e55382f741c8ed1783b7aa5848beb764fe08cf95326319aa21e9de4d0ed6427f\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/testing.md\",\"ours\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916\",\"revision\":\"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f\"},\"main\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925\",\"revision\":\"1c13dd90939769cd3ca557a36649aa25823194db\"},\"active\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925\",\"revision\":\"1c13dd90939769cd3ca557a36649aa25823194db\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/vitest-resource-manifest.mjs\",\"ours\":{\"path\":\"scripts/vitest-resource-manifest.mjs\",\"digest\":\"6d8976643f7e053052d924898dde2d12425c0cb717f03ceccafcc5ec133f7cc6\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"main\":{\"path\":\"scripts/vitest-resource-manifest.mjs\",\"digest\":\"d7f729a8cd77b0ac2247fd36a9f79e7c6abcbbeaae970201af4ff9c0aaf0009c\",\"revision\":\"8a5d2b299d48a5b8132c3522776c504371f6e2cd\"},\"active\":{\"path\":\"scripts/vitest-resource-manifest.mjs\",\"digest\":\"6d8976643f7e053052d924898dde2d12425c0cb717f03ceccafcc5ec133f7cc6\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"decision\":\"neitherMatch\"}]",
+
+  "sources": [
+    "docs/guides/code-quality.md",
+
+    "docs/guides/testing.md",
+
+    "scripts/code-health-gate.mjs",
+
+    "scripts/lib/owned-process.mjs",
+
+    "scripts/verification-lanes.mjs",
+
+    "scripts/vitest-resource-manifest.mjs"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
+
+    "Reviewed source changes: Removed only the unused waitForOwnedOutputEOF public wrapper; the actual owned-process observer and process ownership route remain.",
+
+    "Reviewed source changes: Added bounded documentation-impact/media and Knowledge graph fixture tests to process-heavy classification; existing execution policy is unchanged. Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner. Updated testing/dependency/effectiveness guidance preserves source-owned checks; scoped instruction files still route to this owner rather than copy its implementation.",
+
+    "Reviewed added graph/media test classification and tracked temp-directory fixture ownership; no lane policy bypass.",
+
+    "Reviewed integration deltas: scripts/vitest-resource-manifest.mjs: Registers portable smoke and real-Chromium geometry fixtures as process-heavy. Current root also registers learning browser/media/impact, metric CLI children and repository knowledge graph. Scheduling metadata, not proof those journeys passed.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+
+    "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified.",
+
+    "Reviewed landing deltas through 111744681: Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged.",
+
+    "Integration source review through d1e0facc2: Two new real-Chromium geometry tests join the process-heavy class. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: vitest-resource-manifest.mjs dropped the deleted literal-swap-gate test and classified macos-signing-identity.test.mjs and ProjectSidebarBoards.coarseGeometry.test.tsx. The rule that new child-process tests are classified there still holds, and the routed paths and scripts (owned-process.mjs, code-health-gate.mjs, verification-lanes.mjs, lint:check, verification:policy:gate, ci:fast) resolve, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) removes the deleted longrunning-fixture-child.abnormal-exit test entry from PROCESS_HEAVY_VITEST_FILES in scripts/vitest-resource-manifest.mjs; prose accurate: the rule that new child-process tests must be classified in that manifest still holds, and the file still exists. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881), 8b48e2b35 (#2914) and a290454b4 (#2919) add process-heavy entries to vitest-resource-manifest.mjs: service-launcher, tauri-context, bounded-fixture-process and the Chromium geometry tests. That is consistent with the rule that new child-process tests must be classified there; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the vitest-resource-manifest delta (documentation-freshness.test.ts classified as a bounded child-process file) and code-quality.md freshness wording; the routed rules here are unchanged."
+  ]
+}

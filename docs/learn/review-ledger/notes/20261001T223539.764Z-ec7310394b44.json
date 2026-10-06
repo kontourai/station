@@ -1,0 +1,7 @@
+{
+  "revision": "543ec6c18fac08d9cd88ed6dff81b940e7776f86",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"The pane's state/decision chips, toned counts and disclosure caret use token colours only (bg-tertiary, text tones, success/error/warning text); measured AA in both themes; no theme rule changes.","inputs":["docs/guides/theming.md"]}
+  ]
+}

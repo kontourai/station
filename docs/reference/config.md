@@ -9,6 +9,12 @@ For usage context, see [docs/guides/agents.md](../guides/agents.md).
 
 ---
 
+Claude Code and Codex engine connections can set
+`agentConnections.<engine>.config.proxyConnectionId` to a saved OpenAI-compatible
+Model connection. The UI exposes this as **Connect through**. The engine uses the
+current saved address/key at launch, without copying credentials or changing the
+global CLI configuration. See [proxy setup](../guides/connections.md#route-an-engine-through-a-model-proxy).
+
 ## app.json
 
 **Location:** `<STATION_HOME>/config/app.json`
@@ -49,7 +55,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `systemPrompt` | string | [seeded Station prompt](../../src-server/domain/app-config-seed.ts) | Prepended to Agent instructions by Station's engine. An absent or empty value is reseeded on load. |
 | `templateVariables` | array | seeded `AGENT_NAME=Station` on a new home | Named replacements used by Station's prompt processing; built-in date/time and user variables are separate. |
 | `defaultChatFontSize` | number | `14` | Chat UI font size in pixels (10–24) |
-| `registryUrl` | string | bundled starter registry, if present | Plugin registry URL or path. Relative paths resolve from the process working directory (the install root under the CLI). When unset, `examples/registry/default.json` is used if present; otherwise no default registry provider is registered. See [Plugin registry](../guides/plugins.md#plugin-registry). |
+| `registryUrl` | string | bundled starter registry, if present | Plugin registry URL or path. Relative paths resolve from the process working directory (the install root under the CLI). When unset, `examples/registry/default.json` is used if present; otherwise no default registry provider is registered. Changing it takes effect after restarting Station. See [Plugin registry](../guides/plugins.md#plugin-registry). |
 | `defaultApprovalMode` | `"connection-default"` \| `"ask"` \| `"auto"` \| `"never"` | `"connection-default"` | Approval posture applied when a session starts, below the chat's own pick and its Agent's default; never applied to a session already running. Raising it to `"never"` (full access) needs the operator in person or an authenticated caller, such as a paired device, whose granted scope carries `approval:full-access`; an Agent can never set it. A refused write is 403 `approval-full-access-not-granted`; when a paired device asked, the refusal names that device and the operator's grant command (`station environment access scope <device> --add approval:full-access`). See [Device access and remote work](../guides/machine-relationships.md#what-a-paired-device-may-do-and-full-access). |
 | `runtime` | `"voltagent"` \| `"strands"` | `"voltagent"` | Agent framework runtime. Use `--features=strands-runtime` to opt in to Strands. |
 | `gitRemote` | string | — | Not currently used. The update path reads the git remote from the Station checkout itself, never from config. |
@@ -57,7 +63,8 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultEmbeddingProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultEmbeddingModel` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultVectorDbProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
-| `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`) |
+| `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
+| `attachedSessionsOutsideProjects` | boolean | `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Station host). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
 
 ### templateVariables
@@ -72,7 +79,7 @@ same-named built-ins. External engines do not automatically run this function.
 | `key` | string | Variable name used as `{{key}}` in prompts |
 | `type` | `"static"` \| `"date"` \| `"time"` \| `"datetime"` \| `"custom"` | How the value is resolved |
 | `value` | string | The value (required for `static` and `custom`) |
-| `format` | string | JSON-encoded `Intl.DateTimeFormatOptions` for date/time types. For example, `"{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\"}"`. It is parsed at substitution time; an invalid JSON string throws. A pattern such as `YYYY-MM-DD` is not accepted. Use the built-in `{{iso_date}}` for an ISO date. |
+| `format` | string | JSON-encoded `Intl.DateTimeFormatOptions` for date/time types. For example, `"{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\"}"`. Writes and file loads reject malformed JSON, non-object values, and options invalid for the chosen date/time type before substitution. A pattern such as `YYYY-MM-DD` is not accepted. Use the built-in `{{iso_date}}` for an ISO date. |
 
 ### Ollama-first example (local, no credentials)
 
@@ -254,6 +261,36 @@ Defines a single agent. The directory name is the agent's slug.
 | `ui` | object | no | UI configuration including quick prompts |
 | `skills` | string[] | no | Skill IDs available to this agent |
 | `execution` | object | no | Runtime, model connection, and optional model dispatch policy |
+| `project` | string | no | Owning Project slug; absent means global scope. The Project must exist when the value is introduced. |
+| `audience` | object | no | Who besides the operator may list, read and use the Agent (`station.agent-audience/v1`). Absent means operator only. See [audience](#audience). |
+
+### audience
+
+`audience` takes one of three versioned shapes. Absent and `operator` mean the
+same thing: only the operator's own requests see the Agent. Agents saved before
+this field existed need no rewrite.
+
+```json
+{ "version": "station.agent-audience/v1", "kind": "operator" }
+{ "version": "station.agent-audience/v1", "kind": "project-permission", "permission": "discuss" }
+{ "version": "station.agent-audience/v1", "kind": "project-roles", "roles": ["viewer", "contributor"] }
+```
+
+`permission` is a Project member action (`view`, `discuss`, `edit`, `execute`,
+`approve`, `manage-members`, `manage-extensions`, `manage-compute`). `roles` is
+a non-empty, duplicate-free list of `viewer`, `contributor`, `admin` and `owner`.
+A member audience requires `project`, because membership belongs to one Project.
+An invalid value is refused on save and load with the reason, for example
+`/audience: audience.permission must be one of: ...`. The
+[validator](../../src-server/domain/validator.ts) runs
+[`agentAudienceRefusal`](../../src-server/services/agents/agent-audience.ts)
+ahead of the [schema](../../schemas/agent.schema.json). A save cannot clear the
+field with `null`; set `kind` to `operator` instead.
+
+Admission is decided per request against the caller's current, active
+membership in the owning Project; see
+[Agent audience](../design/project-membership.md#agent-audience) for what a
+member may do with an admitted Agent today.
 
 ### execution / model dispatch
 
@@ -375,14 +412,16 @@ full TTL window.
 
 ### tools
 
-Controls tool loading and approval on Station's engine. Provider delivery and
+Controls integration selection and Station-engine approval. Provider delivery and
 external-engine approval are separate; see the [Agent guide](../guides/agents.md).
 
 | field | type | description |
 |---|---|---|
 | `mcpServers` | string[] | IDs of MCP server integrations to connect (defined in `<STATION_HOME>/integrations/<id>/integration.json`) |
-| `available` | string[] | Loaded-tool filter. Omitted or `["*"]` includes all loaded tools; `[]` includes none. The VoltAgent loader matches runtime/original MCP names through its mapping; Strands matches runtime names and trailing-`*` prefixes. |
-| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names; external-engine approval is separate |
+| `mcpMode` | `add` / `replace` | Preserve harness MCP integrations or replace their configured list. Omission retains legacy engine behavior. Harness built-in tools remain. |
+| `mcpLoading` | `on-demand` / `always` | Claude native tool-search setting; omission preserves the harness default. |
+| `available` | string[] | Loaded-tool filter. Omitted or `["*"]` includes all loaded tools; `[]` includes none. The VoltAgent loader matches runtime/original MCP names through its mapping; Strands matches runtime/mapped original names and trailing-`*` prefixes. |
+| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agents.md#what-autoapprove-never-covers)) |
 | `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agents.md#unattended-runs) |
 
 ### guardrails

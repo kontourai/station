@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import {
   acpToolUpdateSupervisorBytes,
   acpToolUpdateSupervisorOperations,
@@ -18,6 +19,37 @@ import {
 } from '../model-image-attachments.js';
 import { appendToolOutputNote } from '../tool-output-projection.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
+
+const ENGINE_TOOL_KINDS: ReadonlySet<string> = new Set<EngineToolKind>([
+  'read',
+  'edit',
+  'delete',
+  'move',
+  'search',
+  'execute',
+  'think',
+  'fetch',
+  'switch_mode',
+  'other',
+]);
+
+/** The ACP `ToolKind` an engine reported, or `undefined` for anything else. */
+export function engineToolKind(value: unknown): EngineToolKind | undefined {
+  return typeof value === 'string' && ENGINE_TOOL_KINDS.has(value)
+    ? (value as EngineToolKind)
+    : undefined;
+}
+
+/** Name and kind every lifecycle event for one call carries. */
+function toolIdentity(
+  id: string,
+  call: CallState,
+): { toolName: string; toolKind?: EngineToolKind } {
+  return {
+    toolName: call.name || call.title || id,
+    ...(call.kind ? { toolKind: call.kind } : {}),
+  };
+}
 
 /** ACP redraws are untrusted input, never a second event store. */
 export const ACP_TOOL_UPDATE_LIMITS = {
@@ -81,12 +113,14 @@ type AcpToolUpdate = {
   toolCallId: string;
   title?: string | null;
   name?: string | null;
+  kind?: unknown;
   rawInput?: unknown;
   rawOutput?: unknown;
   content?: unknown;
   status?: string | null;
   hasTitle?: boolean;
   hasName?: boolean;
+  hasKind?: boolean;
   hasRawInput?: boolean;
   hasRawOutput?: boolean;
   hasContent?: boolean;
@@ -96,6 +130,9 @@ type AcpToolUpdate = {
 type CallState = {
   name?: string;
   title?: string;
+  /** The engine's ACP `kind`, kept across updates: OpenCode's `completed`
+   * update omits it, and the terminal must still say what the call was. */
+  kind?: EngineToolKind;
   hasRawInput: boolean;
   rawInput?: unknown;
   rawInputBytes: number;
@@ -755,12 +792,23 @@ export class AcpToolUpdateSupervisor {
       this.observe('update_limit');
       return;
     }
+    // A kind outside the vocabulary is ignored, never a reason to forget the
+    // last valid one; an unchanged kind is not new metadata.
+    const nextKind = update.hasKind ? engineToolKind(update.kind) : undefined;
+    const kindChanged = nextKind !== undefined && nextKind !== call.kind;
     const metadataChanged =
-      start || update.hasName || update.hasTitle || update.hasRawInput;
+      start ||
+      update.hasName ||
+      update.hasTitle ||
+      kindChanged ||
+      update.hasRawInput;
     if (update.hasName)
       call.name = typeof update.name === 'string' ? update.name : undefined;
     if (update.hasTitle)
       call.title = typeof update.title === 'string' ? update.title : undefined;
+    // An unrecognised kind is refused, not coerced to `other`: `other` is a
+    // claim the engine made, and an unknown string is not that claim.
+    if (kindChanged) call.kind = nextKind;
     if (update.hasRawInput) {
       const rawInput =
         update.rawInput === null
@@ -911,7 +959,7 @@ export class AcpToolUpdateSupervisor {
         method: 'tool.started',
         itemId: id,
         toolCallId: id,
-        toolName: call.name || call.title || id,
+        ...toolIdentity(id, call),
         ...(call.hasRawInput ? { arguments: call.rawInput } : {}),
       }),
     );
@@ -954,7 +1002,7 @@ export class AcpToolUpdateSupervisor {
         method: 'tool.completed',
         itemId: id,
         toolCallId: id,
-        toolName: call.name || call.title || id,
+        ...toolIdentity(id, call),
         status:
           status === 'completed'
             ? 'success'
@@ -1050,7 +1098,7 @@ export class AcpToolUpdateSupervisor {
           method: 'tool.completed',
           itemId: id,
           toolCallId: id,
-          toolName: call.name || call.title || id,
+          ...toolIdentity(id, call),
           status: 'unresolved',
           output: UNRESOLVED_TOOL_OUTPUT,
         }),

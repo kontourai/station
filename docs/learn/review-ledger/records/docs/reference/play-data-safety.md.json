@@ -1,0 +1,47 @@
+{
+  "path": "docs/reference/play-data-safety.md",
+
+  "kind": "generated",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory.",
+
+  "limits": "Source review covers the stated operational facts and generator behavior. Whole-inventory completeness, legal/store classification, provider practices and publication remain unverified and require separate owner work. No real login, export, phone delivery or submission. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"src-server/services/identity/local-account-provider.ts\",\"ours\":{\"digest\":\"1eadf45d7477da2ad97cd820a8723488f69fc27cf61cbca808bb934f0b066eca\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"}}].",
+
+  "sources": [
+    "pnpm-lock.yaml",
+
+    "src-server/services/__tests__/privacy-inventory.test.ts",
+
+    "src-server/services/identity/local-account-provider.ts",
+
+    "src-server/services/identity/local-account-runtime.ts",
+
+    "src-server/services/notifications/web-push-channel.ts",
+
+    "src-server/services/privacy-inventory.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry.ts",
+
+    "src-ui/src/hooks/usePushNotifications.ts"
+  ],
+
+  "checks": [
+    "Independent synthetic review caught flag loss and supplied-input inconsistency.",
+
+    "Repair: 30 tests passed; old renderer produced 19 expected failures, exact restoration returned 30 passes.",
+
+    "Final prose accepted independently; classifications/native artifact unchanged and all generated artifacts match.",
+
+    "Final declared-question wording suite: 30 tests passed; no classifications or native artifact changed.",
+
+    "Reviewed integration deltas: Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory. src-server/services/__tests__/privacy-inventory.test.ts: Assertions now verify the declared-inventory wording and separate generation from publication; all 30 tests passed. src-server/services/privacy-inventory.ts: Narrowed generated linkage/tracking questions to inventory declarations and corrected generator direction; classification values unchanged. Final renderer suite: 30 passed.",
+
+    "Formatter-only change; emitted JavaScript is byte-identical.",
+
+    "Integration source review through e0314c727: telemetry.ts inlined the OTel resource attributes unchanged (random installation hash, os.type, endpoint-gated start), and pnpm-lock removed only bearing/forage. The otel-observability tuple and disclosure remain accurate. Source review is separate from executed test evidence."
+  ]
+}

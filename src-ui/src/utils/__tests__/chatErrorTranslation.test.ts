@@ -249,9 +249,11 @@ describe('translateChatError', () => {
       message: 'Synthetic transport detail.',
     });
 
-    expect(result.title).toBe('Station is handling too many requests');
+    expect(result.title).toBe('Station connection is busy');
     expect(result.body).toBe('Synthetic transport detail.');
-    expect(result.hint).toBe('Retry your request in a moment.');
+    expect(result.hint).toBe(
+      'Wait for current requests to finish, then Retry.',
+    );
   });
 
   it.each([
@@ -378,7 +380,7 @@ describe('translateChatError', () => {
 
   it("classifies the station-agent adapter's retriable turn failure by code, with a retry hint and no invented cause", () => {
     const result = translateChatError({
-      message: 'Station agent turn failed',
+      message: 'The response stream failed.',
       code: 'station_agent_turn_failed',
     });
 
@@ -394,6 +396,82 @@ describe('translateChatError', () => {
     // The raw text adds nothing beyond the headline, so there is no
     // disclosure section to demote it into.
     expect(result.disclosureRaw).toBeUndefined();
+  });
+
+  describe("the station-agent adapter's status-derived reason", () => {
+    const code = 'station_agent_turn_failed';
+
+    it.each([
+      'The model provider returned an error (HTTP 500).',
+      'The model provider rate-limited the request (HTTP 429).',
+      'The model provider could not find the model (HTTP 404).',
+      'The model provider timed out (HTTP 504).',
+    ])('shows %j as the body', (message) => {
+      const result = translateChatError({ message, code });
+
+      expect(result.title).toBe('This turn did not complete');
+      expect(result.body).toBe(message);
+      expect(result.hint).toMatch(/send it again to retry/i);
+    });
+
+    it('points a rejected-credentials reason at the connection first', () => {
+      const result = translateChatError({
+        message: 'The model provider rejected the credentials (HTTP 401).',
+        code,
+      });
+
+      expect(result.body).toBe(
+        'The model provider rejected the credentials (HTTP 401).',
+      );
+      expect(result.hint).toMatch(/credentials/i);
+    });
+
+    it.each([
+      [
+        'The model provider rejected the credentials (HTTP 403).',
+        /credentials/i,
+      ],
+      ['The model provider returned an error (HTTP 500).', /send it again/i],
+      ['The model provider rejected the credentials.', /credentials/i],
+    ])(
+      'reads an UNCODED reloaded marker %j exactly like the coded event',
+      (message, hint) => {
+        const result = translateChatError({ message });
+
+        expect(result.title).toBe('This turn did not complete');
+        expect(result.body).toBe(message);
+        expect(result.hint).toMatch(hint);
+        expect(result).toEqual(translateChatError({ message, code }));
+      },
+    );
+
+    it('keeps other uncoded text on its existing branches', () => {
+      expect(
+        translateChatError({ message: 'The model provider said hi.' }).title,
+      ).toBe('Error');
+    });
+
+    it('accepts the unnumbered inferred-credentials reason', () => {
+      const result = translateChatError({
+        message: 'The model provider rejected the credentials.',
+        code,
+      });
+
+      expect(result.body).toBe('The model provider rejected the credentials.');
+      expect(result.hint).toMatch(/credentials/i);
+    });
+
+    it.each([
+      'upstream exploded sk-live-SECRET-42 leaked detail',
+      'The model provider returned an error (HTTP 500). sk-live-SECRET-42',
+      'The model provider said sk-live-SECRET-42 (HTTP 500).',
+      'The model provider sk live secret words.',
+    ])('never quotes any other text under the code: %j', (message) => {
+      const result = translateChatError({ message, code });
+
+      expect(result.body).toBe('The Station agent could not finish this turn.');
+      expect(JSON.stringify(result)).not.toContain('sk-live-SECRET');
+    });
   });
 
   // archive#1827
@@ -478,7 +556,7 @@ describe('translateProjectedRuntimeError', () => {
 
   it('translates the station-agent retriable turn failure instead of quoting it verbatim', () => {
     const result = translateProjectedRuntimeError(
-      '⚠️ Station agent turn failed',
+      '⚠️ The response stream failed.',
       'station_agent_turn_failed',
     );
 
@@ -551,5 +629,23 @@ describe('#1796 full-access refusal', () => {
     expect(translated.title).toBe('Full access was not applied');
     expect(translated.body).not.toContain('evil.example');
     expect(translated.hint).toBeUndefined();
+  });
+});
+
+describe('attachment refusal (attachment_input_unsupported)', () => {
+  it('is deterministic: no "temporary" hint, not retryable, and names the fix', () => {
+    const translated = translateChatError({
+      status: 400,
+      // The literal the server forwards, not the constant.
+      code: 'attachment_input_unsupported',
+      message: 'This engine did not advertise image attachment support.',
+    });
+    expect(translated.title).toBe("This engine can't take these attachments");
+    expect(translated.body).toBe(
+      'This engine did not advertise image attachment support. Nothing was sent.',
+    );
+    expect(translated.hint).toContain('Remove the attachments');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
   });
 });

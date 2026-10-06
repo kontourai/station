@@ -1,0 +1,41 @@
+{
+  "path": "docs/guides/keyboard-shortcuts.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide checked against capture, local settings, dispatch, current registered defaults, limited warning/conflict hints and mobile layout. Known Space mismatch and hint derivation are explicit, with backlog links.",
+
+  "limits": "DOM/storage/caller evidence only; no physical keyboard, browser-reserved-key or native-shell qualification. The documented product defects remain unfixed.",
+
+  "sources": [
+    "src-ui/src/__tests__/KeyboardShortcutsContext.test.ts",
+
+    "src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx",
+
+    "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
+
+    "src-ui/src/hooks/useIsMobile.ts",
+
+    "src-ui/src/lib/device-settings-store.ts",
+
+    "src-ui/src/settings/shortcutPreferences.ts",
+
+    "src-ui/src/views/settings/KeyboardShortcutsSection.tsx",
+
+    "src-ui/src/views/settings/utils.ts"
+  ],
+
+  "checks": [
+    "14 existing editor/registry tests passed.",
+
+    "Independent mounted Space probe: baseline 4/4 passed, 4 passed and one intended assertion failed under the probe, exact restoration 4/4 passed.",
+
+    "65 lines of registry commentary removed while retaining regression rationale; independent TSX comparison confirmed identical executable output.",
+
+    "Independent final guide/module/README delta accepted. Public Pages external source-route link preserved; learning reader maps it locally.",
+
+    "Reviewed source changes: Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser."
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e70cad9b9ed6b96c438871e21b7349e1ab3d8fe0",
+
+  "notes": [
+    {"path":"CLAUDE.md","note":"Still imports AGENTS.md; only AGENTS.md's issue-reference wording was tightened.","inputs":["CLAUDE.md"]}
+  ]
+}

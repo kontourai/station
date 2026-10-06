@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -9,13 +9,20 @@ import {
 } from 'node:fs';
 import { basename, dirname, resolve, sep } from 'node:path';
 import {
+  execFileSyncBounded,
+  spawnSyncBounded,
+} from './lib/bounded-capture.mjs';
+import {
   gitLocationKeys,
   sanitizedGitEnvironment,
 } from './lib/git-environment.mjs';
+import { scaleLivenessMs } from './lib/liveness-scale.mjs';
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { collectVerificationProvenance } from './lib/test-reliability.mjs';
 import {
   findReusableBaseline,
+  laneMergeBases,
   listRegisteredWorktrees,
   pruneStaleTransferBaselines,
   TRANSFER_BASELINE_PREFIX,
@@ -35,7 +42,7 @@ function fail(message) {
 }
 
 function git(root, args) {
-  return execFileSync('git', ['-C', root, ...args], {
+  return execFileSyncBounded('git', ['-C', root, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: transferGitEnvironment(),
@@ -144,7 +151,7 @@ function sameProvenance(left, right, label) {
  */
 function verifyReusableBaseline(root, baseSha) {
   exactRoot(root, 'reusable baseline', baseSha);
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     process.execPath,
     ['scripts/dependency-lifecycle.mjs', 'verify'],
     {
@@ -154,9 +161,11 @@ function verifyReusableBaseline(root, baseSha) {
       windowsHide: true,
     },
   );
-  if (result.status !== 0)
+  // A capture overflow (or a spawn failure) leaves no child output to show;
+  // the error's own message names the cause.
+  if (result.error || result.status !== 0)
     fail(
-      `dependencies:verify failed in ${root}: ${(result.stderr || result.stdout || '').trim().slice(-400)}`,
+      `dependencies:verify failed in ${root}: ${(result.error?.message || result.stderr || result.stdout || '').trim().slice(-400)}`,
     );
 }
 
@@ -183,9 +192,16 @@ function prepareBaseline(
 ) {
   if (!baselineRoot) fail('--prepare-baseline requires --baseline-root');
   const target = resolve(baselineRoot);
-  // Keep the base being prepared AND the current origin/main tip: an explicit
-  // older --base must not delete the baseline every other session needs.
-  const keepShas = [baseSha, originMainSha(candidateRoot)];
+  // Keep the base being prepared, the current origin/main tip (an explicit
+  // older --base must not delete the baseline every other session needs), and
+  // every other lane's merge base with origin/main, which is the baseline
+  // that lane's gate compares against.
+  const mainSha = originMainSha(candidateRoot);
+  const keepShas = [
+    baseSha,
+    mainSha,
+    ...laneMergeBases({ repoRoot: candidateRoot, mainSha }),
+  ];
   const reclaim = (kept) => {
     // The session that prepared this is about to install or push with it.
     touchTransferBaselineMarker(kept);
@@ -262,8 +278,10 @@ export const TRANSFER_BASELINE_ROOT_ENV = 'STATION_TRANSFER_BASELINE_ROOT';
  */
 export function transferCaptureLivenessTimeoutMs(env = process.env) {
   const raw = env[TRANSFER_CAPTURE_TIMEOUT_ENV];
+  // Only the default scales with host pressure (#3302); an explicit value is
+  // the operator's chosen bound and is used as given.
   if (raw === undefined || raw.trim() === '')
-    return TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS;
+    return scaleLivenessMs(TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS, env);
   const value = Number(raw.trim());
   if (!Number.isSafeInteger(value) || value <= 0)
     fail(
@@ -329,14 +347,83 @@ export function suggestedBaselineRoot(candidateRoot, baseSha) {
   return baselineRootFor(primaryCheckoutRoot(candidateRoot), baseSha);
 }
 
+/**
+ * What to do when no verified baseline exists for `baseSha` (#2925): the one
+ * command that prepares it at the suggested sibling and installs its own
+ * locked dependencies. Once it has run, the gate finds the baseline itself,
+ * so the push needs no environment variable.
+ *
+ * @returns {{ baseSha: string, baselineRoot: string, prepareCommand: string }}
+ */
+export function missingBaseline(baseSha, candidateRoot) {
+  const baselineRoot = suggestedBaselineRoot(candidateRoot, baseSha);
+  const install = `(cd ${baselineRoot} && npm run dependencies:ci && npm run dependencies:verify)`;
+  // A tree already at the suggestion and at this exact SHA failed discovery
+  // only on its dependencies; anything else there needs the prepare step,
+  // which refuses a tree at another commit.
+  let existingHead = null;
+  try {
+    if (existsSync(baselineRoot))
+      existingHead = git(baselineRoot, ['rev-parse', 'HEAD']);
+  } catch {
+    existingHead = null;
+  }
+  const prepareCommand =
+    existingHead === baseSha
+      ? install
+      : `npm run transfer:gate -- --prepare-baseline --baseline-root ${baselineRoot} --base ${baseSha} && ${install}`;
+  return { baseSha, baselineRoot, prepareCommand };
+}
+
 export function missingBaselineRootMessage(baseSha, candidateRoot) {
-  const suggested = suggestedBaselineRoot(candidateRoot, baseSha);
+  const { prepareCommand } = missingBaseline(baseSha, candidateRoot);
   return [
-    `missing baseline root. The pre-push hook runs this gate with no arguments, so pass it through the environment: ${TRANSFER_BASELINE_ROOT_ENV}=${suggested} (the --baseline-root flag only reaches a direct \`npm run transfer:gate\` invocation).`,
-    `Prepare an exact sibling first: npm run transfer:gate -- --prepare-baseline --baseline-root ${suggested} --base ${baseSha}`,
-    `then install its OWN locked dependencies (cd ${suggested} && npm run dependencies:ci && npm run dependencies:verify)`,
-    `and re-run with ${TRANSFER_BASELINE_ROOT_ENV}=${suggested} exported, e.g. ${TRANSFER_BASELINE_ROOT_ENV}=${suggested} git push ...`,
+    `no verified baseline worktree exists for merge base ${baseSha}. Prepare it with:`,
+    prepareCommand,
+    `then push again: the gate finds a verified baseline for this exact SHA by itself. ${TRANSFER_BASELINE_ROOT_ENV}=<path> selects one explicitly.`,
   ].join('\n  ');
+}
+
+/**
+ * The verified baseline worktree for exactly `baseSha`, or null (#2925).
+ * Only a registered worktree whose HEAD equals `baseSha`, which is clean and
+ * whose dependencies verify, qualifies; a baseline for any other commit is
+ * never returned, whatever its directory name says.
+ */
+/**
+ * @param {{
+ *   candidateRoot: string,
+ *   baseSha: string,
+ *   worktrees?: { path: string, head: string | null, branch: string | null, detached: boolean, locked: boolean, prunable: boolean, isPrimary: boolean }[],
+ *   verify?: (root: string) => unknown,
+ *   log?: (line: string) => void,
+ * }} options
+ * @returns {string | null}
+ */
+export function discoverTransferBaseline({
+  candidateRoot,
+  baseSha,
+  worktrees = listRegisteredWorktrees(candidateRoot),
+  verify = (root) => verifyReusableBaseline(root, baseSha),
+  log = (line) => console.log(line),
+}) {
+  return findReusableBaseline({ worktrees, baseSha, verify, log });
+}
+
+/**
+ * The commit a baseline must be at: the merge base of the candidate and
+ * `base` (#2925). The candidate's own changes are measured against the
+ * commit it grew from, so a baseline stays valid while `origin/main` moves
+ * and only a merge of main into the candidate asks for a new one.
+ */
+export function transferBaseSha(candidateRoot, base) {
+  try {
+    return git(candidateRoot, ['merge-base', base, 'HEAD']);
+  } catch (error) {
+    fail(
+      `cannot resolve the merge base of ${base} and HEAD: ${String(error?.stderr || error?.message || error).trim()}`,
+    );
+  }
 }
 
 export function runTransferCapture({
@@ -361,7 +448,7 @@ export function runTransferCapture({
     touchTransferBaselineMarker(resolve(targetRoot));
   const result = spawn(
     process.execPath,
-    [tsx, capture, targetRoot, output, baseSha, candidateRoot],
+    [tsx, capture, targetRoot, output, baseSha, candidateRoot, String(timeout)],
     {
       cwd: candidateRoot,
       encoding: 'utf8',
@@ -381,10 +468,31 @@ export function runTransferCapture({
       /does not provide an export named|ERR_MODULE_NOT_FOUND|Cannot find (?:module|package)/.test(
         result.stderr ?? '',
       );
+    // A barrier timing out is host load, not a regression, and the child's own
+    // message already names the setting; repeat it on the FAIL line, which is
+    // what a push refusal shows.
+    // Anchored to the thrown error's own line: Node prints the source line that
+    // threw (which contains the message template) before it, and prints an
+    // Error subclass as `ClassName [Error]: …` (TransferMeasurementFailure).
+    const barrierTimeout =
+      /^(?:\w+ \[Error\]|Error): ([^\n]*barrier timed out after \d+ms: [^\n]+)/m.exec(
+        result.stderr ?? '',
+      );
+    if (barrierTimeout)
+      fail(
+        `${barrierTimeout[1]} for ${targetRoot}. This is host load, not a measured regression: raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds> (currently ${timeout})`,
+      );
+    // The scenario's own refusals (an expected event that never arrived, a
+    // frame count that is not one heavy turn) are not load and carry their
+    // own text; surface it on the FAIL line instead of a bare "capture failed".
+    const scenarioFailure =
+      /^(?:\w+ \[Error\]|Error): (orchestration transfer scenario: [^\n]+)/m.exec(
+        result.stderr ?? '',
+      );
     fail(
       resolutionFailure
         ? `capture dependency resolution failed for ${targetRoot}; inspect the module error above (preparing the baseline again will not repair resolution)`
-        : `capture failed for ${targetRoot}`,
+        : `capture failed for ${targetRoot}${scenarioFailure ? `: ${scenarioFailure[1]}` : ''}`,
     );
   }
   if (!existsSync(output)) fail(`capture produced no report: ${output}`);
@@ -592,7 +700,7 @@ export function executeTransferComparison({
 
 function runTransferGateInner(options) {
   const candidateRoot = resolve(options.candidateRoot);
-  const baseSha = git(candidateRoot, ['rev-parse', options.base]);
+  const baseSha = transferBaseSha(candidateRoot, options.base);
   const candidateSha = git(candidateRoot, ['rev-parse', 'HEAD']);
   if (options.prepareBaseline) {
     const prepared = prepareBaseline(
@@ -603,14 +711,23 @@ function runTransferGateInner(options) {
     );
     return { prepared: true, ...prepared };
   }
-  if (!options.baselineRoot)
-    fail(missingBaselineRootMessage(baseSha, candidateRoot));
+  if (!options.baselineRoot) {
+    const discovered = (options.discoverBaseline ?? discoverTransferBaseline)({
+      candidateRoot,
+      baseSha,
+    });
+    if (!discovered) fail(missingBaselineRootMessage(baseSha, candidateRoot));
+    console.log(
+      `Using the verified baseline for merge base ${baseSha}: ${discovered} (${TRANSFER_BASELINE_ROOT_ENV} unset)`,
+    );
+    options = { ...options, baselineRoot: discovered };
+  }
   // Validate the override before any root check or capture so a typo fails
   // in milliseconds, not after a minute of honest work.
   const timeout = transferCaptureLivenessTimeoutMs();
   if (timeout !== TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS)
     console.log(
-      `capture liveness bound raised to ${timeout}ms by ${TRANSFER_CAPTURE_TIMEOUT_ENV} (liveness guard only; not a measured budget)`,
+      `capture liveness bound raised to ${timeout}ms by ${TRANSFER_CAPTURE_TIMEOUT_ENV} or the host-pressure liveness scale (liveness guard only; not a measured budget)`,
     );
   // Mark first so a sibling session's prune sees this gate even while it
   // runs checks that never name the baseline in argv or cwd.
@@ -638,12 +755,19 @@ function runTransferGateInner(options) {
   return report;
 }
 
+/**
+ * @param {ReturnType<typeof parseArgs> & {
+ *   discoverBaseline?: (input: { candidateRoot: string, baseSha: string }) => string | null,
+ *   prepareDependencies?: object,
+ * }} [options]
+ */
 export function runTransferGate(options = parseArgs(process.argv.slice(2))) {
   return withTransferGitEnvironment(() => runTransferGateInner(options));
 }
 
 if (invokedDirectly(import.meta.url)) {
   try {
+    await ensureLivenessScale();
     runTransferGate();
   } catch (error) {
     console.error(`FAIL: ${error instanceof Error ? error.message : error}`);

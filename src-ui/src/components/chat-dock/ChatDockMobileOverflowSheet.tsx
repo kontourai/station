@@ -1,9 +1,9 @@
-import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import './ChatDockMobileOverflowSheet.css';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
 
 /**
@@ -93,7 +93,7 @@ export function ChatDockMobileOverflowSheet({
           className="composer-actions-menu__item"
           onClick={() => run(overflow.onToggleHistory)}
         >
-          Chats
+          Inbox
         </button>
         {overflow.onOpenConversationHistory && (
           <button
@@ -102,7 +102,7 @@ export function ChatDockMobileOverflowSheet({
             className="composer-actions-menu__item"
             onClick={() => run(overflow.onOpenConversationHistory!)}
           >
-            Conversation history
+            History
           </button>
         )}
         {overflow.onOpenBackgroundTasks && (
@@ -150,9 +150,8 @@ export function ChatDockMobileOverflowSheet({
             {overflow.inputOriginLabel}
           </div>
         )}
-        {/* One named entry point per snap state the drag gesture can reach
-            (collapsed / half / full), so the pointer gesture is never the only
-            way to change dock height. */}
+        {/* Collapse/expand lives on the header; full screen keeps a named,
+            reversible action so the gesture is optional. */}
         {overflow.dockControls !== false && overflow.isDockMaximized ? (
           <button
             type="button"
@@ -160,13 +159,7 @@ export function ChatDockMobileOverflowSheet({
             className="composer-actions-menu__item"
             onClick={() => run(overflow.onRestoreDock)}
           >
-            Restore chat
-            <span
-              className="composer-actions-menu__item-hint"
-              aria-hidden="true"
-            >
-              Or drag this bar down
-            </span>
+            Exit full screen
           </button>
         ) : overflow.dockControls !== false ? (
           <button
@@ -175,25 +168,9 @@ export function ChatDockMobileOverflowSheet({
             className="composer-actions-menu__item"
             onClick={() => run(overflow.onExpandDock)}
           >
-            Expand chat
-            <span
-              className="composer-actions-menu__item-hint"
-              aria-hidden="true"
-            >
-              Or drag this bar up
-            </span>
+            Full screen
           </button>
         ) : null}
-        {overflow.dockControls !== false && (
-          <button
-            type="button"
-            role="menuitem"
-            className="composer-actions-menu__item"
-            onClick={() => run(overflow.onCollapseDock)}
-          >
-            Collapse chat
-          </button>
-        )}
         {/* #2046 2b: the region's other panes. No tab strip on a coarse
             device, so this row is how a pane sharing Chat's region is
             switched to from Chat; the toolbar's `⋯` region rows are the

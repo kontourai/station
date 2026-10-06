@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"device-settings-store.ts gains a typed composite-record parser table (codingPanels) used by import validation; the shortcut override envelope, migration input and export/import behaviour described here are unchanged. No prose change.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]}
+  ]
+}

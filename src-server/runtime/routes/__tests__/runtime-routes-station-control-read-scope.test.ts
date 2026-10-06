@@ -30,6 +30,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
@@ -62,12 +63,20 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { stationKnowledgeRuntimeIdentity } from '../../bootstrap/station-control-runtime-env.js';
+import { runWithAuthorizedTurnCorrelation } from '../../conversation/authorized-turn-correlation.js';
 import { RuntimeEventLog } from '../../conversation/runtime-event-log.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
   type StationControlMcpTokenChannel,
 } from '../../mcp/station-control-mcp-token.js';
+import {
+  beginNativeKnowledgeTurn,
+  createNativeStationKnowledgeTools,
+  startNativeKnowledgeSession,
+  stopNativeKnowledgeSession,
+} from '../../mcp/station-knowledge-native-tools.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -380,10 +389,6 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
-    const result = configureRuntimeRoutes(
-      context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
-    );
-    await result.kitLifecycleReady;
     let resolvePort!: (port: number) => void;
     const listening = new Promise<number>((resolve) => {
       resolvePort = resolve;
@@ -397,10 +402,17 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     );
     const base = `http://127.0.0.1:${await listening}`;
     process.env.STATION_API_BASE = base;
+    Reflect.set(context, 'port', Number(new URL(base).port));
+    const result = configureRuntimeRoutes(
+      context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
+    );
+    await result.kitLifecycleReady;
+
     return {
       base,
       eventBus,
       monitoringEvents,
+      knowledge,
       memory,
       aProject,
       bProject,
@@ -756,6 +768,148 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       ]);
     }
     expect((await basis(BOUND_OPERATOR, 'a-chat')).success).toBe(true);
+  });
+
+  test('native Knowledge uses the real MCP route and captures only in its owner’s writable store', async () => {
+    const { base, knowledge } = await setup();
+    const port = Number(new URL(base).port);
+    const custody = new MCPLocalConnectionCustody();
+    closers.unshift(async () => {
+      await stopNativeKnowledgeSession('b-agent');
+      await custody.shutdown();
+    });
+    const definition = {
+      id: 'station-knowledge',
+      kind: 'mcp' as const,
+      transport: 'stdio' as const,
+      ...stationKnowledgeRuntimeIdentity(port),
+    };
+    const native = createNativeStationKnowledgeTools(
+      definition,
+      port,
+      custody.acquire('station-knowledge', 'managed'),
+      custody,
+    );
+    startNativeKnowledgeSession('b-agent');
+    beginNativeKnowledgeTurn(
+      'b-agent',
+      'native-turn',
+      new AbortController().signal,
+    );
+    const call = (name: string, input: Record<string, unknown>) =>
+      runWithAuthorizedTurnCorrelation(
+        {
+          accountId: B,
+          sessionId: 'b-agent',
+          turnId: 'native-turn',
+          correlationId: 'native-correlation',
+        },
+        async () => {
+          const result = await native.tools
+            .find((tool) => tool.name === name)!
+            .execute(input);
+          const text = result.content.find((item) => item.type === 'text');
+          if (!text || text.type !== 'text')
+            throw new Error('Missing tool response');
+          return JSON.parse(text.text);
+        },
+      );
+    const roots = await call('list_knowledge_roots', {});
+    expect(roots.success).toBe(true);
+    expect(roots.data).toEqual([
+      expect.objectContaining({ displayName: 'B-PROJECT-NOTE' }),
+    ]);
+    expect(roots.data[0]).not.toHaveProperty('storeRoot');
+    const added = await call('add_knowledge_record', {
+      rootId: roots.data[0].id,
+      title: 'Native capture',
+      body: 'Stored content',
+    });
+    expect(added.success).toBe(true);
+    const stored = await (await knowledge.adapterFor(roots.data[0].id)).get(
+      added.data.id,
+    );
+    expect(stored?.body).toBe('Stored content');
+    expect(stored?.provenance.session_id).toBeUndefined();
+    const privateRoot = (await knowledge.listRoots()).find(
+      (root) => root.displayName === 'A-PROJECT-NOTE',
+    )!;
+    const refused = await call('add_knowledge_record', {
+      rootId: privateRoot.id,
+      title: 'Refused capture',
+      body: 'Must not persist',
+    });
+    expect(refused.success).toBe(false);
+    expect(
+      (
+        await (await knowledge.adapterFor(privateRoot.id)).listByType('raw')
+      ).map((record) => record.title),
+    ).toEqual(['A-PROJECT-NOTE']);
+  });
+
+  test('Knowledge data access follows the owner’s store and Project edit authority', async () => {
+    const { knowledge } = await setup();
+    const allRoots = await knowledge.listRoots();
+    const own = allRoots.find((root) => root.displayName === 'B-PROJECT-NOTE')!;
+    const other = allRoots.find(
+      (root) => root.displayName === 'A-PROJECT-NOTE',
+    )!;
+    const personal = allRoots.find((root) => root.scope.kind === 'personal')!;
+    for (const caller of Object.values(B_CALLERS)) {
+      const visible = await asTool(caller, '/api/knowledge/roots');
+      expect(visible.data.map((root: { id: string }) => root.id)).toEqual([
+        own.id,
+      ]);
+      const listed = await asTool(
+        caller,
+        `/api/knowledge/roots/${encodeURIComponent(own.id)}/records?type=raw`,
+      );
+      expect(listed.success).toBe(true);
+      expect(
+        listed.data.map((record: { title: string }) => record.title),
+      ).toEqual(['B-PROJECT-NOTE']);
+      const input = {
+        type: 'raw',
+        title: 'Captured note',
+        body: 'Owner content',
+        category: 'notes',
+        provenance: { agent: 'caller' },
+      };
+      for (const root of [other, personal]) {
+        const refused = await asTool(
+          caller,
+          `/api/knowledge/roots/${encodeURIComponent(root.id)}/records`,
+          { method: 'POST', body: JSON.stringify(input) },
+        );
+        expect(refused).toMatchObject({
+          success: false,
+          error: 'Knowledge store access denied.',
+        });
+        expect(
+          (await (await knowledge.adapterFor(root.id)).listByType('raw'))
+            .length,
+        ).toBe(1);
+      }
+      const added = await asTool(
+        caller,
+        `/api/knowledge/roots/${encodeURIComponent(own.id)}/records`,
+        { method: 'POST', body: JSON.stringify(input) },
+      );
+      expect(added.success).toBe(true);
+      const read = await asTool(
+        caller,
+        `/api/knowledge/roots/${encodeURIComponent(own.id)}/records/${encodeURIComponent(added.data.id)}`,
+      );
+      expect(read.data.body).toBe('Owner content');
+      await (await knowledge.adapterFor(own.id)).retire(
+        added.data.id,
+        'retired',
+        { agent: 'test', rationale: 'Fixture capture completed' },
+      );
+    }
+    expect((await asTool('raw-token', '/api/knowledge/roots')).code).toBe(
+      'station_control_caller_required',
+    );
   });
 
   test('search_knowledge: B’s agent finds only roots B may read; the personal store is the operator’s', async () => {

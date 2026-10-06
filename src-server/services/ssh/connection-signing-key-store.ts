@@ -22,6 +22,15 @@ import type {
 } from '@kontourai/station-contracts/connection-proof';
 import { STATION_CONNECTION_KEY_CANDIDATE_TYPE } from '@kontourai/station-contracts/connection-proof';
 import {
+  NATIVE_RELAY_ENROLLMENT_CHALLENGE_TYPE,
+  NATIVE_RELAY_ENROLLMENT_RECEIPT_TYPE,
+  NATIVE_RELAY_ENROLLMENT_STATUS_TYPE,
+  type NativeRelayEnrollmentActivated,
+  type NativeRelayEnrollmentChallenge,
+  type NativeRelayEnrollmentDelivery,
+  type NativeRelayEnrollmentInactiveStatus,
+} from '@kontourai/station-contracts/native-relay-enrollment';
+import {
   ConnectionProofError,
   copyStationConnectionKeyCandidateClaims,
   serializeStationConnectionKeyCandidateClaims,
@@ -33,7 +42,17 @@ import {
   readEnvironmentSecurityRecord,
 } from '@kontourai/station-shared/environment-security-record';
 import { mutateJsonFileWithGuardedRead } from '@kontourai/station-shared/json-file-storage';
-import { CompactSign } from 'jose';
+import { CompactSign, compactVerify } from 'jose';
+import {
+  nativeEnrollmentCanonical,
+  nativeEnrollmentChallengeSchema,
+  nativeEnrollmentReceiptSchema,
+  nativeEnrollmentStatusSchema,
+} from '../identity/native-relay-enrollment-schema.js';
+import {
+  type NativeRelayDeviceBundle,
+  sealNativeRelayEnrollmentDelivery,
+} from '../identity/native-relay-envelope.js';
 import { createStationConnectionProofIssuer } from './connection-proof-issuer.js';
 
 interface PrivateRecord {
@@ -182,6 +201,111 @@ export class ConnectionSigningKeyStore {
 
   readDescriptor(): ApprovedStationConnectionTrust | null {
     return this.#load()?.descriptor ?? null;
+  }
+
+  async signNativeEnrollmentChallenge(
+    value: Omit<NativeRelayEnrollmentChallenge, 'stationProof'>,
+  ): Promise<NativeRelayEnrollmentChallenge> {
+    const claims = nativeEnrollmentChallengeSchema.parse(value);
+    const stationProof = await this.#signEnrollmentStatement(
+      claims,
+      claims.scope,
+      claims.stationSigningGeneration,
+      NATIVE_RELAY_ENROLLMENT_CHALLENGE_TYPE,
+    );
+    return { ...claims, stationProof };
+  }
+  async signNativeEnrollmentReceipt(
+    value: Omit<NativeRelayEnrollmentActivated, 'stationProof'>,
+  ): Promise<NativeRelayEnrollmentActivated> {
+    const claims = nativeEnrollmentReceiptSchema.parse(value);
+    const stationProof = await this.#signEnrollmentStatement(
+      claims,
+      claims.binding.scope,
+      claims.stationSigningGeneration,
+      NATIVE_RELAY_ENROLLMENT_RECEIPT_TYPE,
+    );
+    return { ...claims, stationProof };
+  }
+  async signNativeEnrollmentStatus(
+    value: Omit<NativeRelayEnrollmentInactiveStatus, 'stationProof'>,
+  ): Promise<NativeRelayEnrollmentInactiveStatus> {
+    const claims = nativeEnrollmentStatusSchema.parse(value);
+    const stationProof = await this.#signEnrollmentStatement(
+      claims,
+      claims.binding.scope,
+      claims.stationSigningGeneration,
+      NATIVE_RELAY_ENROLLMENT_STATUS_TYPE,
+    );
+    return { ...claims, stationProof };
+  }
+  async sealNativeEnrollmentDelivery(
+    metadata: Omit<
+      NativeRelayEnrollmentDelivery,
+      'enc' | 'ciphertext' | 'stationProof' | 'bundleDigest'
+    >,
+    bundle: NativeRelayDeviceBundle,
+  ): Promise<NativeRelayEnrollmentDelivery> {
+    const snapshot = this.#enrollmentSnapshot(
+      metadata.binding.scope,
+      metadata.stationSigningGeneration,
+    );
+    const result = await sealNativeRelayEnrollmentDelivery({
+      metadata,
+      bundle,
+      signingKey: snapshot.privateKey,
+    });
+    this.#assertEnrollmentSnapshot(snapshot);
+    return result;
+  }
+  #enrollmentSnapshot(
+    scope: { stationId: string; enrollmentId: string },
+    generation: number,
+  ): LoadedKey {
+    const snapshot = this.#load();
+    if (
+      !snapshot ||
+      snapshot.descriptor.stationId !== scope.stationId ||
+      snapshot.descriptor.enrollmentId !== scope.enrollmentId ||
+      snapshot.descriptor.generation !== generation
+    )
+      throw new ConnectionSigningKeyStoreError('key_generation_conflict');
+    return snapshot;
+  }
+  #assertEnrollmentSnapshot(snapshot: LoadedKey): void {
+    const current = this.#load();
+    if (
+      !current ||
+      current.record.stationId !== snapshot.record.stationId ||
+      current.record.enrollmentId !== snapshot.record.enrollmentId ||
+      current.record.generation !== snapshot.record.generation ||
+      current.record.privateKeyPem !== snapshot.record.privateKeyPem
+    )
+      throw new ConnectionSigningKeyStoreError('key_generation_conflict');
+  }
+  async #signEnrollmentStatement(
+    value: unknown,
+    scope: { stationId: string; enrollmentId: string },
+    generation: number,
+    typ:
+      | typeof NATIVE_RELAY_ENROLLMENT_CHALLENGE_TYPE
+      | typeof NATIVE_RELAY_ENROLLMENT_RECEIPT_TYPE
+      | typeof NATIVE_RELAY_ENROLLMENT_STATUS_TYPE,
+  ): Promise<string> {
+    const snapshot = this.#enrollmentSnapshot(scope, generation);
+    const payload = Buffer.from(nativeEnrollmentCanonical(value));
+    const proof = await new CompactSign(payload)
+      .setProtectedHeader({ alg: 'ES256', typ })
+      .sign(snapshot.privateKey);
+    const checked = await compactVerify(
+      proof,
+      createPublicKey(snapshot.privateKey),
+      { algorithms: ['ES256'] },
+    );
+    if (Buffer.compare(Buffer.from(checked.payload), payload) !== 0)
+      throw new ConnectionSigningKeyStoreError('key_generation_conflict');
+    this.#assertEnrollmentSnapshot(snapshot);
+    return proof;
   }
 
   /** Narrow candidate-payload signing; private key material never leaves custody. */

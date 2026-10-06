@@ -1,0 +1,29 @@
+{
+  "path": "examples/minimal-layout/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide, component, manifest and package build contract read; Pane discovery/dock navigation versus Agent execution and publication boundaries retained.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/minimal-layout/package.json",
+
+    "examples/minimal-layout/plugin.json",
+
+    "examples/minimal-layout/src/index.tsx",
+
+    "packages/cli/src/commands/install.ts",
+
+    "src-ui/src/core/SDKAdapter.tsx"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's install-and-place steps and `station plugin install .` are unchanged, and it makes no claim about how consent is built. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

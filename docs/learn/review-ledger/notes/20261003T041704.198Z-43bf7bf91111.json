@@ -1,0 +1,7 @@
+{
+  "revision": "d2b65cb482b664c258ccc809fabd92bc279354dc",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the merged API reference dependency: profile usage accounting and nested Skill registry behavior preserve the integration reading routes and their stated hosted/commercial limits. New catalog compatibility/refusal documentation does not imply deployed tenancy, personal billing or live-account acceptance.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

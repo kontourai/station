@@ -1,0 +1,25 @@
+{
+  "path": "examples/coding-starter/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide, two components, own-plugin host action declaration and Agent definition checked; sample file/diff data stays distinct from real repository access.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/coding-starter/agents/coding-starter-assistant/agent.json",
+
+    "examples/coding-starter/plugin.json",
+
+    "examples/coding-starter/src/index.tsx",
+
+    "src-ui/src/core/SDKAdapter.tsx"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+  ]
+}

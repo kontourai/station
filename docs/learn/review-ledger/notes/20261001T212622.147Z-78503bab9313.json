@@ -1,0 +1,7 @@
+{
+  "revision": "2fb58e17deb6d5b85ed927005168c0493939c33f",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed against the new codingPanels device setting (#3051): a composite, direct-manipulation key (excluded from Restore device defaults) with its own import parser, following regionArrangement. The document describes device scope and the registry in general and names dockSlotPlacement's per-session URL override only; no enumeration here needs the new key.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md","docs/reference/settings-deep-links.md","packages/contracts/src/settings-registry.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

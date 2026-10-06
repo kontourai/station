@@ -1,0 +1,9 @@
+{
+  "revision": "5148a05e2089e41546cfed52b0046ed64f938af5",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Review of the merged bytes after merging main (through #3017) into the @kontourai/ui 1.18.0 bump. Relative to main the guide differs in one token: the installed @kontourai/ui version named in the status-tone paragraph is 1.18.0 (was 1.16.0). Checked against node_modules/@kontourai/ui/tokens/tokens.css at 1.18.0: --k-status-contrast, the --k-trust-* inks, fills and line styles, the --k-action and --k-focus roles, the five tone tokens and the four soft fills are all still defined, and there is still no neutral soft fill. Main's edit (#3017, the 'What autoApprove never covers' section and the autoApprove bullet) was reviewed and recorded by that change; it sits in a different section and merged textually without overlap. It was not re-verified here.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Review after merging main (through #3017) into the @kontourai/ui 1.18.0 bump: its source docs/guides/agents.md now carries main's autoApprove section and this branch's one-token change (installed @kontourai/ui version 1.18.0 in the status-tone paragraph). The inventory names neither the design-kit version nor its tokens, so this branch's change does not affect it; main's change was reviewed by #3017.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]}
+  ]
+}

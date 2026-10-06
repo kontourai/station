@@ -18,10 +18,26 @@ import {
   IncrementalHighlightStore,
   sessionTokenizerFor,
 } from './incremental-session';
+import { type PreviewTokenLine, tokenizeForPreview } from './preview-tokens';
 import { THEME } from './shared';
 
-type HighlightRequest = { id: number; code: string; lang: string };
-type HighlightResponse = { id: number; html?: string; error?: string };
+/**
+ * `format: 'tokens'` is the File Preview's request: line tokens it renders as
+ * React text instead of HTML (see preview-tokens.ts). Absent means HTML, the
+ * chat protocol unchanged.
+ */
+type HighlightRequest = {
+  id: number;
+  code: string;
+  lang: string;
+  format?: 'html' | 'tokens';
+};
+type HighlightResponse = {
+  id: number;
+  html?: string;
+  tokens?: PreviewTokenLine[];
+  error?: string;
+};
 
 let highlighter: HighlighterCore | null = null;
 let initPromise: Promise<HighlighterCore> | null = null;
@@ -52,10 +68,14 @@ const ctx = self as unknown as {
 const sessions = new IncrementalHighlightStore(16);
 
 ctx.addEventListener('message', async (e: MessageEvent) => {
-  const { id, code, lang } = e.data as HighlightRequest;
+  const { id, code, lang, format } = e.data as HighlightRequest;
   try {
     const h = await ensureHighlighter();
     const resolved = (await loadHighlighterLanguage(h, lang)) ? lang : 'text';
+    if (format === 'tokens') {
+      ctx.postMessage({ id, tokens: tokenizeForPreview(h, code, resolved) });
+      return;
+    }
     const html = sessions.highlight(
       sessionTokenizerFor(h, THEME),
       code,

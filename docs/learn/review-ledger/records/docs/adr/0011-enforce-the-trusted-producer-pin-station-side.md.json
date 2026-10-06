@@ -1,0 +1,43 @@
+{
+  "path": "docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "A top banner surfaces the existing 2026-08-26 supersession. Current FlowRunService.evaluate delegates to Flow evaluateRun; the retired Station probe, veto and switch remain historical rationale, while producerPin is a deprecated historical wire field.",
+
+  "limits": "No live governed delivery, every upstream producer/authority policy combination, historic 3.x Flow behavior, or retired fault-injection transcript was reproduced. Current focused service tests are narrower than end-to-end governance assurance. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): No live governed delivery, every upstream producer/authority policy combination, historic 3.x Flow behavior, or retired fault-injection transcript was reproduced. Current focused service tests are narrower than end-to-end governance assurance.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/contracts/src/runtime-events.ts\",\"ours\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"f58bc6f78acd49d8857178c91306d6ea19ff790cd453b8dd8ea0d8495ee78114\",\"revision\":\"94e8da3b253080c2450e333ebbe98acfaf35b7b8\"},\"main\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"}]",
+
+  "sources": [
+    ".flow/config.json",
+
+    "package.json",
+
+    "packages/contracts/src/runtime-events.ts",
+
+    "src-server/services/flow/__tests__/flow-run-service.test.ts",
+
+    "src-server/services/flow/flow-run-service.ts"
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Integration source review through d1e0facc2: Half-written-run test reaches session-start attachment and retains a complete-run resume control. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: package.json only removed the bearing/forage dependencies, and the Flow pin the historical rationale cites is unchanged. The supersession banner and the evaluateRun delegation still hold. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added only an optional `revocation` {reason, deviceId, cause} to SessionApprovalModeSetEvent in runtime-events. It does not touch producerPin, Flow evaluation or the superseded Station-side probe, so the historical classification and supersession banner stand. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds ApprovalAcknowledgement, RequestResolvedEvent.acknowledgement and RequestDeliveryEvent to runtime-events. FlowGateVerdictEvent and its producerPin field are untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

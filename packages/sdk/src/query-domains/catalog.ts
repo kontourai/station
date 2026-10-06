@@ -15,13 +15,17 @@ import {
   fetchKitLayout,
   fetchKitRegistry,
   fetchRegistryItems,
+  fetchRegistrySkillContent,
+  fetchRegistrySources,
   type KitLayoutProjection,
   type KitRegistryEntry,
   type KitStandardView,
+  type RegistrySourceAction,
   requestIntegration,
   requestRegistryCatalogAction,
   requestRegistryIntegrationAction,
   requestRegistryLayoutAction,
+  requestRegistrySourceAction,
 } from './catalogRequests';
 
 interface IntegrationRegistryActionInput {
@@ -519,3 +523,23 @@ export function useRegistryLayoutActionMutation(
     },
   );
 }
+
+export function useRegistrySourcesQuery() {
+  return useApiQuery(['registry', 'sources'], fetchRegistrySources);
+}
+
+export function useRegistrySourceActionMutation() {
+  return useApiMutation(requestRegistrySourceAction, {
+    invalidateKeys: [['registry']],
+  });
+}
+
+export function useRegistrySkillContentQuery(id: string | undefined) {
+  return useApiQuery(
+    ['registry', 'skills', id ?? '', 'content'],
+    () => fetchRegistrySkillContent(id!),
+    { enabled: !!id },
+  );
+}
+
+export type { RegistrySourceAction };

@@ -1,0 +1,7 @@
+{
+  "revision": "7c111aab96a6f1356ea999c1c127de6168612dec",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the capture-progress fixture change to maintained trackTempDirs cleanup. The fixed provenance/phase-only serializer, monotonic clock, optional noninterrupting warning and success-evidence distinction remain accurate. Temp ratchet and 24 focused helper/scope/repository-policy tests passed. Exact historical noncredential fingerprint disposition is separate; no capture budgets, liveness bounds, runtime or gate admission changed.","inputs":["docs/guides/testing.md","scripts/__tests__/transfer-capture-progress.test.ts"]}
+  ]
+}

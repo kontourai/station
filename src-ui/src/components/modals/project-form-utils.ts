@@ -67,7 +67,7 @@ export function getWorkingDirectoryLeaf(value: string): string {
   }
   // Both separators: a Windows path's leaf is after the last `\` just as a
   // POSIX path's is after the last `/` — splitting on `/` alone would treat
-  // `C:\Users\brian\myproject` as one segment and name the project after
+  // `C:\Users\me\myproject` as one segment and name the project after
   // the entire path.
   const parts = pathWithoutHome.split(/[\\/]/).filter(Boolean);
   return parts.at(-1) ?? '';

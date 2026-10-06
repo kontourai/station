@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { pressAndHold } from './long-press';
 
 /**
  * Reading and driving the shell's region model from a browser journey (#928).
@@ -185,23 +186,13 @@ export async function openChooserFromToggle(
     name: `${regionLabel} region`,
     exact: true,
   });
-  const box = await control.boundingBox();
-  expect(
-    box,
-    `${regionLabel} region's toggle must have a rendered box`,
-  ).not.toBeNull();
   const menu = page.getByRole('menu', { name: `Add to ${regionLabel} region` });
-  await page.mouse.move(
-    (box?.x ?? 0) + (box?.width ?? 0) / 2,
-    (box?.y ?? 0) + (box?.height ?? 0) / 2,
-  );
-  await page.mouse.down();
-  await page.waitForTimeout(600);
+  const release = await pressAndHold(page, control);
   await expect(
     menu,
     `the hold on ${regionLabel} region's toggle opened no chooser`,
   ).toBeVisible();
-  await page.mouse.up();
+  await release();
   await expect(
     menu,
     `the release that ended the hold on ${regionLabel} region's toggle dismissed the panel it had just opened`,

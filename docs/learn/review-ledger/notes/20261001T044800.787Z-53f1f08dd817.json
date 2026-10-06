@@ -1,0 +1,7 @@
+{
+  "revision": "98db501812082da5558fc63a96993e23cd4a6a9c",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Export visibility only (BROWSER_SCREENSHOT_MAX_BYTES, DEFAULT_DIALOG_HOLD_MS no longer exported); no behaviour, value, or documented limit changed","inputs":["docs/guides/browser-workspace.md"]}
+  ]
+}

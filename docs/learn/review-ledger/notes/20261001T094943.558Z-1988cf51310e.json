@@ -1,0 +1,9 @@
+{
+  "revision": "0f03cc6473054af0ef8ccf5e2b5b8f7dfe9ca9ee",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Merged-main claim review at 0f03cc647: session-api retains foreground chat qualification and separate personal Task-request journal explanation, alongside upstream ACP plan-exit guidance. Traced acp-adapter respondToRequest: needsPerson converts acceptForSession to accept before any approvedTools grant; requestPermission marks switch_mode/named plan exits and excludes them from tool/session auto-approval. The historical ADR remains superseded by ADR 0014 and points to this current reference; its historical flag instructions were not revived. Documentation/source inspection only; existing runtime/provider/browser evidence limits remain.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Merged-main claim review at 0f03cc647: session-api retains foreground chat qualification and separate personal Task-request journal explanation, alongside upstream ACP plan-exit guidance. Traced acp-adapter respondToRequest: needsPerson converts acceptForSession to accept before any approvedTools grant; requestPermission marks switch_mode/named plan exits and excludes them from tool/session auto-approval. The historical ADR remains superseded by ADR 0014 and points to this current reference; its historical flag instructions were not revived. Documentation/source inspection only; existing runtime/provider/browser evidence limits remain.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]}
+  ]
+}

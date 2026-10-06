@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { mkdir, mkdtemp, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { agentConnectionFixture } from '../../../../tests/helpers/connection-fixtures.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { appHomesRootDir } from '../../../providers/app-home/app-home-profiles.js';
 import {
@@ -1294,6 +1295,10 @@ describe('device-code enrolment routes', () => {
     );
 
     expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      data: { outcome: 'unsupported' },
+    });
     expect(spawnLogin).not.toHaveBeenCalled();
   });
 
@@ -1445,4 +1450,54 @@ describe('device-code enrolment routes', () => {
     expect(res.status).toBe(404);
     expect(spawnLogin).not.toHaveBeenCalled();
   });
+});
+
+test('account reads follow the connection home without creating it or changing execution', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'account-route-home-'));
+  try {
+    const fixture = credentialRecoveryFixture();
+    const service = {
+      ...fixture.service,
+      getConnection: vi.fn(async () =>
+        agentConnectionFixture({
+          id: 'codex',
+          type: 'codex',
+          config: {
+            provider: 'codex',
+            configHome: root,
+            useAppHome: true,
+            env: { CODEX_HOME: '/wrong-account' },
+          },
+        }),
+      ),
+    };
+    const usage = vi.fn(async () => ({
+      status: 'unknown' as const,
+      fetchedAt: '2026-10-01T00:00:00Z',
+      reason: 'Fixture has no credentials.',
+    }));
+    const auth = vi.fn(async () => ({ state: 'unauthenticated' as const }));
+    const app = createAppHomeRoutes({
+      connectionService: service,
+      isLoginReadCurrent: () => true,
+      loginCapabilities: loginCapabilitiesStub(),
+      accountAuth: auth,
+      accountUsage: usage,
+    });
+    const accounts = await app.request('/agent/codex/accounts');
+    expect(accounts.status).toBe(200);
+    expect(auth).toHaveBeenCalledWith(
+      'codex',
+      root,
+      undefined,
+      expect.objectContaining({ CODEX_HOME: root }),
+    );
+    const response = await app.request('/agent/codex/account-usage');
+    expect(response.status).toBe(200);
+    expect(usage).toHaveBeenCalledWith('codex', root);
+    expect(service.applyCredentialProfile).not.toHaveBeenCalled();
+    expect(JSON.stringify(await accounts.json())).not.toContain(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

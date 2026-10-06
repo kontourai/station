@@ -1,0 +1,11 @@
+{
+  "revision": "e68a4cc41e7292d70ca8f30b468878156d19743d",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#2932 part 2 follow-up: session-api.md gained one sentence under respondToRequest (a Bash or PowerShell ask with no reason type prompts). The ADR cites the session API only as the current orchestration surface; its decisions do not concern approval grants.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2932 part 2 follow-up: claudeAskEscalates now takes the request and treats a Bash or PowerShell ask with no reason type as an escalation (CLAUDE_SHELL_TOOLS), because 2.1.278 attaches a reason type to every shell ask. Changed the 'no reason type is a plain call' bullet to state the shell exception, and rewrote the frame-shape limit to name the one case that does not cost a prompt: readable requests with no reason type on a non-shell tool, where an ask rule or safety check would read as plain and only the part 1 signals apply. Checked both against the new shared case (Bash and PowerShell with an empty record give 'none'; WebFetch, Edit and MCP stay plain) and the adapter test that drops decision_reason_type from an ordinary Bash frame and gets a prompt under a Bash grant. The statement that a session can run an installed claude newer than the bundled one matches connections.md and the adapter's executable resolution. Also added an MCP missing-record case to the autoApprove test, which the page's fail-closed bullet already describes.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2932 part 2 follow-up: added that a Bash or PowerShell ask with no reason type prompts, next to the statement that an ask with no reason type is a plain call. Checked against claudeAskEscalates (CLAUDE_SHELL_TOOLS) and its shared and adapter tests.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

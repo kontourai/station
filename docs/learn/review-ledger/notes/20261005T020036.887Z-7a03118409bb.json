@@ -1,0 +1,11 @@
+{
+  "revision": "c4f5795353715f2ae00ef435de77461fd4a8e2da",
+
+  "notes": [
+    {"path":"docs/guides/release-channel-ports.md","note":"Added the uninstall route for an install root not restricted to the user, checked against full-install.ts uninstallArchive (no stop or node.exe from that root; refuses while recorded ports answer) and install.ts secureInstallRoot's refusal text.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"README.md","note":"release-channel-ports.md changed only in its Windows section; README claims unchanged.","inputs":["README.md","docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"release-channel-ports.md changed only in its Windows section; this guide's claims unchanged.","inputs":["docs/user/getting-started.md","docs/guides/release-channel-ports.md"]}
+  ]
+}

@@ -39,6 +39,10 @@ const selectionModelState = {
 // SDK mutation; a minimal mock keeps react-query's provider requirement out
 // of this render tree.
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: { experiences: [], diagnostics: [] },
+    refetch: vi.fn(),
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
 }));
 
@@ -85,7 +89,11 @@ afterEach(cleanup);
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
-    value: vi.fn().mockReturnValue({ matches: false }),
+    value: vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
   });
   Element.prototype.scrollIntoView = vi.fn();
 });

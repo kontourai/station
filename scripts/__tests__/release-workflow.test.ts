@@ -765,7 +765,11 @@ describe('native release workflow topology', () => {
     const resolve = workflowJob(publish, 'resolve');
     const promotion = workflowJob(publish, 'publish');
     const source = namedStep(resolve, 'Resolve tag to one immutable commit');
-    expect(parsed.permissions).toEqual({ contents: 'read' });
+    expect(workflowJob(publish, 'qualification').uses).toBe(
+      './.github/workflows/full-regression.yml',
+    );
+    expect(promotion.needs).toEqual(['resolve', 'qualification']);
+    expect(parsed.permissions).toEqual({ contents: 'read', actions: 'read' });
     expect(source.run).toContain('gh release view "$desktop_updater_tag"');
     expect(source.run).not.toContain('2>/dev/null || true');
     expect(source.env?.ALLOW_PUBLISHED_POINTER_REPAIR).toBe(
@@ -797,7 +801,7 @@ describe('native release workflow topology', () => {
         'Publish and verify the rolling desktop updater channel',
       ).if,
     ).toBeUndefined();
-    expect(promotion.needs).toBe('resolve');
+    expect(promotion.needs).toEqual(['resolve', 'qualification']);
     expect(parsed.concurrency).toEqual({
       group: 'station-release-publish',
       'cancel-in-progress': false,
@@ -834,21 +838,36 @@ describe('native release workflow topology', () => {
     const policyEntries = policyEntryScripts();
     expect(policyEntries).toEqual({
       resolve: ['scripts/lib/native-release-config.mjs'],
+      qualification: [],
       publish: [
         'scripts/deploy-ledger.mjs',
+        // #2959: the host-stream manifest signer and its publication checks.
+        'scripts/ecosystem-manifest.mjs',
         'scripts/lib/deploy-ledger-commit.mjs',
         'scripts/lib/tauri-updater-manifest.mjs',
+        'scripts/portable-release-publication.mjs',
         'scripts/publish-mobile-feed-transaction.sh',
         'scripts/release-artifacts.mjs',
         'scripts/release-sbom-predicates.mjs',
         'scripts/verify-release-checksums.sh',
       ],
+      'host-pointer': ['scripts/portable-release-publication.mjs'],
       'release-availability': ['scripts/release-availability-driver.mjs'],
     });
 
     const parsed = workflow(publish);
     expect(parsed.defaults).toBeUndefined();
     for (const [jobName, job] of Object.entries(parsed.jobs ?? {})) {
+      if (jobName === 'qualification') {
+        expect(job.uses).toBe('./.github/workflows/full-regression.yml');
+        expect(job.with?.source_sha).toBe(
+          githubExpression('needs.resolve.outputs.sha'),
+        );
+        expect(job.if).toBe(
+          "needs.resolve.outputs.pointer_repair_only != 'true'",
+        );
+        continue;
+      }
       // A job-level default working directory would silently re-root every
       // relative path below, including `release-policy/...`.
       expect(job.defaults, jobName).toBeUndefined();
@@ -994,7 +1013,8 @@ describe('native release workflow topology', () => {
           .filter((step) => step.uses?.startsWith('actions/checkout@'))
           .map((step) => [jobName, step] as const),
     );
-    expect(checkouts).toHaveLength(6);
+    // #2959 adds the host-pointer job's policy checkout.
+    expect(checkouts).toHaveLength(7);
     for (const [jobName, step] of checkouts)
       expect(step.with?.['persist-credentials'], jobName).toBe(false);
   });
@@ -1067,6 +1087,8 @@ describe('native release workflow topology', () => {
           'scripts/reclaim-android-runner-disk.sh',
           'scripts/resolve-android-build-run.mjs',
           'scripts/write-android-build-manifest.mjs',
+          // #3175: desktop-build-manifest.mjs imports the bounded capture.
+          'scripts/lib/bounded-capture.mjs',
           'scripts/lib/android-build-manifest.mjs',
           'scripts/lib/desktop-build-manifest.mjs',
           'package.json',

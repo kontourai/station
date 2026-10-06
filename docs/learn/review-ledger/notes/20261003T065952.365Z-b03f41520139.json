@@ -1,0 +1,33 @@
+{
+  "revision": "789bd4ef44798acfba34d5e09e8d9a032cc00dcb",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed merged config prose: Settings registry validation from main and MCP mode/loading fields from this lane both remain. Historical abstraction findings retain their original status and limits; no new runtime ownership claim.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/design/entity-hierarchy.md","note":"Reviewed current form and tests against historical supersession note. It remains one scrolling capability-derived form. The Engine heading moved beside info help; picker bindings, saved identity and section eligibility are unchanged.","inputs":["docs/design/entity-hierarchy.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed merged config against the Settings registry and existing design status. MCP agent fields do not change runtime Settings scope or authorization; preserve both reviewed source lists and historical proposal limits.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed compact tool groups and field help against current Agent callers and InfoTip owner. Hover opens help, click pins it, arrow/Page keys scroll, Escape closes help without closing the editor. Focused Agent suites 54/54 and tooltip/provider suites 37/37 passed. Unsupported, full-access and unresolved-account warnings remain inline. Existing MCP selection, harness delivery and approval limits remain.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed optional tooltip help in shared model/region fields. Default inline branches retain the original Connections labels, controls and hints. ProviderConnectionForm owner suite passed; no provider request, readiness, enrollment, model binding or approval changes. Existing sample/live evidence limits remain.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed optional tooltip help in shared model/region fields. Default inline branches retain the original Connections labels, controls and hints. ProviderConnectionForm owner suite passed; no provider request, readiness, enrollment, model binding or approval changes. Existing sample/live evidence limits remain.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed optional tooltip help in shared model/region fields. Default inline branches retain the original Connections labels, controls and hints. ProviderConnectionForm owner suite passed; no provider request, readiness, enrollment, model binding or approval changes. Existing sample/live evidence limits remain.","inputs":["docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed Agent guide delta: only info help navigation and existing MCP controls are described. No Agent identity grammar, enrollment, alias, migration or persisted-ID contract changes.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed optional tooltip help in shared model/region fields. Default inline branches retain the original Connections labels, controls and hints. ProviderConnectionForm owner suite passed; no provider request, readiness, enrollment, model binding or approval changes. Existing sample/live evidence limits remain.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed merged config: current Settings registry defaults coexist with additive/replace MCP mode and Claude native loading fields. Tool filtering, approval scope and legacy omission behavior remain accurately bounded.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated bundled documentation from merged canonical Markdown. Confirmed static documentation delivery remains separate from live Station Control; tooltip help changes agent UI presentation, not MCP authority or runtime capabilities.","inputs":["docs/reference/station-docs.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed optional tooltip help in shared model/region fields. Default inline branches retain the original Connections labels, controls and hints. ProviderConnectionForm owner suite passed; no provider request, readiness, enrollment, model binding or approval changes. Existing sample/live evidence limits remain.","inputs":["examples/self-configuring-agent/README.md"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed unchanged capture bytes and optional shared-field delta. Connections keeps the original inline field rendering; tooltip mode is opted into only by Agent editor callers. Preserve original capture revision, sample-data evidence and limits; no new capture or live-provider proof claimed.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed unchanged capture bytes and optional shared-field delta. Connections keeps the original inline field rendering; tooltip mode is opted into only by Agent editor callers. Preserve original capture revision, sample-data evidence and limits; no new capture or live-provider proof claimed.","inputs":["docs/learn/media/connections-tour.webm"]}
+  ]
+}

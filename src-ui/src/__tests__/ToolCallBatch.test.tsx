@@ -211,7 +211,8 @@ describe('ToolCallBatch failure disclosure (station#2652 redesign)', () => {
     // Never as a failure: nothing observed the tool fail.
     expect(screen.queryByText(/failed/)).toBe(null);
     // And the summary itself refuses the past tense.
-    expect(screen.getByRole('button').textContent).toContain('Run 2 commands');
+    expect(screen.getByRole('button').textContent).toContain('2 commands');
+    expect(screen.getByRole('button').textContent).not.toContain('Ran');
   });
 
   test('a batch with nothing unresolved renders no such flag', () => {
@@ -368,11 +369,11 @@ test('a collapsed run still surfaces Allow Once under the summary', async () => 
     />,
   );
   expect(
-    await screen.findByRole('button', { name: /Read 1 file, edit 1 file/ }),
+    await screen.findByRole('button', { name: /1 file read, 1 file edit/ }),
   ).toBeTruthy();
   expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(1);
   fireEvent.click(
-    screen.getByRole('button', { name: /Read 1 file, edit 1 file/ }),
+    screen.getByRole('button', { name: /1 file read, 1 file edit/ }),
   );
   expect(await screen.findByText('Edit secrets.env')).toBeTruthy();
   expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(1);
@@ -429,11 +430,32 @@ test('a collapsed batch discloses an awaiting-approval call without being opened
   render(<ToolCallBatch run={run} renderCall={renderCall} />);
 
   const button = screen.getByRole('button', {
-    name: /Read 1 file, edit 1 file/,
+    name: /1 file read, 1 file edit/,
   });
   expect(button.textContent).not.toMatch(/edited/i);
-  const flag = screen.getByText('Awaiting approval');
+  const flag = screen.getByText('Needs approval');
   expect(flag.className).toContain('tool-call-batch__awaiting');
+});
+
+// #3312: the plural flag counts in the ladder's word, "N need approval",
+// never the retired "N awaiting approval".
+test('a collapsed batch counts several awaiting-approval calls as needing approval', () => {
+  const run = runFor(
+    ['b', 'c'].map((id) => ({
+      type: 'tool-invocation' as const,
+      toolCallId: id,
+      toolName: 'Write',
+      args: { path: `${id}.env` },
+      needsApproval: true,
+      state: 'awaiting-approval' as const,
+    })),
+  );
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  const flag = screen.getByText('2 need approval');
+  expect(flag.className).toContain('tool-call-batch__awaiting');
+  expect(document.body.textContent).not.toMatch(/awaiting approval/i);
 });
 
 test('a policy-denied write is disclosed as denied, not as a generic failure', () => {

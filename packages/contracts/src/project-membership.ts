@@ -72,3 +72,9 @@ export interface ProjectInvitationPreview {
   expiresAt: string;
   recipientEmail: string | null;
 }
+
+/** A committed invitation acceptance; membership grants no Device access. */
+export interface ProjectInvitationAcceptance {
+  readonly scope: ProjectMembershipScope;
+  readonly grantsDeviceAccess: false;
+}

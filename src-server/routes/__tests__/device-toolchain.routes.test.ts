@@ -712,7 +712,7 @@ describe('device access (D12)', () => {
           state: 'failed',
           requiredVersion: '0.10.1',
           reason: 'install-failed',
-          detail: 'npm ci exited 1 in /Users/brian/.station/devices',
+          detail: 'npm ci exited 1 in /Users/me/.station/devices',
           retryable: true,
         },
         platforms: [{ platform: 'ios', ready: true, reason: 'ready' }],
@@ -743,7 +743,7 @@ describe('device access (D12)', () => {
     )) as { data: DeviceToolchainStatus };
     expect(asOperator.data.canManage).toBe(true);
     expect(asOperator.data.hub).toMatchObject({
-      detail: 'npm ci exited 1 in /Users/brian/.station/devices',
+      detail: 'npm ci exited 1 in /Users/me/.station/devices',
     });
   });
 

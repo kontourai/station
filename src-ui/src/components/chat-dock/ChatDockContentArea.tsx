@@ -4,7 +4,9 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import type { ChatSession, FileAttachment } from '../../types';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { LazyBoundary } from '../LazyBoundary';
+import { NewChatAction } from '../NewChatAction';
 import { Empty, SkeletonList } from '../state';
+import '../skill-experiences/skill-experiences.css';
 import { ChatDockBody } from './ChatDockBody';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 
@@ -14,6 +16,11 @@ import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 const loadConversationHistory = () =>
   import('../chat/ConversationHistory').then(({ ConversationHistory }) => ({
     default: ConversationHistory,
+  }));
+
+const loadSkillExperiencePanel = () =>
+  import('../skill-experiences/SkillExperiencePanel').then((module) => ({
+    default: module.SkillExperiencePanel,
   }));
 
 interface ChatDockContentAreaProps {
@@ -134,7 +141,7 @@ function ChatDockContentAreaImpl({
           <button
             type="button"
             className="conversation-history__backdrop"
-            aria-label="Close conversation history"
+            aria-label="Close history"
             tabIndex={-1}
             onClick={onCloseHistory}
           />
@@ -146,7 +153,7 @@ function ChatDockContentAreaImpl({
                   <span className="conversation-history__title">History</span>
                 </div>
                 <div className="conversation-history__list">
-                  <SkeletonList label="Loading conversation history" />
+                  <SkeletonList label="Loading history" />
                 </div>
               </div>
             }
@@ -203,57 +210,69 @@ function ChatDockContentAreaImpl({
           />
         </>
       )}
-      <div className="chat-dock__body">
-        {activeSession ? (
-          <ChatDockBody
-            activeSession={activeSession}
-            workingDirectory={workingDirectory}
-            activeOrchestrationSession={activeOrchestrationSession}
-            activeOrchestrationSessionRead={activeOrchestrationSessionRead}
-            onRetryOrchestrationSessions={onRetryOrchestrationSessions}
-            chatFontSize={chatFontSize}
-            dockHeight={dockHeight}
-            showStatsPanel={showStatsPanel}
-            showReasoning={showReasoning}
-            showToolDetails={showToolDetails}
-            modelSupportsAttachments={modelSupportsAttachments}
-            fileAttachmentsSupported={fileAttachmentsSupported}
-            modelProviderLabel={modelProviderLabel}
-            modelProviders={modelProviders}
-            agentDefaultModelId={agentDefaultModelId ?? undefined}
-            agentApprovalModeDefault={agentApprovalModeDefault}
-            stationApprovalModeDefault={stationApprovalModeDefault}
-            toolPolicyDelivery={toolPolicyDelivery}
-            availableModels={availableModels}
-            modelsLoading={modelsLoading}
-            chatInput={chatInput}
-            secondaryActions={secondaryActions}
-            onOpenAgentHandoff={onOpenAgentHandoff}
-            agentHandoffTriggerRef={agentHandoffTriggerRef}
-            setShowStatsPanel={onToggleStatsPanel}
-            onOpenBackgroundTasks={onOpenBackgroundTasks}
-            onNewChat={onNewChat}
-            onRetryConversationOpen={onRetryConversationOpen}
-            onForkFromTurn={onForkFromTurn}
-          />
-        ) : (
-          // #800: this instructed the user to click "New", which renders as a
-          // bare + icon on phone — naming a control the eye cannot find. The
-          // empty state carries the action itself now.
-          <Empty
-            variant="prominent"
-            label="No chat open"
-            action={
-              <button
-                type="button"
-                className="button button--primary"
-                onClick={() => onNewChat()}
-              >
-                Start a chat
-              </button>
-            }
+      <div
+        className="skill-experience-workspace"
+        data-presentation={
+          activeSession?.skillExperienceMode ??
+          activeSession?.skillExperienceDraft?.definition.presentation
+            .defaultMode ??
+          'guided'
+        }
+      >
+        {activeSession && (
+          <LazyBoundary
+            key={activeSession.id}
+            load={loadSkillExperiencePanel}
+            componentProps={{ session: activeSession }}
+            pending={null}
           />
         )}
+        <div className="chat-dock__body">
+          {activeSession ? (
+            <ChatDockBody
+              activeSession={activeSession}
+              workingDirectory={workingDirectory}
+              activeOrchestrationSession={activeOrchestrationSession}
+              activeOrchestrationSessionRead={activeOrchestrationSessionRead}
+              onRetryOrchestrationSessions={onRetryOrchestrationSessions}
+              chatFontSize={chatFontSize}
+              dockHeight={dockHeight}
+              showStatsPanel={showStatsPanel}
+              showReasoning={showReasoning}
+              showToolDetails={showToolDetails}
+              modelSupportsAttachments={modelSupportsAttachments}
+              fileAttachmentsSupported={fileAttachmentsSupported}
+              modelProviderLabel={modelProviderLabel}
+              modelProviders={modelProviders}
+              agentDefaultModelId={agentDefaultModelId ?? undefined}
+              agentApprovalModeDefault={agentApprovalModeDefault}
+              stationApprovalModeDefault={stationApprovalModeDefault}
+              toolPolicyDelivery={toolPolicyDelivery}
+              availableModels={availableModels}
+              modelsLoading={modelsLoading}
+              chatInput={chatInput}
+              secondaryActions={secondaryActions}
+              onOpenAgentHandoff={onOpenAgentHandoff}
+              agentHandoffTriggerRef={agentHandoffTriggerRef}
+              setShowStatsPanel={onToggleStatsPanel}
+              onOpenBackgroundTasks={onOpenBackgroundTasks}
+              onNewChat={onNewChat}
+              onRetryConversationOpen={onRetryConversationOpen}
+              onForkFromTurn={onForkFromTurn}
+            />
+          ) : (
+            // #800: this instructed the user to click "New", which renders as a
+            // bare + icon on phone — naming a control the eye cannot find. The
+            // empty state carries the action itself: the one New chat action,
+            // not a second "Start a chat" wording for the same act.
+            <Empty
+              variant="prominent"
+              className="chat-dock__no-chat"
+              label="No chat open"
+              action={<NewChatAction onClick={() => onNewChat()} />}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

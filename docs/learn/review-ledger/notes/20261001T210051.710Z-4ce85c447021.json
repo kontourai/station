@@ -1,0 +1,7 @@
+{
+  "revision": "e496df4415ccd31aebf9eeb2578854974de8c327",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed saved-address HTTP consent against native credential endpoint admission and the exact-origin development exception. Same-origin web sessions and numeric loopback remain exempt; native localhost requires device consent before the request, then forwards that origin to Rust. Executed 96 focused tests; two localhost cases failed on baseline for missing consent and missing IPC origin. Native packaged pairing reproduced insecure_endpoint; successful repaired native completion is still pending.","inputs":["docs/guides/connections.md"]}
+  ]
+}

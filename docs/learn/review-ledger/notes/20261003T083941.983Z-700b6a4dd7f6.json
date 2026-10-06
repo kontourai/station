@@ -1,0 +1,15 @@
+{
+  "revision": "8f5d75dd531657b81af48cd5c9f24f65908003b7",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed merged shared package export map and preserved both recorded source lists. MCP selection and identity matching subpaths remain available; the upstream Node-only Skill experience inspection/review subpath is additive and grants no runtime authority. Existing plugin composition, backend layering and scoped documentation limits remain. No new model/provider/device/release proof is claimed.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Reviewed merged shared package export map and preserved both recorded source lists. MCP selection and identity matching subpaths remain available; the upstream Node-only Skill experience inspection/review subpath is additive and grants no runtime authority. Existing plugin composition, backend layering and scoped documentation limits remain. No new model/provider/device/release proof is claimed.","inputs":["docs/guides/build-your-first-plugin.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed merged shared package export map and preserved both recorded source lists. MCP selection and identity matching subpaths remain available; the upstream Node-only Skill experience inspection/review subpath is additive and grants no runtime authority. Existing plugin composition, backend layering and scoped documentation limits remain. No new model/provider/device/release proof is claimed.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed merged shared package export map and preserved both recorded source lists. MCP selection and identity matching subpaths remain available; the upstream Node-only Skill experience inspection/review subpath is additive and grants no runtime authority. Existing plugin composition, backend layering and scoped documentation limits remain. No new model/provider/device/release proof is claimed. The merged reference retains both MCP selector documentation and upstream local author-review helpers, with their respective public entrypoints and limits.","inputs":["docs/reference/shared.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed merged shared package export map and preserved both recorded source lists. MCP selection and identity matching subpaths remain available; the upstream Node-only Skill experience inspection/review subpath is additive and grants no runtime authority. Existing plugin composition, backend layering and scoped documentation limits remain. No new model/provider/device/release proof is claimed.","inputs":["packages/shared/README.md"]}
+  ]
+}

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
@@ -11,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 
 // Exercise Docker's actual ignore semantics; source allowlists must never
 // overlay a Linux install with a contributor's host dependencies/build output.
@@ -40,7 +40,7 @@ try {
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, 'container context canary\n');
   }
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     'docker',
     ['build', '--output', `type=local,dest=${output}`, context],
     {

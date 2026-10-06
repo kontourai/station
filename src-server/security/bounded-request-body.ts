@@ -17,8 +17,9 @@ export async function readBoundedRequestBody(
   const stream = request.body;
   if (!stream) return { status: 'invalid' };
   const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
+  const decoder = new TextDecoder('utf-8', { fatal: true });
   let total = 0;
+  let body = '';
   try {
     while (true) {
       const result = await reader.read();
@@ -30,26 +31,14 @@ export async function readBoundedRequestBody(
           .catch(() => {});
         return { status: 'too-large' };
       }
-      chunks.push(result.value);
+      body += decoder.decode(result.value, { stream: true });
     }
+    body += decoder.decode();
   } catch {
     await reader.cancel().catch(() => {});
     return { status: 'invalid' };
   } finally {
     reader.releaseLock();
   }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return {
-      status: 'ok',
-      body: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-    };
-  } catch {
-    return { status: 'invalid' };
-  }
+  return { status: 'ok', body };
 }

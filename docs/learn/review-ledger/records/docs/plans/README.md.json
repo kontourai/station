@@ -1,0 +1,19 @@
+{
+  "path": "docs/plans/README.md",
+
+  "kind": "generated",
+
+  "state": "classified",
+
+  "summary": "Reviewed the navigation and generated index boundaries; individual records retain their own purpose and evidence.",
+
+  "limits": "Index coverage is navigation evidence, not semantic review of linked documents.",
+
+  "sources": [
+    "scripts/docs-index.mjs"
+  ],
+
+  "checks": [
+    "Integration source review through d1e0facc2: Directory list is now private; generated index behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

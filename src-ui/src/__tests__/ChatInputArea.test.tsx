@@ -9,10 +9,20 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import type React from 'react';
 import { createRef, useState } from 'react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
-import { mentionToken } from '../components/chat/composer-mentions';
+import {
+  mentionToken,
+  parseComposerSessionReferences,
+} from '../components/chat/composer-mentions';
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  endConversationReferenceDrag,
+  startConversationReferenceDrag,
+} from '../components/chat/conversationReferenceDrag';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const fetchConversationInventory = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -121,6 +131,68 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test('keeps Send and Stop available during a turn, with Queue as the default', () => {
+    const onQueueFollowUp = vi.fn(async () => {});
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      onQueueFollowUp,
+      onSend,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onQueueFollowUp).toHaveBeenCalledOnce();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: 'Stop the current turn' }),
+    ).toBeTruthy();
+  });
+
+  test('newline preference preserves Return and Shift+Return; Ctrl/Cmd+Return sends outside IME', async () => {
+    deviceSettingsStore.set('chatReturnBehavior', 'newline');
+    try {
+      const props = renderChatInputArea();
+      const input = screen.getByRole('textbox');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+      expect(props.onSend).not.toHaveBeenCalled();
+      fireEvent.compositionStart(input);
+      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      expect(props.onSend).not.toHaveBeenCalled();
+      fireEvent.compositionEnd(input);
+      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+        ).toBe(false),
+      );
+      fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+      expect(props.onSend).toHaveBeenCalledTimes(2);
+    } finally {
+      deviceSettingsStore.reset('chatReturnBehavior');
+    }
+  });
+
+  // A short dock can scroll the transcript's error card out of view; the fix
+  // for an attachment-only block must be on the line that states it.
+  test('a send blocked only by its attachments offers their removal on the validation line', () => {
+    const props = renderChatInputArea({
+      sendBlockedReason: 'Grok Build reported that it cannot accept images.',
+      removalUnblocksSend: true,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove attachments' }));
+    expect(props.onClearAttachments).toHaveBeenCalledOnce();
+  });
+
+  test('a send blocked for another reason offers no removal', () => {
+    renderChatInputArea({
+      sendBlockedReason: 'Wait until every selected file finishes staging.',
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Remove attachments' }),
+    ).toBeNull();
+  });
+
   test.each([{ modifier: 'metaKey' }, { modifier: 'ctrlKey' }] as const)(
     '$modifier+S opens portable drafts; Up still recalls history',
     async ({ modifier }) => {
@@ -171,7 +243,7 @@ describe('ChatInputArea', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: 'Queue this follow-up until the turn finishes',
+          name: 'Send',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -274,6 +346,69 @@ describe('ChatInputArea', () => {
     fireEvent.drop(screen.getByRole('textbox'), { dataTransfer });
 
     expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  test('#3159: a conversation row dragged from this Station becomes a reference; a forged or foreign drag does not', () => {
+    const onInputChange = vi.fn();
+    const scope = {
+      apiBase: 'http://station.test',
+      authorityKey: 'owner-a',
+      isCurrent: () => true,
+    };
+    render(
+      <ChatInputArea
+        {...renderProps({
+          sessionId: 'session-a',
+          input: '',
+          onInputChange,
+          mentionAuthority: 'authority-a',
+          activeConversationId: 'current-conversation',
+          mentionRequestScope: scope,
+        })}
+      />,
+    );
+    const textbox = screen.getByRole('textbox');
+    const transfer = () => {
+      const values = new Map<string, string>();
+      return {
+        types: [CONVERSATION_REFERENCE_DRAG_TYPE],
+        setData: (type: string, value: string) => values.set(type, value),
+        getData: (type: string) => values.get(type) ?? '',
+        effectAllowed: 'all',
+      };
+    };
+    const rowDrag = (reference: { apiBase: string }) => {
+      const dataTransfer = transfer();
+      startConversationReferenceDrag(
+        { dataTransfer } as unknown as React.DragEvent<HTMLElement>,
+        { id: 'row-conversation', title: 'Row conversation', ...reference },
+      );
+      return dataTransfer;
+    };
+
+    // Another Station's row (same id) is not this composer's to accept.
+    fireEvent.drop(textbox, {
+      dataTransfer: rowDrag({ apiBase: 'http://other.test' }),
+    });
+    endConversationReferenceDrag();
+    // A payload no row of this window started (another app, another tab).
+    const forged = transfer();
+    forged.setData(CONVERSATION_REFERENCE_DRAG_TYPE, 'row-conversation');
+    fireEvent.drop(textbox, { dataTransfer: forged });
+    expect(onInputChange).not.toHaveBeenCalled();
+
+    fireEvent.drop(textbox, {
+      dataTransfer: rowDrag({ apiBase: scope.apiBase }),
+    });
+    expect(onInputChange).toHaveBeenCalledTimes(1);
+    const [next] = onInputChange.mock.calls[0]!;
+    expect(parseComposerSessionReferences(next)).toEqual([
+      expect.objectContaining({
+        conversationId: 'row-conversation',
+        label: 'Row conversation',
+        authority: 'authority-a',
+      }),
+    ]);
   });
 
   test('closes the picker and returns focus after a conversation reference drop', async () => {
@@ -726,7 +861,7 @@ describe('ChatInputArea', () => {
     expect(props.onCancel).toHaveBeenCalled();
   });
 
-  test('steer-default busy composer offers Queue and Enter still sends', () => {
+  test('the Send dropdown selects native steer and keyboard submission follows that choice', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -734,75 +869,120 @@ describe('ChatInputArea', () => {
       busyFollowUp: 'steer',
       onQueueFollowUp,
       onSend,
-      input: 'course correct',
     });
-
-    expect(
-      screen.getByPlaceholderText(
-        'Steer this turn… (Enter steers; Queue waits)',
-      ),
-    ).toBeTruthy();
-    const queue = screen.getByRole('button', {
-      name: 'Queue this follow-up until the turn finishes',
-    });
-    fireEvent.click(queue);
-    expect(onQueueFollowUp).toHaveBeenCalledTimes(1);
-    expect(onSend).not.toHaveBeenCalled();
-
-    fireEvent.keyDown(screen.getByPlaceholderText(/Steer this turn/), {
-      key: 'Enter',
-    });
-    expect(onSend).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Steer this turn' }));
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(onQueueFollowUp).not.toHaveBeenCalled();
   });
 
-  test('keeps the mobile steering placeholder free of desktop keyboard instructions', () => {
-    vi.mocked(window.matchMedia).mockImplementation(
-      () =>
-        ({
-          matches: true,
-          addEventListener: vi.fn(),
-          removeEventListener: vi.fn(),
-          addListener: vi.fn(),
-          removeListener: vi.fn(),
-          dispatchEvent: vi.fn(),
-          media: '',
-          onchange: null,
-        }) as unknown as MediaQueryList,
-    );
+  test('safe stop-and-send is named distinctly from native steering', () => {
     renderChatInputArea({
       turnInFlight: true,
       busyFollowUp: 'steer',
-      input: 'course correct',
+      busySteeringKind: 'safe-stop',
+      onQueueFollowUp: vi.fn(),
     });
-    expect(screen.getByPlaceholderText('Steer this turn…')).toBeTruthy();
-    vi.mocked(window.matchMedia).mockImplementation(
-      () =>
-        ({
+    fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
+    expect(
+      screen.getByRole('button', {
+        name: 'Steer when safe',
+      }),
+    ).toBeTruthy();
+  });
+
+  test.each([
+    { input: '', hasQuotedContext: false, visible: false },
+    { input: 'A follow-up', hasQuotedContext: false, visible: true },
+    { input: '', hasQuotedContext: true, visible: true },
+  ])(
+    'mobile submit controls follow draft readiness while Stop stays available ($visible)',
+    ({ input, hasQuotedContext, visible }) => {
+      vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        media: query,
+        onchange: null,
+      }));
+      try {
+        renderChatInputArea({
+          input,
+          hasQuotedContext,
+          turnInFlight: true,
+          onQueueFollowUp: vi.fn(),
+        });
+        expect(Boolean(screen.queryByRole('button', { name: 'Send' }))).toBe(
+          visible,
+        );
+        expect(
+          Boolean(screen.queryByRole('button', { name: /^Send mode:/ })),
+        ).toBe(visible);
+        expect(
+          screen.getByRole('button', { name: 'Stop the current turn' }),
+        ).toBeTruthy();
+      } finally {
+        vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
           matches: false,
           addEventListener: vi.fn(),
           removeEventListener: vi.fn(),
           addListener: vi.fn(),
           removeListener: vi.fn(),
           dispatchEvent: vi.fn(),
-          media: '',
+          media: query,
           onchange: null,
-        }) as unknown as MediaQueryList,
-    );
+        }));
+      }
+    },
+  );
+
+  test('vertical arrows retain multiline draft editing instead of recalling message history', () => {
+    const props = renderChatInputArea({ input: 'first line\nsecond line' });
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'ArrowUp' });
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'ArrowDown' });
+    expect(props.onHistoryUp).not.toHaveBeenCalled();
+    expect(props.onHistoryDown).not.toHaveBeenCalled();
   });
 
-  test('queue-only busy composer has no Queue control', () => {
-    renderChatInputArea({
-      turnInFlight: true,
-      busyFollowUp: 'queue',
-      input: 'later',
-    });
-
-    expect(screen.getByPlaceholderText('Queue a follow-up…')).toBeTruthy();
-    expect(
-      screen.queryByRole('button', {
-        name: 'Queue this follow-up until the turn finishes',
-      }),
-    ).toBeNull();
+  test('automatic Return behavior uses touch input policy rather than narrow desktop width', () => {
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      matches: query === '(pointer: coarse)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      media: query,
+      onchange: null,
+    }));
+    try {
+      const props = renderChatInputArea();
+      fireEvent.keyDown(screen.getByRole('textbox'), {
+        key: 'Enter',
+        code: 'Enter',
+      });
+      expect(props.onSend).not.toHaveBeenCalled();
+      fireEvent.keyDown(screen.getByRole('textbox'), {
+        key: 'Enter',
+        ctrlKey: true,
+      });
+      expect(props.onSend).toHaveBeenCalledOnce();
+    } finally {
+      vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        media: query,
+        onchange: null,
+      }));
+    }
   });
 
   test('opens the model picker when model selection is available', () => {
@@ -1124,7 +1304,7 @@ describe('ChatInputArea', () => {
   test('clear input is an explicit non-submit button and preserves its action', () => {
     const onClearInput = vi.fn();
     renderChatInputArea({ onClearInput });
-    const clear = screen.getByRole('button', { name: 'Clear input' });
+    const clear = screen.getByRole('button', { name: 'Clear message' });
 
     expect(clear.getAttribute('type')).toBe('button');
     fireEvent.click(clear);
@@ -1422,7 +1602,7 @@ describe('ChatInputArea', () => {
 
       // The one path that can clear the draft stays the user's explicit ×
       // click — available while over-limit, and not hijacked by the guard.
-      fireEvent.click(screen.getByRole('button', { name: 'Clear input' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Clear message' }));
       expect(onClearInput).toHaveBeenCalledOnce();
       expect(onInputChange).not.toHaveBeenCalled();
     });
@@ -1520,3 +1700,177 @@ function renderProps(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as React.ComponentProps<typeof ChatInputArea>;
 }
+
+describe('ChatInputArea dock reservation', () => {
+  // jsdom has no layout: give the dock body and the composer root the sizes a
+  // 375x667 half dock would, so the reservation sees a dock too short for it.
+  function stubShortDock() {
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 50 : 0;
+      });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input') ? 200 : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    return () => {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+    };
+  }
+
+  test('unmounting the composer returns the transcript the attribute hid', () => {
+    const restore = stubShortDock();
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <ChatInputArea {...renderProps({ dockHeight: 120 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(true);
+      view.rerender(<div className="chat-dock__body" />);
+      expect(body?.hasAttribute('data-composer-priority')).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  test('a sibling that leaves the dock is re-measured, and the transcript is never removed', async () => {
+    // A loading skeleton above the composer leaves no room; when it goes the
+    // dock's own height does not change, so only watching the siblings sees
+    // it.
+    class QuietObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', QuietObserver);
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 300 : 0;
+      });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input')
+          ? 200
+          : this.classList.contains('skeleton-block')
+            ? 150
+            : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <div className="chat-messages" />
+          <div className="skeleton-block" />
+          <ChatInputArea {...renderProps({ dockHeight: 300 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      const transcript = view.container.querySelector('.chat-messages');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(true);
+      // Shrunk, not removed: no rule takes the transcript out of the layout.
+      expect(transcript?.isConnected).toBe(true);
+      expect(getComputedStyle(transcript as Element).display).not.toBe('none');
+
+      // Let the measurement the mount itself scheduled run first, so that
+      // only the sibling's removal can explain a later one.
+      for (let frame = 0; frame < 3; frame += 1)
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(body?.hasAttribute('data-composer-priority')).toBe(true);
+
+      view.container.querySelector('.skeleton-block')?.remove();
+      await waitFor(() =>
+        expect(body?.hasAttribute('data-composer-priority')).toBe(false),
+      );
+    } finally {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('typing does not rebuild the observers', () => {
+    const constructed = vi.fn();
+    class CountingObserver {
+      constructor() {
+        constructed();
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', CountingObserver);
+    try {
+      const textareaRef = createRef<HTMLTextAreaElement>();
+      const view = render(
+        <ChatInputArea {...renderProps({ input: '', textareaRef })} />,
+      );
+      const afterMount = constructed.mock.calls.length;
+      expect(afterMount).toBe(1);
+      let typed = '';
+      for (const character of 'a longer draft typed key by key') {
+        typed += character;
+        view.rerender(
+          <ChatInputArea {...renderProps({ input: typed, textareaRef })} />,
+        );
+      }
+      expect(constructed.mock.calls.length).toBe(afterMount);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('a burst of observer callbacks measures the composer once per frame', async () => {
+    const callbacks: Array<() => void> = [];
+    class CapturingObserver {
+      constructor(callback: () => void) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', CapturingObserver);
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+    try {
+      render(<ChatInputArea {...renderProps()} />);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      rect.mockClear();
+      for (let i = 0; i < 10; i += 1) for (const run of callbacks) run();
+      expect(rect).not.toHaveBeenCalled();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(rect.mock.calls.length).toBeGreaterThan(0);
+      const once = rect.mock.calls.length;
+      rect.mockClear();
+      for (let i = 0; i < 10; i += 1) for (const run of callbacks) run();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(rect.mock.calls.length).toBe(once);
+    } finally {
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('ChatInputArea send-failure notice', () => {
+  test('repeats the notice as a status line above the draft', () => {
+    renderChatInputArea({ sendFailureNotice: 'The engine is offline' });
+    const line = document.querySelector('.chat-input__send-failure');
+    expect(line?.textContent).toBe('The engine is offline');
+    expect(line?.getAttribute('role')).toBe('status');
+  });
+
+  test('renders nothing without a notice', () => {
+    renderChatInputArea({ sendFailureNotice: undefined });
+    expect(document.querySelector('.chat-input__send-failure')).toBeNull();
+  });
+});

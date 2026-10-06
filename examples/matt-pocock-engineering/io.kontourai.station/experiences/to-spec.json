@@ -1,0 +1,309 @@
+{
+  "$schema": "https://kontour.ai/schemas/agent-plugins/skill-experience/1.0/schema.json",
+  "schemaVersion": "1.0",
+  "id": "to-spec",
+  "version": "1.0.0",
+  "title": "Write a specification",
+  "purpose": "Synthesize reviewed conversation and project context, confirm test seams, then publish a specification to the configured tracker.",
+  "example": "Use our settled review process decisions to write the specification.",
+  "authors": [
+    {
+      "name": "Station (visual curation)"
+    },
+    {
+      "name": "Matt Pocock (upstream Skills)",
+      "url": "https://github.com/mattpocock/skills"
+    }
+  ],
+  "skills": [
+    {
+      "id": "to-spec",
+      "name": "to-spec",
+      "path": "./skills/to-spec/SKILL.md",
+      "sha256": "13c5b992d278aa49f366e6baa8acf76e99e130e7a80ca9b813ff20ff9528e617",
+      "dependsOn": ["setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/to-spec/SKILL.md"
+      }
+    },
+    {
+      "id": "code-review",
+      "name": "code-review",
+      "path": "./skills/code-review/SKILL.md",
+      "sha256": "47f4e52c21694def9c7c11cbfbf891ca35eac7a93e395797515be3c8a409ae50",
+      "dependsOn": ["setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/code-review/SKILL.md"
+      }
+    },
+    {
+      "id": "codebase-design",
+      "name": "codebase-design",
+      "path": "./skills/codebase-design/SKILL.md",
+      "sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/codebase-design/SKILL.md"
+      }
+    },
+    {
+      "id": "domain-modeling",
+      "name": "domain-modeling",
+      "path": "./skills/domain-modeling/SKILL.md",
+      "sha256": "7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/domain-modeling/SKILL.md"
+      }
+    },
+    {
+      "id": "grill-me",
+      "name": "grill-me",
+      "path": "./skills/grill-me/SKILL.md",
+      "sha256": "e0a2070992b1ed7f4d4d8504e0fae0cf9c96c8bab4dd50c37989b0f4c7ff1010",
+      "dependsOn": ["grilling"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/productivity/grill-me/SKILL.md"
+      }
+    },
+    {
+      "id": "grill-with-docs",
+      "name": "grill-with-docs",
+      "path": "./skills/grill-with-docs/SKILL.md",
+      "sha256": "fc6401cbf34f1f3b6cb5e97253e25671d822733fc3f985117fe0d162639abf61",
+      "dependsOn": ["domain-modeling", "grilling"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/grill-with-docs/SKILL.md"
+      }
+    },
+    {
+      "id": "grilling",
+      "name": "grilling",
+      "path": "./skills/grilling/SKILL.md",
+      "sha256": "10ff989e7498b23b5acb49d5048f11dcd906757d2f79c5cdf8a00001381296f2",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/productivity/grilling/SKILL.md"
+      }
+    },
+    {
+      "id": "implement",
+      "name": "implement",
+      "path": "./skills/implement/SKILL.md",
+      "sha256": "dc27831f466b865bf9e95f28c9361e9e99d59bcfb72a9585aa49a6829b3de3f8",
+      "dependsOn": ["code-review", "tdd"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/implement/SKILL.md"
+      }
+    },
+    {
+      "id": "improve-codebase-architecture",
+      "name": "improve-codebase-architecture",
+      "path": "./skills/improve-codebase-architecture/SKILL.md",
+      "sha256": "1f6664846902422979074367d0dae86667d39bd17c9e5cbf32226377be9749f3",
+      "dependsOn": ["codebase-design", "domain-modeling", "grilling"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/improve-codebase-architecture/SKILL.md"
+      }
+    },
+    {
+      "id": "prototype",
+      "name": "prototype",
+      "path": "./skills/prototype/SKILL.md",
+      "sha256": "714de632d116bb73f65cdb5a882db15b9369a6713b9a47c0fad827848f0bfbe3",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/prototype/SKILL.md"
+      }
+    },
+    {
+      "id": "research",
+      "name": "research",
+      "path": "./skills/research/SKILL.md",
+      "sha256": "985569f15739c713d6784887c3d186d4ef9ac85bec5ad9c068d25bf0739928e4",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/research/SKILL.md"
+      }
+    },
+    {
+      "id": "setup-matt-pocock-skills",
+      "name": "setup-matt-pocock-skills",
+      "path": "./skills/setup-matt-pocock-skills/SKILL.md",
+      "sha256": "e6d85d57483f1dfde5bd3de27d8fa5d8d18b98c6473cfcde69dec146ac7d275e",
+      "dependsOn": [
+        "domain-modeling",
+        "grill-with-docs",
+        "improve-codebase-architecture",
+        "triage",
+        "wayfinder"
+      ],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/setup-matt-pocock-skills/SKILL.md"
+      }
+    },
+    {
+      "id": "tdd",
+      "name": "tdd",
+      "path": "./skills/tdd/SKILL.md",
+      "sha256": "93ea419b76e9caaf26153b828e984f7c3fb136f4caa67b14af95f32ea965a1cc",
+      "dependsOn": ["codebase-design"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/tdd/SKILL.md"
+      }
+    },
+    {
+      "id": "to-tickets",
+      "name": "to-tickets",
+      "path": "./skills/to-tickets/SKILL.md",
+      "sha256": "611ff3528bbf210d964c794f1994c0343b03e27be9bacc70794727d1104a7f06",
+      "dependsOn": ["setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/to-tickets/SKILL.md"
+      }
+    },
+    {
+      "id": "triage",
+      "name": "triage",
+      "path": "./skills/triage/SKILL.md",
+      "sha256": "94383c7d99ec5718f96f1bb62be1f55043f4fc5281c2a2a1e988d3e58327f28d",
+      "dependsOn": ["domain-modeling", "grilling", "setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/triage/SKILL.md"
+      }
+    },
+    {
+      "id": "wayfinder",
+      "name": "wayfinder",
+      "path": "./skills/wayfinder/SKILL.md",
+      "sha256": "d6cebf5a9714865037dc3a379d687b19e5c6aeb09e34c708b58e78101e558d99",
+      "dependsOn": [
+        "domain-modeling",
+        "grilling",
+        "prototype",
+        "research",
+        "setup-matt-pocock-skills"
+      ],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/wayfinder/SKILL.md"
+      }
+    }
+  ],
+  "requiredContext": [
+    {
+      "kind": "conversation",
+      "required": true,
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "to-spec",
+        "explanation": "Use current conversation decisions and referenced reviewed outputs; later steps must not invent replacements."
+      }
+    },
+    {
+      "kind": "project",
+      "required": true,
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "to-spec",
+        "explanation": "Read actual project glossary/ADRs; tracker configuration is a prerequisite for spec and ticket publication."
+      }
+    }
+  ],
+  "capabilities": [
+    "conversation",
+    "artifact-output",
+    "project-read",
+    "file-read"
+  ],
+  "inputs": [
+    {
+      "id": "context",
+      "kind": "text",
+      "label": "Idea or reviewed context reference",
+      "description": "For a later stage, continue the existing conversation and name the reviewed spec or decisions.",
+      "required": false,
+      "minLength": 0,
+      "maxLength": 16000,
+      "provenance": {
+        "origin": "reviewer-inferred",
+        "explanation": "Optional reference presentation helps locate the already reviewed conversation context; the source does not prescribe a form field."
+      }
+    }
+  ],
+  "interaction": {
+    "pattern": "transform",
+    "stopConditions": [
+      "If tracker configuration is missing, request setup; do not invent a tracker.",
+      "Confirm testing seams before producing/publishing the spec.",
+      "Use the existing authority boundary for concrete writes or publication."
+    ],
+    "unsupportedBehavior": [
+      "Literal dependency detection is conservative; inspect source and setup.",
+      "Environment facts require a capable agent with subagents; do not substitute user guesses.",
+      "Tools, file writes, tracker access and publication depend on the selected agent and its permissions.",
+      "Guided view only renders canonical requests; prose question rounds remain answerable in chat.",
+      "Automatic progression or implementation is not authorized by choosing an experience.",
+      "User-invoked Skills are only entered by explicit user selection; their nonportable disable-model-invocation flag is removed in adapted frontmatter and original source is retained under upstream/. Do not auto-invoke setup or implementation."
+    ]
+  },
+  "outputs": [
+    {
+      "id": "specification",
+      "label": "Specification and actual tracker reference",
+      "kind": "markdown",
+      "required": true,
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "to-spec",
+        "explanation": "The source specifies the artifact and publication; a draft alone does not establish publication."
+      }
+    }
+  ],
+  "presentation": {
+    "modes": ["guided", "alongside"],
+    "defaultMode": "guided"
+  },
+  "entrySkillId": "to-spec",
+  "transitions": [
+    {
+      "experienceId": "to-tickets",
+      "label": "Break the specification into tickets",
+      "provenance": {
+        "origin": "station-added",
+        "explanation": "Station offers this optional next stage after the user reviews current work. Selecting it prepares a draft; sending and concrete tool actions remain explicit user decisions."
+      }
+    }
+  ]
+}

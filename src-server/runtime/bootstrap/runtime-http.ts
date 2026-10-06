@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
   APPLICATION_SESSION_BASE_PATH,
@@ -9,11 +9,18 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
+import {
+  CLIENT_PROTOCOL_HEADER,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
 import {
   AUTH_RATE_LIMITED_ERROR_CODE,
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
   STATION_PLUGIN_HEADER,
 } from '@kontourai/station-contracts/http';
+import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
+import { NATIVE_RELAY_ENROLLMENT_PATHS } from '@kontourai/station-contracts/native-relay-enrollment';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import {
@@ -22,14 +29,25 @@ import {
   sanitizeFreeText,
 } from '@kontourai/station-shared/redaction';
 import { type HonoServerConfig } from '@voltagent/server-hono';
+import type { Context } from 'hono';
 import { cors } from 'hono/cors';
 import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import {
+  clientProtocolApplies,
+  evaluateClientProtocol,
+} from '../../security/client-protocol-admission.js';
+import {
+  NativeDeviceRequestRefusedError,
+  nativeDeviceOnlyObservationRoute,
+  nativeDeviceProofPilotRoute,
+} from '../../security/native-device-request-authority.js';
+import {
   type ExternalSurfaceCapabilityRule,
   type PairingScopeContextStore,
+  pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
   setGrantedPairingScope,
 } from '../../security/pairing-route-scopes.js';
@@ -42,6 +60,7 @@ import {
   classifyRuntimePeer,
   classifyRuntimeRoute,
   deriveBudgetPrincipal,
+  deriveNativeDeviceBudgetPrincipal,
   getBudgetPrincipal,
   getDirectSocketAddress,
   getRuntimeAuthenticatedRequestPrincipal,
@@ -50,6 +69,7 @@ import {
   RuntimeAuthFailureLimiter,
   type RuntimeHttpSecurityOptions,
   RuntimeMutationBudget,
+  type RuntimePeerClass,
   type RuntimeSecurityAuditRecord,
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
@@ -60,6 +80,8 @@ import {
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
+import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
 import {
   deviceSessionAuthorizations,
   requestBudgetOutcomes,
@@ -70,6 +92,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
+import { outwardTransportError } from '../../utils/outward-error.js';
 import { isRouteError, type RouteError } from '../../utils/route-error.js';
 import {
   buildRuntimeRouteVocabulary,
@@ -217,12 +240,46 @@ interface RuntimeHttpContext {
   security?: RuntimeHttpSecurityOptions;
 }
 
+const envelopeMarkedApps = new WeakSet<object>();
+
+/**
+ * #2842: the one place a response is marked as this Station's own answer.
+ *
+ * Every JSON response the app answers gets `STATION_ENVELOPE_HEADER`,
+ * whichever handler, middleware or error boundary wrote it, so a client can
+ * tell Station's refusal from an intermediary's JSON of the same shape. A
+ * response relayed from another Station (`RELAYED_RESPONSE_HEADER`, set by
+ * `fetchRemoteStation`) is the exception: it leaves without this Station's
+ * marker and without the peer's.
+ *
+ * It must wrap every writer, so it is installed before any other middleware.
+ * `configureRuntimeHttp` installs it; runtime composition calls it earlier
+ * still, ahead of the hosted tenant gate, and the second call is a no-op.
+ */
+export function installStationEnvelopeMarker(app: RuntimeApp): void {
+  if (envelopeMarkedApps.has(app)) return;
+  envelopeMarkedApps.add(app);
+  app.use('*', async (c, next) => {
+    await next();
+    if (c.res.headers.has(RELAYED_RESPONSE_HEADER)) {
+      c.header(RELAYED_RESPONSE_HEADER, undefined);
+      c.header(STATION_ENVELOPE_HEADER, undefined);
+      return;
+    }
+    const contentType = c.res.headers.get('content-type') ?? '';
+    if (/^application\/json\s*(;|$)/i.test(contentType)) {
+      c.header(STATION_ENVELOPE_HEADER, STATION_ENVELOPE_HEADER_VALUE);
+    }
+  });
+}
+
 export function configureRuntimeHttp({
   app,
   logger,
   eventBus,
   security,
 }: RuntimeHttpContext): void {
+  installStationEnvelopeMarker(app);
   app.use('*', async (c, next) => {
     await next();
     const authentication = security?.deploymentAuthentication;
@@ -339,9 +396,30 @@ export function configureRuntimeHttp({
       cors({
         origin: resolveRuntimeCorsOrigin,
         credentials: true,
+        // #2842: a cross-origin client must be able to read the marker.
+        exposeHeaders: [STATION_ENVELOPE_HEADER],
       }),
     );
   }
+
+  // Framework handlers catch provider exceptions themselves, bypassing onError.
+  app.use('/agents/:slug/chat', async (c, next) => {
+    await next();
+    if (c.req.method !== 'POST' || c.res.status < 500) return;
+    const correlationId = randomUUID();
+    logger.error('Framework chat request failed', {
+      correlationId,
+      status: c.res.status,
+    });
+    const message = outwardTransportError('sse');
+    c.res = new Response(
+      JSON.stringify({ error: message, message, correlationId }),
+      {
+        status: c.res.status,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+  });
 
   app.use('*', async (c, next) => {
     await next();
@@ -439,6 +517,214 @@ function isInteractiveWorkspacePerformanceDiagnostic(c: {
   );
 }
 
+/** #2893 pilot body bound; identical to the verifier's channel bound. */
+const NATIVE_DEVICE_PROOF_BODY_LIMIT_BYTES = 16 * 1024;
+
+interface NativeDeviceProofAdmissionCall {
+  c: Context;
+  security: RuntimeHttpSecurityOptions;
+  limiter: RuntimeAuthFailureLimiter;
+  requiredCapability: ExternalSurfaceCapabilityRule;
+  routeClass: 'public' | 'protected';
+  effectivePeerClass: RuntimePeerClass;
+  routeLabeler: RuntimeRouteLabeler;
+  next: () => Promise<void>;
+}
+
+/**
+ * The one native-proof admission path. Ordering (source-reviewed): cheap
+ * private peer/route/rate checks, then a bounded exact-body read and final
+ * Request built from those bytes with ONLY the private peer provenance
+ * copied at this byte-copy owner, then Device JWS/JTI admission and minted
+ * principal on that final Request, then Device scope, then native account
+ * continuation (challenge/exchange) or account authentication. Any refusal
+ * is canonical and terminal: no credential fallback.
+ */
+async function admitNativeDeviceProofRequest(
+  call: NativeDeviceProofAdmissionCall,
+): Promise<Response> {
+  const { c, security, limiter, requiredCapability } = call;
+  const refused = (
+    status: 401 | 403 | 413 | 429 | 503,
+    code: string,
+    reason: string,
+  ): Response => {
+    emitSecurityAudit(security, c, call.routeLabeler, {
+      event: 'station.auth.failure',
+      outcome: 'denied',
+      reason,
+      routeClass: call.routeClass,
+      peerClass: call.effectivePeerClass,
+      transport: 'http',
+      timestamp: security.now?.() ?? Date.now(),
+    });
+    return c.json({ error: { code } }, status);
+  };
+  if (!security.nativeDeviceProof)
+    return refused(403, 'native_device_proof_unsupported', 'proof_unsupported');
+  // Private provenance must already be carried by the native Pion peer; a
+  // header alone is never authority.
+  const nativeFacts = readVerifiedNativeVirtualApplicationRequest(c.req.raw);
+  if (!nativeFacts)
+    return refused(
+      403,
+      'virtual_pion_provenance_invalid',
+      'provenance_invalid',
+    );
+  // A Device bearer or session cookie conflicts with proof authority and is
+  // refused with no credential fallback.
+  if (
+    c.req.raw.headers.has('authorization') ||
+    parseDeviceSessionCookie(c.req.raw.headers.get('cookie') ?? undefined) !==
+      undefined
+  )
+    return refused(
+      403,
+      'native_device_proof_credential_conflict',
+      'credential_conflict',
+    );
+  const url = new URL(c.req.raw.url);
+  const proofPath = url.pathname + url.search;
+  const method = c.req.method.toUpperCase();
+  if (!nativeDeviceProofPilotRoute(method, url.pathname))
+    return refused(
+      403,
+      'native_device_proof_route_forbidden',
+      'route_not_pilot',
+    );
+  // Only admitted installation provenance contributes before signature verification.
+  // A proof's unverified Device selector never chooses a budget bucket.
+  const installationKey = `native-install:${createHash('sha256')
+    .update(
+      JSON.stringify([
+        nativeFacts.stationId,
+        nativeFacts.surface.kind,
+        nativeFacts.surface.appIdentifier,
+        nativeFacts.surface.channel,
+        nativeFacts.surface.clientInstanceId,
+      ]),
+    )
+    .digest('hex')}`;
+  const cheapRetryAfter = limiter.retryAfterSeconds(installationKey);
+  if (cheapRetryAfter !== undefined) {
+    c.header('Retry-After', String(cheapRetryAfter));
+    return refused(429, AUTH_RATE_LIMITED_ERROR_CODE, 'too_many_failures');
+  }
+  // Reserve before any await so parallel failures cannot all pass the same window.
+  limiter.recordFailure(installationKey);
+  // Read the exact bounded body and build the final raw Request from those
+  // bytes; peer provenance is copied here and nowhere else.
+  const bodyResult = await readBoundedBody(
+    c.req.raw,
+    NATIVE_DEVICE_PROOF_BODY_LIMIT_BYTES,
+  );
+  if (bodyResult === 'too-large')
+    return refused(413, 'request_too_large', 'proof_body_oversized');
+  let finalRequest = c.req.raw;
+  const body = bodyResult === 'no-stream' ? new Uint8Array(0) : bodyResult;
+  if (bodyResult !== 'no-stream') {
+    const previous = c.req.raw;
+    const replacement = new Request(previous.url, {
+      method: previous.method,
+      headers: previous.headers,
+      signal: previous.signal,
+      body: bodyResult,
+      duplex: 'half',
+    });
+    if (!transferVerifiedNativeVirtualApplicationRequest(previous, replacement))
+      return refused(
+        403,
+        'virtual_pion_provenance_invalid',
+        'provenance_invalid',
+      );
+    security.deploymentAuthentication?.transferRequest(previous, replacement);
+    c.req.raw = replacement;
+    finalRequest = replacement;
+  }
+  // Device JWS/JTI admission on the final Request; the credential-free
+  // principal is minted on exactly that Request by the authority owner.
+  let admission: { deviceId: string; bindingId: string; scope: string };
+  try {
+    admission = await security.nativeDeviceProof.admit(finalRequest, {
+      proof: c.req.raw.headers.get(NATIVE_DEVICE_PROOF_HEADER)!,
+      method,
+      path: proofPath,
+      body,
+    });
+  } catch (error) {
+    if (!(error instanceof NativeDeviceRequestRefusedError))
+      return refused(503, 'authentication_unavailable', 'proof_unavailable');
+    return refused(
+      403,
+      error.code === 'proof_replayed' || error.code === 'proof_invalid'
+        ? 'native_device_proof_invalid'
+        : error.code === 'provenance_invalid'
+          ? 'virtual_pion_provenance_invalid'
+          : error.code === 'account_binding_required'
+            ? 'native_device_proof_account_required'
+            : 'native_device_proof_device_not_current',
+      error.code,
+    );
+  }
+  limiter.clear(installationKey);
+  const verifiedDeviceBudget = deriveNativeDeviceBudgetPrincipal(
+    nativeFacts.stationId,
+    admission.deviceId,
+  );
+  const deviceAttemptKey = verifiedDeviceBudget.key;
+  const verifiedRetryAfter = limiter.retryAfterSeconds(deviceAttemptKey);
+  if (verifiedRetryAfter !== undefined) {
+    c.header('Retry-After', String(verifiedRetryAfter));
+    return refused(429, AUTH_RATE_LIMITED_ERROR_CODE, 'too_many_failures');
+  }
+  limiter.recordFailure(deviceAttemptKey);
+  // Current Device scope against the central route declaration. A
+  // pairing-scope route requires the proven Device's grant to include the
+  // route scope; every other declared capability passes through.
+  const grantedScope = admission.scope;
+  const permitted =
+    requiredCapability.capability !== 'pairing-scope' ||
+    (requiredCapability.scope !== undefined &&
+      pairingScopeIncludes(grantedScope, requiredCapability.scope));
+  if (!permitted) {
+    return refused(403, 'insufficient_scope', 'insufficient_scope');
+  }
+  setGrantedPairingScope(c, grantedScope);
+  setBudgetPrincipal(c, verifiedDeviceBudget);
+  const accountOperation =
+    url.pathname === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
+    url.pathname.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
+  const deviceOnly =
+    nativeDeviceOnlyObservationRoute(method, url.pathname) &&
+    !finalRequest.headers.has(APPLICATION_SESSION_NATIVE_HEADER) &&
+    !finalRequest.headers.has(APPLICATION_SESSION_NATIVE_PROOF_HEADER);
+  if (security.deploymentAuthentication && !accountOperation && !deviceOnly) {
+    // The pilot requires a current, matching account session; a native
+    // attempt never falls back to a bearer or cookie credential.
+    const account =
+      await security.deploymentAuthentication.authenticate(finalRequest);
+    if (account.kind === 'unavailable')
+      return refused(503, 'authentication_unavailable', 'account_unavailable');
+    if (account.kind !== 'authenticated') {
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+      return refused(
+        401,
+        'account_authentication_required',
+        'account_authentication_required',
+      );
+    }
+  }
+
+  try {
+    await call.next();
+  } finally {
+    // Bound repeated failed attempts by the VERIFIED Device identity, not
+    // the absent-Authorization socket bucket.
+    if (c.res && c.res.status < 400) limiter.clear(deviceAttemptKey);
+  }
+  return c.res;
+}
+
 function configureRuntimeSecurity(
   app: RuntimeApp,
   security: RuntimeHttpSecurityOptions,
@@ -446,7 +732,10 @@ function configureRuntimeSecurity(
 ): void {
   const allowedOrigins = new Set(security.allowedOrigins ?? []);
   const limiter = new RuntimeAuthFailureLimiter(security);
+  const protocolAuditLimiter = new RuntimeAuthFailureLimiter(security);
   const budget = new RuntimeMutationBudget(security);
+  const clientProtocolPolicy =
+    security.clientCompatibility ?? HOST_STATION_COMPATIBILITY;
 
   app.use('*', async (c, next) => {
     const origin = c.req.header('origin');
@@ -458,7 +747,7 @@ function configureRuntimeSecurity(
       c.header('Access-Control-Allow-Origin', origin);
       c.header(
         'Access-Control-Expose-Headers',
-        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After`,
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}`,
       );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');
@@ -472,7 +761,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -513,9 +802,65 @@ function configureRuntimeSecurity(
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
     }
+    // ── #2962 client API protocol admission ──
+    // Before any credential check, so an outdated client is told to update
+    // rather than handed an authentication failure it cannot fix. CORS
+    // headers are already set above, so a browser can read the refusal.
+    if (clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')) {
+      const refusal = evaluateClientProtocol(
+        c.req.header(CLIENT_PROTOCOL_HEADER),
+        clientProtocolPolicy,
+      );
+      if (refusal) {
+        // Bound audit emission without consuming the authentication budget.
+        // Keep answering protocol refusals after the audit budget is exhausted.
+        if (protocolAuditLimiter.retryAfterSeconds(limiterKey) === undefined) {
+          protocolAuditLimiter.recordFailure(limiterKey);
+          emitSecurityAudit(security, c, routeLabeler, {
+            event: 'station.auth.failure',
+            outcome: 'denied',
+            reason: refusal.body.error.code,
+            routeClass,
+            peerClass: effectivePeerClass,
+            transport: 'http',
+            timestamp: security.now?.() ?? Date.now(),
+            ...(refusal.body.error.clientProtocol === undefined
+              ? {}
+              : { clientProtocol: refusal.body.error.clientProtocol }),
+          });
+        }
+        return c.json(refusal.body, refusal.status);
+      }
+    }
     const accountOperation =
       c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
       c.req.path.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
+    if (
+      (NATIVE_RELAY_ENROLLMENT_PATHS as readonly string[]).includes(c.req.path)
+    ) {
+      if (!security.nativeEnrollment)
+        return c.json(
+          { error: { code: 'native_enrollment_unsupported' } },
+          403,
+        );
+      try {
+        const capability = security.nativeEnrollment.capability(c.req.raw);
+        capability.assertCurrent();
+        const installationKey = capability.installationBudgetKey();
+        const retryAfter = limiter.retryAfterSeconds(installationKey);
+        if (retryAfter !== undefined) {
+          c.header('Retry-After', String(retryAfter));
+          return c.json({ error: { code: AUTH_RATE_LIMITED_ERROR_CODE } }, 429);
+        }
+        limiter.recordFailure(installationKey);
+        await next();
+        capability.assertCurrent();
+        if (c.res.status < 400) limiter.clear(installationKey);
+        return c.res;
+      } catch {
+        return c.json({ error: { code: 'native_enrollment_invalid' } }, 403);
+      }
+    }
     if (
       !security.deploymentAuthentication &&
       !accountOperation &&
@@ -529,6 +874,22 @@ function configureRuntimeSecurity(
         { error: { code: 'application_sessions_unsupported' } },
         401,
       );
+    }
+    // ── #2893 native Device request-proof admission ──
+    // Admitted BEFORE deployment-account authentication. A presented proof
+    // header never falls through to bearer/cookie: proven native authority
+    // or a canonical refusal, nothing else.
+    if (c.req.raw.headers.has(NATIVE_DEVICE_PROOF_HEADER)) {
+      return await admitNativeDeviceProofRequest({
+        c,
+        security,
+        limiter,
+        requiredCapability,
+        routeClass,
+        effectivePeerClass,
+        routeLabeler,
+        next,
+      });
     }
     if (security.deploymentAuthentication && !accountOperation) {
       const hasAccount = security.deploymentAuthentication.hasCredential(
@@ -730,7 +1091,15 @@ function configureRuntimeSecurity(
         requiredCapability.capability === 'pairing-scope' &&
         requiredCapability.scope !== undefined &&
         grantedScope !== undefined &&
-        pairingScopeIncludes(grantedScope, requiredCapability.scope);
+        pairingScopeSatisfiesHttpRoute(
+          grantedScope,
+          requiredCapability.scope,
+          {
+            method: c.req.method,
+            path: c.req.path,
+          },
+          authority === 'operator-credential',
+        );
       if (!permitted) {
         if (cookieCredential) {
           deviceSessionAuthorizations.add(1, {
@@ -887,6 +1256,18 @@ function configureRuntimeSecurity(
       return c.json({ error: { code: 'rate_limited' } }, 429);
     }
     budget.recordMutation(principal.key, mutationClass);
+
+    // #2893: a native-admitted request already carries the exact verified
+    // buffered bytes (≤16 KiB) in the final Request the admission owner
+    // built; never replace that Request again.
+    if (principal.source === 'native-device') {
+      requestBudgetOutcomes.add(1, {
+        outcome: 'allowed',
+        class: mutationClass,
+        source: principal.source,
+      });
+      return next();
+    }
 
     // 2. Body-size check. Content-Length first (reject before any read); then a
     //    bounded byte-counting read that catches a lying or absent

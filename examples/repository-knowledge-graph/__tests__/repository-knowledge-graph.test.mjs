@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -17,6 +18,12 @@ import {
 } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import {
+  REVIEW_LEDGER_INDEX,
+  recordFile,
+  serializeLedgerIndex,
+  serializeRecordFile,
+} from '../../../scripts/lib/review-ledger-store.mjs';
 import { FileStorageAdapter } from '../../../src-server/domain/file-storage-adapter.ts';
 import { KnowledgeStoreProvider } from '../../../src-server/knowledge-store/knowledge-store-provider.ts';
 import { createKnowledgeRecordRoutes } from '../../../src-server/routes/knowledge/knowledge-record-routes.ts';
@@ -79,24 +86,29 @@ function repository() {
   put('src-server/alpha.js', 'export const value = 1;\n');
   put('tests/alpha.test.js', '// A reference is not a passing test receipt.\n');
   put('docs/adr/alpha.md', '# Decision\n\nRecorded rationale.\n');
+  put(REVIEW_LEDGER_INDEX, serializeLedgerIndex({}));
   put(
-    'docs/learn/review-ledger.json',
-    JSON.stringify({
-      version: 1,
-      records: [
+    recordFile('docs/architecture/module-map.md'),
+    serializeRecordFile({
+      path: 'docs/architecture/module-map.md',
+      kind: 'current',
+      state: 'partial',
+      summary: 'Fixture review.',
+      limits: 'Fixture only.',
+      document: { digest: sha(modules), revision: 'a'.repeat(40) },
+      sources: [
         {
-          path: 'docs/architecture/module-map.md',
-          state: 'partial',
-          documentDigest: sha(modules),
-          sources: [
-            {
-              path: 'src-server/alpha.js',
-              digest: sha('export const value = 1;\n'),
-            },
-            { path: '.kontourai/private-advisory.md', digest: 'private' },
-          ],
+          path: 'src-server/alpha.js',
+          digest: sha('export const value = 1;\n'),
+          revision: 'a'.repeat(40),
+        },
+        {
+          path: '.kontourai/private-advisory.md',
+          digest: sha('PRIVATE MATERIAL'),
+          revision: 'a'.repeat(40),
         },
       ],
+      checks: [],
     }),
   );
   const env = Object.fromEntries(
@@ -223,6 +235,29 @@ test('exports deterministic scoped provenance without untracked content or inven
     }),
   );
   expect(alpha.body).toContain('Historical reason for addition is unknown');
+});
+
+test('exports path-only dependencies without presenting stored digest approval', () => {
+  const { root, put } = repository();
+  const file = recordFile('docs/architecture/module-map.md');
+  const record = JSON.parse(readFileSync(join(root, file), 'utf8'));
+  delete record.document;
+  record.sources = record.sources.map((source) => source.path);
+  put(file, serializeRecordFile(record));
+  put(
+    REVIEW_LEDGER_INDEX,
+    serializeLedgerIndex({ version: 3, coverageBaseline: 'a'.repeat(40) }),
+  );
+  const graph = validateKnowledgeSnapshot(exportRepositoryKnowledge({ root }));
+  expect(graph.records.flatMap((record) => record.links)).toContainEqual(
+    expect.objectContaining({
+      label: 'Whole-document review dependency: recorded-dependency',
+    }),
+  );
+  expect(JSON.stringify(graph)).toContain(
+    'history-derived-not-judged-by-export',
+  );
+  expect(JSON.stringify(graph)).not.toContain('matches-recorded-digest');
 });
 
 test('refuses missing module owners, symlinked references and altered exported payloads', () => {

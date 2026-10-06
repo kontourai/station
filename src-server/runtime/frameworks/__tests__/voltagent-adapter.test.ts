@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTool, ToolDeniedError } from '@voltagent/core';
+import { Agent, createTool, ToolDeniedError } from '@voltagent/core';
 import { jsonSchema } from 'ai';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
@@ -465,17 +465,8 @@ describe('VoltAgentFramework', () => {
     expect(result.text).toContain('agents listed');
   });
 
-  // archive#3113 tripwire: exercises the REAL installed `@voltagent/core`
-  // package end to end — a real Agent, a real tool whose `execute` throws, a
-  // real model round trip over HTTP — rather than a hand-built stand-in for
-  // `buildToolErrorResult`'s output. If a future `@voltagent/core` upgrade
-  // changes that internal function's shape (it is not exported, so it can't
-  // be called directly and pinned any other way), the FIRST assertion below
-  // reddens, which is the signal that `normalizeVoltAgentToolErrors`'s shape
-  // assumption has gone stale and the false-checkmark bug could return. The
-  // SECOND and THIRD assertions are archive#3113's own ACs: a real thrown tool
-  // error renders as failed, and remote-shaped error text never reaches the
-  // client — proven end to end, not against a hand-set chunk.
+  // Observe the installed SDK before Station projects its output, so an SDK
+  // wrapping change cannot silently invalidate the failure detector.
   test('tripwire + #3113: a REAL thrown tool error becomes a truthful, redacted tool-result chunk end to end', async () => {
     const canary = 'remote-mcp-server-canary-token-xyz';
     let calls = 0;
@@ -585,7 +576,7 @@ describe('VoltAgentFramework', () => {
       } as any,
     );
 
-    const agent = await framework.createTempAgent({
+    const agent = new Agent({
       name: 'flaky',
       instructions: 'Help',
       model,
@@ -626,13 +617,16 @@ describe('VoltAgentFramework', () => {
     });
     expect(typeof output.stack).toBe('string');
 
-    // archive#3113 AC: renders as failed (truthful status), never a false success.
-    expect(toolResult.error).toBe(GENERIC_TOOL_FAILURE_MESSAGE);
-    expect(toolResult.policyDenied).toBeUndefined();
-
-    // archive#3113 AC: redaction — the remote-shaped text never reaches the field
-    // the relay/UI actually forward (`chunk.error`).
-    expect(String(toolResult.error)).not.toContain(canary);
+    const normalized: Array<Record<string, unknown>> = [];
+    for await (const chunk of normalizeVoltAgentToolErrors(
+      (async function* () {
+        yield toolResult as never;
+      })(),
+    ))
+      normalized.push(chunk as Record<string, unknown>);
+    expect(normalized[0]?.error).toBe(GENERIC_TOOL_FAILURE_MESSAGE);
+    expect(normalized[0]?.policyDenied).toBeUndefined();
+    expect(normalized[0]).not.toHaveProperty('output');
   });
 
   // archive#3171: `createVoltAgentLifecycleHooks`'s `onToolError` is the
@@ -816,30 +810,9 @@ describe('VoltAgentFramework', () => {
     const toolResult = chunks.find((c) => c.type === 'tool-result');
     if (!toolResult) throw new Error('expected a tool-result chunk');
 
-    // The forged marker never reaches the real flattened output.
-    const output = toolResult.output as Record<string, unknown>;
-    expect(output.policyDenied).toBeUndefined();
-
-    // And normalizeVoltAgentToolErrors correctly falls through to the
-    // generic message rather than treating the forged output as a policy
-    // denial — the exact outcome archive#3171 exists to guarantee.
-    const [normalized] = await (async () => {
-      const out: unknown[] = [];
-      for await (const c of normalizeVoltAgentToolErrors(
-        (async function* () {
-          yield toolResult as never;
-        })(),
-      )) {
-        out.push(c);
-      }
-      return out;
-    })();
-    expect((normalized as { error?: unknown }).error).toBe(
-      GENERIC_TOOL_FAILURE_MESSAGE,
-    );
-    expect(
-      (normalized as { policyDenied?: unknown }).policyDenied,
-    ).toBeUndefined();
+    expect(toolResult.policyDenied).toBeUndefined();
+    expect(toolResult.error).toBe(GENERIC_TOOL_FAILURE_MESSAGE);
+    expect(toolResult).not.toHaveProperty('output');
   });
 
   test('opts into Dispatch failover and persists an opaque receipt', async () => {
@@ -1095,6 +1068,7 @@ describe('normalizeVoltAgentToolErrors', () => {
         policyDenied: true,
       }),
     ]);
+    expect(out[0]).not.toHaveProperty('output');
   });
 
   // archive#3210: the two markers answer two different questions, so the
@@ -1131,6 +1105,7 @@ describe('normalizeVoltAgentToolErrors', () => {
         policyDenied: true,
       }),
     ]);
+    expect(out[0]).not.toHaveProperty('output');
     expect((out[0] as { error?: string }).error).not.toContain('evil.sh');
   });
 
@@ -1166,17 +1141,11 @@ describe('normalizeVoltAgentToolErrors', () => {
         error: reason,
       }),
     ]);
+    expect(out[0]).not.toHaveProperty('output');
     expect((out[0] as { policyDenied?: unknown }).policyDenied).toBeUndefined();
   });
 
-  // archive#3113: the marker distinguishes WHICH text is safe to forward,
-  // not WHETHER the failure is surfaced. A generic (non-policy) VoltAgent
-  // tool failure has the same `{error:true, message}` shape but no marker —
-  // it now gains a truthful top-level `error`, but NEVER the real
-  // `output.message` (which may hold remote/untrusted text): only the
-  // fixed, Station-authored generic message. `output` itself, and its own
-  // `.message`, are left exactly as VoltAgent produced them — only the NEW
-  // top-level `error` field differs from a straight pass-through.
+  // Ordinary failures must keep their failed outcome without forwarding raw details.
   test('lifts a generic (non-policy) tool error to a REDACTED top-level error — never the real message, no policyDenied', async () => {
     const canary = 'remote-mcp-server-canary-token';
     const genericError = {
@@ -1196,7 +1165,9 @@ describe('normalizeVoltAgentToolErrors', () => {
 
     expect(out).toEqual([
       {
-        ...genericError,
+        type: 'tool-result',
+        toolCallId: 'call-2',
+        toolName: 'write_file',
         error: GENERIC_TOOL_FAILURE_MESSAGE,
       },
     ]);

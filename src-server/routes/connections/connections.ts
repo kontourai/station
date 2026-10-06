@@ -3,6 +3,7 @@ import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import {
+  ConnectionAlreadyExistsError,
   type ConnectionService,
   ModelSelectionRequiredError,
 } from '../../services/connections/connection-service.js';
@@ -44,8 +45,10 @@ export function createConnectionRoutes(
       },
     );
 
-  const saveConnection = (config: ConnectionConfig) =>
-    mutate(() => connectionService.saveConnection(config));
+  const saveConnection = (
+    config: ConnectionConfig,
+    options?: { createOnly?: boolean },
+  ) => mutate(() => connectionService.saveConnection(config, options));
 
   const saveErrorPayload = (error: unknown) => ({
     success: false as const,
@@ -191,6 +194,7 @@ export function createConnectionRoutes(
           ...body,
           id: body.id || randomUUID(),
         }),
+        { createOnly: true },
       );
       return c.json(
         {
@@ -201,7 +205,10 @@ export function createConnectionRoutes(
         configurationMutationStatus(mutation.activation, 201),
       );
     } catch (error: unknown) {
-      return c.json(saveErrorPayload(error), 400);
+      return c.json(
+        saveErrorPayload(error),
+        error instanceof ConnectionAlreadyExistsError ? 409 : 400,
+      );
     }
   });
 

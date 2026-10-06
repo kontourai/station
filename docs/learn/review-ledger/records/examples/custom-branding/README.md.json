@@ -1,0 +1,37 @@
+{
+  "path": "examples/custom-branding/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide traced through actual manifest/factory, permission derivation, branding route, SDK mapper and sidebar; corrected copy-only installation, response envelope and universal UI claim.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/custom-branding/plugin.json",
+
+    "examples/custom-branding/providers/branding.js",
+
+    "packages/sdk/src/query-domains/systemRuntimeRequests.ts",
+
+    "src-server/routes/plugins/plugin-config-routes.ts",
+
+    "src-server/routes/system/branding.ts",
+
+    "src-server/services/plugins/plugin-permissions.ts",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+
+    "src-ui/src/lib/branding-theme.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Reviewed integration deltas: src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
+
+    "Integration source review through 5731eba07: #2881 adds requestServiceUpdateProgress to systemRuntimeRequests.ts and a serviceUpdate {requestId} result to applyCoreUpdate. The branding request's data.name to appName mapping is unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -79,6 +79,7 @@ export type {
 } from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   TurnProgressSilence,
 } from '@kontourai/station-contracts/orchestration';
 export type {
@@ -579,6 +580,7 @@ export {
   type IntegrationLifecycleResult,
   type IntegrationViewModel,
   type InterruptOrchestrationDelegatedTaskInput,
+  inspectOrchestrationSteerInput,
   installACPConnectionRegistryEntry,
   interruptOrchestrationDelegatedTask,
   interruptOrchestrationTurn,
@@ -801,6 +803,7 @@ export {
   useBrandingQuery,
   useBulkApproveProposedChangesMutation,
   useBulkRejectProposedChangesMutation,
+  useChildWorkTranscriptQuery,
   useClearAppHomeProfileMutation,
   useClearFeedbackAnalysisMutation,
   useClearNotificationActivityMutation,
@@ -819,6 +822,7 @@ export {
   useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useConversationsQuery,
+  useConversationUsageTreeQuery,
   useCoreUpdateStatusQuery,
   useCreateACPConnectionMutation,
   useCreateAgentDetailedMutation,
@@ -983,7 +987,10 @@ export {
   useRegistryLayoutActionMutation,
   useRegistryPluginsQuery,
   useRegistrySkillActionMutation,
+  useRegistrySkillContentQuery,
   useRegistrySkillsQuery,
+  useRegistrySourceActionMutation,
+  useRegistrySourcesQuery,
   useRejectProposedChangeMutation,
   useReloadPluginsMutation,
   useRemoteSessionsQuery,
@@ -1028,6 +1035,8 @@ export {
   useShowSessionSummaryMutation,
   useSkillContentQuery,
   useSkillDetailReader,
+  useSkillExperienceInventoryQuery,
+  useSkillExperienceSessionQuery,
   useSkillOutcome,
   useSkillQuery,
   useSkillsQuery,
@@ -1186,6 +1195,7 @@ export type {
 export {
   adoptCommittedProjectTaskRoomDocument,
   appendProjectTaskRoomHumanMessage,
+  appendProjectTaskRoomOutputFeedback,
   commandProjectTaskRoomLive,
   discoverProjectTaskRoom,
   fetchProjectTaskRoomDocument,
@@ -1207,7 +1217,10 @@ export {
   refetchAuthoritativeProjectTaskRoomDocument,
   submitProjectTaskRoomBatch,
   subscribeProjectTaskRoomEvents,
+  TaskRoomWorkNotSentError,
+  type TaskRoomWorkRequestScope,
   useAppendProjectTaskRoomHumanMessageMutation,
+  useAppendProjectTaskRoomOutputFeedbackMutation,
   useCommandProjectTaskRoomLiveMutation,
   usePlanProjectTaskRoomEditMutation,
   useProjectTaskRoomDiscoveryQuery,
@@ -1215,6 +1228,9 @@ export {
   useProjectTaskRoomHistoryQuery,
   useProjectTaskRoomStream,
   useSubmitProjectTaskRoomBatchMutation,
+  useSubmitTaskRoomAgentRequestMutation,
+  useTaskRoomAgentOptionsQuery,
+  useTaskRoomAgentRequestsQuery,
 } from './query-domains/projectTaskRooms.js';
 export type { PullRequestResolvingContext } from './query-domains/pullRequests';
 export {

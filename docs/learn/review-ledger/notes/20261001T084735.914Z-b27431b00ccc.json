@@ -1,0 +1,7 @@
+{
+  "revision": "4750f0dd4c17a766da91628dca97b2c7627ca0ed",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Closed-input lifecycle regression: actual Node CLI child closesstdin while still exposing its code prompt. Before repair, the named test caught an uncaughtEPIPE; explicit Writable error handling now leaves sign-in failed without a host error. Six focused UI/relay tests pass; existing OAuth and native-platform limits remain.","inputs":["docs/guides/connections.md"]}
+  ]
+}

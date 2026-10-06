@@ -1,0 +1,7 @@
+{
+  "revision": "e56b7b6bf847135adcce152d99112d104542d029",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed pairing attention URL delta against notification provider metadata and tap destination documentation. Passive pairing notifications already use /notifications?pairing=requestId; attention now agrees. Web Push payload, delivery, subscription and OS receipt claims are unchanged and not newly runtime verified.","inputs":["docs/guides/web-push-notifications.md"]}
+  ]
+}

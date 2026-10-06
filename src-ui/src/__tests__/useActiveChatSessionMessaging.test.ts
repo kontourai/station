@@ -1,7 +1,25 @@
 /** @vitest-environment jsdom */
 
-import { act, renderHook } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
+import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from '@testing-library/react';
+import { createElement, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SkillExperienceForm } from '../components/skill-experiences/SkillExperienceForm';
+
+vi.mock('../contexts/AuthorityPersistenceContext', () => ({
+  useAuthorityPersistence: () => ({
+    namespace: 'authority-1',
+    status: 'verified',
+  }),
+}));
 
 const outboundQueueMode = vi.hoisted(() => ({ useActual: false }));
 
@@ -225,6 +243,354 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     outboundQueueMode.useActual = false;
     _resetOutboundQueueStorage();
     activeChatsStore.removeChat(sessionId);
+  });
+
+  it.each(['replaced', 'removed', 'roles'] as const)(
+    'refuses a captured start after a %s change to the complete draft before dispatch',
+    async (change) => {
+      const definition: SkillExperienceDefinitionV1 = JSON.parse(
+        readFileSync(
+          new NodeURL(
+            '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
+      );
+      definition.inputs.push({
+        id: 'evidence',
+        kind: 'attachments',
+        label: 'Evidence',
+        required: true,
+        maxCount: 1,
+        provenance: {
+          origin: 'station-added',
+          explanation: 'Explicit composer assignment.',
+        },
+      });
+      const submitted = {
+        attachmentAssignments: { evidence: ['first'] },
+        namespace: 'authority-1',
+        apiBase: 'http://api.test',
+        definition,
+        start: {
+          identity: {
+            pluginId: 'example',
+            pluginVersion: '1.0.0',
+            experienceId: definition.id,
+            incarnation: 'installed-1',
+            materialization: 'materialization-1',
+            contentDigest: 'digest-1',
+            definitionDigest: 'definition-1',
+          },
+          inputs: { idea: 'Submitted before expansion' },
+        },
+      };
+      activeChatsStore.updateChat(sessionId, {
+        skillExperienceDraft: submitted,
+        attachmentStages: ['first', 'second'].map((id) => ({
+          ...stagedSnapshot,
+          clientAttachmentId: id,
+          stageId: `stage-${id}`,
+          reference: {
+            ...stagedSnapshot.reference,
+            clientAttachmentId: id,
+            stageId: `stage-${id}`,
+          },
+        })),
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      const captured = {
+        skillExperienceDraft: submitted,
+        experienceRequestScope: {
+          apiBase: 'http://api.test',
+          authorityKey: 'authority-1',
+          isCurrent: () => true,
+        },
+      };
+      const replacement = {
+        ...submitted,
+        start:
+          change === 'roles'
+            ? submitted.start
+            : { ...submitted.start, inputs: { idea: 'Newer unsent input' } },
+        attachmentAssignments:
+          change === 'roles'
+            ? { evidence: ['second'] }
+            : submitted.attachmentAssignments,
+      };
+      activeChatsStore.updateChat(sessionId, {
+        skillExperienceDraft: change === 'removed' ? undefined : replacement,
+      });
+      await act(async () => {
+        expect(
+          await result.current(
+            sessionId,
+            'codex',
+            undefined,
+            'Start',
+            undefined,
+            undefined,
+            undefined,
+            captured,
+          ),
+        ).toBe(false);
+      });
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+      expect(
+        activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+      ).toEqual(change === 'removed' ? undefined : replacement);
+      expect(
+        activeChatsStore.getSnapshot()[sessionId].ephemeralMessages?.at(-1)
+          ?.content,
+      ).toMatch(/changed while preparing/);
+    },
+  );
+
+  it('dispatches actual form role choices in canonical staged-file order while preserving unassigned files', async () => {
+    const definition: SkillExperienceDefinitionV1 = JSON.parse(
+      readFileSync(
+        new NodeURL(
+          '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    definition.inputs.push(
+      ...(['evidence', 'reference'] as const).map((id) => ({
+        id,
+        kind: 'attachments' as const,
+        label: id === 'evidence' ? 'Evidence' : 'Reference',
+        required: true,
+        maxCount: 1,
+        provenance: {
+          origin: 'station-added' as const,
+          explanation: 'Explicit role selection.',
+        },
+      })),
+    );
+    const stages = ['first', 'second', 'unassigned'].map((id) => ({
+      ...stagedSnapshot,
+      clientAttachmentId: id,
+      name: `${id}.txt`,
+      stageId: `stage-${id}`,
+      reference: {
+        ...stagedSnapshot.reference,
+        stageId: `stage-${id}`,
+        clientAttachmentId: id,
+        name: `${id}.txt`,
+      },
+    }));
+    const draft = {
+      namespace: 'authority-1',
+      apiBase: 'http://api.test',
+      definition,
+      start: {
+        identity: {
+          pluginId: 'example',
+          pluginVersion: '1.0.0',
+          experienceId: definition.id,
+          incarnation: 'installed-1',
+          materialization: 'materialization-1',
+          contentDigest: 'digest-1',
+          definitionDigest: 'definition-1',
+        },
+        inputs: { idea: 'My idea' },
+      },
+    };
+    activeChatsStore.updateChat(sessionId, {
+      skillExperienceDraft: draft,
+      attachmentStages: stages,
+    });
+    let caller: Promise<unknown> | undefined;
+    function ComposerRoleForm() {
+      const send = useSendMessage('http://api.test');
+      const [assignments, setAssignments] = useState<Record<string, string[]>>(
+        {},
+      );
+      return createElement(
+        'div',
+        {},
+        createElement(SkillExperienceForm, {
+          definition,
+          values: draft.start.inputs,
+          onChange: () => {},
+          attachmentChoices: stages.map((stage) => ({
+            id: stage.clientAttachmentId,
+            name: stage.name,
+          })),
+          attachmentAssignments: assignments,
+          onAttachmentsChange: (next) => {
+            setAssignments(next);
+            activeChatsStore.updateChat(sessionId, {
+              skillExperienceDraft: {
+                ...draft,
+                attachmentAssignments: next,
+              },
+            });
+          },
+        }),
+        createElement(
+          'button',
+          {
+            type: 'button',
+            onClick: () => {
+              const current =
+                activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft;
+              caller = send(
+                sessionId,
+                'codex',
+                undefined,
+                'Start',
+                undefined,
+                undefined,
+                undefined,
+                {
+                  skillExperienceDraft: current,
+                  experienceRequestScope: {
+                    apiBase: 'http://api.test',
+                    authorityKey: 'authority-1',
+                    isCurrent: () => true,
+                  },
+                },
+              );
+            },
+          },
+          'Send assigned skill',
+        ),
+      );
+    }
+    const mounted = render(createElement(ComposerRoleForm));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Send assigned skill' }),
+      );
+      await caller;
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Evidence: second.txt' }),
+    );
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Reference: first.txt' }),
+    );
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Send assigned skill' }),
+      );
+      await caller;
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendExecutionMessageMock.mock.calls[0][1]).toMatchObject({
+      attachmentRefs: stages.map((stage) => stage.reference),
+      skillExperience: { attachmentInputs: { evidence: [1], reference: [0] } },
+    });
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+    ).toBeUndefined();
+    mounted.unmount();
+  });
+
+  it('retains the source intent through refusal and clears it only after foreground acceptance', async () => {
+    const definition: SkillExperienceDefinitionV1 = JSON.parse(
+      readFileSync(
+        new NodeURL(
+          '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    const draft = {
+      namespace: 'authority-1',
+      apiBase: 'http://api.test',
+      definition,
+      start: {
+        identity: {
+          pluginId: 'example',
+          pluginVersion: '1.0.0',
+          experienceId: definition.id,
+          incarnation: 'installed-1',
+          materialization: 'materialization-1',
+          contentDigest: 'digest-1',
+          definitionDigest: 'definition-1',
+        },
+        inputs: { idea: 'My edited idea' },
+      },
+    };
+    activeChatsStore.updateChat(sessionId, { skillExperienceDraft: draft });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const scope = {
+      apiBase: 'http://api.test',
+      authorityKey: 'authority-1',
+      isCurrent: () => true,
+    };
+    await act(async () => {
+      expect(await result.current(sessionId, 'codex', undefined, 'Start')).toBe(
+        false,
+      );
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+    ).toEqual(draft);
+    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'Start',
+          undefined,
+          undefined,
+          undefined,
+          { skillExperienceDraft: draft, experienceRequestScope: scope },
+        ),
+      ).toBe(false);
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    activeChatsStore.updateChat(sessionId, { status: 'idle' });
+    sendExecutionMessageMock.mockRejectedValueOnce(new Error('Source changed'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Start',
+        undefined,
+        undefined,
+        undefined,
+        { skillExperienceDraft: draft, experienceRequestScope: scope },
+      );
+    });
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+    ).toEqual(draft);
+    activeChatsStore.updateChat(sessionId, { status: 'idle' });
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Start',
+        undefined,
+        undefined,
+        undefined,
+        { skillExperienceDraft: draft, experienceRequestScope: scope },
+      );
+    });
+    expect(
+      sendExecutionMessageMock.mock.calls.at(-1)?.[1].skillExperience,
+    ).toEqual(draft.start);
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+    ).toBeUndefined();
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceActive,
+    ).toBe(true);
   });
 
   it('leaves a project environment unresolved while sending Agent + model/workspace', async () => {
@@ -521,6 +887,23 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
+  it('marks a failed send as a send-failure notice, which the composer repeats', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new Error('temporarily unavailable'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'will fail');
+    });
+
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toBeTruthy();
+    expect(notice?.sendFailure).toBe(true);
+  });
+
   it('renders a workspace-resume hint instead of a Model-connection hint for an orchestration refusal', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(
@@ -660,6 +1043,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat?.ephemeralMessages).toHaveLength(1);
     const notice = chat?.ephemeralMessages?.[0];
     expect(notice?.content).toBe('Full access was not applied.');
+    expect(notice?.sendFailure).toBe(true);
     expect(notice?.content).not.toContain('Retrying may help');
     expect(notice?.fullAccessRefusal).toMatchObject({
       outcome: 'message-not-sent',
@@ -740,6 +1124,89 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     const notice = chat?.ephemeralMessages?.at(-1)?.content ?? '';
     expect(notice).toContain('Write a message to send.');
     expect(notice).not.toContain('Validation failed');
+  });
+
+  // The route's own refusal body for an engine that cannot take the attached
+  // images (`orchestration.ts` dispatch catch + the forwarded
+  // `attachment_input_unsupported` code), thrown by the REAL fetcher. The
+  // generic fallback called it possibly "temporary" and offered Retry, which
+  // sends the same attachments into the same refusal.
+  it('an attachment refusal is not presented as transient: no Retry, a Remove attachments action', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'This engine did not advertise image attachment support.',
+          receipt: {
+            commandId: 'cmd-1',
+            commandType: 'sendTurn',
+            threadId: sessionId,
+            status: 'rejected',
+          },
+          receiptStatus: 'persisted',
+          code: 'attachment_input_unsupported',
+          retryable: false,
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await actual
+        .sendExecutionMessage('http://api.test', {} as never)
+        .catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    expect(refusal).toMatchObject({ code: 'attachment_input_unsupported' });
+    activeChatsStore.updateChat(sessionId, {
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'grok-build', undefined, 'look', [
+        stagedAttachment,
+      ]);
+    });
+
+    let chat = activeChatsStore.getSnapshot()[sessionId];
+    const notice = chat?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toContain(
+      "**This engine can't take these attachments**",
+    );
+    expect(notice?.content).toContain('Nothing was sent.');
+    expect(notice?.content).not.toContain('Retrying may help');
+    expect(notice?.action?.label).toBe('Remove attachments');
+    // The handshake answer the composer reads is re-read, not left cached.
+    expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);
+    // A refused first send changes what the session list says (Draft ->
+    // first-send failure); the composer's model gate reads it from there.
+    expect(invalidateMock).toHaveBeenCalledWith(['orchestration-sessions']);
+    // The refused attachments came back to the composer with the draft...
+    expect(chat?.attachments).toEqual([stagedAttachment]);
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
+    try {
+      await act(async () => {
+        await notice?.action?.handler();
+      });
+    } finally {
+      globalThis.fetch = previous;
+    }
+    // ...and the action takes them back off, leaving the text sendable.
+    chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.attachments).toEqual([]);
+    expect(chat?.attachmentStages).toEqual([]);
+    expect(chat?.input).toBe('look');
   });
 
   it('restores supervised attachments and stage refs after a definitive rejection', async () => {
@@ -1271,6 +1738,11 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         expect(notice?.content).toBe(testCase.expected);
         expect(notice?.content).not.toMatch(testCase.forbidden);
         expect(notice?.action?.label).toBe('Discard');
+        // The composer repeats this notice's Discard while a short dock hides
+        // the transcript; it finds the notice by this flag, which a send
+        // failure (the composer's other repeated line) must not carry.
+        expect(notice?.queuedRetry).toBe(true);
+        expect(notice?.sendFailure).toBeUndefined();
       } finally {
         delete (window.navigator as { onLine?: unknown }).onLine;
       }
@@ -1380,12 +1852,70 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ]);
   });
 
-  it('steers a mid-turn message on Claude instead of queueing a new turn', async () => {
+  // A refused steer is a send that did not go, so the composer repeats it.
+  // A steer whose delivery cannot be confirmed is held, not failed (#3127).
+  it('a refused steer is a send-failure notice the composer repeats', async () => {
     steerOrchestrationTurnMock.mockResolvedValueOnce({
-      outcome: 'steered',
-      threadId: 'exec-claude-1',
-      turnId: 'turn-open',
+      outcome: 'no-active-turn',
     });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'exec-claude-1',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'course correct');
+    });
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toBeTruthy();
+    expect(notice?.sendFailure).toBe(true);
+  });
+
+  it('holds ACP steering without interrupting a tool or guessing a safe boundary', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'acp',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'opencode', sessionId, 'course correct');
+    });
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'course correct',
+    ]);
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].queuedMessageMetadata,
+    ).toEqual([expect.objectContaining({ mode: 'steer' })]);
+  });
+
+  it('steers a mid-turn message on Claude instead of queueing a new turn', async () => {
+    steerOrchestrationTurnMock.mockImplementationOnce(
+      async (input: { clientInputId: string }) => {
+        const persisted: ReturnType<typeof serializeActiveChats> = JSON.parse(
+          sessionStorage.getItem('activeChats') ?? '[]',
+        );
+        expect(
+          persisted.find((entry) => entry.sessionId === sessionId)
+            ?.queuedMessageMetadata,
+        ).toContainEqual(
+          expect.objectContaining({
+            id: input.clientInputId,
+            delivery: 'steering',
+          }),
+        );
+        return {
+          outcome: 'steered',
+          threadId: 'exec-claude-1',
+          turnId: 'turn-open',
+        };
+      },
+    );
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
@@ -1404,6 +1934,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      clientInputId: expect.any(String),
       threadId: 'exec-claude-1',
       text: 'course correct',
       turnId: 'turn-open',
@@ -1642,6 +2173,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      clientInputId: expect.any(String),
       threadId: 'exec-codex-1',
       text: 'focus on fails',
       turnId: 'turn-open',
@@ -1653,7 +2185,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
-  it('queues a Claude follow-up that carries attachments (steer has no file channel)', async () => {
+  it('retains a busy attachment message in the composer rather than queueing only its text', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
@@ -1669,9 +2201,84 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
-      'with file',
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].ephemeralMessages?.at(-1)
+        ?.content,
+    ).toContain('still in the composer');
+  });
+
+  it('does not invoke native steering when the pending delivery marker cannot be saved', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'steered',
+      threadId: 'execution-origin',
+      turnId: 'origin-turn',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'execution-origin',
+      openTurnId: 'origin-turn',
+      input: 'retain this input',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const write = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+    try {
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'claude',
+          sessionId,
+          'retain this input',
+        );
+      });
+      expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+      expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+        'retain this input',
+      ]);
+      expect(
+        activeChatsStore.getSnapshot()[sessionId].queuedMessageFailure?.code,
+      ).toBe('steering-save-failed');
+    } finally {
+      write.mockRestore();
+    }
+  });
+
+  it('holds an unconfirmed native steer with a stable delivery identity instead of duplicating the draft', async () => {
+    steerOrchestrationTurnMock.mockRejectedValueOnce(
+      new Error('response lost'),
+    );
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'execution-origin',
+      openTurnId: 'origin-turn',
+      input: 'held steering',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'held steering');
+    });
+    const state = activeChatsStore.getSnapshot()[sessionId];
+    expect(state.input).toBe('');
+    expect(state.queuedMessages).toEqual(['held steering']);
+    const inputId = steerOrchestrationTurnMock.mock.calls[0][0].clientInputId;
+    expect(state.queuedMessageMetadata).toEqual([
+      {
+        id: inputId,
+        mode: 'steer',
+        delivery: 'indeterminate',
+        steerThreadId: 'execution-origin',
+        steerTurnId: 'origin-turn',
+      },
     ]);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
   });
 
   it('restores the draft when a steer is refused', async () => {
@@ -1912,6 +2519,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       });
       expect(sendExecutionMessageMock).not.toHaveBeenCalled();
       expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+        clientInputId: expect.any(String),
         threadId: `${conv}:child`,
         text: 'steer me',
         turnId: 'server-turn',

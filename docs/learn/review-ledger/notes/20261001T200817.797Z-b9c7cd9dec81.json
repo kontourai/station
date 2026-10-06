@@ -1,0 +1,7 @@
+{
+  "revision": "01c31b321d9566b3ffae85f7b811aeacd49650c3",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Carried forward after merging origin/main into #3107, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/testing/browser-smoke.md"]}
+  ]
+}

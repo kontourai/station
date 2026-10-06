@@ -1,0 +1,59 @@
+{
+  "path": "docs/reference/verification-receipts.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed request identity, schema and semantic pass conditions, source drift, terminal reporting, artifact protection, handoff/orphan retention and CLI composition. Qualified inventory read errors and preview path disclosure.",
+
+  "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"}]",
+
+  "sources": [
+    "package.json",
+
+    "schemas/verification-receipt.schema.json",
+
+    "scripts/__tests__/trust-reconcile-manifest.test.ts",
+
+    "scripts/classify-ci-change.mjs",
+
+    "scripts/lib/test-reliability.mjs",
+
+    "scripts/lib/verification-coordinator.mjs",
+
+    "scripts/lib/verification-receipt.mjs",
+
+    "scripts/lib/verification-redaction.mjs",
+
+    "scripts/lib/verification-reporter.mjs",
+
+    "scripts/lib/verification-retention-inventory.mjs",
+
+    "scripts/lib/verification-submission.mjs",
+
+    "scripts/lib/verification-terminal-receipt.mjs",
+
+    "scripts/run-changed-verification.mjs",
+
+    "scripts/run-verification.mjs",
+
+    "scripts/verification-lanes.mjs"
+  ],
+
+  "checks": [
+    "Traced status/submit-status read-only inventory, submit maintenance, explicit handoff-gc and orphan GC preview/delete modes. Independently checked current #1835 remains open with the documented redaction finding.",
+
+    "Executed 392 tests across receipt, lane, reporter, redaction and submission suites; all passed. This is focused evidence, not a full-regression receipt.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Shard planning records actual related-discovery duration and its existing cap; no coverage or execution semantics weakened.",
+
+    "Reviewed landing deltas through 111744681: Discovery derives timeout after refinement, keeps a 30s reserve and 60s standalone fallback, refuses insufficient/invalid budgets, and removes the deadline from child environments. Malformed CLI environment is refused before a diagnostic; exhausted valid preparation records infrastructure failure. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Integration source review through e0314c727: package.json only removed the bearing/forage dependencies. The trust-reconcile-manifest entry and the package.json/lockfile digest inputs are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 55cc03451 changes scripts/run-changed-verification.mjs. A product-law path now adds its law's observation and fault-injection Vitest suites to the selection instead of adding a ci-fast lane and setting escalated. Non-vitest-file evidence is refused. The doc makes no claim about how product laws are routed, and its receipt validation, terminal status and exit-3 provisional/deferred claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

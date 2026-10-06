@@ -72,6 +72,7 @@ import {
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { scrubChatErrorMarkers } from '../../runtime/conversation/chat-error-marker.js';
 import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
 import type { SessionQueryModule } from '../../services/orchestration/session-query-module.js';
 import { conversationStoreReadOps } from '../../telemetry/metrics.js';
@@ -245,7 +246,11 @@ function toKitRecord(input: {
     id: input.id,
     type: 'raw',
     title: input.title,
-    body: conversationBody(input.messages, input.agentSlug),
+    // Indexed text: a pre-fix failed-turn marker may hold provider text.
+    body: conversationBody(
+      scrubChatErrorMarkers(input.messages),
+      input.agentSlug,
+    ),
     category: CONVERSATION_CATEGORY,
     ...(input.projectSlug ? { tags: [input.projectSlug] } : {}),
     provenance: {

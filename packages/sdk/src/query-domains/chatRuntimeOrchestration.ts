@@ -1,7 +1,9 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   InterruptTurnResult,
   OrchestrationConversationEventWindow,
   OrchestrationSessionEventWindow,
@@ -11,10 +13,10 @@ import {
   withNormalizedAnswerability,
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useMutation } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
-import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
+import { ChatHttpError } from '../client/chatHttpError';
 import {
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
@@ -39,19 +41,25 @@ import {
   isApiRequestScope,
 } from '../client/http';
 import {
+  getChildWorkTranscript,
+  getConversationUsageTree,
   getOrchestrationConversationEventWindow,
   getOrchestrationSessionEventWindow,
   getSessionBuilderRun,
   getSessionFlowRun,
+  inspectSteerInput as inspectSteerInputClient,
   type SessionBuilderRunView,
   type SessionFlowRunView,
+  steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
+import { isStationAnswer } from '../client/station-envelope';
 import {
   type MutationOptions,
   type QueryConfig,
   resolveApiBase,
   useApiQuery,
+  useCancelWhenInactive,
 } from '../query-core';
 import { orchestrationQueries } from '../queryFactories';
 import type {
@@ -106,6 +114,11 @@ export class AdoptSessionError extends Error {
   readonly retryable: boolean;
   readonly status?: number;
   readonly cause?: unknown;
+  /**
+   * #3386: Station's own reason for a refusal it says will not change on
+   * retry (a folder Station will not continue in), for showing as written.
+   */
+  readonly refusal?: string;
 
   constructor(input: {
     failureClass: AdoptSessionFailureClass;
@@ -113,6 +126,7 @@ export class AdoptSessionError extends Error {
     retryable: boolean;
     status?: number;
     cause?: unknown;
+    refusal?: string;
   }) {
     super(input.message);
     this.name = 'AdoptSessionError';
@@ -120,6 +134,7 @@ export class AdoptSessionError extends Error {
     this.retryable = input.retryable;
     this.status = input.status;
     this.cause = input.cause;
+    if (input.refusal) this.refusal = input.refusal;
   }
 }
 
@@ -159,6 +174,46 @@ export async function fetchOrchestrationConversationEventWindow(
     throw new Error('Conversation history requires a server upgrade');
   }
   return page;
+}
+
+/**
+ * A conversation's usage tree (`getConversationUsageTree`). Enabled by
+ * default, and off for an empty id or `config.enabled: false`. It polls only
+ * when `config.refetchInterval` is set, and stops polling after a 404 (no
+ * orchestration record for this conversation) or a 422 (tree past its
+ * bound): neither changes by asking again. Neither is retried.
+ */
+export function useConversationUsageTreeQuery(
+  conversationId: string,
+  apiBase?: string,
+  config?: { enabled?: boolean; refetchInterval?: number | false },
+) {
+  return useQuery({
+    queryKey: [
+      'orchestration-conversation-usage-tree',
+      apiBase ?? 'default',
+      conversationId,
+    ],
+    enabled: Boolean(conversationId) && (config?.enabled ?? true),
+    queryFn: async ({ signal }) =>
+      getConversationUsageTree(await resolveApiBase(apiBase), conversationId, {
+        signal,
+      }),
+    retry: false,
+    staleTime: 2_000,
+    refetchInterval: (query) =>
+      isSettledUsageTreeRefusal(query.state.error)
+        ? false
+        : (config?.refetchInterval ?? false),
+  });
+}
+
+/** A usage-tree answer that asking again cannot change. */
+function isSettledUsageTreeRefusal(error: unknown): boolean {
+  return (
+    error instanceof StationHttpError &&
+    (error.status === 404 || error.status === 422)
+  );
 }
 
 /** Reconciles one persisted context-boundary intent after reload or reconnect. */
@@ -205,24 +260,73 @@ export function useConversationContextBoundaryStatusQuery(
   );
 }
 
+/** Same retention `useApiQuery` gives an unconfigured read. */
+const SESSION_RUN_PROBE_GC_TIME_MS = 10 * 60 * 1000;
+
+/**
+ * How often a "no run bound" answer is asked again while a caller still
+ * polls. A run can be joined after the first look (a Builder sidecar written
+ * mid-task), so a null does not stop the probe outright; it only slows it
+ * from the 2s/10s bound-run cadence to this.
+ */
+const SESSION_RUN_ABSENT_REPROBE_MS = 30_000;
+
+/**
+ * The session's Flow/Builder run probes answer `null` only for a 404: the
+ * server looked and found no run bound or joined to this session. The detail
+ * used to re-ask that every 2s and 10s for as long as it stayed open (two
+ * expected 404s per interval for a direct chat or an unjoined task), so a
+ * null answer drops to {@link SESSION_RUN_ABSENT_REPROBE_MS}. A caller that
+ * passes `refetchInterval: 0` (a finished session) polls neither. A failed
+ * read is not an answer: it keeps whatever data it had, so a transient error
+ * never slows the poll of a run that was bound.
+ *
+ * The function forms need `useQuery` directly; `QueryConfig.refetchInterval`
+ * is a plain number on the public surface and stays that way.
+ */
+function pollWhileRunBound(intervalMs: number) {
+  return (query: { state: { data: unknown } }) => {
+    if (!intervalMs) return false;
+    return query.state.data === null
+      ? Math.max(intervalMs, SESSION_RUN_ABSENT_REPROBE_MS)
+      : intervalMs;
+  };
+}
+
+/**
+ * Reopening a detail whose cached answer was "no run" re-asks once (when
+ * stale), so a run joined after the first look is found on the next visit
+ * instead of waiting out the cache. A bound run keeps Station's cache-first
+ * mount default; its interval already refreshes it.
+ */
+function reprobeAbsentRunOnMount(query: { state: { data: unknown } }) {
+  return query.state.data === null;
+}
+
 export function useSessionFlowRunQuery(
   threadId: string,
   apiBase?: string,
   config?: QueryConfig<SessionFlowRunView | null>,
 ) {
-  return useApiQuery(
-    ['orchestration-session-flow-run', apiBase ?? 'default', threadId],
-    async () => {
+  const queryKey = [
+    'orchestration-session-flow-run',
+    apiBase ?? 'default',
+    threadId,
+  ];
+  const enabled = Boolean(threadId) && (config?.enabled ?? true);
+  useCancelWhenInactive(queryKey, enabled, config?.cancelWhenInactive);
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
       const resolvedApiBase = await resolveApiBase(apiBase);
       return getSessionFlowRun<SessionFlowRunView>(resolvedApiBase, threadId);
     },
-    {
-      enabled: Boolean(threadId) && (config?.enabled ?? true),
-      staleTime: config?.staleTime ?? 2_000,
-      gcTime: config?.gcTime,
-      refetchInterval: config?.refetchInterval ?? 2_000,
-    },
-  );
+    enabled,
+    staleTime: config?.staleTime ?? 2_000,
+    gcTime: config?.gcTime ?? SESSION_RUN_PROBE_GC_TIME_MS,
+    refetchInterval: pollWhileRunBound(config?.refetchInterval ?? 2_000),
+    refetchOnMount: reprobeAbsentRunOnMount,
+  });
 }
 
 /**
@@ -244,22 +348,28 @@ export function useSessionBuilderRunQuery(
   apiBase?: string,
   config?: QueryConfig<SessionBuilderRunView | null>,
 ) {
-  return useApiQuery(
-    ['orchestration-session-builder-run', apiBase ?? 'default', threadId],
-    async () => {
+  const queryKey = [
+    'orchestration-session-builder-run',
+    apiBase ?? 'default',
+    threadId,
+  ];
+  const enabled = Boolean(threadId) && (config?.enabled ?? true);
+  useCancelWhenInactive(queryKey, enabled, config?.cancelWhenInactive);
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
       const resolvedApiBase = await resolveApiBase(apiBase);
       return getSessionBuilderRun<SessionBuilderRunView>(
         resolvedApiBase,
         threadId,
       );
     },
-    {
-      enabled: Boolean(threadId) && (config?.enabled ?? true),
-      staleTime: config?.staleTime ?? 10_000,
-      gcTime: config?.gcTime,
-      refetchInterval: config?.refetchInterval ?? 10_000,
-    },
-  );
+    enabled,
+    staleTime: config?.staleTime ?? 10_000,
+    gcTime: config?.gcTime ?? SESSION_RUN_PROBE_GC_TIME_MS,
+    refetchInterval: pollWhileRunBound(config?.refetchInterval ?? 10_000),
+    refetchOnMount: reprobeAbsentRunOnMount,
+  });
 }
 
 /**
@@ -398,6 +508,45 @@ export function useStopProviderTaskMutation(apiBase?: string) {
   });
 }
 
+/** #3163: one page of transcript messages per fetch. */
+const CHILD_WORK_TRANSCRIPT_PAGE_SIZE = 30;
+
+/**
+ * #3163: an engine subagent's own read-only transcript, paged by message.
+ * `fetchNextPage` continues where the last page ended. Off until `enabled`,
+ * so a closed row reads nothing; a transcript is history, so it is fetched
+ * once and not polled.
+ */
+export function useChildWorkTranscriptQuery(
+  input: { threadId: string; childId: string; enabled?: boolean },
+  apiBase?: string,
+) {
+  return useInfiniteQuery({
+    queryKey: [
+      'orchestration-child-work-transcript',
+      apiBase ?? 'default',
+      input.threadId,
+      input.childId,
+    ],
+    enabled:
+      (input.enabled ?? true) &&
+      input.threadId.length > 0 &&
+      input.childId.length > 0,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) =>
+      getChildWorkTranscript(
+        await resolveApiBase(apiBase),
+        input.threadId,
+        input.childId,
+        { offset: pageParam, limit: CHILD_WORK_TRANSCRIPT_PAGE_SIZE },
+        { signal },
+      ),
+    getNextPageParam: (page) => page.nextOffset,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useInterruptDelegatedTaskMutation(apiBase?: string) {
   return useMutation({
     mutationFn: (input: InterruptOrchestrationDelegatedTaskInput) =>
@@ -493,7 +642,7 @@ export async function dispatchOrchestrationCommand<T = unknown>(
             code: result.code,
             details: result.details ?? undefined,
           }),
-          isStationEnvelope(result),
+          isStationAnswer(response, result),
         )
       : new Error(message);
   }
@@ -532,16 +681,24 @@ export function createAdoptOrchestrationSessionIntent(): AdoptOrchestrationSessi
 function rejectedContinuation(
   status: number,
   detail?: string,
+  retryable?: unknown,
 ): AdoptSessionError {
   const statusMessage =
     status === 401 || status === 403
       ? `Permission denied by Station (HTTP ${status}).`
       : `Station rejected the continuation request (HTTP ${status}).`;
+  // #3386: a refusal Station itself marks `retryable: false` (a coded,
+  // permanent refusal, such as a folder it will not continue in) is final:
+  // the same request is refused again, so no retry is offered. Any other
+  // refusal keeps the retryable default.
+  const permanent =
+    status >= 400 && status < 500 && retryable === false && Boolean(detail);
   return new AdoptSessionError({
     failureClass: 'certain-response',
     message: detail ? `${statusMessage} ${detail}` : statusMessage,
-    retryable: true,
+    retryable: !permanent,
     status,
+    ...(permanent && detail ? { refusal: detail } : {}),
   });
 }
 
@@ -549,6 +706,8 @@ export async function adoptOrchestrationSession(input: {
   sourceThreadId: string;
   apiBase?: string;
   intent?: AdoptOrchestrationSessionIntent;
+  /** #3386: where a conversation no project claims continues. */
+  target?: AdoptSessionTarget;
 }): Promise<AdoptedSessionResult> {
   const resolvedApiBase = await resolveApiBase(input.apiBase);
   const intent = input.intent ?? createAdoptOrchestrationSessionIntent();
@@ -563,6 +722,7 @@ export async function adoptOrchestrationSession(input: {
           type: 'adoptSession',
           sourceThreadId: input.sourceThreadId,
           idempotencyKey: intent.idempotencyKey,
+          ...(input.target ? { target: input.target } : {}),
         }),
       },
     );
@@ -592,6 +752,7 @@ export async function adoptOrchestrationSession(input: {
     success?: boolean;
     data?: AdoptedSessionResult;
     error?: string;
+    retryable?: unknown;
   };
   try {
     result = (await response.json()) as typeof result;
@@ -624,7 +785,11 @@ export async function adoptOrchestrationSession(input: {
     result = {};
   }
   if (!response.ok || !result.success)
-    throw rejectedContinuation(response.status, result.error?.trim());
+    throw rejectedContinuation(
+      response.status,
+      result.error?.trim(),
+      result.retryable,
+    );
   return result.data as AdoptedSessionResult;
 }
 
@@ -928,6 +1093,7 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+  answers?: HarnessQuestionAnswers;
   apiBase?: string;
 }): Promise<void> {
   await dispatchOrchestrationCommand(
@@ -939,6 +1105,7 @@ export async function resolveOrchestrationRequest(input: {
         ? { expectedRequestEventId: input.expectedRequestEventId }
         : {}),
       decision: input.decision,
+      ...(input.answers ? { answers: input.answers } : {}),
     },
     input.apiBase,
   );
@@ -1056,24 +1223,26 @@ export async function setOrchestrationApprovalMode(input: {
   );
 }
 
+/** Receipt inspection is safe against older servers: an unknown command never steers. */
+export async function inspectOrchestrationSteerInput(input: {
+  threadId: string;
+  text: string;
+  turnId?: string;
+  clientInputId: string;
+  apiBase?: string;
+}) {
+  return inspectSteerInputClient(await resolveApiBase(input.apiBase), input);
+}
+
 /** Add user input to the currently open turn; this never queues a future turn. */
 export async function steerOrchestrationTurn(input: {
   threadId: string;
   text: string;
   turnId?: string;
+  clientInputId?: string;
   apiBase?: string;
 }) {
-  return dispatchOrchestrationCommand<
-    import('@kontourai/station-contracts/orchestration').SteerTurnResult
-  >(
-    {
-      type: 'steerTurn',
-      threadId: input.threadId,
-      input: input.text,
-      ...(input.turnId ? { turnId: input.turnId } : {}),
-    },
-    input.apiBase,
-  );
+  return steerTurnClient(await resolveApiBase(input.apiBase), input);
 }
 
 export function useOrchestrationProvidersQuery(

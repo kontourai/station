@@ -1,0 +1,7 @@
+{
+  "revision": "c5a2f2b898fa940af8a42a387f7894dffb7195e2",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Rewrote the coding git confinement section with this round's measurements and flipper timings: reads, checkout, worktree add and checkpoints on the judged copy, the object quarantine, the open write windows, the still-exposed list and NOT_VERIFIED items","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

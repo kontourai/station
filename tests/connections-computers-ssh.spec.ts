@@ -70,7 +70,7 @@ const PROBE_SUCCESS = {
     'Station reached box-b over SSH and verified the remote project folder.',
   resolved: {
     hostname: 'box-b.tailnet',
-    user: 'brian',
+    user: 'casey',
     port: 22,
     identityAgent: 'default',
   },
@@ -189,7 +189,7 @@ async function seedRoutes(page: Page) {
               {
                 alias: 'box-b',
                 hostname: 'box-b.tailnet',
-                user: 'brian',
+                user: 'casey',
                 port: 22,
                 identityAgent: 'default',
                 proxyJump: null,

@@ -1,0 +1,7 @@
+{
+  "revision": "5fd060b485db82e786a359c10d6dfc246d565eb6",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed new composer CSS delta: fixed scroll hover and tool-row reflection do not change region placement, tab strips, chrome ownership or persistence. The placement explanation remains accurate.","inputs":["docs/design/placement.md"]}
+  ]
+}

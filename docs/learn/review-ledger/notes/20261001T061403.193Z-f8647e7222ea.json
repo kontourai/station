@@ -1,0 +1,7 @@
+{
+  "revision": "2dee75143bca994a270d7038965d1a825bbde516",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Merged bytes of docs/ui/responsive-action-surfaces.txt after main gained the detail change: this branch's entries (Activity filter bar, SessionsView and RunBoardSummary action rows; removed entries of the deleted components) and the detail lane's two session-detail entries are both present, and the responsive-surface ratchet passes on the merged file. The document describes the inventory mechanism, not individual entries; claims remain accurate.","inputs":["docs/patterns/backend.md"]}
+  ]
+}

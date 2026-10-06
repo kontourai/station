@@ -1,0 +1,7 @@
+{
+  "revision": "02f31a2344cb70a5a68a5b71a813fcb37f38ebc2",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-recorded after merging main (#3201 added the Starting and resuming work section). Checked this lane's addition against the merged doc: the steer paragraph (confinement-changed refused only when a turn that started unconfined is narrowed, before the input is claimed; message kept for the next confined turn) matches the new SteerTurnResult confinement-changed variant in packages/contracts/src/orchestration.ts, and main's new section does not mention or contradict steering.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts"]}
+  ]
+}

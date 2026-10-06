@@ -1,0 +1,7 @@
+{
+  "revision": "b4f9d6090ab55af6bcab4e1805fbe8316ef1659a",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed against navigation-store.setLayout: choosing a file in the layout already on screen now writes the preview fields in place (updateParams) instead of pushing; a change of layout still navigates. The context's claims about surfaces, regions and the canonical navigation seam stand.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","packages/contracts/src/workspace-file-preview.ts","src-server/routes/projects/workspace-pane-previews.ts","src-server/services/projects/workspace-file-preview-service.ts","src-ui/src/contexts/navigation-store.ts","src-ui/src/workspace-panes/FilePreviewPane.tsx","src-ui/src/workspace-panes/RegionPaneHost.tsx"]}
+  ]
+}

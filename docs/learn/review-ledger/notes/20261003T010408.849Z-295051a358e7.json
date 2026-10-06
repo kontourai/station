@@ -1,0 +1,7 @@
+{
+  "revision": "130532907fd0b55c300e350391837f8e98598473",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Executed the late-duration reproducer against ClaudeTranscriptSessionSource.read: turn-2 emitted 5/7 then 11/13 token events. Inspected EventStore's bounded turn-window filter retaining only its last usage event, and the separate raw-receipt query retaining the full event stream. Documented #581 as an open per-turn-window gap; full-session and receipt aggregation remain separate. Permission-denial polling and profile freshness evidence remain as recorded; no invoice, native or hosted qualification was added.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

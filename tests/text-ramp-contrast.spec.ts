@@ -10,7 +10,7 @@ import { contrastRatio } from './helpers/color-contrast';
  * success). Nothing owned the *neutral* ramp, and archive#3140 is what that
  * gap produced: `.engine-chip__pill` shipped `--text-muted` on `--bg-tertiary`
  * at 10px and measured 4.38:1 dark / 4.33:1 light, under 1.4.3's 4.5:1 in both
- * themes. It is the label that names the engine — "Claude Code", "Codex",
+ * themes (@kontourai/ui 1.17 later retinted the token: 4.51:1 / 4.77:1). It is the label that names the engine — "Claude Code", "Codex",
  * "Muse Code" — in agent lists, session tabs, hub cards and chat attribution,
  * so it was simultaneously one of the most repeated strings in the product and
  * one of the least legible. Nothing failed, because nothing was looking.
@@ -18,7 +18,8 @@ import { contrastRatio } from './helpers/color-contrast';
  * Two properties of this spec are deliberate and worth keeping:
  *
  * **It measures rules, not tokens.** A token matrix would have passed archive#3140
- * happily: `--text-muted` clears 4.5:1 on `--bg-primary` (5.16:1 dark). The
+ * happily: `--text-muted` clears 4.5:1 on `--bg-primary` (5.16:1 dark then,
+ * 5.31:1 from @kontourai/ui 1.17). The
  * defect only exists at the pairing — that token on *that* fill — so the probe
  * mounts the real shipped class and lets the cascade choose the colour.
  *

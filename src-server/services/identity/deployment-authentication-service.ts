@@ -145,6 +145,49 @@ export class DeploymentAuthenticationService {
         typeof pending.discard === 'function',
     };
   }
+  pendingEnrollmentRegistrationAvailable(): boolean {
+    return (
+      this.pendingEnrollmentCapabilities().available &&
+      typeof this.provider.sessionReferences?.pendingEnrollment?.register ===
+        'function'
+    );
+  }
+
+  async registerPendingEnrollment(
+    enrollmentId: string,
+    request: Request,
+  ): Promise<PendingEnrollmentSessionResult> {
+    const pending = this.provider.sessionReferences?.pendingEnrollment;
+    if (
+      this.closing ||
+      !RELAY_ENROLLMENT_ID_PATTERN.test(enrollmentId) ||
+      !this.pendingEnrollmentCapabilities().available ||
+      !pending?.register
+    )
+      return { kind: 'unavailable' };
+    const signal = AbortSignal.any([
+      request.signal,
+      AbortSignal.timeout(10_000),
+    ]);
+    try {
+      const headers = new Headers({ 'Content-Type': 'application/json' });
+      const invitation = request.headers.get('x-station-invitation');
+      if (invitation) headers.set('x-station-invitation', invitation);
+      const bounded = new Request(request, { headers, signal });
+      const result = await raceWithSignal(
+        pending.register(enrollmentId, bounded),
+        signal,
+      );
+      if (this.closing || signal.aborted) return { kind: 'unavailable' };
+      return readPendingEnrollmentSessionResult(
+        result,
+        enrollmentId,
+        this.now(),
+      );
+    } catch {
+      return { kind: 'unavailable' };
+    }
+  }
 
   /** Candidate-only provider login; never publishes ordinary request identity. */
   async createPendingEnrollment(

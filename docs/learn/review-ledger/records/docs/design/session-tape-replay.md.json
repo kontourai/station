@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/session-tape-replay.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
+
+  "limits": "Browser-matrix descriptions name source coverage, not a newly executed full Playwright matrix. No live engine steering or physical native-device result; redaction preserves protocol fields and is not arbitrary sensitive-text detection.",
+
+  "sources": [
+    "tests/chat-replay.spec.ts"
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "39 tape import/player/archive/render-invariant and mounted timeline tests passed across five files. Read browser matrix and actual adapter delivery owners.",
+
+    "Landing delta 622565ef7: Codex reply matching does not alter turn/steer arguments, event folding, replay isolation or recorded tape limits. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
+
+    "Reviewed landing deltas through 111744681: Opaque proxy/error pages are not terminal Station refusals; uncertain queued sends remain queued. Stored reasons use the formatter, but not every ephemeral notice strips schema keys. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Landing review through 64452b7f0:  Added the separate compact reasoning disclosure description. Disclosure state, word counting and user choice are unchanged; this is distinct from activity timers. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through e0314c727: the page's own edits add the ReasoningSection disclosure and move the promotion backlog to #2899. Checked against ReasoningSection.tsx (summary row with word count, user-open/user-closed intent) and index.css (indented left-border body), and against the removal of EXTENSION_NOTIFICATION_PROMOTIONS from source (#2900). #2899's live state was not fetched because of the GitHub API rate limit; its reference comes from the #2900 commit. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: in active-chats-state.ts, #2904 only adds an optional fullAccessRefusal field to EphemeralMessage, rendered by FullAccessRefusalCard. Tape limits, replay registration and persistence exclusion, fold and effect fences, and fork identity are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added Codex approvalAcknowledgement and replyToApproval, an unacknowledgedDecisions ChatUIState field, and request.delivery dispatch in eventHandlers.ts. The replay coverage, redaction and steer-mechanism claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) makes createEphemeralMessageState take a required conversationId instead of falling back to chat.conversationId. Replay isolation (no conversationId copied from the source, not durable, effect no-ops) is unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -127,6 +128,30 @@ test('keeps an uncertain transport failure outcome unconfirmed', async () => {
   );
   expect(screen.getByRole('alert').textContent).not.toContain(
     'No files were changed',
+  );
+});
+
+// #2708 A-3b: the restore fetcher's validation refusal names each field in its
+// message for CLI readers; the dialog shows the server's reason instead.
+test('an unconfirmed validation refusal reads as its reason, not its field key', async () => {
+  confirm.mockRejectedValueOnce(
+    new StationHttpError(400, 'Validation failed: previewId Choose a preview', {
+      details: {
+        formErrors: [],
+        fieldErrors: { previewId: ['Choose a preview'] },
+      },
+    }),
+  );
+  mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Restore workspace to here…' }),
+  );
+  await screen.findByRole('alertdialog');
+  fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Restore outcome not confirmed: Choose a preview. Inspect the workspace before trying again.',
+    ),
   );
 });
 

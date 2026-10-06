@@ -9,6 +9,7 @@ import type {
   TurnPhaseCheckpoint,
 } from './checkpoint-index-store.js';
 import type { CheckpointRefStore } from './checkpoint-ref-store.js';
+import { withCheckpointRepository } from './checkpoint-ref-store.js';
 
 const MAX_SERVED_TURN_RECORDS = 200;
 const CHANGED_FILE_READ_CONCURRENCY = 4;
@@ -22,6 +23,11 @@ interface CheckpointReadBounds {
   diffConcurrency?: number;
   maxChangedFiles?: number;
   runGit?: GitDiffRunner;
+  /**
+   * How the recorded root's own repository is opened for the diff. For
+   * tests that script `runGit` over a root that is not a repository.
+   */
+  openRepository?: typeof withCheckpointRepository;
 }
 
 /**
@@ -114,6 +120,7 @@ export async function listThreadRecordsWithObjectStatus(
         changedFiles: await changedFilesBetween(baseline, settle, {
           maxChangedFiles: bounds.maxChangedFiles ?? MAX_CHANGED_FILES_PER_TURN,
           runGit: bounds.runGit ?? execGit,
+          openRepository: bounds.openRepository ?? withCheckpointRepository,
         }),
       };
     },
@@ -123,7 +130,11 @@ export async function listThreadRecordsWithObjectStatus(
 async function changedFilesBetween(
   baseline: ServedTurnPhaseCheckpoint | undefined,
   settle: ServedTurnPhaseCheckpoint | undefined,
-  options: { maxChangedFiles: number; runGit: GitDiffRunner },
+  options: {
+    maxChangedFiles: number;
+    runGit: GitDiffRunner;
+    openRepository: typeof withCheckpointRepository;
+  },
 ): Promise<TurnChangedFiles> {
   // #2410: a boundary Station declined to capture says so, rather than
   // reading as a checkpoint that went missing.
@@ -157,22 +168,31 @@ async function changedFilesBetween(
     return { status: 'unavailable', reason: 'checkpoint_identity_invalid' };
 
   try {
-    const { stdout } = await options.runGit(
-      [
-        'diff',
-        '--name-status',
-        '-z',
-        '--find-renames',
-        '--end-of-options',
-        baseline.commitSha,
-        settle.commitSha,
-      ],
-      {
-        cwd: baseline.repoRoot,
-        encoding: 'utf-8',
-        timeout: 60_000,
-        maxBuffer: MAX_DIFF_OUTPUT_BYTES,
-      },
+    // The recorded root is a member-writable folder: the diff runs against
+    // a snapshot of its OWN repository, named on the call, never one git
+    // discovers from the folder.
+    const { stdout } = await options.openRepository(
+      baseline.repoRoot,
+      { timeoutMs: 60_000 },
+      (repository) =>
+        options.runGit(
+          [
+            ...repository.repoArgs,
+            'diff',
+            '--name-status',
+            '-z',
+            '--find-renames',
+            '--end-of-options',
+            baseline.commitSha,
+            settle.commitSha,
+          ],
+          {
+            cwd: repository.top,
+            encoding: 'utf-8',
+            timeout: 60_000,
+            maxBuffer: MAX_DIFF_OUTPUT_BYTES,
+          },
+        ),
     );
     const fields = stdout.split('\0');
     if (fields.at(-1) === '') fields.pop();

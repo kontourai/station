@@ -1,6 +1,7 @@
 import { DEFAULT_GUARDRAILS } from '@kontourai/station-contracts/agent';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { useModelConnectionsQuery } from '@kontourai/station-sdk';
+import { InfoTip } from '../../components/InfoTip';
 import { navigationStore } from '../../contexts/navigation-store';
 import {
   connectionStatusLabel,
@@ -93,9 +94,14 @@ export function AgentEditorModelSection({
   return (
     <>
       <div className="editor-field">
-        <label className="editor-label" htmlFor="ae-model-connection">
-          Model connection
-        </label>
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor="ae-model-connection">
+            Model connection
+          </label>
+          <InfoTip label="Model connection">
+            Which model connection Station&apos;s engine uses for this agent.
+          </InfoTip>
+        </div>
         <select
           id="ae-model-connection"
           className="editor-select"
@@ -126,9 +132,6 @@ export function AgentEditorModelSection({
             </option>
           ))}
         </select>
-        <span className="editor-hint">
-          Which model connection Station&apos;s engine uses for this agent.
-        </span>
       </div>
 
       {modelConnectionOptions
@@ -181,11 +184,13 @@ export function AgentEditorModelSection({
         options={modelOptions}
         placeholder="Model id"
         hint="Leave blank to use the model connection's own default."
+        hintPlacement="tooltip"
         onChange={(modelId) => setForm((current) => ({ ...current, modelId }))}
       />
 
       <ProviderRegionField
         id="ae-region"
+        hintPlacement="tooltip"
         value={form.region}
         hint={
           appConfig?.region
@@ -197,9 +202,14 @@ export function AgentEditorModelSection({
       />
 
       <div className="editor-field">
-        <label className="editor-label" htmlFor="ae-temperature">
-          Temperature
-        </label>
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor="ae-temperature">
+            Temperature
+          </label>
+          <InfoTip label="Temperature">
+            How varied the replies are. Higher is more varied.
+          </InfoTip>
+        </div>
         <input
           id="ae-temperature"
           type="number"
@@ -222,15 +232,17 @@ export function AgentEditorModelSection({
             }))
           }
         />
-        <span className="editor-hint">
-          How varied the replies are. Higher is more varied.
-        </span>
       </div>
 
       <div className="editor-field">
-        <label className="editor-label" htmlFor="ae-max-tokens">
-          Longest reply
-        </label>
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor="ae-max-tokens">
+            Longest reply
+          </label>
+          <InfoTip label="Longest reply">
+            The most tokens one reply may use.
+          </InfoTip>
+        </div>
         <input
           id="ae-max-tokens"
           type="number"
@@ -251,13 +263,17 @@ export function AgentEditorModelSection({
             }))
           }
         />
-        <span className="editor-hint">The most tokens one reply may use.</span>
       </div>
 
       <div className="editor-field">
-        <label className="editor-label" htmlFor="ae-maxsteps">
-          Steps per turn
-        </label>
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor="ae-maxsteps">
+            Steps per turn
+          </label>
+          <InfoTip label="Steps per turn">
+            How many tool steps one turn may take before it stops.
+          </InfoTip>
+        </div>
         <input
           id="ae-maxsteps"
           type="number"
@@ -275,9 +291,6 @@ export function AgentEditorModelSection({
             }))
           }
         />
-        <span className="editor-hint">
-          How many tool steps one turn may take before it stops.
-        </span>
       </div>
     </>
   );

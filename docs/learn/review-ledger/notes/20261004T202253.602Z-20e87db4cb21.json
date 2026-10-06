@@ -1,0 +1,7 @@
+{
+  "revision": "3c6bca80acfad55e3685220d45613119dd6aa19d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts from the reviewed canonical docs for #3157 (module-map, contracts and session-api gained the usage-limit banner routes and immediate-claim text); the generator output is the only change, and this reference's description of the shipped-topic generation is unaffected.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

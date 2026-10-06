@@ -1,0 +1,29 @@
+{
+  "path": "docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Accepted authoring/execution entry boundary, shared clients and consumer-driven package extraction.",
+
+  "limits": "Direction and source implementation; no publication or live provider proof.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/sdk/package.json ours={\"digest\":\"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "packages/sdk/package.json",
+
+    "packages/sdk/src/__tests__/browser-entry-bundles.test.ts",
+
+    "packages/sdk/src/agent/index.ts",
+
+    "packages/shared/src/build.ts",
+
+    "src-ui/src/core/pluginSharedRuntime.ts"
+  ],
+
+  "checks": [
+    "Public Node/browser bundle and host/build focused tests: 28 tests passed. Headless source typecheck and Node build passed. React leakage mutation failed both Agent boundary assertions; restored six bundle tests passed. No live provider run.",
+
+    "Integration delta review for main 1eaac9372: the SDK export map adds the separate device-code-login UI subpath and the SDK reference adds its authority-scoped hooks. Agent /agent remains explicit and React-free; neither that entry nor its canonical clients changed. Preserved both ledger histories/source additions. Agent authoring, headless source prerequisites, plugin admission and prior verification limits remain accurate; no fresh live-provider or release proof claimed."
+  ]
+}

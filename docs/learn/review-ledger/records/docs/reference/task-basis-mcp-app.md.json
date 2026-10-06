@@ -1,0 +1,41 @@
+{
+  "path": "docs/reference/task-basis-mcp-app.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Private read session/CSP/host and actual route traced. Added bounds, hosted exclusion, double owner read, digest invalidation and best-effort teardown expiry fallback.",
+
+  "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
+
+  "sources": [
+    "packages/basis-pane/src/task-basis-mcp-app.browser.ts",
+
+    "packages/basis-pane/src/task-basis-mcp-app.ts",
+
+    "packages/basis-pane/src/workspace-basis-mcp-pane.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-server/runtime/routes/task-basis-mcp-initial-read.ts",
+
+    "src-server/services/projects/task-basis-app-read-module.ts",
+
+    "src-server/services/projects/task-basis-module.ts",
+
+    "src-server/services/projects/task-basis-runtime-composition.ts",
+
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
+
+    "src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx"
+  ],
+
+  "checks": [
+    "441 focused tests across 28 files passed. Full local Markdown link check passed; Veritas readiness reported zero failures and warnings. Actual external provider, physical-device and hosted deployment outcomes were not exercised.",
+
+    "Integration source review through d72f79b08: in tasks.ts, #2904 only replaces the Task dispatch full-access 403 body with fullAccessRefusal(c), which adds structured details. The document covers the private read session, CSP, host, bounds, owner rereads, digest invalidation and teardown, none of which touch dispatch refusal. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2919) MCPToolUIFrame.tsx unexports mcpUiToolCallDecision and drops the isDistinctFrameOrigin re-export. The read-only policy still maps to 'deny' and the frame still consumes the host adapter; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "eca780b7b05490da1cf31e7a325a9826778223b2",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"src-server/providers/adapters/acp-adapter.ts (this branch): ACP tool updates keep the engine's tool kind, request.opened carries the reported tool name, and a permission request still open when session/prompt ends is published as request.resolved (cancelled). Checked this document's approval statements: clients still read request.opened and answer with respondToRequest, and approval gating and caller authority are unchanged; nothing here describes the ACP payload fields or prompt-end settlement, so no prose change.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"src-server/providers/adapters/acp-adapter.ts (this branch): ACP tool updates keep the engine's tool kind, request.opened carries the reported tool name, and a permission request still open when session/prompt ends is published as request.resolved (cancelled). Checked this document's approval statements: clients still read request.opened and answer with respondToRequest, and approval gating and caller authority are unchanged; nothing here describes the ACP payload fields or prompt-end settlement, so no prose change.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"src-server/providers/adapters/acp-adapter.ts (this branch): ACP tool updates keep the engine's tool kind, request.opened carries the reported tool name, and a permission request still open when session/prompt ends is published as request.resolved (cancelled). Checked this document's approval statements: clients still read request.opened and answer with respondToRequest, and approval gating and caller authority are unchanged; nothing here describes the ACP payload fields or prompt-end settlement, so no prose change.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

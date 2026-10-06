@@ -142,6 +142,27 @@ export function filePreviewPanePresentationLabel(
   }`;
 }
 
+/**
+ * The previewed file's workspace-relative path, untruncated — what a rail
+ * item's tooltip says while its label is the file name (#3047). Null for an
+ * instance that is not a canonical preview of this Project's.
+ */
+export function filePreviewPanePresentationPath(
+  projectId: string,
+  projectSlug: string,
+  instance: WorkspacePaneInstance,
+  storage: FilePreviewPaneStateStorage,
+): string | null {
+  const state = readFilePreviewPaneState(storage, instance.stateKey);
+  if (
+    state?.projectSlug !== projectSlug ||
+    instance.boundContext?.projectId !== projectId ||
+    !isCanonicalFilePreviewPaneInstance(instance, state)
+  )
+    return null;
+  return state!.path;
+}
+
 /** Called only after the host has removed and lifecycle-tombstoned an instance. */
 export function removeRemovedFilePreviewPaneState(
   projectId: string,

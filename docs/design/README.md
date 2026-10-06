@@ -62,8 +62,10 @@ category.
 - [modality-ladder.md](modality-ladder.md) — The modality ladder
 - [motion.md](motion.md) — Motion grammar
 - [native-capabilities.md](native-capabilities.md) — Native platform capabilities
+- [native-relay-enrollment.md](native-relay-enrollment.md) — Native relay enrollment
 - [notification-delivery.md](notification-delivery.md) — Notification delivery on native shells
 - [offline-outbound-queue.md](offline-outbound-queue.md) — Offline outbound queue scope
+- [operator-device-access.md](operator-device-access.md) — Operator device access from a paired browser (#2894)
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
@@ -78,11 +80,14 @@ category.
 - [project-membership.md](project-membership.md) — Project membership and device enrollment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
 - [registry-trust-policy.md](registry-trust-policy.md) — Applied registry trust policy
+- [remote-execution-preparation.md](remote-execution-preparation.md) — Remote execution preparation
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
+- [shared-task-channels.md](shared-task-channels.md) — Shared Task channels
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards
+- [shell-plugins-distributions.md](shell-plugins-distributions.md) — Shell kernel, plugin contributions and distribution manifests
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
@@ -90,5 +95,6 @@ category.
 - [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher
+- [task-room-agent-requests.md](task-room-agent-requests.md) — Task room agent requests
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

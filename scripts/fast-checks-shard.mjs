@@ -29,6 +29,7 @@ import {
   FAST_CHECKS_RECEIPT_FILE,
   FAST_CHECKS_RECEIPT_KIND,
   FAST_CHECKS_SHARD_COUNT,
+  fastChecksShardCount,
   isPassingFastChecksStatus,
   parseFastChecksShard,
   sliceFastChecksPlan,
@@ -124,7 +125,7 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
   // (RELATED_DISCOVERY_RESERVE_MS) covers npm's start-up and the plan write.
   const discoveryDeadlineAt = now() + FAST_CHECKS_PLAN_BUDGET_MS;
   const { fastBase } = await import('./run-ci-fast.mjs');
-  const plan = await (
+  const selected = await (
     planShards ??
     (await import('./run-changed-verification.mjs'))
       .planChangedVerificationShards
@@ -133,12 +134,26 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
     shardCount: FAST_CHECKS_SHARD_COUNT,
     discoveryDeadlineAt,
   });
+  const plan = {
+    ...selected,
+    // pull_request_target executes the base workflow with the candidate CLI.
+    // An old fixed matrix must still receive its four-way plan (#3101).
+    shardCount:
+      env.STATION_FAST_CHECKS_ADAPTIVE_SHARDS === 'true'
+        ? fastChecksShardCount(selected.fileCount)
+        : FAST_CHECKS_SHARD_COUNT,
+  };
   const errors = validateFastChecksPlan(plan);
   if (errors.length)
     throw new Error(
       `computed fast-checks plan is invalid: ${errors.join('; ')}`,
     );
   writeJson(resolve(cwd, out), plan);
+  if (env.GITHUB_OUTPUT)
+    appendFileSync(
+      env.GITHUB_OUTPUT,
+      `shards=${JSON.stringify(Array.from({ length: plan.shardCount }, (_, index) => index + 1))}\nshard-count=${plan.shardCount}\n`,
+    );
   report(
     `[fast-checks] plan: ${plan.fileCount} test file(s) over ${plan.groups.length} resource group(s), ${plan.shardCount} shard(s)` +
       (plan.deferredLanes.length
@@ -309,7 +324,6 @@ function aggregateCommand(
       path,
       text: readFileSync(path, 'utf8'),
     })),
-    shardCount: FAST_CHECKS_SHARD_COUNT,
     runId: env.GITHUB_RUN_ID,
     headSha: headSha(cwd),
   });

@@ -1,0 +1,15 @@
+{
+  "path": "docs/adr/0003-require-evidence-gated-completion.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Architecture decision record; preserve its rationale and stated scope.",
+
+  "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+
+  "sources": [],
+
+  "checks": []
+}

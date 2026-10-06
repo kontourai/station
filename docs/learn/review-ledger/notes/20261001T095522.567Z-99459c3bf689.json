@@ -1,0 +1,7 @@
+{
+  "revision": "58cb96ec664f878e66ec31e998d24a64fa85089d",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"The ACP response-option mapping in acp-adapter-events.ts is the implementation owner for the corrected fallback claim; retain it as a freshness dependency. Inspected accept preferredKinds allow_once then allow_always. This supplements the corrective review note; no behavioral change or new live provider proof.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

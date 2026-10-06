@@ -1,0 +1,7 @@
+{
+  "revision": "b75ddb3259845f80422fcacabf9793740f8e292e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3406 review round: the hung-drive paragraph now says Station cannot tell the Project, an already filed conversation keeps it (unattributed never replaces a stored attribution in follow()), a new one lists under No project, retried about once a minute (60 s back-off). Checked against the probe test 'an unread folder takes no part in matching' and the poll correction test. Limit: no real hung network drive.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

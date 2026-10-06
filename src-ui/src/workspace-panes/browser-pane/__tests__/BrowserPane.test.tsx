@@ -143,6 +143,22 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** Open the toolbar's ⋯ menu and choose one of its items. */
+async function chooseFromMenu(
+  name: string,
+  role: 'menuitem' | 'menuitemradio' = 'menuitem',
+) {
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'More browser actions' }),
+  );
+  const menu = await screen.findByRole('menu', {
+    name: 'More browser actions',
+  });
+  const item = within(menu).getByRole(role, { name }) as HTMLButtonElement;
+  await waitFor(() => expect(item.disabled).toBe(false));
+  fireEvent.click(item);
+}
+
 describe('BrowserPane honest states', () => {
   test('a Station without the browser routes (hosted) says the browser is unavailable here', async () => {
     renderPane({ 'GET /api/browser/projects/alpha/access': refuse(404) });
@@ -269,7 +285,8 @@ describe('BrowserPane address bar', () => {
     )) as HTMLInputElement;
     await waitFor(() => expect(address.value).toBe('https://example.com/'));
     fireEvent.change(address, { target: { value: 'file:///etc/passwd' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+    // Enter in the address submits its form (there is no separate Go).
+    fireEvent.submit(address.closest('form')!);
     expect((await screen.findByRole('alert')).textContent).toBe(
       "Station can't open file: URLs. Only http and https pages open here.",
     );
@@ -342,11 +359,41 @@ describe('BrowserPane address bar', () => {
         }),
       ),
     });
-    const select = (await screen.findByRole('combobox')) as HTMLSelectElement;
-    await waitFor(() => expect(select.disabled).toBe(false));
-    expect(select.value).toBe('desktop');
-    fireEvent.change(select, { target: { value: 'phone' } });
-    await waitFor(() => expect(select.value).toBe('phone'));
+    await screen.findByTestId('live-canvas');
+    const openViewport = async () => {
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More browser actions' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: /^Viewport: / }),
+      );
+      return screen.findByRole('menu', { name: 'Viewport' });
+    };
+    // The row says the current value; its list checks it.
+    expect(
+      (await screen.findAllByRole('button', { name: 'More browser actions' }))
+        .length,
+    ).toBe(1);
+    let menu = await openViewport();
+    expect(
+      within(menu)
+        .getByRole('menuitemradio', { name: 'Desktop 1280 × 800' })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
+    fireEvent.click(
+      within(menu).getByRole('menuitemradio', { name: 'Phone 393 × 852' }),
+    );
+    await waitFor(() =>
+      expect(calls.some((c) => c.path.endsWith('/viewport'))).toBe(true),
+    );
+    menu = await openViewport();
+    await waitFor(() =>
+      expect(
+        within(menu)
+          .getByRole('menuitemradio', { name: 'Phone 393 × 852' })
+          .getAttribute('aria-checked'),
+      ).toBe('true'),
+    );
     expect(calls.find((c) => c.path.endsWith('/viewport'))?.body).toEqual({
       viewport: { width: 393, height: 852, deviceScaleFactor: 3, mobile: true },
       generation: 1,
@@ -395,7 +442,7 @@ describe('BrowserPane session list (D6)', () => {
         agentSession,
       ]),
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Sessions' }));
+    await chooseFromMenu('Sessions');
     const items = await screen.findAllByTestId('browser-session-item');
     expect(items).toHaveLength(2);
     const agent = items[1]!;
@@ -520,9 +567,7 @@ describe('BrowserPane local targets (D7, operator only)', () => {
       'DELETE /api/browser/projects/alpha/local-targets/lt_00000000-0000-4000-8000-000000000001':
         ok({}),
     });
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Local servers' }),
-    );
+    await chooseFromMenu('Local servers');
     expect(await screen.findByText('api — 127.0.0.1:3001')).toBeTruthy();
     expect(
       calls.some((c) => c.path.endsWith('/local-target-suggestions')),
@@ -563,7 +608,18 @@ describe('BrowserPane local targets (D7, operator only)', () => {
       ),
     });
     await screen.findByTestId('live-canvas');
-    expect(screen.queryByRole('button', { name: 'Local servers' })).toBeNull();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More browser actions' }),
+    );
+    const menu = await screen.findByRole('menu', {
+      name: 'More browser actions',
+    });
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Sessions' }),
+    ).toBeTruthy();
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Local servers' }),
+    ).toBeNull();
   });
 });
 
@@ -582,9 +638,7 @@ describe('BrowserPane agent access (D4)', () => {
         updatedBy: 'principal:admin',
       }),
     });
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Agent access' }),
-    );
+    await chooseFromMenu('Agent access');
     const toggle = await screen.findByRole('switch', {
       name: "Let agents run JavaScript in this Project's pages",
     });
@@ -701,7 +755,7 @@ describe('BrowserPane wave 2 fix round', () => {
     expect(
       (await screen.findByText(/The page showed a dialog/)).textContent,
     ).toBe(
-      "The page showed a dialog: “Delete everything?”. Station dismissed it. Pages that need you to confirm or answer a prompt can't be completed here yet.",
+      'The page showed a dialog: “Delete everything?”. Station dismissed it automatically because no person was in control. Take control before the page asks, and you can answer it yourself.',
     );
   });
 
@@ -727,7 +781,7 @@ describe('BrowserPane wave 2 fix round', () => {
     await screen.findByTestId('live-canvas');
     // Re-render (any state change) after the baseline is taken: an old
     // dialog must still not be announced.
-    fireEvent.click(screen.getByRole('button', { name: 'Sessions' }));
+    await chooseFromMenu('Sessions');
     await screen.findByRole('heading', {
       name: 'Browser sessions in this Project',
     });
@@ -837,7 +891,7 @@ describe('BrowserPane wave 2 fix round', () => {
         }),
       ),
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Sessions' }));
+    await chooseFromMenu('Sessions');
     const show = await screen.findByRole('button', {
       name: 'Show all 12 kept entries',
     });
@@ -911,7 +965,7 @@ describe('BrowserPane delta-review nits', () => {
         }),
       ]),
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Sessions' }));
+    await chooseFromMenu('Sessions');
     const list = await screen.findByRole('list', {
       name: 'Recent actions in https://docs.example/',
     });
@@ -966,7 +1020,7 @@ describe('BrowserPane delta-review nits', () => {
         }),
       ),
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Sessions' }));
+    await chooseFromMenu('Sessions');
     fireEvent.click(
       await screen.findByRole('button', { name: 'Show all 2 kept entries' }),
     );
@@ -1082,7 +1136,7 @@ describe('BrowserPane live-verify fixes', () => {
         }),
       ]),
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Sessions' }));
+    await chooseFromMenu('Sessions');
     const list = await screen.findByRole('list', {
       name: 'Recent actions in https://docs.example/',
     });

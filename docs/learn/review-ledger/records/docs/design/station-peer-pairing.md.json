@@ -1,0 +1,45 @@
+{
+  "path": "docs/design/station-peer-pairing.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Historical peer design and supersession log linked to actual credential/delegation/scope owners; original proposal body preserved.",
+
+  "limits": "No full delegation/read-scope/security audit, real mutual pairing ceremony, SSH remote or target-execution proof.",
+
+  "sources": [
+    "packages/contracts/src/environment-security.ts",
+
+    "src-server/services/peers/peer-credential-store.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "src-server/services/remote-stations/remote-station-forwarder.ts",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
+  ],
+
+  "checks": [
+    "Full original body read; bounded source/caller checks for corrections, not blanket semantic certification.",
+
+    "32 focused tests across4 files passed.",
+
+    "Relevant frozen upstream source deltas independently reviewed; classification scope and historical/runtime evidence limits retained.",
+
+    "Reviewed integration deltas: src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d72f79b08: #2904 adds PAIRING_SCOPE_DESCRIPTIONS (insertion at line 472) and FullAccessRevocationReport types (from line 1125) to contracts environment-security.ts. It changes no peer, delegation-preset or PairedDeviceKind semantics, and the lines the dated supersession table cites (174, 393, 414) have identical content before and after. That table's :393/:414 references to PairedDeviceKind were already offset before #2904 (702 at base, now 779); this is dated history and #2904 did not cause it. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c inserted decision-delivery code in station-control-delegation.ts at line 1196 and later. The doc's cited ranges (:87-93, :100, :335-356, :643-648, :716-760) and its target-resolution claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

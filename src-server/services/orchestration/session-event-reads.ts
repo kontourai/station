@@ -9,6 +9,7 @@ import type {
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
@@ -16,6 +17,7 @@ import {
   type RequestReplayOutcome,
   replayRequestOutcome,
   type SessionAnswerabilityObservation,
+  TURN_ABORT_SETTLED_REQUEST_STATUS,
 } from './open-requests.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -140,12 +142,26 @@ export class SessionEventReads {
     const eventStore = this.deps.eventStore;
     if (!eventStore) return { state: 'undetermined' };
     try {
-      return replayRequestOutcome(
+      const outcome = replayRequestOutcome(
         eventStore
           .listEventsForRequest(threadId, requestId)
           .map((event) => event.payload),
         requestId,
       );
+      if (outcome.state !== 'open') return outcome;
+      // #3071: the request's own events cannot say its turn was aborted.
+      // The session projection carries the latest turn's start and terminal
+      // beside every unresolved request, which is the turn context the
+      // shared settle rule needs. A log written before recovery resolved
+      // such a request itself reads settled here, so the approval inbox's
+      // convergence sweep expires its notification.
+      return requestIdsSettledByTurnAbort(
+        eventStore
+          .listSessionProjectionEvents(threadId)
+          .map((event) => event.payload),
+      ).has(requestId)
+        ? { state: 'resolved', status: TURN_ABORT_SETTLED_REQUEST_STATUS }
+        : outcome;
     } catch (error) {
       this.deps.logger.warn(
         'Could not read the persisted log for a request outcome',
@@ -273,7 +289,14 @@ export class SessionEventReads {
       protocolVersion: 1,
       session: eventWindowSessionSummary(fullSession),
       events: window.events.map((event) => ({
-        sequence: event.sequence,
+        // The GLOBAL sequence, in the same space as `watermark` (the
+        // thread-filtered stream head) and as the live SSE ids a reader
+        // stitches past it. The per-thread `sequence` beside a global
+        // watermark made a reader that orders by `sequence` interleave this
+        // page with live frames wrongly — the legacy (no-lineage) conversation
+        // branch below and the client's 404 fallback both serve this shape to
+        // the conversation reader.
+        sequence: event.globalSequence,
         event: event.payload,
         // archive#3386: the read's own budget report. Dropping it here is
         // what made the elision silent — the client receives identity fields

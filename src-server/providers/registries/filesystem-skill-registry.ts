@@ -7,6 +7,7 @@ import type {
   RegistryItem,
 } from '@kontourai/station-contracts/catalog';
 import { parseFrontmatter } from 'agent-skills-ts-sdk';
+import { localSkillRevisionFromDirectory } from '../../services/agents/skill-revision.js';
 import { appHomeProfileDir } from '../app-home/app-home-profiles.js';
 import type { ISkillRegistryProvider } from '../provider-interfaces.js';
 
@@ -29,7 +30,32 @@ function defaultSkillRoots() {
 }
 
 export class FilesystemSkillRegistryProvider implements ISkillRegistryProvider {
-  constructor(private roots: string[] = defaultSkillRoots()) {}
+  private readonly roots: string[];
+  private children?: FilesystemSkillRegistryProvider[];
+
+  constructor(roots: string[] = defaultSkillRoots()) {
+    this.roots = [...roots];
+  }
+
+  get registryKey(): string {
+    return this.roots.join('|');
+  }
+
+  catalogProviders(): FilesystemSkillRegistryProvider[] {
+    this.children ??= this.roots.map(
+      (root) => new FilesystemSkillRegistryProvider([root]),
+    );
+    return this.children;
+  }
+
+  async getPackageRevision(id: string): Promise<string | null> {
+    for (const root of this.roots) {
+      const directory = join(root, id);
+      if (existsSync(join(directory, 'SKILL.md')))
+        return localSkillRevisionFromDirectory(directory);
+    }
+    return null;
+  }
 
   async listAvailable(): Promise<RegistryItem[]> {
     const items: RegistryItem[] = [];
@@ -68,14 +94,30 @@ export class FilesystemSkillRegistryProvider implements ISkillRegistryProvider {
     return [];
   }
 
-  async install(id: string, targetDir: string): Promise<InstallResult> {
+  async install(
+    id: string,
+    targetDir: string,
+    options?: { expectedPackageRevision?: string },
+  ): Promise<InstallResult> {
     for (const root of this.roots) {
       const sourceDir = join(root, id);
       if (!existsSync(join(sourceDir, 'SKILL.md'))) continue;
+      if (
+        options?.expectedPackageRevision &&
+        (await localSkillRevisionFromDirectory(sourceDir)) !==
+          options.expectedPackageRevision
+      )
+        throw new Error('Registry skill source changed; inspect it again.');
       await cp(sourceDir, join(targetDir, id), {
         recursive: true,
         force: true,
       });
+      if (
+        options?.expectedPackageRevision &&
+        (await localSkillRevisionFromDirectory(join(targetDir, id))) !==
+          options.expectedPackageRevision
+      )
+        throw new Error('Registry skill package digest mismatch.');
       return { success: true, message: `Installed ${id} from ${root}` };
     }
 

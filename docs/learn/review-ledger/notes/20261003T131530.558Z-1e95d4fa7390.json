@@ -1,0 +1,7 @@
+{
+  "revision": "6b192b274917a32f36ef47a142936a368e44247e",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Issue-reference section rewritten against live REST data: kontourai/station issues number contiguously from #1 (2026-08-27); #27-#601 (except #106) carry 'Migrated from the pre-public backlog' with the archive number; #106, #483-#485 verified live here and unrelated in the archive. Removed the false 'below #550 means archive' rule. Rest of file unchanged.","inputs":["AGENTS.md"]}
+  ]
+}

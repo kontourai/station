@@ -34,7 +34,7 @@ describe('the notification inbox is a destination', () => {
       APP_DESTINATION_REGISTRY.get('notifications')?.sidebar,
     ).toBeUndefined();
     expect(
-      APP_DESTINATION_REGISTRY.get('notifications')?.settingsNav,
+      APP_DESTINATION_REGISTRY.get('notifications')?.customizeNav,
     ).toBeUndefined();
   });
 });

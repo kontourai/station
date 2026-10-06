@@ -1,0 +1,7 @@
+{
+  "revision": "e7249c6d7392e2dd27a7093c6028bcf0f65abbca",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Re-recorded after the path-only ledger migration (#3227). This design page was authored in this change. After fix round 56191ed22b, the page was checked against these sources and its claims hold: the dirty-tree row (submodule drift and assume-unchanged/skip-worktree refused as tracked_state_unverifiable), the named remote-reference refusal, the step-4 and step-7 order with well-formedness before any repository read, the recheck on reattach, and markRefused dropping the receipt from the claim. The contract code lives in execution-preparation.ts and execution-target.ts, and the capability flag in station-capability-flags.ts.","inputs":["docs/design/remote-execution-preparation.md","packages/contracts/src/execution-preparation.ts","packages/contracts/src/execution-target.ts","src-server/capabilities/station-capability-flags.ts","src-server/services/execution-target/__tests__/execution-preparation.test.ts","src-server/services/execution-target/execution-preparation.ts","src-server/services/orchestration/delegation-attempt-claim-store.ts","src-server/services/projects/project-contribution-service.ts","src-server/tools/__tests__/station-control-delegation-preparation.test.ts","src-server/tools/station-control-delegation.ts","tests/portable-receiver-live-proof.spec.ts"]}
+  ]
+}

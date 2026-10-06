@@ -1,0 +1,177 @@
+{
+  "path": "docs/glossary.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
+
+  "limits": "No new live broker/device/provider or host installation proof. Historical rationale and naming decisions retain their original scope. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/glossary.md\",\"ours\":{\"digest\":\"c7d1e5949adcce8b8fd0605b9280cc5f869c72ec9cc4b7b2767db1617b2a4c6a\",\"revision\":\"335893e0b2f5e87d0ccd02115fd0cfa760b215c1\"},\"main\":{\"digest\":\"8253d91c550f19b800501ac200a66a2e3d55a4b4d71cf6febdd2b1b9f3c7e2bc\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"src-server/services/live-surface/registry.ts\",\"ours\":{\"digest\":\"7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"903df00489a63767e82604246f8ac9eedd3eb54cc947d08dba33ba459732f341\",\"revision\":\"e5d9b68a5a99edfb53c307ebc86f2890a3200d00\"}},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts\",\"ours\":{\"digest\":\"bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"492c02f20784891fa92facee2287c88c429836a8d1ca2c52e25230566db75c38\",\"revision\":\"c82192d89121275a4b40400a4c110927beff4344\"}},{\"path\":\"src-ui/src/app-shell/destination-registry.ts\",\"ours\":{\"digest\":\"0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6\",\"revision\":\"99822caec8da2e28aadac4edeb384374ffb0543d\"}},{\"path\":\"packages/contracts/src/workspace-browser-preview.ts\",\"ours\":{\"digest\":\"5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"ce91e2d481029501f2234191c0b954b05cdb10861295d5c8616318bc2acec29a\",\"revision\":\"5e79846e0abd2cbfa471dcde99ae95735b0b526e\"}},{\"path\":\"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx\",\"ours\":{\"digest\":\"56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"a48c98f49fefb566c7cd8618e3798ed3697645a3fecd662897ec2340f9a9e8ae\",\"revision\":\"a47e99c46dd2e877f8b9d0750db41b314f676d49\"}},{\"path\":\"src-ui/src/live-surface/useLiveSurface.ts\",\"ours\":{\"digest\":\"82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"2f51778707bf5a9560caf660128c6a07807c33e1b6c7529e03c2049e0ba7e59f\",\"revision\":\"e5d9b68a5a99edfb53c307ebc86f2890a3200d00\"}},{\"path\":\"src-server/services/browser/browser-automation.ts\",\"ours\":{\"digest\":\"d24c0f5ae869c2f83866647af0c38066bac77184dc6a2724fdf4bded4d7fecd4\",\"revision\":\"b8b24c97d098d1569105a87991fedadee778d22a\"},\"main\":{\"digest\":\"db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637\",\"revision\":\"930a4b5e4b5325ecd0941e7f85742c610544581d\"}},{\"path\":\"src-server/services/browser/chromium-screencast-producer.ts\",\"ours\":{\"digest\":\"6b6f45100304b04049f432aff93a46a71d457398db5aacebdf554c8d33fce0b4\",\"revision\":\"b8b24c97d098d1569105a87991fedadee778d22a\"},\"main\":{\"digest\":\"61340e4d4b704e7384c236a2c938deed198fa0d73222476360b5c9995da23740\",\"revision\":\"98db501812082da5558fc63a96993e23cd4a6a9c\"}},{\"path\":\"docs/reference/connect.md\",\"ours\":{\"digest\":\"ad846f392757bb43cd6e8a6ca3dc3f5b08cf0734908ad3b9fdc0775615fea04e\",\"revision\":\"7a327814d48d76faaca497206b6529d781d111dd\"},\"main\":{\"digest\":\"4a1c148347a0e32b16f87d176255ce36c9a05abf2a59208ad260477123388821\",\"revision\":\"daeb0902d1d0d28457a61b01e6dbdaab13fc0888\"}},{\"path\":\"src-server/services/browser/browser-session-registry.ts\",\"ours\":{\"digest\":\"2021e106a5e8148732ecebf92f8872632f27fd318b36aaa48e9f6b403ef29be5\",\"revision\":\"b8b24c97d098d1569105a87991fedadee778d22a\"},\"main\":{\"digest\":\"da238014e467ecbccac2cb3f3fd44800182e83e6f425ab6814fac3fb7aa5a09e\",\"revision\":\"98db501812082da5558fc63a96993e23cd4a6a9c\"}},{\"path\":\"src-server/services/live-surface/control-lease.ts\",\"ours\":{\"digest\":\"8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"df337ad357260e1797a26fa32c4f903cca260e973edbb1a47b5b831b5c6d6482\",\"revision\":\"e5d9b68a5a99edfb53c307ebc86f2890a3200d00\"}},{\"path\":\"packages/contracts/src/live-surface.ts\",\"ours\":{\"digest\":\"9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546\",\"revision\":\"e5d9b68a5a99edfb53c307ebc86f2890a3200d00\"}},{\"path\":\"src-server/services/browser/browser-service.ts\",\"ours\":{\"digest\":\"1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3\",\"revision\":\"930a4b5e4b5325ecd0941e7f85742c610544581d\"}},{\"path\":\"packages/contracts/src/workspace-browser-pane.ts\",\"ours\":{\"digest\":\"34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721\",\"revision\":\"930a4b5e4b5325ecd0941e7f85742c610544581d\"}},{\"path\":\"src-server/services/live-surface/producer.ts\",\"ours\":{\"digest\":\"9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04\",\"revision\":\"930a4b5e4b5325ecd0941e7f85742c610544581d\"}},{\"path\":\"src-ui/src/float-over-chat/FloatOverChatHost.tsx\",\"ours\":{\"digest\":\"04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"81c979aa34b061b5c9ca39dea2fe8327e387f97ceb079918039dd5311275ae3e\",\"revision\":\"e5d9b68a5a99edfb53c307ebc86f2890a3200d00\"}},{\"path\":\"src-ui/src/views/TaskWorkspaceView.tsx\",\"ours\":{\"digest\":\"e0253e43f856a8c3f25a80e617c4cba1a6692a996ceb2446d954a4bc4f0d315b\",\"revision\":\"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694\"},\"main\":{\"digest\":\"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0\",\"revision\":\"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf\"}},{\"path\":\"src-server/routes/live-surface.ts\",\"ours\":{\"digest\":\"d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"f8f3b37a1f955bd3e099478e20035bb14c9f1056e5e25f85360892458e69b462\",\"revision\":\"e5d9b68a5a99edfb53c307ebc86f2890a3200d00\"}},{\"path\":\"src-server/services/browser/browser-live-surfaces.ts\",\"ours\":{\"digest\":\"e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569\",\"revision\":\"930a4b5e4b5325ecd0941e7f85742c610544581d\"}},{\"path\":\"src-ui/src/live-surface/LiveSurfaceCanvas.tsx\",\"ours\":{\"digest\":\"c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"790ccd19b16fa5b4d3911b9b817ecfb3b64c1505bb63dda41776a02762fb85c2\",\"revision\":\"e5d9b68a5a99edfb53c307ebc86f2890a3200d00\"}},{\"path\":\"docs/reference/contracts.md\",\"ours\":{\"digest\":\"1e06c4d2ab884910199b6a0926f4d34806eff1ec180b778593c3c07cc559ad55\",\"revision\":\"a320658a37b9537b814c0acb8460e7bf1b6018ea\"},\"main\":{\"digest\":\"164bf82aecbeff9fe134157d47a0676ee6fb8ecbdc6ee9f4b82b619c30d383f6\",\"revision\":\"5fe409ae3a57e640ad6e9e9271eeaa7a5d58c717\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"src-server/routes/browser.ts\",\"ours\":{\"digest\":\"41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"e12b8389875a1696d0f23891aac7213753c9f9c74833e24ebd31829ffe2b2f12\",\"revision\":\"e5d9b68a5a99edfb53c307ebc86f2890a3200d00\"}}].\n\nAdditional existing main limits (preserved verbatim): No new live broker/device/provider or host installation proof. Historical rationale and naming decisions retain their original scope.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/glossary.md\",\"ours\":{\"digest\":\"8253d91c550f19b800501ac200a66a2e3d55a4b4d71cf6febdd2b1b9f3c7e2bc\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"main\":{\"digest\":\"f3948bb0a098dccb1433f6c88994217b3a7258e37da2104126f2197df2904511\",\"revision\":\"a5cca76ed88ba6f99813da924ad1c7554335de87\"},\"active\":{\"digest\":\"f3948bb0a098dccb1433f6c88994217b3a7258e37da2104126f2197df2904511\",\"revision\":\"a5cca76ed88ba6f99813da924ad1c7554335de87\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"main\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/reference/connect.md\",\"ours\":{\"path\":\"docs/reference/connect.md\",\"digest\":\"90fd785f1759c44ef3b5d96787200b7407f98f3e702123387b9d148279743d18\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"main\":{\"path\":\"docs/reference/connect.md\",\"digest\":\"4a1c148347a0e32b16f87d176255ce36c9a05abf2a59208ad260477123388821\",\"revision\":\"daeb0902d1d0d28457a61b01e6dbdaab13fc0888\"},\"active\":{\"path\":\"docs/reference/connect.md\",\"digest\":\"90fd785f1759c44ef3b5d96787200b7407f98f3e702123387b9d148279743d18\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/reference/contracts.md\",\"ours\":{\"path\":\"docs/reference/contracts.md\",\"digest\":\"181b3cdbf7cdafccac2757a632d18ecaa0c827ed1614703f064e5e76d314a8ad\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"main\":{\"path\":\"docs/reference/contracts.md\",\"digest\":\"a92feb608ff35eb575e312d234f3b6d4de46735add00702bad15160005a2e942\",\"revision\":\"9816185d79a9c9f83a325d7bc16905765ea66705\"},\"active\":{\"path\":\"docs/reference/contracts.md\",\"digest\":\"181b3cdbf7cdafccac2757a632d18ecaa0c827ed1614703f064e5e76d314a8ad\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"oursMatch\"}]\n\nAdditional existing main limits (preserved verbatim): No new live broker/device/provider or host installation proof. Historical rationale and naming decisions retain their original scope.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"main\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/reference/connect.md\",\"ours\":{\"path\":\"docs/reference/connect.md\",\"digest\":\"908f3599f7bc2739e2efaacdb9756ae177a293123bf564aba2680b7fd0cd743b\",\"revision\":\"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666\"},\"main\":{\"path\":\"docs/reference/connect.md\",\"digest\":\"5177a7569eef2e2401d24bb0be4ea4dff99287719b8990176cda0d1887b9e982\",\"revision\":\"45349f9ef03de948da85f70c2dde2477832fac1a\"},\"active\":{\"path\":\"docs/reference/connect.md\",\"digest\":\"908f3599f7bc2739e2efaacdb9756ae177a293123bf564aba2680b7fd0cd743b\",\"revision\":\"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666\"},\"decision\":\"neitherMatch\"},{\"path\":\"docs/reference/contracts.md\",\"ours\":{\"path\":\"docs/reference/contracts.md\",\"digest\":\"bed2d47ec281b1c7d81e12eb990739cd153f74525c1fdd30258353ebb55e9827\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"main\":{\"path\":\"docs/reference/contracts.md\",\"digest\":\"91f07d13e66545c07aad8b506e741687a7d6291b86a5453419ef26ade50b8f88\",\"revision\":\"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb\"},\"active\":{\"path\":\"docs/reference/contracts.md\",\"digest\":\"bed2d47ec281b1c7d81e12eb990739cd153f74525c1fdd30258353ebb55e9827\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"ours\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"active\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/glossary.md\",\"ours\":{\"digest\":\"329ca4c2a839ecbf37e8306421328d7b2ca93748420405867954ad000062ae19\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"},\"theirs\":{\"digest\":\"329ca4c2a839ecbf37e8306421328d7b2ca93748420405867954ad000062ae19\",\"revision\":\"a86f7c1d7acef9f4fb2472a3dffce232bc9950b0\"},\"active\":{\"digest\":\"329ca4c2a839ecbf37e8306421328d7b2ca93748420405867954ad000062ae19\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"}},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"},\"theirs\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"},\"theirs\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9\",\"revision\":\"de8683f4e14dac4a3ebeeb959013aaa31906f8e8\"}},{\"path\":\"src-ui/src/app-shell/destination-registry.ts\",\"ours\":{\"path\":\"src-ui/src/app-shell/destination-registry.ts\",\"digest\":\"43648ebbbe654ea2da92f7f57fc3e2350e68253e12a8096bc6314eb6153f110b\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"},\"theirs\":{\"path\":\"src-ui/src/app-shell/destination-registry.ts\",\"digest\":\"43648ebbbe654ea2da92f7f57fc3e2350e68253e12a8096bc6314eb6153f110b\",\"revision\":\"d6a3158c22a62d9530592c6366a1624790ee9401\"},\"active\":{\"path\":\"src-ui/src/app-shell/destination-registry.ts\",\"digest\":\"43648ebbbe654ea2da92f7f57fc3e2350e68253e12a8096bc6314eb6153f110b\",\"revision\":\"1aecbf35557098c1502ee4575c7e332fb1e9d60c\"}}]",
+
+  "sources": [
+    "docs/architecture/module-map.md",
+
+    "docs/reference/connect.md",
+
+    "docs/reference/contracts.md",
+
+    "packages/contracts/src/agent-identity.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "packages/contracts/src/engine-display.ts",
+
+    "packages/contracts/src/live-surface.ts",
+
+    "packages/contracts/src/tool.ts",
+
+    "packages/contracts/src/workspace-browser-pane.ts",
+
+    "packages/contracts/src/workspace-browser-preview.ts",
+
+    "packages/sdk/src/mobile-device.ts",
+
+    "packages/shared/src/station-home-schema.ts",
+
+    "src-server/domain/agent-registry.ts",
+
+    "src-server/routes/browser-agent.ts",
+
+    "src-server/routes/browser.ts",
+
+    "src-server/routes/device-hosts.ts",
+
+    "src-server/routes/device-toolchain.ts",
+
+    "src-server/routes/device-tools.ts",
+
+    "src-server/routes/live-surface.ts",
+
+    "src-server/routes/mobile-device.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/browser/browser-access.ts",
+
+    "src-server/services/browser/browser-agent-authority.ts",
+
+    "src-server/services/browser/browser-automation.ts",
+
+    "src-server/services/browser/browser-egress-proxy.ts",
+
+    "src-server/services/browser/browser-host.ts",
+
+    "src-server/services/browser/browser-live-surfaces.ts",
+
+    "src-server/services/browser/browser-local-targets.ts",
+
+    "src-server/services/browser/browser-project-settings.ts",
+
+    "src-server/services/browser/browser-service.ts",
+
+    "src-server/services/browser/browser-session-registry.ts",
+
+    "src-server/services/browser/chromium-acquisition.ts",
+
+    "src-server/services/browser/chromium-screencast-producer.ts",
+
+    "src-server/services/browser/egress-policy.ts",
+
+    "src-server/services/browser/hosts/chromium-server-host.ts",
+
+    "src-server/services/browser/station-listeners.ts",
+
+    "src-server/services/browser/url-policy.ts",
+
+    "src-server/services/devices/device-access.ts",
+
+    "src-server/services/devices/device-hub-endpoint.ts",
+
+    "src-server/services/devices/device-live-surface-producer.ts",
+
+    "src-server/services/devices/device-session-service.ts",
+
+    "src-server/services/devices/hosts/device-host-registry.ts",
+
+    "src-server/services/devices/toolchain/device-hub-connection.ts",
+
+    "src-server/services/devices/toolchain/device-toolchain-service.ts",
+
+    "src-server/services/live-surface/control-lease.ts",
+
+    "src-server/services/live-surface/producer.ts",
+
+    "src-server/services/live-surface/registry.ts",
+
+    "src-server/services/live-surface/surface-hub.ts",
+
+    "src-server/services/mobile-device/mobile-device-host.ts",
+
+    "src-server/tools/station-browser-mcp-server.ts",
+
+    "src-server/tools/station-control-browser-tools.ts",
+
+    "src-ui/src/app-shell/destination-registry.ts",
+
+    "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+
+    "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+
+    "src-ui/src/live-surface/useLiveSurface.ts",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
+    "src-ui/src/views/task-experiences.ts",
+
+    "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+
+    "src-ui/src/views/activity/activity-list-model.ts"
+  ],
+
+  "checks": [
+    "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
+
+    "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript.",
+
+    "Reviewed source deltas: Reviewed comment correction; transpiled executable bytes unchanged.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Final entry-point review followed the affected canonical module/contract owners; no matching hash or file count was used as semantic proof.",
+
+    "Reviewed integration deltas: Reviewed plain-language scope edits and reserved Agent terminology; no capability or outcome was broadened. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md, docs/reference/connect.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map removed the CollaborativeEditorPane and PluginForegroundRuns entries, and contracts.md qualified plugin-foreground-work as unimplemented server-side. The glossary names neither, and its module-map#shared-live-surface anchor still resolves, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904's runtime-routes changes are the full-access refusal identity middleware, which reads names from the pairing service's own records, and revocation reports on `/api/pairing/devices/:id` and its scope route. No vocabulary entry, including the Device and `/api/pairing/devices` naming, changes meaning. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential in runtime-routes.ts. As a result, an ordinary device refused on /api/pairing gets 403, not 401. The glossary names /api/pairing/devices only as vocabulary, and it points to runtime-routes.ts only as the live-surface composition owner. Neither reference makes a status claim. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d9aea82e4: docs/reference/contracts.md changed only its Muse serve approval-resolution sentence (#2912 request.delivery acknowledgement). This document names neither Muse nor approval resolution, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

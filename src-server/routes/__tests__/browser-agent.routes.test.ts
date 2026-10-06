@@ -88,8 +88,9 @@ const MEMBERS: Record<
 
 function harness() {
   const automation = {
-    status: vi.fn(async () => []),
+    status: vi.fn(async () => ({ ok: true, sessions: [], nextCursor: null })),
     open: vi.fn(),
+    close: vi.fn(),
     navigate: vi.fn(),
     resize: vi.fn(),
     snapshot: vi.fn(async () => ({ ok: true, snapshot: '' })),

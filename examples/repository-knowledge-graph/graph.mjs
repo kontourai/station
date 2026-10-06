@@ -11,6 +11,16 @@ import {
 } from '../../scripts/lib/documentation-model.mjs';
 import { renderLearningDocument } from '../../scripts/lib/learning-markdown.mjs';
 import { createLearningSourceReader } from '../../scripts/lib/learning-source-reader.mjs';
+import {
+  bindingDigest,
+  bindingFile,
+} from '../../scripts/lib/review-binding.mjs';
+import {
+  parseRecordFile,
+  REVIEW_LEDGER_INDEX,
+  REVIEW_LEDGER_VERSION,
+  recordFile,
+} from '../../scripts/lib/review-ledger-store.mjs';
 
 export const GRAPH_SCHEMA = 'station.repository-knowledge-graph/v1';
 export const GRAPH_AGENT = 'station.repository-knowledge-graph';
@@ -23,7 +33,7 @@ export const GRAPH_LIMITS = Object.freeze({
 const INPUTS = [
   'docs/learn/atlas.json',
   'docs/architecture/module-map.md',
-  'docs/learn/review-ledger.json',
+  REVIEW_LEDGER_INDEX,
 ];
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const compare = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
@@ -134,24 +144,26 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
     read(path, true),
   );
   const atlas = JSON.parse(atlasText);
-  const ledger = JSON.parse(ledgerText);
   if (
     atlas.version !== 1 ||
     !Array.isArray(atlas.groups) ||
-    ledger.version !== 1 ||
-    !Array.isArray(ledger.records)
+    ![REVIEW_LEDGER_VERSION, 3].includes(JSON.parse(ledgerText).version)
   )
     throw new Error('Unsupported atlas or review ledger.');
-  const reviews = new Map();
-  for (const record of ledger.records) {
-    if (
-      typeof record.path !== 'string' ||
-      reviews.has(record.path) ||
-      !Array.isArray(record.sources)
-    )
-      throw new Error('Malformed or duplicate review record.');
-    reviews.set(record.path, record);
-  }
+  // One record file per document (scripts/lib/review-ledger-store.mjs); each
+  // one read is an observed input of this snapshot.
+  const reviewCache = new Map();
+  const review = (path) => {
+    if (!reviewCache.has(path)) {
+      const file = recordFile(path);
+      const text = tracked.has(file) ? read(file) : undefined;
+      reviewCache.set(
+        path,
+        text === undefined ? undefined : parseRecordFile(file, text),
+      );
+    }
+    return reviewCache.get(path);
+  };
   const modules = atlas.groups.flatMap((group) => group.modules ?? []);
   if (
     !modules.length ||
@@ -199,7 +211,7 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
       title: path,
       path,
       observation,
-      reviewState: reviews.get(path)?.state ?? 'unrecorded',
+      reviewState: review(path)?.state ?? 'unrecorded',
     });
   };
   const fileSet = new Set([...tracked].filter((path) => path.endsWith('.md')));
@@ -298,21 +310,34 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
   }
   // These dependencies belong to the whole reviewed document, never each module within it.
   for (const path of [...documents].sort()) {
-    const review = reviews.get(path);
-    if (!review) continue;
+    const record = review(path);
+    if (!record) continue;
     const node = nodes.get(`file:${path}`);
-    node.reviewDigest = review.documentDigest;
-    node.reviewComparison =
-      node.observation.digest === review.documentDigest
+    node.reviewDigest = record.document?.digest;
+    node.reviewComparison = !record.document
+      ? 'history-derived-not-judged-by-export'
+      : node.observation.digest === record.document.digest
         ? 'matches-recorded-digest'
         : 'changed-since-recorded-review';
-    for (const source of review.sources) {
+    for (const dependency of record.sources) {
+      const source =
+        typeof dependency === 'string' ? { path: dependency } : dependency;
       if (typeof source.path !== 'string')
         throw new Error('Malformed review source.');
-      const target = fileNode(source.path);
+      // A value binding (package.json#/scripts/x) depends on its file.
+      const file = bindingFile(source.path);
+      const target = fileNode(file);
       if (!target) continue;
-      const comparison =
-        observations.get(source.path)?.digest === source.digest
+      const observed = observations.get(file);
+      const current =
+        file === source.path
+          ? observed?.digest
+          : observed?.availability === 'present'
+            ? bindingDigest(source.path, reader.read(file))
+            : undefined;
+      const comparison = !record.document
+        ? 'recorded-dependency'
+        : current === source.digest
           ? 'matches-recorded-digest'
           : 'changed-or-missing';
       edge(

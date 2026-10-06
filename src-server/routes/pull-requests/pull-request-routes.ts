@@ -151,6 +151,9 @@ export function createPullRequestRoutes(
           owner: resolution.context.repository.owner,
           name: resolution.context.repository.name,
         },
+        ...(resolution.context.pushTargetOwner
+          ? { pushTargetOwner: resolution.context.pushTargetOwner }
+          : {}),
         ...(resolution.context.branch
           ? { branch: resolution.context.branch }
           : {}),

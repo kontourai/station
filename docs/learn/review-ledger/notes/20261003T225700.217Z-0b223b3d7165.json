@@ -1,0 +1,11 @@
+{
+  "revision": "a7b42adc41e80e5fb4eb89d15a0126b42acfee4e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed the ChatDockProjectContext.css one-selector correction after independent review: the nested badge selector keeps text-column stretch ahead of index.css regardless of import order. The caption/name/default-project and mobile picker claims remain unchanged. The real owner suite reproduced 8 failures at 320/800 in both themes with eager owner-before-index order, then passed after repair; all three geometry suites passed 63 tests with both CSS orders and both header themes. Only this stylesheet source binding needs refresh; native/full-app font/Provider limits remain.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-reviewed the ChatDockProjectContext.css one-selector correction after independent review: the nested badge selector keeps text-column stretch ahead of index.css regardless of import order. The caption/name/default-project and mobile picker claims remain unchanged. The real owner suite reproduced 8 failures at 320/800 in both themes with eager owner-before-index order, then passed after repair; all three geometry suites passed 63 tests with both CSS orders and both header themes. Only this stylesheet source binding needs refresh; native/full-app font/Provider limits remain.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed the ChatDockProjectContext.css one-selector correction after independent review: the nested badge selector keeps text-column stretch ahead of index.css regardless of import order. The caption/name/default-project and mobile picker claims remain unchanged. The real owner suite reproduced 8 failures at 320/800 in both themes with eager owner-before-index order, then passed after repair; all three geometry suites passed 63 tests with both CSS orders and both header themes. Only this stylesheet source binding needs refresh; native/full-app font/Provider limits remain.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

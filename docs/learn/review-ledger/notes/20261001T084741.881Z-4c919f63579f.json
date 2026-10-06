@@ -1,0 +1,7 @@
+{
+  "revision": "427048f4d9704126317aaa1667d5b39e56ecd0ed",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"After merging main: this branch adds tests/coding-stack-navigation.spec.ts to the manifest and edits agents-pane and coding-layout-plan-panel specs for Chat in the Coding centre. The page's rows that name agents-pane and coding-layout-plan-panel still describe what those specs assert (agent browsing; layout selection). The table is representative and has no Coding row, so it makes no claim about the new spec. Other claims were not re-reviewed.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

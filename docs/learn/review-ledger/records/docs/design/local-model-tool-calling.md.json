@@ -1,0 +1,25 @@
+{
+  "path": "docs/design/local-model-tool-calling.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained investigation using retired configuration/identity vocabulary, version-specific UI observations, and model recommendations.",
+
+  "limits": "No model recommendation or live tool-calling observation was renewed. Current model binding/provider owners are routing references, not vendor compatibility proof.",
+
+  "sources": [
+    "src-server/providers/llm/ollama-provider.ts",
+
+    "src-server/runtime/plugins/runtime-provider-resolution.ts"
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "Reviewed integration deltas: src-server/runtime/plugins/runtime-provider-resolution.ts: Removed test-only configured-model wrapper; actual managed-model resolution now calls private resolveBedrockModelId with the already validated preferred selector. Provider, model and per-connection auth precedence unchanged."
+  ]
+}

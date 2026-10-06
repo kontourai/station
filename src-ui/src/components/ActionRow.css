@@ -1,0 +1,30 @@
+/* A row of at most two labelled actions and one overflow menu (#3045).
+   `:where()` so this layout has no specificity: a host that passes its own
+   class (`.device-hosts__actions`, `.detail-header__actions`' child) keeps its
+   gap, alignment and wrap whatever order the bundler emits the two sheets. */
+:where(.action-row) {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* The 44px touch target, ALWAYS ON rather than behind a coarse-pointer query.
+   A small button is drawn ~30px tall; the hit area is a pseudo-element that is
+   never shorter than 44px, so a finger gets the target and a mouse gets the
+   same row height it had. Owned here so a row does not need its host
+   (`.detail-header__actions > button`, a page's own mobile block) to remember
+   it, and so no page-local responsive rule is added. */
+.action-row > :is(button, a) {
+  position: relative;
+}
+
+.action-row > :is(button, a)::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  content: "";
+  transform: translate(-50%, -50%);
+}

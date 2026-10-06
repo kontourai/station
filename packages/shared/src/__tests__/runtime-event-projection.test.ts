@@ -607,6 +607,36 @@ describe('projectRuntimeEventsToMessages', () => {
     });
   });
 
+  it('a Codex reported retry does not create a failure part in the restored transcript', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ provider: 'codex', method: 'turn.started', turnId: 'r1' }),
+      ev({
+        provider: 'codex',
+        method: 'runtime.error',
+        turnId: 'r1',
+        severity: 'error',
+        retriable: true,
+        message: 'request timeout',
+      }),
+      ev({
+        provider: 'codex',
+        method: 'content.text-delta',
+        turnId: 'r1',
+        delta: 'Recovered answer',
+      }),
+      ev({
+        provider: 'codex',
+        method: 'turn.completed',
+        turnId: 'r1',
+        finishReason: 'stop',
+      }),
+    ]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].parts).toEqual([
+      { type: 'text', text: 'Recovered answer' },
+    ]);
+  });
+
   it('surfaces runtime errors inline instead of rendering blank', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'r1' }),
@@ -1135,7 +1165,7 @@ describe('projectRuntimeEventsToMessages', () => {
       });
     });
 
-    it('keeps a steer inside the open turn instead of closing the assistant early', () => {
+    it('places a steer where it happened: after the work before it, before the work after it', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({ method: 'turn.started', turnId: 'r1', prompt: 'write the tests' }),
         ev({ method: 'content.text-delta', itemId: 'i1', delta: 'partial ' }),
@@ -1148,23 +1178,141 @@ describe('projectRuntimeEventsToMessages', () => {
         ev({ method: 'content.text-delta', itemId: 'i1', delta: 'answer' }),
         ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
       ]);
+      const text = (index: number) =>
+        messages[index]?.parts
+          .filter((part) => part.type === 'text')
+          .map((part) => part.text)
+          .join('');
 
       expect(messages.map((message) => message.role)).toEqual([
         'user',
+        'assistant',
         'user',
         'assistant',
       ]);
-      expect(messages[1]?.metadata).toMatchObject({
+      expect(text(1)).toBe('partial ');
+      expect(messages[2]?.metadata).toMatchObject({
         inputKind: 'steer',
         turnId: 'r1',
       });
-      expect(
-        messages[2]?.parts
-          .filter((part) => part.type === 'text')
-          .map((part) => part.text)
-          .join(''),
-      ).toBe('partial answer');
-      expect(messages[2]?.metadata?.provenance?.turnId).toBe('r1');
+      expect(text(3)).toBe('answer');
+      // One turn: its envelope and answer eligibility stay on its final row.
+      expect(messages[1]?.metadata?.provenance).toBeUndefined();
+      expect(messages[1]?.metadata?.answerEligible).toBeUndefined();
+      expect(messages[3]?.metadata?.provenance?.turnId).toBe('r1');
+      expect(new Set(messages.map((message) => message.id)).size).toBe(4);
+    });
+
+    it('after a steer, start-less and late activity for the turn lands on the post-steer row', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'r1', prompt: 'go' }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'before' }),
+        ev({
+          method: 'turn.started',
+          turnId: 'r1',
+          prompt: 'steer',
+          inputKind: 'steer',
+        }),
+        ev({
+          method: 'tool.completed',
+          turnId: 'r1',
+          toolCallId: 'gap-call',
+          status: 'success',
+          output: 'x',
+        }),
+        ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+        ev({
+          method: 'tool.completed',
+          turnId: 'r1',
+          toolCallId: 'late-call',
+          status: 'success',
+          output: 'y',
+        }),
+      ]);
+      const callIds = (index: number) =>
+        messages[index]?.parts
+          .filter((part) => part.type === 'tool-invocation')
+          .map((part) => part.toolCallId);
+      expect(messages.map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ]);
+      expect(callIds(1)).toEqual([]);
+      expect(callIds(3)).toEqual(['gap-call', 'late-call']);
+    });
+
+    it('a turn with nothing after its steer keeps ownership of its late events', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'r1', prompt: 'one' }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'before' }),
+        ev({
+          method: 'turn.started',
+          turnId: 'r1',
+          prompt: 'steer',
+          inputKind: 'steer',
+        }),
+        ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+        ev({ method: 'turn.started', turnId: 'r2', prompt: 'two' }),
+        ev({ method: 'content.text-delta', itemId: 'i2', delta: 'second' }),
+        ev({
+          method: 'tool.completed',
+          turnId: 'r1',
+          toolCallId: 'late-r1',
+          status: 'success',
+          output: 'x',
+        }),
+        ev({ method: 'turn.completed', turnId: 'r2', finishReason: 'stop' }),
+      ]);
+      const owner = messages.find((message) =>
+        message.parts.some((part) => part.toolCallId === 'late-r1'),
+      );
+      expect(owner?.parts.some((part) => part.text === 'before')).toBe(true);
+      expect(owner?.parts.some((part) => part.text === 'second')).toBe(false);
+    });
+
+    it('a tool the steer interrupted settles on the row that shows the call', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'r1', prompt: 'run the gates' }),
+        ev({
+          method: 'tool.started',
+          turnId: 'r1',
+          toolCallId: 'call-1',
+          toolName: 'bash',
+        }),
+        ev({
+          method: 'turn.started',
+          turnId: 'r1',
+          prompt: 'Still going?',
+          inputKind: 'steer',
+          steerInterruptedRun: true,
+        }),
+        ev({
+          method: 'tool.completed',
+          turnId: 'r1',
+          toolCallId: 'call-1',
+          status: 'cancelled',
+        }),
+        ev({ method: 'content.text-delta', itemId: 'i1', delta: 'Stopped.' }),
+        ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
+      ]);
+
+      expect(messages.map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ]);
+      expect(messages[1]?.parts).toEqual([
+        expect.objectContaining({
+          type: 'tool-invocation',
+          toolCallId: 'call-1',
+          state: 'cancelled',
+        }),
+      ]);
+      expect(messages[2]?.parts[0]?.text).toBe('Still going?');
+      expect(messages[2]?.metadata?.steerInterruptedRun).toBe(true);
     });
 
     it('correlates each assistant message to its own turn across turns', () => {

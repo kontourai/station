@@ -59,6 +59,7 @@ import {
   IncrementalHighlightStore,
   sessionTokenizerFor,
 } from './incremental-session';
+import type { PreviewTokenLine } from './preview-tokens';
 import { escapeHtml, HighlightCache, highlightCacheKey, THEME } from './shared';
 
 /**
@@ -94,6 +95,27 @@ async function highlightOnMainThread(
   }
 }
 
+/**
+ * The File Preview's main-thread fallback: the same grammar resolution as the
+ * worker (an unregistered language is loaded on demand, else plain text).
+ * Rejects rather than inventing tokens; the pane then renders plain text.
+ */
+async function tokenizeOnMainThread(
+  code: string,
+  lang: string,
+): Promise<PreviewTokenLine[]> {
+  const highlighter = await initShiki();
+  const [{ loadHighlighterLanguage }, { tokenizeForPreview }] =
+    await Promise.all([
+      import('./core-highlighter'),
+      import('./preview-tokens'),
+    ]);
+  const resolved = (await loadHighlighterLanguage(highlighter, lang))
+    ? lang
+    : 'text';
+  return tokenizeForPreview(highlighter, code, resolved);
+}
+
 /** Worker-shaped interface so tests can inject fakes. */
 export interface HighlightWorkerLike {
   postMessage(message: unknown): void;
@@ -111,7 +133,13 @@ export interface HighlightWorkerLike {
     | undefined,);
 }
 
-type HighlightResponse = { id: number; html?: string; error?: string };
+type HighlightResponse = {
+  id: number;
+  html?: string;
+  tokens?: unknown;
+  error?: string;
+};
+type HighlightFormat = 'html' | 'tokens';
 
 const WEDGE_TIMEOUT_MS = 8000;
 
@@ -128,7 +156,10 @@ const POOL_SIZE = 1;
 type QueuedRequest = {
   code: string;
   lang: string;
-  resolve: (html: string) => void;
+  format: HighlightFormat;
+  // Settled with `string` for html and `PreviewTokenLine[]` for tokens; the
+  // public methods below own that pairing.
+  resolve: (value: never) => void;
   reject: (err: Error) => void;
 };
 
@@ -200,7 +231,10 @@ export class HighlightWorkerPool {
     if (!entry || entry.id !== response.id) return;
     clearTimeout(entry.timer);
     this.inFlight[index] = null;
-    if (typeof response.html === 'string') entry.resolve(response.html);
+    if (entry.format === 'tokens' && Array.isArray(response.tokens))
+      (entry.resolve as (value: unknown) => void)(response.tokens);
+    else if (entry.format === 'html' && typeof response.html === 'string')
+      (entry.resolve as (value: unknown) => void)(response.html);
     else entry.reject(new Error(response.error ?? 'highlight worker failed'));
     this.pump();
   }
@@ -235,12 +269,31 @@ export class HighlightWorkerPool {
   }
 
   highlight(code: string, lang: string): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
+    return this.enqueue<string>(code, lang, 'html');
+  }
+
+  /** Line tokens for the File Preview (see preview-tokens.ts). */
+  tokenize(code: string, lang: string): Promise<PreviewTokenLine[]> {
+    return this.enqueue<PreviewTokenLine[]>(code, lang, 'tokens');
+  }
+
+  private enqueue<T>(
+    code: string,
+    lang: string,
+    format: HighlightFormat,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       if (this.disposed) {
         reject(new Error('highlight pool disposed'));
         return;
       }
-      this.queue.push({ code, lang, resolve, reject });
+      this.queue.push({
+        code,
+        lang,
+        format,
+        resolve: resolve as (value: never) => void,
+        reject,
+      });
       this.pump();
     });
   }
@@ -276,6 +329,8 @@ export class HighlightWorkerPool {
         id,
         code: request.code,
         lang: request.lang,
+        // Chat's html requests keep their original message shape.
+        ...(request.format === 'tokens' ? { format: 'tokens' } : {}),
       });
     } catch (err) {
       // A worker that rejects the post is as dead as one that never answers.
@@ -310,6 +365,12 @@ export class HighlightWorkerPool {
 const cache = new HighlightCache(300);
 
 type HighlightFn = (code: string, lang: string) => Promise<string>;
+type TokenizeFn = (code: string, lang: string) => Promise<PreviewTokenLine[]>;
+
+interface HighlightClient {
+  highlight: HighlightFn;
+  tokenize: TokenizeFn;
+}
 
 /**
  * Wrap a worker pool with a permanent main-thread fallback.
@@ -328,6 +389,25 @@ export function withWorkerErrorFallback(
   timeoutMs = WEDGE_TIMEOUT_MS,
   size = POOL_SIZE,
 ): HighlightFn {
+  return workerClientWithFallback(
+    makeWorker,
+    { highlight: fallback, tokenize: tokenizeOnMainThread },
+    timeoutMs,
+    size,
+  ).highlight;
+}
+
+/**
+ * One pool serving both request formats, so the File Preview shares the chat
+ * worker (and its warm Shiki) instead of building a second highlighter, and
+ * one worker failure degrades both to the main thread together.
+ */
+function workerClientWithFallback(
+  makeWorker: () => HighlightWorkerLike,
+  fallback: HighlightClient,
+  timeoutMs = WEDGE_TIMEOUT_MS,
+  size = POOL_SIZE,
+): HighlightClient {
   let degraded = false;
   const pool = new HighlightWorkerPool(makeWorker, timeoutMs, size, {
     onWorkerError: () => {
@@ -338,35 +418,49 @@ export function withWorkerErrorFallback(
       pool.dispose();
     },
   });
-  return (code, lang) => {
-    if (degraded) return fallback(code, lang);
-    return pool.highlight(code, lang).catch((err: unknown) => {
-      if (degraded) return fallback(code, lang);
-      throw err;
-    });
+  return {
+    highlight: (code, lang) => {
+      if (degraded) return fallback.highlight(code, lang);
+      return pool.highlight(code, lang).catch((err: unknown) => {
+        if (degraded) return fallback.highlight(code, lang);
+        throw err;
+      });
+    },
+    tokenize: (code, lang) => {
+      if (degraded) return fallback.tokenize(code, lang);
+      return pool.tokenize(code, lang).catch((err: unknown) => {
+        if (degraded) return fallback.tokenize(code, lang);
+        throw err;
+      });
+    },
   };
 }
 
-let clientPromise: Promise<HighlightFn> | null = null;
+let clientPromise: Promise<HighlightClient> | null = null;
 
-async function createClient(): Promise<HighlightFn> {
+const mainThreadClient: HighlightClient = {
+  highlight: (code, lang) => highlightOnMainThread(code, lang),
+  tokenize: (code, lang) => tokenizeOnMainThread(code, lang),
+};
+
+async function createClient(): Promise<HighlightClient> {
   if (typeof Worker === 'undefined') {
     // jsdom / SSR: no workers; tokenize on the main thread (test-only path).
-    return (code, lang) => highlightOnMainThread(code, lang);
+    return mainThreadClient;
   }
   try {
     const { default: HighlightWorker } = await import(
       './highlight-worker?worker'
     );
-    return withWorkerErrorFallback(
+    return workerClientWithFallback(
       () => new HighlightWorker(),
-      highlightOnMainThread,
+      mainThreadClient,
     );
   } catch {
     // Worker bootstrap failed synchronously (e.g. hostile embedding context)
     // degrade to the main-thread highlighter rather than shipping
     // unhighlighted code.
-    return (code, lang) => highlightOnMainThread(code, lang);
+    return mainThreadClient;
   }
 }
 
@@ -383,9 +477,23 @@ export function highlightCode(code: string, lang: string): Promise<string> {
   if (cached !== undefined) return Promise.resolve(cached);
   if (!clientPromise) clientPromise = createClient();
   return clientPromise
-    .then((fn) => fn(code, lang))
+    .then((client) => client.highlight(code, lang))
     .then((html) => {
       cache.set(key, html);
       return html;
     });
+}
+
+/**
+ * Line tokens for the File Preview, from the same worker (or main-thread
+ * fallback) as chat highlighting. Not cached here: the pane memoizes on the
+ * preview response it already holds. Rejects on worker wedge/failure; the
+ * pane then renders plain text and says so.
+ */
+export function tokenizeCode(
+  code: string,
+  lang: string,
+): Promise<PreviewTokenLine[]> {
+  if (!clientPromise) clientPromise = createClient();
+  return clientPromise.then((client) => client.tokenize(code, lang));
 }

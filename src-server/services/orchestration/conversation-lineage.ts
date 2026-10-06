@@ -28,10 +28,15 @@ import {
   type ConversationHistoryReadService,
   deduplicateConversationItems,
 } from './conversation-history-read-service.js';
+import {
+  buildTranscriptSeed,
+  transcriptSeedSource,
+} from './conversation-transcript-seed.js';
 import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
+import { conversationTitle } from './session-query-module.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
@@ -94,6 +99,18 @@ export function isConversationContinuationPending(
     ...detail,
     session: { ...detail.session, pendingReview: false },
   });
+}
+
+/**
+ * Whether the session ever started a turn (any `turn.*` event on record).
+ * This is only the eligibility hint for naming a predecessor to retire. A send
+ * that resolves between a first turn's dispatch and its `turn.started` write
+ * sees no turn here, so the stop is re-decided when it runs:
+ * `OrchestrationService.retireNeverRanSession` re-checks turn facts, in-flight
+ * turns and "no longer current" under the Session's lifecycle lock.
+ */
+function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
+  return detail.events.some((event) => event.method.startsWith('turn.'));
 }
 
 export function canResolveConversationContinuation(
@@ -193,6 +210,7 @@ export class ConversationLineage {
     resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
+    retirePredecessorSessionId?: string;
   }> {
     const store = this.deps.eventStore;
     if (!store) {
@@ -320,6 +338,13 @@ export class ConversationLineage {
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,
+      // A model change on a session that never ran a turn leaves its engine
+      // process resident for nothing; name it so the start seam can end it
+      // once the successor is up. Any session with turn facts keeps today's
+      // lineage and lifecycle behaviour untouched.
+      ...(needsModelRestart && !hasTurnFacts(detail)
+        ? { retirePredecessorSessionId: current.sessionId }
+        : {}),
       ...continuationLaunchContext(
         detail,
         requested,
@@ -327,6 +352,31 @@ export class ConversationLineage {
         resumeSupported,
       ),
     };
+  }
+
+  /**
+   * #3112: every execution Session of a durable conversation, in lineage
+   * order. An id with no lineage of its own — a pre-lineage conversation, or
+   * a child Session addressed directly — is its own single Session.
+   */
+  conversationSessionIds(conversationId: string): string[] {
+    const lineage =
+      this.deps.eventStore?.conversationSessions(conversationId) ?? [];
+    return lineage.length > 0
+      ? lineage.map((entry) => entry.sessionId)
+      : [conversationId];
+  }
+
+  /**
+   * #3112: the durable conversation a successor execution Session continues,
+   * or undefined for a conversation's own root Session and for an id with no
+   * lineage.
+   */
+  successorConversationId(sessionId: string): string | undefined {
+    const lineage = this.deps.eventStore?.conversationForSession(sessionId);
+    return lineage && lineage.conversationId !== sessionId
+      ? lineage.conversationId
+      : undefined;
   }
 
   /** Current replaceable Session for a durable conversation; legacy falls back to its id. */
@@ -815,9 +865,6 @@ export class ConversationLineage {
     if (!detail || !assignedAgentSlug) return null;
     const agentSlug = assignedAgentSlug;
     const messages = this.deps.readSessionMessages(threadId, authority);
-    const firstUserText = messages
-      .find((message) => message.role === 'user')
-      ?.parts.find((part) => part.type === 'text')?.text;
     const durableConversationId =
       this.deps.eventStore?.conversationForSession(threadId)?.conversationId ??
       detail.session.conversationId ??
@@ -837,7 +884,7 @@ export class ConversationLineage {
       ...(detail.session.projectSlug
         ? { projectSlug: detail.session.projectSlug }
         : {}),
-      title: firstUserText?.trim().slice(0, 80) || `${agentSlug} chat`,
+      title: conversationTitle(messages),
       ...((detail.session.reportedModel ??
       detail.session.effectiveModel ??
       detail.session.model)
@@ -1023,8 +1070,6 @@ export class ConversationLineage {
   }
 }
 
-const CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS = 6_000;
-
 function continuationLaunchContext(
   detail: Pick<OrchestrationSessionDetail, 'session' | 'events'>,
   requested: {
@@ -1115,33 +1160,19 @@ function handoffTranscriptContext(
 }
 
 /**
- * Deterministic cross-engine fallback. It is deliberately bounded and carries
- * only the already-authorized canonical conversation projection; provider
- * cursor state, tool state, approvals, and connection secrets never cross
- * this boundary. The next handoff slice can render an explicit marker from
- * the same child lineage without changing this start contract.
+ * Deterministic cross-engine fallback. It carries only the already-authorized
+ * canonical conversation projection, as whole messages under the shared seed
+ * budget (#3164); provider cursor state, tool state, approvals, and
+ * connection secrets never cross this boundary.
  */
 function continuationTranscriptSeed(
   messages: readonly ConversationMessage[],
 ): string {
-  const text = messages
-    .filter(
-      (message) => message.role === 'user' || message.role === 'assistant',
-    )
-    .map((message) => {
-      const content = message.parts
-        .filter((part) => typeof part.text === 'string' && !part.runtimeError)
-        .map((part) => part.text!.trim())
-        .filter(Boolean)
-        .join('\n');
-      return content
-        ? `${message.role === 'user' ? 'User' : 'Assistant'}: ${content}`
-        : '';
-    })
-    .filter(Boolean)
-    .join('\n');
-  const bounded = text.slice(-CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS);
-  return `Prior conversation transcript (context only; provider-native state is not carried):\n${bounded}`;
+  return buildTranscriptSeed({
+    heading:
+      'Prior conversation transcript (context only, not a new request; provider-native state is not carried).',
+    ...transcriptSeedSource(messages),
+  }).text;
 }
 
 function observeConversationContinuation(

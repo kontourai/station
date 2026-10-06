@@ -10,9 +10,13 @@ import {
   ChatDock,
   renderAmbientChatPane,
 } from '../components/chat-dock/ChatDock';
+import { ambientChatPaneFailureContext } from '../components/chat-dock/chatPaneFailureContext';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
-import { useRegionModelOptional } from '../contexts/RegionModelContext';
+import {
+  SuspendRegionSurfaces,
+  useRegionModelOptional,
+} from '../contexts/RegionModelContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
 import {
@@ -21,6 +25,10 @@ import {
   foldedDockRegion,
   resolveRegionSurface,
 } from '../regions/region-model';
+import {
+  CENTER_OWNED_SURFACES,
+  useLayoutChatPlacement,
+} from './chat-placement';
 
 const loadActivityRegionShell = () =>
   import('./ActivityRegionShell').then(({ ActivityRegionShell }) => ({
@@ -146,6 +154,7 @@ function DockRegionHost({ regionId }: { regionId: DockRegionId }) {
       componentProps={{
         regionId,
         renderChatPane: renderAmbientChatPane,
+        chatPaneFailureContext: ambientChatPaneFailureContext,
         renderActivityPane: renderActivityDockPane,
       }}
       pending={null}
@@ -167,6 +176,22 @@ function DockRegionHost({ regionId }: { regionId: DockRegionId }) {
  * no-provider branch keeps App-level tests on the legacy mount.
  */
 export function RegionShells() {
+  // The Coding layout's centre renders Chat itself; the region shells then
+  // render every OTHER pane where the user put it, and Chat nowhere. App
+  // derives the placement at render time from the layout it renders, so the
+  // same frame that mounts the centre's Chat drops the dock's.
+  const centerOwnsChat = useLayoutChatPlacement() === 'center';
+  const hosts = <RegionShellHosts centerOwnsChat={centerOwnsChat} />;
+  return centerOwnsChat ? (
+    <SuspendRegionSurfaces surfaces={CENTER_OWNED_SURFACES}>
+      {hosts}
+    </SuspendRegionSurfaces>
+  ) : (
+    hosts
+  );
+}
+
+function RegionShellHosts({ centerOwnsChat }: { centerOwnsChat: boolean }) {
   const model = useRegionModelOptional();
   const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
   // This component IS "a region surface can render right now": App mounts it
@@ -178,7 +203,9 @@ export function RegionShells() {
   // registered, so a commanded reveal is never dropped on the floor.
   const registerRegionSurfaceHost = model?.registerRegionSurfaceHost;
   useEffect(() => registerRegionSurfaceHost?.(), [registerRegionSurfaceHost]);
-  if (!model) return <ChatDock />;
+  // The model-less mount IS Chat's dock, so it has nothing to show while the
+  // centre owns Chat.
+  if (!model) return centerOwnsChat ? null : <ChatDock />;
   return (
     <>
       {DOCK_REGION_IDS.filter((id) => {

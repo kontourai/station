@@ -4,6 +4,10 @@ import {
   type MCPLocalConnectionCustody,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import {
+  mcpToolDisabled,
+  originalMcpToolName,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import { FunctionTool, McpClient } from '@strands-agents/sdk';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
 import { createMCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
@@ -17,10 +21,12 @@ import {
   isHostedTenantExecutionRequired,
 } from '../bootstrap/runtime-tenant-context.js';
 import {
+  builtinStationApiServerId,
   isBuiltinStationControl,
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
 import { sameMCPConnectionDefinition } from '../mcp/mcp-definition-currentness.js';
+import { createNativeStationKnowledgeTools } from '../mcp/station-knowledge-native-tools.js';
 import {
   describeLoaderFailure,
   isLoaderProgrammingFailure,
@@ -176,6 +182,7 @@ export type StrandsToolLoadOptions = Pick<
   | 'mcpToolProvenanceGeneration'
   | 'integrationSecretResolver'
   | 'logger'
+  | 'serverPort'
 >;
 
 export function createStrandsFunctionTools(
@@ -246,6 +253,7 @@ export function createStrandsFunctionTools(
 export function applyStrandsAvailableToolFilter(
   tools: ITool[],
   available: string[] = ['*'],
+  originalNames?: Map<string, { original: string }>,
 ): ITool[] {
   if (available.includes('*')) {
     return tools;
@@ -253,11 +261,15 @@ export function applyStrandsAvailableToolFilter(
 
   return tools.filter((tool) =>
     available.some((pattern) => {
-      if (pattern === tool.name) {
+      const original = originalNames?.get(tool.name)?.original;
+      if (pattern === tool.name || pattern === original) {
         return true;
       }
       if (pattern.endsWith('*')) {
-        return tool.name.startsWith(pattern.slice(0, -1));
+        return (
+          tool.name.startsWith(pattern.slice(0, -1)) ||
+          !!original?.startsWith(pattern.slice(0, -1))
+        );
       }
       return false;
     }),
@@ -292,6 +304,56 @@ export async function loadStrandsTools(options: {
       if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
 
       if (toolDef.enabled === false) {
+        opts.mcpConnectionStatus.set(toolId, { connected: false });
+        continue;
+      }
+
+      if (builtinStationApiServerId(toolId, toolDef) === 'station-knowledge') {
+        const native = createNativeStationKnowledgeTools(
+          toolDef,
+          opts.serverPort,
+          claim,
+          opts.mcpCustody,
+        );
+        const registered = native.tools;
+        const normalized = normalizeLoadedMCPTools(
+          slug,
+          registered.map((tool) => ({
+            ...tool,
+            name: `${toolId}_${tool.name}`,
+          })),
+          opts.toolNameMapping,
+          opts.toolNameReverseMapping,
+          provenanceGeneration,
+          toolId,
+          (tool) => ({
+            serverId: toolId,
+            originalToolName: originalMcpToolName(toolId, tool.name),
+          }),
+          opts.logger,
+        );
+        allTools.push(
+          ...wrapPlatformMutationGatedTools(
+            normalized.filter(
+              (tool) =>
+                !mcpToolDisabled(
+                  toolId,
+                  originalMcpToolName(
+                    toolId,
+                    opts.toolNameMapping.get(tool.name)?.original ?? tool.name,
+                  ),
+                  toolDef.disabledTools,
+                ),
+            ),
+            { agentSlug: slug, toolId },
+          ),
+        );
+        retained = native.retained;
+        opts.integrationMetadata.set(toolId, {
+          type: 'mcp',
+          transport: 'streamable-http',
+          toolCount: registered.length,
+        });
         opts.mcpConnectionStatus.set(toolId, { connected: false });
         continue;
       }
@@ -380,9 +442,10 @@ export async function loadStrandsTools(options: {
 
       const serverTools: ITool[] = [];
       for (const tool of mcpTools) {
+        const originalName = tool.toolSpec.name;
         const [loadedIdentity] = normalizeLoadedMCPTools(
           slug,
-          [{ name: tool.toolSpec.name }] as any,
+          [{ name: `${toolId}_${originalName}` }],
           opts.toolNameMapping,
           opts.toolNameReverseMapping,
           provenanceGeneration,
@@ -391,7 +454,7 @@ export async function loadStrandsTools(options: {
             // Strands' client owns this loaded-tool list; the configured
             // integration is its exact client identity at this boundary.
             serverId: toolId,
-            originalToolName: tool.toolSpec.name,
+            originalToolName: originalName,
           }),
           opts.logger,
         );
@@ -435,7 +498,15 @@ export async function loadStrandsTools(options: {
       // Mutating station-control tools execute through the
       // platform-mutation gate regardless of dispatch path (S3 item 4).
       const enabledServerTools = serverTools.filter(
-        (tool) => !toolDef.disabledTools?.includes(tool.name),
+        (tool) =>
+          !mcpToolDisabled(
+            toolId,
+            originalMcpToolName(
+              toolId,
+              opts.toolNameMapping.get(tool.name)?.original ?? tool.name,
+            ),
+            toolDef.disabledTools,
+          ),
       );
       allTools.push(
         ...wrapPlatformMutationGatedTools(enabledServerTools, {
@@ -506,6 +577,7 @@ export async function loadStrandsTools(options: {
   return applyStrandsAvailableToolFilter(
     allTools,
     spec.tools.available || ['*'],
+    opts.toolNameMapping,
   );
 }
 

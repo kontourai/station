@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
+import { HOME_LIFECYCLE_LABELS } from '../utils/lifecycle-priority';
 import {
   computeStableActiveOrder,
   type HomeLaneItem,
@@ -13,6 +14,15 @@ import {
   withStableIds,
 } from '../views/home/home-lane-model';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+
+/** Every live-lane member, for assertions that only care "not live". */
+function live<T extends HomeWorkItem>(partition: {
+  needsYou: T[];
+  running: T[];
+  idle: T[];
+}): T[] {
+  return [...partition.needsYou, ...partition.running, ...partition.idle];
+}
 
 /** Defaults `stableId` to `id` — these tests exercise ordering/partition
  * behavior, not the identity-alias mechanism itself (see the dedicated
@@ -35,7 +45,7 @@ function item(
 }
 
 describe('external conversation classification', () => {
-  it('does not promote imported history into Active now even when its persisted lifecycle says Running', () => {
+  it('does not promote imported history into a live lane even when its persisted lifecycle says Running', () => {
     const external = item({
       id: 'external',
       lifecycleLabel: 'Running',
@@ -48,7 +58,7 @@ describe('external conversation classification', () => {
       snoozedUntil: new Map(),
       terminalSince: new Map(),
     });
-    expect(partition.active).toEqual([]);
+    expect(live(partition)).toEqual([]);
     expect(partition.external).toEqual([external]);
     expect(
       groupMobileActivity([external], 2000, {}).find(
@@ -163,15 +173,16 @@ describe('isTerminalLifecycle', () => {
 describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
   const now = 1_000_000;
 
-  it('keeps a freshly-terminal item in Recently finished, never Active now', () => {
+  it('keeps a freshly-terminal item in Recently finished, never a live lane', () => {
     const a = item({ id: 'a', lifecycleLabel: 'Completed', updatedAt: now });
-    const { active, recentlyFinished, settled } = partitionHomeWorkItems({
+    const partition = partitionHomeWorkItems({
       items: [a],
       now,
       snoozedUntil: new Map(),
       terminalSince: new Map([['a', now]]),
     });
-    expect(active).toEqual([]);
+    const { recentlyFinished, settled } = partition;
+    expect(live(partition)).toEqual([]);
     expect(recentlyFinished).toEqual([a]);
     expect(settled).toEqual([]);
   });
@@ -184,7 +195,7 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
       snoozedUntil: new Map(),
       terminalSince: new Map([['a', now - (TERMINAL_LINGER_MS - 1)]]),
     });
-    expect(justUnder.active).toEqual([]);
+    expect(live(justUnder)).toEqual([]);
     expect(justUnder.recentlyFinished).toEqual([a]);
     expect(justUnder.settled).toEqual([]);
 
@@ -194,7 +205,7 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
       snoozedUntil: new Map(),
       terminalSince: new Map([['a', now - TERMINAL_LINGER_MS]]),
     });
-    expect(atOrOver.active).toEqual([]);
+    expect(live(atOrOver)).toEqual([]);
     expect(atOrOver.recentlyFinished).toEqual([]);
     expect(atOrOver.settled).toEqual([a]);
   });
@@ -212,7 +223,9 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
       terminalSince: new Map([['failed', now]]),
     });
     expect(partition.recentlyFinished).toEqual([failed]);
-    expect(partition.active).toEqual([attention]);
+    expect(partition.needsYou).toEqual([attention]);
+    expect(partition.running).toEqual([]);
+    expect(partition.idle).toEqual([]);
   });
 
   it('keeps a completed conversation in Recently finished until its rendered version is acknowledged', () => {
@@ -250,31 +263,91 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
 
   it('a live snooze wins over every other classification', () => {
     const a = item({ id: 'a', lifecycleLabel: 'Running', updatedAt: now });
-    const { active, snoozed } = partitionHomeWorkItems({
+    const partition = partitionHomeWorkItems({
       items: [a],
       now,
       snoozedUntil: new Map([['a', now + 1000]]),
       terminalSince: new Map(),
     });
-    expect(active).toEqual([]);
+    const { snoozed } = partition;
+    expect(live(partition)).toEqual([]);
     expect(snoozed).toEqual([a]);
+  });
+
+  /**
+   * The owner's report: "'Active' feels incorrect when there's no activity".
+   * Every lifecycle label is pinned to its lane here as a LITERAL table, not
+   * derived from the status ladder (`workStatus`), so collapsing the split back into one live
+   * bucket (or moving an idle label under Running) fails a named row.
+   */
+  it.each([
+    ['Needs attention', 'needsYou'],
+    ['Running', 'running'],
+    ['Ready', 'idle'],
+    ['Recent', 'idle'],
+    ['Current', 'idle'],
+    ['Unanswerable', 'idle'],
+    ['Draft', 'drafts'],
+    ['Completed', 'recentlyFinished'],
+    ['Failed', 'recentlyFinished'],
+    ['Stopped', 'recentlyFinished'],
+  ] as const)('files lifecycle %s under %s', (lifecycleLabel, lane) => {
+    const a = item({ id: 'a', lifecycleLabel, updatedAt: now });
+    const partition = partitionHomeWorkItems({
+      items: [a],
+      now,
+      snoozedUntil: new Map(),
+      terminalSince: new Map([['a', now]]),
+    });
+    const lanes: Record<string, readonly HomeLaneItem[]> = {
+      needsYou: partition.needsYou,
+      running: partition.running,
+      idle: partition.idle,
+      drafts: partition.drafts ?? [],
+      recentlyFinished: partition.recentlyFinished,
+      snoozed: partition.snoozed,
+      settled: partition.settled,
+      external: partition.external ?? [],
+    };
+    const holding = Object.entries(lanes)
+      .filter(([, members]) => members.includes(a))
+      .map(([name]) => name);
+    expect(holding).toEqual([lane]);
+  });
+
+  it('the lifecycle table above covers every lifecycle label', () => {
+    // A new label must be filed deliberately, not fall into Idle unread.
+    expect([...HOME_LIFECYCLE_LABELS].sort()).toEqual(
+      [
+        'Completed',
+        'Current',
+        'Draft',
+        'Failed',
+        'Needs attention',
+        'Ready',
+        'Recent',
+        'Running',
+        'Stopped',
+        'Unanswerable',
+      ].sort(),
+    );
   });
 
   it('a lapsed snooze returns the item to its natural lane', () => {
     const a = item({ id: 'a', lifecycleLabel: 'Running', updatedAt: now });
-    const { active, snoozed } = partitionHomeWorkItems({
+    const { running, snoozed } = partitionHomeWorkItems({
       items: [a],
       now,
       snoozedUntil: new Map([['a', now - 1]]),
       terminalSince: new Map(),
     });
-    expect(active).toEqual([a]);
+    expect(running).toEqual([a]);
     expect(snoozed).toEqual([]);
   });
 });
 
 /**
- * archive#3227 A6: "Active now" (and every sibling group label) must mean ONE
+ * archive#3227 A6: every group label ("Needs you", "Running", "Idle", ...) must mean ONE
  * thing. Desktop Home partitions through `partitionHomeWorkItems`; the mobile
  * switcher/inbox groups through `groupMobileActivity`, which used to carry a
  * private `Running`/`Needs attention` predicate and its own 10-minute window
@@ -366,20 +439,18 @@ describe('desktop/mobile lane agreement (station#3227 A6)', () => {
 
   it('desktop and mobile agree bucket-for-bucket on a mixed fixture', () => {
     const desktop = desktopPartition();
-    expect(mobileIds('active')).toEqual(ids(desktop.active));
+    expect(mobileIds('needsYou')).toEqual(ids(desktop.needsYou));
+    expect(mobileIds('running')).toEqual(ids(desktop.running));
+    expect(mobileIds('idle')).toEqual(ids(desktop.idle));
     expect(mobileIds('settled')).toEqual(ids(desktop.recentlyFinished));
     expect(mobileIds('snoozed')).toEqual(ids(desktop.snoozed));
     expect(mobileIds('earlier')).toEqual(ids(desktop.settled));
   });
 
-  it('"Active now" is the shared not-finished lane — idle/unanswerable work is active, terminal work never is', () => {
-    expect(mobileIds('active')).toEqual([
-      'running',
-      'attention',
-      'ready',
-      'idle-recent',
-      'unanswerable',
-    ]);
+  it('the live lanes split by what is happening — idle/unanswerable work is Idle, not Running, and terminal work is never live', () => {
+    expect(mobileIds('needsYou')).toEqual(['attention']);
+    expect(mobileIds('running')).toEqual(['running']);
+    expect(mobileIds('idle')).toEqual(['ready', 'idle-recent', 'unanswerable']);
     expect(mobileIds('settled')).toEqual([
       'fresh-done',
       'conv-unseen',
@@ -546,7 +617,7 @@ describe('withStableIds (AC1 identity-alias fix, review finding)', () => {
           ...item({ id: 'remote:env-a:thread-1' }),
           kind: 'remote-session',
           environmentId: 'env-a',
-          environmentLabel: 'Brian media',
+          environmentLabel: 'Home media',
         },
       ],
       aliasMap,

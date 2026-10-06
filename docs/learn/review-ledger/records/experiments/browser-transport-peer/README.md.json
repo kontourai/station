@@ -1,0 +1,21 @@
+{
+  "path": "experiments/browser-transport-peer/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Forwarding page to production-owned Pion source. Full three-line page read and current target verified; removed unbounded qualified adjective.",
+
+  "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence.",
+
+  "sources": [
+    "src-server/services/connections/pion-peer/README.md"
+  ],
+
+  "checks": [
+    "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+
+    "Reviewed integration deltas: src-server/services/connections/pion-peer/README.md: Reviewed native-contract corrections to Go toolchain admission, local lab TURN scope, application message bounds, provenance and per-channel failure; no production transport qualification inferred."
+  ]
+}

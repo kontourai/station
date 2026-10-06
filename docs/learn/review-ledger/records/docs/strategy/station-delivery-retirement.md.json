@@ -1,0 +1,23 @@
+{
+  "path": "docs/strategy/station-delivery-retirement.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed rejection of the retired definition by the Project start route and labels supplied by the shared Flow presentation helper.",
+
+  "limits": "Does not claim every possible consumer uses the shared helper or erase historical stored IDs.",
+
+  "sources": [
+    "docs/contexts/evidence-governance/CONTEXT.md",
+
+    "packages/contracts/src/flow-presentation.ts",
+
+    "src-server/routes/projects/projects.ts"
+  ],
+
+  "checks": [
+    "Read exact retired-definition branch and shared presentation callers; associated Flow checks passed."
+  ]
+}

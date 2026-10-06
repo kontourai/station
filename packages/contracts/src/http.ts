@@ -74,3 +74,24 @@ export function isTerminalConnectionStatus(status: number): boolean {
  * `@kontourai/station-connect` classifies it, so both import it from here.
  */
 export const AUTH_RATE_LIMITED_ERROR_CODE = 'authentication_rate_limited';
+
+/**
+ * The response header a Station runtime puts on every JSON body it writes
+ * itself, success or refusal (#2842): its HTTP app's answers, and the
+ * refusals it writes outside that app (the virtual application ingress and the
+ * self-hosted broker's gated application). Its presence says the Station at the
+ * other end of this connection wrote the body; a reverse proxy, gateway or
+ * tunnel answering in between does not send it, whatever its JSON looks like.
+ *
+ * It is scoped to one hop. A Station that relays another Station's response
+ * does not pass the header on, so a client never reads a peer's answer as the
+ * answer of the Station it called.
+ *
+ * A Station older than this header never sends it. A client therefore treats
+ * its absence as "not Station's answer" only for an origin that has already
+ * sent it once, and otherwise falls back to the body's shape.
+ */
+export const STATION_ENVELOPE_HEADER = 'x-station-envelope';
+
+/** The only value {@link STATION_ENVELOPE_HEADER} carries. */
+export const STATION_ENVELOPE_HEADER_VALUE = '1';

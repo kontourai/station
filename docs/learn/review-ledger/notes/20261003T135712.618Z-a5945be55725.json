@@ -1,0 +1,7 @@
+{
+  "revision": "e1787337df2f1de5ba783ab3177b1c61eefaccd7",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked the scoped note-coverage change: it batches the per-note git log into one range read with the same later-edit rule (a note still cannot cover an edit made after it). No documented claim about freshness modes, notes or commands changed.","inputs":[".veritas/README.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml",".github/workflows/merge-queue-regression.yml","docs/guides/documentation.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/fast-checks-shard.mjs","scripts/lib/documentation-freshness.mjs","scripts/lib/fast-checks-shards.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "335893e0b2f5e87d0ccd02115fd0cfa760b215c1",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Merged bytes after #2994 (new shell/plugin/distribution entries): this branch's Activity and Run (delegated run) entries are unchanged and still match SessionsView.tsx, activity-list-model.ts and run-groups.ts; #2994's entries do not restate either.","inputs":["docs/glossary.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "b9bd41c56ccfd9f80b24984601f4b7bd540078ca",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Re-record after merging main: the Windows stage-only claim (install.ps1:20, driven by scripts/smoke-install-ps1.mjs STATION_INSTALL_STAGE_ONLY=1) still matches the code; main's lifecycle.ts and portable-server-archive changes re-checked against this guide's install/nightly claims.","inputs":["docs/guides/nightly.md"]}
+  ]
+}

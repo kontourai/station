@@ -1,0 +1,209 @@
+{
+  "path": "docs/guides/release-channel-ports.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
+
+  "limits": "Bounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"digest\":\"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2\",\"revision\":\"a71a583813b3f137da6a9716acc7e9b198df5847\"},\"main\":{\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"}},{\"path\":\"src-desktop/Cargo.toml\",\"ours\":{\"digest\":\"5d31862fd3f09724c9f92585576a8a2d1218c247fa6ca0130e4dbf8fac216f87\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"digest\":\"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nBounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    ".github/workflows/android-test.yml",
+
+    ".github/workflows/build-android.yml",
+
+    ".github/workflows/desktop-clean-checkout.yml",
+
+    ".github/workflows/nightly-native-stage.yml",
+
+    ".github/workflows/release.yml",
+
+    ".github/workflows/testflight-delivery.yml",
+
+    "config/channel-platform-matrix.json",
+
+    "config/channel-ports.json",
+
+    "config/portable-server-node-runtime.json",
+
+    "install.sh",
+
+    "package.json#/scripts/build:ios:simulator",
+
+    "package.json#/scripts/channel-ports:check",
+
+    "package.json#/scripts/install-script:check",
+
+    "packages/cli/src/commands/desktop-companion.ts",
+
+    "packages/cli/src/commands/dev-ports.ts",
+
+    "packages/cli/src/commands/helpers.ts",
+
+    "packages/cli/src/commands/lifecycle-code-root.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "packages/cli/src/commands/service-run.ts",
+
+    "packages/cli/src/commands/service-windows.ts",
+
+    "packages/cli/src/commands/service.ts",
+
+    "packages/shared/src/portable-server-targets.mjs",
+
+    "packages/shared/src/runtime-path-resolver.ts",
+
+    "packages/shared/src/station-home-schema.ts",
+
+    "pnpm-lock.yaml",
+
+    "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
+
+    "scripts/apply-android-native-bootstrap.mjs",
+
+    "scripts/apply-android-network-policy.mjs",
+
+    "scripts/browser-preview-packaged-fixture.mjs",
+
+    "scripts/build-desktop.mjs",
+
+    "scripts/channel-ports.mjs",
+
+    "scripts/check-android-16kb-alignment.mjs",
+
+    "scripts/dev-desktop.mts",
+
+    "scripts/install-script-generated.mjs",
+
+    "scripts/ios-testflight-channel.mjs",
+
+    "scripts/lib/android-build-manifest.mjs",
+
+    "scripts/lib/browser-preview-packaged-fixture.mjs",
+
+    "scripts/lib/desktop-build-command.mjs",
+
+    "scripts/lib/desktop-build-manifest.mjs",
+
+    "scripts/tauri-context.mjs",
+
+    "scripts/templates/android/StationAndroidInsetsBridge.kt",
+
+    "scripts/verify-desktop-clean-checkout.mjs",
+
+    "scripts/write-android-build-manifest.mjs",
+
+    "scripts/write-native-client-build-manifest.mjs",
+
+    "src-desktop/Cargo.lock",
+
+    "src-desktop/Cargo.toml",
+
+    "src-desktop/build.rs",
+
+    "src-desktop/capabilities/desktop-updater.json",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/service_state.rs",
+
+    "src-desktop/src/tray.rs",
+
+    "src-desktop/tauri.android.conf.json",
+
+    "src-desktop/tauri.android.dev.conf.json",
+
+    "src-desktop/tauri.beta.conf.json",
+
+    "src-desktop/tauri.conf.json",
+
+    "src-desktop/tauri.ios.conf.json",
+
+    "src-desktop/tauri.ios.dev.conf.json",
+
+    "src-desktop/tauri.nightly.conf.json",
+
+    "src-server/tools/instance-registry-bridge.ts",
+
+    "src-ui/src/components/DesktopUpdateLaunchCheck.tsx",
+
+    "src-ui/src/core/PluginRegistry.ts",
+
+    "src-ui/src/platform/androidSafeArea.ts",
+
+    "src-ui/src/platform/native/desktopUpdate.ts",
+
+    "src-ui/src/platform/native/tauri.ts",
+
+    "src-ui/src/views/settings/BuildProvenance.tsx",
+
+    "src-ui/src/views/settings/DesktopUpdateCheck.tsx",
+
+    "src-ui/src/views/settings/SystemSection.tsx",
+
+    "vite.config.ts"
+  ],
+
+  "checks": [
+    "focused: PASS 99 tests / 7 files / 11.14s: channel-ports, channel-platform-matrix, ios-development-identity, android-build-manifest, check-android-16kb-alignment, verify-desktop-clean-checkout, documentation-foundations",
+
+    "fixtureProbe: PASS exit0 actual helper/schema current refusal and benign initialization control; no sockets/native launch",
+
+    "staticContext: PASS actual version/config/capability read with shared JSON merge helper; not host context CLI",
+
+    "fullTauriContext: NOT_VERIFIED: CLI unconditionally invokes adb devices/xcdevice; omitted under no device operations scope",
+
+    "veritas: PASS exit0, 0 failures / 0 warnings; governance, lint, verification-policy; protected attestation unchanged",
+
+    "Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Upstream source review: Reviewed generated channel/key blocks, Nightly public-manifest-only and coexistence admission, exact pin/channel checks, retained source-archive selector, final-location build and upgrade identity. This consumer is not the new per-platform prebuilt installer; docs preserve that limit.",
+
+    "Upstream source review: Reviewed stateHome/projectHome propagation through inspect/start-stop/rollback/Windows supervisor settlement/uninstall. Selected service home remains authority; current guides retain exact selectors. No actual platform service mutation.",
+
+    "Upstream source review: Reviewed source/runtime-home admission adds root-owned state directory to protected set; formatting elsewhere. Existing exact service manifest/probe contract retained; prebuilt state is not a runtime home.",
+
+    "Upstream source review: Reviewed affected current owners: native startup callbacks and separate React mount, registered native grant/diagnostic commands and cleanup hooks, native notification feed manage/start/IPC, state-directory profile genesis. Updated readiness/recovery/tray/broker claims; no native/platform delivery proof.",
+
+    "Upstream source review: Old/new bytes normalize identically with rustfmt--edition2021; formatting-only. Rust format receipt retained. No compiled-build claim.",
+
+    "Upstream source review: Old/new bytes normalize identically with rustfmt--edition2021; formatting-only. Existing tray ownership/action claims unaffected. New alert reader documented separately from tray poller.",
+
+    "Upstream source review: Reviewed releaseRings validation and generated shared table added alongside unchanged numeric channel-port projections. Current guide names generator and install-script projection; no port mutation executed.",
+
+    "Upstream source review: Adds notificationServiceBundleId null for stable and exact Beta/Nightly NotificationService IDs. Mobile/setup docs now require both extensions and all three profiles; no current provider provisioning asserted.",
+
+    "Upstream source review: Adds stable/preview/nightly release-ring-to-runtime/prerelease/launcher map; existing per-channel port/home numbers unchanged. Release-channel guide merged prose checked against values.",
+
+    "Upstream source review: Reviewed four home propagation additions to cleanup and initial/confirmation/steady status calls. Keeps service probe/stop in prebuilt home root; no service-controller semantic change beyond target resolution.",
+
+    "Upstream source review: Adds state to protected Station-root directories, matching Rust home admission. Current isolated-home guidance remains accurate; state is not admitted as runtime home.",
+
+    "Upstream source review: Only frozen upstream delta adds guarded pinned pnpm JS bootstrap on Intel macOS and keeps pinned native setup elsewhere. Tagged native inventory/signing/publication claims unaffected; no hosted execution.",
+
+    "Upstream source review: Reviewed new NotificationService secret/profile import, target generation/signing, exact extension count, embedded profile/entitlement audits and exported bytes. Mobile/setup corrected; icons and existing artifact/provider distinction retained.",
+
+    "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/desktop-companion.ts: Uses shared Windows trust runner but explicitly retains the10-second per-tick override for registration and executable checks; no120-second repeating supervisor stall introduced. Read-only source review, no Windows execution. src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through d1e0facc2: Removed deprecated re-export; shared build provenance owner and displayed values are unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: #2867 (slice C) changed service handling. `station service install` from an archive's active version now runs `<install root>/current` and records `kind: \"archive\"` and `installRoot`. The installer stops that service, switches `current`, restarts it, and rolls back if the identity check fails; any other service still blocks upgrade (lifecycle.ts `archiveInstallRoot`, install.sh). Installs also record their ports and reuse them on upgrade. Corrected the stale \"under an installed service, upgrade refuses\" and \"services still run the source-release layout until slice C\" claims, added the archive-service upgrade, inactive-version and port rules and the uninstall refusal, and noted port reuse. Cargo.toml/lib.rs (notification-watch removal, rustls comment) and bearing/forage removal do not affect the channel identity matrix. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 private in dev-ports.ts, with the same deterministic offset and scan callers. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Neither change affects the worktree allocation or root derivation the guide describes. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and, when runtime/service-state.json exists and an archive service is active, only stages the version and hands off to the fixed service launcher (trial/rollback; refuses on pending or needs-operator update state); service.ts copies runtime/station-launcher.mjs at archive service install (non-win32); lifecycle-code-root.ts moves archive helpers to @kontourai/station-shared/prebuilt-archive (re-exported, no behavior change); channel-ports.mjs adds an optional outputRoot to sync/check; android-build-manifest.mjs and tauri-context.mjs only drop exports (#2914). Corrected the archive-service upgrade paragraph, which claimed the installer always stops the service, switches current and restarts it: it now says a running launcher service stages and hands off to a launcher trial, keeps the stop/switch/restart path otherwise, and notes that an unfinished or operator-blocked launcher update refuses the upgrade. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

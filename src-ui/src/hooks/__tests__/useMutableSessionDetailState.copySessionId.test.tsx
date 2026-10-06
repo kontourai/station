@@ -38,6 +38,12 @@ vi.mock('@kontourai/station-sdk', () => ({
   sendOrchestrationTurn: vi.fn(),
   resolveOrchestrationRequest: vi.fn(),
   interruptOrchestrationTurn: vi.fn(),
+  useAcknowledgeAttentionItemMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    error: null,
+  }),
+  useAgentsQuery: () => ({ data: [], error: null }),
 }));
 
 import { useMutableSessionDetailState } from '../useMutableSessionDetailState';

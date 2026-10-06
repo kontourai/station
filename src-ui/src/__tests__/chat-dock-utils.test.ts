@@ -11,7 +11,6 @@ import {
   inboxPanelMounts,
   markDockFirstRunSeen,
   projectDisplayName,
-  resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
   resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
@@ -25,9 +24,9 @@ import type { SelectableModel } from '../utils/modelCapabilities';
 describe('chat-dock-utils', () => {
   test('splitWorkingDirectoryPath trims trailing slashes and preserves parent paths', () => {
     expect(
-      splitWorkingDirectoryPath('/Users/brian/dev/workspace/project/'),
+      splitWorkingDirectoryPath('/Users/me/dev/workspace/project/'),
     ).toEqual({
-      parentPath: '/Users/brian/dev/workspace/',
+      parentPath: '/Users/me/dev/workspace/',
       leafName: 'project',
       hasWorkingDirectory: true,
     });
@@ -478,42 +477,6 @@ describe('resolveSessionProjectMismatchLabel (station#4525 review MED-1)', () =>
   }
 });
 
-describe('resolveDirectNewChatProjectSlug (station#4525 review HIGH-3)', () => {
-  test('the ambient dock (no immutable scope) inherits the shell binding', () => {
-    expect(
-      resolveDirectNewChatProjectSlug({
-        hasImmutableProjectScope: false,
-        immutableProjectSlug: undefined,
-        dockChromeProjectSlug: 'alpha',
-      }),
-    ).toBe('alpha');
-  });
-
-  test('the ambient dock with no binding creates a genuinely unbound chat', () => {
-    expect(
-      resolveDirectNewChatProjectSlug({
-        hasImmutableProjectScope: false,
-        immutableProjectSlug: undefined,
-        dockChromeProjectSlug: null,
-      }),
-    ).toBeUndefined();
-  });
-
-  // The exact repro: New Chat inside a project's own Coding layout
-  // must target THAT project, never the ambient device-global binding —
-  // passing the binding here trips `shouldRouteScopedChatProject` into
-  // navigating away instead of creating a chat.
-  test('an immutably project-scoped layout ALWAYS targets its own project, never the ambient binding', () => {
-    expect(
-      resolveDirectNewChatProjectSlug({
-        hasImmutableProjectScope: true,
-        immutableProjectSlug: 'the-layouts-own-project',
-        dockChromeProjectSlug: 'a-totally-different-globally-bound-project',
-      }),
-    ).toBe('the-layouts-own-project');
-  });
-});
-
 describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', () => {
   test('a fork confirmation always wins outright, over every other default', () => {
     expect(
@@ -582,16 +545,14 @@ describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
     sessionDisplayCwd: null,
     sessionProjectSlug: undefined,
     dockProjectSlug: 'demo',
-    dockProjectWorkingDirectory: '/Users/brian/dev/demo',
+    dockProjectWorkingDirectory: '/Users/me/dev/demo',
   } as Parameters<typeof resolveDockProjectContextDirectory>[0];
 
   test("names the bound project's directory when no session reports one", () => {
     // The audited case: the dock is collapsed with nothing open, so there is
     // no session — and the row said "Home folder" beside a badge naming a
     // project whose directory is set.
-    expect(resolveDockProjectContextDirectory(base)).toBe(
-      '/Users/brian/dev/demo',
-    );
+    expect(resolveDockProjectContextDirectory(base)).toBe('/Users/me/dev/demo');
   });
 
   test("prefers the session's own directory over the bound project's", () => {
@@ -643,7 +604,7 @@ describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
         sessionDisplayCwd: null,
         sessionProjectSlug: undefined,
       }),
-    ).toBe('/Users/brian/dev/demo');
+    ).toBe('/Users/me/dev/demo');
     // And it stays subordinate to the session's own directory when it has one.
     expect(
       resolveDockProjectContextDirectory({

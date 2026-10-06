@@ -225,9 +225,6 @@ export class OperatingStateService {
           next_action_status: task.nextAction?.status ?? 'continue',
           ...(task.updatedAt ? { updated_at: task.updatedAt } : {}),
           source_path: task.path,
-          ...(hasUnresolvedCritique !== undefined
-            ? { has_unresolved_critique: hasUnresolvedCritique }
-            : {}),
         },
       },
     };

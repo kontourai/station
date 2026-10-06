@@ -10,7 +10,7 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
-import { Hono, type MiddlewareHandler } from 'hono';
+import { type Context, Hono, type MiddlewareHandler } from 'hono';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
   NotificationDedupeSourceConflictError,
@@ -45,6 +45,19 @@ export function createNotificationRoutes(
      * a notification here; agents use `notify_user`.
      */
     isAgentOriginatedRequest?: (request: Request) => boolean;
+    /**
+     * #3276: for a request acting for a Project member, the readable rows it
+     * may not action or dismiss (a live approval: answering it steers the
+     * operator's turn) and the refusal it gets. Absent, or `undefined` for
+     * the caller, leaves every readable row to the rules below.
+     */
+    approvalAnswerGuard?: (c: Context) => Promise<
+      | {
+          withholds(notification: Notification): boolean;
+          refusal(): Response;
+        }
+      | undefined
+    >;
   } = {},
 ) {
   const app = new Hono();
@@ -210,9 +223,13 @@ export function createNotificationRoutes(
 
   // Dismiss a notification
   app.delete('/:id', async (c) => {
-    if (!(await readableNotification(param(c, 'id'), c.req.raw))) {
+    const notification = await readableNotification(param(c, 'id'), c.req.raw);
+    if (!notification) {
       return c.json({ success: false, error: 'Notification not found' }, 404);
     }
+    // Dismissing a live approval declines it.
+    const guard = await options.approvalAnswerGuard?.(c);
+    if (guard?.withholds(notification)) return guard.refusal();
     const result = await notificationService.dismiss(
       param(c, 'id'),
       resolveClientOriginForRequest(c.req.raw),
@@ -231,9 +248,12 @@ export function createNotificationRoutes(
 
   // Execute a notification action
   app.post('/:id/action/:actionId', async (c) => {
-    if (!(await readableNotification(param(c, 'id'), c.req.raw))) {
+    const notification = await readableNotification(param(c, 'id'), c.req.raw);
+    if (!notification) {
       return c.json({ success: false, error: 'Notification not found' }, 404);
     }
+    const guard = await options.approvalAnswerGuard?.(c);
+    if (guard?.withholds(notification)) return guard.refusal();
     const result = await notificationService.action(
       param(c, 'id'),
       param(c, 'actionId'),
@@ -292,8 +312,12 @@ export function createNotificationRoutes(
 
   // Clear all notifications (legacy/public clear-all contract).
   app.delete('/', async (c) => {
-    const result = await notificationService.clearAll((notification) =>
-      canReadNotification(notification, c.req.raw),
+    // A member's bulk clear keeps live approvals: clearing one declines it.
+    const guard = await options.approvalAnswerGuard?.(c);
+    const result = await notificationService.clearAll(
+      (notification) =>
+        canReadNotification(notification, c.req.raw) &&
+        !guard?.withholds(notification),
     );
     if (result.outcome === 'action-dispatching') {
       return c.json(

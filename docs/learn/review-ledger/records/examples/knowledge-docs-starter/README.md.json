@@ -1,0 +1,41 @@
+{
+  "path": "examples/knowledge-docs-starter/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete README: three static rows, no source-selection payload or intake/index/search, chat Dock callback, fixed host prompt, declared namespace versus Kit roots, contributed Agent and permission/model prerequisites. Existing prose remains accurate.",
+
+  "limits": "EXECUTED PASS: public plugin build. GitHub issue 268 was read and confirmed closed as batched into 570; the explicit current-repository URL is correct. No live model invocation, real document retrieval or answer-quality evidence.",
+
+  "sources": [
+    "examples/knowledge-docs-starter/layout.json",
+
+    "examples/knowledge-docs-starter/plugin.json",
+
+    "examples/knowledge-docs-starter/src/index.tsx",
+
+    "packages/cli/src/commands/build.ts",
+
+    "packages/sdk/src/api-agent-runtime.ts",
+
+    "packages/shared/src/build.ts",
+
+    "src-server/services/plugins/workspace-pane-host-actions.ts",
+
+    "src-server/services/plugins/workspace-pane-host-admission.ts"
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Integration source review through e464b7065: added the same qualified `station registry install knowledge-docs-starter` path after the build and local catalog selection. The manifest declares no executable or lifecycle contribution. Source review is separate from executed test evidence."
+  ]
+}

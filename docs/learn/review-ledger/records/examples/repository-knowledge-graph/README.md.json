@@ -1,0 +1,45 @@
+{
+  "path": "examples/repository-knowledge-graph/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed deterministic graph export, exact edge meanings, attributed purpose, unknown historical rationale, isolated public-API ingestion and bounded interruption recovery.",
+
+  "limits": "Derived navigation is not a call graph, test verdict, authenticated authorship or semantic search. Live historical snapshot receipts identify their own input revision, not this later export. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"docs/learn/atlas.json\",\"ours\":{\"digest\":\"80f4795abfd91a4a081309cc734e87b6e79938c6ddf1ba601250dee3729f5147\",\"revision\":\"f8741ed305188b8bd44a37d3492c5cd3ea83e741\"},\"main\":{\"digest\":\"ed4395353d103a11f3de0d430e28fb4ab8c1447626284d3fb1633023ea86b966\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"}}].\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"},\"theirs\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8\",\"revision\":\"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e\",\"revision\":\"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1\"}},{\"path\":\"docs/learn/atlas.json\",\"ours\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"c392d0f008c898438a024054fdcfc98c1a1eeb636c8713b72a6c36eb2907d770\",\"revision\":\"0ed893868b2be12651928150004d23a11f94837f\"},\"theirs\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"e034e39b2ea44cbe00752aa003f17215502540ce06c7d5bcc5cc29e57f47ef05\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"c392d0f008c898438a024054fdcfc98c1a1eeb636c8713b72a6c36eb2907d770\",\"revision\":\"0ed893868b2be12651928150004d23a11f94837f\"}},{\"path\":\"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs\",\"ours\":{\"path\":\"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs\",\"digest\":\"f88bfb8efa7de7ae220048c77313c64d5fcece1ea5c344cee0b2178d511db323\",\"revision\":\"ec016e7770c94e2e1037414a7f451bd51052ddaa\"},\"theirs\":{\"path\":\"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs\",\"digest\":\"b518e97133720b6aa0b2349b04bfeb9fe236e1ecf51d64025dc25dc279988bf8\",\"revision\":\"87180ea445a46d047d16b89b35ff1f3b92778f4f\"},\"active\":{\"path\":\"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs\",\"digest\":\"b518e97133720b6aa0b2349b04bfeb9fe236e1ecf51d64025dc25dc279988bf8\",\"revision\":\"87180ea445a46d047d16b89b35ff1f3b92778f4f\"}}]",
+
+  "sources": [
+    "docs/architecture/module-map.md",
+
+    "docs/learn/atlas.json",
+
+    "examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs",
+
+    "examples/repository-knowledge-graph/export.mjs",
+
+    "examples/repository-knowledge-graph/graph.mjs",
+
+    "examples/repository-knowledge-graph/ingest.mjs"
+  ],
+
+  "checks": [
+    "Actual public-API import verified 1149 canonical records and 2089 edges; repeat created zero records/links. Initial rate-limit failure retained, then bounded reconciliation verified. Fixture tests cover altered digests/counts, interruption and canonical recall.",
+
+    "Added canonical graph guide and captured Library route to the Knowledge reading branch; module membership and explanation authority unchanged.",
+
+    "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. docs/learn/atlas.json: Added the reviewed native renewal module and Knowledge graph/walkthrough links to their existing branches; canonical module membership checked by generator.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged. Added NativeApplicationSignaling to the Connections branch; the catalog still assigns every module once and introduces no runtime authority.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: the module map and atlas replaced CollaborativeEditorPane with ProjectTaskRoom and dropped PluginForegroundRuns. The README derives its module set from atlas membership and names no specific modules or counts, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

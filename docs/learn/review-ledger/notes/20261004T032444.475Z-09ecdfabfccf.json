@@ -1,0 +1,7 @@
+{
+  "revision": "1ac8069c32480355596ff5e29a8deb80df5fab1c",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed its deployment-authentication source delta after #3191 landing. Shared-summary publication and uniform member not-found behavior retain current membership/incarnation/delivery checks, while operator mutations and account-bound Device observation restrictions remain separate. Integration guide remains accurate; no expanded authority or qualification claim added.","inputs":["docs/guides/deployment-authentication.md"]}
+  ]
+}

@@ -222,17 +222,18 @@ describe('one writable home per scope (§5, the second-copy defect)', () => {
   });
 
   it('reads a project scope from the map', () => {
-    const selection = resolveScopedContribution(
-      {
-        contribution: {
-          'project:prj_1': {
-            enabled: true,
-            execution: { repoIds: ['github.com/kontourai/station'] },
-          },
+    const config: Pick<AppConfig, 'contribution'> = {
+      contribution: {
+        [contributionScopeKey({ kind: 'project', projectId: 'prj_1' })]: {
+          enabled: true,
+          execution: { repoIds: ['github.com/kontourai/station'] },
         },
       },
-      { kind: 'project', projectId: 'prj_1' },
-    );
+    };
+    const selection = resolveScopedContribution(config, {
+      kind: 'project',
+      projectId: 'prj_1',
+    });
     expect(selection.origin).toBe('contribution-map');
     expect(declaredContributionIds(selection.config, 'execution')).toEqual([
       'github.com/kontourai/station',
@@ -410,12 +411,6 @@ describe('no self-asserted identity in the wire body (decision 4)', () => {
       'memberId',
       'stationId',
     ]);
-  });
-
-  it('carries no identity field itself', () => {
-    for (const field of FORBIDDEN_CONTRIBUTION_IDENTITY_FIELDS) {
-      expect(Object.keys(projection())).not.toContain(field);
-    }
   });
 
   it.each(FORBIDDEN_CONTRIBUTION_IDENTITY_FIELDS)(
@@ -620,18 +615,6 @@ describe('the config field is registered where the fleet’s is (§4.2)', () => 
     );
     expect(fleet?.scope).toBe('station');
     expect(fleet?.label).toBe('Fleet contribution');
-  });
-
-  it('types the AppConfig field as a scope-keyed map', () => {
-    const config: Pick<AppConfig, 'contribution'> = {
-      contribution: {
-        [contributionScopeKey({ kind: 'project', projectId: 'prj_1' })]: {
-          enabled: true,
-          execution: { repoIds: ['github.com/kontourai/station'] },
-        },
-      },
-    };
-    expect(Object.keys(config.contribution ?? {})).toEqual(['project:prj_1']);
   });
 });
 

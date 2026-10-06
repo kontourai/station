@@ -1,0 +1,27 @@
+{
+  "path": "docs/design/conversation-state.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Draft channel-home design with a historical source survey and later amendments.",
+
+  "limits": "The source survey and absence/scheduling claims are historical. Current related contracts/runtime/authorization owners were located; signing, membership, replication, witnesses, hosted tier, and research evidence were not comprehensively audited.",
+
+  "sources": [
+    "packages/contracts/src/channel-log.ts",
+
+    "src-server/services/orchestration/project-task-room-history.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-server/services/orchestration/session-authorization.ts"
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner."
+  ]
+}

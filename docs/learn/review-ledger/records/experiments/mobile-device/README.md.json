@@ -1,0 +1,19 @@
+{
+  "path": "experiments/mobile-device/README.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Dated macOS simulator/emulator feasibility observations and original product proposal. Full baseline read; experiment URL/origin/window restrictions source-checked. Added current Device guide routing; dated observations and proposed tasks remain historical, not current product inventory.",
+
+  "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence.",
+
+  "sources": [
+    "experiments/mobile-device/tauri-host/src/main.rs"
+  ],
+
+  "checks": [
+    "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation."
+  ]
+}

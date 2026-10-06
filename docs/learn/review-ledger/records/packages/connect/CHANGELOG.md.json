@@ -1,0 +1,15 @@
+{
+  "path": "packages/connect/CHANGELOG.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained private Connect change intent from the four consumed private-only notes; no public version or publication claimed.",
+
+  "limits": "Changelog retention is not a receipt for live relay/WebRTC/device qualification or npm publication.",
+
+  "sources": [],
+
+  "checks": []
+}

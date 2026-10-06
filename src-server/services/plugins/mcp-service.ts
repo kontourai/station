@@ -5,6 +5,7 @@
 type Tool<_T = any> = any;
 
 import { type SpawnOptions, spawn } from 'node:child_process';
+import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
@@ -13,6 +14,7 @@ import {
   MCPLocalConnectionCustody,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import { mcpToolDisabled } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type { Transport } from '@modelcontextprotocol/client';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -37,20 +39,62 @@ import type {
   IntegrationSecretBindingGranter,
   IntegrationSecretResolver,
 } from '../secrets/secret-binding-administration.js';
-import { ToolServerCredentialStore } from './tool-server-credential-store.js';
+import {
+  principalToolCatalogExists,
+  writePrincipalToolCatalog,
+} from './principal-tool-catalog.js';
+import {
+  removePrincipalToolServerCredentials,
+  ToolServerCredentialStore,
+} from './tool-server-credential-store.js';
 import {
   captureToolServerOperationFailure,
   classifyOAuthFailure,
   classifyToolServerProbeFailure,
   formatToolServerFailure,
+  INSTANCE_CREDENTIAL_OWNER,
+  principalCredentialOwner,
   removeToolServerOAuthCredentials,
   requireHttpAuthorizationUrl,
   requireToolServerResult,
   StationOwnedToolServerError,
   StationToolServerOAuthProvider,
+  toolServerCredentialStoreFor,
   toolServerOAuthResourceIdentity,
   validateOAuthCallbackUrl,
 } from './tool-server-oauth.js';
+
+/**
+ * #3279: who is connecting or inspecting an account. `principalId` comes from
+ * the request's resolved principal (tenant-qualified in hosted Stations),
+ * never from a request body. `owner: 'instance'` asks for the shared
+ * credential of an integration that allows it; `projectSlug` narrows the
+ * caller's own credential to one Project.
+ */
+export interface ToolServerAccountActor {
+  principalId: string;
+  owner?: 'self' | 'instance';
+  projectSlug?: string;
+}
+
+export interface ToolServerAccountStatus {
+  ownership: 'instance' | 'principal';
+  /** Whose credential a turn by this caller would use now; never a value. */
+  connectedAs: 'you-in-project' | 'you' | 'shared' | null;
+  personal?: { connected: boolean };
+  project?: { slug: string; connected: boolean };
+  shared: { usable: boolean; connected: boolean };
+  /** Whether a person-owned integration has a recorded tool catalog yet. */
+  catalogAvailable?: boolean;
+}
+
+class ConnectedAccountActorRequiredError extends StationOwnedToolServerError {
+  constructor() {
+    super(
+      "This integration uses each person's own account. Connect your account as a signed-in person; a paired device without a person, a non-person principal, or a hosted request cannot own one.",
+    );
+  }
+}
 
 /** Bound on the names a probe records, so one chatty server cannot bloat its
  *  persisted config file (CI-R15). */
@@ -120,6 +164,12 @@ export type MCPUIToolCatalogResult =
   | { available: false };
 
 export class MCPService {
+  /**
+   * Pending consent flows keyed by `oauthFlowKey`. An instance-owned
+   * integration keeps one flow per server, as before. A person-owned
+   * integration keys the flow by the principal who started it, so a callback
+   * can only complete (and write tokens for) the caller's own flow.
+   */
   private readonly oauthFlows = new Map<
     string,
     {
@@ -422,7 +472,11 @@ export class MCPService {
       await this.configLoader.saveIntegration(def.id, persisted);
       if (identityChanged || def.enabled === false) {
         await removeToolServerOAuthCredentials(this.credentialStore(), def.id);
-        this.oauthFlows.delete(def.id);
+        await removePrincipalToolServerCredentials(
+          this.configLoader.getProjectHomeDir(),
+          def.id,
+        );
+        this.dropOAuthFlows(def.id);
       }
     };
     // Every explicit write to this integration is fenced, even if its first
@@ -445,7 +499,7 @@ export class MCPService {
     this.assertMutableIntegration(id);
     await this.mcpCustody.mutate(id, async () => {
       await this.configLoader.deleteIntegration(id);
-      this.oauthFlows.delete(id);
+      this.dropOAuthFlows(id);
       this.mcpConfigs.delete(id);
     });
   }
@@ -475,6 +529,7 @@ export class MCPService {
   async startOAuth(
     id: string,
     mode: 'local' | 'remote',
+    actor?: ToolServerAccountActor,
   ): Promise<{
     authorizationUrl: string;
     mode: 'local-browser-opened' | 'remote-manual-open';
@@ -489,7 +544,9 @@ export class MCPService {
         throw new Error(
           'OAuth is available only for SSE and streamable HTTP tool servers',
         );
-      const provider = this.createOAuthProvider(def);
+      const owner = this.accountOwner(def, actor);
+      const flowKey = this.oauthFlowKey(def, actor);
+      const provider = this.createOAuthProvider(def, owner);
       let transport: Transport | undefined;
       try {
         const connection = await this.establishChild(def, (child) =>
@@ -525,24 +582,26 @@ export class MCPService {
         if (!resourceIdentity)
           throw new Error('OAuth tool server endpoint is missing or invalid');
         claim.retainForOAuth();
-        const previous = this.oauthFlows.get(id);
+        const previous = this.oauthFlows.get(flowKey);
         if (previous) {
           const cleanup = await this.mcpCustody.release(previous.claim);
           if (cleanup.state !== 'settled')
             throw new MCPLocalCustodyError(cleanup.state);
         }
-        this.oauthFlows.set(id, {
+        this.oauthFlows.set(flowKey, {
           provider,
           resourceIdentity,
           claim,
         });
-        await this.saveAuthorizationHealth(
-          id,
-          resourceIdentity,
-          'awaiting-operator-consent',
-          undefined,
-          claim,
-        );
+        // A person's consent is not the integration's shared health.
+        if (!def.credentialOwnership)
+          await this.saveAuthorizationHealth(
+            id,
+            resourceIdentity,
+            'awaiting-operator-consent',
+            undefined,
+            claim,
+          );
         if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
         retained = true;
         toolServerOAuth.add(1, { outcome: 'authorize-started' });
@@ -557,16 +616,26 @@ export class MCPService {
       }
     } finally {
       if (!retained) {
-        if (this.oauthFlows.get(id)?.claim === claim)
-          this.oauthFlows.delete(id);
+        for (const [key, flow] of this.oauthFlows)
+          if (flow.claim === claim) this.oauthFlows.delete(key);
         await this.mcpCustody.release(claim);
       }
     }
   }
 
-  async finishOAuth(id: string, callbackUrl: string): Promise<ToolDef> {
+  async finishOAuth(
+    id: string,
+    callbackUrl: string,
+    actor?: ToolServerAccountActor,
+  ): Promise<ToolDef> {
     this.assertMutableIntegration(id);
-    const flow = this.oauthFlows.get(id);
+    // A person-owned flow is keyed by its starter, so only that principal
+    // finds it; an instance flow keeps its bare server key. Looked up before
+    // any read so a callback without a flow refuses without touching config.
+    const personalKey = actor ? `${id}\u0000${actor.principalId}` : undefined;
+    const flowKey =
+      personalKey && this.oauthFlows.has(personalKey) ? personalKey : id;
+    const flow = this.oauthFlows.get(flowKey);
     if (!flow) {
       throw new Error('No OAuth consent flow is awaiting completion');
     }
@@ -590,7 +659,10 @@ export class MCPService {
         // Validation above proves the state matches. Claim the exact map entry
         // synchronously, before any await, so no second callback can capture this
         // flow and race a health write against the winner.
-        if (this.oauthFlows.get(id) !== flow || !this.oauthFlows.delete(id)) {
+        if (
+          this.oauthFlows.get(flowKey) !== flow ||
+          !this.oauthFlows.delete(flowKey)
+        ) {
           throw new Error('No OAuth consent flow is awaiting completion');
         }
         claimed = true;
@@ -621,6 +693,9 @@ export class MCPService {
           );
         }
 
+        if (exchangeFailed && beforeExchange.credentialOwnership) {
+          throw new Error('OAuth authorization failed');
+        }
         if (exchangeFailed) {
           const reason = formatToolServerFailure(
             classifyOAuthFailure(exchangeFailure),
@@ -636,6 +711,17 @@ export class MCPService {
         }
 
         toolServerOAuth.add(1, { outcome: 'consent-completed' });
+        if (beforeExchange.credentialOwnership) {
+          // #3279: the shared health projection stays untouched; record the
+          // tool catalog this person's own credential can list instead.
+          await this.recordPrincipalCatalog(
+            beforeExchange,
+            flow.provider,
+            flow.resourceIdentity,
+          );
+          if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+          return beforeExchange;
+        }
         const health = await this.saveAuthorizationHealth(
           id,
           flow.resourceIdentity,
@@ -652,6 +738,123 @@ export class MCPService {
     } finally {
       if (claimed) await this.releaseAfterOperation(flow.claim, failed);
     }
+  }
+
+  /**
+   * #3279: list tools with one person's freshly authorized credential and
+   * record the catalog Agent load builds that integration's tools from. The
+   * connection is transient and closed here.
+   */
+  private async recordPrincipalCatalog(
+    def: ToolDef,
+    provider: StationToolServerOAuthProvider,
+    resourceIdentity: string,
+  ): Promise<boolean> {
+    const claim = this.mcpCustody.acquire(def.id, 'probe');
+    let failed = false;
+    try {
+      const connection = await this.establishChild(def, (child) =>
+        claim.connect(child, { authProvider: provider }),
+      );
+      await this.requireCurrentDefinition(claim, def);
+      return await writePrincipalToolCatalog(
+        this.configLoader.getProjectHomeDir(),
+        def.id,
+        resourceIdentity,
+        connection.tools,
+      );
+    } catch (error) {
+      failed = true;
+      throw captureToolServerOperationFailure(
+        error,
+        'connect',
+        def.id,
+        this.logger,
+      );
+    } finally {
+      await this.releaseAfterOperation(claim, failed);
+    }
+  }
+
+  /**
+   * #3279: the caller's own account state for one integration: owner and
+   * availability only, never a credential value, and never another person's
+   * state (the actor is the request's own principal).
+   */
+  async getAccountStatus(
+    id: string,
+    actor: ToolServerAccountActor | undefined,
+  ): Promise<ToolServerAccountStatus> {
+    const def = await this.getIntegration(id);
+    const resourceIdentity = toolServerOAuthResourceIdentity(def);
+    const connected = async (owner: CredentialOwner) =>
+      resourceIdentity
+        ? Boolean(await this.createOAuthProvider(def, owner).tokens())
+        : false;
+    const shared = await connected(INSTANCE_CREDENTIAL_OWNER);
+    if (!def.credentialOwnership)
+      return {
+        ownership: 'instance',
+        connectedAs: shared ? 'shared' : null,
+        shared: { usable: true, connected: shared },
+      };
+    if (!actor) throw new ConnectedAccountActorRequiredError();
+    const fallback = def.credentialOwnership.allowInstanceFallback === true;
+    const personal = await connected(
+      principalCredentialOwner(actor.principalId),
+    );
+    const project = actor.projectSlug
+      ? {
+          slug: actor.projectSlug,
+          connected: await connected(
+            principalCredentialOwner(actor.principalId, actor.projectSlug),
+          ),
+        }
+      : undefined;
+    return {
+      ownership: 'principal',
+      connectedAs: project?.connected
+        ? 'you-in-project'
+        : personal
+          ? 'you'
+          : fallback && shared
+            ? 'shared'
+            : null,
+      personal: { connected: personal },
+      ...(project ? { project } : {}),
+      shared: { usable: fallback, connected: shared },
+      catalogAvailable: resourceIdentity
+        ? principalToolCatalogExists(
+            this.configLoader.getProjectHomeDir(),
+            def.id,
+            resourceIdentity,
+          )
+        : false,
+    };
+  }
+
+  /**
+   * #3279: remove the caller's own credential for a person-owned
+   * integration. Live connections read tokens per request, so the next call
+   * that needs this credential refuses with "connect your account".
+   */
+  async disconnectAccount(
+    id: string,
+    actor: ToolServerAccountActor | undefined,
+  ): Promise<ToolServerAccountStatus> {
+    this.assertMutableIntegration(id);
+    const def = await this.getIntegration(id);
+    if (!def.credentialOwnership)
+      throw new StationOwnedToolServerError(
+        'This integration uses the shared account; disconnect it from its settings.',
+      );
+    const owner = this.accountOwner(def, actor);
+    if (owner.kind === 'instance')
+      throw new StationOwnedToolServerError(
+        'Disconnect the shared account from its settings.',
+      );
+    await this.createOAuthProvider(def, owner).clearCredentials();
+    return this.getAccountStatus(id, actor);
   }
 
   private async saveAuthorizationHealth(
@@ -691,12 +894,47 @@ export class MCPService {
     });
   }
 
-  private createOAuthProvider(def: ToolDef): StationToolServerOAuthProvider {
+  private oauthFlowKey(def: ToolDef, actor?: ToolServerAccountActor): string {
+    if (!def.credentialOwnership) return def.id;
+    if (!actor) throw new ConnectedAccountActorRequiredError();
+    return `${def.id}\u0000${actor.principalId}`;
+  }
+
+  private dropOAuthFlows(id: string): void {
+    for (const key of [...this.oauthFlows.keys()])
+      if (key === id || key.startsWith(`${id}\u0000`))
+        this.oauthFlows.delete(key);
+  }
+
+  /** #3279: the credential owner an account action writes or reads. */
+  private accountOwner(
+    def: ToolDef,
+    actor?: ToolServerAccountActor,
+  ): CredentialOwner {
+    if (!def.credentialOwnership) return INSTANCE_CREDENTIAL_OWNER;
+    if (!actor) throw new ConnectedAccountActorRequiredError();
+    if (actor.owner === 'instance') {
+      if (def.credentialOwnership.allowInstanceFallback !== true)
+        throw new StationOwnedToolServerError(
+          'This integration does not use a shared account.',
+        );
+      return INSTANCE_CREDENTIAL_OWNER;
+    }
+    return principalCredentialOwner(actor.principalId, actor.projectSlug);
+  }
+
+  private createOAuthProvider(
+    def: ToolDef,
+    owner: CredentialOwner = INSTANCE_CREDENTIAL_OWNER,
+  ): StationToolServerOAuthProvider {
     const resourceIdentity = toolServerOAuthResourceIdentity(def);
     if (!resourceIdentity)
       throw new Error('OAuth tool server endpoint is missing or invalid');
     return new StationToolServerOAuthProvider(
-      this.credentialStore(),
+      toolServerCredentialStoreFor(
+        this.configLoader.getProjectHomeDir(),
+        owner,
+      ),
       def.id,
       resourceIdentity,
       toolServerOAuthRedirectUrl(this.serverPort, def.id),
@@ -709,6 +947,7 @@ export class MCPService {
             toolServerOAuth.add(1, { outcome: 'refresh-failed' });
         },
       },
+      owner,
     );
   }
 
@@ -760,13 +999,21 @@ export class MCPService {
     }
   }
 
-  async probeIntegration(id: string): Promise<ToolDef> {
+  async probeIntegration(
+    id: string,
+    actor?: ToolServerAccountActor,
+  ): Promise<ToolDef> {
     const claim = this.mcpCustody.acquire(id, 'probe');
     let retained = false;
     let failed = false;
     try {
       const loaded = await this.loadIntegrationWithOwnership(id);
       const existing = loaded.definition;
+      if (existing.credentialOwnership) {
+        return await this.probeAccount(existing, claim, actor, () => {
+          retained = true;
+        });
+      }
       const liveContributed = loaded.contributed;
       const oauthProvider =
         existing.transport === 'sse' || existing.transport === 'streamable-http'
@@ -895,10 +1142,106 @@ export class MCPService {
       throw error;
     } finally {
       if (!retained) {
-        if (this.oauthFlows.get(id)?.claim === claim)
-          this.oauthFlows.delete(id);
+        for (const [key, flow] of this.oauthFlows)
+          if (flow.claim === claim) this.oauthFlows.delete(key);
         await this.releaseAfterOperation(claim, failed);
       }
+    }
+  }
+
+  /**
+   * #3279: probe a person-owned integration as the caller. Success records
+   * the tool catalog; nothing about one person's account is written to the
+   * integration's shared probe/health record. The returned probe is the
+   * caller's own view.
+   */
+  private async probeAccount(
+    existing: ToolDef,
+    claim: MCPLocalClaim,
+    actor: ToolServerAccountActor | undefined,
+    retain: () => void,
+  ): Promise<ToolDef> {
+    const owner = this.accountOwner(existing, actor);
+    const resourceIdentity = toolServerOAuthResourceIdentity(existing);
+    if (!resourceIdentity)
+      throw new StationOwnedToolServerError(
+        'Connected-account integrations require an SSE or streamable HTTP endpoint',
+      );
+    const provider = this.createOAuthProvider(existing, owner);
+    let transport: Transport | undefined;
+    const checkedAt = new Date().toISOString();
+    try {
+      const connection = await this.establishChild(existing, (child) =>
+        claim.connect(child, {
+          authProvider: provider,
+          onTransport: (value) => {
+            transport = value;
+          },
+        }),
+      );
+      await this.requireCurrentDefinition(claim, existing);
+      await writePrincipalToolCatalog(
+        this.configLoader.getProjectHomeDir(),
+        existing.id,
+        resourceIdentity,
+        connection.tools,
+      );
+      toolServerProbes.add(1, { outcome: 'success' });
+      return {
+        ...existing,
+        probe: {
+          ok: true,
+          toolCount: connection.tools.length,
+          toolNames: connection.tools
+            .slice(0, PROBE_TOOL_NAME_LIMIT)
+            .map((tool) => tool.name),
+          checkedAt,
+          authorization: { state: 'authorized' },
+        },
+      };
+    } catch (error) {
+      captureToolServerOperationFailure(
+        error,
+        'probe',
+        existing.id,
+        this.logger,
+      );
+      await this.requireCurrentDefinition(claim, existing);
+      const authorizationUrl = provider.takeAuthorizationUrl();
+      if (authorizationUrl && transport && 'finishAuth' in transport) {
+        requireHttpAuthorizationUrl(authorizationUrl);
+        claim.retainForOAuth();
+        const flowKey = this.oauthFlowKey(existing, actor);
+        const previous = this.oauthFlows.get(flowKey);
+        if (previous) {
+          const cleanup = await this.mcpCustody.release(previous.claim);
+          if (cleanup.state !== 'settled')
+            throw new MCPLocalCustodyError(cleanup.state);
+        }
+        this.oauthFlows.set(flowKey, { provider, resourceIdentity, claim });
+        retain();
+        return {
+          ...existing,
+          probe: {
+            ok: false,
+            toolCount: 0,
+            checkedAt,
+            authorization: { state: 'awaiting-operator-consent' },
+          },
+        };
+      }
+      toolServerProbes.add(1, { outcome: 'failure' });
+      return {
+        ...existing,
+        probe: {
+          ok: false,
+          toolCount: 0,
+          checkedAt,
+          error: formatToolServerFailure(
+            classifyToolServerProbeFailure(error, existing.transport),
+          ),
+        },
+      };
     }
   }
 
@@ -946,6 +1289,12 @@ export class MCPService {
           `MCP server '${serverId}' is disabled`,
         );
       }
+      // #3279: an Apps request carries no turn principal to choose a person's
+      // credential with, and must not borrow the shared one.
+      if (def.credentialOwnership)
+        throw new StationOwnedToolServerError(
+          "MCP Apps are not available yet for integrations that use each person's own account.",
+        );
 
       const active = this.mcpConfigs.get(serverId);
       if (active) {
@@ -1022,10 +1371,9 @@ export class MCPService {
         'connect',
         async (conn) => {
           const def = await this.configLoader.loadIntegration(serverId);
-          const disabled = new Set(def.disabledTools ?? []);
           return conn.tools.filter(
             (tool) =>
-              !disabled.has(tool.originalName) && !disabled.has(tool.name),
+              !mcpToolDisabled(serverId, tool.originalName, def.disabledTools),
           );
         },
       );
@@ -1177,12 +1525,7 @@ export class MCPService {
     toolName: string,
   ): Promise<void> {
     const def = await this.configLoader.loadIntegration(serverId);
-    if (
-      (def.disabledTools ?? []).some(
-        (disabled) =>
-          disabled === toolName || disabled === `${serverId}_${toolName}`,
-      )
-    ) {
+    if (mcpToolDisabled(serverId, toolName, def.disabledTools)) {
       throw new MCPToolDisabledError(
         `MCP tool '${toolName}' is disabled for server '${serverId}'`,
       );

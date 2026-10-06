@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import { desktopPublishedAssetName } from './windows-nightly.mjs';
 
 const repository = 'kontourai/station';
@@ -14,7 +14,7 @@ const API_TIMEOUT_MS = 600_000;
 const UPLOAD_TIMEOUT_MS = 1_800_000;
 const UPLOAD_ATTEMPTS = 3;
 function github(args, timeoutMs = API_TIMEOUT_MS) {
-  return execFileSync('gh', args, {
+  return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
     windowsHide: true,
     timeout: timeoutMs,

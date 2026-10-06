@@ -38,29 +38,38 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | --- | --- | --- |
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
-| `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a prepared exact-main baseline when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
+| `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a verified baseline at the merge base when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
 | `npm run veritas:readiness` | ~15s idle, ~35s typical | a Veritas FAIL line: a missing required artifact, an unsynced AI instruction file, a stale protected-standards attestation, or a failing routed evidence-check. The invocation is unconditional here, while Veritas uses changed scope to select rules and routed checks. Selected commands may inspect repository-wide state. Readiness also evaluates standards and protected-policy authority; it is not identical to the governance proof |
 | `node scripts/check-prepush-typecheck.mjs` | ~50-90s (51s wall measured end to end, preconditions included; station#4273 recorded 82s for the aggregate alone), and only when the push changes a `.ts`/`.tsx`/`.mts`/`.cts` source, any `tsconfig`, a manifest, or a patch | any of the `typecheck:*` lanes. `ci:fast` already runs the same aggregate pre-merge, so this moves the finding to the author rather than a CI cycle later |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
+Before the first check the hook resolves the bounded host-pressure liveness
+scale once and exports it to every step (see the
+[testing guide](testing.md#host-pressure-liveness-scale-3302)); it never changes
+a budget or assertion.
+
 The transfer check has a finite capture **liveness timeout**, which only bounds
-a hung subprocess; it is not a performance score or a product budget. Prepare
-its independent baseline before pushing a scoped change:
+a hung subprocess; it is not a performance score or a product budget. It
+measures against a baseline at the merge base of `origin/main` and the
+candidate, and finds a verified one by itself; when none exists, its refusal
+prints the one command that prepares it (see the
+[testing guide](testing.md#pre-push-orchestration-transfer-gate)):
 
 ```bash
 npm run transfer:gate -- --prepare-baseline \
-  --baseline-root ../station-worktrees/4294-transfer-baseline-<main-sha> \
-  --base origin/main
-(cd ../station-worktrees/4294-transfer-baseline-<main-sha> && npm run dependencies:ci)
-STATION_TRANSFER_BASELINE_ROOT=../station-worktrees/4294-transfer-baseline-<main-sha> \
-  npm run transfer:gate
+  --baseline-root ../station-worktrees/4294-transfer-baseline-<merge-base-sha> \
+  --base <merge-base-sha> \
+  && (cd ../station-worktrees/4294-transfer-baseline-<merge-base-sha> \
+      && npm run dependencies:ci && npm run dependencies:verify)
+npm run transfer:gate      # or push; STATION_TRANSFER_BASELINE_ROOT overrides the discovery
 ```
 
 The capture reports are diagnostic transfer evidence, not completion evidence.
 Nothing slower belongs here. `ci:fast` remains the bounded fifteen-minute feedback
-lane and `full:regression` remains the sole completion receipt; the hook holds
+lane. Local `full:regression` and the hosted exact-source qualification receipt
+remain completion authorities; see [the release process](releasing.md). The hook holds
 only the subset that is cheap enough to run on every push *and* whose failure
 would otherwise land on `main` and stop every other lane.
 
@@ -190,7 +199,7 @@ checks, while preserving global/system configuration. This lets a check inspect
 its intended subdirectory or temporary repository instead of inheriting the
 pushed repository's index and Git directory. A failed check still rejects the push.
 
-In hosted CI, required `fast-checks` aggregates the affected-test plan, four
+In hosted CI, required `fast-checks` aggregates the affected-test plan, one to four planned
 shards, and `fast-checks-statics`. It checks both job outcomes and receipts
 bound to the plan and source revision. Local `ci:fast` still runs its whole
 bounded lane; `STATION_CI_FAST_SCOPE=statics` is the hosted split's explicit

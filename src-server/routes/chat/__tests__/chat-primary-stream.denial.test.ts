@@ -469,7 +469,10 @@ describe('station#3179: a live tool denial through a REAL Agent', () => {
     const agent = await createToolCallingAgent({
       serverUrl: server.url,
       execute: async () => {
-        throw new Error('remote-mcp-server-canary-token-xyz');
+        const error = new Error('remote-mcp-server-canary-token-xyz');
+        error.stack =
+          'Error at /private/station-tool-canary/secret-source.ts:42';
+        throw error;
       },
     });
 
@@ -503,6 +506,13 @@ describe('station#3179: a live tool denial through a REAL Agent', () => {
       error: GENERIC_TOOL_FAILURE_MESSAGE,
     });
     expect(toolResults[0]?.policyDenied).toBeUndefined();
+    expect(JSON.stringify(events)).not.toContain(
+      'remote-mcp-server-canary-token-xyz',
+    );
+    expect(JSON.stringify(events)).not.toContain(
+      '/private/station-tool-canary',
+    );
+    expect(toolResults[0]).not.toHaveProperty('output');
     expect(
       events.filter(
         (e) =>

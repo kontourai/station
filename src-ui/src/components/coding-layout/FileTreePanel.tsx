@@ -15,7 +15,9 @@ import { PromptModal } from '../modals/PromptModal';
 import { activeTerminalWriter } from './activeTerminal';
 import './FileTreePanel.css';
 import { parseWorkspaceOpenFilePreviewIntent } from '@kontourai/station-contracts/workspace-file-preview';
+import { createPortal } from 'react-dom';
 import type { OpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
+import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
 import { SkeletonList } from '../state';
 import {
   FileTreeContextMenu,
@@ -92,7 +94,9 @@ function FileTreeNode({
           {...rowProps}
         >
           <span className="file-tree-row__chevron">{isOpen ? '▾' : '▸'}</span>
-          <span className="file-tree-row__name">{entry.name}</span>
+          <span className="file-tree-row__name" title={entry.name}>
+            {entry.name}
+          </span>
         </button>
         {isOpen &&
           entry.children?.map((child) => (
@@ -129,7 +133,9 @@ function FileTreeNode({
       {...rowProps}
     >
       <span className="file-tree-row__bullet">·</span>
-      <span className="file-tree-row__name">{entry.name}</span>
+      <span className="file-tree-row__name" title={entry.name}>
+        {entry.name}
+      </span>
       {attached && (
         <span
           className="file-tree-row__attached"
@@ -354,28 +360,43 @@ export function FileTreePanel({
         ? 'New folder'
         : 'New file';
 
+  // Inside a host that draws the pane's head itself (the Coding layout's
+  // side panel), the title is the host's and the one control goes into its
+  // row; the panel then draws no title row of its own (#3046 round).
+  const headSlots = usePaneHeadSlots();
+  const addAction = (
+    <button
+      type="button"
+      className="file-tree-panel__action"
+      title="New file or folder"
+      aria-label="New file or folder"
+      onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        openMenu(null, r.left, r.bottom + 2);
+      }}
+    >
+      +
+    </button>
+  );
+
   return (
     <div className="file-tree-panel">
-      <div className="file-tree-panel__header">
-        <span className="file-tree-panel__title">Files</span>
-        <button
-          type="button"
-          className="file-tree-panel__action"
-          title="New file or folder"
-          aria-label="New file or folder"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            openMenu(null, r.left, r.bottom + 2);
-          }}
-        >
-          +
-        </button>
-      </div>
+      {headSlots ? (
+        headSlots.trailing ? (
+          createPortal(addAction, headSlots.trailing)
+        ) : null
+      ) : (
+        <div className="file-tree-panel__header">
+          <span className="file-tree-panel__title">Files</span>
+          {addAction}
+        </div>
+      )}
 
       <div className="file-tree-panel__search">
         <input
           type="search"
           className="file-tree-panel__search-input"
+          aria-label="Filter files"
           placeholder="Filter files…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

@@ -137,13 +137,61 @@ describe('MessageBubble temporal-drift regression (station#1424 M1)', () => {
         fontSize={14}
         showReasoning
         showToolDetails
-        owner={{ id: 'brian', label: 'Brian Anderson' }}
+        owner={{ id: 'casey', label: 'Casey Example' }}
       />,
     );
 
     // The row still names an agent — the session's threaded agentName, not
     // a blank identity next to a now-orphaned owner chip.
     expect(screen.getByText('Formerly Known Agent')).toBeTruthy();
-    expect(screen.getByText(/via Brian Anderson/)).toBeTruthy();
+    expect(screen.getByText(/via Casey Example/)).toBeTruthy();
+  });
+
+  test('a turn paused on a tool approval shows the pause, not the typing dots', () => {
+    const session = (pendingApprovals: string[]) => ({
+      id: 'paused-session',
+      agentSlug: agentId('dev-agent'),
+      agentName: 'Dev Agent',
+      title: 'Paused chat',
+      input: '',
+      attachments: [],
+      queuedMessages: [],
+      inputHistory: [],
+      hasUnread: false,
+      status: 'sending' as const,
+      isThinking: true,
+      pendingApprovals,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      source: 'manual' as const,
+      messages: [
+        { role: 'user' as const, content: 'fetch it', timestamp: 1 },
+        { role: 'assistant' as const, content: 'Fetching now.', timestamp: 2 },
+      ],
+    });
+    const view = renderWithQueryClient(
+      <ChatMessageList
+        activeSession={session(['req-1'])}
+        fontSize={14}
+        showReasoning
+        showToolDetails
+      />,
+    );
+    expect(screen.getByText(/Awaiting tool approval \(1/)).toBeTruthy();
+    expect(view.container.querySelector('.message__thinking')).toBeNull();
+
+    // Unpaused, the same row shows it is working.
+    view.unmount();
+    const working = renderWithQueryClient(
+      <ChatMessageList
+        activeSession={session([])}
+        fontSize={14}
+        showReasoning
+        showToolDetails
+      />,
+    );
+    expect(
+      working.container.querySelector('.message__thinking'),
+    ).not.toBeNull();
   });
 });

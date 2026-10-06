@@ -1,0 +1,7 @@
+{
+  "revision": "d2b65cb482b664c258ccc809fabd92bc279354dc",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed merged API bytes after upstream registry integration. Retained profile usage snapshots, missing-cost guards and achievement metadata coexist with the upstream nested Skill catalog and typed compatibility refusals. Inspected the registry provider and composed provider limits; source-qualified selection, per-source browsing and Windows/live-provider qualification remain explicitly unverified. Reconciled the competing document hashes against merged bytes without discarding either feature.","inputs":["docs/reference/api.md"]}
+  ]
+}

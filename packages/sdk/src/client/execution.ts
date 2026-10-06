@@ -17,14 +17,24 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
 } from '@kontourai/station-contracts/orchestration';
+import type {
+  SkillExperienceInventoryV1,
+  SkillExperienceStartInputV1,
+} from '@kontourai/station-contracts/skill-experience';
+import {
+  readSkillExperienceStartInput,
+  sameSkillExperienceIdentity,
+  skillExperiencesCanExecute,
+} from '@kontourai/station-shared/skill-experience-values';
 import {
   envelopeError,
   readEnvelopeFailure,
   StationHttpError,
 } from './api-error-message';
-import { ChatHttpError, isStationEnvelope } from './chatHttpError';
+import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { rethrowDeadline } from './request-deadline';
+import { isStationAnswer } from './station-envelope';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
  * chat had a session, or while offline), and its compare-and-set basis: the
@@ -41,7 +51,7 @@ export type ApprovalPickCarry =
     };
 
 export type ForegroundMessageInput = ForegroundMessageFields &
-  ApprovalPickCarry;
+  ApprovalPickCarry & { skillExperience?: SkillExperienceStartInputV1 };
 
 interface ForegroundMessageFields {
   expectedInputRequest?: AttentionRequestReference;
@@ -151,7 +161,7 @@ function chatRefusal(
 ): ChatHttpError {
   return new ChatHttpError(
     envelopeError(response, body, fallback),
-    isStationEnvelope(body),
+    isStationAnswer(response, body),
   );
 }
 
@@ -253,11 +263,48 @@ function readExecutionReceipt(
   return result.data;
 }
 
-export async function sendExecutionMessage(
+/** Reads installed visual skill inventory for a source-bound start. */
+export type SkillExperienceInventoryReader = (
+  apiBase: string,
+  opts?: ClientRequestOptions,
+) => Promise<SkillExperienceInventoryV1>;
+
+/**
+ * `sendExecutionMessage` with the inventory reader supplied by the caller.
+ * This module does not import the static reader (#3209): first-paint code
+ * imports it for the other execution calls, and an import here would carry
+ * the canonical validator into that chunk.
+ */
+export async function sendExecutionMessageWithInventory(
   apiBase: string,
   input: ForegroundMessageInput,
+  readInventory: SkillExperienceInventoryReader,
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt> {
+  if (input.skillExperience) {
+    if (input.automaticBackground)
+      throw new Error(
+        'Visual skill starts require an explicit foreground send.',
+      );
+    if (!readSkillExperienceStartInput(input.skillExperience))
+      throw new Error('The selected visual skill input is unsupported.');
+    const inventory = await readInventory(apiBase, opts);
+    if (!skillExperiencesCanExecute(inventory))
+      throw new Error(
+        'This Station cannot execute visual skill starts. Your selection has not been sent.',
+      );
+    if (
+      !inventory.experiences.some((entry) =>
+        sameSkillExperienceIdentity(
+          entry.identity,
+          input.skillExperience!.identity,
+        ),
+      )
+    )
+      throw new Error(
+        'The selected visual skill source changed or is unavailable. Review it before starting.',
+      );
+  }
   const { automaticBackground, ...body } = input;
   const response = await mutateJson(
     `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
@@ -281,6 +328,10 @@ export async function continueExecutionMessage(
   input: ContinueForegroundMessageInput,
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt> {
+  if ('skillExperience' in input && input.skillExperience !== undefined)
+    throw new Error(
+      'Visual skill starts use the canonical foreground chat route.',
+    );
   const response = await mutateJson(
     `${apiBase}/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
     'POST',
@@ -301,6 +352,10 @@ export async function handoffExecutionMessage(
     },
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt & { handoff: ConversationHandoffReceipt }> {
+  if ('skillExperience' in input && input.skillExperience !== undefined)
+    throw new Error(
+      'Visual skill starts use the canonical foreground chat route.',
+    );
   const response = await mutateJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
     'POST',

@@ -44,6 +44,7 @@ import type {
   LiveSurfaceInputResult,
   LiveSurfaceModifiers,
 } from '@kontourai/station-contracts/live-surface';
+import { BROWSER_SESSION_ID_PATTERN } from '@kontourai/station-contracts/workspace-browser-pane';
 import type { AgentController } from '../live-surface/control-lease.js';
 import { jpegSize } from '../live-surface/jpeg-size.js';
 import {
@@ -83,7 +84,14 @@ export type BrowserToolRefusalCode =
   | 'session-not-found'
   | 'not-live'
   | 'human-controlling'
+  // The page is showing a dialog Station is holding for a person to answer
+  // (one opened while they were in control). Agents never answer it.
+  | 'dialog-open'
   | 'held-by-other'
+  // `browser_close` only: the session was not opened by an agent, or is not
+  // bound to the caller's own conversation.
+  | 'opened-by-person'
+  | 'other-thread'
   | 'interrupted'
   | 'surface-wedged'
   | 'not-authorized'
@@ -139,6 +147,7 @@ function refuse(
  */
 const RECORDED_REFUSALS: ReadonlySet<BrowserToolRefusalCode> = new Set([
   'human-controlling',
+  'dialog-open',
   'held-by-other',
   'interrupted',
   'not-permitted',
@@ -152,6 +161,62 @@ const NOT_FOUND = () =>
     'session-not-found',
     'No browser session with that id is yours to drive. Call browser_status to list the sessions you may use, or browser_open to start one.',
   );
+
+/** The most sessions one `browser_status` page lists, and its default. */
+const BROWSER_STATUS_PAGE_MAX = 20;
+
+/**
+ * Where a `browser_status` page ends: the last session it listed. Pages run
+ * newest-created first and resume strictly after that (createdAt, id) pair,
+ * not at an offset, so a session opened, closed or driven between two calls
+ * never makes one that was already there repeat or go missing.
+ *
+ * A cursor is an unauthenticated position marker, not a capability: it only
+ * sets where listing resumes. Any well-formed pair is accepted, including
+ * one a caller made up or one from another Project's listing; what a page
+ * may contain is decided by the ownership filter alone (`owns`), never by
+ * the cursor.
+ */
+interface StatusCursor {
+  createdAt: string;
+  browserSessionId: string;
+}
+
+const STATUS_CURSOR_MAX = 200;
+
+function encodeStatusCursor(record: StatusCursor): string {
+  return Buffer.from(
+    JSON.stringify([record.createdAt, record.browserSessionId]),
+  ).toString('base64url');
+}
+
+function decodeStatusCursor(value: string): StatusCursor | undefined {
+  if (value.length === 0 || value.length > STATUS_CURSOR_MAX) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 2) return undefined;
+  const [createdAt, browserSessionId] = parsed as unknown[];
+  if (
+    typeof createdAt !== 'string' ||
+    createdAt.length > 40 ||
+    Number.isNaN(Date.parse(createdAt)) ||
+    typeof browserSessionId !== 'string' ||
+    !BROWSER_SESSION_ID_PATTERN.test(browserSessionId)
+  )
+    return undefined;
+  return { createdAt, browserSessionId };
+}
+
+/** Newest-created first; the id breaks a tie so the order is total. */
+function compareNewestCreated(a: StatusCursor, b: StatusCursor): number {
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+  if (a.browserSessionId === b.browserSessionId) return 0;
+  return a.browserSessionId < b.browserSessionId ? 1 : -1;
+}
 
 // ---------------------------------------------------------------------------
 // Bounds
@@ -512,9 +577,16 @@ export interface BrowserAutomationDeps {
     | 'recordAgentAction'
     | 'recordAgentRefusal'
     | 'setSessionThread'
+    | 'closeSession'
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
   surfaceIdFor(browserSessionId: string): string | undefined;
+  /**
+   * Whether the session's page holds a dialog for a PERSON to answer. While
+   * it does, every action on the page is refused `dialog-open`: the page is
+   * modal, and the answer is theirs. Absent: never.
+   */
+  dialogWaitingForPerson?(browserSessionId: string): boolean;
   settings: Pick<BrowserProjectSettingsStore, 'evaluateAllowed'>;
   /** Playwright's injected-script installer; undefined when unavailable. */
   locatorEngine(): Promise<string | undefined>;
@@ -703,6 +775,15 @@ export class BrowserAutomation {
     return this.serial(first.browserSessionId, async () => {
       const selected = this.selectLive(authority, first.browserSessionId);
       if ('ok' in selected) return selected;
+      if (this.deps.dialogWaitingForPerson?.(first.browserSessionId))
+        return this.noteRefusal(
+          authority,
+          first.browserSessionId,
+          refuse(
+            'dialog-open',
+            'The page is showing a dialog that is waiting for a person to answer it in the Browser pane. Do not retry immediately: wait for them (browser_status shows dialogWaitingForPerson), or ask them to answer it.',
+          ),
+        );
       try {
         return this.noteRefusal(
           authority,
@@ -1282,34 +1363,136 @@ export class BrowserAutomation {
 
   // --- tools ---------------------------------------------------------------
 
-  /** Sessions this authority may drive, newest first. */
-  async status(authority: BrowserAgentAuthority) {
-    const sessions = this.deps.sessions
+  /**
+   * One page of the sessions this authority may drive, newest-created
+   * first. `limit` outside 1..{@link BROWSER_STATUS_PAGE_MAX} and a cursor
+   * that is not a well-formed position are refused, never clamped or
+   * ignored. A well-formed cursor only sets where listing resumes.
+   */
+  async status(
+    authority: BrowserAgentAuthority,
+    page: { limit?: number; cursor?: string } = {},
+  ) {
+    const limit = page.limit ?? BROWSER_STATUS_PAGE_MAX;
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > BROWSER_STATUS_PAGE_MAX
+    )
+      return refuse(
+        'invalid-request',
+        `limit must be a whole number from 1 to ${BROWSER_STATUS_PAGE_MAX}.`,
+      );
+    const after =
+      page.cursor === undefined ? undefined : decodeStatusCursor(page.cursor);
+    if (page.cursor !== undefined && !after)
+      return refuse(
+        'invalid-request',
+        'cursor is not a browser_status position. Pass a nextCursor that browser_status returned, or call it without a cursor to start from the newest session.',
+      );
+    const remaining = this.deps.sessions
       .listSessions(
-        (record) => this.owns(authority, record) && record.state !== 'closed',
+        (record) =>
+          this.owns(authority, record) &&
+          record.state !== 'closed' &&
+          (!after || compareNewestCreated(record, after) > 0),
       )
-      .slice(0, 20);
-    return sessions.map((session) => {
-      const entry = this.entryFor(session);
-      const holder = entry?.lease.snapshot().holder;
-      const state = entry?.hub.state();
-      return {
-        browserSessionId: session.browserSessionId,
-        hostId: session.hostId,
-        state: session.state,
-        url: capUrl(session.url),
-        viewport: session.viewport,
-        controller: !holder
-          ? 'none'
-          : holder.kind === 'human'
-            ? 'human'
-            : holder.sessionId === authority.sessionId
-              ? 'you'
-              : 'another-agent',
-        viewers: entry?.hub.viewerCount ?? 0,
-        wedged: state?.wedged === true,
-        updatedAt: session.updatedAt,
-      };
+      .sort(compareNewestCreated);
+    const sessions = remaining.slice(0, limit);
+    const last = sessions.at(-1);
+    return {
+      ok: true as const,
+      sessions: sessions.map((session) => {
+        const entry = this.entryFor(session);
+        const holder = entry?.lease.snapshot().holder;
+        const state = entry?.hub.state();
+        return {
+          browserSessionId: session.browserSessionId,
+          hostId: session.hostId,
+          state: session.state,
+          url: capUrl(session.url),
+          viewport: session.viewport,
+          controller: !holder
+            ? 'none'
+            : holder.kind === 'human'
+              ? 'human'
+              : holder.sessionId === authority.sessionId
+                ? 'you'
+                : 'another-agent',
+          viewers: entry?.hub.viewerCount ?? 0,
+          wedged: state?.wedged === true,
+          dialogWaitingForPerson:
+            this.deps.dialogWaitingForPerson?.(session.browserSessionId) ===
+            true,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+        };
+      }),
+      nextCursor:
+        remaining.length > limit && last ? encodeStatusCursor(last) : null,
+    };
+  }
+
+  /**
+   * Close one session, through the same registry effect as the pane's
+   * Close session. Narrower than driving it: only a session an AGENT
+   * opened, bound to the caller's own conversation, that no person and no
+   * other agent session is controlling right now (`adoptThread`'s rules,
+   * plus the thread itself). Anything else in the caller's profile is
+   * refused with a code saying why; outside it, `session-not-found`.
+   */
+  async close(
+    authority: BrowserAgentAuthority,
+    browserSessionId: unknown,
+  ): Promise<BrowserToolResult<{ session: BrowserSessionRecord }>> {
+    const first = this.select(authority, browserSessionId);
+    if ('ok' in first) return first;
+    return this.serial(first.browserSessionId, async () => {
+      const current = this.deps.sessions.getSession(first.browserSessionId);
+      if (!current || !this.owns(authority, current)) return NOT_FOUND();
+      if (!authority.threadId || current.threadId !== authority.threadId)
+        return refuse(
+          'other-thread',
+          'This browser session belongs to another conversation, so this agent may not close it. Leave it open, or ask the person to close it from the Browser pane.',
+        );
+      const openedByAgent =
+        current.history.entries.find((entry) => entry.kind === 'created')?.actor
+          .kind === 'agent';
+      if (!openedByAgent)
+        return refuse(
+          'opened-by-person',
+          'A person opened this browser session (or Station has no record that an agent did), so only a person may close it from the Browser pane.',
+        );
+      const holder = this.entryFor(current)?.lease.snapshot().holder;
+      if (holder?.kind === 'human')
+        return this.noteRefusal(
+          authority,
+          current.browserSessionId,
+          refuse(
+            'human-controlling',
+            'A person is using this browser session right now, so it was not closed. Ask them, or try again after they stop.',
+          ),
+        );
+      if (holder?.kind === 'agent' && holder.sessionId !== authority.sessionId)
+        return this.noteRefusal(
+          authority,
+          current.browserSessionId,
+          refuse(
+            'held-by-other',
+            'Another agent session is driving this browser session right now, so it was not closed.',
+          ),
+        );
+      try {
+        return {
+          ok: true as const,
+          session: await this.deps.sessions.closeSession(
+            current.browserSessionId,
+            authority.actor,
+          ),
+        };
+      } catch (error) {
+        return mapFailure(error);
+      }
     });
   }
 
@@ -2308,6 +2491,14 @@ function inputRefusal(
       refuse(
         'surface-wedged',
         'The page stopped taking input (an earlier input has not finished; a dialog or a hung page can do this). Wait a moment and take a snapshot before trying again.',
+        { accepted },
+      ),
+    );
+  if (code === 'page-dialog-open')
+    return new ToolRefusal(
+      refuse(
+        'dialog-open',
+        'The page is showing a dialog that is waiting for a person to answer it in the Browser pane. Do not retry immediately: wait for them, or ask them to answer it.',
         { accepted },
       ),
     );

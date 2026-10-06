@@ -24,6 +24,8 @@ import {
 } from '../../services/connections/connection-env.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
   claudeAppHomeEnv,
   codexAppHomeEnv,
   ensureAppHomeProfile,
@@ -42,7 +44,7 @@ import {
  * global credentials instead would bill or route through an account nobody
  * selected. The message carries no ref, path, or env value.
  */
-export class CredentialProfileEnvUnavailableError extends Error {
+export class CredentialProfileEnvUnavailableError extends CredentialProfileEnvironmentError {
   /**
    * Offending overlay variable NAMES when the saved overlay is invalid; for
    * server-side diagnostics only (never values, never the ref).
@@ -50,7 +52,7 @@ export class CredentialProfileEnvUnavailableError extends Error {
   readonly invalidVariableNames?: readonly string[];
 
   constructor(invalidVariableNames?: readonly string[]) {
-    super('Credential profile environment could not be prepared.');
+    super();
     this.name = 'CredentialProfileEnvUnavailableError';
     if (invalidVariableNames) this.invalidVariableNames = invalidVariableNames;
   }
@@ -131,7 +133,7 @@ export function createCredentialProfileAppHomeEnvResolver(options: {
   homeDir?: string;
 }): (
   credentialProfileRef?: string,
-) => Promise<Record<string, string> | undefined> {
+) => Promise<ResolvedAppHome | undefined> {
   const homeEnvFor = APP_HOME_ENV_FOR[options.engine];
   return async (credentialProfileRef) => {
     let selectedProfileRef = credentialProfileRef;
@@ -156,14 +158,14 @@ export function createCredentialProfileAppHomeEnvResolver(options: {
         );
         // The profile's home key is last: the overlay can never redirect the
         // session away from the profile's own credentials.
-        return { ...overlay, ...homeEnvFor(dir) };
+        return { env: { ...overlay, ...homeEnvFor(dir) }, profileRef };
       }
-      if (!appHomeActive(settings?.config)) return undefined;
+      if (!appHomeActive(settings?.config)) return { profileRef: null };
       const { dir } = await ensureAppHomeProfile(
         options.engine,
         options.homeDir ? { homeDir: options.homeDir } : {},
       );
-      return homeEnvFor(dir);
+      return { env: homeEnvFor(dir), profileRef: null };
     } catch (error) {
       if (selectedProfileRef) {
         // Server-side diagnostic: the storage id hash, never the raw ref, and

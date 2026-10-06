@@ -1,0 +1,7 @@
+{
+  "revision": "f7157a46f27d18a9ce19bc7def38aee15270f3af",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-checked after merging origin/main: this branch's delta in the bound sources is the Coding layout's codingPanels device setting, ChatDock's optional onInboxNeedsYouChange host prop and the navigation store's preview-intent origin; none changes the composer, Return-in-chat or model-picker claims here.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","packages/contracts/src/device-settings.ts"]}
+  ]
+}

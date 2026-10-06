@@ -36,8 +36,8 @@ function environment(
     profile: {
       schemaVersion: 1,
       id: 'remote-1',
-      name: 'Brian media',
-      hostAlias: 'brian-media',
+      name: 'Home media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
       remotePort: 3141,
       environmentId: 'environment-1',
@@ -223,9 +223,9 @@ async function seedRoutes(page: Page, initial: Environment[] = []) {
           data: {
             hosts: [
               {
-                alias: 'brian-media',
-                hostname: 'brian-media.tailnet',
-                user: 'brian',
+                alias: 'home-media',
+                hostname: 'home-media.tailnet',
+                user: 'casey',
                 port: 22,
                 identityAgent: 'default',
                 proxyJump: null,
@@ -254,10 +254,10 @@ async function seedRoutes(page: Page, initial: Environment[] = []) {
             observedAt: '2026-08-20T00:00:05.000Z',
             reachable: true,
             summary:
-              'Station reached brian-media over SSH and verified the remote project folder.',
+              'Station reached home-media over SSH and verified the remote project folder.',
             resolved: {
-              hostname: 'brian-media.tailnet',
-              user: 'brian',
+              hostname: 'home-media.tailnet',
+              user: 'casey',
               port: 22,
               identityAgent: 'default',
             },
@@ -411,7 +411,7 @@ test.describe('SSH execution environments', () => {
     await machineGoalDialog
       .getByRole('button', { name: /Run work on another computer over SSH/ })
       .click();
-    await dialog.getByPlaceholder('box-b, or 192.168.1.20').fill('brian-media');
+    await dialog.getByPlaceholder('box-b, or 192.168.1.20').fill('home-media');
     const projectFolder = dialog.getByPlaceholder('~/code/my-project');
     await projectFolder.fill('~/dev/github/kontourai/station');
     await page.setViewportSize({ width: 390, height: 844 });
@@ -462,9 +462,9 @@ test.describe('SSH execution environments', () => {
     // `tests/connections-computers-ssh.spec.ts:326-330` already uses.
     const row = page
       .locator('.connections-computers__row')
-      .filter({ hasText: 'Brian media' });
+      .filter({ hasText: 'Home media' });
     await expect(row).toHaveCount(1);
-    await expect(row).toContainText('brian-media');
+    await expect(row).toContainText('home-media');
     await expect(row.locator('.connections-computers__state')).toHaveText(
       'Ready',
     );

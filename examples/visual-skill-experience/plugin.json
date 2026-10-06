@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "visual-skill-experience",
+  "version": "1.0.0",
+  "description": "Authoring-only example of a portable Skill with a Station visual experience declaration.",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "experiences": [
+        {
+          "version": "1.0",
+          "id": "stress-test-idea",
+          "source": "./io.kontourai.station/experiences/stress-test-idea.json"
+        }
+      ]
+    }
+  }
+}

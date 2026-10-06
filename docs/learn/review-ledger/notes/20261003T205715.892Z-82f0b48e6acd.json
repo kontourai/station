@@ -1,0 +1,7 @@
+{
+  "revision": "8edef4f56df4d3c42dbf9427d754cc569f3b87b0",
+
+  "notes": [
+    {"path":"docs/design/ssh-launched-environments.md","note":"Reviewed AddMachineModal fixture delta: the native chooser still opens the separate broker route editor with explicit Station application origin and broker address fields. The assertion now follows the concise existing caption, Save connection details. Access is approved separately. Legacy SSH launch/pairing remains removed; server-owned SSH creation, saved-forward status and this design classification are unchanged. Six AddMachineModal tests pass; the shared frame/import/member selection totals 23 passed tests.","inputs":["docs/design/ssh-launched-environments.md"]}
+  ]
+}

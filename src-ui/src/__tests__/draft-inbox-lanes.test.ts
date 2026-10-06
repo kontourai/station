@@ -3,22 +3,23 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
 import { describe, expect, test } from 'vitest';
 import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
 import type { ChatUIState } from '../contexts/active-chats-state';
-import { sessionStatusWord } from '../utils/session-state';
 import { sessionFailureText } from '../utils/sessionFailure';
 import { partitionHomeWorkItems } from '../views/home/home-lane-model';
 import { buildHomeWorkItems } from '../views/home/home-view-model';
-import { partitionSessionLanes } from '../views/sessions/sessions-lane-model';
+import {
+  partitionSessionLanes,
+  sessionWorkStatus,
+} from '../views/sessions/sessions-lane-model';
 
 /**
- * #2310 — a session nothing has been sent to is a Draft, and "Active now"
- * means actually active.
+ * #2310 — a session nothing has been sent to is a Draft, not live work.
  *
  * FIXTURE PROVENANCE, stated exactly (review L2): `SERVER_DRAFT` has the
  * field SHAPE the server builder (`buildOrchestrationSessionSummary`, lineage
  * consulted) emits for a never-prompted ACP session — the fields it sets and
  * the states it folds to, notably `status: 'ready'` and
  * `lifecycleState: 'queued'`, which is why the old fold called it "Ready" and
- * filed it under Active now. It is hand-transcribed, not a byte capture:
+ * filed it under the old "Active now" lane. It is hand-transcribed, not a byte capture:
  * `eventCount` and the timestamps are illustrative. The server-side test
  * (`session-draft-lifecycle.test.ts`) is where the builder itself runs
  * against the recorded event sequence.
@@ -65,7 +66,7 @@ const SERVER_AFTER_FIRST_TURN: OrchestrationSessionSummary = {
 /**
  * A session with history and no open turn — the archive#1069 shape a restart
  * resume produces (`session.configured` re-attaches, `running`, no turn in
- * flight). The server says `draft: false`; it must stay in Active now.
+ * flight). The server says `draft: false`; it must stay live, as Idle.
  */
 const SERVER_READY_WITH_HISTORY: OrchestrationSessionSummary = {
   ...SERVER_DRAFT,
@@ -90,29 +91,37 @@ function inboxGroups(
   const groups = groupMobileActivity(items, NOW, {});
   const idsIn = (id: string) =>
     groups.find((group) => group.id === id)?.items.map((item) => item.id) ?? [];
-  return { items, groups, idsIn };
+  /** Every live group (Needs you / Running / Idle) — "is it live at all". */
+  const liveIds = () => [
+    ...idsIn('needsYou'),
+    ...idsIn('running'),
+    ...idsIn('idle'),
+  ];
+  return { items, groups, idsIn, liveIds };
 }
 
-describe('Draft sessions are not "Active now" (#2310)', () => {
+describe('Draft sessions are not live work (#2310)', () => {
   test('the recorded never-prompted session is a Draft, listed under Drafts', () => {
-    const { items, idsIn } = inboxGroups([SERVER_DRAFT]);
+    const { items, idsIn, liveIds } = inboxGroups([SERVER_DRAFT]);
     expect(items[0]?.lifecycleLabel).toBe('Draft');
-    expect(idsIn('active')).toEqual([]);
+    expect(liveIds()).toEqual([]);
     expect(idsIn('drafts')).toEqual([THREAD]);
-    expect(sessionStatusWord(SERVER_DRAFT)).toBe('Draft');
+    expect(sessionWorkStatus(SERVER_DRAFT, [], NOW).word).toBe('Draft');
   });
 
-  test('a session with history and no open turn stays in Active now', () => {
+  test('a session with history and no open turn is Idle', () => {
     const { idsIn } = inboxGroups([SERVER_READY_WITH_HISTORY]);
-    expect(idsIn('active')).toEqual([SERVER_READY_WITH_HISTORY.threadId]);
+    expect(idsIn('idle')).toEqual([SERVER_READY_WITH_HISTORY.threadId]);
     expect(idsIn('drafts')).toEqual([]);
-    expect(sessionStatusWord(SERVER_READY_WITH_HISTORY)).toBe('Ready');
+    expect(sessionWorkStatus(SERVER_READY_WITH_HISTORY, [], NOW).word).toBe(
+      'Idle',
+    );
   });
 
-  test('the first turn promotes the same row into Active now as Running', () => {
+  test('the first turn promotes the same row into Running', () => {
     const { items, idsIn } = inboxGroups([SERVER_AFTER_FIRST_TURN]);
     expect(items[0]?.lifecycleLabel).toBe('Running');
-    expect(idsIn('active')).toEqual([THREAD]);
+    expect(idsIn('running')).toEqual([THREAD]);
     expect(idsIn('drafts')).toEqual([]);
   });
 
@@ -120,7 +129,7 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
     const { draft: _draft, ...undecided } = SERVER_DRAFT;
     const { items, idsIn } = inboxGroups([undecided]);
     expect(items[0]?.lifecycleLabel).toBe('Ready');
-    expect(idsIn('active')).toEqual([THREAD]);
+    expect(idsIn('idle')).toEqual([THREAD]);
   });
 
   test('a Draft that failed or is waiting on the user keeps the more specific state', () => {
@@ -141,7 +150,7 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
     // The open chat's store key IS the thread id for an eagerly created
     // session (`${agentSlug}:${Date.now()}`), so the chat row and the
     // server row fold into one conversation row.
-    test('optimistic send (status sending) reads Running in Active now', () => {
+    test('optimistic send (status sending) reads Running, in Running', () => {
       const { items, idsIn } = inboxGroups([SERVER_DRAFT], {
         [THREAD]: {
           agentSlug: 'grok-build',
@@ -153,10 +162,10 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
       });
       expect(items).toHaveLength(1);
       expect(items[0]?.lifecycleLabel).toBe('Running');
-      expect(idsIn('active')).toEqual([THREAD]);
+      expect(idsIn('running')).toEqual([THREAD]);
     });
 
-    test('an offline-queued first message reads Needs attention in Active now', () => {
+    test('an offline-queued first message reads Needs attention, in Needs you', () => {
       const { items, idsIn } = inboxGroups([SERVER_DRAFT], {
         [THREAD]: {
           agentSlug: 'grok-build',
@@ -167,7 +176,7 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
         },
       });
       expect(items[0]?.lifecycleLabel).toBe('Needs attention');
-      expect(idsIn('active')).toEqual([THREAD]);
+      expect(idsIn('needsYou')).toEqual([THREAD]);
     });
 
     test('an idle open chat on a Draft session defers to the server: Draft', () => {
@@ -244,7 +253,7 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
   // Review M1/F1/F2: the recorded grok thread's sends did not take and no
   // activity followed. The server keeps the event fold (`queued`) and says so
   // through the attribution and `blockedReason`; every client surface reads
-  // that as Failed, with the reason, out of Active now.
+  // that as Failed, with the reason, out of the live lanes.
   describe.each([
     {
       kind: 'send_refused' as const,
@@ -262,11 +271,11 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
       terminalAttribution: { kind, detail },
     };
 
-    test('is Failed with its reason, not a Draft and not active', () => {
-      const { items, idsIn } = inboxGroups([sendFailure]);
+    test('is Failed with its reason, not a Draft and not live', () => {
+      const { items, idsIn, liveIds } = inboxGroups([sendFailure]);
       expect(items[0]?.lifecycleLabel).toBe('Failed');
       expect(items[0]?.failureNotice).toBe(detail);
-      expect(idsIn('active')).toEqual([]);
+      expect(liveIds()).toEqual([]);
       expect(idsIn('drafts')).toEqual([]);
       // A terminal lane: "Just finished" while it lingers, "Earlier" after
       // (this fixture is two hours old, so Earlier).
@@ -290,7 +299,7 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
       snoozedUntil: new Map(),
       terminalSince: new Map(),
     });
-    expect(partition.active.map((item) => item.id)).toEqual([
+    expect(partition.idle.map((item) => item.id)).toEqual([
       SERVER_READY_WITH_HISTORY.threadId,
     ]);
     expect(partition.drafts?.map((item) => item.id)).toEqual([THREAD]);
@@ -308,7 +317,7 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
         ]),
       ),
     ).toEqual({
-      activeNow: [SERVER_READY_WITH_HISTORY.threadId],
+      idle: [SERVER_READY_WITH_HISTORY.threadId],
       drafts: [THREAD],
     });
   });

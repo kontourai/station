@@ -437,6 +437,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // instance with a sibling spec.
     'tests/agents-editor-gates.spec.ts',
     'tests/skills-command-routes.spec.ts',
+    // Creates a live project, suspends every LLM connection while it runs one
+    // real turn in that project, and saves the project's icon.
+    'tests/project-icons.spec.ts',
     // D9 resets the whole notification store and acknowledges every pending
     // attention item to get a deterministic bell count; D8 creates, deletes
     // and re-creates two projects by fixed slug. Both are instance-wide
@@ -525,6 +528,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Regression #574: four legitimate restart journeys across VoltAgent/Strands and foreground/delegated origins. Two completed native turns precede actual same-home restart; foreground resumes through CLI chat and delegated Tasks through CLI delegate. Independently owned temporary instances use real readiness, and captured model requests must retain ordered user/assistant exchanges and original Conversation/Project/cwd binding.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-send-again-failed-turn.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#3112: a Station-native turn against a model server that fails with HTTP 500, sent the way the composer sends one (typed text, ambient context out-of-band), then reopened from its stored record and resent with Send again on its failure card. The resend's turn.started prompt must equal the original: the Station agent's store also holds the framework's ambient-composed copy of the input, and Send again must not resend it. Live because the store and the event window are written by the real server.",
     exceptions: [],
   },
   {
@@ -811,6 +824,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/project-icons.spec.ts',
+    bucket: 'product',
+    surface: 'Projects',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "An icon set after creation, end to end: the settings picker uploads a real PNG, the live server validates and persists it, and the sidebar row, a Home row for a real session in that project, and the dock project switcher all draw the stored image. Live because the Home row and the persistence are the server's.",
+    exceptions: [],
+  },
+  {
     path: 'tests/project-forms.spec.ts',
     bucket: 'product',
     surface: 'Projects',
@@ -836,7 +859,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#928: /?surface=activity is the canonical DEEP LINK to the Activity surface, and #928 changed what it means — the link is a REVEAL and the region model decides where the revealed surface lands, so there is no /activity route and no surface-owned 'Dock this pane' any more (the redirect that keeps stored links working stays unit-covered; this journey drives the destination). Desktop: the link reveals Activity in its declared defaultRegion 'right' with its own region chrome (Resize Activity, Hide Activity), leaving Chat's region and the Home primary area untouched. Activity is the only registered surface that declares every region, so this is also the only browser journey that crosses the dock/primary-area boundary: placed in 'main' through the header's Layout picker it is rendered by the route outlet through a PageFrame (an h1 only a main occupant produces) with no DockShell at all and no dock panel spawned for what it displaced, the placement survives a reload through the regionArrangement device setting, and returning it to 'right' hands the primary area back to Home. 390x844 isMobile variant: the coarse fold gives the phone one dock slot, so the reveal shows Activity ALONE in it — asserted inside the viewport with no horizontal document scroll, its own 44px Hide control giving the slot back to Chat. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the surface fails by name. The dock's slot-return journeys live in project-architecture.spec.ts.",
+      "#928: /?surface=activity is the canonical DEEP LINK to the Activity surface, and #928 changed what it means — the link is a REVEAL and the region model decides where the revealed surface lands, so there is no /activity route and no surface-owned 'Dock this pane' any more (the redirect that keeps stored links working stays unit-covered; this journey drives the destination). Desktop: the link reveals Activity in its declared defaultRegion 'right' with its own region chrome (Resize Activity, Hide Activity), leaving Chat's region and the Home primary area untouched. Activity is the only registered surface that declares every region, so this is also the only browser journey that crosses the dock/primary-area boundary: placed in 'main' through the header's Layout picker it is rendered by the route outlet through a PageFrame (an h1 only a main occupant produces) with no DockShell at all and no dock panel spawned for what it displaced, the placement survives a reload through the regionArrangement device setting, and returning it to 'right' hands the primary area back to Home. The sidebar's Activity row is a place: it opens Activity as the page (main) and carries aria-current=page while Home's row gives it up, pressing it again keeps the page, Home takes the area back, and the deep link still docks right afterwards. 390x844 isMobile variant: the reveal opens Activity over Chat in the one folded slot (#2549) — inside the viewport with no horizontal document scroll, its 44px Back to Chat control returning — and the drawer's Activity row opens the page rather than a layer. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the surface fails by name. The dock's slot-return journeys live in project-architecture.spec.ts.",
     exceptions: [],
   },
   {
@@ -1502,7 +1525,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'kontourai/station#689 — proves the New Chat workspace picker renders as a contained bottom sheet (not the clipped anchored dropdown) at 390x844, and covers open, scroll, filter, pick, outside-tap, and Escape dismissal.',
+      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
     exceptions: [],
   },
   {
@@ -1682,6 +1705,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'In-app git branch toolbar: lists branches, switches branch (checkout), and reflects the new branch in the coding layout. Also covers multi-repo awareness — discovering repos under a non-repo workspace and switching the active repo.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/coding-stack-navigation.spec.ts',
+    bucket: 'extended',
+    surface: 'Coding',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock. Past the wide fold (#3040, #3051): a rail pick opens the tool beside Chat without a history entry, the Terminal in a lower panel under both, keyboard resizing that survives a reload, per-conversation panels, the fold crossed with a draft kept, one bar with Chat’s verbs as named icons (#3046), the inbox folding for a tool and keeping the reader’s own choice, a file opened from Files landing beside Chat by replace, the folded inbox’s edge strip (hover, keyboard, the reader’s choice) and the fold judged again on resize.',
     exceptions: [],
   },
   {

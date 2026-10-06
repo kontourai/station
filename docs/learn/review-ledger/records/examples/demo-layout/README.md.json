@@ -1,0 +1,31 @@
+{
+  "path": "examples/demo-layout/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide and both components read; verified manifest/Layout/Agent shape, fixed-key localStorage notes and direct-versus-registry installation consent.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "sources": [
+    "examples/demo-layout/agents/assistant/agent.json",
+
+    "examples/demo-layout/layout.json",
+
+    "examples/demo-layout/plugin.json",
+
+    "examples/demo-layout/src/index.tsx",
+
+    "packages/cli/src/commands/install.ts",
+
+    "src-server/services/plugins/plugin-install-consent.ts"
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's `station plugin install ./examples/demo-layout` path and its note that the registry CLI lacks a consent step are unchanged. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -1,11 +1,17 @@
+import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
   toolRequestDisplayName,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestPreviewFromPayload,
+  toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
-import { activeChatsStore } from '../../contexts/active-chats-store';
+import {
+  activeChatsStore,
+  type ChatUIState,
+} from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
 import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
@@ -17,14 +23,52 @@ export function handleRequestOpenedEvent(
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 
+  if (event.blocking === false) return;
+
   const pendingApprovals = [...(chat.pendingApprovals || [])];
-  if (!pendingApprovals.includes(event.requestId)) {
-    pendingApprovals.push(event.requestId);
-  }
+  const newlyOpened = !pendingApprovals.includes(event.requestId);
+  if (newlyOpened) pendingApprovals.push(event.requestId);
+  // #3071: the turn this request names, read by the shared settle rule when
+  // a turn ends (`settlePendingApprovalsOnTurnEnd`). A re-opened request is
+  // a new ask, so its binding is this event's, or none.
+  const { [event.requestId]: _reopened, ...otherTurnIds } =
+    chat.pendingApprovalTurnIds ?? {};
   activeChatsStore.updateChat(event.threadId, {
     pendingApprovals,
+    pendingApprovalTurnIds:
+      typeof event.turnId === 'string'
+        ? { ...otherTurnIds, [event.requestId]: event.turnId }
+        : otherTurnIds,
+    // A request that opens (again) waits on the user, whatever an earlier
+    // answer under the same id left behind. A re-delivered event for a
+    // request already pending changes nothing.
+    ...(newlyOpened && chat.answeredApprovals?.includes(event.requestId)
+      ? {
+          answeredApprovals: chat.answeredApprovals.filter(
+            (id) => id !== event.requestId,
+          ),
+        }
+      : {}),
     orchestrationStatus: 'awaiting-approval',
   });
+
+  raiseRequestOpenedToast(apiBase, event);
+}
+
+/**
+ * The toast a `request.opened` raises, without the chat state the live event
+ * also writes. A reload rebuilds the toasts of requests a snapshot reports
+ * open (`hydrateOpenApprovalToasts`), and must not replay the state: the
+ * snapshot already holds it, and setting `awaiting-approval` again would
+ * contradict a turn that ended after the request opened.
+ */
+export function raiseRequestOpenedToast(
+  apiBase: string,
+  event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (!chat || event.blocking === false) return;
+  if (readHarnessQuestionnaire(event.payload?.questionnaire)) return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
@@ -51,7 +95,12 @@ export function handleRequestOpenedEvent(
   // the literal shell command — and "Allow <a whole command line> for this
   // session" would both mislead about the grant's scope and swamp the button.
   // The inline card uses the same helper (#2316).
-  const grantLabel = toolRequestGrantLabel(payloadToolName);
+  // #2915/#2916: says what a session answer grants for THIS request, and is
+  // undefined where none is offered (a plan exit, an ask rule).
+  const grantLabel = toolRequestGrantLabel(
+    payloadToolName,
+    toolRequestSessionGrantFromPayload(event.payload),
+  );
   if (
     isReplayThread(event.threadId) ||
     chat.approvalToasts?.has(event.requestId)
@@ -72,7 +121,7 @@ type ApprovalToastView = {
   toolPreview: string;
   agentName: string;
   conversationTitle?: string;
-  grantLabel: string;
+  grantLabel?: string;
 };
 
 function showApprovalToast(
@@ -85,6 +134,7 @@ function showApprovalToast(
   };
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
+    requestId: event.requestId,
     toolName: view.toolName,
     ...(view.toolPreview ? { toolPreview: view.toolPreview } : {}),
     agentName: view.agentName,
@@ -95,14 +145,18 @@ function showApprovalToast(
         variant: 'primary',
         onClick: () => answer('accept'),
       },
-      {
-        // Says what the grant covers: "Allow for Session" reads as a grant for
-        // this one call, and it is a standing grant for every later call to the
-        // same tool in this session.
-        label: view.grantLabel,
-        variant: 'secondary',
-        onClick: () => answer('acceptForSession'),
-      },
+      ...(view.grantLabel
+        ? [
+            {
+              // Says what the grant covers: "Allow for Session" reads as a
+              // grant for this one call, and it is a standing grant for every
+              // later call to the same tool in this session.
+              label: view.grantLabel,
+              variant: 'secondary' as const,
+              onClick: () => answer('acceptForSession'),
+            },
+          ]
+        : []),
       { label: 'Deny', variant: 'danger', onClick: () => answer('decline') },
     ],
   });
@@ -111,6 +165,18 @@ function showApprovalToast(
   const approvalToasts = new Map(chat?.approvalToasts || []);
   approvalToasts.set(event.requestId, toastId);
   activeChatsStore.updateChat(event.threadId, { approvalToasts });
+}
+
+/** Marks or unmarks a request as answered here; see `answeredApprovals`. */
+function setAnswered(threadId: string, requestId: string, answered: boolean) {
+  const chat = activeChatsStore.getChatForExecutionSession(threadId);
+  if (!chat) return;
+  const others = (chat.answeredApprovals ?? []).filter(
+    (id) => id !== requestId,
+  );
+  activeChatsStore.updateChat(threadId, {
+    answeredApprovals: answered ? [...others, requestId] : others,
+  });
 }
 
 /**
@@ -127,6 +193,11 @@ async function answerFromToast(
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
 ) {
+  // The request stops waiting on the user at the click, not at the engine's
+  // `request.resolved`: the queue card is already gone, and a status surface
+  // that kept saying "Approval needed" until the round trip finished would
+  // contradict it.
+  setAnswered(event.threadId, event.requestId, true);
   try {
     // Loaded on demand: the answer path runs only after a click, so it stays
     // out of the entry chunk (same precedent as queueDrain's dispatcher). A
@@ -151,6 +222,8 @@ async function answerFromToast(
       error instanceof Error && error.message
         ? error.message
         : 'Station did not accept this decision.';
+    // Not delivered: the request waits on the user again.
+    setAnswered(event.threadId, event.requestId, false);
     toastStore.show(
       `Your decision on ${view.toolName} was not delivered: ${reason}`,
       event.threadId,
@@ -216,6 +289,8 @@ export function handleRequestResolvedEvent(
   const pendingApprovals = (chat.pendingApprovals || []).filter(
     (id) => id !== event.requestId,
   );
+  const { [event.requestId]: _resolved, ...pendingApprovalTurnIds } =
+    chat.pendingApprovalTurnIds ?? {};
   const approvalToasts = new Map(chat.approvalToasts || []);
   const toastId = approvalToasts.get(event.requestId);
   if (toastId) {
@@ -224,8 +299,82 @@ export function handleRequestResolvedEvent(
   approvalToasts.delete(event.requestId);
   activeChatsStore.updateChat(event.threadId, {
     pendingApprovals,
+    pendingApprovalTurnIds,
+    answeredApprovals: (chat.answeredApprovals ?? []).filter(
+      (id) => id !== event.requestId,
+    ),
     approvalToasts,
-    orchestrationStatus:
-      pendingApprovals.length > 0 ? 'awaiting-approval' : 'running',
+    ...(event.blocking === false
+      ? {}
+      : {
+          orchestrationStatus:
+            pendingApprovals.length > 0 ? 'awaiting-approval' : 'running',
+        }),
   });
+}
+
+type PendingApprovalState = Pick<
+  ChatUIState,
+  | 'pendingApprovals'
+  | 'answeredApprovals'
+  | 'pendingApprovalTurnIds'
+  | 'approvalToasts'
+>;
+
+/**
+ * #3071: the store's side of the shared settle rule. The server's session
+ * summary (so every snapshot's `openRequestIds`), its respond path and the
+ * CLI fold the log through `requestIdsSettledByTurnAbort`; a client that
+ * folded `request.opened` live and then hears the turn end must reach the
+ * same list, or a snapshot reconnect and a live stream disagree about what
+ * is still pending. The rule reads the facts the chat recorded — each
+ * pending request's turn binding — and this terminal: a request naming the
+ * ended turn is settled, one naming no turn (or one whose binding a snapshot
+ * never carried) is kept, and an ordinary completion settles nothing.
+ *
+ * The rule's positional arm (a recovery abort settling every request opened
+ * in the dead turn's window) needs that turn's `turn.started`, which the
+ * store does not keep. Live, that path is already closed: recovery resolves
+ * those requests `expired` before it publishes the abort, and the
+ * interrupted-turn banner that follows clears the list outright
+ * (`handleSessionStateChangedEvent`).
+ *
+ * Returns the fields to write, or nothing when nothing settled.
+ */
+export function settlePendingApprovalsOnTurnEnd(
+  chat: PendingApprovalState | undefined,
+  event: Extract<
+    OrchestrationEvent,
+    { method: 'turn.aborted' | 'turn.completed' }
+  >,
+): PendingApprovalState | Record<never, never> {
+  const pending = chat?.pendingApprovals ?? [];
+  if (pending.length === 0) return {};
+  const turnIds = chat?.pendingApprovalTurnIds ?? {};
+  const settled = requestIdsSettledByTurnAbort([
+    ...pending.map((requestId) => ({
+      method: 'request.opened',
+      requestId,
+      turnId: turnIds[requestId],
+    })),
+    event,
+  ]);
+  if (settled.size === 0) return {};
+  const approvalToasts = new Map(chat?.approvalToasts ?? []);
+  for (const requestId of settled) {
+    const toastId = approvalToasts.get(requestId);
+    if (toastId) toastStore.dismiss(toastId);
+    approvalToasts.delete(requestId);
+  }
+  return {
+    pendingApprovals: pending.filter((requestId) => !settled.has(requestId)),
+    // A settled request is gone; its "answered here" mark goes with it.
+    answeredApprovals: (chat?.answeredApprovals ?? []).filter(
+      (requestId) => !settled.has(requestId),
+    ),
+    pendingApprovalTurnIds: Object.fromEntries(
+      Object.entries(turnIds).filter(([requestId]) => !settled.has(requestId)),
+    ),
+    approvalToasts,
+  };
 }

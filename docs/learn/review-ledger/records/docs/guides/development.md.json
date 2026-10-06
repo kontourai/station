@@ -1,0 +1,167 @@
+{
+  "path": "docs/guides/development.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
+
+  "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/guides/documentation.md\",\"ours\":{\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"main\":{\"digest\":\"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633\",\"revision\":\"cda5879b28558d002561d656b869c4f7b05bc4ca\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/guides/development.md\",\"ours\":{\"digest\":\"dd6933dc12b9e5d7ecb93b433fcf1cb00a7a564293976839b332448236208799\",\"revision\":\"c8f80c629fca13479b0010de84094ad0a13332c1\"},\"main\":{\"digest\":\"4ff9d0090aeb85b74d4a98f233f9184706b0c36f374cdb955ce446663ea06509\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"digest\":\"4ff9d0090aeb85b74d4a98f233f9184706b0c36f374cdb955ce446663ea06509\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\".github/workflows/ci.yml\",\"ours\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\".github/workflows/portable-server-archives.yml\",\"ours\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/documentation.md\",\"ours\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"main\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633\",\"revision\":\"cda5879b28558d002561d656b869c4f7b05bc4ca\"},\"active\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"decision\":\"oursMatch\"},{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/release-manifest-vectors.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/release-manifest-vectors.test.ts\",\"digest\":\"1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/__tests__/release-manifest-vectors.test.ts\",\"digest\":\"2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"scripts/__tests__/release-manifest-vectors.test.ts\",\"digest\":\"2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/fast-checks-shard.mjs\",\"ours\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"ours\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc\",\"revision\":\"555c5aa3646e08ef44d26002f81508daf7a32305\"},\"active\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc\",\"revision\":\"555c5aa3646e08ef44d26002f81508daf7a32305\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/lib/portable-server-archive.mjs\",\"ours\":{\"path\":\"scripts/lib/portable-server-archive.mjs\",\"digest\":\"1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/lib/portable-server-archive.mjs\",\"digest\":\"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"scripts/lib/portable-server-archive.mjs\",\"digest\":\"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"decision\":\"mainMatch\"}]",
+
+  "sources": [
+    ".agents/skills/documentation-audit/SKILL.md",
+
+    ".codex/hooks.json",
+
+    ".githooks/commit-msg",
+
+    ".githooks/pre-push",
+
+    ".github/workflows/ci.yml",
+
+    ".github/workflows/full-regression.yml",
+
+    ".github/workflows/merge-queue-regression.yml",
+
+    ".github/workflows/portable-server-archives.yml",
+
+    ".github/workflows/windows-pr-verification.yml",
+
+    ".veritas/GOVERNANCE.md",
+
+    ".veritas/authority/default.authority-settings.json",
+
+    ".veritas/repo-map.json",
+
+    ".veritas/repo-standards/default.repo-standards.json",
+
+    "docs/guides/documentation.md",
+
+    "docs/plans/documentation-code-audit.md",
+
+    "package.json",
+
+    "packages/cli/src/commands/helpers.ts",
+
+    "packages/cli/src/commands/lifecycle-code-root.ts",
+
+    "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
+
+    "scripts/__tests__/docs-index-reachability.test.ts",
+
+    "scripts/__tests__/release-manifest-vectors.test.ts",
+
+    "scripts/__tests__/run-ci-fast.test.ts",
+
+    "scripts/build-portable-server-archive.mjs",
+
+    "scripts/cli-agent-e2e.mjs",
+
+    "scripts/dependency-lifecycle.mjs",
+
+    "scripts/docs-truth-gate-aggregate.mjs",
+
+    "scripts/ecosystem-manifest.mjs",
+
+    "scripts/fast-checks-shard.mjs",
+
+    "scripts/gh-app-token.mjs",
+
+    "scripts/just-interface.mjs",
+
+    "scripts/lib/dependency-lifecycle-policy.mjs",
+
+    "scripts/lib/documentation-review.mjs",
+
+    "scripts/lib/fast-checks-shards.mjs",
+
+    "scripts/lib/portable-server-archive.mjs",
+
+    "scripts/prepare-verify-static.mjs",
+
+    "scripts/run-ci-fast.mjs",
+
+    "scripts/run-focused-tests.mjs",
+
+    "scripts/run-local-verification.mjs",
+
+    "scripts/scripts-typecheck-coverage.mjs",
+
+    "scripts/typecheck-aggregate.mjs",
+
+    "scripts/verification-lanes.mjs",
+
+    "scripts/verification-policy-gate.mjs",
+
+    "src-server/__test-utils__/read-json.ts",
+
+    "src-server/__test-utils__/route-test-app.ts",
+
+    "src-server/__test-utils__/sse-helpers.ts",
+
+    "src-server/routes/spatial-board.ts"
+  ],
+
+  "checks": [
+    "focused: PASS 146 tests / 5 files: verification-lanes, verification-policy-gate, just-interface, documentation-foundations, veritas-repo-map",
+
+    "dependencyLifecycleDocs: PASS 1 test / 1 file",
+
+    "verificationPolicy: PASS exit 0, generated owner parity",
+
+    "veritasReadiness: PASS exit 0, 0 failures / 0 warnings; proof:repo-governance, lint:check, verification:policy:gate; protected attestation matches unchanged hashes",
+
+    "Reviewed documentation-only dependency correction: docs/plans/documentation-code-audit.md. The linked owner and purpose remain; no new runtime proof is inferred.",
+
+    "Upstream source review: Reviewed scope selector all versus statics and unchanged fixed invariant list/budget. Current docs distinguish hosted plan/shard/statics aggregator from local whole lane; docsTruth still not fixed invariant.",
+
+    "Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Upstream source review: Delta only removes unused resolveNpmCli re-export; managed lifecycle still imports/uses owner resolver. No prose change needed for bootstrap/security/CI guidance.",
+
+    "Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
+
+    "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
+
+    "Reviewed integration deltas: .github/workflows/portable-server-archives.yml: Adds diagnostics and stop-hint helpers to both workflow path filters; build/smoke matrix and publication authority unchanged. Native release guide already distinguishes qualification from publication. docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries. scripts/lib/portable-server-archive.mjs: Passes explicit platform/arch into the shared stager and refuses a build target unlike the host before downloading/writing. Native release guide was corrected in b761343b3 and root now states that limitation.",
+
+    "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Advanced only the recorded reviewed upstream revision and named the bounded source deltas; retained historical evidence and coverage baseline. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Archives now include their executable install.sh for owned upgrades/removal; host-native build, bundled runtime and isolated archive layout retain their existing boundaries. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change.",
+
+    "Integration source review through d1e0facc2: Merged actual-repository owner checks with reader/snapshot coverage; retired marker-only assertion removed. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: ci.yml added a zsh provisioning step to the four fast-checks shards (timeout 60 to 65). package.json dropped bearing/forage. lifecycle-code-root.ts gained install-root marker and installer-owned archive resolution. The shard/statics description, package table and CLI list are still accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 deletes the test-only helpers parseGitSource and extractPluginName from packages/cli/src/commands/helpers.ts. They had no production callers, and the guide mentions neither them nor a default Git branch. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) moves the packaged-release manifest parsing out of lifecycle-code-root.ts into shared/prebuilt-archive and stages bin/station-launcher.mjs in portable-server-archive. 8b48e2b35 (#2914) adds validateLaneCatalog to the verification-policy gate. The guide's CLI list (./station upgrade), package table and ci:fast invariants description are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Named the evidence-check registration and generated-output invariants that ci:fast now runs (run-ci-fast.mjs FAST_STATIC_COMMANDS). Other deltas (package.json scripts, documentation guide and skill freshness text, review compiler predicate) do not affect this guide's claims.",
+
+    "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
+
+    "Reviewed the compileDocumentationReviews reportMissing passthrough and the guide wording change; this guide's claims are unchanged.",
+
+    "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide. No claim in this guide changes."
+  ]
+}

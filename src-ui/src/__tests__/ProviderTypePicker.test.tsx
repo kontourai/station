@@ -11,8 +11,8 @@ describe('ProviderTypePicker', () => {
   test('groups presets above raw connection types', () => {
     render(<ProviderTypePicker onAdd={vi.fn()} onCancel={vi.fn()} />);
 
-    expect(screen.getByText('Popular')).toBeTruthy();
-    expect(screen.getByText('More')).toBeTruthy();
+    expect(screen.getByText('Popular model services')).toBeTruthy();
+    expect(screen.getByText('More model services')).toBeTruthy();
     expect(screen.getByRole('button', { name: /OpenRouter/ })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: /^OpenAI-Compatible/ }),
@@ -41,7 +41,7 @@ describe('ProviderTypePicker', () => {
     expect(onAdd).toHaveBeenCalledWith('ollama', 'Ollama');
   });
 
-  test('groups engine choices (agents, registered commands) and a truthfully labeled custom engine under one Engines group', () => {
+  test('groups engine choices (agents, registered commands) and a truthfully labeled custom engine under one AI apps and other engines group', () => {
     const onChooseAgent = vi.fn();
     const onChooseCommand = vi.fn();
     const agent = {
@@ -99,7 +99,7 @@ describe('ProviderTypePicker', () => {
     // One group, one noun — the picker's cross-reference to the Engines tab
     // no longer splits agents and registered commands under different
     // chrome ("Coding providers" / "Local and command providers").
-    expect(screen.getByText('Engines')).toBeTruthy();
+    expect(screen.getByText('AI apps and other engines')).toBeTruthy();
     expect(screen.queryByText('Coding providers')).toBeNull();
     expect(screen.queryByText('Local and command providers')).toBeNull();
 

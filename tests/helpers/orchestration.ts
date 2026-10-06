@@ -242,6 +242,34 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
  * "Expand chat list".
  */
 export async function openChatRegion(page: Page): Promise<void> {
+  // The Coding layout's centre owns Chat on a wide fine-pointer screen (#928
+  // coding stack): Chat is its Chat page, the dock does not hold it on that
+  // route, and the region toggles report the regions without it. "Open Chat"
+  // there is the Chat page itself. This reads whichever of the two Chat
+  // mounts is attached: on load that is the settled one (App mounts no Chat
+  // until the layout record is known), but a viewport change that moves Chat
+  // between them unmounts one before the other mounts, so a caller that just
+  // resized waits for the new mount before calling this.
+  if (/^\/projects\/[^/]+\/layouts\//.test(new URL(page.url()).pathname)) {
+    await page
+      .locator('#chat-workspace-pane, #chat-dock')
+      .first()
+      .waitFor({ state: 'attached', timeout: 20_000 })
+      .catch(() => undefined);
+    const centre = page.locator('#chat-workspace-pane');
+    if ((await centre.count()) > 0) {
+      const chatPage = page.locator('.coding-workbench__page--chat');
+      if ((await chatPage.getAttribute('data-active')) !== 'true') {
+        // On a drill-in: the conversation is one step back.
+        await page
+          .getByRole('navigation', { name: 'Coding navigation' })
+          .getByRole('button', { name: 'Back', exact: true })
+          .click();
+      }
+      await expect(centre).toBeVisible();
+      return;
+    }
+  }
   for (const region of CHAT_REGION_LABELS) {
     const hide = page.getByRole('button', {
       name: `Hide Chat ${region} region`,
@@ -427,14 +455,22 @@ export const DEFAULT_CONVERSATION_LOOKUPS = {
 
 type StoredChat = {
   sessionId: string;
-  conversationId: string;
+  /** Absent for a client-only draft chat that has not been sent to. */
+  conversationId?: string;
   agentSlug: string;
   title?: string;
   model?: string;
+  modelSource?: string;
   requestedModel?: string;
+  requestedModelSource?: string;
+  defaultModel?: string;
+  defaultModelSource?: string;
   requestedProviderOptions?: Record<string, unknown>;
   agentConnectionId?: string;
   executionMode?: 'external' | 'station';
+  executionScope?: 'project' | 'global';
+  providerId?: string;
+  defaultProviderId?: string;
   provider?: string;
   providerOptions?: Record<string, unknown>;
   projectSlug?: string;
@@ -449,6 +485,8 @@ type StoredChat = {
   ephemeralMessages?: unknown[];
   inputHistory?: string[];
   planArtifact?: unknown;
+  /** Persisted composer stage descriptors (never File bytes). */
+  attachmentStages?: unknown[];
 };
 
 export async function seedActiveChats(

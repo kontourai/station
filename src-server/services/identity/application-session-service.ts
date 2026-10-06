@@ -7,6 +7,7 @@ import {
   APPLICATION_SESSION_NATIVE_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+  APPLICATION_SESSION_NATIVE_REVOKE_PATH,
   APPLICATION_SESSION_NATIVE_VERSION,
   APPLICATION_SESSION_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_TYPE,
@@ -22,6 +23,7 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import { PAIRING_SCOPE_ORCHESTRATION_READ } from '@kontourai/station-contracts/environment-security';
+import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { calculateJwkThumbprint, importJWK, jwtVerify } from 'jose';
@@ -229,6 +231,15 @@ export class ApplicationSessionService {
     private readonly adoption?: ApplicationSessionCookieAdoptionCallbacks,
     private readonly readNativeRequest: ReadVerifiedNativeApplicationRequest = () =>
       undefined,
+    /**
+     * #2893 pilot: resolves the current PairedDevice for a request that
+     * carries a PROVEN native Device authority (the credential-free
+     * principal minted at the runtime admission seam). Only consulted for
+     * proof attempts; a browser bearer/cookie request keeps `device()`.
+     */
+    private readonly resolveNativeProofDevice?: (
+      request: Request,
+    ) => { readonly device: PairedDevice } | undefined,
   ) {
     if (!stationId.trim() || new URL(requestOrigin).origin !== requestOrigin)
       throw new ApplicationSessionRefusal('unavailable');
@@ -1243,6 +1254,72 @@ export class ApplicationSessionService {
       live.relayEnrollmentId ? hash : undefined,
     );
   }
+  /** Retires only this native continuation and its actual provider session; Device custody is independent. */
+  async revokeNative(request: Request): Promise<{ revoked: true }> {
+    this.requireNativeControlPath(
+      request,
+      APPLICATION_SESSION_NATIVE_REVOKE_PATH,
+    );
+    const account = this.account(await this.authenticateNative(request));
+    const hash = digest(
+      opaque.parse(request.headers.get(APPLICATION_SESSION_NATIVE_HEADER)),
+    );
+    const row = this.db
+      .prepare(
+        'SELECT record FROM application_session_native_sessions WHERE token_hash=? AND expires_at>?',
+      )
+      .get(hash, this.now());
+    const persistedRecord = row?.record;
+    if (typeof persistedRecord !== 'string')
+      throw new ApplicationSessionRefusal('invalid');
+    const record = this.parse(persistedRecord, nativeContinuationRecord);
+    if (
+      record.providerSessionId !== account.session.sessionId ||
+      record.principalId !== account.principal.id ||
+      record.issuer !== account.issuer ||
+      record.subject !== account.session.subject
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    const binding = {
+      issuer: record.issuer,
+      subject: record.subject,
+      principalId: record.principalId,
+    };
+    this.nativeDevice(request, record.target, record.deviceId, binding);
+    this.transaction(() => {
+      this.nativeDevice(request, record.target, record.deviceId, binding);
+      if (
+        this.db
+          .prepare(
+            'DELETE FROM application_session_native_sessions WHERE token_hash=? AND record=?',
+          )
+          .run(hash, persistedRecord).changes !== 1
+      )
+        throw new ApplicationSessionRefusal('invalid');
+    });
+    // Local continuation removal precedes the provider await. An uncertain
+    // provider outcome never restores a potentially revoked continuation.
+    await this.authentication.revokeSessionReference(
+      record.providerSessionId,
+      request.signal,
+    );
+    const provider = await this.authentication.verifySessionReference(
+      record.providerSessionId,
+      request.signal,
+    );
+    this.nativeDevice(request, record.target, record.deviceId, binding);
+    if (provider.kind !== 'invalid' && provider.kind !== 'absent')
+      throw new ApplicationSessionRefusal('unavailable');
+    if (
+      this.db
+        .prepare(
+          'SELECT 1 FROM application_session_native_sessions WHERE token_hash=?',
+        )
+        .get(hash)
+    )
+      throw new ApplicationSessionRefusal('unavailable');
+    return { revoked: true };
+  }
   async revoke(request: Request): Promise<void> {
     const account = this.account(await this.authenticate(request));
     const hash = digest(request.headers.get(APPLICATION_SESSION_HEADER)!);
@@ -1767,7 +1844,23 @@ export class ApplicationSessionService {
     account?: NativeAccountBinding,
   ): PairedDevice {
     this.nativeTarget(request, target);
-    const device = this.device(request, expectedDeviceId, account?.principalId);
+    let device: PairedDevice;
+    if (request.headers.has(NATIVE_DEVICE_PROOF_HEADER)) {
+      // A proof attempt resolves its Device ONLY through the injected
+      // native authority; a callback failure never falls through to the
+      // bearer path. Expected ID and account binding are rechecked here on
+      // every call, including after every provider await.
+      const resolved = this.resolveNativeProofDevice?.(request);
+      if (
+        !resolved ||
+        resolved.device.kind !== 'device' ||
+        (expectedDeviceId && resolved.device.id !== expectedDeviceId)
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      device = resolved.device;
+    } else {
+      device = this.device(request, expectedDeviceId, account?.principalId);
+    }
     const current = this.nativeAccountBinding(device);
     if (
       account &&

@@ -26,14 +26,14 @@ function profileFile(root: string): string {
 }
 
 function addInput(remoteProjectPath: string) {
-  return { hostAlias: 'brian-media', remoteProjectPath };
+  return { hostAlias: 'home-media', remoteProjectPath };
 }
 
 const verifiedIdentity = {
   environmentId: '11111111-1111-4111-8111-111111111111',
   hostIdentity: 'ssh:fixture',
-  remoteHome: '/home/brian',
-  verifiedProjectPath: '/home/brian/dev/github/kontourai/station',
+  remoteHome: '/home/user',
+  verifiedProjectPath: '/home/user/dev/github/kontourai/station',
   workerProtocolVersion: 1,
 };
 
@@ -67,11 +67,11 @@ describe('SshEnvironmentProfileStore', () => {
     const store = new SshEnvironmentProfileStore(root);
     await store.initialize();
     const first = await store.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
     });
     const duplicate = await store.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
     });
     expect(duplicate.id).toBe(first.id);
@@ -79,8 +79,8 @@ describe('SshEnvironmentProfileStore', () => {
     const verified = await store.recordVerified(first.id, {
       environmentId: '11111111-1111-4111-8111-111111111111',
       hostIdentity: 'ssh:fixture',
-      remoteHome: '/home/brian',
-      verifiedProjectPath: '/home/brian/dev/github/kontourai/station',
+      remoteHome: '/home/user',
+      verifiedProjectPath: '/home/user/dev/github/kontourai/station',
       workerProtocolVersion: 1,
     });
     expect(verified.lastConnectedAt).toBeTruthy();
@@ -242,7 +242,7 @@ describe('SshEnvironmentProfileStore', () => {
     [
       'padded host alias',
       (profile: Record<string, unknown>) => {
-        profile.hostAlias = ' brian-media ';
+        profile.hostAlias = ' home-media ';
       },
     ],
     [
@@ -438,12 +438,12 @@ describe('SshEnvironmentProfileStore', () => {
     await store.initialize();
 
     const managed = await store.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '/srv/managed',
       launchMode: 'managed',
     });
     const attached = await store.add({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '/srv/attached',
     });
 

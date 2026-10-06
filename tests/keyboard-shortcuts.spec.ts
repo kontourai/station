@@ -141,7 +141,7 @@ test.describe('Keyboard shortcuts cheatsheet', () => {
 
   test('Escape does not leave a route while editing text', async ({ page }) => {
     await page.goto('/settings');
-    const search = page.getByRole('textbox', { name: 'Filter settings' });
+    const search = page.getByRole('searchbox', { name: 'Filter settings' });
     await search.fill('theme');
     await search.press('Escape');
 

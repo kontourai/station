@@ -1,0 +1,15 @@
+{
+  "path": ".changeset/plugin-tree-digest-without.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for observePluginTreeAsync's optional digest that omits named entries and PluginInstallConsent's optional gitMetadata: 'excluded' echo.",
+
+  "limits": "A changeset is not proof of a published release or downstream consumer compatibility.",
+
+  "sources": [],
+
+  "checks": []
+}

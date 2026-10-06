@@ -1,0 +1,7 @@
+{
+  "revision": "73739630fb28cabc4f1e6581097f02a6859a5b91",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed final setup-return delta against the intent-first section: preserve the dialog until setup navigation commits, suppress navigation-induced close cancellation, restore failed navigation with feedback, and return ordinary composer text/Agent directly. Engine installation and account sign-in remain existing explicit owning flows; no download, credential import or readiness claim was added. Browser reached the Claude engine/account UI and returned with retained message; provider sign-in completion and external installation not executed.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

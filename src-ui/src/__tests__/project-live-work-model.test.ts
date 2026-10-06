@@ -103,10 +103,10 @@ function lanesFor(
 describe('projectLiveLanes', () => {
   test('keeps only the live lanes, in the Sessions list’s reading order', () => {
     const lanes = lanesFor([finished, running, waiting]);
-    expect(lanes.map((lane) => lane.id)).toEqual(['needsYou', 'activeNow']);
+    expect(lanes.map((lane) => lane.id)).toEqual(['needsYou', 'running']);
     expect(lanes.map((lane) => lane.heading)).toEqual([
       'Needs you · 1',
-      'Active now · 1',
+      'Running · 1',
     ]);
   });
 
@@ -122,13 +122,22 @@ describe('projectLiveLanes', () => {
     expect(lanesFor([justFinished])).toEqual([]);
     expect(projectLiveCount(lanesFor([justFinished, running]))).toBe(1);
     expect(projectLiveLabel(lanesFor([justFinished, running]))).toBe(
-      'Active now: 1',
+      'Running: 1',
     );
+  });
+
+  test('an idle session is still live work, under Idle rather than Running', () => {
+    // Everything the old "Active now" lane counted stays counted — the split
+    // renames the population by what is happening, it does not shrink it.
+    const idle = session({ threadId: 'idle', lifecycleState: 'queued' });
+    const lanes = lanesFor([idle, running]);
+    expect(lanes.map((lane) => lane.id)).toEqual(['running', 'idle']);
+    expect(projectLiveLabel(lanes)).toBe('Running: 1 · Idle: 1');
   });
 
   test('an empty lane is never emitted', () => {
     const lanes = lanesFor([running]);
-    expect(lanes.map((lane) => lane.id)).toEqual(['activeNow']);
+    expect(lanes.map((lane) => lane.id)).toEqual(['running']);
   });
 
   test('scopes to one project', () => {
@@ -186,7 +195,7 @@ describe('the badge number and the section list are one derivation', () => {
 
   test('the label accounts for every session the count totals', () => {
     const lanes = lanesFor([waiting, alsoWaiting, running]);
-    expect(projectLiveLabel(lanes)).toBe('Needs you: 2 · Active now: 1');
+    expect(projectLiveLabel(lanes)).toBe('Needs you: 2 · Running: 1');
     const labelled = projectLiveLabel(lanes)
       .split(' · ')
       .reduce((total, part) => total + Number(part.split(': ')[1]), 0);

@@ -1,0 +1,51 @@
+{
+  "path": "docs/contexts/extension-ecosystem/CONTEXT.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full vocabulary, contribution/state/permission/activation distinctions, real installation and provider/frame routes, retained mechanism boundary, knowledge namespace vs record-adapter limit.",
+
+  "limits": "Source and caller review; controlled local tests do not establish live provider/device, deployed-service or production-performance outcomes.",
+
+  "sources": [
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "packages/contracts/src/plugin.ts",
+
+    "packages/contracts/src/registry-lifecycle.ts",
+
+    "src-server/knowledge-store/knowledge-store-provider.ts",
+
+    "src-server/providers/plugin-provider-loader.ts",
+
+    "src-server/services/plugins/agent-plugin-loader.ts",
+
+    "src-server/services/plugins/plugin-catalog-installation.ts",
+
+    "src-server/services/plugins/plugin-composition.ts",
+
+    "src-server/services/plugins/plugin-grant-reconciliation.ts",
+
+    "src-server/services/plugins/plugin-install-consent.ts",
+
+    "src-server/services/plugins/plugin-installation-service.ts",
+
+    "src-server/services/plugins/plugin-manifest-loader.ts",
+
+    "src-server/services/plugins/plugin-runtime-artifact.ts",
+
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"
+  ],
+
+  "checks": [
+    "849 focused tests across 41 files passed; source/caller review of connections, Knowledge, and extension boundaries.",
+
+    "Integration source review through d1e0facc2: Unused install/remove helpers removed; documented lifecycle types remain. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: plugin-foreground-runs.ts was deleted on main, and the document's retained-mechanism sentence now names only PluginCompositionModule. plugin-composition.ts gained a 'not yet composed; #1362' comment, which matches the fixture-callers-only statement. The prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) stopped exporting isDistinctFrameOrigin and mcpUiToolCallDecision from MCPToolUIFrame.tsx without changing behavior. The distinct-origin proxy and sandbox claims still hold. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

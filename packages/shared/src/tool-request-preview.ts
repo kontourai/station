@@ -235,19 +235,517 @@ export function toolRequestDisplayName(
 const MCP_TOOL_NAME = /^mcp__(.+?)__(.+)$/;
 
 /**
- * The label of the session-grant decision (`acceptForSession`), shared by the
- * approval toast and the inline card (#2316). The grant is a standing grant
- * for EVERY later call to the same tool in this session (#2299), so the label
- * names both the tool and the session scope: "Always Allow" overstated its
- * duration and hid its breadth. Name the tool only when the request reported
- * one — adapter display text (Codex's is a whole command line) would mislead
- * about the grant's scope.
+ * What the `acceptForSession` decision grants for one approval request. The
+ * Claude adapter that honours the answer and every surface that offers it
+ * (the toast, the inline card and the durable inbox card) compute it with
+ * `toolRequestSessionGrant` from the same request fields, so the offer and
+ * the honouring cannot drift apart.
+ *
+ * - `tool` (#2299): Station grants every later call to the same tool in
+ *   this session, and the engine's suggestions are forwarded as they are.
+ * - `edit-mode` (#2915): a plain Claude file edit (Edit, Write, MultiEdit,
+ *   NotebookEdit) outside plan mode and full access. The session answer
+ *   allows this call and forwards only the engine's `acceptEdits` mode
+ *   change, which lets the
+ *   engine pass later file edits inside the working directories itself while
+ *   it keeps asking for sensitive files; Station grants nothing, since a tool
+ *   grant would add only a bypass of those safety checks. Answered through
+ *   the orchestration command route, the service then records an `auto`
+ *   approval-mode decision for the conversation, so the answer lasts until
+ *   the user changes mode; other paths send a one-call accept, and the
+ *   inbox card does not offer it.
+ * - `read-folder` / `folder` (#2915): the request escalates beyond the call
+ *   (or is a Claude read, which the engine asks for only then), and the
+ *   session answer forwards only the engine's directory suggestions (read
+ *   rules; or a working directory / file-edit rules). Station grants nothing.
+ * - `none`: the session answer is a one-call accept, so none is offered. A
+ *   plan exit (#2916); a sandbox network-host ask or an ask flagged
+ *   `suppressAlwaysAllowRule` (#2932); an escalation or read with no directory to forward
+ *   (an ask rule, a safety check, a read of `/`, a Claude ask whose
+ *   structured reason was not read); or a file edit with
+ *   no mode change to forward or asked in plan mode or under full access
+ *   (`bypassPermissions`).
  */
-export function toolRequestGrantLabel(toolName: string | undefined): string {
-  const displayName = toolRequestDisplayName(toolName);
-  return displayName
-    ? `Allow ${displayName} for this session`
-    : 'Allow this tool for this session';
+export type ToolRequestSessionGrant =
+  | 'tool'
+  | 'edit-mode'
+  | 'read-folder'
+  | 'folder'
+  | 'none';
+
+/** The request fields a session grant depends on (Claude's `canUseTool`). */
+export type ToolRequestGrantInput = {
+  toolName?: string;
+  suggestions?: unknown;
+  blockedPath?: unknown;
+  matchedAskRule?: unknown;
+  /** The engine's permission mode when it asked (Claude: `plan`, …). */
+  permissionMode?: unknown;
+  /**
+   * The engine's kind for the tool call, where it reports one (ACP's
+   * `toolCall.kind`; `switch_mode` is a mode change such as leaving plan
+   * mode).
+   */
+  toolKind?: unknown;
+  /** The call's arguments; `dangerouslyDisableSandbox` is read from them. */
+  toolInput?: unknown;
+  /** Claude's `canUseTool` `decisionReason` text, matched only exactly. */
+  decisionReason?: unknown;
+  /**
+   * Ask flags the Claude CLI sends on `can_use_tool`. Agent SDK 0.3.278
+   * forwards `suppressAlwaysAllowRule` and `defaultToNo` to `canUseTool`
+   * and still drops `requiresUserInteraction`, which the Claude adapter
+   * reads from the engine's frame. Read when present.
+   */
+  suppressAlwaysAllowRule?: unknown;
+  defaultToNo?: unknown;
+  requiresUserInteraction?: unknown;
+  /**
+   * #2932: the structured reason the Claude adapter read from the engine's
+   * `can_use_tool` frame (a `ClaudeAskReason`). Left undefined by an engine
+   * that reports none, which says nothing. Anything else that is not an
+   * object, `null` included, is a Claude ask whose frame was not read: it
+   * escalates (see `claudeAskEscalates`).
+   */
+  claudeAsk?: unknown;
+};
+
+/**
+ * #2932: the reason fields of a Claude Code `can_use_tool` frame that Agent
+ * SDK 0.3.278 does not hand to `canUseTool`. `decisionReasonType` is the
+ * engine's `decision_reason_type` (`rule`, `mode`, `subcommandResults`,
+ * `permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
+ * `workingDir`, `safetyCheck`, `classifier`, `other`), absent when the
+ * engine attached no reason. `classifierApprovable` is set when a safety
+ * check is involved, nested ones included.
+ */
+export type ClaudeAskReason = {
+  decisionReasonType?: string;
+  classifierApprovable?: boolean;
+  decisionReasonCode?: string;
+};
+
+/** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
+const PLAN_EXIT_TOOLS: ReadonlySet<string> = new Set(['exitplanmode']);
+/**
+ * Tools whose request gets no standing answer: a plan exit and a harness
+ * question, which are addressed to a person, and Claude Code's sandbox
+ * network ask (#2932; input `{host}`). The engine remembers an allowed host
+ * for the session itself, and a Station grant on that tool would answer
+ * every later host (see `toolRequestNeedsPerson`).
+ */
+const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
+  'askuserquestion',
+  'sandboxnetworkaccess',
+  ...PLAN_EXIT_TOOLS,
+]);
+/**
+ * #2932: `decisionReason` texts Claude Code sends verbatim (read in 2.1.261,
+ * byte-identical in 2.1.278) for an ask
+ * that is an escalation or a policy floor, not a plain call: the sandbox
+ * override, a tool whose approval card is the user's interaction surface,
+ * and the MCP organization ceiling (`effectiveMaxPermission: 'ask'`). The
+ * engine's other reasons (Bash safety prose, the working-directory text) are
+ * not matched here: their wording is not a stable contract.
+ */
+const ESCALATION_DECISION_REASONS: ReadonlySet<string> = new Set([
+  'dangerouslyDisableSandbox',
+  'requiresUserInteraction',
+  'Your organization requires approval for this tool',
+]);
+/**
+ * #2932: the `decisionReason` texts Claude Code 2.1.278 sends with reason
+ * type `other` for an ordinary ask: a single Bash command that no rule
+ * matched. Every other `other` reason is a check of some kind (shell
+ * operators, an unparseable command, a `cd` before a write, a sed write),
+ * so it escalates. If a later CLI rewords this text, the ordinary ask
+ * escalates too and prompts; it never widens.
+ */
+const ORDINARY_OTHER_DECISION_REASONS: ReadonlySet<string> = new Set([
+  'This command requires approval',
+]);
+/**
+ * #2932: Claude Code's shell tools. Their ordinary ask carries a reason
+ * type in 2.1.278 (`other` for Bash, `subcommandResults` for PowerShell),
+ * unlike an MCP tool, WebFetch or a file edit, whose ordinary ask carries
+ * none. Matched exactly, as the engine names them.
+ */
+const CLAUDE_SHELL_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell']);
+/**
+ * Claude Code's read-only tools. The engine allows reads inside the session's
+ * working directories itself, so a prompt for one is always an escalation,
+ * even when it carries no signal (an ask rule or a safety check, whose reason
+ * type the SDK drops). Matched exactly: another engine's `read` tool gets an
+ * ordinary tool grant.
+ */
+const CLAUDE_READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  'Read',
+  'Glob',
+  'Grep',
+  'LSP',
+]);
+/**
+ * Claude Code's file-permission rule names. A rule under one of these names is
+ * a path glob (`//abs/dir/**`, `~/dir/**`, `dir/**`); a Bash or PowerShell
+ * rule is a command pattern, even when it mentions a path.
+ */
+const CLAUDE_READ_RULE_TOOLS: ReadonlySet<string> = new Set(['Read']);
+/** Engine modes a forwarded `acceptEdits` would leave (#2916, #2915). */
+const MODES_WITHOUT_EDIT_MODE_GRANT: ReadonlySet<string> = new Set([
+  'plan',
+  'bypassPermissions',
+]);
+/** Claude Code's file-editing tools; `acceptEdits` covers all of them. */
+const CLAUDE_FILE_EDIT_TOOLS: ReadonlySet<string> = new Set([
+  'Edit',
+  'Write',
+  'MultiEdit',
+  'NotebookEdit',
+]);
+const CLAUDE_FILE_RULE_TOOLS: ReadonlySet<string> = new Set([
+  'Read',
+  'Edit',
+  'Write',
+  'MultiEdit',
+  'NotebookEdit',
+]);
+
+type DirectoryUpdateKind = 'read' | 'access';
+
+/**
+ * #2915: whether a suggested permission update widens the session's reach
+ * to a directory: `addDirectories`, or an allow rule for a file tool.
+ * Returns what it widens (`read` for read rules only), or undefined.
+ */
+export function directoryPermissionUpdateKind(
+  update: unknown,
+): DirectoryUpdateKind | undefined {
+  if (!isRecord(update)) return undefined;
+  if (update.type === 'addDirectories') return 'access';
+  if (update.type !== 'addRules' || !Array.isArray(update.rules))
+    return undefined;
+  const fileRules = update.rules.filter(
+    (rule): rule is { toolName: string; ruleContent: string } =>
+      isRecord(rule) &&
+      typeof rule.toolName === 'string' &&
+      CLAUDE_FILE_RULE_TOOLS.has(rule.toolName) &&
+      typeof rule.ruleContent === 'string' &&
+      rule.ruleContent.trim() !== '',
+  );
+  if (fileRules.length === 0) return undefined;
+  return fileRules.every((rule) => CLAUDE_READ_RULE_TOOLS.has(rule.toolName))
+    ? 'read'
+    : 'access';
+}
+
+function isAcceptEditsModeUpdate(update: unknown): boolean {
+  return (
+    isRecord(update) &&
+    update.type === 'setMode' &&
+    update.mode === 'acceptEdits'
+  );
+}
+
+/**
+ * The suggested updates a session answer forwards for this grant: all of
+ * them for a tool grant, the `acceptEdits` mode change for an edit-mode
+ * grant, the directory updates for a folder grant, and none otherwise.
+ */
+export function sessionGrantPermissionUpdates<T>(
+  grant: ToolRequestSessionGrant,
+  suggestions: readonly T[] = [],
+): T[] {
+  switch (grant) {
+    case 'tool':
+      return [...suggestions];
+    case 'edit-mode':
+      return suggestions.filter(isAcceptEditsModeUpdate);
+    case 'read-folder':
+    case 'folder':
+      return suggestions.filter(
+        (update) => directoryPermissionUpdateKind(update) !== undefined,
+      );
+    case 'none':
+      return [];
+  }
+}
+
+/**
+ * #2915: whether a request asks for more than the tool call (the rule #2911
+ * set for Codex: a tool grant covers calls to the tool, never escalations).
+ * Read against the Claude Code engine the lockfile pins (Agent SDK 0.3.278,
+ * bundling Claude Code 2.1.278; first read in 2.1.261):
+ *
+ * - a directory suggestion. Read, Glob, Grep and LSP ask for a path outside
+ *   the working directories with no `blockedPath`, a `Read(//dir/**)` rule
+ *   suggestion and the workingDir reason text; Edit and Write suggest
+ *   `addDirectories`.
+ * - `blockedPath`: the Bash/PowerShell path checks (and a few other tools).
+ * - `matchedAskRule`: a user-configured `permissions.ask` rule forced the
+ *   prompt; the SDK asks host-side auto-approval to leave it to a human.
+ * - #2932: a call that runs outside the sandbox
+ *   (`dangerouslyDisableSandbox: true` in its input), a `decisionReason` in
+ *   `ESCALATION_DECISION_REASONS`, or any of the ask flags
+ *   `suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`.
+ * - #2932: the engine's structured reason (`claudeAskEscalates`): an ask
+ *   rule on a single command, a safety check (in any part of a chained
+ *   command too), every PowerShell ask, or a Claude ask whose frame was
+ *   not read. The literal rules above stay as a second layer.
+ */
+export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
+  return (
+    request.blockedPath != null ||
+    request.matchedAskRule != null ||
+    (isRecord(request.toolInput) &&
+      request.toolInput.dangerouslyDisableSandbox === true) ||
+    (typeof request.decisionReason === 'string' &&
+      ESCALATION_DECISION_REASONS.has(request.decisionReason)) ||
+    request.suppressAlwaysAllowRule === true ||
+    request.defaultToNo === true ||
+    request.requiresUserInteraction === true ||
+    claudeAskEscalates(request) ||
+    suggestionList(request.suggestions).some(
+      (update) => directoryPermissionUpdateKind(update) !== undefined,
+    )
+  );
+}
+
+/**
+ * #2932: whether the structured reason of a Claude ask marks it as more
+ * than a plain call. Read against Claude Code 2.1.278:
+ *
+ * - no `claudeAsk` at all (`undefined`): another engine; no opinion.
+ * - a `claudeAsk` that is not an object: the frame was not read. It
+ *   escalates, so a changed or dropped frame costs a prompt, never a grant.
+ * - `classifierApprovable` set, either way: a safety check is involved,
+ *   in the ask itself or in any part of a chained command. The engine
+ *   sets it exactly then, and sends `decisionReason` text with a chained
+ *   command only then (captured from 2.1.278).
+ * - a `decisionReasonCode`: the engine sets one only for a block a host
+ *   may act on (`outside_reads_blocked`, `memory_paused`,
+ *   `classifier_transcript_too_long`), never for an ordinary ask.
+ * - a reason type other than `other` and `subcommandResults`: an ask rule
+ *   (`rule`), a safety check, a sandbox override, a path outside the
+ *   working directories, a mode, hook, classifier or headless-agent ask,
+ *   and any type added later.
+ * - type `subcommandResults` on any tool but Bash. PowerShell wraps every
+ *   ask in it, a single command's security warning (Invoke-Expression,
+ *   download-and-execute, elevation) included, and sends nothing that
+ *   tells that from an ordinary command, so every PowerShell ask
+ *   escalates.
+ * - type `subcommandResults` on Bash (a chained command: `a && b`, `a; b`,
+ *   a pipeline) with any `decisionReason` text or a `matchedAskRule`.
+ *   Otherwise it is a PLAIN call (owner decision, #2932): a Bash grant
+ *   answers chained commands. The engine does not send the reasons of a
+ *   chain's parts, so three things a part raised are NOT visible here and
+ *   a grant can answer them, as it could before this reader existed:
+ *   (i) any `permissions.ask` rule that applies to the chain or to one of
+ *   its parts, exact or prefix, whenever the chain arrives as
+ *   `subcommandResults`, which is when more than one part needs approval
+ *   (the engine sets no `matched_ask_rule` for it; that clause is only a
+ *   second layer for a rule the engine does report); (ii) a write or delete outside the
+ *   working directories in an `&&` or `;` chain, or in a pipeline with an
+ *   output redirect, which arrives with no blocked path and no directory
+ *   suggestion; (iii) a part's warning that is not a safety check.
+ *   Closing these needs the engine to send the nested reasons.
+ * - type `other` with any reason text but the ordinary one.
+ * - no reason type on a shell tool (Bash, PowerShell). An ordinary Bash
+ *   ask carries `other`, so an ask without a type is never the ordinary
+ *   one. The engine does send such asks (a Bash path check, which also
+ *   carries a blocked path), and an engine that dropped the field must not
+ *   turn every shell ask into a plain call.
+ *
+ * A plain call is therefore an ask with no reason type on any other tool
+ * (an MCP tool, WebFetch, a file edit inside the working directories),
+ * `other` with the ordinary Bash text, or a chained Bash command with no
+ * safety check. The signals `toolRequestEscalates` reads beside this one
+ * (a blocked path, a directory suggestion, a sandbox override, the ask
+ * flags) apply to a chained command when the engine sends them.
+ */
+export function claudeAskEscalates(
+  request: Pick<
+    ToolRequestGrantInput,
+    'toolName' | 'claudeAsk' | 'decisionReason' | 'matchedAskRule'
+  >,
+): boolean {
+  const { claudeAsk, decisionReason } = request;
+  if (claudeAsk === undefined) return false;
+  if (!isRecord(claudeAsk) || Array.isArray(claudeAsk)) return true;
+  if (claudeAsk.classifierApprovable !== undefined) return true;
+  if (claudeAsk.decisionReasonCode !== undefined) return true;
+  const type = claudeAsk.decisionReasonType;
+  const toolName = request.toolName?.trim() ?? '';
+  if (type === undefined) return CLAUDE_SHELL_TOOLS.has(toolName);
+  if (type === 'subcommandResults')
+    return (
+      toolName !== 'Bash' ||
+      request.matchedAskRule != null ||
+      (typeof decisionReason === 'string'
+        ? decisionReason.trim() !== ''
+        : decisionReason != null)
+    );
+  if (type !== 'other') return true;
+  return !(
+    typeof decisionReason === 'string' &&
+    ORDINARY_OTHER_DECISION_REASONS.has(decisionReason)
+  );
+}
+
+/**
+ * #2916, #2933: whether the request leaves plan mode: Claude's
+ * `ExitPlanMode` (matched in any casing or separator), or a call the engine
+ * reports with ACP's `switch_mode` tool kind. A plan exit is a request for a
+ * person's review of the plan, so no tool-level allowance answers it.
+ */
+export function toolRequestIsPlanExit(
+  toolName: string | null | undefined,
+  toolKind?: unknown,
+): boolean {
+  if (toolKind === 'switch_mode') return true;
+  const trimmed = toolName?.trim();
+  return !!trimmed && PLAN_EXIT_TOOLS.has(canonicalKey(trimmed));
+}
+
+/**
+ * Whether the request is addressed to a person, so nothing standing answers
+ * it: no session grant is offered or honoured and no `tools.autoApprove`
+ * pattern covers it. True for a plan exit (`toolRequestIsPlanExit`), for
+ * a harness question (Claude's `AskUserQuestion`, #3021), whose answer is
+ * the person's own input, and for Claude's sandbox network-host ask
+ * (`SandboxNetworkAccess`, #2932), which is asked per host.
+ */
+export function toolRequestNeedsPerson(
+  toolName: string | null | undefined,
+  toolKind?: unknown,
+): boolean {
+  if (toolRequestIsPlanExit(toolName, toolKind)) return true;
+  const trimmed = toolName?.trim();
+  return !!trimmed && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(trimmed));
+}
+
+export function toolRequestSessionGrant(
+  request: ToolRequestGrantInput,
+): ToolRequestSessionGrant {
+  const toolName = request.toolName?.trim();
+  if (
+    toolRequestNeedsPerson(toolName, request.toolKind) ||
+    // The engine says no standing allowance may answer this ask.
+    request.suppressAlwaysAllowRule === true
+  )
+    return 'none';
+  const readOnly =
+    toolName !== undefined && CLAUDE_READ_ONLY_TOOLS.has(toolName);
+  const escalates = toolRequestEscalates(request);
+  if (
+    !escalates &&
+    toolName !== undefined &&
+    CLAUDE_FILE_EDIT_TOOLS.has(toolName)
+  )
+    // In plan mode the engine still suggests acceptEdits (a sensitive-file
+    // safety check runs before its plan-mode refusal); forwarding it would
+    // leave plan mode without the plan being reviewed (#2916). Under full
+    // access it would silently drop to acceptEdits.
+    return !MODES_WITHOUT_EDIT_MODE_GRANT.has(String(request.permissionMode)) &&
+      suggestionList(request.suggestions).some(isAcceptEditsModeUpdate)
+      ? 'edit-mode'
+      : 'none';
+  if (!readOnly && !escalates) return 'tool';
+  const kinds = suggestionList(request.suggestions)
+    .map(directoryPermissionUpdateKind)
+    .filter((kind) => kind !== undefined);
+  if (kinds.length === 0) return 'none';
+  return kinds.every((kind) => kind === 'read') ? 'read-folder' : 'folder';
+}
+
+/**
+ * #2933: whether a tool-level allowance, such as an agent's
+ * `tools.autoApprove` pattern, may answer this request without a person. It
+ * covers a plain call to the tool (`tool`, or a plain file edit's
+ * `edit-mode`), never an escalation or a plan exit: the rule #2911 and #2915
+ * set for session grants. So an escalation (`toolRequestEscalates`), any
+ * Claude Read, Glob, Grep or LSP ask (the engine allows reads inside the
+ * working directories itself), `ExitPlanMode`, and a file edit asked in plan
+ * mode, under full access or with no `acceptEdits` suggestion (a safety
+ * check once the session is in `acceptEdits`) all reach a person, as do a
+ * sandbox network-host ask and the #2932 escalation signals. For a Claude
+ * ask those include the engine's structured reason, so a safety check and
+ * an ask rule on a single command reach a person, as does an ask whose
+ * frame was not read. A chained Bash command hides an ask rule on one of
+ * its parts and some writes outside the working directories; see
+ * `claudeAskEscalates`.
+ */
+export function toolRequestIsPlainCall(
+  request: ToolRequestGrantInput,
+): boolean {
+  const grant = toolRequestSessionGrant(request);
+  return grant === 'tool' || grant === 'edit-mode';
+}
+
+/** `toolRequestSessionGrant` over a whole `request.opened` payload. */
+export function toolRequestSessionGrantFromPayload(
+  payload: Record<string, unknown> | undefined,
+): ToolRequestSessionGrant {
+  const { toolName, toolInput } = toolRequestFromPayload(payload);
+  return toolRequestSessionGrant({
+    toolName,
+    toolInput,
+    decisionReason: payload?.decisionReason,
+    suppressAlwaysAllowRule: payload?.suppressAlwaysAllowRule,
+    defaultToNo: payload?.defaultToNo,
+    requiresUserInteraction: payload?.requiresUserInteraction,
+    claudeAsk: payload?.claudeAsk,
+    suggestions: payload?.suggestions,
+    blockedPath: payload?.blockedPath,
+    matchedAskRule: payload?.matchedAskRule,
+    permissionMode: payload?.permissionMode,
+    toolKind: payload?.toolKind,
+  });
+}
+
+/**
+ * The label of the session-grant decision (`acceptForSession`), shared by the
+ * approval toast, the inline card (#2316) and the inbox card. It names both
+ * what is granted and the session scope: "Always Allow" overstated its
+ * duration and hid its breadth. Undefined when no session grant is offered.
+ *
+ * A `tool` grant names the tool only when the request reported one: then the
+ * adapter records a standing grant for every later call to it (#2299). With
+ * NO reported name the grant's breadth is not one thing the label could name
+ * — Codex's adapter derives its own key (every later command, or file
+ * change), an ACP engine with no name gets only its own `allow_always` rule
+ * (OpenCode's is pattern-scoped) — so the label claims only the session
+ * scope. It never names adapter display text: a title (Codex's and
+ * OpenCode's are the whole command line) would misstate the grant as
+ * covering exactly that string.
+ */
+export function toolRequestGrantLabel(
+  toolName: string | undefined,
+  grant: ToolRequestSessionGrant,
+): string | undefined {
+  switch (grant) {
+    case 'none':
+      return undefined;
+    case 'edit-mode':
+      return 'Auto-accept file edits for this session';
+    case 'read-folder':
+      return 'Allow reading this folder for this session';
+    case 'folder':
+      return 'Allow access to this folder for this session';
+    case 'tool': {
+      const displayName = toolRequestDisplayName(toolName);
+      return displayName
+        ? `Allow ${displayName} for this session`
+        : 'Allow for this session';
+    }
+  }
+}
+
+function suggestionList(suggestions: unknown): readonly unknown[] {
+  return Array.isArray(suggestions) ? suggestions : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 /**

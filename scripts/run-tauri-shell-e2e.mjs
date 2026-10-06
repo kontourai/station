@@ -63,7 +63,8 @@ function buildHarness(laneName) {
     process.platform === 'darwin' ? ['--bundles', 'app'] : ['--no-bundle'];
   const config =
     laneName === 'native-relay-grant-lifecycle' ||
-    laneName === 'native-relay-diagnostic-echo'
+    laneName === 'native-relay-diagnostic-echo' ||
+    laneName === 'native-project-proof'
       ? 'tauri.webdriver.relay-grant.conf.json'
       : 'tauri.webdriver.conf.json';
   npmRun([
@@ -81,6 +82,11 @@ function buildHarness(laneName) {
 }
 
 export const SHELL_E2E_LANES = [
+  {
+    name: 'native-chat-dispatch',
+    spec: 'tests/tauri-shell/native-chat-dispatch.e2e.ts',
+    manual: true,
+  },
   {
     name: 'plugin-host-security',
     spec: 'tests/tauri-shell/plugin-host-security.e2e.ts',
@@ -115,6 +121,14 @@ export const SHELL_E2E_LANES = [
     spec: 'tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts',
     manual: true,
     env: { STATION_TAURI_E2E_NATIVE_DIAGNOSTIC_ECHO: '1' },
+  },
+  {
+    // Explicit macOS native application acceptance: real local-account
+    // StationRuntime/Pion ingress, native pairing, Device proof and account
+    // continuation through the main WebView and protected Project routes.
+    name: 'native-project-proof',
+    spec: 'tests/tauri-shell/native-project-acceptance.e2e.ts',
+    manual: true,
   },
 ];
 

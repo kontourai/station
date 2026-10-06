@@ -1,0 +1,7 @@
+{
+  "revision": "d5957a929df6329e85bbf421236bf644ad6f1841",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Re-record after merging main: scripts/browser-transport-lab.ts carries this branch own reviewed transport-lab changes merged with main's drift; the local-collaboration-lab guidance claims were re-checked against the merged script.","inputs":["docs/guides/local-collaboration-lab.md"]}
+  ]
+}

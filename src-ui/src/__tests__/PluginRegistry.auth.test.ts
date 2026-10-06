@@ -2,6 +2,10 @@
  * @vitest-environment jsdom
  */
 
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
+import type { AgentPluginManifestV1 } from '@kontourai/station-contracts/agent-plugin';
+import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { setClientCredentialResolver } from '@kontourai/station-sdk';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PluginRegistry } from '../core/PluginRegistry';
@@ -154,6 +158,51 @@ describe('PluginRegistry remote authentication', () => {
       },
       provenance: { origin: 'plugin' as const, pluginId: 'remote-layout' },
     };
+    const capability = { read: vi.fn(), answer: vi.fn(), continue: vi.fn() };
+    const experienceIdentity = {
+      pluginId: 'remote-layout',
+      pluginVersion: '1.0.0',
+      experienceId: 'interview',
+      incarnation: 'installed-1',
+      materialization: 'materialization-1',
+      contentDigest: 'digest-1',
+      definitionDigest: 'definition-1',
+    };
+    const richLayout = registry.getTrustedLayout('remote-panel', contribution, {
+      skillExperience: capability,
+      skillExperienceIdentity: experienceIdentity,
+    });
+    expect(richLayout).not.toBeNull();
+    expect(
+      registry.getTrustedLayout('remote-panel', contribution, {
+        skillExperience: capability,
+        skillExperienceIdentity: experienceIdentity,
+      }),
+    ).toBe(richLayout);
+    expect(
+      registry.getTrustedLayout('remote-panel', contribution, {
+        skillExperience: { ...capability },
+        skillExperienceIdentity: experienceIdentity,
+      }),
+    ).not.toBe(richLayout);
+    expect(
+      registry.getTrustedLayout('remote-panel', contribution, {
+        skillExperience: capability,
+        skillExperienceIdentity: {
+          ...experienceIdentity,
+          pluginId: 'other-plugin',
+        },
+      }),
+    ).toBeNull();
+    expect(
+      registry.getTrustedLayout('remote-panel', contribution, {
+        skillExperience: capability,
+        skillExperienceIdentity: {
+          ...experienceIdentity,
+          pluginVersion: 'replacement-version',
+        },
+      }),
+    ).toBeNull();
     const layout = registry.getTrustedLayout('remote-panel', contribution);
     expect(layout).not.toBeNull();
     // A new component type on each lookup remounts the iframe on every host render.
@@ -172,6 +221,64 @@ describe('PluginRegistry remote authentication', () => {
     );
   });
 
+  test('registers explicit isolated pane components from the authored rich package without legacy layouts', async () => {
+    const manifest: AgentPluginManifestV1 = JSON.parse(
+      readFileSync(
+        new NodeURL(
+          '../../../examples/rich-skill-experience/plugin.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    const panes = manifest.extensions?.['io.kontourai.station']?.workspacePanes;
+    const descriptor = parseWorkspacePaneDescriptor(panes?.[0]);
+    if (descriptor?.renderer.kind !== 'plugin-component')
+      throw new Error('The authored example has no valid plugin pane.');
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        plugins: [
+          {
+            name: manifest.name,
+            version: manifest.version,
+            hasBundle: true,
+            workspacePanes: panes,
+            permissions: { granted: ['agents.invoke'] },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const registry = new PluginRegistry(
+      Promise.resolve({ platform: 'tauri' as const }),
+    );
+    registry.setApiBase(ORIGIN, 'paired-loopback', {
+      allowRemoteBundles: true,
+      remoteProfile: true,
+    });
+    await expect(registry.reload()).resolves.toBe('ready');
+    const contribution = {
+      id: descriptor.id,
+      version: manifest.version ?? 'missing',
+      sourceIdentity: {
+        id: manifest.name,
+        kind: 'remote' as const,
+        source: `plugins/${manifest.name}`,
+      },
+      provenance: { origin: 'plugin' as const, pluginId: manifest.name },
+    };
+    expect(
+      registry.getTrustedLayout(descriptor.renderer.name, contribution),
+    ).not.toBeNull();
+    expect(document.head.querySelector('[data-station-plugin]')).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      registry.getTrustedLayout(descriptor.renderer.name, {
+        ...contribution,
+        provenance: { origin: 'plugin', pluginId: 'unrelated' },
+      }),
+    ).toBeNull();
+  });
   test('loads remote bundles only with explicit connection consent', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = input.toString();

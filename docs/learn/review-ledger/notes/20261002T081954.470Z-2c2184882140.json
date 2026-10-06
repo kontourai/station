@@ -1,0 +1,19 @@
+{
+  "revision": "1c13dd90939769cd3ca557a36649aa25823194db",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-record after main #3107: docs/guides/testing.md took the shard-sizing documentation and run-test-mutations.mjs the union of this PR's ci-health mutation cases with main's fast-checks cases (both verified present). The guides' health-metric claims still match the merged tree.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-record after main #3107: docs/guides/testing.md took the shard-sizing documentation and run-test-mutations.mjs the union of this PR's ci-health mutation cases with main's fast-checks cases (both verified present). The guides' health-metric claims still match the merged tree.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-record after main #3107: docs/guides/testing.md took the shard-sizing documentation and run-test-mutations.mjs the union of this PR's ci-health mutation cases with main's fast-checks cases (both verified present). The guides' health-metric claims still match the merged tree.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-record after main #3107: docs/guides/testing.md took the shard-sizing documentation and run-test-mutations.mjs the union of this PR's ci-health mutation cases with main's fast-checks cases (both verified present). The guides' health-metric claims still match the merged tree.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-record after main #3107: docs/guides/testing.md took the shard-sizing documentation and run-test-mutations.mjs the union of this PR's ci-health mutation cases with main's fast-checks cases (both verified present). The guides' health-metric claims still match the merged tree.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-record after main #3107: docs/guides/testing.md took the shard-sizing documentation and run-test-mutations.mjs the union of this PR's ci-health mutation cases with main's fast-checks cases (both verified present). The guides' health-metric claims still match the merged tree.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-record after main #3107: docs/guides/testing.md took the shard-sizing documentation and run-test-mutations.mjs the union of this PR's ci-health mutation cases with main's fast-checks cases (both verified present). The guides' health-metric claims still match the merged tree.","inputs":["tests/AGENTS.md"]}
+  ]
+}

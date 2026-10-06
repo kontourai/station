@@ -1,7 +1,14 @@
 import { toolRequestDisplayName } from '@kontourai/station-shared/tool-request-preview';
 import { useEffect, useRef, useState } from 'react';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
+import { LazyBoundary } from '../LazyBoundary';
+import { SkeletonBlock } from '../state';
 import { type ToolApprovalOutcome, ToolCallDisplay } from './ToolCallDisplay';
+
+const loadHarnessQuestions = () =>
+  import('./HarnessQuestionRequest').then((module) => ({
+    default: module.HarnessQuestionRequest,
+  }));
 
 const requestKey = (request: PendingApprovalRequest) =>
   `${request.approvalThreadId}\u0000${request.approvalId}`;
@@ -59,8 +66,8 @@ function useNewApprovalAnnouncement(
       id: previous.id + 1,
       text:
         fresh.length === 1
-          ? `Approval needed: ${names[0]}`
-          : `${fresh.length} approvals needed: ${names.join(', ')}`,
+          ? `Needs approval: ${names[0]}`
+          : `Needs approval (${fresh.length}): ${names.join(', ')}`,
     }));
   }, [keys, settled]);
   return announcement;
@@ -114,14 +121,25 @@ export function PendingApprovalStrip({
           className="pending-approvals"
           aria-label="Approvals waiting on you"
         >
-          {requests.map((request) => (
-            <ToolCallDisplay
-              key={requestKey(request)}
-              toolCall={request}
-              showDetails={false}
-              onApprove={(action) => onApprove(request, action)}
-            />
-          ))}
+          {requests.map((request) =>
+            request.questionnaire ? (
+              <LazyBoundary
+                key={requestKey(request)}
+                load={loadHarnessQuestions}
+                componentProps={{ request }}
+                pending={
+                  <SkeletonBlock count={1} label="Loading agent questions" />
+                }
+              />
+            ) : (
+              <ToolCallDisplay
+                key={requestKey(request)}
+                toolCall={request}
+                showDetails={false}
+                onApprove={(action) => onApprove(request, action)}
+              />
+            ),
+          )}
         </section>
       )}
     </>

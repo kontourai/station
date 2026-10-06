@@ -542,7 +542,7 @@ describe('native invocation runs', () => {
         read: () => ({ kind: 'available', run: null }),
       },
     );
-    const authority = { mode: 'personal', userId: 'brian' } as any;
+    const authority = { mode: 'personal', userId: 'casey' } as any;
     await expect(
       service.listRuns(authority, { source: 'invoke' }),
     ).resolves.toEqual([

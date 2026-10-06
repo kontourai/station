@@ -8,15 +8,21 @@ import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { ContextPickerOptions } from '../components/modals/NewChatModal';
 import {
+  buildContextOptions,
   GLOBAL_CONTEXT,
   type NewChatModalContextOption,
 } from '../components/modals/new-chat-modal-utils';
 import type { AgentData } from '../contexts/AgentsContext';
+import type { ProjectMetadata } from '../contexts/ProjectsContext';
 
 // NewChatModal's Enable posts to `/agents/materialize-engine` through this
 // SDK mutation; a minimal mock keeps react-query's provider requirement out
 // of this render tree.
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: { experiences: [], diagnostics: [] },
+    refetch: vi.fn(),
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
 }));
 
@@ -100,7 +106,11 @@ afterEach(cleanup);
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
-    value: vi.fn().mockReturnValue({ matches: false }),
+    value: vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
   });
   Element.prototype.scrollIntoView = vi.fn();
 });
@@ -111,7 +121,7 @@ const OPTIONS: NewChatModalContextOption[] = [
     value: 'station',
     label: 'Station',
     icon: '📁',
-    workingDirectory: '/Users/brian/dev/station',
+    workingDirectory: '/Users/me/dev/station',
   },
   { value: 'no-cwd', label: 'No CWD Project', icon: '📁' },
 ];
@@ -129,6 +139,7 @@ describe('ContextPickerOptions', () => {
         filteredContextOptions={OPTIONS}
         selectedContext={GLOBAL_CONTEXT}
         onSelectContext={vi.fn()}
+        folderlessHint={{ kind: 'home' }}
       />,
     );
     const filter = screen.getByPlaceholderText('Filter...');
@@ -147,6 +158,7 @@ describe('ContextPickerOptions', () => {
         filteredContextOptions={OPTIONS}
         selectedContext={GLOBAL_CONTEXT}
         onSelectContext={vi.fn()}
+        folderlessHint={{ kind: 'home' }}
       />,
     );
     expect(document.activeElement).toBe(
@@ -164,6 +176,7 @@ describe('ContextPickerOptions', () => {
         filteredContextOptions={OPTIONS}
         selectedContext="station"
         onSelectContext={vi.fn()}
+        folderlessHint={{ kind: 'home' }}
       />,
     );
     const stationButton = screen.getByRole('button', { name: /Station/ });
@@ -174,12 +187,42 @@ describe('ContextPickerOptions', () => {
     expect(noCwdButton.querySelector('.new-chat-modal__no-cwd-badge')).not.toBe(
       null,
     );
+    expect(
+      noCwdButton
+        .querySelector('.new-chat-modal__no-cwd-badge')
+        ?.getAttribute('title'),
+    ).toBe('Runs in your home folder (~)');
     // The global sentinel never gets the "no cwd" badge even without a
     // working directory.
     const globalButton = screen.getByRole('button', { name: /No workspace/ });
     expect(globalButton.querySelector('.new-chat-modal__no-cwd-badge')).toBe(
       null,
     );
+  });
+
+  // Review L4: an ACP engine with no folder of its own runs a folderless
+  // project in a private Station-managed workspace, not home; the row must
+  // not claim home.
+  test('a folderless row names where it runs for an ACP engine, never home', () => {
+    render(
+      <ContextPickerOptions
+        contextSearch=""
+        onContextSearchChange={vi.fn()}
+        autoFocusFilter={false}
+        onEscape={vi.fn()}
+        filteredContextOptions={OPTIONS}
+        selectedContext="station"
+        onSelectContext={vi.fn()}
+        folderlessHint={{ kind: 'managed' }}
+      />,
+    );
+    const badge = screen
+      .getByRole('button', { name: /No CWD Project/ })
+      .querySelector('.new-chat-modal__no-cwd-badge');
+    expect(badge?.getAttribute('title')).toBe(
+      'Runs in a private folder Station makes for this chat',
+    );
+    expect(badge?.textContent).not.toContain('~');
   });
 
   test('reports the selected value on click and closes on Escape without changing selection', () => {
@@ -195,6 +238,7 @@ describe('ContextPickerOptions', () => {
         filteredContextOptions={[OPTIONS[1]]}
         selectedContext={GLOBAL_CONTEXT}
         onSelectContext={onSelectContext}
+        folderlessHint={{ kind: 'home' }}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Station/ }));
@@ -207,5 +251,55 @@ describe('ContextPickerOptions', () => {
     fireEvent.keyDown(filter, { key: 'Escape' });
     expect(onEscape).toHaveBeenCalledOnce();
     expect(onSelectContext).toHaveBeenCalledOnce();
+  });
+
+  test("a project's legacy link or path icon loads no image in the workspace options", () => {
+    const project = (slug: string, icon: string): ProjectMetadata => ({
+      id: slug,
+      slug,
+      name: slug,
+      icon,
+      workingDirectory: `/work/${slug}`,
+    });
+    const legacy = [
+      project('hotlinked', 'https://tracker.example/pixel.png'),
+      project('plain-http', 'http://tracker.example/pixel.png'),
+      project('rooted-path', '/api/files/pixel.png'),
+    ];
+    const picker = (options: NewChatModalContextOption[]) =>
+      render(
+        <ContextPickerOptions
+          contextSearch=""
+          onContextSearchChange={vi.fn()}
+          autoFocusFilter={false}
+          onEscape={vi.fn()}
+          filteredContextOptions={options}
+          selectedContext={GLOBAL_CONTEXT}
+          onSelectContext={vi.fn()}
+          folderlessHint={{ kind: 'home' }}
+        />,
+      );
+
+    // Reachability: the picker does render a URL icon as an <img>, so the
+    // empty result below is the options' doing, not the renderer's.
+    const raw = picker(
+      legacy.map((p) => ({ value: p.slug, label: p.name, icon: p.icon })),
+    );
+    expect(raw.container.querySelectorAll('img').length).toBeGreaterThan(0);
+    raw.unmount();
+
+    const { container } = picker(
+      buildContextOptions([...legacy, project('emoji', '🧪')]),
+    );
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    for (const { slug } of legacy) {
+      expect(
+        screen.getByRole('button', { name: new RegExp(slug) }),
+      ).toBeTruthy();
+    }
+    // An allowed icon still shows.
+    expect(screen.getByRole('button', { name: /emoji/ }).textContent).toContain(
+      '🧪',
+    );
   });
 });

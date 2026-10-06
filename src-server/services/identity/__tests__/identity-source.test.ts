@@ -36,15 +36,15 @@ describe('TailscaleServeIdentitySource', () => {
         [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
         [INTERNAL_INGRESS_IDENTITY_HEADER]: encodeIdentity({
           provider: 'tailscale-serve',
-          login: 'brian@example.test',
-          displayName: 'Brian',
+          login: 'casey@example.test',
+          displayName: 'Casey',
         }),
       }),
     );
     expect(identity).toEqual({
       provider: 'tailscale-serve',
-      subject: 'brian@example.test',
-      displayName: 'Brian',
+      subject: 'casey@example.test',
+      displayName: 'Casey',
     });
   });
 
@@ -54,13 +54,13 @@ describe('TailscaleServeIdentitySource', () => {
         [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
         [INTERNAL_INGRESS_IDENTITY_HEADER]: encodeIdentity({
           provider: 'tailscale-serve',
-          login: 'brian@example.test',
+          login: 'casey@example.test',
         }),
       }),
     );
     expect(identity).toEqual({
       provider: 'tailscale-serve',
-      subject: 'brian@example.test',
+      subject: 'casey@example.test',
     });
     expect(identity).not.toHaveProperty('displayName');
   });
@@ -108,7 +108,7 @@ describe('TailscaleServeIdentitySource', () => {
             [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
             [INTERNAL_INGRESS_IDENTITY_HEADER]: encodeIdentity({
               provider: 'tailscale-serve',
-              login: 'brian@example.test',
+              login: 'casey@example.test',
             }),
           },
           { incoming: { socket: { remoteAddress: '100.96.12.7' } } },
@@ -124,7 +124,7 @@ describe('TailscaleServeIdentitySource', () => {
           [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
           [INTERNAL_INGRESS_IDENTITY_HEADER]: encodeIdentity({
             provider: 'kontour-account',
-            login: 'brian@example.test',
+            login: 'casey@example.test',
           }),
         }),
       ),

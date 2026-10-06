@@ -1,0 +1,25 @@
+{
+  "path": "docs/design/offline-outbound-queue.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Queue admission/exclusion policy with implementation notes and a bounded log-level exception.",
+
+  "limits": "Current queue/send ownership and dedicated log-level route/client were checked. The broad historical reconnect language does not authorize replay of possible effects; not a review of every configuration mutation or queue durability case.",
+
+  "sources": [
+    "src-ui/src/lib/outboundQueue.ts"
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d72f79b08: #2904 swaps the config route's full-access 403 body for fullAccessRefusal(); the log-level route is untouched. The send caller in useActiveChatSessionMessaging now treats a full-access refusal of a non-queued send as idle, restores the draft and offers an explicit 'Send without full access' action. A queued-dispatch refusal gets canned copy. The policy still holds: chat turns only are queued, configuration is excluded, log-level is the one bounded revisioned exception, and approvals are never queued. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

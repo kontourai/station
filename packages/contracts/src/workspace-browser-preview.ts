@@ -66,7 +66,13 @@ export type WorkspaceBrowserPreviewStatus =
   | 'rendering-unverified'
   | 'unavailable';
 
-/** History controls are intentionally absent from this first local preview seam. */
+/**
+ * The `1.0` Browser Preview state's history field: always `unavailable`,
+ * because the retired `1.0` local preview had no history controls. It stays
+ * so stored `1.0` records keep parsing for the `2.0` migration; it says
+ * nothing about the current Browser pane, whose server-owned session has
+ * back, forward and reload (`workspace-browser-pane.ts`).
+ */
 export type WorkspaceBrowserPreviewHistoryCapability = 'unavailable';
 
 export type WorkspaceBrowserPreviewViewportPreference =
@@ -91,7 +97,7 @@ export interface WorkspaceBrowserPreviewState {
   /** The normalized local URL currently mounted by a renderer, if any. */
   currentUrl: string;
   status: WorkspaceBrowserPreviewStatus;
-  /** Explicitly unavailable until a separately owned history implementation exists. */
+  /** Always `unavailable` in `1.0` records (see the type). */
   historyCapability: WorkspaceBrowserPreviewHistoryCapability;
   viewportPreference: WorkspaceBrowserPreviewViewportPreference;
   /** Canonical UTC ISO-8601 timestamp supplied by the state owner. */

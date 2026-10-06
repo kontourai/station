@@ -10,7 +10,7 @@
 - Never `git push --no-verify`; no required CI check re-runs the pre-push gates. The transfer gate reads `STATION_TRANSFER_BASELINE_ROOT`; slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (see docs/guides/testing.md).
 - `npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane; exit 3 is provisional/deferred, not completion. For ordinary pull requests, run focused evidence and `npm run ci:fast`; GitHub's merge queue verifies the synthesized latest-main candidate. Do not run `npm run full:regression` locally merely because `main` moved.
 - Pre-push and PR CI own the full typecheck; locally use `gate:for` evidence or one `typecheck:<lane>`, and never background a full `typecheck` or `ci:fast` to poll its sentinel. Every lane shares host-wide tsc slots ([testing guide](docs/guides/testing.md#host-typecheck-slots-and-incremental-compiles)).
-- The reusable hosted full-regression workflow owns canonical completion receipts for Nightly and tagged preview/stable promotions. CI `workflow_dispatch` is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
+- The reusable hosted full-regression workflow owns canonical completion receipts for Nightly and tagged preview/stable promotions. `PR: CI` manual dispatch is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
@@ -44,7 +44,10 @@ queue is part of it. What that means in practice:
       position state pullRequest { number } } } } } }'
   ```
 - **The queue batches** (3 builds, 3 merges, `ALLGREEN`); a red entry is
-  removed and those behind it rebuild. Waiting PRs mean it is working.
+  removed and those behind it rebuild.
+- **Automate with the app token, not your quota**
+  ([setup](docs/guides/development.md#github-automation-token)); read PR and
+  check status over REST (`gh api repos/...`).
 - **Arm, confirm once with the query above, then stop.** Never poll the queue;
   a red or conflicted dequeue shows only on the PR itself.
 - **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
@@ -73,9 +76,9 @@ Commit and confirm a clean tree before mutation. Preserve intervening edits and 
 
 ## Issue references
 
-`archive#NNNN` — and any `station#NNNN` or bare `#NNNN` below #550, the reseeded backlog's start — refers to [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 backlog and history. Those discussions remain readable there; this repository's own issues start fresh. Write new references as plain `#NNNN` for this repo or `archive#NNNN` for the archive.
+`archive#NNNN` is [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 history. Here, #27–#601 re-file archive issues under new numbers (most carry a "Migrated from the pre-public backlog" line), so low numbers exist in both repos.
 
-Bare `#NNNN` references in areas the sweep has not touched (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`) predate the reset and refer to the archive as well.
+A bare `#NNNN` means this repo, except pre-reset text in areas the sweep skipped (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`). When unsure, check both repos. Write `#NNNN` for this repo, `archive#NNNN` for the archive.
 
 ## Read only the route you need
 

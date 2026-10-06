@@ -69,15 +69,17 @@ const unavailable = (reason: string): PullRequestResult<any> => ({
   mergeMethodsSource: 'provider-default',
 });
 const reason = (error: unknown, fallback: string) => {
-  const stderr =
+  // gh's own stderr, trimmed. A runner failure (it carries `cmd`) with an
+  // empty stderr, such as a timeout, gets the fallback: its message is
+  // "Command failed: <argv>", which is for logs, not the pane.
+  const failure =
     typeof error === 'object' && error
-      ? (error as { stderr?: unknown }).stderr
+      ? (error as { stderr?: unknown; cmd?: unknown })
       : undefined;
-  return typeof stderr === 'string' && stderr.trim()
-    ? stderr.trim()
-    : error instanceof Error && error.message
-      ? error.message
-      : fallback;
+  if (typeof failure?.stderr === 'string' && failure.stderr.trim())
+    return failure.stderr.trim();
+  if (typeof failure?.cmd === 'string') return fallback;
+  return error instanceof Error && error.message ? error.message : fallback;
 };
 /**
  * How long a successful forge read is reused (#2937). Every visible Sessions
@@ -219,6 +221,10 @@ function normalizeGitHubBranchMergeability(
   return {
     ref: String(value.number),
     sourceBranch: value.headRefName,
+    ...(typeof value.headRepositoryOwner?.login === 'string' &&
+    value.headRepositoryOwner.login
+      ? { sourceOwner: value.headRepositoryOwner.login }
+      : {}),
     mergeability: githubMergeability(value.mergeable),
   };
 }
@@ -469,7 +475,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       return {
         ...availability,
         available: false,
-        reason: error instanceof Error ? error.message : 'Review unavailable',
+        reason: reason(error, 'The review could not be read from GitHub.'),
       };
     }
   }
@@ -541,7 +547,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         '--limit',
         String(GITHUB_MERGEABILITY_LIST_LIMIT + 1),
         '--json',
-        'number,headRefName,mergeable',
+        'number,headRefName,mergeable,headRepositoryOwner',
       ],
       true,
       (parsed) => {

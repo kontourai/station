@@ -1,0 +1,7 @@
+{
+  "revision": "00bada2726c33a49f7edc8803d08831b46b6deb3",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the two newly inventoried transcript action rows against the responsive guide: both adopt responsive-surface-actions with direct controls, mobile wrapping, 44px targets, safe areas, and DOM focus order. The inventory explicitly separates existing behavioral and Activity placement fixtures from unmeasured toolbar geometry; no guide claim requires revision.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

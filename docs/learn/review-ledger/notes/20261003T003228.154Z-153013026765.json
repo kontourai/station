@@ -1,0 +1,13 @@
+{
+  "revision": "a102a2fe3d467b7052c8217801efa5c9e6679aa0",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed reserved-name compatibility at GitHub discovery, host-owned Registry listing projection, explicit 400 install refusal, and mounted Registry UI consumption. Readable unsupported entries remain inspectable; malformed/unreadable/unsafe non-reserved/ambiguous discovery still fails. Real filesystem and GitHub route fixtures prove valid sibling installs and no reserved-name staging; mounted UI shows Unavailable with explanation and disabled install. Clean-commit source/UI and refusal/disabled mutations failed at those boundaries. Default cross-source selection and full live target-library qualification remain independent work.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the changed API compatibility status and explicit reserved-name 400 response against host routes and UI consumers. The guide's exact client/version, authenticated caller, observed outcome, and workspace registration requirements remain accurate; reserved names do not gain installation or storage authority.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Reviewed the RegistryView and RegistryCatalog consumer delta. The new unsupported-name status and refusal helper apply only to Skills, leaving Layout lifecycle badges, actions, profile policy, and server catalog application unchanged. Existing layout/Registry regression cases pass.","inputs":["docs/guides/distribution-profiles.md"]},
+
+    {"path":"examples/registry/README.md","note":"Reviewed the Registry route delta: only Skills listing projection and reserved-name install refusal changed. The example manifests remain plugin catalogs, and their defaults, preview consent, plugin acquisition authority, and CLI/server distinctions are unchanged; existing registry route cases pass.","inputs":["examples/registry/README.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+
+  "notes": [
+    {"path":"README.md","note":"Delta review (2026-09-28, portable Nightly signing): nightly.yml only adds `secrets: inherit` to the portable-nightly caller, after the first enabled publish read an empty environment secret; portable-nightly-publish-workflow.test.ts pins inherit and that only the publish job's signing step reads a secret; nightly.md gains one sentence saying so. Claims here re-read against that delta.","inputs":["README.md"]}
+  ]
+}

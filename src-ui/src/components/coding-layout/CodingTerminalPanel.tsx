@@ -1,4 +1,6 @@
+import { createPortal } from 'react-dom';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
 import { ACPChatPanel } from '../acp-connections/ACPChatPanel';
 import { AgentGlyph, MessageGlyph } from '../icons/Glyph';
 import { TerminalPanel } from './TerminalPanel';
@@ -84,6 +86,134 @@ export function CodingTerminalPanel({
     next.focus();
   };
 
+  // Inside a host that draws the pane's head itself (the Coding layout's
+  // lower panel), the tab strip renders INTO that row after the host's
+  // heading — one row of chrome, not two (#3046 round). A single occupant
+  // whose strip holds one tab still shows it: the tab is where its rename,
+  // its close and its mode toggle live.
+  const headSlots = usePaneHeadSlots();
+  const bar = (
+    <div
+      className={`coding-layout__terminal-bar${headSlots ? ' coding-layout__terminal-bar--head' : ''}`}
+    >
+      <div
+        className="coding-layout__terminal-tabs"
+        role="tablist"
+        aria-label="Terminal tabs"
+      >
+        {tabs.map((tab, index) => {
+          const selected = tab.id === activeTabId;
+          const isClosing = closingTabIds.has(tab.id);
+          const tabId = `coding-terminal-tab-${tab.id}`;
+          const panelId = `coding-terminal-panel-${tab.id}`;
+          return (
+            <div className="coding-layout__terminal-tab-item" key={tab.id}>
+              {editingTabId === tab.id ? (
+                <input
+                  aria-label={`Rename ${tab.label}`}
+                  className="coding-layout__terminal-tab-rename"
+                  defaultValue={tab.label}
+                  onBlur={(event) => onFinishRename(tab.id, event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !isComposingKeyEvent(event)) {
+                      onFinishRename(tab.id, event.currentTarget.value);
+                    }
+                    if (event.key === 'Escape') onCancelRename();
+                  }}
+                />
+              ) : (
+                <button
+                  id={tabId}
+                  type="button"
+                  role="tab"
+                  aria-label={tab.label}
+                  aria-controls={panelId}
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  data-terminal-tab-id={tab.id}
+                  className={`coding-layout__terminal-tab ${selected ? 'coding-layout__terminal-tab--active' : ''}`}
+                  onClick={() => onSelectTab(tab.id)}
+                  onDoubleClick={() => onStartRename(tab.id)}
+                  onKeyDown={(event) => moveFocus(event, index)}
+                >
+                  <span className="coding-layout__terminal-tab-icon">
+                    {tab.type === 'agent' ? <AgentGlyph /> : '>'}
+                  </span>
+                  <span className="coding-layout__terminal-tab-label">
+                    {tab.label}
+                  </span>
+                </button>
+              )}
+              {tab.type === 'agent' && canTogglePTY(tab) && (
+                <button
+                  type="button"
+                  className="coding-layout__terminal-tab-toggle"
+                  onClick={() => onToggleTabMode(tab.id)}
+                  title={
+                    tab.mode === 'terminal'
+                      ? 'Switch to Chat UI'
+                      : 'Switch to Terminal'
+                  }
+                  aria-label={
+                    tab.mode === 'terminal'
+                      ? `Switch ${tab.label} to Chat UI`
+                      : `Switch ${tab.label} to Terminal`
+                  }
+                >
+                  {tab.mode === 'terminal' ? <MessageGlyph /> : '>_'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="coding-layout__terminal-tab-close"
+                aria-label={
+                  isClosing ? `Closing ${tab.label}` : `Close ${tab.label}`
+                }
+                disabled={isClosing}
+                onClick={() => onCloseTab(tab.id)}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+        {headSlots && tabs.length === 0 ? null : (
+          // In a host's head with no terminal yet, the empty state's own
+          // "New Terminal" says it; a second "+" would say it twice.
+          <button
+            type="button"
+            className="coding-layout__terminal-tab-add"
+            onClick={onOpenNewTerminal}
+            title="New terminal"
+          >
+            +
+          </button>
+        )}
+      </div>
+      {presentation === 'layout' && (
+        <button
+          type="button"
+          className="coding-layout__terminal-toggle"
+          onClick={onToggleOpen}
+          // The chord this used to advertise (Ctrl+J) is handled nowhere —
+          // the tooltip was fiction. If the shortcut ever gets registered,
+          // withShortcutHint reports it from the registry instead of a
+          // hardcoded string that can lie.
+          //
+          // The visible `⌃J` keycap was the same fiction and outlived the
+          // tooltip's removal: no shortcut registers `j` with any modifier,
+          // so the chord fails on macOS too — it is not a platform bug to
+          // route through `formatShortcutChord`, it is a chord that does not
+          // exist. Removed rather than reformatted (#1649). Restore it by
+          // registering the shortcut and reading the registry, never by
+          // typing the keycap back in.
+          title={`${terminalOpen ? 'Hide' : 'Show'} terminal`}
+        >
+          {terminalOpen ? '▾ Hide' : '▴ Show'}
+        </button>
+      )}
+    </div>
+  );
   return (
     <section
       id={id}
@@ -103,125 +233,11 @@ export function CodingTerminalPanel({
           <div className="coding-layout__drag-grip" />
         </button>
       )}
-      <div className="coding-layout__terminal-bar">
-        <div
-          className="coding-layout__terminal-tabs"
-          role="tablist"
-          aria-label="Terminal tabs"
-        >
-          {tabs.map((tab, index) => {
-            const selected = tab.id === activeTabId;
-            const isClosing = closingTabIds.has(tab.id);
-            const tabId = `coding-terminal-tab-${tab.id}`;
-            const panelId = `coding-terminal-panel-${tab.id}`;
-            return (
-              <div className="coding-layout__terminal-tab-item" key={tab.id}>
-                {editingTabId === tab.id ? (
-                  <input
-                    aria-label={`Rename ${tab.label}`}
-                    className="coding-layout__terminal-tab-rename"
-                    defaultValue={tab.label}
-                    onBlur={(event) =>
-                      onFinishRename(tab.id, event.target.value)
-                    }
-                    onKeyDown={(event) => {
-                      if (
-                        event.key === 'Enter' &&
-                        !isComposingKeyEvent(event)
-                      ) {
-                        onFinishRename(tab.id, event.currentTarget.value);
-                      }
-                      if (event.key === 'Escape') onCancelRename();
-                    }}
-                  />
-                ) : (
-                  <button
-                    id={tabId}
-                    type="button"
-                    role="tab"
-                    aria-label={tab.label}
-                    aria-controls={panelId}
-                    aria-selected={selected}
-                    tabIndex={selected ? 0 : -1}
-                    data-terminal-tab-id={tab.id}
-                    className={`coding-layout__terminal-tab ${selected ? 'coding-layout__terminal-tab--active' : ''}`}
-                    onClick={() => onSelectTab(tab.id)}
-                    onDoubleClick={() => onStartRename(tab.id)}
-                    onKeyDown={(event) => moveFocus(event, index)}
-                  >
-                    <span className="coding-layout__terminal-tab-icon">
-                      {tab.type === 'agent' ? <AgentGlyph /> : '>'}
-                    </span>
-                    <span className="coding-layout__terminal-tab-label">
-                      {tab.label}
-                    </span>
-                  </button>
-                )}
-                {tab.type === 'agent' && canTogglePTY(tab) && (
-                  <button
-                    type="button"
-                    className="coding-layout__terminal-tab-toggle"
-                    onClick={() => onToggleTabMode(tab.id)}
-                    title={
-                      tab.mode === 'terminal'
-                        ? 'Switch to Chat UI'
-                        : 'Switch to Terminal'
-                    }
-                    aria-label={
-                      tab.mode === 'terminal'
-                        ? `Switch ${tab.label} to Chat UI`
-                        : `Switch ${tab.label} to Terminal`
-                    }
-                  >
-                    {tab.mode === 'terminal' ? <MessageGlyph /> : '>_'}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="coding-layout__terminal-tab-close"
-                  aria-label={
-                    isClosing ? `Closing ${tab.label}` : `Close ${tab.label}`
-                  }
-                  disabled={isClosing}
-                  onClick={() => onCloseTab(tab.id)}
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })}
-          <button
-            type="button"
-            className="coding-layout__terminal-tab-add"
-            onClick={onOpenNewTerminal}
-            title="New terminal"
-          >
-            +
-          </button>
-        </div>
-        {presentation === 'layout' && (
-          <button
-            type="button"
-            className="coding-layout__terminal-toggle"
-            onClick={onToggleOpen}
-            // The chord this used to advertise (Ctrl+J) is handled nowhere —
-            // the tooltip was fiction. If the shortcut ever gets registered,
-            // withShortcutHint reports it from the registry instead of a
-            // hardcoded string that can lie.
-            //
-            // The visible `⌃J` keycap was the same fiction and outlived the
-            // tooltip's removal: no shortcut registers `j` with any modifier,
-            // so the chord fails on macOS too — it is not a platform bug to
-            // route through `formatShortcutChord`, it is a chord that does not
-            // exist. Removed rather than reformatted (#1649). Restore it by
-            // registering the shortcut and reading the registry, never by
-            // typing the keycap back in.
-            title={`${terminalOpen ? 'Hide' : 'Show'} terminal`}
-          >
-            {terminalOpen ? '▾ Hide' : '▴ Show'}
-          </button>
-        )}
-      </div>
+      {headSlots
+        ? headSlots.leading
+          ? createPortal(bar, headSlots.leading)
+          : null
+        : bar}
       {tabs.map((tab) =>
         closeErrors[tab.id] ? (
           <div

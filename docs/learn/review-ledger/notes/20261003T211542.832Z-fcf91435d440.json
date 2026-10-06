@@ -1,0 +1,7 @@
+{
+  "revision": "6783c3816613cd15f9daaa85a1bfad0b77056d6c",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Reviewed the route profile test delta: only user-facing setup info selectors and collapsed disclosure label changed. Existing native preparation, trust confirmation, recovery and negative controls are unchanged; 83 mounted tests pass with native intake. Public Connect APIs and reference claims are unchanged.","inputs":["docs/reference/connect.md"]}
+  ]
+}

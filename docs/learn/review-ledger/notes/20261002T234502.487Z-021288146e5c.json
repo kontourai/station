@@ -1,0 +1,93 @@
+{
+  "revision": "a058838c32094ebc98fa31929b76b7855bb7dd85",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"Reviewed merged runtime-routes delta against Private GCP development environment: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["deploy/gcp-dev/README.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed merged runtime-routes delta against Public HTTPS for a single-owner Station: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["deploy/public-ingress/README.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed merged runtime-routes delta against Station Documentation: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/README.md"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed merged runtime-routes delta against Treat knowledge stores as canonical and the index as derived: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed merged runtime-routes delta against Keep browser-preview hosting adapter-local: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/adr/0017-browser-preview-host.md"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed merged runtime-routes delta against ADR 0018 — SSE is the realtime transport, because resume rides `Last-Event-ID`: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed merged runtime-routes delta against ADR 0019 — Host the Browser pane server-side, behind a host adapter: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed merged runtime-routes delta against Station Architecture: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed merged runtime-routes Task-room context resolver and this page: request-list advertises v1 and returns an authorized Task/shared-document snapshot or null; authority and Task incarnation are rechecked after document I/O, create forwards a digest reference and preserves saved intent. This does not grant relay, Device or Project access beyond existing checks.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed merged runtime-routes delta against Evidence Governance Context: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/contexts/evidence-governance/CONTEXT.md"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed merged runtime-routes Task-room context resolver and this page: request-list advertises v1 and returns an authorized Task/shared-document snapshot or null; authority and Task incarnation are rechecked after document I/O, create forwards a digest reference and preserves saved intent. This does not grant relay, Device or Project access beyond existing checks.","inputs":["docs/contexts/operations/CONTEXT.md"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed merged runtime-routes delta against Scoped answer share permalinks (station#1423): it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/design/answer-share-permalinks.md"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed merged runtime-routes delta against Browser-preview host spike (Station #1376): it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/design/browser-preview-host-spike.md"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed merged runtime-routes delta against Browser Preview Pane MVP (Station #1375): it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/design/browser-preview-pane-mvp.md"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed merged runtime-routes delta against this Station connectivity/authority page: only the Task-room request-list context resolver and delegation callback changed. Broker routing, native Device/account admission, Project membership, and existing remote-access boundaries remain on their prior owners.","inputs":["docs/design/channel-home-authority.md"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed merged runtime-routes delta against Local-bootstrap token (station#1991): it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/design/local-bootstrap-token.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed merged runtime-routes Task-room context resolver and this page: request-list advertises v1 and returns an authorized Task/shared-document snapshot or null; authority and Task incarnation are rechecked after document I/O, create forwards a digest reference and preserves saved intent. This does not grant relay, Device or Project access beyond existing checks.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed merged runtime-routes delta against Glossary: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed merged runtime-routes delta against Browser workspace: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed merged runtime-routes Task-room context resolver and this page: request-list advertises v1 and returns an authorized Task/shared-document snapshot or null; authority and Task incarnation are rechecked after document I/O, create forwards a digest reference and preserves saved intent. This does not grant relay, Device or Project access beyond existing checks.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed merged runtime-routes delta against this Station connectivity/authority page: only the Task-room request-list context resolver and delegation callback changed. Broker routing, native Device/account admission, Project membership, and existing remote-access boundaries remain on their prior owners.","inputs":["docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed merged runtime-routes delta against Deployment Guide: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed merged runtime-routes delta against Preparing a personal home-transfer controller: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed merged runtime-routes delta against Integrating Station into your company or project: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed merged runtime-routes delta against this Station connectivity/authority page: only the Task-room request-list context resolver and delegation callback changed. Broker routing, native Device/account admission, Project membership, and existing remote-access boundaries remain on their prior owners.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed merged runtime-routes delta against Computer relationships: pairing vs. remote work: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed merged runtime-routes delta against Mobile device workspace: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/mobile-device-workspace.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed merged runtime-routes delta against Private runner partition: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed merged runtime-routes delta against Product-law authoring: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed merged runtime-routes delta against Repository layout: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed merged runtime-routes delta against How Starter Work connects first steps to real work: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed merged runtime-routes delta against Web Push notifications: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed merged runtime-routes Task-room context resolver and this page: request-list advertises v1 and returns an authorized Task/shared-document snapshot or null; authority and Task incarnation are rechecked after document I/O, create forwards a digest reference and preserves saved intent. This does not grant relay, Device or Project access beyond existing checks.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed merged runtime-routes delta against Copy a Git workspace between hosts: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed merged runtime-routes Task-room context resolver and this page: request-list advertises v1 and returns an authorized Task/shared-document snapshot or null; authority and Task incarnation are rechecked after document I/O, create forwards a digest reference and preserves saved intent. This does not grant relay, Device or Project access beyond existing checks.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed merged runtime-routes delta against config reference: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed merged runtime-routes delta against this Station connectivity/authority page: only the Task-room request-list context resolver and delegation callback changed. Broker routing, native Device/account admission, Project membership, and existing remote-access boundaries remain on their prior owners.","inputs":["docs/reference/connect.md"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed merged runtime-routes delta against Environment Variables: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed merged runtime-routes Task-room context resolver and this page: request-list advertises v1 and returns an authorized Task/shared-document snapshot or null; authority and Task incarnation are rechecked after document I/O, create forwards a digest reference and preserves saved intent. This does not grant relay, Device or Project access beyond existing checks.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed merged runtime-routes delta against this Station connectivity/authority page: only the Task-room request-list context resolver and delegation callback changed. Broker routing, native Device/account admission, Project membership, and existing remote-access boundaries remain on their prior owners.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed merged runtime-routes Task-room context resolver and this page: request-list advertises v1 and returns an authorized Task/shared-document snapshot or null; authority and Task incarnation are rechecked after document I/O, create forwards a digest reference and preserves saved intent. This does not grant relay, Device or Project access beyond existing checks.","inputs":["docs/user/workspace-checkpoints.md"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed merged runtime-routes delta against MCP-UI demo server: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["examples/mcp-ui-demo/README.md"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed merged runtime-routes delta against Station sessions MCP-UI server: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["examples/station-sessions-mcp/README.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed merged runtime-routes delta against SDK scope: it adds only an authorized Task-room brief resolver and request-list context fields; this page does not call or redefine that resolver, so its documented behavior and evidence limits remain unchanged.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

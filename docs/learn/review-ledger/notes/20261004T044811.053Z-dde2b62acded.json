@@ -1,0 +1,15 @@
+{
+  "revision": "19bab6571b2753d06fdded47e2c1bf4e2a814b22",
+
+  "notes": [
+    {"path":"README.md","note":"#2961 scoped reference review: Read the product entry point, self-hosting row and Docker section. Corrected fresh-home container support to the explicit pending policy-registration boundary and linked current deployment limitations; source/nightly/installer and product capabilities retain their existing evidence limits. No image or ingress boot executed.","inputs":["README.md","docs/guides/deployment.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#2961 scoped reference review: Read the abstraction criteria and CLI-distribution boundary against the changed CLI/deployment references. The client-versus-host command admission and investigation status are unchanged; service ownership is now fail-closed under the scoped registry contract, and deployment references disclose the container policy gap. This is reference/source-delta review, not renewed architecture or cloud qualification.","inputs":["docs/guides/deployment.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"#2961 scoped reference review: Read triage evidence collection, context-only/agent boundary and prohibition on repair/service/GitHub writes. The service reference now requires installed policy for service run; triage still performs no service mutation. No agent, provider or external issue operation was executed.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2961 scoped reference review: Read public integration entry points, hosted target and private GCP recipe boundary. Corrected current GCP container startup support to retained historical testing plus the explicit policy-registration gap. API/SDK, headless agents, tenant targets, AWS evolution and restore requirements are unchanged; no cloud/deployment qualification.","inputs":["docs/guides/integrating-station.md","deploy/gcp-dev/README.md","docs/guides/deployment.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"#2961 scoped reference review: Read published-client versus checkout/archive lifecycle admission, local setup and service status/start/stop limits. The revised service-run policy requirement belongs to the host lifecycle CLI; the published client still cannot install a backend and uses existing installed OS services. No published package or external endpoint proof.","inputs":["docs/reference/cli.md"]}
+  ]
+}

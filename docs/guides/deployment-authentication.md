@@ -180,13 +180,21 @@ Unknown operations return 404. Bodies are limited to 32 KiB, responses use
 budget before adapter invocation. The adapter must also enforce its account-
 and operation-specific abuse controls.
 
-POST requires an exact configured allowed browser origin. The public Station
+Ordinary browser POST requires an exact configured allowed browser origin. The public Station
 origin is included; additional origins must be explicitly configured through
 `STATION_AUTHENTICATION_BROWSER_ORIGINS` as well as the existing CORS policy.
 This does not make arbitrary cross-origin form-post callbacks supported. Use a GET code callback
 with the provider's state, nonce, issuer, audience and PKCE verification. OAuth
 authorization alone does not establish identity. A custom non-OIDC adapter must
 verify identity using its provider's documented contract.
+
+The native invitation-acceptance leaf is a separate exception: the router
+requires private current native Pion provenance, current Device proof and
+matching native account continuation/proof. It rejects browser Origin, cookies
+and Authorization headers. Its authenticated body is already bounded to 16 KiB
+by native admission, and its attempt budget is keyed to the verified Device.
+Neither an originless direct HTTP request nor a native routing grant earns this
+exception.
 
 This namespace is independent of personal-device scopes. Other Station APIs
 continue to require their existing credential and authorization. Current
@@ -210,7 +218,9 @@ subject, display name, approval ID, approver and time. Station rechecks the
 provider session and operator credential after reading the confirmation body.
 
 The exchanged Device must present a current account for that exact
-issuer/subject on every protected request. Missing, revoked or conflicting
+issuer/subject on protected resource requests, apart from the narrowly scoped
+Device-binding self-read and native neutral observations described below.
+Missing, revoked or conflicting
 account proof is refused before resource authorization. Cookie-only signup and
 login remain available so a person can authenticate before receiving such a
 Device; authentication itself grants neither the Device nor Project access.
@@ -225,11 +235,16 @@ Device for that request. Existing ordinary pairing requests remain available.
 
 The collaborator profile admits account controls, membership-filtered Project
 catalogue/detail reads, and bounded reads of explicitly published shared Tasks:
-the shared-work list, history, and document. Shared work is read-only in this
+the shared-work list, history, document and publication receipt. Shared work is read-only in this
 entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
 admits those specific paths; the
 [shared Task routes](../../src-server/routes/projects/project-shared-tasks.ts)
-independently require current membership and publication. Protected reads set
+independently require current membership and publication. A member's
+publication read returns the same summary the shared-work list gives for a Task
+currently shared into that Project incarnation. An unshared, stale, unknown or
+other-scope Task gets the routes' uniform not-found response, so a member cannot
+tell them apart. Only the operator sees the `unshared` review state, and sharing
+and unsharing stay operator-only. Protected reads set
 `Cache-Control: no-store` and bind response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
 streamed chunk. The audited administration endpoints below are the only
@@ -273,8 +288,18 @@ controls does not confer administration: current membership and the separately
 approved Device scope still govern each action. Independent-person browser and
 native qualification remain separate from backend and component-test evidence.
 
-For authenticated members, the existing Project catalogue/detail endpoints
-return `station.member-project/v1` views: Project ID, slug, name, optional icon
+An account session presented on a credential that is not account-bound is also
+a member caller for Agents. It sees only Agents whose
+[audience](../reference/config.md#audience) admits its current membership, as
+member views. Every other Agent returns the uniform not-found. The Agent
+routes refuse a member's create, update and delete, member turns and
+approval answers are refused until
+[#3277](https://github.com/kontourai/station/issues/3277), and the design
+lists the Agent-related paths not yet gated.
+See [Agent audience](../design/project-membership.md#agent-audience).
+
+For authenticated members, the existing Project catalogue/detail endpoints,
+and `/api/boot`'s `projects` section, return `station.member-project/v1` views: Project ID, slug, name, optional icon
 and description, and currently effective actions (`view` in this profile).
 Local workspace paths, provider/model configuration, knowledge settings and
 layout metadata are excluded. Unaudited nested Project resources remain denied.
@@ -285,7 +310,7 @@ member/full-view union. Legacy `listProjects` and `getProject` refuse member
 projections rather than pretending they contain full configuration. Unknown
 versions, extra fields and malformed member views fail validation.
 
-Shared Task list/history/document reads are implemented separately from that
+Shared Task list/history/document/publication reads are implemented separately from that
 restricted base Project projection. Shared editing and execution, compute-offer
 access, and the fully qualified two-person browser/native journey remain
 separate work discussed in [#483](https://github.com/kontourai/station/issues/483),
@@ -466,9 +491,17 @@ continuation headers is refused. The receiver rechecks current provider and
 Device authority and rejects replay; the native continuation lasts at most
 15 minutes and never beyond its provider session.
 
-The native SDK supplies `challenge`, `exchange` and signed `headers`; this
-profile does not add a native renewal or cookie-adoption operation. It consumes
-a caller-owned encrypted transport and independent account signer. The
+The native SDK supplies `challenge`, `exchange`, signed read `headers`, and
+fixed host-prepared invitation-acceptance and revocation operations.
+`POST /api/account-auth/continuations/native/revoke` accepts only an empty
+object with the current native account and Device proofs. It removes that
+continuation before awaiting provider-session revocation, then verifies the
+provider session is absent or invalid; an uncertain provider outcome does not
+restore the continuation. Device custody is independent. The profile adds no
+native renewal or cookie-adoption operation. Host preparation expiry also caps
+the client continuation and cannot be extended by a delayed account exchange.
+The client consumes a caller-owned encrypted transport and independent account
+signer. The
 [connector opt-in](self-hosted-broker.md#native-routing-grant-foundation-v2)
 and [SDK contract](../reference/sdk.md#native-station-account-continuation-opt-in)
 do not establish ordinary Desktop activation, key-custody integration or a
@@ -580,3 +613,78 @@ existing approved-Device cookie exchange and proof-bound continuation. No
 DataChannel cookie handling or native handoff is implied. Tests with a free
 local HTTP issuer are diagnostic evidence, not production Google/Kontour,
 physical-device or independent-person acceptance.
+
+## Opt-in native Device request-proof pilot (#2893)
+
+An approved account-bound Device can address a narrow protected surface
+without any bearer or cookie by presenting a short-lived, one-use native
+Device request proof over the encrypted application channel. The pilot is
+source opt-in only — `STATION_NATIVE_DEVICE_PROOF_PILOT=1` with an
+authentication module that supports session-reference verify AND login;
+unsupported configuration refuses to boot. Ordinary product UI is not
+auto-enabled.
+
+Preconditions, all owned by existing stores: an active paired `kind: 'device'`
+Device with an account principal binding, an operator-approved native proof
+binding (exact surface, Device proof key distinct from the route key) in the
+private binding sidecar, and a current admitted native Pion peer whose private
+facts (offer nonce, Station identity, surface) carry the request. The replay
+store lives at `<home>/security/native-device-proof-replay.sqlite`.
+
+The admitted POSTs are exactly native account-continuation challenge,
+exchange and revoke, plus `/api/account-auth/accept-invitation`. GET/HEAD admits
+`/.well-known/station/v1`, `/api/system/status`, `/api/system/identity`,
+`/api/auth/authority`, `/api/projects`, `/api/projects/:slug`,
+`/api/projects/:slug/shared-work`, and that Task's `document`, `history` and
+`publication` leaves at `/api/projects/:slug/shared-work/:taskId/`. Neutral
+handshake/status/identity observations may use Device proof alone when no
+account material is supplied; account-bearing requests and Project reads retain
+current account verification. The status exception requires verified native
+Device proof; an ordinary account-bound Device with an account session still
+cannot read `/api/system/status`. Everything else — pairing, consent, terminal,
+plugin, operator and admin surfaces — refuses proof authority even for a broadly
+scoped Device. Each request re-proves: the JWS is verified against the exact
+received bytes and private peer provenance, the JTI is consumed once, and the
+binding, paired Device and account binding are re-read at every seam,
+including before and after each provider await. Revoking the Device, its
+binding, its account session or its Project membership stops protected bytes
+mid-delivery. A presented proof never falls back to a bearer or cookie, and a
+proof-bearing request can never read as the local operator.
+
+Limits: this is not packaged-Tauri, physical-device or production-identity
+evidence. The opt-in runtime mounts operator-only binding approval and public
+readback under `/api/pairing/native-device-bindings`; native proof authority
+cannot enter that operator path. Host peer/Device and separate structured account
+proof commands are registered on desktop and mobile. The selected native relay
+member route and account sign-in are source-composed into the UI; ordinary
+resource writes, operator and compute surfaces remain unsupported. A separate
+`STATION_NATIVE_ENROLLMENT_PILOT=1` enables the
+[native fresh enrollment ceremony](../design/native-relay-enrollment.md) with
+its pending account-provider, approved installation surface and operator Device
+approval requirements. Source composition and fixtures do not establish a
+fresh native application enrollment, executed application IPC, packaged or
+physical acceptance receipt.
+
+The [account operation owner](../../src-desktop/src/native_account_operations.rs)
+derives audience, Station, Device, surface, hashes, JTI and time through the
+current reconciled host owner. Its independent account key prepares a complete
+username/password exchange body before the application transport freezes and
+Device-signs that body. It does not expose `sign(bytes)` or accept principal,
+cookie or Device-bearer authority from the renderer. One exchange consumes an
+opaque context; untrusted expiry hints cannot reset replay or extend lifetimes,
+and effective expiry/key identity are checked after signing waits. Server
+native challenges still require an already account-bound approved Device and
+supported provider-native login; unsupported/OIDC relay login fails closed.
+
+A separate protected `GET/HEAD /api/auth/native-device-bindings/:bindingId/receipt`
+accepts only the owning current ordinary Device bearer with `orchestration:read`.
+Its exact account-bound Device bootstrap exception allows this public binding
+observation before account sign-in; it creates no account principal or Project
+authority. Historical revocation/replacement remains readable by the active
+Device owner, while revoking its bearer removes access. The response and
+`currentDeviceBinding` are observations, not permission to activate a native
+client or delete a provisional key after an unknown approval outcome. Native
+proofs, cookies and operator credentials cannot substitute for the Device bearer.
+See [the broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
+for the protocol and the production-composition test for the exercised
+boundary.

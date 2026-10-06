@@ -1,0 +1,7 @@
+{
+  "revision": "69084a9bc52c93cbb54e1abf3c1d09a0813474d4",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-read the independent review paragraph that links git-review-workspace-source.ts: it still resolves Git revisions, provisions a detached worktree and validates finding locations against the reviewed head; the new requirement that the Project folder's repository be its own is a refusal before those steps and contradicts no stated request or response shape. No prose change.","inputs":["docs/reference/api.md"]}
+  ]
+}

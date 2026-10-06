@@ -1,0 +1,17 @@
+{
+  "revision": "ee66c412c60c817dff6b96b859aa9b418f039f35",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.","inputs":["docs/learn/media/project-with-task.png"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.","inputs":["docs/learn/media/shared-task-document.png"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.","inputs":["docs/learn/media/connections-tour.webm"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.","inputs":["docs/learn/media/repository-knowledge.png"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.","inputs":["docs/learn/media/repository-knowledge-narrow.png"]}
+  ]
+}

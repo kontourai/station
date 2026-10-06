@@ -57,13 +57,22 @@ one standalone file, so `scripts/install-script-generated.mjs` projects that
 table, the pinned signing keys from `config/release-manifest-keys.json`,
 portable targets from `packages/shared/src/portable-server-targets.mjs`, and
 Node.js pins from `config/portable-server-node-runtime.json` into generated
-blocks; `npm run install-script:check` fails when they are
-stale, and `node scripts/install-script-generated.mjs --sync` rewrites them.
+blocks. It does the same for the Windows `install.ps1`: the channel list,
+the pinned win32-x64 Node.js zip, and the installer core bundled from
+`packages/shared/src/installer/` (which carries the signing keys and the
+shared manifest verifier). `npm run install-script:check` fails when either
+installer is stale, and `node scripts/install-script-generated.mjs --sync`
+rewrites them.
 
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
 (`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
 nightly key; the authenticated GitHub-release path serves stable and beta
-only. This is the installer contract; publication is tracked separately in #2675. Nightly has no
+only. This is the installer contract; publication is tracked separately in #2675. Stable and
+beta also accept a signed public manifest through the same variable. The
+release workflows can publish one per ring (`portable-stable`,
+`portable-preview`) once the owner enables them; see
+[signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
+The default path for stable and beta is still the authenticated one. Nightly has no
 public/runtime name split: the ring, the runtime, and the provenance channel
 are all `nightly`, and its version is `X.Y.Z-nightly.<code>` with `<code>`
 reserved by `nightly-version-code`. `STATION_VERSION` accepts an exact
@@ -86,7 +95,8 @@ A signed public manifest (schema 2) names prebuilt server archives by
 platform (`station-server-<os>-<arch>`). The shell installer supports macOS
 and Linux on x64 or arm64 and requires a matching tar.gz artifact and a
 compatible launcher-protocol range; the manifest's Windows zip is not a
-shell-installer target. `install.sh` verifies the manifest
+shell-installer target. The Windows zip is `install.ps1`'s; see
+[Windows archive installs](#windows-archive-installs). `install.sh` verifies the manifest
 against the pinned keys, picks this host's archive, checks its size and
 sha256, its `.station-prebuilt-archive` marker and its `.station-release.json`
 provenance, and extracts it to
@@ -165,6 +175,83 @@ Known limits until later #2675 slices:
   the install root. Uninstall with a current `install.sh`.
 - Uninstall refuses while a service runs the archive install; remove the
   service first. A source release cannot replace an archive a service runs.
+
+
+### Windows archive installs
+
+`install.ps1` installs the `station-server-win32-x64.zip` archive from a
+signed public manifest only (`STATION_INSTALL_PUBLIC_MANIFEST_URL`; there is
+no authenticated GitHub-release path on Windows). It runs on Windows
+PowerShell 5.1 and PowerShell 7, either as
+`powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1` or through
+`irm <url> | iex` (configuration comes only from the environment, so the
+`iex` form cannot uninstall). It verifies with a host Node.js 20 or newer,
+the installed version's `runtime\node.exe`, or the pinned official Node.js
+zip, checked by sha256. It then does what `install.sh` does for an archive,
+with the same variables, files and messages:
+
+- the version is verified and sealed under
+  `%USERPROFILE%\.station\installs\<channel>\versions\<version>`;
+- `current` is a directory junction to it, switched by removing `current`
+  and renaming `current.next` into its place; a later run finishes a switch a
+  crash interrupted;
+- the owned launcher is `station.cmd`, `station-beta.cmd` or
+  `station-nightly.cmd` in `%USERPROFILE%\.local\bin` (or
+  `STATION_BIN_DIR`), recognized by its exact text
+  (`rem station-owned-launcher-v2`); the installer prints a PATH hint and
+  never edits PATH. cmd.exe reads a batch file in the console code page, so
+  paths beneath the profile are written through `%USERPROFILE%` (a profile
+  such as `C:\Users\José` works) and any other non-ASCII path is refused.
+  The launcher hands over to the version without CALL, so arguments with
+  `^` or `%` arrive unchanged;
+- schema 4 state records the manifest URL and the ports;
+- ports come from `STATION_INSTALL_SERVER_PORT`/`STATION_INSTALL_UI_PORT`,
+  then the recorded ports, then the channel's. Unlike `install.sh`, it never
+  reads `STATION_SERVER_PORT`/`STATION_UI_PORT`;
+- the downgrade and same-version-new-bytes refusals, with the
+  `STATION_VERSION` plus `STATION_INSTALL_ALLOW_ROLLBACK=1` opt-in, and the
+  nightly coexistence refusals above;
+- stop, switch, start, restoring the previous version (or removing a first
+  install) when a step fails; the restored version starts on the ports its
+  restored state records (install.sh restarts it on the new ones); `STATION_INSTALL_NO_START=1` skips the start.
+  It keeps the active and the previous version and removes the others; a
+  version a process still holds is left for the next install, with a warning.
+
+Uninstall with the installed copy, which stops Station and keeps its data
+unless `-PurgeData` is given:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.station\installs\stable\current\install.ps1" uninstall
+```
+
+Permissions: every root must be an absolute path, and the install root must
+lie beneath the user profile. Install and uninstall check an existing
+install root before reading or running anything in it, and run a
+`node.exe` only from a `current` that names a directory of its
+`versions`. The installer gives a new install root a
+protected ACL that grants only the current user, and refuses an existing
+one whose ACL grants anyone else, since a version in it could have been
+planted. `install.ps1` runs the installed `node.exe` only from such a root.
+Such a root (for example one a stage-only run created before the installer
+restricted roots) is removed by uninstalling it with a freshly downloaded
+`install.ps1`: uninstall runs nothing from an unrestricted root, not even its
+`station stop`, so it refuses while a Station still answers on the ports the
+install recorded (stop it first), and otherwise removes the program files
+and keeps the data.
+The launcher directory must not be writable by accounts other than the
+user, SYSTEM and Administrators.
+
+A Station the installer starts keeps Windows PowerShell's own output handle
+(.NET passes every inheritable handle to the processes it starts). A caller
+that reads `install.ps1`'s output through a pipe therefore sees its end only
+when that Station stops; PowerShell itself returns as soon as the install
+does. A console, `irm | iex` and `station upgrade` are unaffected, and
+`STATION_INSTALL_NO_START=1` avoids it.
+
+A Station service is not switched on Windows yet (#2675 slice W3): an install
+or uninstall whose install root a service runs is refused, with the remedy.
+`station upgrade` from a Windows archive install re-runs the active
+version's `install.ps1` through the system Windows PowerShell.
 
 ## Platform identity matrix
 

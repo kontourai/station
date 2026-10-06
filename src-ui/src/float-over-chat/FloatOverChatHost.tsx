@@ -4,7 +4,7 @@ import type {
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -36,9 +36,13 @@ import {
 import { useFeatureSettings } from '../hooks/useFeatureSettings';
 import {
   LiveSurfaceCanvas,
-  type LiveSurfaceControllerTone,
   type LiveSurfaceControlState,
 } from '../live-surface/LiveSurfaceCanvas';
+import { BrowserPageDialog } from '../workspace-panes/browser-pane/BrowserPageDialog';
+import {
+  browserPaneApi,
+  describeBrowserFailure,
+} from '../workspace-panes/browser-pane/browserPaneApi';
 import {
   DEVICE_PLACEHOLDER_ASPECT,
   deviceCornerRadius,
@@ -85,6 +89,7 @@ import {
 } from './floatStore';
 import {
   agentInputOf,
+  DRIVER_TEXT,
   type RecentAgentInput,
   useRecentDriver,
 } from './recentDriver';
@@ -734,13 +739,6 @@ function chosenWidth(width: number): number {
   return Math.max(width, FLOAT_MIN_SIZE.width);
 }
 
-const CONTROLLER_TEXT: Record<LiveSurfaceControllerTone, string> = {
-  agent: 'An agent is driving',
-  you: 'You are in control',
-  other: 'Someone else is in control',
-  none: 'No one is in control',
-};
-
 /** Invisible grab zones straddling each edge; the cursor is the only affordance. */
 const RESIZE_ZONES: readonly FloatResizeDirection[] = [
   'north',
@@ -890,6 +888,46 @@ function BrowserFloat({
 }) {
   const host = hostOf(session.url);
   const openBrowser = useOpenBrowserSessionInRegion();
+  const queryClient = useQueryClient();
+  const [control, setControl] = useState<LiveSurfaceControlState | null>(null);
+  const pendingDialog = session.pendingDialog;
+  // One stable reporter per upstream callback: the canvas re-reports its
+  // control state whenever this prop changes, so a fresh closure per render
+  // would loop (report → state → render → new closure → report).
+  const reporters = useRef(
+    new WeakMap<
+      (state: LiveSurfaceControlState) => void,
+      (state: LiveSurfaceControlState) => void
+    >(),
+  );
+  const reportControl = (
+    upstream: (state: LiveSurfaceControlState) => void,
+  ) => {
+    let reporter = reporters.current.get(upstream);
+    if (!reporter) {
+      reporter = (state) => {
+        upstream(state);
+        setControl(state);
+      };
+      reporters.current.set(upstream, reporter);
+    }
+    return reporter;
+  };
+  const answer = useMutation({
+    mutationFn: (reply: {
+      dialogId: string;
+      accept: boolean;
+      promptText?: string;
+    }) =>
+      browserPaneApi(apiBase, transport).answerDialog(
+        session.browserSessionId,
+        reply,
+      ),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['float-over-chat', apiBase, 'sessions', session.projectSlug],
+      }),
+  });
   const { projectId, browserSessionId } = session;
   const openInPanel = useMemo(() => {
     if (!openBrowser) return null;
@@ -920,15 +958,43 @@ function BrowserFloat({
       agentInput={agentInputOf(session, receivedAt)}
       openInPanel={openInPanel}
       renderSurface={(onControlState) => (
-        <LiveSurfaceCanvas
-          apiBase={apiBase}
-          surfaceId={source.surfaceId}
-          label={`Browser: ${host}`}
-          transport={transport}
-          hostControls
-          inputRequiresLease
-          onControlState={onControlState}
-        />
+        // A dialog the page holds for the person driving from here is
+        // answered here too: otherwise the float is a page that refuses
+        // every click for no visible reason (#90).
+        <div className="float-over-chat__browser">
+          <LiveSurfaceCanvas
+            apiBase={apiBase}
+            surfaceId={source.surfaceId}
+            label={`Browser: ${host}`}
+            transport={transport}
+            hostControls
+            inputRequiresLease
+            onControlState={reportControl(onControlState)}
+          />
+          {pendingDialog ? (
+            <div className="float-over-chat__dialog-layer float-over-chat__dialog-layer--compact">
+              <BrowserPageDialog
+                compact
+                key={pendingDialog.dialogId}
+                dialog={pendingDialog}
+                pageHost={host}
+                pending={answer.isPending}
+                error={
+                  answer.isError ? describeBrowserFailure(answer.error) : null
+                }
+                onAnswer={(reply) =>
+                  answer.mutate({ dialogId: pendingDialog.dialogId, ...reply })
+                }
+                {...(openInPanel
+                  ? { onOpenInPane: () => void openInPanel() }
+                  : {})}
+                {...(control?.tone === 'you'
+                  ? { onKeepAlive: () => void control.keepControlAlive() }
+                  : {})}
+              />
+            </div>
+          ) : null}
+        </div>
       )}
     />
   );
@@ -1284,7 +1350,7 @@ function FloatPlayer({
     dotRef.current?.focus();
   };
 
-  const status = control ? CONTROLLER_TEXT[tone] : 'Connecting…';
+  const status = control ? DRIVER_TEXT[tone] : 'Connecting…';
   return (
     <section
       className="float-over-chat__player"

@@ -1,0 +1,51 @@
+{
+  "path": "docs/design/ssh-launched-environments.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained native implementation separated from removed launch/pairing UI; actual Add computer path creates server-owned SSH environment, while saved-forward rows retain status and SHA warning behavior.",
+
+  "limits": "No native build, live SSH/remote Git/install/pairing/reconnect or dispatch qualification. Source absence search cannot prove all future dynamic callers; historical end-to-end acceptance is not currently mounted.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "packages/connect/src/core/types.ts",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/ssh_launcher.rs",
+
+    "src-ui/src/__tests__/AddMachineModal.test.tsx",
+
+    "src-ui/src/__tests__/SshComputerCreatorDialog.test.tsx",
+
+    "src-ui/src/platform/native/sshLauncher.ts",
+
+    "src-ui/src/views/connections-hub/AddMachineModal.tsx",
+
+    "src-ui/src/views/connections-hub/ComputersSection.tsx",
+
+    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx",
+
+    "src-ui/src/views/connections-hub/__tests__/sshForwardState.test.ts",
+
+    "src-ui/src/views/connections-hub/sshForwardState.ts"
+  ],
+
+  "checks": [
+    "Full original body read; bounded actual-owner/caller review. Purpose classification is separate from whole-document semantic review.",
+
+    "Focused batch: 140 tests across 9 files passed; documentation links397, index, MCP98 and Conduit generated parity passed.",
+
+    "Reviewed source changes: Formatting-only host-key policy array change; the strict known-host policy and caller argv are unchanged. Independent native and design delta review confirmed added desktop notification-feed/diagnostic-echo composition; unchanged credential and SSH ownership claims remain bounded. No native application-channel activation or physical-device result is inferred. Removed ResolvedHostTunnelAccess only; documented SavedConnection and failure/status shapes unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed integration deltas: src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through e0314c727: the only lib.rs change is removal of the dormant notification_watch commands and state. The retained native SSH implementation and Add computer path descriptions are unaffected and accurate. Classification review only."
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "9c8a1e941a18b424104a8df6b185adc266410c55",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"The ratchet changed after the first review: a self-closing element no longer breaks a run of labelled actions, and the remedy text now names ChatDockHeaderMoreMenu. Re-read the Action rows section against the script; 'an unbroken run of more than two labelled Button or button siblings' and every listed limit still hold, and the page never described what breaks a run.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

@@ -1,16 +1,9 @@
-import {
-  MS_PER_DAY,
-  MS_PER_HOUR,
-  MS_PER_MINUTE,
-} from '@kontourai/station-contracts/time';
+import { relativeTime } from '../../utils/relativeTime';
 import type { DocMeta, KnowledgeSearchResult } from './types';
 
+/** The one compact time format, for an ISO stamp. */
 export function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < MS_PER_MINUTE) return 'just now';
-  if (diff < MS_PER_HOUR) return `${Math.floor(diff / MS_PER_MINUTE)}m ago`;
-  if (diff < MS_PER_DAY) return `${Math.floor(diff / MS_PER_HOUR)}h ago`;
-  return `${Math.floor(diff / MS_PER_DAY)}d ago`;
+  return relativeTime(Date.parse(iso), Date.now());
 }
 
 export function buildRulesContent(results: KnowledgeSearchResult[] = []) {

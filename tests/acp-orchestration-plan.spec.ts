@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { selectCodingPane } from './helpers/coding-stack';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
@@ -181,7 +182,7 @@ test.describe('ACP orchestration + plan surface (#149)', () => {
   }, testInfo) => {
     await openChatDockAndStream(page);
 
-    await page.getByRole('tab', { name: /(?:evidence:plan|Plan)/ }).click();
+    await selectCodingPane(page, 'Plan');
 
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {

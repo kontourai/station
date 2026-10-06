@@ -13,6 +13,7 @@ import { registerAgentTools } from './station-control-agent-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
+import { registerDeclarePullRequestTools } from './station-control-declare-pull-request-tools.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPlatformTools } from './station-control-platform-tools.js';
@@ -25,10 +26,13 @@ import {
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
+import { registerSessionSearchTools } from './station-control-session-search-tools.js';
+import { registerSessionTools } from './station-control-session-tools.js';
 import {
   getStationControlCaller,
   jsonToolResult,
 } from './station-control-shared.js';
+import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
 
 /**
  * #2377 slice A: the tool-side half of the station-control authority table.
@@ -79,13 +83,47 @@ function withToolSideRefusal<
   return guarded as Callback;
 }
 
+function stationControlToolMetadata(name: string) {
+  const groups: [string, RegExp][] = [
+    ['Knowledge', /knowledge/],
+    ['Evidence', /basis|review|receipt/],
+    ['Agents', /agent/],
+    ['Projects', /project|layout|^board_/],
+    ['Chats', /conversation|session|message/],
+    ['Tasks', /task|delegat|ssh_environment|pull_request/],
+    ['Scheduling', /job|schedul/],
+    ['Skills', /skill/],
+    ['Integrations', /integration|provider|plugin/],
+  ];
+  const group =
+    groups.find(([, pattern]) => pattern.test(name))?.[0] ?? 'Station';
+  const policy = stationControlToolPolicy(name);
+  return {
+    title: name
+      .replaceAll('_', ' ')
+      .replace(/^./, (letter) => letter.toUpperCase()),
+    _meta: { 'ai.kontour/tool-group': group },
+    ...(policy
+      ? { annotations: { readOnlyHint: policy.toolClass === 'read-only' } }
+      : {}),
+  };
+}
+
 /**
  * The small registration surface shared by Station's built-in control tools.
  * It keeps the domain modules independent of transport while registering
  * native v2 tools with object schemas.
  */
 export class StationControlToolRegistry {
-  constructor(private readonly server: McpServer) {}
+  constructor(
+    private readonly server: McpServer,
+    private readonly catalog?: (
+      name: string,
+      description: string,
+      shape?: z.ZodRawShape,
+    ) => void,
+    private readonly allowedTools?: readonly string[],
+  ) {}
 
   tool<Shape extends z.ZodRawShape>(
     name: string,
@@ -93,9 +131,12 @@ export class StationControlToolRegistry {
     shape: Shape,
     callback: ToolCallback<z.ZodObject<Shape>>,
   ) {
+    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    this.catalog?.(name, description, shape);
     return this.server.registerTool(
       name,
       {
+        ...stationControlToolMetadata(name),
         description,
         inputSchema: z.object(shape),
       },
@@ -109,9 +150,11 @@ export class StationControlToolRegistry {
     inputSchema: Schema,
     callback: ToolCallback<Schema>,
   ) {
+    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    this.catalog?.(name, description);
     return this.server.registerTool(
       name,
-      { description, inputSchema },
+      { ...stationControlToolMetadata(name), description, inputSchema },
       withToolSideRefusal(name, callback),
     );
   }
@@ -136,14 +179,23 @@ export class StationControlToolRegistry {
     // structural ServerContext types. The helper only calls registerTool;
     // keep the compatibility cast at this one adapter while still using the
     // official metadata normalization rather than reimplementing it.
+    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    this.catalog?.(name, description);
     const callback = withToolSideRefusal(name, unguardedCallback);
+    const metadata = stationControlToolMetadata(name);
     return registerAppTool(
       this.server as unknown as Parameters<typeof registerAppTool>[0],
       name,
       {
         description,
         inputSchema,
+        ...metadata,
         ...config,
+        _meta: { ...metadata._meta, ...config._meta },
+        annotations: {
+          ...metadata.annotations,
+          ...config.annotations,
+        },
       } as unknown as Parameters<typeof registerAppTool>[2],
       callback as unknown as Parameters<typeof registerAppTool>[3],
     );
@@ -177,19 +229,36 @@ export class StationControlToolRegistry {
  * adapters provide the explicit legacy compatibility boundary.
  */
 export function createStationControlMcpServer(): McpServer {
+  return createSelectedStationControlMcpServer();
+}
+
+export function createSelectedStationControlMcpServer(
+  allowedTools?: readonly string[],
+  catalog?: (name: string, description: string, shape?: z.ZodRawShape) => void,
+  profile: 'station-control' | 'station-knowledge' = 'station-control',
+): McpServer {
   const server = new McpServer(
     {
-      name: 'station-control',
+      name: profile,
       version: '2.0.0',
     },
     {
+      capabilities: { tools: {} },
       cacheHints: {
         'server/discover': { ttlMs: 300_000, cacheScope: 'private' },
         'tools/list': { ttlMs: 300_000, cacheScope: 'private' },
       },
     },
   );
-  const registry = new StationControlToolRegistry(server);
+  const registry = new StationControlToolRegistry(
+    server,
+    catalog,
+    allowedTools,
+  );
+  if (profile === 'station-knowledge') {
+    registerKnowledgeDataTools(registry);
+    return server;
+  }
   registerAgentTools(registry);
   registerBoardTools(registry);
   registerCatalogTools(registry);
@@ -197,6 +266,29 @@ export function createStationControlMcpServer(): McpServer {
   registerPlatformTools(registry);
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
+  registerSessionSearchTools(registry);
+  registerSessionTools(registry);
   registerNotifyTools(registry);
+  registerDeclarePullRequestTools(registry);
   return server;
+}
+
+export function stationControlToolCatalog() {
+  const tools: {
+    name: string;
+    description: string;
+    readOnly: boolean;
+    group: string;
+    title: string;
+  }[] = [];
+  createSelectedStationControlMcpServer(undefined, (name, description) => {
+    tools.push({
+      name,
+      description,
+      group: stationControlToolMetadata(name)._meta['ai.kontour/tool-group'],
+      title: stationControlToolMetadata(name).title,
+      readOnly: stationControlToolPolicy(name)?.toolClass === 'read-only',
+    });
+  });
+  return tools;
 }

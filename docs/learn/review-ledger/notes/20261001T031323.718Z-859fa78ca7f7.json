@@ -1,0 +1,31 @@
+{
+  "revision": "aa3a329b8388be4a58e366c11ae06e59e768198a",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. tool-request-preview.ts splits toolRequestIsPlanExit (ExitPlanMode, switch_mode) from toolRequestNeedsPerson (also AskUserQuestion); toolRequestSessionGrant uses the latter. The page's plan-exit, question and delegated-child sentences still match; the child test now pins the question deny and the malformed-question format deny. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/guides/agents.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. 'What autoApprove never covers' still names switch_mode and ExitPlanMode as the ACP plan exits, and the questions section still says a question is never granted under wildcard auto-approval. No prose change.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. The ACP sentence (acceptForSession on a plan exit counts as accept, allow-once, no grant) still matches respondToRequest. No prose change.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/guides/acp.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. The requestPermission prompt path and allow_once/reject_once mapping are as documented. No prose change.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/acp-chat-architecture.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["docs/acp-chat-architecture.md"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md"]},
+
+    {"path":"docs/guides/connections.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/api.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["docs/reference/station-docs.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2933 follow-up: acp-adapter.ts now reads toolRequestNeedsPerson (plan exit or a tool named AskUserQuestion) where it read toolRequestIsPlanExit, with the pending field renamed needsPerson; behaviour is unchanged from the merged tree. No claim in this document depends on it. No prose change.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

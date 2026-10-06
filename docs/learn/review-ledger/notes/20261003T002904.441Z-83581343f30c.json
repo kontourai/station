@@ -1,0 +1,21 @@
+{
+  "revision": "5e6fbfedca2315119d1d20a7829252899c52c15a",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the changed Monitoring route description against the added Profile usage section; audience links and existing routes remain intact.","inputs":["docs/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the monitoring-guide delta against Observation paths need clear definitions and completeness. Profile freshness and Muse scope do not close the documented Insights file-completeness or collector gaps; those findings remain accurate.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the changed API and SDK contract sections against the integration reading routes. Polling, snapshot metadata and scoped paired-person reads do not establish hosted or commercial billing acceptance; existing integration limits remain accurate.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed Profile identity versus Station-wide totals, minute-bounded refresh and scan metadata, retained high-water/model attribution limits, UTC daily-history scope, approved person grouping and protected registry reads. Executed 408 adapter/import/fold/UI checks and 133 final focused checks; Muse captured-wire regression failed before its scope declaration and passed after it. Typechecked SDK/UI/server and built UI. Real provider billing and native-device proof remain NOT_VERIFIED; browser verification is recorded separately.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed usage GET freshness, serialized/coalesced rescans, snapshot metadata, achievement snapshot consumption, reset accumulator/rebuild semantics and unchanged receipt authority/window contract. Real route plus aggregator regressions failed on baseline stale totals and invalid reset and passed after repair. Historical completeness and provider invoices remain outside this evidence.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed 30-second active analytics polling, stale mount/focus overrides, broad rescan invalidation and request-scoped paired-device cache/HTTP reads. Real QueryClient polling and missing-scope isolation checks passed; shared getJson is the existing authority guard. Public source changes require a release before external installed consumers gain them.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"examples/shared-providers/README.md","note":"Reviewed ProfilePage delta: achievement links still flow from pluginRegistry.getLinks(achievements) to AchievementsBadge. Paired-person profiles use approved device bindings and do not upgrade the example directory placeholders into verified identities.","inputs":["examples/shared-providers/README.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed SDK reference delta against this routing policy. No new app-internal imports or cancellation contract were introduced; SDK boundary and focused-evidence guidance remain accurate.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

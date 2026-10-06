@@ -46,24 +46,27 @@ describe('ManualAddPanel explicit HTTP exception', () => {
     ).toBeTruthy();
   });
 
-  it('shows the hint when the entry is http:// to a raw IP', () => {
-    renderPanel('http://192.168.1.5:3141');
-    expect(screen.getByText(HINT)).toBeTruthy();
-    const add = screen.getByRole('button', { name: 'Add' });
-    expect(add.hasAttribute('disabled')).toBe(true);
-    fireEvent.click(
-      screen.getByRole('checkbox', {
-        name: 'Allow an unencrypted connection',
-      }),
-    );
-    expect(add.hasAttribute('disabled')).toBe(false);
-    fireEvent.click(
-      screen.getByRole('checkbox', {
-        name: 'Allow an unencrypted connection',
-      }),
-    );
-    expect(add.hasAttribute('disabled')).toBe(true);
-  });
+  it.each(['http://192.168.1.5:3141', 'http://localhost:3141'])(
+    'requires explicit unencrypted-connection consent for %s',
+    (url) => {
+      renderPanel(url);
+      expect(screen.getByText(HINT)).toBeTruthy();
+      const add = screen.getByRole('button', { name: 'Add' });
+      expect(add.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(
+        screen.getByRole('checkbox', {
+          name: 'Allow an unencrypted connection',
+        }),
+      );
+      expect(add.hasAttribute('disabled')).toBe(false);
+      fireEvent.click(
+        screen.getByRole('checkbox', {
+          name: 'Allow an unencrypted connection',
+        }),
+      );
+      expect(add.hasAttribute('disabled')).toBe(true);
+    },
+  );
 
   it('hides the hint for an https entry', () => {
     renderPanel('https://station.foo.ts.net');
@@ -75,8 +78,14 @@ describe('ManualAddPanel explicit HTTP exception', () => {
     expect(screen.queryByText(HINT)).toBeNull();
   });
 
-  it('hides the hint for http to loopback', () => {
-    renderPanel('http://localhost:3141');
-    expect(screen.queryByText(HINT)).toBeNull();
-  });
+  it.each(['http://127.0.0.1:3141', 'http://[::1]:3141'])(
+    'keeps the numeric-loopback exception for %s',
+    (url) => {
+      renderPanel(url);
+      expect(screen.queryByText(HINT)).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Add' }).hasAttribute('disabled'),
+      ).toBe(false);
+    },
+  );
 });

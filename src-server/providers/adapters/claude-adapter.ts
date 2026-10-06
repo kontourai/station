@@ -21,6 +21,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
@@ -40,12 +41,27 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
-import type {
-  PreToolPolicyDecision,
-  StagedPreToolPolicyEvaluator,
+import {
+  harnessAnswerTexts,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
+import {
+  type ClaudeAskReason,
+  sessionGrantPermissionUpdates,
+  type ToolRequestGrantInput,
+  type ToolRequestSessionGrant,
+  toolRequestIsPlainCall,
+  toolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
+import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
+import {
+  delegatedApprovalDenial,
+  type PreToolPolicyDecision,
+  type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
+import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   agentCapabilityUndelivered,
@@ -78,8 +94,16 @@ import {
   ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
-import { CredentialProfileEnvUnavailableError } from '../app-home/credential-profile-env.js';
-import { detectClaudeAuthState } from '../auth/claude-auth.js';
+import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
+import {
+  type ClaudeAuthStatusProbe,
+  detectClaudeAuthState,
+  parseClaudeAuthStatus,
+} from '../auth/claude-auth.js';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
   augmentedSpawnEnv,
@@ -105,8 +129,12 @@ import {
 import {
   type ClaudeActiveTask,
   type ClaudeMessageState,
+  claudeAskFlags,
+  claudeRequestDisplayText,
+  claudeSandboxNetworkTitle,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
+  reportClaudePermissionMode,
   settleUnresolvedClaudeToolCalls,
   withdrawnSubagentPermissionResult,
 } from './claude-adapter-events.js';
@@ -118,6 +146,11 @@ import {
   mapPermissionModeToApprovalMode,
   resolveClaudePermissionMode,
 } from './claude-approval-mode.js';
+import {
+  type ClaudeEngineProcess,
+  claudeExitDetailWithStderr,
+  createClaudeEngineProcess,
+} from './claude-code-spawn.js';
 import {
   type ClaudeToolServerSkip,
   resolveClaudeMcpServers,
@@ -158,6 +191,7 @@ import {
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
+import { claudeQuestionnaire } from './harness-questions.js';
 
 type PendingRequest = {
   resolve: (result: PermissionResult) => void;
@@ -166,6 +200,13 @@ type PendingRequest = {
   toolName: string;
   /** The SDK agent id when a subagent, not the main thread, asked (#2316). */
   agentId?: string;
+  /**
+   * What a session answer grants (#2915, #2916). The same computation decides
+   * whether the approval surfaces offer it.
+   */
+  sessionGrant: ToolRequestSessionGrant;
+  questionnaire?: HarnessQuestionnaire;
+  eventId: string;
 };
 
 /** The command Station resolves on PATH for this engine. */
@@ -174,6 +215,28 @@ const CLAUDE_CLI_COMMAND = 'claude';
 const CLAUDE_CLI_PREREQUISITE_ID = `${CLAUDE_CLI_COMMAND}-cli`;
 /** The one probe both readiness and the launch decision share (#1551). */
 const CLAUDE_VERSION_ARGS = ['--version'];
+/**
+ * #3303: the installed CLI's own login answer, for hosts where the credentials
+ * live in the macOS Keychain and no `.credentials.json` exists. The `auth`
+ * command arrived in 2.1.41 (upstream CHANGELOG); a CLI before that parses
+ * `auth status` as a chat prompt, so it is asked only once the version probe
+ * has shown a CLI at least that new.
+ */
+const CLAUDE_AUTH_STATUS_ARGS = ['auth', 'status', '--json'];
+const CLAUDE_AUTH_STATUS_MIN_VERSION = '2.1.41';
+/**
+ * SIGKILL at the deadline: a CLI that ignores SIGTERM would otherwise outlive
+ * it. Only the direct child is killed; a grandchild of a wrapper launcher
+ * (mise/npx) can be orphaned.
+ */
+const CLAUDE_AUTH_STATUS_TIMEOUT_MS = 8_000;
+const CLAUDE_AUTH_STATUS_MAX_BUFFER = 64 * 1024;
+/**
+ * Readiness is polled: a definitive answer is reused this long, and a failed
+ * probe a shorter while so a broken or hanging CLI is not spawned on every poll.
+ */
+const CLAUDE_AUTH_STATUS_TTL_MS = 15_000;
+const CLAUDE_AUTH_STATUS_FAILURE_TTL_MS = 5_000;
 /**
  * A version at the START of a line — never mid-sentence, so prose such as
  * "a newer version 2.1.300 is available" cannot be mistaken for the version
@@ -564,6 +627,8 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
+  engineStderrTail?: () => string;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
   pendingRequests: Map<string, PendingRequest>;
@@ -586,11 +651,19 @@ type ClaudeSessionRecord = {
   childWork?: ClaudeChildWorkState;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
-  /** Tracks the live SDK permission mode so sendTurn only calls
-   * `setPermissionMode` when the resolved approvalMode actually changes.
-   * `undefined` until Station sent a mode or the engine's `system/init`
-   * reported one (station#1950: omit-the-knob inherits Claude settings). */
+  /** The engine's live permission mode, as Station last sent it or the
+   * engine reported it (`system/init`, a `status` mode change, a forwarded
+   * `setMode`). `undefined` until one of those (station#1950:
+   * omit-the-knob inherits Claude settings). Turn metadata reports it. */
   currentPermissionMode?: PermissionMode;
+  /**
+   * #2915/#2916: the mode Station last REQUESTED (at spawn or through
+   * `setPermissionMode`), kept apart from `currentPermissionMode`, which
+   * follows the engine's own reports. A turn applies the posture only when
+   * it differs from this request, never merely because the engine moved
+   * (into plan mode, say): only the plan's review ends plan mode.
+   */
+  requestedPermissionMode?: PermissionMode;
   /**
    * Whether this live process was spawned with
    * `allowDangerouslySkipPermissions: true` — the SDK requires that flag be
@@ -625,6 +698,8 @@ type ClaudeSessionRecord = {
    * so `sendTurn` can reset it per-turn. See that field's docblock.
    */
   lastReportedModel?: string;
+  /** #3163: mirrors `ClaudeMessageState.claudeConfigHome`. */
+  claudeConfigHome?: string;
   /**
    * archive#1174: set only when this session's skills were materialized
    * into the Station-owned cwd-less overlay (see claude-skills-overlay.ts)
@@ -647,6 +722,25 @@ function adoptionTitle(threadId: string): string {
 }
 
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
+
+/**
+ * #3163: the config home a spawn resolves, in `buildOptions`' own env layer
+ * order (ambient, then the connection, then the app home). The global default
+ * (`~/.claude`) when none sets it.
+ */
+function claudeSpawnConfigHome(
+  appHomeEnv: Record<string, string> | undefined,
+  connectionEnv: Record<string, string> | undefined,
+  augmentedEnv: Record<string, string | undefined> | undefined,
+): string {
+  const configured =
+    appHomeEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
+    connectionEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
+    (augmentedEnv ?? process.env)[CLAUDE_CONFIG_DIR_ENV_KEY];
+  return configured?.trim()
+    ? nodePath.resolve(configured.trim())
+    : nodePath.join(homedir(), '.claude');
+}
 
 /**
  * station#2072: the connection env's config-home key applies only to
@@ -715,6 +809,18 @@ export interface ClaudeAdapterOptions {
     signal?: AbortSignal,
   ) => Promise<CliCommandResult | null>;
   /**
+   * #3303: runs the `claude auth status` login probe. Defaults to the shared
+   * `runCliCommand`, with a tighter deadline and output bound. Separate from
+   * `runCommand` because that one is the memoized `--version` probe.
+   */
+  runAuthStatusCommand?: (
+    command: string,
+    args: string[],
+    signal?: AbortSignal,
+    envOverlay?: Record<string, string>,
+    bounds?: { timeoutMs?: number; maxBuffer?: number },
+  ) => Promise<CliCommandResult | null>;
+  /**
    * #1551: the Claude Code version bundled inside the Agent SDK. Defaults to
    * reading the SDK package's own `manifest.json`. Injected so the
    * older/newer/equal and "manifest unreadable" branches are all executed by
@@ -739,13 +845,13 @@ export interface ClaudeAdapterOptions {
    * model, channel 2) — `undefined` when the claude connection has
    * not opted in (`config.useAppHome`). For a selected credential profile it
    * is the profile's env overlay under its `CLAUDE_CONFIG_DIR` (#2966), and a
-   * failure throws `CredentialProfileEnvUnavailableError`, which
+   * failure throws `CredentialProfileEnvironmentError`, which
    * `resolveAppHomeEnv` never degrades. Applied at `startSession` only — see
    * `adoptSession`'s doc comment for why adoption deliberately never applies it.
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
-  ) => Promise<Record<string, string> | undefined>;
+  ) => Promise<ResolvedAppHome | undefined>;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -761,6 +867,7 @@ export interface ClaudeAdapterOptions {
    * credentials, so it never blocks a session start.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Station#1157 review fix (MEDIUM): the running instance's own
    * station-control operational env (`stationControlSpawnEnv(port)`'s
@@ -787,6 +894,12 @@ export interface ClaudeAdapterOptions {
   createInProcessStationControl?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
+  ) => unknown;
+  createInProcessStationKnowledge?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
   ) => unknown;
   /**
    * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
@@ -894,15 +1007,58 @@ function serverDelegation(
     : undefined;
 }
 
+/**
+ * How many Station policy allows are held for `canUseTool` at once. An entry
+ * the engine never asks about (it allowed the call itself) stays until it is
+ * the oldest; one dropped early costs a prompt, never a grant.
+ */
+const MAX_PENDING_POLICY_ALLOWS = 256;
+
+/** JSON with object keys sorted at every depth, so key order is no difference. */
+function stableJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJson);
+  if (value && typeof value === 'object') {
+    const source = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(source)
+        .sort()
+        .map((key) => [key, stableJson(source[key])]),
+    );
+  }
+  return value;
+}
+
+/**
+ * #2947: a digest of a tool call's input, binding a guardian allow to the
+ * input the guardian reviewed. Undefined for an input that cannot be
+ * serialised, which then matches nothing.
+ */
+function toolInputDigest(toolInput: unknown): string | undefined {
+  try {
+    const json = JSON.stringify(stableJson(toolInput));
+    if (json === undefined) return undefined;
+    return crypto.createHash('sha256').update(json).digest('hex');
+  } catch {
+    return undefined;
+  }
+}
+
 function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
+  // #2933, #2947: Station's allow is never a hook `allow`. After one, Claude
+  // Code 2.1.278 (as 2.1.261 before it) re-checks only deny rules, ask
+  // rules, safety checks, user-interaction tools, the MCP ceiling and a
+  // sandbox override, so the allow would skip its working-directory check
+  // and its plan-mode refusal: a Read outside the session's directories
+  // would run unasked. That holds for a tool-level grant (the agent's
+  // `tools.autoApprove`, decided from the tool name alone) and for the
+  // approval guardian's allow alike: the guardian reads the call's
+  // arguments, but not the session's directories or what the engine makes
+  // of the call. Express no opinion instead. The engine allows what it
+  // allows itself and asks `canUseTool` for the rest, where the patterns
+  // and the guardian's allow (kept by `evaluateClaudePreToolPolicy`) answer
+  // plain calls and every escalation or plan exit reaches a person.
   if (decision.behavior === 'allow') {
-    return {
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse' as const,
-        permissionDecision: 'allow' as const,
-      },
-    };
+    return { continue: true };
   }
   if (decision.behavior === 'deny') {
     return {
@@ -954,6 +1110,16 @@ async function evaluateClaudePreToolPolicy(
   input: { tool_name: string; tool_input: unknown; tool_use_id: string },
   invocation: InvocationContext,
   timeoutMs: number,
+  /**
+   * #2947: called for an allow that is not a tool-level grant. On this
+   * external path that is the approval guardian's allow, the only other
+   * allow the staged evaluator reaches before it hands interaction back.
+   */
+  onPolicyAllow: (
+    toolUseId: string,
+    toolName: string,
+    toolInput: unknown,
+  ) => void,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -985,6 +1151,9 @@ async function evaluateClaudePreToolPolicy(
         );
       }),
     ]);
+    if (decision.behavior === 'allow' && !decision.toolGrant) {
+      onPolicyAllow(input.tool_use_id, input.tool_name, input.tool_input);
+    }
     return preToolPolicyHookOutput(decision);
   } catch (error) {
     const reason = `Station pre-tool policy failed; tool execution was denied: ${errorMessage(error)}`;
@@ -1061,6 +1230,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     string,
     Promise<CliCommandResult | null>
   >();
+  /** #3303: recent definitive `claude auth status` answers, keyed by executable + env. */
+  private readonly authStatusProbes = new Map<
+    string,
+    { expiresAt: number; result: Promise<CliCommandResult | null> }
+  >();
   /** #2482: the shared, TTL-bounded model catalog probe (see `listModelCatalog`). */
   private readonly modelCatalog = new KeyedCatalogSingleFlight<{
     models: ModelOption[];
@@ -1088,16 +1262,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         input.threadId,
         input.agent,
       );
-    const appHomeEnv = sourceCursor
+    const resolvedHome = sourceCursor
       ? undefined
       : await this.resolveAppHomeEnv(input.credentialProfileRef);
+    const appHomeEnv = resolvedHome?.env;
     // station#2072: the connection env's routing keys apply to every SDK
     // spawn, but its config-home key must NOT apply where the app-home env
     // is deliberately absent (adoption and source-affinity resume —
     // archive#896 decision 2's config-root orphaning concern: running the
     // child under a different config home would strand it there).
+    const connectionLaunch = await this.options.getConnectionLaunch?.();
     const connectionEnv = claudeConnectionEnvForSpawn(
-      await this.resolveConnectionEnv(),
+      connectionLaunch
+        ? connectionLaunch.env
+        : await this.resolveConnectionEnv(),
       !sourceCursor,
     );
     const augmentedEnv = await this.resolveAugmentedSpawnEnv();
@@ -1115,6 +1293,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       augmentedEnv,
       preToolPolicy,
       claudeExecutable,
+      resolvedHome
+        ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+        : undefined,
+      connectionLaunch?.route,
     );
   }
 
@@ -1176,8 +1358,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // the same line for the connection env: its routing keys apply, its
       // config-home key does not (same orphaning concern as the app-home
       // env above).
+      const connectionLaunch = await this.options.getConnectionLaunch?.();
       const connectionEnv = claudeConnectionEnvForSpawn(
-        await this.resolveConnectionEnv(),
+        connectionLaunch
+          ? connectionLaunch.env
+          : await this.resolveConnectionEnv(),
         false,
       );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
@@ -1195,6 +1380,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         augmentedEnv,
         preToolPolicy,
         claudeExecutable,
+        undefined,
+        connectionLaunch?.route,
       );
     } catch (error) {
       // With lifecycle reporting, the durable owner has the child cursor (or
@@ -1304,12 +1491,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     augmentedEnv?: Record<string, string | undefined>,
     preToolPolicy?: StagedPreToolPolicyEvaluator,
     claudeExecutable?: string | null,
+    usageAccountKey?: string,
+    modelRoute?: ReturnType<typeof engineProxyLaunch>['route'],
   ): ProviderSession {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
     const permissionMode = this.resolvePermissionMode(input.modelOptions);
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input);
+    // #2932: Station owns the engine spawn so it can read the permission
+    // asks on the engine's stdout (see claude-code-spawn.ts).
+    const engineProcess = createClaudeEngineProcess();
     let sdkQuery: ReturnType<typeof query>;
     try {
       // After station-control, so the browser server reuses its credential.
@@ -1318,6 +1510,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         prompt: promptQueue,
         options: this.buildOptions(
           input,
+          engineProcess,
           persistSession,
           permissionMode,
           appHomeEnv,
@@ -1336,6 +1529,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     const session: ProviderSession = {
+      modelRoute,
       provider: this.provider,
       threadId: input.threadId,
       status: 'connecting',
@@ -1358,9 +1552,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       lastSessionState: 'idle',
       streamTask: Promise.resolve(),
       currentPermissionMode: permissionMode,
+      requestedPermissionMode: permissionMode,
       allowsBypassPermissions: permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
+      // #3163: where this session's subagent transcripts are written, so a
+      // later read (even after a restart) opens the same config home.
+      claudeConfigHome: claudeSpawnConfigHome(
+        appHomeEnv,
+        connectionEnv,
+        augmentedEnv,
+      ),
+      engineStderrTail: engineProcess.stderrTail,
     };
     // #2316/#2348: a subagent that ended can no longer be waiting on the
     // permission requests it raised; withdraw exactly those. Its siblings'
@@ -1380,10 +1583,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       method: 'session.started',
       sessionId: input.threadId,
       initialState: 'created',
-      metadata: { ...input.metadata, cwd: input.cwd },
+      metadata: {
+        ...input.metadata,
+        cwd: input.cwd,
+        usageAccountKey,
+        // station#3320: a resumed query() continues the cost total its
+        // transcript saved, so the usage fold must not add this process's
+        // figures to the previous one's. Set from the same cursor that
+        // `buildOptions` passes as the SDK `resume` option, and written
+        // after the caller's metadata so a copied marker cannot claim a
+        // resume this process did not make.
+        [NATIVE_SESSION_RESUMED_METADATA_KEY]: record.attemptedResumeCursor
+          ? true
+          : undefined,
+      },
     });
     const baseConfiguredMetadata: Record<string, unknown> = {
       ...input.metadata,
+      modelRoute,
+      usageAccountKey,
       ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
       // Explicit resolved values (not just the raw modelOptions spread
       // above) so the durable record reflects what the adapter actually
@@ -1570,7 +1788,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       record.bypassRefusalWarned = false;
     if (
       targetPermissionMode &&
-      targetPermissionMode !== record.currentPermissionMode
+      targetPermissionMode !== record.requestedPermissionMode
     ) {
       if (
         targetPermissionMode === 'bypassPermissions' &&
@@ -1605,8 +1823,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           });
         }
       } else {
-        await record.query.setPermissionMode(targetPermissionMode);
-        record.currentPermissionMode = targetPermissionMode;
+        // The engine may already run in it (a forwarded acceptEdits the
+        // server then recorded as Auto); the request is recorded either way.
+        if (targetPermissionMode !== record.currentPermissionMode) {
+          await record.query.setPermissionMode(targetPermissionMode);
+          record.currentPermissionMode = targetPermissionMode;
+        }
+        record.requestedPermissionMode = targetPermissionMode;
       }
     }
 
@@ -1896,6 +2119,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // confirms what happened; a second Stop must not clear the first one's
     // still-pending receipt either.
     await record.query.interrupt();
+    // #3071: the SDK can ask for one more permission while that interrupt is
+    // in flight. Whatever was raised in the gap is settled before the abort
+    // by the same rule as above, a subagent's included: every reader of the
+    // transcript retires every approval on `turn.aborted`
+    // (`approvalRetiredBy`), so a request left pending here would be live
+    // with no surface showing it. A background subagent that survives the
+    // stop loses that one call and asks again.
+    this.cancelPendingRequests(record, threadId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -2013,6 +2244,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
@@ -2020,17 +2252,64 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error(`Unknown Claude permission request: ${requestId}`);
     }
 
+    if (pending.questionnaire) {
+      if (
+        context?.expectedRequestEventId !== pending.eventId ||
+        decision === 'acceptForSession'
+      )
+        throw new Error('Inspect this question before answering it.');
+      if (decision === 'accept') {
+        const answers = validateHarnessQuestionAnswers(
+          pending.questionnaire,
+          context?.answers,
+        );
+        const claudeAnswers = Object.fromEntries(
+          pending.questionnaire.questions.map((question) => [
+            question.prompt,
+            harnessAnswerTexts(question, answers).join(', '),
+          ]),
+        );
+        pending.toolInput = { ...pending.toolInput, answers: claudeAnswers };
+      } else if (context?.answers !== undefined)
+        throw new Error('A declined question cannot carry answers.');
+    } else if (context?.answers !== undefined)
+      throw new Error('This request does not accept question answers.');
     record.pendingRequests.delete(requestId);
-    if (decision === 'acceptForSession') {
+    const grant = pending.sessionGrant;
+    // #2916 / #2915: where no session grant is offered (a plan exit, or an
+    // escalation with no directory to forward), the answer is for this one
+    // call: nothing is minted and no suggestion is forwarded.
+    const effectiveDecision =
+      decision === 'acceptForSession' && grant === 'none' ? 'accept' : decision;
+    // #2915: only a tool grant mints a Station tool grant. An edit-mode grant
+    // forwards the engine's acceptEdits mode change alone, and a folder grant
+    // its directory suggestions alone (the approved directory is then the
+    // engine's state); neither mints anything.
+    if (effectiveDecision === 'acceptForSession' && grant === 'tool') {
       record.approvedTools.add(pending.toolName);
     }
-    pending.resolve(
-      mapClaudeDecisionToPermissionResult(
-        decision,
-        pending.toolInput,
-        pending.suggestions,
-      ),
+    const result = mapClaudeDecisionToPermissionResult(
+      effectiveDecision,
+      pending.toolInput,
+      pending.suggestions &&
+        sessionGrantPermissionUpdates(grant, pending.suggestions),
     );
+    // #2915: a forwarded mode change is Station's own request and now the
+    // engine's mode. Both records follow it, so a turn whose posture differs
+    // (Auto was not recorded, or Ask was picked since) sends that posture.
+    if (result.behavior === 'allow') {
+      for (const update of result.updatedPermissions ?? []) {
+        if (update.type !== 'setMode') continue;
+        record.requestedPermissionMode = update.mode;
+        reportClaudePermissionMode(
+          record,
+          update.mode,
+          (event) => this.publish(event),
+          this.provider,
+        );
+      }
+    }
+    pending.resolve(result);
 
     this.publish({
       eventId: crypto.randomUUID(),
@@ -2238,14 +2517,21 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // inherited key here just as it does in the spawn. The app-home /
       // credential-profile layer is not modelled: resolving it can create
       // profile directories, which a readiness read must not do.
-      detectAuthState: async () =>
-        detectClaudeAuthState({
-          ...process.env,
-          ...claudeConnectionEnvForSpawn(
-            await this.resolveConnectionEnv(),
-            true,
-          ),
-        }),
+      //
+      // Where neither the env nor a credentials file answers (macOS keeps
+      // the login in the Keychain), the installed CLI is asked itself,
+      // under the same connection env (#3303).
+      detectAuthState: async () => {
+        const connectionEnv = claudeConnectionEnvForSpawn(
+          await this.resolveConnectionEnv(),
+          true,
+        );
+        return detectClaudeAuthState(
+          { ...process.env, ...connectionEnv },
+          undefined,
+          this.claudeAuthStatusProbe(executable, connectionEnv),
+        );
+      },
       installStep: 'Install the Claude CLI and ensure `claude` is on PATH.',
       authStep: 'Run `claude auth login` before starting Station.',
       signal: options?.signal,
@@ -2480,6 +2766,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (toolServers === undefined) return {};
 
     const tenantExecutionContext = input.tenantExecutionContext;
+    const control = toolServers.find(
+      (server) => server.id === 'station-control',
+    );
+    const selectedControlTools = control?.disabledTools?.length
+      ? (control.allowedTools ?? control.toolNames ?? []).filter(
+          (name) => !control.disabledTools!.includes(name),
+        )
+      : control?.allowedTools;
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
       {
@@ -2489,13 +2783,29 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           : {}),
       },
       {
+        ...(this.options.createInProcessStationKnowledge
+          ? {
+              knowledgeInProcess: (allowedTools?: readonly string[]) =>
+                this.options.createInProcessStationKnowledge!(
+                  input.threadId,
+                  tenantExecutionContext,
+                  allowedTools,
+                ),
+            }
+          : {}),
         ...(this.options.createInProcessStationControl
           ? {
               inProcess: () =>
-                this.options.createInProcessStationControl!(
-                  input.threadId,
-                  tenantExecutionContext,
-                ),
+                selectedControlTools !== undefined
+                  ? this.options.createInProcessStationControl!(
+                      input.threadId,
+                      tenantExecutionContext,
+                      selectedControlTools,
+                    )
+                  : this.options.createInProcessStationControl!(
+                      input.threadId,
+                      tenantExecutionContext,
+                    ),
             }
           : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
@@ -2550,6 +2860,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   private buildOptions(
     input: ProviderSessionStartInput,
+    engineProcess: ClaudeEngineProcess,
     persistSession = false,
     permissionMode?: PermissionMode,
     appHomeEnv?: Record<string, string>,
@@ -2562,8 +2873,72 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     builtinServers?: Record<string, McpServerConfig>,
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
+    // #2947: the approval guardian's allows, by the engine's tool-use id,
+    // from the PreToolUse hook to `canUseTool`. The hook states no opinion,
+    // so the guardian's verdict is carried here and answers the engine's
+    // ask only when that ask is a plain call. The guardian is not asked
+    // twice, and an entry is used once. Each allow is bound to the tool and
+    // to a digest of the input the guardian reviewed: another hook (a
+    // user-settings PreToolUse hook returning `updatedInput`) can change
+    // the input after the guardian saw it, and the engine then asks about
+    // an input nobody reviewed.
+    const policyAllows = new Map<
+      string,
+      { toolName: string; inputDigest: string }
+    >();
+    const rememberPolicyAllow = (
+      toolUseId: string,
+      toolName: string,
+      toolInput: unknown,
+    ) => {
+      policyAllows.delete(toolUseId);
+      const inputDigest = toolInputDigest(toolInput);
+      if (!toolUseId || inputDigest === undefined) return;
+      policyAllows.set(toolUseId, { toolName, inputDigest });
+      if (policyAllows.size > MAX_PENDING_POLICY_ALLOWS) {
+        const oldest = policyAllows.keys().next();
+        if (!oldest.done) policyAllows.delete(oldest.value);
+      }
+    };
+    /**
+     * Consumes the allow recorded for this call of this tool. `changed`
+     * means the guardian allowed the call with a different input: the entry
+     * is consumed and the allow is not used.
+     */
+    const takePolicyAllow = (
+      toolUseId: unknown,
+      toolName: string,
+      toolInput: unknown,
+    ): 'allowed' | 'changed' | 'none' => {
+      if (typeof toolUseId !== 'string' || toolUseId === '') return 'none';
+      const allow = policyAllows.get(toolUseId);
+      if (allow?.toolName !== toolName) return 'none';
+      policyAllows.delete(toolUseId);
+      return allow.inputDigest === toolInputDigest(toolInput)
+        ? 'allowed'
+        : 'changed';
+    };
     return {
       cwd: input.cwd,
+      ...(input.agent?.toolServers?.some(
+        (server) =>
+          server.allowedTools !== undefined || server.disabledTools?.length,
+      )
+        ? {
+            disallowedTools: input.agent.toolServers.flatMap((server) =>
+              [
+                ...new Set([
+                  ...(server.disabledTools ?? []),
+                  ...(server.allowedTools !== undefined
+                    ? (server.toolNames ?? []).filter(
+                        (name) => !server.allowedTools!.includes(name),
+                      )
+                    : []),
+                ]),
+              ].map((name) => `mcp__${server.id}__${name}`),
+            ),
+          }
+        : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none
       // resolved, which is the SDK's documented "use the built-in executable"
@@ -2603,19 +2978,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(skillsOverlayDir
         ? { additionalDirectories: [skillsOverlayDir] }
         : {}),
-      // Station#1157: only set when the agent authored toolServers (see
-      // resolveAgentToolServers) — an unauthored session leaves both
-      // options unset, matching Claude's own default MCP discovery
-      // (project/user .mcp.json, settings) exactly as before this
-      // feature. `strictMcpConfig: true` is required alongside an
-      // authored (even empty) `mcpServers`: an authored empty array is the
-      // agent explicitly disabling every tool server, and without
-      // strictMcpConfig the SDK would still auto-discover the connection's
-      // own local MCP config underneath it.
+      // Additive selection keeps the harness's discovery; legacy and explicit
+      // replacement keep an authored-empty list authoritative.
       ...(mcpServers !== undefined
         ? {
             mcpServers: { ...mcpServers, ...builtinServers },
-            strictMcpConfig: true,
+            strictMcpConfig: input.agent?.toolServerMode !== 'add',
           }
         : builtinServers !== undefined
           ? // #90 D14: Station's own built-ins alone never switch the SDK
@@ -2679,9 +3047,60 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
+        ...(input.agent?.toolServerLoading
+          ? {
+              ENABLE_TOOL_SEARCH:
+                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
+            }
+          : {}),
         TMPDIR: ensureEngineSpawnTmpDir(),
       }),
+      // #2932: the SDK reads stdout from the process this returns, after
+      // Station's tap has recorded each permission ask on it.
+      spawnClaudeCodeProcess: engineProcess.spawn,
       canUseTool: async (toolName, toolInput, options) => {
+        // #2932: the structured reason of this ask, read from its frame and
+        // consumed here. Null when no frame was recorded for the request
+        // id: that ask counts as an escalation and prompts.
+        const recordedAsk = engineProcess.asks.take(options.requestId);
+        const { requiresUserInteraction, ...recordedReason } =
+          recordedAsk ?? {};
+        const claudeAsk: ClaudeAskReason | null = recordedAsk
+          ? recordedReason
+          : null;
+        const questionnaire =
+          toolName === 'AskUserQuestion'
+            ? claudeQuestionnaire(toolInput)
+            : null;
+        if (toolName === 'AskUserQuestion' && !questionnaire)
+          return {
+            behavior: 'deny',
+            message: 'This question format is not supported.',
+          };
+
+        const record = this.requireSession(input.threadId);
+        // #2932: the engine's ask flags. Agent SDK 0.3.278 forwards
+        // suppressAlwaysAllowRule and defaultToNo; requiresUserInteraction is
+        // read from the frame, or from the options if an SDK forwards it.
+        const askFlags = claudeAskFlags({
+          ...options,
+          ...(requiresUserInteraction ? { requiresUserInteraction } : {}),
+        });
+        // #2932: the reason is sanitised once, and that one value is both
+        // matched here and published, so the surfaces compute the same
+        // grant. Sanitising leaves the plain-text literals unchanged.
+        const decisionReason = claudeRequestDisplayText(options.decisionReason);
+        const request: ToolRequestGrantInput = {
+          toolName,
+          suggestions: options.suggestions,
+          blockedPath: options.blockedPath,
+          matchedAskRule: options.matchedAskRule,
+          permissionMode: record.currentPermissionMode,
+          toolInput,
+          decisionReason,
+          ...askFlags,
+          claudeAsk,
+        };
         // Fix (external autoApprove parity): match Station's own
         // engine — which honors the session agent's
         // `tools.autoApprove` via `isAutoApproved` (agent-hooks.ts,
@@ -2692,7 +3111,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // `mcp__<server>__<tool>` tool name into the same `<server>_<tool>`
         // shape Station-engine patterns are authored against, so e.g.
         // `station-control_*` matches `mcp__station-control__list_agents`.
+        // #2933: a pattern covers plain calls to the tool, never a request
+        // that reaches beyond it (a path outside the session's directories,
+        // a directory widening, a rule-forced ask, a read or edit safety
+        // check) or a plan exit: those always reach a person, even for `*`.
+        // #2932 adds a sandbox override, a sandbox network-host ask, the
+        // engine's literal escalation reasons, its ask flags and its
+        // structured reason: a safety check, an ask rule on a single
+        // command, any PowerShell ask, or an ask whose frame was not read.
+        // A chained Bash command hides its parts' ask rules (see
+        // `claudeAskEscalates`).
         if (
+          !questionnaire &&
+          toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
             toolName,
             input.agent?.autoApprove,
@@ -2705,27 +3136,94 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
-        const record = this.requireSession(input.threadId);
+        // #2947: the approval guardian allowed this call at the hook, which
+        // stated no opinion to the engine. Its allow answers a plain call
+        // only: an escalation (a path outside the session's directories, a
+        // safety check, an ask rule), a plan exit and a question reach a
+        // person, as they do for a pattern above.
+        // The allow is bound to the input the guardian reviewed.
+        const policyAllow = takePolicyAllow(
+          options.toolUseID,
+          toolName,
+          toolInput,
+        );
+        if (policyAllow !== 'none') {
+          // The question guard is defence in depth: a question is never a
+          // plain call (`toolRequestNeedsPerson`).
+          const notApplied =
+            policyAllow === 'changed'
+              ? 'the input changed after the guardian reviewed it'
+              : questionnaire
+                ? 'the request is a question for a person'
+                : toolRequestIsPlainCall(request)
+                  ? undefined
+                  : 'the request is an escalation or a plan exit';
+          if (notApplied === undefined) {
+            return { behavior: 'allow', updatedInput: toolInput };
+          }
+          // The evaluator has already logged the guardian's allow; say here
+          // that it did not decide the request.
+          (this.options.logger ?? console).info?.(
+            'Approval guardian allow not applied; the request goes to a person',
+            { toolName, threadId: input.threadId, reason: notApplied },
+          );
+        }
         // Tool-level session grant: "Allow Bash for this session" must cover
         // every later Bash call, not just the SDK-suggested command pattern.
         // Checked after agent autoApprove (authored policy stays first) and
         // before publishing, so granted tools never re-prompt. Denies are
         // never cached here — only `acceptForSession` populates the set.
-        if (record.approvedTools.has(toolName)) {
+        // #2915: the grant covers calls to the tool, never a request that
+        // reaches beyond it (a path outside the session's directories, a
+        // directory widening, a rule-forced ask): that one always prompts.
+        // #2932: nor a sandbox network ask, whose grant is 'none': the
+        // engine remembers each allowed host itself, so each new host asks.
+        const sessionGrant = toolRequestSessionGrant(request);
+        if (
+          !questionnaire &&
+          record.approvedTools.has(toolName) &&
+          sessionGrant === 'tool'
+        ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
+        // #2933: a delegated child that may not grant approvals reaches here
+        // when the engine asks after the staged evaluator did not deny the
+        // call: a tool-level grant or the approval guardian's allow let it
+        // past (neither is a hook allow, #2947) and it escalates or exits
+        // plan mode; or no hook ran at
+        // all (no resolved agent, or no `resolvePreToolPolicy`). Nobody can
+        // answer the child's request, so deny it fail-fast with the
+        // evaluator's own denial rather than wait on a prompt.
+        if (serverDelegation(input.metadata)?.denyApprovals) {
+          const { denial } = delegatedApprovalDenial(toolName, 'external');
+          return { behavior: 'deny', message: denial.reason };
+        }
         const requestId = crypto.randomUUID();
+        const eventId = crypto.randomUUID();
         this.publish({
-          eventId: crypto.randomUUID(),
+          eventId,
           provider: this.provider,
           threadId: input.threadId,
           createdAt: new Date().toISOString(),
+          // #3071: names the turn only for a request the turn ITSELF is
+          // waiting on (the main thread's). A turn's abort settles the
+          // requests that name it, for every reader of the log. A subagent's
+          // request names no turn: a background subagent can outlive the
+          // turn, a stop included, so the turn's abort must not close it.
+          ...(!options.agentID && record.activeTurnId
+            ? { turnId: record.activeTurnId }
+            : {}),
           requestId,
           method: 'request.opened',
           requestType: 'approval',
-          title: options.title ?? `Allow ${toolName}`,
-          description: options.description,
+          title: questionnaire
+            ? 'The agent has questions for you'
+            : (options.title ??
+              claudeSandboxNetworkTitle(toolName, toolInput) ??
+              `Allow ${toolName}`),
+          description: claudeRequestDisplayText(options.description),
           payload: {
+            ...(questionnaire ? { questionnaire } : {}),
             toolName,
             // #2316: the SDK's id for this exact tool_use block — the same id
             // `tool.started` carries as `toolCallId` — so the transcript binds
@@ -2736,6 +3234,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             blockedPath: options.blockedPath,
             displayName: options.displayName,
             suggestions: options.suggestions,
+            // #2915: surfaces compute the session grant they offer from this
+            // payload, as the adapter does from the same fields.
+            ...(options.matchedAskRule
+              ? { matchedAskRule: options.matchedAskRule }
+              : {}),
+            // #2932: the escalation signals the grant reads besides the
+            // input; the sanitised reason text the adapter matched.
+            ...(decisionReason !== undefined ? { decisionReason } : {}),
+            ...askFlags,
+            // The structured reason, or null when its frame was not read.
+            claudeAsk,
+            ...(record.currentPermissionMode
+              ? { permissionMode: record.currentPermissionMode }
+              : {}),
             // Subagent tool calls (Agent tool workers) come through this same
             // callback, so their approvals already propagate to Station; the
             // SDK's agent id is the only signal that the request belongs to
@@ -2751,6 +3263,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolInput,
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
+            sessionGrant,
+            eventId,
+            ...(questionnaire ? { questionnaire } : {}),
           });
           // #2316: the SDK aborts this callback when the call it gates is
           // abandoned; the request is then settled, never left answerable.
@@ -2763,7 +3278,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
-      ...(preToolPolicy && input.agent
+      ...(input.agent &&
+      (preToolPolicy ||
+        input.agent.toolServers?.some(
+          (server) =>
+            server.allowedTools !== undefined || server.disabledTools?.length,
+        ))
         ? {
             hooks: {
               PreToolUse: [
@@ -2773,8 +3293,41 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                       DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                   ),
                   hooks: [
-                    async (hookInput) =>
-                      evaluateClaudePreToolPolicy(
+                    async (hookInput) => {
+                      if (
+                        'tool_name' in hookInput &&
+                        typeof hookInput.tool_name === 'string'
+                      ) {
+                        const rawToolName = hookInput.tool_name;
+                        const server = input.agent?.toolServers?.find((entry) =>
+                          rawToolName.startsWith(`mcp__${entry.id}__`),
+                        );
+                        const name = server
+                          ? hookInput.tool_name.slice(
+                              `mcp__${server.id}__`.length,
+                            )
+                          : undefined;
+                        if (
+                          server &&
+                          name !== undefined &&
+                          (server.disabledTools?.includes(name) ||
+                            (server.allowedTools !== undefined &&
+                              !server.allowedTools.includes(name)))
+                        )
+                          return {
+                            hookSpecificOutput: {
+                              hookEventName: 'PreToolUse' as const,
+                              permissionDecision: 'deny' as const,
+                              permissionDecisionReason:
+                                'Tool not selected for this agent.',
+                            },
+                          };
+                      }
+                      // #2947: an unselected MCP tool is denied above,
+                      // before the staged evaluator runs, so the guardian
+                      // is never asked and no allow is kept for it.
+                      if (!preToolPolicy) return {};
+                      return evaluateClaudePreToolPolicy(
                         preToolPolicy,
                         hookInput as {
                           tool_name: string;
@@ -2788,7 +3341,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         },
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
-                      ),
+                        rememberPolicyAllow,
+                      );
+                    },
                   ],
                 },
               ],
@@ -2833,7 +3388,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       //
       // Nothing Station wires itself depends on the cascade either way:
       // `resolveAgentToolServers` builds `mcpServers` explicitly (station-control
-      // included) and passes `strictMcpConfig`, and Station's `PreToolUse` hook is
+      // included) and makes replacement selections strict; Station's `PreToolUse` hook is
       // the SDK `hooks` OPTION, not a settings file. The model-catalog probe in
       // `listModelCatalog` does pin `settingSources: []` — it runs no tools and
       // wants no ambient configuration at all.
@@ -3039,7 +3594,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
-      const detail = errorMessage(error);
+      // The SDK folds the engine's stderr into an exit error only for its
+      // own spawn; Station's spawn kept the tail, so add it here.
+      const detail = claudeExitDetailWithStderr(
+        errorMessage(error),
+        record.engineStderrTail?.(),
+      );
       const message = record.session.model
         ? `Claude model "${record.session.model}" failed: ${detail}`
         : detail;
@@ -3092,19 +3652,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private async resolveAppHomeEnv(
     credentialProfileRef?: string,
-  ): Promise<Record<string, string> | undefined> {
+  ): Promise<ResolvedAppHome | undefined> {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      // #2966: the resolver's typed error marks a failure AFTER a profile
-      // was selected — including the connection's configured active profile,
-      // which carries no explicit ref here. Degrading that to global would
-      // run on credentials (and routing) nobody selected.
       if (
         credentialProfileRef ||
-        error instanceof CredentialProfileEnvUnavailableError
+        error instanceof CredentialProfileEnvironmentError
       ) {
-        throw new CredentialProfileEnvUnavailableError();
+        throw new CredentialProfileEnvironmentError();
       }
       (this.options.logger ?? console).warn?.(
         `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,
@@ -3123,6 +3679,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private async resolveConnectionEnv(): Promise<
     Record<string, string> | undefined
   > {
+    if (this.options.getConnectionLaunch)
+      return (await this.options.getConnectionLaunch()).env;
     try {
       return await this.options.getConnectionEnv?.();
     } catch (error) {
@@ -3305,6 +3863,83 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return version
       ? { kind: 'version', version }
       : { kind: 'ran-without-version' };
+  }
+
+  /**
+   * The login probe for `detectClaudeAuthState`, or `undefined` when there is
+   * nothing safe to ask: no spawnable installed CLI, or one not shown to be
+   * new enough to have `auth status`. Station then keeps the file-only answer.
+   * Asks the installed CLI under the connection env, so a `CLAUDE_CONFIG_DIR`
+   * there is the dir it reports on. Answers are reused single-flight for
+   * {@link CLAUDE_AUTH_STATUS_TTL_MS}, failures for the shorter
+   * {@link CLAUDE_AUTH_STATUS_FAILURE_TTL_MS}.
+   */
+  private claudeAuthStatusProbe(
+    executable: ClaudeExecutableResolution,
+    connectionEnv: Record<string, string> | undefined,
+  ): ClaudeAuthStatusProbe | undefined {
+    const { spawnable, installedVersion } = executable;
+    if (
+      !spawnable ||
+      !installedVersion ||
+      compareClaudeCodeVersions(
+        installedVersion,
+        CLAUDE_AUTH_STATUS_MIN_VERSION,
+      ) < 0
+    ) {
+      return undefined;
+    }
+    const [command, args] = spawnable.toLowerCase().endsWith('.js')
+      ? [process.execPath, [spawnable, ...CLAUDE_AUTH_STATUS_ARGS]]
+      : [spawnable, CLAUDE_AUTH_STATUS_ARGS];
+    // Hashed: the env can carry secrets, which must not sit in a Map key.
+    const key = crypto
+      .createHash('sha256')
+      .update(
+        JSON.stringify([
+          spawnable,
+          process.env[CLAUDE_CONFIG_DIR_ENV_KEY] ?? null,
+          Object.entries(connectionEnv ?? {}).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        ]),
+      )
+      .digest('hex');
+    return () => {
+      const now = Date.now();
+      for (const [entryKey, entry] of this.authStatusProbes) {
+        if (entry.expiresAt <= now) this.authStatusProbes.delete(entryKey);
+      }
+      const cached = this.authStatusProbes.get(key);
+      if (cached) return cached.result;
+      const result = (this.options.runAuthStatusCommand ?? runCliCommand)(
+        command,
+        args,
+        undefined,
+        connectionEnv,
+        {
+          timeoutMs: CLAUDE_AUTH_STATUS_TIMEOUT_MS,
+          maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
+          killSignal: 'SIGKILL',
+        },
+      );
+      // In flight, the entry is reused for the definitive window; once the
+      // probe settles, the answer decides how much longer it lives.
+      const entry = {
+        expiresAt: now + CLAUDE_AUTH_STATUS_TTL_MS,
+        result,
+      };
+      this.authStatusProbes.set(key, entry);
+      const settle = (resolved: CliCommandResult | null) => {
+        const ttl =
+          parseClaudeAuthStatus(resolved) === 'unknown'
+            ? CLAUDE_AUTH_STATUS_FAILURE_TTL_MS
+            : CLAUDE_AUTH_STATUS_TTL_MS;
+        entry.expiresAt = Date.now() + ttl;
+      };
+      result.then(settle, () => settle(null));
+      return result;
+    };
   }
 
   /**

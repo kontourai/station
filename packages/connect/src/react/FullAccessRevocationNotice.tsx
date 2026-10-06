@@ -1,7 +1,7 @@
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * #1796 (G3): what taking a device's full access away did, as the scope and
@@ -20,6 +20,9 @@ const RESET_WAS: Record<string, string> = {
   'auto-on-host': 'its Auto decision on a session its grant had unconfined',
 };
 const UNCONFINED_UNTIL: Record<string, string> = {
+  'next-turn':
+    'its engine is running: a turn already running finishes unconfined, and its next turn runs confined',
+  // Sent by Stations from before #2898.
   'engine-restart':
     'its engine is running with no decision to re-apply, so it keeps its starting posture until it restarts',
   'grant-not-checked': 'this Station does not re-check the grant at each turn',
@@ -45,6 +48,7 @@ const RESET_KINDS: readonly Report['reset'][number]['was'][] = [
   'auto-on-host',
 ];
 const UNTIL_KINDS: readonly Report['stillUnconfined'][number]['until'][] = [
+  'next-turn',
   'engine-restart',
   'grant-not-checked',
 ];
@@ -207,14 +211,37 @@ function ConversationRef({
   );
 }
 
+/** What "Stop now" did to one running session. */
+type StopState = 'stopping' | 'stopped' | 'failed';
+
 export function FullAccessRevocationNotice({
   outcome,
   onDismiss,
+  onStopSession,
 }: {
   outcome: FullAccessRevocationOutcome;
   onDismiss: () => void;
+  /**
+   * #2898: stops a session the report lists as still running unconfined, at
+   * once rather than after its running turn; resolves to whether the
+   * Station stopped it. Without it, no "Stop now" is offered.
+   */
+  onStopSession?: (sessionId: string) => Promise<boolean>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [stops, setStops] = useState<ReadonlyMap<string, StopState>>(
+    () => new Map(),
+  );
+  const stop = (sessionId: string) => {
+    if (!onStopSession || stops.get(sessionId) === 'stopping') return;
+    const mark = (state: StopState) =>
+      setStops((current) => new Map(current).set(sessionId, state));
+    mark('stopping');
+    onStopSession(sessionId).then(
+      (stopped) => mark(stopped ? 'stopped' : 'failed'),
+      () => mark('failed'),
+    );
+  };
   // The notice sits below the device list; bring it into view.
   useEffect(() => {
     ref.current?.scrollIntoView?.({ block: 'nearest' });
@@ -300,14 +327,50 @@ export function FullAccessRevocationNotice({
       ) : null}
       {stillUnconfined.length > 0 ? (
         <>
-          <div>Still unconfined, not changed:</div>
+          <div>Still unconfined:</div>
           <ul style={LIST_STYLE}>
-            {stillUnconfined.map((entry) => (
-              <li key={`unconfined-${entry.conversationId}`}>
-                <ConversationRef entry={entry} />, because{' '}
-                {UNCONFINED_UNTIL[entry.until] ?? entry.until}
-              </li>
-            ))}
+            {stillUnconfined.map((entry) => {
+              const sessionId =
+                entry.until === 'next-turn' ? entry.sessionId : undefined;
+              const state = sessionId ? stops.get(sessionId) : undefined;
+              return (
+                <li
+                  key={`unconfined-${entry.conversationId}-${entry.sessionId ?? ''}`}
+                >
+                  <ConversationRef entry={entry} />
+                  {state === 'stopped' ? (
+                    ', stopped: its next start runs confined.'
+                  ) : (
+                    <>
+                      , because {UNCONFINED_UNTIL[entry.until] ?? entry.until}
+                    </>
+                  )}
+                  {sessionId && onStopSession ? (
+                    state === 'stopped' ? null : (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          onClick={() => stop(sessionId)}
+                          disabled={state === 'stopping'}
+                          aria-label={`Stop ${entry.title ?? entry.conversationId} now`}
+                          className="station-connect-btn station-connect-btn--secondary station-connect-btn--inline"
+                        >
+                          {state === 'stopping' ? 'Stopping…' : 'Stop now'}
+                        </button>
+                        {state === 'failed' ? (
+                          <span role="alert">
+                            {' '}
+                            Station could not stop it. Open it and stop it
+                            there.
+                          </span>
+                        ) : null}
+                      </>
+                    )
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </>
       ) : null}

@@ -1,10 +1,12 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 
 let providerEntries: Array<{
   builtin?: boolean;
@@ -22,7 +24,29 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 
 const { createACPRoutes, listDetectedUnconnectedACPRegistryEntries } =
   await import('../acp.js');
+const { CodexAdapter } = await import(
+  '../../../providers/adapters/codex-adapter.js'
+);
 const homes: string[] = [];
+
+/**
+ * Choosing what a connection runs takes the operator in person (or a device
+ * holding coding:exec), and a request no auth boundary saw is refused, so the
+ * bare route is mounted behind the operator's principal.
+ */
+function asOperator(routes: Hono): Hono {
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      credential: 'operator-credential',
+      authority: 'operator-credential',
+      source: 'bearer',
+    });
+    await next();
+  });
+  app.route('/', routes);
+  return app;
+}
 
 async function createFilesystemRuntimeContext() {
   const home = mkdtempSync(join(tmpdir(), 'station-acp-routes-'));
@@ -71,7 +95,7 @@ describe('ACP Routes', () => {
 
   test('GET /status returns ACP status', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/status'));
     expect(body.success).toBe(true);
     expect(body.data.connected).toBe(false);
@@ -79,7 +103,7 @@ describe('ACP Routes', () => {
 
   test('rejects an invalid engine identity before any durable write', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections', {
       method: 'POST',
@@ -94,7 +118,7 @@ describe('ACP Routes', () => {
 
   test('GET /connections returns connection list', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/connections'));
     expect(body.success).toBe(true);
     expect(body.data).toEqual([]);
@@ -174,7 +198,7 @@ describe('ACP Routes', () => {
       },
     ];
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/registry'));
     expect(body.success).toBe(true);
     expect(body.data).toEqual([
@@ -213,7 +237,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.loadACPConfig.mockResolvedValue({
       connections: [{ id: 'kiro', name: 'Kiro', command: 'kiro-cli' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/registry'));
     expect(body.data).toEqual([
       expect.objectContaining({
@@ -251,7 +275,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.loadACPConfig.mockResolvedValue({
       connections: [{ id: 'kiro', name: 'User Kiro', command: 'kiro-cli' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/registry'));
 
     expect(body.data).toEqual([
@@ -282,7 +306,7 @@ describe('ACP Routes', () => {
       },
     ];
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(
       await app.request('/registry/kiro/install', { method: 'POST' }),
     );
@@ -325,7 +349,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.loadACPConfig.mockResolvedValue({
       connections: [{ id: 'kiro', command: 'kiro-cli' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/registry/kiro/install', { method: 'POST' });
     expect(res.status).toBe(409);
   });
@@ -359,7 +383,7 @@ describe('ACP Routes', () => {
       }
       return originalAgentExists(slug);
     };
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     const first = await app.request('/registry/kiro/install', {
       method: 'POST',
@@ -407,7 +431,7 @@ describe('ACP Routes', () => {
       },
     ];
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     const first = await json(
       await app.request('/registry/kiro/install', { method: 'POST' }),
@@ -459,7 +483,7 @@ describe('ACP Routes', () => {
     } as any);
 
     const body = await json(
-      await createACPRoutes(ctx).request('/registry/kiro/install', {
+      await asOperator(createACPRoutes(ctx)).request('/registry/kiro/install', {
         method: 'POST',
       }),
     );
@@ -491,7 +515,7 @@ describe('ACP Routes', () => {
       }
       return originalLoadAgent(slug);
     };
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
     const originalAddConnection = ctx.acpBridge.addConnection;
     ctx.acpBridge.addConnection = async (...args: unknown[]) => {
       installed = true;
@@ -524,7 +548,7 @@ describe('ACP Routes', () => {
     ];
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
     ctx.acpBridge.addConnection.mockResolvedValue(false);
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     const body = await json(
       await app.request('/registry/muse/install', { method: 'POST' }),
@@ -556,7 +580,7 @@ describe('ACP Routes', () => {
     ];
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
     ctx.acpBridge.addConnection.mockResolvedValue(false);
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
     await app.request('/registry/muse/install', { method: 'POST' });
 
     ctx.acpBridge.addConnection.mockResolvedValue(true);
@@ -582,7 +606,7 @@ describe('ACP Routes', () => {
     ctx.acpBridge.addConnection.mockRejectedValue(
       new Error('spawn muse ENOENT'),
     );
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     const body = await json(
       await app.request('/connections', {
@@ -601,7 +625,7 @@ describe('ACP Routes', () => {
 
   test('POST /connections creates no Agent for a disabled connection', async () => {
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     await app.request('/connections', {
       method: 'POST',
@@ -620,7 +644,7 @@ describe('ACP Routes', () => {
 
   test('POST /connections creates connection', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(
       await app.request('/connections', {
         method: 'POST',
@@ -643,7 +667,7 @@ describe('ACP Routes', () => {
       }
       return originalAgentExists(slug);
     };
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
     const request = () =>
       app.request('/connections', {
         method: 'POST',
@@ -686,7 +710,7 @@ describe('ACP Routes', () => {
         return result;
       },
     );
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections', {
       method: 'POST',
@@ -708,7 +732,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.loadACPConfig.mockResolvedValue({
       connections: [{ id: 'test', command: 'x' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/connections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -740,7 +764,7 @@ describe('ACP Routes', () => {
         return result;
       },
     );
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const request = () =>
       app.request('/connections', {
         method: 'POST',
@@ -760,7 +784,7 @@ describe('ACP Routes', () => {
 
   test('DELETE /connections/:id returns 404 without beginning a mutation when absent', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/missing', {
       method: 'DELETE',
@@ -779,7 +803,7 @@ describe('ACP Routes', () => {
         { id: 'kiro', name: 'Kiro', command: 'kiro-cli', enabled: true },
       ],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const empty = await app.request('/connections/kiro', {
       method: 'PUT',
@@ -812,7 +836,7 @@ describe('ACP Routes', () => {
       connections: [previous],
     });
     ctx.configLoader.saveACPConfig.mockRejectedValue(new Error('write failed'));
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/kiro', {
       method: 'PUT',
@@ -838,7 +862,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.saveACPConfig.mockImplementation(async (next) => {
       stored = structuredClone(next) as typeof stored;
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const update = await app.request('/connections/kiro', {
       method: 'PUT',
@@ -882,7 +906,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.saveACPConfig.mockImplementation(async (next) => {
       stored = structuredClone(next) as typeof stored;
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     // Create: no provideToolServers supplied ⇒ absent, never inferred.
     expect(stored.connections[0].provideToolServers).toBeUndefined();
@@ -921,7 +945,7 @@ describe('ACP Routes', () => {
         },
       ],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/opencode', {
       method: 'PUT',
@@ -940,7 +964,7 @@ describe('ACP Routes', () => {
       connected: true,
       connections: [{ id: 'kiro', name: 'Kiro', status: 'unavailable' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/kiro/reconnect', {
       method: 'POST',
@@ -966,14 +990,14 @@ describe('ACP Routes', () => {
           status: 'unavailable',
           lastError: {
             message:
-              'spawn kiro-cli ENOENT: handshake failed for --api-key=abc123 from /Users/brian/private/project',
+              'spawn kiro-cli ENOENT: handshake failed for --api-key=abc123 from /Users/me/private/project',
             phase: 'spawn',
           },
         },
       ],
     });
     ctx.acpBridge.reconnect.mockResolvedValue(false);
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/kiro/reconnect', {
       method: 'POST',
@@ -988,7 +1012,7 @@ describe('ACP Routes', () => {
     // absolute path from the probe failure never reach the client.
     expect(body.detail).toContain('[REDACTED]');
     expect(body.detail).not.toContain('abc123');
-    expect(body.detail).not.toContain('/Users/brian');
+    expect(body.detail).not.toContain('/Users/me');
   });
 
   test('reconnect reports the new attempt error instead of the prior failure', async () => {
@@ -1016,7 +1040,7 @@ describe('ACP Routes', () => {
         ],
       });
     ctx.acpBridge.reconnect.mockResolvedValue(false);
-    const response = await createACPRoutes(ctx as any).request(
+    const response = await asOperator(createACPRoutes(ctx as any)).request(
       '/connections/opencode/reconnect',
       { method: 'POST' },
     );
@@ -1034,7 +1058,7 @@ describe('ACP Routes', () => {
       connections: [{ id: 'kiro', name: 'Kiro', status: 'probing' }],
     });
     ctx.acpBridge.reconnect.mockResolvedValue(false);
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/kiro/reconnect', {
       method: 'POST',
@@ -1049,7 +1073,7 @@ describe('ACP Routes', () => {
 
   test('POST /connections/:id/reconnect returns 404 for a connection the bridge does not hold', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/missing/reconnect', {
       method: 'POST',
@@ -1072,7 +1096,7 @@ describe('ACP Routes', () => {
     ctx.acpBridge.reconnect.mockRejectedValue(
       new Error('spawn muse ENOENT: Bearer sk-test1234 leaked in stderr'),
     );
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/muse/reconnect', {
       method: 'POST',
@@ -1084,5 +1108,114 @@ describe('ACP Routes', () => {
     expect(body.error).toBe('The ACP connection could not be reconnected.');
     expect(body.detail).toContain('[REDACTED]');
     expect(body.detail).not.toContain('sk-test1234');
+  });
+  /**
+   * #3355: an ACP connection that takes a native runtime Adapter's id resolves
+   * to that engine's public connection, and attribution then labels the native
+   * engine's Agents `acp`. The route refuses the id before any durable write.
+   * The Adapter is the real `CodexAdapter`, registered the way bootstrap
+   * registers it (a builtin `providerAdapter` entry).
+   */
+  describe('native engine id collisions (#3355)', () => {
+    function registerNativeCodex() {
+      providerEntries.push({
+        source: 'providerAdapter:station-core',
+        builtin: true,
+        provider: new CodexAdapter(),
+      });
+    }
+
+    test('POST /connections refuses an id a native runtime Adapter owns', async () => {
+      registerNativeCodex();
+      const ctx = createMockRuntimeContext();
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'codex', command: 'codex-acp' }),
+      });
+
+      expect(response.status).toBe(400);
+      const body = await json(response);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe(
+        "Connection id 'codex' is already used by the 'codex' engine. Choose a different id for the ACP connection.",
+      );
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+      expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+    });
+
+    test("POST /connections refuses a plugin Adapter's public connection id that differs from its engine id", async () => {
+      providerEntries.push({
+        source: 'providerAdapter:plugin-x',
+        provider: {
+          provider: 'xcli',
+          metadata: {
+            displayName: 'X',
+            description: 'runtime',
+            capabilities: ['agent-runtime'],
+            engineId: 'xcli',
+            connectionId: 'xcli-local',
+          },
+        },
+      });
+      const ctx = createMockRuntimeContext();
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'xcli-local', command: 'x-acp' }),
+      });
+
+      expect(response.status).toBe(400);
+      // Names the engine that owns the id, not the id itself.
+      expect((await json(response)).error).toBe(
+        "Connection id 'xcli-local' is already used by the 'xcli' engine. Choose a different id for the ACP connection.",
+      );
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+    });
+
+    test('POST /connections still accepts an ACP id no native Adapter owns', async () => {
+      registerNativeCodex();
+      const ctx = createMockRuntimeContext();
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'kiro', command: 'kiro-cli' }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(ctx.configLoader.saveACPConfig).toHaveBeenCalledOnce();
+    });
+
+    test('POST /registry/:id/install refuses a registry entry whose id a native Adapter owns', async () => {
+      registerNativeCodex();
+      providerEntries.push({
+        source: 'acpConnectionRegistry:plugin-bridge',
+        provider: {
+          listAvailable: () => [
+            { id: 'codex', name: 'Codex (ACP)', command: 'codex-acp' },
+          ],
+        },
+      });
+      const ctx = createMockRuntimeContext();
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/registry/codex/install', {
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(400);
+      expect((await json(response)).error).toContain(
+        "Connection id 'codex' is already used by the 'codex' engine",
+      );
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+      expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+      expect(ctx.beginAgentConfigurationMutation).not.toHaveBeenCalled();
+    });
   });
 });

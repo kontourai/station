@@ -1,12 +1,22 @@
-name: Portable Install Smoke
+name: "PR: Install smoke"
 
 on:
   pull_request_target:
     paths:
       - 'install.sh'
+      - 'install.ps1'
+      - 'packages/shared/src/installer/**'
+      # Bundled into install.ps1's installer core (#2675 W2).
+      - 'packages/shared/src/windows-path-trust.ts'
+      - 'packages/shared/src/windows-system-utility.mjs'
+      # Which installer packaged `station upgrade` runs.
+      - 'packages/shared/src/prebuilt-archive.ts'
+      - 'scripts/smoke-install-ps1.mjs'
+      - 'scripts/install-script-generated.mjs'
       - '.gitattributes'
       - 'scripts/package-portable-release.sh'
       - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
       - 'scripts/smoke-install-prebuilt-archive.sh'
       - 'packaging/portable-server/**'
@@ -294,6 +304,33 @@ jobs:
             tail -200 "$log"
           done
 
+  # #2970: the service's Task Scheduler settings on a real Windows host. No
+  # leg installs a Windows service end to end, so this registers throwaway
+  # tasks the way `station service install` does, applies the install's
+  # settings, reads them back through the task XML, and records that Task
+  # Scheduler does not rerun a wrapper that exits non-zero.
+  windows-task-scheduler:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm run dependencies:ci
+      - name: Register, configure and read back real scheduled tasks
+        env:
+          STATION_REAL_TASK_SCHEDULER: '1'
+        run: node node_modules/vitest/vitest.mjs run packages/cli/src/__tests__/service-windows.task-scheduler.test.ts --maxWorkers=1 --no-file-parallelism
+
   # #2675 B2: the public-manifest path installs a prebuilt per-platform
   # server archive. Builds two archives of this candidate on the runner,
   # signs schema 2 manifests for them with a throwaway key under the pinned
@@ -390,3 +427,55 @@ jobs:
             echo '===== journalctl --user -u station-smoke-service.service ====='
             journalctl --user -u station-smoke-service.service --no-pager -n 200 || true
           fi
+
+  # #2675 slice W1: install.ps1 stages two real Windows archives of this
+  # candidate with no Node.js on PATH (so it verifies with the pinned
+  # Node.js zip, then with the installed Station's Node.js through a
+  # `current` junction), under Windows PowerShell 5.1, PowerShell 7 and
+  # Invoke-Expression, beneath a Station root long enough to cross MAX_PATH
+  # (#2484), and refuses tampered bytes and a foreign signature. Stage-only
+  # is all install.ps1 does so far; the full install joins in slice W2.
+  install-ps1-windows:
+    name: install.ps1 (win32-x64)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      # Node.js builds and signs; install.ps1 never sees it (the smoke runs it
+      # with a PATH that has no node.exe).
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm run dependencies:ci
+      - name: Confirm the runner is the target
+        run: test "$(node -p 'process.platform + "-" + process.arch')" = win32-x64
+      - run: npm run build
+      - name: Build two archives of this candidate
+        # As in install-prebuilt-archive: the provenance SHA is the commit
+        # checked out, and the second archive comes from an empty local commit
+        # on top that is never pushed.
+        run: |
+          set -euo pipefail
+          npm run build:portable-server -- --ref v0.0.0-preview.1 \
+            --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-1"
+          git -c user.name='install smoke' -c user.email='install-smoke@invalid' \
+            commit --quiet --allow-empty -m 'test(install-smoke): second archive generation'
+          npm run build:portable-server -- --ref v0.0.0-preview.2 \
+            --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-2"
+      - name: Stage, install, upgrade and uninstall with install.ps1, no Node.js on PATH
+        run: |
+          node scripts/smoke-install-ps1.mjs \
+            --archive1 "$RUNNER_TEMP/archive-1/station-server-win32-x64.zip" \
+            --archive2 "$RUNNER_TEMP/archive-2/station-server-win32-x64.zip" \
+            --work "$RUNNER_TEMP/install-ps1-smoke"

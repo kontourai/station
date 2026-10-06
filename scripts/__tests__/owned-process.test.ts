@@ -63,9 +63,68 @@ describe('owned process lifecycle', () => {
     await expect(execution.promise).resolves.toMatchObject({
       status: 0,
     });
+    child.emit('close', 0, null);
     await expect(execution.forceTerminate()).resolves.toBeUndefined();
     expect(taskkillCalls).toBe(0);
     expect(wrapperSignals).toEqual([]);
+  });
+
+  test('forces only the lingering wrapper handle after normal Job settlement', async () => {
+    let taskkillCalls = 0;
+    const signals: string[] = [];
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      connected: true,
+      kill: (signal: string) => {
+        signals.push(signal);
+        child.emit('close', 0, null);
+        return true;
+      },
+      send: () => true,
+      disconnect: () => {
+        child.connected = false;
+      },
+    });
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
+      },
+      {
+        platform: 'win32',
+        runWindowsTaskkill: async () => {
+          taskkillCalls += 1;
+        },
+      },
+    );
+    child.emit('message', {
+      type: 'owned-command-bound',
+      pid: 5151,
+      processStart: 'target-birth',
+      guard: { pid: 5152, start: 'guard-birth' },
+      jobBound: true,
+    });
+    child.emit('message', { type: 'owned-command-complete', status: 0 });
+    child.stdout.emit('end');
+    child.stderr.emit('end');
+    await expect(execution.promise).resolves.toMatchObject({ status: 0 });
+    expect(execution.isAlive()).toBe(true);
+    const cleanup = await terminateSuiteExecution(execution, {
+      terminationGraceMs: 10,
+      terminationForceMs: 50,
+      waitForSuiteSettlement,
+    });
+    expect(cleanup).toMatchObject({
+      settled: true,
+      escalated: true,
+      errors: [],
+    });
+    expect(signals).toEqual(['SIGKILL']);
+    expect(taskkillCalls).toBe(0);
+    expect(execution.isAlive()).toBe(false);
   });
 
   test('records normal COMPLETE plus raw EOF as Job settlement even after wrapper close', async () => {

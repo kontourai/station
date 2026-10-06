@@ -1,0 +1,7 @@
+{
+  "revision": "42811285ef04d069daf576d46253ac833573f848",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed Home first-chat/discovery actions, agent starting-point callbacks, per-agent setup warning, and unknown-model label omission. New labels preserve existing chat setup and execution authority; model vs AI-app choices name real owners on the Station host. Focused 185 tests pass; discovery callback mutation fails for wrong destination and restored owner passes. Live phone and first-chat verification follows.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

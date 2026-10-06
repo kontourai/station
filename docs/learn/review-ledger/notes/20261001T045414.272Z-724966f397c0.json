@@ -1,0 +1,7 @@
+{
+  "revision": "e003e7b2db099d88ff7c9eb068ec8ec8bcca0b27",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"The ratchet now counts an ActionRow as its filled primary and secondary slots. Re-read the Action rows section: it says the ratchet holds the line for rows written without ActionRow and counts runs of labelled Button or button siblings, which is still true; nothing on the page contradicts the new counting.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

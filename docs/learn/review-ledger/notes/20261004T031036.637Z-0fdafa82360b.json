@@ -1,0 +1,7 @@
+{
+  "revision": "1446843ed792a11391e2aa65c6c403c7747a3180",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Scoped output-store review after combined provenance landing and quota repair: per-Task quota now uses the same incarnation visibility as list/read; old output bytes and operation identities remain subject to global bounds. Private declaration provenance does not establish accepted results or grant new Task/agent authority. Manual Task/result distinctions remain accurate; no prose or MCP payload change. Output quota regression failed both creation paths before repair; restored owner suite passed28. Broader manual/provider/team/device/release claims are not renewed.","inputs":["src-server/services/projects/task-output-module.ts"]}
+  ]
+}

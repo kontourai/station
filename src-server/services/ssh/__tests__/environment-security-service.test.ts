@@ -571,7 +571,7 @@ describe('EnvironmentSecurityService', () => {
     const request = service.devicePairing.requestPairing({
       offerId: offer.offerId,
       proof: offer.challenge,
-      deviceName: 'Brian phone',
+      deviceName: 'Casey phone',
     });
     service.devicePairing.confirmRequest(request.requestId, {
       kind: 'presented-credential',
@@ -584,7 +584,7 @@ describe('EnvironmentSecurityService', () => {
 
     expect(service.identifyDevice(exchanged.credential)).toMatchObject({
       id: exchanged.device.id,
-      name: 'Brian phone',
+      name: 'Casey phone',
     });
 
     // Runtime authentication supplies a coarse server-derived peer class;
@@ -876,7 +876,7 @@ describe('EnvironmentSecurityService', () => {
     const request = service.devicePairing.requestPairing({
       offerId: offer.offerId,
       proof: offer.challenge,
-      deviceName: 'Brian phone',
+      deviceName: 'Casey phone',
     });
     service.devicePairing.confirmRequest(request.requestId, {
       kind: 'presented-credential',

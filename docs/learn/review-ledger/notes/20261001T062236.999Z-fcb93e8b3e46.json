@@ -1,0 +1,7 @@
+{
+  "revision": "335893e0b2f5e87d0ccd02115fd0cfa760b215c1",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Merged bytes of docs/glossary.md after #2994: this document's vocabulary pointers remain accurate; it restates neither this branch's Activity/Run entries nor #2994's new entries.","inputs":["CONTEXT-MAP.md"]}
+  ]
+}

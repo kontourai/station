@@ -1,0 +1,19 @@
+{
+  "path": "scripts/__tests__/station-dogfood-reconcile/README.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "Read the test ownership, lazy shared harness and scenario parity maintenance instructions.",
+
+  "limits": "Fixture organization does not establish an installer, release or physical host journey.",
+
+  "sources": [
+    "scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts",
+
+    "scripts/__tests__/station-dogfood-reconcile.shared.ts"
+  ],
+
+  "checks": []
+}

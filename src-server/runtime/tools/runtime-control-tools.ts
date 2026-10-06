@@ -16,6 +16,7 @@ import {
   STATION_CONTROL_TOOL_POLICY,
   type StationControlToolClass,
 } from '../../tools/station-control-policy.js';
+import { normalizeToolName } from '../../utils/tool-name-normalizer.js';
 
 /**
  * #2377 slice A: the three lists are DERIVED from the one station-control
@@ -41,25 +42,45 @@ function toolNamesOfClass(toolClass: StationControlToolClass): string[] {
     .map(([name]) => name);
 }
 
+const canonicalToolNames = new Map(
+  Object.keys(STATION_CONTROL_TOOL_POLICY).flatMap((name) => [
+    [name, name],
+    [`station-control_${name}`, name],
+    [normalizeToolName(`station-control_${name}`), name],
+    [`station-knowledge_${name}`, name],
+    [normalizeToolName(`station-knowledge_${name}`), name],
+  ]),
+);
+
 const SC_READ_ONLY_TOOL_NAMES = toolNamesOfClass('read-only');
 const SC_MUTATING_TOOL_NAMES = toolNamesOfClass('mutating');
 const SC_AUTO_APPROVED_SIDE_EFFECT_TOOL_NAMES =
   toolNamesOfClass('bounded-write');
 
-const SC_TOOL_NAME_PREFIXES = ['station-control_', 'stationControl_'];
+const SC_TOOL_NAME_PREFIXES = [
+  'station-control_',
+  'stationControl_',
+  'station-knowledge_',
+  'stationKnowledge_',
+];
 
-export const SC_READ_ONLY_TOOLS = SC_READ_ONLY_TOOL_NAMES.map(
-  (toolName) => `station-control_${toolName}`,
-);
+function qualifiedToolNamesOfClass(
+  toolClass: StationControlToolClass,
+): string[] {
+  return Object.entries(STATION_CONTROL_TOOL_POLICY)
+    .filter(([, policy]) => policy.toolClass === toolClass)
+    .flatMap(([name, policy]) =>
+      ('serverIds' in policy
+        ? (policy.serverIds ?? ['station-control'])
+        : ['station-control']
+      ).map((serverId) => `${serverId}_${name}`),
+    );
+}
 
-export const SC_MUTATING_TOOLS = SC_MUTATING_TOOL_NAMES.map(
-  (toolName) => `station-control_${toolName}`,
-);
-
+export const SC_READ_ONLY_TOOLS = qualifiedToolNamesOfClass('read-only');
+export const SC_MUTATING_TOOLS = qualifiedToolNamesOfClass('mutating');
 export const SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS =
-  SC_AUTO_APPROVED_SIDE_EFFECT_TOOL_NAMES.map(
-    (toolName) => `station-control_${toolName}`,
-  );
+  qualifiedToolNamesOfClass('bounded-write');
 
 /** Every station-control tool an agent may call without an approval prompt. */
 export const SC_AUTO_APPROVED_TOOLS = [
@@ -75,10 +96,15 @@ const BOUNDED_WRITE_SET: ReadonlySet<string> = new Set(
 
 /** Strip the integration prefix a tool loader may have applied. */
 export function bareControlToolName(toolName: string): string {
+  const canonical = canonicalToolNames.get(toolName);
+  if (canonical) return canonical;
   for (const prefix of SC_TOOL_NAME_PREFIXES) {
-    if (toolName.startsWith(prefix)) return toolName.slice(prefix.length);
+    if (toolName.startsWith(prefix)) {
+      const bare = toolName.slice(prefix.length);
+      return canonicalToolNames.get(bare) ?? bare;
+    }
   }
-  return toolName;
+  return canonicalToolNames.get(toolName) ?? toolName;
 }
 
 type ControlToolClass = StationControlToolClass;

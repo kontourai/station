@@ -47,11 +47,7 @@ test('shows one persistent loading notice and coalesces duplicate opens', async 
     vi.fn(),
   );
   expect(first).toBe(duplicate);
-  expect(notify).toHaveBeenCalledWith(
-    'Loading conversation history…',
-    undefined,
-    0,
-  );
+  expect(notify).toHaveBeenCalledWith('Loading history…', undefined, 0);
   await Promise.resolve();
   expect(open).toHaveBeenCalledTimes(1);
   finish();
@@ -74,7 +70,7 @@ test('turns an unavailable authority into visible feedback without an unhandled 
     ),
   ).resolves.toBeUndefined();
   expect(notify).toHaveBeenLastCalledWith(
-    'Conversation history authorization is no longer current.',
+    'History authorization is no longer current.',
   );
   expect(dismiss).toHaveBeenCalledWith('loading-toast');
   expect(open).not.toHaveBeenCalled();

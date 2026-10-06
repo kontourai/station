@@ -1,4 +1,5 @@
 import type { AgentEngineValidationFinding } from '@kontourai/station-contracts/agent-validation';
+import { InfoTip } from '../../components/InfoTip';
 import { SparkleGlyph } from '../../components/icons/Glyph';
 import type { AgentEditorFormProps } from './types';
 import { buildSystemPromptPrompt } from './utils';
@@ -33,7 +34,8 @@ export function AgentEditorPromptTab({
     <div className="agent-editor__section">
       {finding && (
         <div className="agent-editor__capability-banner" role="status">
-          {finding.message}. {READONLY_TRAILER}
+          {finding.message}.{' '}
+          <InfoTip label="System instructions">{READONLY_TRAILER}</InfoTip>
         </div>
       )}
       <div className="editor-field">

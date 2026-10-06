@@ -27,6 +27,15 @@ function item(over: Partial<HomeWorkItem> & { id: string }): HomeWorkItem {
 
 const NOW = Date.parse('2026-07-28T15:00:00-06:00');
 
+/** The live lanes in reading order (Needs you, Running, Idle). */
+function liveOf<T extends HomeWorkItem>(lanes: {
+  needsYou: readonly T[];
+  running: readonly T[];
+  idle: readonly T[];
+}): T[] {
+  return [...lanes.needsYou, ...lanes.running, ...lanes.idle];
+}
+
 describe('useHomeWorkLanes', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -92,55 +101,70 @@ describe('useHomeWorkLanes', () => {
     }
   });
 
-  it('AC1: status churn across renders never reorders the active lane', () => {
-    const a = item({ id: 'a', lifecycleLabel: 'Running', updatedAt: NOW });
-    const b = item({ id: 'b', lifecycleLabel: 'Ready', updatedAt: NOW - 1 });
-    const c = item({
-      id: 'c',
-      lifecycleLabel: 'Needs attention',
-      updatedAt: NOW - 2,
-    });
+  it('AC1: status churn inside a live lane never reorders it', () => {
+    // All three idle (Ready/Recent/Current are one lane); churning labels
+    // and recency within it must not move a row.
+    const a = item({ id: 'a', lifecycleLabel: 'Ready', updatedAt: NOW });
+    const b = item({ id: 'b', lifecycleLabel: 'Recent', updatedAt: NOW - 1 });
+    const c = item({ id: 'c', lifecycleLabel: 'Current', updatedAt: NOW - 2 });
 
     const { result, rerender } = renderHook(
       ({ items }: { items: HomeWorkItem[] }) => useHomeWorkLanes(items),
       { initialProps: { items: [a, b, c] } },
     );
-    expect(result.current.active.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    expect(result.current.idle.map((i) => i.id)).toEqual(['a', 'b', 'c']);
 
     rerender({
       items: [
-        { ...b, lifecycleLabel: 'Running' },
-        { ...c, lifecycleLabel: 'Ready' },
-        { ...a, lifecycleLabel: 'Needs attention' },
+        { ...c, lifecycleLabel: 'Ready', updatedAt: NOW + 5 },
+        { ...b, lifecycleLabel: 'Current' },
+        { ...a, lifecycleLabel: 'Recent' },
       ],
     });
-    expect(result.current.active.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    expect(result.current.idle.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+  });
 
+  it('AC1: a row that moves Running -> Idle keeps its place among idle peers instead of re-entering at the top', () => {
+    const a = item({ id: 'a', lifecycleLabel: 'Ready', updatedAt: NOW });
+    const b = item({ id: 'b', lifecycleLabel: 'Ready', updatedAt: NOW - 1 });
+    const c = item({ id: 'c', lifecycleLabel: 'Ready', updatedAt: NOW - 2 });
+
+    const { result, rerender } = renderHook(
+      ({ items }: { items: HomeWorkItem[] }) => useHomeWorkLanes(items),
+      { initialProps: { items: [a, b, c] } },
+    );
+    expect(result.current.idle.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+
+    // A turn starts on c: it leaves Idle for Running...
     rerender({
-      items: [
-        { ...c, lifecycleLabel: 'Running' },
-        { ...a, lifecycleLabel: 'Ready' },
-        { ...b, lifecycleLabel: 'Needs attention' },
-      ],
+      items: [a, b, { ...c, lifecycleLabel: 'Running', updatedAt: NOW + 10 }],
     });
-    expect(result.current.active.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    expect(result.current.running.map((i) => i.id)).toEqual(['c']);
+    expect(result.current.idle.map((i) => i.id)).toEqual(['a', 'b']);
+
+    // ...and when it ends, c returns to its old slot, newest or not.
+    rerender({
+      items: [a, b, { ...c, lifecycleLabel: 'Ready', updatedAt: NOW + 20 }],
+    });
+    expect(result.current.running).toEqual([]);
+    expect(result.current.idle.map((i) => i.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('AC2: snooze/wake round-trip survives reload (a fresh hook instance reads the same localStorage)', () => {
     const a = item({ id: 'a', lifecycleLabel: 'Running', updatedAt: NOW });
     const first = renderHook(() => useHomeWorkLanes([a]));
-    expect(first.result.current.active.map((i) => i.id)).toEqual(['a']);
+    expect(first.result.current.running.map((i) => i.id)).toEqual(['a']);
 
     act(() => first.result.current.snooze('a', NOW + 60 * 60 * 1000));
     expect(first.result.current.snoozed.map((i) => i.id)).toEqual(['a']);
-    expect(first.result.current.active).toEqual([]);
+    expect(liveOf(first.result.current)).toEqual([]);
 
     // Simulate a reload: unmount and mount a brand new hook instance, which
     // must reconstruct state purely from localStorage.
     first.unmount();
     const reloaded = renderHook(() => useHomeWorkLanes([a]));
     expect(reloaded.result.current.snoozed.map((i) => i.id)).toEqual(['a']);
-    expect(reloaded.result.current.active).toEqual([]);
+    expect(liveOf(reloaded.result.current)).toEqual([]);
 
     // Advance past the wake time and re-tick; the item returns to active
     // with a woke-from-snooze pill, and the wake also survives reload.
@@ -148,13 +172,13 @@ describe('useHomeWorkLanes', () => {
       vi.advanceTimersByTime(61 * 60 * 1000);
     });
     reloaded.rerender();
-    expect(reloaded.result.current.active.map((i) => i.id)).toEqual(['a']);
+    expect(reloaded.result.current.running.map((i) => i.id)).toEqual(['a']);
     expect(reloaded.result.current.isWoken('a')).toBe(true);
 
     reloaded.unmount();
     const afterWake = renderHook(() => useHomeWorkLanes([a]));
     expect(afterWake.result.current.snoozed).toEqual([]);
-    expect(afterWake.result.current.active.map((i) => i.id)).toEqual(['a']);
+    expect(afterWake.result.current.running.map((i) => i.id)).toEqual(['a']);
   });
 
   it('AC2: an explicit wake() clears the snooze immediately and does not show a pill', () => {
@@ -164,7 +188,7 @@ describe('useHomeWorkLanes', () => {
     expect(result.current.snoozed.map((i) => i.id)).toEqual(['a']);
 
     act(() => result.current.wake('a'));
-    expect(result.current.active.map((i) => i.id)).toEqual(['a']);
+    expect(result.current.running.map((i) => i.id)).toEqual(['a']);
     expect(result.current.isWoken('a')).toBe(false);
   });
 
@@ -174,7 +198,7 @@ describe('useHomeWorkLanes', () => {
       ({ items }: { items: HomeWorkItem[] }) => useHomeWorkLanes(items),
       { initialProps: { items: [a] } },
     );
-    expect(result.current.active).toEqual([]);
+    expect(liveOf(result.current)).toEqual([]);
     expect(result.current.recentlyFinished.map((i) => i.id)).toEqual(['a']);
     expect(result.current.settled).toEqual([]);
 
@@ -182,7 +206,7 @@ describe('useHomeWorkLanes', () => {
       vi.advanceTimersByTime(TERMINAL_LINGER_MS - 1000);
     });
     rerender({ items: [a] });
-    expect(result.current.active).toEqual([]);
+    expect(liveOf(result.current)).toEqual([]);
     expect(result.current.recentlyFinished.map((i) => i.id)).toEqual(['a']);
     expect(result.current.settled).toEqual([]);
 
@@ -190,7 +214,7 @@ describe('useHomeWorkLanes', () => {
       vi.advanceTimersByTime(2000);
     });
     rerender({ items: [a] });
-    expect(result.current.active).toEqual([]);
+    expect(liveOf(result.current)).toEqual([]);
     expect(result.current.recentlyFinished).toEqual([]);
     expect(result.current.settled.map((i) => i.id)).toEqual(['a']);
   });
@@ -198,7 +222,7 @@ describe('useHomeWorkLanes', () => {
   it('AC3 (review fix): a persisted terminal-since anchor survives reload — a stale anchor lands the item directly in settled', () => {
     const a = item({ id: 'a', lifecycleLabel: 'Completed', updatedAt: NOW });
     const first = renderHook(() => useHomeWorkLanes([a]));
-    expect(first.result.current.active).toEqual([]);
+    expect(liveOf(first.result.current)).toEqual([]);
     expect(first.result.current.recentlyFinished.map((i) => i.id)).toEqual([
       'a',
     ]);
@@ -213,7 +237,7 @@ describe('useHomeWorkLanes', () => {
       vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
     });
     const reloaded = renderHook(() => useHomeWorkLanes([a]));
-    expect(reloaded.result.current.active).toEqual([]);
+    expect(liveOf(reloaded.result.current)).toEqual([]);
     expect(reloaded.result.current.recentlyFinished).toEqual([]);
     expect(reloaded.result.current.settled.map((i) => i.id)).toEqual(['a']);
   });
@@ -262,7 +286,7 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
     vi.useRealTimers();
   });
 
-  it('a chat promoted from a local session key to a server conversationId does not reorder the active lane', () => {
+  it('a chat promoted from a local session key to a server conversationId does not reorder the live lanes', () => {
     // Both renders carry a second, unrelated session so the invariant under
     // test — the PROMOTED item's stable position — is distinguishable from
     // "only one item exists, order is trivially stable".
@@ -299,8 +323,8 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
       ({ items }: { items: HomeWorkItem[] }) => useHomeWorkLanes(items),
       { initialProps: { items: before } },
     );
-    const stableIdsBefore = result.current.active.map((i) => i.stableId);
-    expect(result.current.active.map((i) => i.id)).toEqual(
+    const stableIdsBefore = liveOf(result.current).map((i) => i.stableId);
+    expect(liveOf(result.current).map((i) => i.id)).toEqual(
       expect.arrayContaining(['local-1', 'thread-other']),
     );
 
@@ -326,16 +350,16 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
 
     rerender({ items: after });
     // The raw id really did change...
-    expect(result.current.active.map((i) => i.id)).toEqual(
+    expect(liveOf(result.current).map((i) => i.id)).toEqual(
       expect.arrayContaining(['conv-99', 'thread-other']),
     );
     //.but the stable id — and therefore the order — did not.
-    expect(result.current.active.map((i) => i.stableId)).toEqual(
+    expect(liveOf(result.current).map((i) => i.stableId)).toEqual(
       stableIdsBefore,
     );
   });
 
-  it('a persisted-task correlation forming does not reorder the active lane', () => {
+  it('a persisted-task correlation forming does not reorder the live lanes', () => {
     const otherSession = {
       threadId: 'thread-other',
       provider: 'codex',
@@ -376,7 +400,7 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
       ({ items }: { items: HomeWorkItem[] }) => useHomeWorkLanes(items),
       { initialProps: { items: before } },
     );
-    const stableIdsBefore = result.current.active.map((i) => i.stableId);
+    const stableIdsBefore = liveOf(result.current).map((i) => i.stableId);
 
     // A durable Task is created correlated to `thread-1`
     // (`task.sessionId === session.threadId`) — mergeHomeWorkItems drops the
@@ -410,11 +434,11 @@ describe('AC1 regression: stable identity survives real-pipeline id promotions (
 
     rerender({ items: after });
     // The raw id really did change...
-    expect(result.current.active.map((i) => i.id)).toEqual(
+    expect(liveOf(result.current).map((i) => i.id)).toEqual(
       expect.arrayContaining(['task-42', 'thread-other']),
     );
     //.but the stable id — and therefore the order — did not.
-    expect(result.current.active.map((i) => i.stableId)).toEqual(
+    expect(liveOf(result.current).map((i) => i.stableId)).toEqual(
       stableIdsBefore,
     );
   });

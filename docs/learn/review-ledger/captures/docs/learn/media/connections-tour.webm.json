@@ -1,0 +1,27 @@
+{
+  "path": "docs/learn/media/connections-tour.webm",
+
+  "sources": [
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/AgentConnectionView.tsx",
+
+    "src-ui/src/views/ConnectionsSectionFrame.tsx",
+
+    "src-ui/src/views/page-layout.css",
+
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
+
+    "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
+
+    "src-ui/src/views/ProviderSettingsView.tsx",
+
+    "tests/connections-crud.spec.ts"
+  ],
+
+  "reviewNotes": []
+}

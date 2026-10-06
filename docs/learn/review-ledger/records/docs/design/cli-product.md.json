@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/cli-product.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained original publication proposal and measurements with explicit current package, native dependency, managed-installer and CLI-reference routing.",
+
+  "limits": "Original counts, release state, sizes, performance and proposed acceptance remain historical; no fresh pack/install or registry publication.",
+
+  "sources": [
+    ".changeset/config.json",
+
+    "install.sh",
+
+    "packages/cli/esbuild.config.mjs",
+
+    "packages/cli/package.json",
+
+    "packages/cli/src/commands/lifecycle.ts"
+  ],
+
+  "checks": [
+    "Full original body read; bounded actual-owner/caller review. Purpose classification is separate from whole-document semantic review.",
+
+    "Focused batch: 140 tests across 9 files passed; documentation links397, index, MCP98 and Conduit generated parity passed.",
+
+    "Reviewed source changes: Read the full installer delta. Generated ring constants add signed-manifest-only nightly and explicit coexistence checks; stable/beta authenticated release flow remains. Builds now run in the final release directory before marking completion. Generic README/source CLI explanations remain accurate; platform-array manifest incompatibility is separately documented.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Integration source review through e0314c727: #2867 changed install.sh and lifecycle.ts so an archive service from the same install root no longer blocks packaged upgrade. The historical record's current-routing preamble (installer-owned archives upgrade through the recorded installer and manifest URL, with details routed to the CLI reference) remains accurate, and the original proposal content stays historical. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) adds install.sh stage-only mode and hand-off to the launcher service. lifecycle.ts now passes the launcher context only to the supervised server. The claim that installer-owned archives run station upgrade through their recorded installer and manifest URL is still accurate. The anchor `commands/lifecycle.ts:2690` no longer pointed at the upgrade code: it was already wrong before this merge, and #2881 shifted the file again (upgrade() is now at line 5343). Corrected it to name `upgrade()` in commands/lifecycle.ts. Source review is separate from executed test evidence."
+  ]
+}

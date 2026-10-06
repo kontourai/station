@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
@@ -40,7 +41,6 @@ import {
   CI_FAST_TIMEOUT_MS,
   FULL_REGRESSION_PHASES,
 } from '../verification-lanes.mjs';
-import { QUARANTINED_VITEST_FILES } from '../vitest-resource-manifest.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -243,11 +243,39 @@ function resolverInput(overrides = {}) {
 }
 
 describe('CI verification workflow contracts', () => {
+  it('resolves every workflow_run reference to an existing workflow name', () => {
+    const documents = readWorkflowDocuments().map(({ file, document }) => ({
+      file,
+      document: document as {
+        name: string;
+        on?: { workflow_run?: { workflows?: string[] } };
+      },
+    }));
+    const names = documents.map(({ document }) => document.name);
+    expect(names.length).toBeGreaterThan(0);
+    expect(new Set(names).size).toBe(names.length);
+    for (const { file, document } of documents) {
+      const trigger = document.on?.workflow_run;
+      if (!trigger) continue;
+      expect(
+        trigger.workflows,
+        `${file}: workflow_run.workflows`,
+      ).toBeInstanceOf(Array);
+      expect(trigger.workflows?.length).toBeGreaterThan(0);
+      for (const name of trigger.workflows ?? []) {
+        expect(
+          names,
+          `${file}: stale workflow_run reference ${name}`,
+        ).toContain(name);
+      }
+    }
+  });
+
   it('keeps always-on secret scanning independent from heavy CI concurrency', () => {
     const ci = workflow('ci.yml');
     const secretScan = workflow('secret-scan.yml');
 
-    expect(secretScan).toMatch(/^name: Secret Scan$/m);
+    expect(secretScan).toMatch(/^name: "PR: Secret scan"$/m);
     expect(secretScan).toContain('    name: Secret Scan');
     expect(secretScan).toMatch(/^ {2}push:\n {4}branches: \[main\]$/m);
     expect(secretScan).toMatch(/^ {2}pull_request:\n {4}branches: \[main\]$/m);
@@ -287,6 +315,8 @@ describe('CI verification workflow contracts', () => {
       | undefined;
     const intendedTargetFiles = [
       '.github/workflows/nightly.yml',
+      '.github/workflows/nightly-gallery.yml',
+      '.github/workflows/qualification-health.yml',
       '.github/workflows/container-smoke.yml',
       '.github/workflows/secret-scan.yml',
       '.github/workflows/android-test.yml',
@@ -316,7 +346,7 @@ describe('CI verification workflow contracts', () => {
     );
 
     expect(trigger).toContain('types: [completed]');
-    expect(trigger).not.toContain('Main pipeline health');
+    expect(trigger).not.toContain('Main: Health');
     // `contents: read` was added for one reason — checking out the default
     // branch so the failure job can import its comment-policy module (#1811).
     // Pinned as an exact object rather than a `not.toContain`, so the next
@@ -460,7 +490,7 @@ describe('CI verification workflow contracts', () => {
           {
             number: 42,
             state: issueState,
-            title: 'Main pipeline red: Backlog disposition policy',
+            title: 'Main pipeline red: Repo: Backlog policy',
           },
         ];
       }),
@@ -473,8 +503,9 @@ describe('CI verification workflow contracts', () => {
       },
       {
         env: {
-          GITHUB_WORKSPACE: root,
-          WORKFLOW_NAME: 'Backlog disposition policy',
+          // The Linux workflow uses this value only as an import base.
+          GITHUB_WORKSPACE: pathToFileURL(root).href,
+          WORKFLOW_NAME: 'Repo: Backlog policy',
           RUN_URL: 'https://example.test/run/123',
           HEAD_SHA: 'a'.repeat(40),
         },
@@ -487,7 +518,7 @@ describe('CI verification workflow contracts', () => {
   function recordedComment(failure: string) {
     return renderMainHealthComment(
       {
-        workflowName: 'Backlog disposition policy',
+        workflowName: 'Repo: Backlog policy',
         runUrl: 'https://example.test/run/1',
         headSha: 'a'.repeat(40),
       },
@@ -611,7 +642,7 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
-  it('closes Nightly health only after terminal deliveries, despite expected recovery skips', async () => {
+  it('closes delivery and Gallery health only after their terminal proof, despite expected skips', async () => {
     const document = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/main-health.yml',
     )?.document as {
@@ -624,50 +655,69 @@ describe('CI verification workflow contracts', () => {
       'process',
       script,
     );
-    const requiredNames = [
-      '3 · Publish native cohort / Record ledger and markers',
-      '3 · Publish CLI to npm nightly',
-      '3 · Stage portable fleet evidence / Admit portable bytes',
+    const scenarios = [
+      {
+        workflowName: 'Nightly',
+        requiredNames: [
+          '3 · Publish native cohort / Record ledger and markers',
+          '3 · Publish CLI to npm nightly',
+          '3 · Stage portable fleet evidence / Admit portable bytes',
+        ],
+        optionalName:
+          '3 · Publish native cohort / Record incomplete-cohort receipt',
+      },
+      {
+        workflowName: 'Nightly: Gallery',
+        requiredNames: ['Capture and diff screenshot gallery'],
+        optionalName: 'Review gallery usability',
+      },
     ];
-    for (const missingTerminal of [false, true]) {
-      const update = vi.fn();
-      const jobs = requiredNames.map((name, index) => ({
-        name,
-        conclusion: missingTerminal && index === 0 ? 'skipped' : 'success',
-      }));
-      // Skipped on a complete night; it runs only when a chain job did not
-      // succeed, and then only writes a receipt (#1774).
-      jobs.push({
-        name: '3 · Publish native cohort / Record incomplete-cohort receipt',
-        conclusion: 'skipped',
-      });
-      const listJobs = vi.fn();
-      const github = {
-        rest: {
-          actions: { listJobsForWorkflowRun: listJobs },
-          issues: { listForRepo: vi.fn(), createComment: vi.fn(), update },
-        },
-        paginate: vi.fn(async (method) =>
-          method === listJobs
-            ? jobs
-            : [{ number: 1, title: 'Main pipeline red: Nightly' }],
-        ),
-      };
-      await run(
-        github,
-        {
-          repo: { owner: 'kontourai', repo: 'station' },
-          payload: { workflow_run: { id: 123 } },
-        },
-        {
-          env: {
-            WORKFLOW_NAME: 'Nightly',
-            RUN_URL: 'https://example.test/run/123',
-            HEAD_SHA: 'a'.repeat(40),
+    for (const { workflowName, requiredNames, optionalName } of scenarios) {
+      for (const terminalResult of [
+        'success',
+        'skipped',
+        'failure',
+        'cancelled',
+        'absent',
+      ]) {
+        const update = vi.fn();
+        const jobs = requiredNames.flatMap((name, index) =>
+          index === 0 && terminalResult === 'absent'
+            ? []
+            : [{ name, conclusion: index === 0 ? terminalResult : 'success' }],
+        );
+        jobs.push({ name: optionalName, conclusion: 'skipped' });
+        const listJobs = vi.fn();
+        const github = {
+          rest: {
+            actions: { listJobsForWorkflowRun: listJobs },
+            issues: { listForRepo: vi.fn(), createComment: vi.fn(), update },
           },
-        },
-      );
-      expect(update).toHaveBeenCalledTimes(missingTerminal ? 0 : 1);
+          paginate: vi.fn(async (method) =>
+            method === listJobs
+              ? jobs
+              : [{ number: 1, title: `Main pipeline red: ${workflowName}` }],
+          ),
+        };
+        await run(
+          github,
+          {
+            repo: { owner: 'kontourai', repo: 'station' },
+            payload: { workflow_run: { id: 123 } },
+          },
+          {
+            env: {
+              WORKFLOW_NAME: workflowName,
+              RUN_URL: 'https://example.test/run/123',
+              HEAD_SHA: 'a'.repeat(40),
+            },
+          },
+        );
+        expect(
+          update,
+          `${workflowName}: ${terminalResult}`,
+        ).toHaveBeenCalledTimes(terminalResult === 'success' ? 1 : 0);
+      }
     }
   });
 
@@ -1022,7 +1072,7 @@ describe('CI verification workflow contracts', () => {
     expect(emulatorSmoke).toContain('timeout-minutes: 90');
   });
 
-  it('keeps CI Extended as the dispatch-only full-browser surface without rerunning ci:fast', () => {
+  it('keeps Tool: CI extended as the dispatch-only full-browser surface without rerunning ci:fast', () => {
     const ci = workflow('ci.yml');
     const extended = workflow('ci-extended.yml');
     const coverageShard = extended.slice(
@@ -1222,7 +1272,7 @@ describe('CI verification workflow contracts', () => {
     const gallery = workflow('nightly-gallery.yml');
     const runBodies = extractRunBodies(gallery);
 
-    expect(gallery).toMatch(/^name: Nightly gallery$/m);
+    expect(gallery).toMatch(/^name: "Nightly: Gallery"$/m);
     expect(gallery).toContain("- cron: '30 7 * * *'");
     expect(gallery).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(gallery).toContain(`group: nightly-gallery-\${{ github.ref }}`);
@@ -1378,10 +1428,16 @@ describe('CI verification workflow contracts', () => {
     const pr = documentFor('gallery-pr-check.yml');
     const nightly = documentFor('nightly-gallery.yml');
 
-    // Trigger: base-controlled pull_request_target only. Not merge_group —
-    // the queue-time combination check is #2428's option 2 — and never the
-    // candidate-controlled pull_request (actionlint-gate refuses it).
-    expect(Object.keys(pr.on ?? {})).toEqual(['pull_request_target']);
+    // The protected PR workflow and synthesized queue candidate must both
+    // produce the Gallery context before it can be required for landing.
+    expect(Object.keys(pr.on ?? {})).toEqual([
+      'pull_request_target',
+      'merge_group',
+    ]);
+    expect(pr.on?.merge_group).toEqual({
+      branches: ['main'],
+      types: ['checks_requested'],
+    });
     expect(pr.on?.pull_request_target).toEqual({
       branches: ['main'],
       types: ['opened', 'synchronize', 'reopened'],
@@ -1397,15 +1453,34 @@ describe('CI verification workflow contracts', () => {
     // candidate cannot edit the rule that decides whether its screens are
     // photographed, and the scope it asks for is the gallery one.
     expect(Object.keys(pr.jobs).sort()).toEqual(['classify', 'gallery-diff']);
-    const classifyRun =
-      pr.jobs.classify.steps.find((step) => step.id === 'relevance')?.run ?? '';
+    const classifyStep = pr.jobs.classify.steps.find(
+      (step) => step.id === 'relevance',
+    );
+    expect(classifyStep?.env?.BASE_SHA).toBe(
+      `\${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}`,
+    );
+    expect(classifyStep?.env?.HEAD_SHA).toBe(
+      `\${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}`,
+    );
+    const classifyRun = classifyStep?.run ?? '';
     expect(classifyRun).toContain(
       'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
     );
     expect(classifyRun).toContain('--scope gallery --mode candidate');
     const job = pr.jobs['gallery-diff'];
     expect(job.needs).toBe('classify');
-    expect(job.if).toBe("needs.classify.outputs.relevant == 'true'");
+    expect(job.if).toBe(
+      "always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')",
+    );
+    const classificationGuard = job.steps[0];
+    expect(classificationGuard.env).toEqual({
+      CLASSIFICATION_RESULT: `\${{ needs.classify.result }}`,
+      GALLERY_RELEVANT: `\${{ needs.classify.outputs.relevant }}`,
+    });
+    expect(classificationGuard.run).toContain(
+      '"$CLASSIFICATION_RESULT" != success || "$GALLERY_RELEVANT" != true',
+    );
+    expect(classificationGuard.run).toContain('exit 1');
 
     // Renderer parity. The comparator is exact, so a baseline is a claim about
     // one renderer; a PR check in any other container would contradict the
@@ -1442,7 +1517,7 @@ describe('CI verification workflow contracts', () => {
     );
     expect(nightlySetup.length).toBeGreaterThanOrEqual(4);
     const captureIndex = job.steps.findIndex((step) => step.id === 'capture');
-    expect(setupRuns(job.steps.slice(0, captureIndex))).toEqual(nightlySetup);
+    expect(setupRuns(job.steps.slice(1, captureIndex))).toEqual(nightlySetup);
     const nightlyUses = nightlyJob.steps
       .slice(0, nightlyCaptureIndex)
       .map((step) => step.uses)
@@ -1729,6 +1804,10 @@ describe('CI verification workflow contracts', () => {
     expect(plan.outputs).toEqual({
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       legacy: '${{ steps.mode.outputs.legacy }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      shards: '${{ steps.plan.outputs.shards }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'shard-count': '${{ steps.plan.outputs.shard-count }}',
     });
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     const legacyIf = "${{ steps.mode.outputs.legacy == 'true' }}";
@@ -1760,11 +1839,20 @@ describe('CI verification workflow contracts', () => {
     const shard = jobs['fast-checks-shard'];
     expect(shard.strategy?.['fail-fast']).toBe(false);
     expect(shard.strategy?.matrix?.shard).toEqual(
-      Array.from({ length: FAST_CHECKS_SHARD_COUNT }, (_, index) => index + 1),
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ fromJSON(needs.fast-checks-plan.outputs.shards || '[1,2,3,4]') }}",
     );
     // Literal beside the derived value: a change to the constant must be a
     // deliberate edit here too.
     expect(FAST_CHECKS_SHARD_COUNT).toBe(4);
+    expect(
+      planSteps.find((step) => step.name === 'Plan the affected-test selection')
+        ?.id,
+    ).toBe('plan');
+    expect(
+      planSteps.find((step) => step.name === 'Plan the affected-test selection')
+        ?.env?.STATION_FAST_CHECKS_ADAPTIVE_SHARDS,
+    ).toBe('true');
     const shardSteps = shard.steps ?? [];
     const shardRuns = shardSteps.flatMap((step) =>
       typeof step.run === 'string' &&
@@ -1774,7 +1862,18 @@ describe('CI verification workflow contracts', () => {
     );
     expect(shardRuns).toHaveLength(2);
     for (const run of shardRuns)
-      expect(run).toContain(`--shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}"`);
+      expect(run).toContain('--shard="$SHARD/$SHARD_COUNT"');
+    for (const name of [
+      'Resolve fast-checks shard slice',
+      'Run fast-checks shard',
+    ]) {
+      expect(
+        shardSteps.find((step) => step.name === name)?.env?.SHARD_COUNT,
+      ).toBe(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        "${{ needs.fast-checks-plan.outputs.shard-count || '4' }}",
+      );
+    }
 
     // Every shard stays inside the lane budget: the shard runner enforces
     // CI_FAST_TIMEOUT_MS itself, so its step has no step timeout below it,
@@ -1802,7 +1901,7 @@ describe('CI verification workflow contracts', () => {
       load(workflow('full-regression.yml')) as {
         jobs: Record<string, Job>;
       }
-    ).jobs['full-regression'].steps?.find((step) => step.name === zshName);
+    ).jobs.ordinary.steps?.find((step) => step.name === zshName);
     expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
     const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
     expect(shardZshIndex).toBeGreaterThan(-1);
@@ -2801,6 +2900,13 @@ describe('CI verification workflow contracts', () => {
       steps: Array<{ id?: string; name?: string; if?: string; run?: string }>;
     };
     expect(floorJob.if).toBeUndefined();
+    const resourceStaging = floorJob.steps.find(
+      (step) => step.name === 'Verify desktop resource staging',
+    );
+    expect(resourceStaging?.run).toBe(
+      'npm run test:focused -- scripts/__tests__/windows-resource-staging.test.ts scripts/__tests__/tauri-context.test.ts',
+    );
+    expect(resourceStaging?.if).toBeUndefined();
     const relevance = floorJob.steps.find(
       (step) => step.id === 'rust_relevance',
     );
@@ -2857,7 +2963,9 @@ describe('CI verification workflow contracts', () => {
   it('keeps full Windows Vitest diagnostics complete, manual, and honestly red', () => {
     const diagnostic = workflow('windows-vitest-diagnostic.yml');
 
-    expect(diagnostic).toMatch(/^name: Windows Full Vitest Diagnostic$/m);
+    expect(diagnostic).toMatch(
+      /^name: "Tool: Windows full vitest diagnostic"$/m,
+    );
     expect(diagnostic).toContain('workflow_dispatch:');
     expect(diagnostic).not.toContain('push:');
     expect(diagnostic).not.toContain('continue-on-error');
@@ -2874,7 +2982,7 @@ describe('CI verification workflow contracts', () => {
     const recovery = workflow('recover-terminal-capacity-owner.yml');
 
     expect(recovery).toMatch(
-      /^name: Recover terminal physical-host capacity owner$/m,
+      /^name: "Tool: Recover terminal capacity owner"$/m,
     );
     expect(recovery).toContain('workflow_dispatch:');
     expect(recovery).not.toContain('push:');
@@ -3263,7 +3371,7 @@ describe('the root tauri script roots itself at the app directory', () => {
   });
 });
 
-describe('merge-queue regression workflow covers the full regression', () => {
+describe('hosted qualification workflow covers the full regression', () => {
   type Step = {
     name?: string;
     run?: string;
@@ -3286,10 +3394,9 @@ describe('merge-queue regression workflow covers the full regression', () => {
   type Workflow = { defaults?: Defaults; jobs: Record<string, Job> };
   function document() {
     const entry = readWorkflowDocuments().find(
-      (candidate) =>
-        candidate.file === '.github/workflows/merge-queue-regression.yml',
+      (candidate) => candidate.file === '.github/workflows/full-regression.yml',
     );
-    expect(entry, 'merge-queue-regression.yml must exist').toBeDefined();
+    expect(entry, 'full-regression.yml must exist').toBeDefined();
     return entry?.document as Workflow;
   }
 
@@ -3401,21 +3508,19 @@ describe('merge-queue regression workflow covers the full regression', () => {
 
   it('runs phases only through the driver and gates on one aggregate check', () => {
     const { jobs } = document();
-    const text = workflow('merge-queue-regression.yml');
+    const text = workflow('full-regression.yml');
     expect(text).not.toMatch(/:raw\b/);
-    const aggregate = jobs['merge-queue-regression'];
-    expect(aggregate.name).toBe('Merge-queue regression');
-    expect(aggregate.if).toBe(
-      "always() && github.event_name != 'pull_request_target'",
-    );
+    const aggregate = jobs.qualification;
+    expect(aggregate.name).toBe('Full source qualification');
+    expect(aggregate.if).toBe('always() && !cancelled()');
     const testJobs = Object.keys(jobs).filter(
-      (job) => job !== 'merge-queue-regression',
+      (job) => job !== 'qualification' && job !== 'resolve',
     );
-    expect([...(aggregate.needs ?? [])].sort()).toEqual([...testJobs].sort());
+    expect([...(aggregate.needs ?? [])].sort()).toEqual(
+      ['resolve', ...testJobs].sort(),
+    );
     for (const job of testJobs)
-      expect(jobs[job].if, job).toBe(
-        "github.event_name != 'pull_request_target'",
-      );
+      expect(jobs[job].if, job).toBe("needs.resolve.outputs.reuse_run == ''");
     expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
       'npm run test:android',
     );
@@ -3590,9 +3695,12 @@ describe('merge-queue regression workflow covers the full regression', () => {
   function swallowedFailures(workflowDocument: Workflow) {
     const { jobs } = workflowDocument;
     const violations: string[] = [];
-    const aggregateName = 'merge-queue-regression';
+    const aggregateName = 'qualification';
     const aggregate = jobs[aggregateName];
-    for (const name of [...(aggregate?.needs ?? []), aggregateName]) {
+    for (const name of [
+      ...(aggregate?.needs ?? []).filter((id) => id !== 'resolve'),
+      aggregateName,
+    ]) {
       const job = jobs[name];
       if (!job) continue;
       if (job['continue-on-error'] !== undefined)
@@ -3609,11 +3717,15 @@ describe('merge-queue regression workflow covers the full regression', () => {
       if (name !== aggregateName && gatedTestCommands === 0)
         violations.push(`${name}: no gated step runs a test command`);
     }
-    // The aggregate's verdict is jq's exit status; without `-e` jq exits 0
-    // for a `false` result.
+    // The CLI's exit status decides the aggregate; runtime failure controls
+    // live in qualification-evidence.test.ts.
     const verdict = (aggregate?.steps ?? []).map(({ run }) => run ?? '');
-    if (!verdict.some((run) => /\bjq -e\b/.test(run)))
-      violations.push('merge-queue-regression: no jq -e verdict');
+    if (
+      !verdict.some((run) =>
+        run.includes('node scripts/qualification-evidence.mjs attest'),
+      )
+    )
+      violations.push('qualification: no attestation verdict');
     return violations;
   }
 
@@ -3665,8 +3777,8 @@ describe('merge-queue regression workflow covers the full regression', () => {
     const onTee = (suffix: string) => (workflowDocument: Workflow) => {
       const step = runStep(workflowDocument, 'ordinary');
       step.run = step.run?.replace(
-        '| tee "$RUNNER_TEMP/merge-queue-regression.log"',
-        `| tee "$RUNNER_TEMP/merge-queue-regression.log"${suffix}`,
+        '| tee "$RUNNER_TEMP/full-regression.log"',
+        `| tee "$RUNNER_TEMP/full-regression.log"${suffix}`,
       );
     };
     const cases: Array<[string, (workflowDocument: Workflow) => void, RegExp]> =
@@ -3734,7 +3846,7 @@ describe('merge-queue regression workflow covers the full regression', () => {
           (workflowDocument) => {
             workflowDocument.defaults = { run: { shell: 'sh {0}' } };
           },
-          /merge-queue-regression: .*shell 'sh \{0\}'/,
+          /qualification: .*shell 'sh \{0\}'/,
         ],
         [
           'job-level continue-on-error on a gate job',
@@ -3747,29 +3859,31 @@ describe('merge-queue regression workflow covers the full regression', () => {
         [
           'continue-on-error on the aggregate job',
           (workflowDocument) => {
-            workflowDocument.jobs['merge-queue-regression'][
-              'continue-on-error'
-            ] = true;
+            workflowDocument.jobs.qualification['continue-on-error'] = true;
           },
-          /^merge-queue-regression: job-level continue-on-error$/,
+          /^qualification: job-level continue-on-error$/,
         ],
         [
           'a swallowed aggregate verdict',
           (workflowDocument) => {
-            const [step] =
-              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
-            step.run = step.run?.replace('> /dev/null', '> /dev/null || true');
+            const step = workflowDocument.jobs.qualification.steps?.find(
+              (item) => item.run?.includes('qualification-evidence.mjs attest'),
+            );
+            if (!step) throw new Error('Attestation step missing');
+            step.run = `${step.run} || true`;
           },
-          /merge-queue-regression: .*'\|\|' swallows/,
+          /qualification: .*'\|\|' swallows/,
         ],
         [
-          'an aggregate verdict without jq -e',
+          'an aggregate without the attestation verdict',
           (workflowDocument) => {
-            const [step] =
-              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
-            step.run = step.run?.replace('jq -e', 'jq');
+            const step = workflowDocument.jobs.qualification.steps?.find(
+              (item) => item.run?.includes('qualification-evidence.mjs attest'),
+            );
+            if (!step) throw new Error('Attestation step missing');
+            step.run = 'echo skipped';
           },
-          /^merge-queue-regression: no jq -e verdict$/,
+          /^qualification: no attestation verdict$/,
         ],
         [
           'continue-on-error on the android viewport step',
@@ -3833,8 +3947,8 @@ describe('merge-queue regression workflow covers the full regression', () => {
           (workflowDocument) => {
             const step = runStep(workflowDocument, 'process-heavy');
             step.run = step.run?.replace(
-              '| tee "$RUNNER_TEMP/merge-queue-regression.log"',
-              '| tee "$RUNNER_TEMP/merge-queue-regression.log" &',
+              '| tee "$RUNNER_TEMP/full-regression.log"',
+              '| tee "$RUNNER_TEMP/full-regression.log" &',
             );
           },
           /^process-heavy: Run full-regression phases: backgrounded command/,
@@ -3869,11 +3983,13 @@ describe('merge-queue regression workflow covers the full regression', () => {
         [
           'continue-on-error on the aggregate step',
           (workflowDocument) => {
-            const [step] =
-              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
+            const step = workflowDocument.jobs.qualification.steps?.find(
+              (item) => item.run?.includes('qualification-evidence.mjs attest'),
+            );
+            if (!step) throw new Error('Attestation step missing');
             step['continue-on-error'] = true;
           },
-          /merge-queue-regression: .*: continue-on-error$/,
+          /qualification: .*: continue-on-error$/,
         ],
       ];
     for (const [label, mutate, expected] of cases) {
@@ -3885,22 +4001,9 @@ describe('merge-queue regression workflow covers the full regression', () => {
     }
   });
 
-  it('excludes quarantined files from every queue corpus selection, and nowhere else', () => {
-    const corpus = (text: string) =>
-      phaseIds(text).some((id) => id.startsWith('test-full-'));
-    const all = selections(document().jobs);
-    const corpusSelections = all.filter(({ text }) => corpus(text));
-    // Four ordinary slices, two process-heavy slices, the exclusive groups.
-    expect(corpusSelections).toHaveLength(7);
-    for (const { job, text } of corpusSelections)
-      expect(text, `${job}: ${text}`).toMatch(
-        /(^|\s)--exclude-quarantined(\s|$)/,
-      );
-    for (const { job, text } of all.filter(({ text }) => !corpus(text)))
-      expect(text, `${job}: ${text}`).not.toContain('--exclude-quarantined');
-    // So a quarantined file is never counted as covered by the queue: every
-    // group the queue reaches (asserted above) reaches it minus the list.
-    expect(Array.isArray(QUARANTINED_VITEST_FILES)).toBe(true);
+  it('includes quarantined files in every qualification corpus', () => {
+    for (const { text } of selections(document().jobs))
+      expect(text).not.toContain('--exclude-quarantined');
   });
 
   it('leaves Nightly canonical: full:regression never excludes quarantined files', () => {
@@ -3912,8 +4015,10 @@ describe('merge-queue regression workflow covers the full regression', () => {
       'uses: ./.github/workflows/full-regression.yml',
     );
     const hosted = workflow('full-regression.yml');
-    expect(extractRunBodies(hosted)).toContain('npm run full:regression');
-    expect(hosted).not.toContain('quarantine');
+    expect(extractRunBodies(hosted)).toContain(
+      'node scripts/run-full-regression-phases.mjs',
+    );
+    expect(extractRunBodies(hosted)).not.toContain('--exclude-quarantined');
     const scripts = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ).scripts as Record<string, string>;

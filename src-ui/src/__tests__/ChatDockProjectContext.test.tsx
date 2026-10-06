@@ -2,9 +2,31 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent,
+  render as renderWithoutNavigation,
+  screen,
+} from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
+import { NavigationProvider } from '../contexts/NavigationContext';
+
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
+function render(ui: ReactNode) {
+  return renderWithoutNavigation(<NavigationProvider>{ui}</NavigationProvider>);
+}
 
 const PROJECTS = [
   {
@@ -93,7 +115,7 @@ describe('ChatDockProjectContext', () => {
         .getByRole('button', { name: 'Alpha' })
         .getAttribute('aria-expanded'),
     ).toBe('true');
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
     // The dock header's toggle surface must NOT see the activation.
     expect(onHeaderToggle).not.toHaveBeenCalled();
   });
@@ -102,7 +124,7 @@ describe('ChatDockProjectContext', () => {
     const { onSelectProject } = renderRow({});
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Alpha' }));
     expect(onSelectProject).toHaveBeenCalledWith('alpha');
@@ -112,7 +134,7 @@ describe('ChatDockProjectContext', () => {
     const { onSwitchProject } = renderRow({});
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch to Beta' }));
     expect(onSwitchProject).toHaveBeenCalledWith('beta', 'Beta');
@@ -123,7 +145,7 @@ describe('ChatDockProjectContext', () => {
    * 110-character worktree path on the reporter's own machine — is the badge's
    * tooltip, and "Copy project path" in the dock header's More menu is how you
    * get at it. The coding-layout link the path's leaf used to carry is that
-   * menu's "Open code layout" row.
+   * menu's "Open in Coding" row.
    */
   test('names the project and keeps the full path as the badge tooltip, not as a visible segment', () => {
     renderRow({});
@@ -133,7 +155,7 @@ describe('ChatDockProjectContext', () => {
     const row = document.querySelector(
       '.chat-dock__project-context',
     ) as HTMLElement;
-    expect(row.textContent).toBe('Alpha');
+    expect(row.textContent).toBe('New chatsAlpha');
   });
 
   /**
@@ -219,7 +241,7 @@ describe('ChatDockProjectContext — no bound project (station#1803 part 3)', ()
     expect(badge.textContent).toBe('');
 
     fireEvent.click(badge);
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
     fireEvent.click(screen.getByRole('button', { name: 'Open Alpha' }));
     expect(onSelectProject).toHaveBeenCalledWith('alpha');
   });
@@ -237,7 +259,7 @@ describe('ChatDockProjectContext — no bound project (station#1803 part 3)', ()
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Choose a project' }));
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
     expect(screen.queryByText('Current')).toBeNull();
   });
 });
@@ -304,7 +326,7 @@ describe('ChatDockProjectContext — session/badge mismatch label (station#4525 
 
     // The badge still names the BOUND project ("Alpha"), not the session's.
     expect(screen.getByRole('button', { name: 'Alpha' })).toBeTruthy();
-    const label = screen.getByText('Beta ·');
+    const label = screen.getByText('This chat: Beta');
     expect(label.className).toContain('chat-dock__project-session-name');
     // the session's own facts still reach the row — the directory is the
     // badge's tooltip since #1536 F, and it is the SESSION's, not the badge

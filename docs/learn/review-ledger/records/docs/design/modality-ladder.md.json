@@ -1,0 +1,27 @@
+{
+  "path": "docs/design/modality-ladder.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Adopted container/interaction policy with historical inventory; URL selection distinguished from draft/content persistence.",
+
+  "limits": "No complete overlay/focus/dismissal/accessibility/draft persistence review or live UI/device journey.",
+
+  "sources": [
+    "src-ui/src/app-shell/routing.ts",
+
+    "src-ui/src/hooks/useUnsavedGuard.tsx",
+
+    "src-ui/src/hooks/useUrlSelection.ts"
+  ],
+
+  "checks": [
+    "Full body read; bounded actual-owner/caller inspection. Purpose classification, not whole-document semantic certification.",
+
+    "Original deviation table and references preserved; draft-persistence promise corrected.",
+
+    "Reviewed integration deltas: src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged."
+  ]
+}

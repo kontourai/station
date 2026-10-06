@@ -4,6 +4,10 @@
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
+import {
+  openOverflow,
+  overflowItems,
+} from '../../../__tests__/helpers/overflow-menu';
 import type { ACPConnectionInfo } from '../../../hooks/useACPConnections';
 import { ACPConnectionCard } from '../ACPConnectionCard';
 
@@ -34,7 +38,10 @@ function renderCard() {
       onReconnect={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+  // #3045: Remove is a menu row, not a button on the card.
+  expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Manage Kiro CLI' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
   const dialog = screen.getByRole('dialog');
   expect(
     within(dialog).getByRole('heading', { name: 'Remove Connection' }),
@@ -60,6 +67,66 @@ test('dismissing the remove confirm does not select the connection', () => {
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(onRemove).not.toHaveBeenCalled();
   expect(onClick).not.toHaveBeenCalled();
+});
+
+// Review M3: the card's two standing commands are folded (#3045). Both are
+// present and destructive, and Disable still confirms before it toggles.
+//
+// What is NOT tested here: that dismissing the menu does not select the
+// connection. The card's `onClick` is on a sibling button, not an ancestor of
+// the menu, so there is no click-through for this card to have; the general
+// case — a menu inside a clickable host — is covered by ActionRow.test.tsx.
+test('the card menu holds a destructive Disable and Remove, and Disable confirms', () => {
+  const onToggle = vi.fn();
+  render(
+    <ACPConnectionCard
+      conn={connection}
+      agents={[]}
+      onClick={vi.fn()}
+      onToggle={onToggle}
+      onRemove={vi.fn()}
+      onReconnect={vi.fn()}
+    />,
+  );
+
+  // Ready recommends nothing, so the menu is the card's one labelled action:
+  // a word beside the glyph, and a name that contains that word.
+  const trigger = screen.getByRole('button', { name: 'Manage Kiro CLI' });
+  expect(trigger.textContent).toContain('Manage');
+
+  expect(overflowItems(openOverflow('Manage Kiro CLI'))).toEqual([
+    { name: 'Disable', danger: true },
+    { name: 'Remove', danger: true },
+  ]);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Disable' }));
+  expect(onToggle).not.toHaveBeenCalled();
+  const dialog = screen.getByRole('dialog');
+  expect(
+    within(dialog).getByRole('heading', { name: 'Disable Connection' }),
+  ).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Disable' }));
+  expect(onToggle).toHaveBeenCalledWith(false);
+});
+
+test('a card with a recommended action keeps the bare ⋯ beside it', () => {
+  render(
+    <ACPConnectionCard
+      conn={{ ...connection, enabled: false }}
+      agents={[]}
+      onClick={vi.fn()}
+      onToggle={vi.fn()}
+      onRemove={vi.fn()}
+      onReconnect={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole('button', { name: 'Enable' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Manage Kiro CLI' }).textContent,
+  ).toBe('⋯');
+  // A disabled connection has nothing to disable.
+  expect(overflowItems(openOverflow('Manage Kiro CLI'))).toEqual([
+    { name: 'Remove', danger: true },
+  ]);
 });
 
 test('confirming the remove does not also select the connection', () => {

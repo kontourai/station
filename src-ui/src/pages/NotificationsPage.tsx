@@ -51,6 +51,9 @@ export function NotificationsPage() {
   const [approvalTarget, setApprovalTarget] = useState(
     () => new URLSearchParams(window.location.search).get('approval') ?? '',
   );
+  const [pairingTarget, setPairingTarget] = useState(
+    () => new URLSearchParams(window.location.search).get('pairing') ?? '',
+  );
   const loadError =
     inbox.attentionQuery.error ?? inbox.notificationsQuery.error;
   const filtered = useMemo(
@@ -90,13 +93,26 @@ export function NotificationsPage() {
         : null,
     [approvalTarget, inbox.notifications],
   );
+  const exactPairing = useMemo(
+    () =>
+      pairingTarget
+        ? (inbox.items.find(
+            (item) =>
+              item.kind === 'device-pairing' &&
+              item.source.requestId === pairingTarget,
+          ) ?? null)
+        : null,
+    [pairingTarget, inbox.items],
+  );
   const attentionItems = useMemo(() => {
     const pending = pendingAttentionItems(filtered.items);
-    return exactApproval &&
-      !pending.some((item) => item.id === exactApproval.id)
-      ? [exactApproval, ...pending]
-      : pending;
-  }, [exactApproval, filtered.items]);
+    const targets = [exactApproval, exactPairing].flatMap((item) =>
+      item && !pending.some((pendingItem) => pendingItem.id === item.id)
+        ? [item]
+        : [],
+    );
+    return [...targets, ...pending];
+  }, [exactApproval, exactPairing, filtered.items]);
   const dismissibleItems = attentionItems.filter(
     isAcknowledgeableAttentionItem,
   );
@@ -168,6 +184,7 @@ export function NotificationsPage() {
       const params = new URLSearchParams(window.location.search);
       setFilters(readNotificationHistoryFilters(params));
       setApprovalTarget(params.get('approval') ?? '');
+      setPairingTarget(params.get('pairing') ?? '');
     };
     window.addEventListener('popstate', syncFromLocation);
     return () => window.removeEventListener('popstate', syncFromLocation);
@@ -245,7 +262,8 @@ export function NotificationsPage() {
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
         inbox.unavailableSources.length === 0 &&
-        !approvalTarget ? (
+        !approvalTarget &&
+        !pairingTarget ? (
           /* when BOTH regions are empty they collapse into one PROMINENT
              empty, not a paragraph floating at the top of an empty page.
              #2064 review (c): NOT when a source could not be read. This
@@ -268,6 +286,7 @@ export function NotificationsPage() {
               pendingVisible={countPendingAttention(attentionItems)}
               filtered={filtersActive}
               focusedApprovalId={approvalTarget || undefined}
+              focusedPairingRequestId={pairingTarget || undefined}
               unavailableSources={inbox.unavailableSources}
             />
             {approvalTarget && !exactApproval && !exactApprovalNotification && (
@@ -275,6 +294,9 @@ export function NotificationsPage() {
                 That approval request isn’t available, and Station won’t open a
                 different one in its place.
               </p>
+            )}
+            {pairingTarget && !exactPairing && (
+              <p role="status">That pairing request is no longer available.</p>
             )}
             <NotificationHistoryFilterBar
               categories={categories}

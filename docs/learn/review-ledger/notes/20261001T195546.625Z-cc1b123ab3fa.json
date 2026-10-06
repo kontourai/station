@@ -1,0 +1,15 @@
+{
+  "revision": "7e8519008b556d901570139123f56890cf07a113",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the changed CI health history section of testing.md against these downstream references. Their contributor gates, fixture/mutation guidance and focused-test routing remain accurate; no prose change is needed because the delta only corrects CI health metric definitions and registers its bot-login mutation.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the changed CI health history section of testing.md against these downstream references. Their contributor gates, fixture/mutation guidance and focused-test routing remain accurate; no prose change is needed because the delta only corrects CI health metric definitions and registers its bot-login mutation.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the changed CI health history section of testing.md against these downstream references. Their contributor gates, fixture/mutation guidance and focused-test routing remain accurate; no prose change is needed because the delta only corrects CI health metric definitions and registers its bot-login mutation.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the changed CI health history section of testing.md against these downstream references. Their contributor gates, fixture/mutation guidance and focused-test routing remain accurate; no prose change is needed because the delta only corrects CI health metric definitions and registers its bot-login mutation.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the changed CI health history section of testing.md against these downstream references. Their contributor gates, fixture/mutation guidance and focused-test routing remain accurate; no prose change is needed because the delta only corrects CI health metric definitions and registers its bot-login mutation.","inputs":["tests/AGENTS.md"]}
+  ]
+}

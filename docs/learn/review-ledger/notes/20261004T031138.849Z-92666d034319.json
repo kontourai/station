@@ -1,0 +1,7 @@
+{
+  "revision": "793b5bcb008fd880a0b2ea2f5f0d375662965be2",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Resolved divergent historical bindings by re-reviewing the merged guide and its complete source list, rather than treating either record as final. Current #3202 source adds literal calls found through shared references and example-only rich continuation that stages a draft under the existing Send boundary. Existing public-contract, hosted deployment and prospective commercial/cloud limits remain accurate; no published/runtime/native qualification follows from this merge.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

@@ -16,8 +16,8 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   const rescanMutation = useAnalyticsRescanMutation();
 
   const refresh = useCallback(() => {
-    invalidate(['analytics', 'usage']);
-    invalidate(['analytics', 'achievements']);
+    invalidate(['analytics']);
+    invalidate(['insights']);
   }, [invalidate]);
 
   // TanStack returns a fresh result object per render; `mutateAsync` is the

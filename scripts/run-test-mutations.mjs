@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   closeSync,
@@ -14,6 +13,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
@@ -55,6 +55,98 @@ export function removeEmptyRender(source) {
   return source.slice(0, start) + 'null' + source.slice(end);
 }
 export const MUTATIONS = [
+  {
+    id: 'ci-health-concurrency-threshold',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'counts exactly 18 running jobs and idle gaps without double-counting boundaries',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(source, 'Number(n) >= 18', 'Number(n) > 18'),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-reentry-commits',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'classifies re-entry with a new commit versus an unchanged successful re-entry',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (changed) return 'neededNewCommits';",
+            "if (changed) return 'passedUnchanged';",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-bot-login',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure: 'counts only the merge-queue bot login as a bot removal',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            "event.actor?.login !== 'github-merge-queue[bot]'",
+            "event.actor?.type !== 'Bot'",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-listing-cap',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'detects the 1000 listing cap, splits windows, and rejects an unsplittable cap',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(source, 'if (total < 1000)', 'if (total <= 1000)'),
+      },
+    ],
+  },
+  {
+    id: 'fast-checks-shard-threshold',
+    test: 'scripts/__tests__/fast-checks-plan.test.ts',
+    failure: '41 selected files produce 2 shards',
+    files: [
+      {
+        path: 'scripts/lib/fast-checks-shards.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'FAST_CHECKS_FILES_PER_SHARD = 40',
+            'FAST_CHECKS_FILES_PER_SHARD = 41',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'fast-checks-skipped-shards',
+    test: 'scripts/__tests__/ci-fast-checks-job-graph.test.ts',
+    failure: 'the base verdict accepts 1 planned legs on PRs and merge groups',
+    files: [
+      {
+        path: '.github/workflows/ci.yml',
+        change: (source) =>
+          exactReplace(
+            source,
+            'length == 3 and all(.value.result == "success")',
+            'length == 3 and all(.value.result == "success" or .value.result == "skipped")',
+          ),
+      },
+    ],
+  },
+
   {
     id: 'device-trust-before-peer-acceptance',
     test: 'scripts/__tests__/device-connection-trust.test.ts',
@@ -509,7 +601,7 @@ async function focused(root, file, log) {
 export async function main(argv = process.argv.slice(2)) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const git = (args) =>
-    execFileSync('git', args, {
+    execFileSyncBounded('git', args, {
       cwd: root,
       encoding: 'utf8',
       windowsHide: true,
@@ -548,7 +640,7 @@ export async function main(argv = process.argv.slice(2)) {
       if (
         !allowed.has(file.path) ||
         digest(
-          execFileSync(
+          execFileSyncBounded(
             'git',
             ['show', `${record.sourceRevision}:${file.path}`],
             { cwd: root, encoding: 'utf8', windowsHide: true },

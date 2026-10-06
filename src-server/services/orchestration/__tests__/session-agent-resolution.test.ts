@@ -45,6 +45,42 @@ function baseInput(
 }
 
 describe('createSessionAgentResolver', () => {
+  test.each([
+    { available: ['weather_read'], allowed: ['read'] },
+    { available: ['read'], allowed: ['read'] },
+    { available: ['weather/*'], allowed: undefined },
+    { available: ['weather_*'], allowed: undefined },
+    { available: ['weather_weather_read'], allowed: ['weather_read'] },
+  ])(
+    'maps probe and legacy tool selections to native names: $available',
+    async ({ available, allowed }) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ tools: { mcpServers: ['weather'], available } }),
+        resolveToolServer: async () => ({
+          id: 'weather',
+          kind: 'mcp',
+          transport: 'stdio',
+          command: 'weather-mcp',
+          disabledTools: ['weather_weatherRead'],
+          probe: {
+            ok: true,
+            checkedAt: '2026-10-02T00:00:00Z',
+            toolCount: 2,
+            toolNames: ['weather_read', 'weather_weather_read'],
+          },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const result = await resolver(baseInput({ provider: 'codex' }));
+      expect(result.agent?.toolServers?.[0]).toMatchObject({
+        toolNames: ['read', 'weather_read'],
+        disabledTools: ['weather_read'],
+      });
+      expect(result.agent?.toolServers?.[0].allowedTools).toEqual(allowed);
+    },
+  );
+
   test('the session resolver excludes a disabled tool server from external-engine delivery', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>
@@ -242,8 +278,13 @@ describe('createSessionAgentResolver', () => {
           // what makes `undelivered` the interesting assertion: a requested
           // server the host cannot resolve must be receipted, never dropped
           // silently.
-          requested: ['station-control', 'station-docs'],
+          requested: ['station-control', 'station-knowledge', 'station-docs'],
           undelivered: [
+            {
+              capability: 'toolServers',
+              id: 'station-knowledge',
+              reason: 'not-found',
+            },
             {
               capability: 'toolServers',
               id: 'station-docs',
@@ -316,6 +357,17 @@ describe('createSessionAgentResolver', () => {
       'station-control',
       'station-docs',
     ]);
+    expect(
+      result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
+    ).toMatchObject({
+      systemPrompt: {
+        channel: 'first-turn',
+        firstTurnInstructions: expect.stringContaining(
+          'discover relevant installed skills and available tools',
+        ),
+      },
+    });
+
     expect(result.agent?.autoApprove).toContain(
       'station-control_list_projects',
     );
@@ -323,8 +375,14 @@ describe('createSessionAgentResolver', () => {
       result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
     ).toMatchObject({
       toolServers: {
-        requested: ['station-control', 'station-docs'],
-        undelivered: [],
+        requested: ['station-control', 'station-knowledge', 'station-docs'],
+        undelivered: [
+          {
+            capability: 'toolServers',
+            id: 'station-knowledge',
+            reason: 'not-found',
+          },
+        ],
       },
     });
   });

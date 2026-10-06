@@ -17,9 +17,14 @@ import {
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
 } from '@kontourai/station-contracts/environment-security';
+import { NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH } from '@kontourai/station-contracts/native-device-proof';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
-import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { nativeDeviceOnlyObservationRoute } from '../../security/native-device-request-authority.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  getRuntimeNativeDeviceProofPrincipal,
+} from '../../security/runtime-request-security.js';
 import { deploymentAccountPrincipal } from '../../services/identity/deployment-authentication-service.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 
@@ -86,6 +91,16 @@ export interface AccountBoundDeviceGateDeps {
       ): PrincipalRef | undefined;
     };
   };
+  /**
+   * #2893 pilot: the shared native current-Device resolver. When a request
+   * carries a proven native Device authority, its (account-bound) Device
+   * binding replaces the credential lookup as this gate's binding source.
+   */
+  resolveNativeDevice?: (request: Request) =>
+    | {
+        device: { principalBinding?: DevicePrincipalBinding };
+      }
+    | undefined;
 }
 
 /**
@@ -153,10 +168,34 @@ export function installAccountBoundDeviceGate(
   deps: AccountBoundDeviceGateDeps,
 ): void {
   app.use('*', async (c, next) => {
-    const account = deps.deploymentAuthentication?.service.current(c.req.raw);
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
-    const binding =
-      runtimePrincipal?.authority === 'device-credential'
+    // This exact protected Device self-read bootstraps binding observation
+    // before an account session exists. Its handler rechecks Device custody;
+    // it supplies no account principal or Project authority.
+    if (
+      runtimePrincipal?.kind === 'credential' &&
+      runtimePrincipal.authority === 'device-credential' &&
+      runtimePrincipal.source === 'bearer' &&
+      runtimePrincipal.deviceKind === 'device' &&
+      (c.req.method === 'GET' || c.req.method === 'HEAD') &&
+      c.req.path.startsWith(`${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/`) &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/receipt$/.test(
+        c.req.path.slice(NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH.length + 1),
+      )
+    ) {
+      await next();
+      return;
+    }
+    const account = deps.deploymentAuthentication?.service.current(c.req.raw);
+    const nativeDevice = deps.resolveNativeDevice?.(c.req.raw);
+    if (getRuntimeNativeDeviceProofPrincipal(c.req.raw) && !nativeDevice)
+      return c.json(
+        { error: { code: 'native_device_proof_device_not_current' } },
+        403,
+      );
+    const binding = nativeDevice
+      ? nativeDevice.device.principalBinding
+      : runtimePrincipal?.authority === 'device-credential'
         ? deps.identifyDevice(runtimePrincipal.credential)?.principalBinding
         : undefined;
     const accountBinding =
@@ -169,6 +208,10 @@ export function installAccountBoundDeviceGate(
     if (
       accountBinding &&
       !accountOperation &&
+      !(
+        getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
+        nativeDeviceOnlyObservationRoute(c.req.method, c.req.path)
+      ) &&
       account?.kind !== 'authenticated'
     ) {
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
@@ -221,9 +264,14 @@ export function installAccountBoundDeviceGate(
       const permitted =
         path === '/' ||
         path.startsWith('/assets/') ||
+        // Neutral observations are open only to a verified native Device
+        // proof, as in the account check above; a credential-bound device
+        // still reaches /api/system/identity alone below.
+        (getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
+          nativeDeviceOnlyObservationRoute(method, path)) ||
         path === '/api/projects' ||
         /^\/api\/projects\/[^/]+$/.test(path) ||
-        /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document))?$/.test(
+        /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document|publication))?$/.test(
           path,
         ) ||
         isAccountBoundGuestAdminLeaf(path, method) ||

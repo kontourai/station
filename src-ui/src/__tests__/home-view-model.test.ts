@@ -85,6 +85,9 @@ describe('buildHomeWorkItems', () => {
         expect(after).toHaveLength(1);
         expect(after[0]).toMatchObject({
           agentSlug: 'claude',
+          // #3355: the provider travels with the slug's side, never the
+          // predecessor's engine.
+          provider: 'claude',
           agentLabel: 'Claude Code',
           model: 'claude-opus-5',
           title: before[0].title,
@@ -885,7 +888,7 @@ describe('buildHomeWorkItems', () => {
 });
 
 describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
-  // Shape copied from a live read-model row on the brian-media dogfood
+  // Shape copied from a live read-model row on the media-server dogfood
   // instance, where 13 of 24 sessions rendered "Running" indefinitely.
   const attachedButIdle = {
     threadId: 'codex:1784515865925',
@@ -1100,7 +1103,7 @@ describe('orchestration display identity', () => {
           provider: 'codex',
           status: 'ready',
           displayTitle: 'Ship the Home history fix',
-          cwd: '/Users/brian/dev/github/kontourai/station-worktrees/ui-chat-project-affordances',
+          cwd: '/Users/me/dev/github/kontourai/station-worktrees/ui-chat-project-affordances',
           createdAt: '2026-07-30T00:00:00Z',
           updatedAt: '2026-07-30T00:00:00Z',
           isLoaded: true,
@@ -1383,7 +1386,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       remoteEnvironments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
       ],
@@ -1396,7 +1399,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       kind: 'remote-session',
       kindLabel: 'Remote session',
       environmentId: 'env-a',
-      environmentLabel: 'Brian media',
+      environmentLabel: 'Home media',
     });
     // The local item is untouched by the merge — no provenance fields leak
     // onto it.
@@ -1413,7 +1416,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       remoteEnvironments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           // Deliberately the SAME threadId as LOCAL_SESSION.
           sessions: [{ ...LOCAL_SESSION }] as any,
         },
@@ -2296,5 +2299,341 @@ describe('a continuation child whose start failed', () => {
     expect(row?.projectSlug).toBe('kontour-ai');
     expect(row?.model).toBe('gpt-6-sol');
     expect(row?.modelLabel).toBe('gpt-6-sol');
+  });
+});
+
+/**
+ * #3077 delta review: a merged row names the project of the side that knows
+ * it. `buildSessionWorkItem` never leaves `projectLabel` undefined (it folds
+ * an absent project to "No project"), so taking the session's label ahead of
+ * the chat's let that display fallback beat the chat's real project — the
+ * dock read "No project" for a chat bound to Project B. The label follows
+ * the slug's winner; only with no slug on either side does the session's
+ * label stand, because it may be a delegated name rather than the fallback.
+ */
+describe('a merged row names the project of the side that knows it', () => {
+  const NOW = Date.parse('2026-09-30T10:01:15.000Z');
+  const agents = [{ slug: agentId('demo-agent'), name: 'Demo agent' }];
+  function session(
+    over: Partial<OrchestrationSessionSummary>,
+  ): OrchestrationSessionSummary {
+    return {
+      provider: 'claude',
+      threadId: 'conv',
+      conversationId: 'conv',
+      status: 'running',
+      createdAt: '2026-09-30T10:00:01.000Z',
+      updatedAt: '2026-09-30T10:00:05.000Z',
+      controlMode: 'station-owned',
+      answerability: { answerable: true },
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 2,
+      lifecycleState: 'review_pending',
+      pendingReview: true,
+      hasActiveTurn: true,
+      ...over,
+    };
+  }
+  function chats(project: { projectSlug?: string; projectName?: string }) {
+    return {
+      tab: createDefaultChatState(
+        {
+          agentSlug: 'demo-agent',
+          agentName: 'Demo agent',
+          title: 'Mismatch demo chat',
+          conversationId: 'conv',
+          currentSessionId: 'conv',
+          ...project,
+        },
+        NOW,
+      ),
+    };
+  }
+  /** Home passes the chats; the inboxes pass pre-built chat items. Both
+   *  routes go through the same merge. */
+  const routes = [
+    [
+      'chats',
+      (input: {
+        chats: ReturnType<typeof chats>;
+        sessions: OrchestrationSessionSummary[];
+      }) => buildHomeWorkItems({ ...input, agents }),
+    ],
+    [
+      'chatItems',
+      (input: {
+        chats: ReturnType<typeof chats>;
+        sessions: OrchestrationSessionSummary[];
+      }) =>
+        buildHomeWorkItems({
+          chats: {},
+          sessions: input.sessions,
+          agents,
+          chatItems: buildActiveChatTaskItems({
+            chats: input.chats,
+            agents,
+            sessions: input.sessions,
+          }),
+        }),
+    ],
+  ] as const;
+
+  test.each(routes)(
+    'a chat bound to a project beside a session that only has a cwd (via %s)',
+    (_route, build) => {
+      const [row, ...rest] = build({
+        chats: chats({ projectSlug: 'project-b', projectName: 'Project B' }),
+        sessions: [session({ cwd: '/repos/project-b' })],
+      });
+      expect(rest).toHaveLength(0);
+      // The merged row (status from the session, project from the chat).
+      expect(row).toMatchObject({
+        lifecycleLabel: 'Needs attention',
+        orchestrationThreadId: 'conv',
+        projectSlug: 'project-b',
+        projectLabel: 'Project B',
+      });
+    },
+  );
+
+  test.each(routes)(
+    'a session bound to a project beside a chat bound to another (via %s)',
+    (_route, build) => {
+      const [row] = build({
+        chats: chats({ projectSlug: 'project-b', projectName: 'Project B' }),
+        sessions: [session({ projectSlug: 'project-a' })],
+      });
+      // The newest execution's binding wins, label and slug together.
+      expect(row).toMatchObject({
+        projectSlug: 'project-a',
+        projectLabel: 'project-a',
+      });
+    },
+  );
+
+  test.each(routes)(
+    'neither side knows a project (via %s)',
+    (_route, build) => {
+      const [row] = build({
+        chats: chats({}),
+        sessions: [session({ cwd: '/repos/somewhere' })],
+      });
+      expect(row?.projectSlug).toBeUndefined();
+      expect(row?.projectLabel).toBe('No project');
+    },
+  );
+
+  test.each(routes)(
+    'no slug on either side still shows a delegated name (via %s)',
+    (_route, build) => {
+      const [row] = build({
+        chats: chats({}),
+        sessions: [
+          session({ delegation: { taskId: 't1', projectSlug: 'delegated-x' } }),
+        ],
+      });
+      expect(row?.projectSlug).toBeUndefined();
+      expect(row?.projectLabel).toBe('delegated-x');
+    },
+  );
+});
+
+describe('an untitled open chat takes its session name before "<Agent> Chat"', () => {
+  // The chat store's title is not persisted across reloads, so a rehydrated
+  // chat has none. Its correlated session carries the server's
+  // `displayTitle` (the first thing the person asked), which is the name
+  // Activity and Home already list that session under.
+  const threadId = 'station:thread-open-chat-title';
+  const session: OrchestrationSessionSummary = {
+    threadId,
+    provider: 'station',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'completed',
+    createdAt: '2026-09-28T10:00:00Z',
+    updatedAt: '2026-09-28T10:05:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 4,
+    hasActiveTurn: false,
+    displayTitle: 'Review the release notes',
+  };
+  const untitled = createDefaultChatState(
+    // A rehydrated chat: the store did not keep its title.
+    { agentSlug: 'reviewer', agentName: 'Code Reviewer', title: '' },
+    10,
+  );
+
+  test('uses the correlated session displayTitle when the chat has no title', () => {
+    const [row] = buildActiveChatTaskItems({
+      chats: { [threadId]: untitled },
+      agents: [],
+      sessions: [session],
+    });
+    expect(row?.title).toBe('Review the release notes');
+  });
+
+  test('keeps the chat title when it has one', () => {
+    const [row] = buildActiveChatTaskItems({
+      chats: { [threadId]: { ...untitled, title: 'My own name' } },
+      agents: [],
+      sessions: [session],
+    });
+    expect(row?.title).toBe('My own name');
+  });
+
+  // `sessionTitle`'s own fallbacks ("Station session") say less than the
+  // agent-named one, so a session with no displayTitle does not replace it.
+  test('falls back to "<Agent> Chat" when the session has no displayTitle', () => {
+    const { displayTitle: _omit, ...unnamed } = session;
+    const [row] = buildActiveChatTaskItems({
+      chats: { [threadId]: untitled },
+      agents: [],
+      sessions: [unnamed],
+    });
+    expect(row?.title).toBe('Code Reviewer Chat');
+  });
+});
+
+describe('buildActiveChatTaskItems: approvals waiting on the user', () => {
+  // The chat's status pill counts `pendingApprovals` minus `answeredApprovals`;
+  // the inbox lane used to read the raw list and kept saying "Needs attention"
+  // from the moment an approval was answered until `request.resolved`.
+  const chat = (overrides: Record<string, unknown>) =>
+    ({
+      'approval-chat': {
+        agentSlug: 'codex',
+        agentName: 'Codex',
+        model: 'gpt-5.6-sol',
+        title: 'Approving',
+        createdAt: 10,
+        messages: [{ timestamp: '2026-08-24T12:00:00Z' }],
+        ...overrides,
+      },
+    }) as any;
+  const labelFor = (overrides: Record<string, unknown>) =>
+    buildActiveChatTaskItems({ chats: chat(overrides), agents: [] as any })[0]
+      ?.lifecycleLabel;
+
+  test('an unanswered request needs attention', () => {
+    expect(
+      labelFor({
+        pendingApprovals: ['req-1'],
+        orchestrationStatus: 'awaiting-approval',
+      }),
+    ).toBe('Needs attention');
+  });
+
+  test('a request the user already answered does not, though the session still reports awaiting-approval', () => {
+    expect(
+      labelFor({
+        pendingApprovals: ['req-1'],
+        answeredApprovals: ['req-1'],
+        orchestrationStatus: 'awaiting-approval',
+      }),
+    ).not.toBe('Needs attention');
+  });
+
+  test('one answered and one still waiting keeps the chat in Needs attention', () => {
+    expect(
+      labelFor({
+        pendingApprovals: ['req-1', 'req-2'],
+        answeredApprovals: ['req-1'],
+        orchestrationStatus: 'awaiting-approval',
+      }),
+    ).toBe('Needs attention');
+  });
+});
+
+/**
+ * #3355: a row carries the engine its execution recorded (`provider`) beside
+ * its `agentSlug`, so the inbox can draw an engine-bound agent's mark when
+ * the catalog could not report the agent's engine. The pairing must hold
+ * through the chat/session merge.
+ */
+describe('HomeWorkItem.provider pairs with agentSlug (#3355)', () => {
+  function session(overrides: Record<string, unknown>) {
+    return {
+      threadId: 'thread-1',
+      conversationId: 'conversation',
+      assignedAgentSlug: 'reviewer',
+      provider: 'codex',
+      title: 'Review',
+      createdAt: '2026-08-25T12:00:00Z',
+      updatedAt: '2026-08-25T12:00:00Z',
+      status: 'closed',
+      lifecycleState: 'completed',
+      isLoaded: true,
+      isPersisted: true,
+      answerability: { answerable: true },
+      eventCount: 1,
+      ...overrides,
+    };
+  }
+
+  function chat(overrides: Record<string, unknown>) {
+    return {
+      conversationId: 'conversation',
+      currentSessionId: 'thread-1',
+      agentSlug: 'reviewer',
+      agentName: 'Reviewer',
+      provider: 'codex',
+      title: 'Review',
+      createdAt: Date.parse('2026-08-25T13:00:00Z'),
+      messages: [],
+      ...overrides,
+    };
+  }
+
+  test('session and chat items each carry their own recorded provider', () => {
+    expect(
+      buildOrchestrationItems([session({})] as any, [] as any)[0],
+    ).toMatchObject({ agentSlug: 'reviewer', provider: 'codex' });
+    expect(
+      buildActiveChatTaskItems({
+        chats: { local: chat({ provider: 'claude' }) } as any,
+        agents: [] as any,
+      })[0],
+    ).toMatchObject({ agentSlug: 'reviewer', provider: 'claude' });
+  });
+
+  test('an unparseable provider is carried as nothing', () => {
+    expect(
+      buildOrchestrationItems(
+        [session({ provider: 'not an engine' })] as any,
+        [] as any,
+      )[0].provider,
+    ).toBeUndefined();
+  });
+
+  test('a merged row keeps the provider both sides agree on', () => {
+    const [row] = buildHomeWorkItems({
+      chats: { local: chat({}) } as any,
+      agents: [] as any,
+      sessions: [session({})] as any,
+    });
+    expect(row).toMatchObject({ agentSlug: 'reviewer', provider: 'codex' });
+  });
+
+  test('a merged row whose sides name different engines carries none', () => {
+    const [row] = buildHomeWorkItems({
+      chats: { local: chat({ provider: 'claude' }) } as any,
+      agents: [] as any,
+      sessions: [session({})] as any,
+    });
+    expect(row.agentSlug).toBe('reviewer');
+    expect(row.provider).toBeUndefined();
+  });
+
+  test('a merged row with conflicting agents carries neither slug nor provider', () => {
+    const [row] = buildHomeWorkItems({
+      chats: { local: chat({ agentSlug: 'writer' }) } as any,
+      agents: [] as any,
+      sessions: [session({})] as any,
+    });
+    expect(row.agentSlug).toBeUndefined();
+    expect(row.provider).toBeUndefined();
   });
 });

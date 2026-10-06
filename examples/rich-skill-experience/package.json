@@ -1,0 +1,10 @@
+{
+  "name": "@example/rich-skill-experience",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "@kontourai/station-sdk": "*",
+    "@kontourai/station-contracts": "*"
+  }
+}

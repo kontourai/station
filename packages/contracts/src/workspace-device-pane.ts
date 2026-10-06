@@ -42,10 +42,12 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
  * - **`docked` placement only.** There is no route that mounts a device
  *   screen and no Project host that should place one: a dock region beside a
  *   conversation is the whole placement story for this slice.
- * - **No `requirements.hostCapabilities`.** Browser Preview declares
- *   `local-browser-preview` because the DESKTOP shell is what renders it.
- *   A live surface is image frames over an authenticated stream — the same
- *   bytes draw in a browser tab and in the desktop webview — so gating this
+ * - **No `requirements.hostCapabilities`.** The retired `1.0` Browser
+ *   Preview declared `local-browser-preview` because the DESKTOP shell
+ *   rendered it; #90 wave 2 dropped that claim when the Browser pane moved
+ *   to a streamed server Chromium. A live surface is image frames over an
+ *   authenticated stream — the same bytes draw in a browser tab and in the
+ *   desktop webview — so gating this
  *   pane on a desktop capability would refuse a surface that works, and
  *   would be a requirement nothing derives.
  *

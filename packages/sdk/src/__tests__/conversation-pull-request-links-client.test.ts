@@ -1,7 +1,12 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const transport = vi.hoisted(() => ({ getJson: vi.fn(), mutateJson: vi.fn() }));
-vi.mock('../client/http', () => transport);
+// Only the transport is replaced: the clients read bodies and build their
+// refusals with the real helpers.
+vi.mock('../client/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../client/http')>()),
+  ...transport,
+}));
 
 import {
   getConversationPullRequestLinks,

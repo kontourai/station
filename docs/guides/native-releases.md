@@ -1,10 +1,13 @@
 # Native release operations
 
+The [release process](releasing.md) owns integration, scheduled qualification,
+repair sweeps and promotion decisions. This guide owns platform operations.
+
 Station stages every supported package from one immutable `vMAJOR.MINOR.PATCH`
 or `vMAJOR.MINOR.PATCH-preview.N` tag. The tag workflow never publishes the
 GitHub Release. It uploads workflow artifacts while each platform builds, then
 one assembler creates a draft only after the deterministic inventory and every
-checksum validate. `Publish Station release` is a separately approved manual
+checksum validate. `Release: Publish` is a separately approved manual
 workflow that downloads and revalidates the draft before making it public. Its
 terminal availability job has only `contents:read`, `attestations:read`,
 `pull-requests:read`, and `issues:write`: after publication it redownloads and
@@ -71,6 +74,20 @@ before it can draft a release, and attests them. Publish redownloads every
 asset and rechecks the inventory and exact scope predicates before any image
 alias or release-visibility effect.
 
+Draft assembly copies producer files into `release-assets` only from the
+explicit artifact allowlist in
+[`release-admit-producer-assets.mjs`](../../scripts/release-admit-producer-assets.mjs):
+both macOS desktop artifacts, Windows, Linux, portable, the host stream
+(`station-host-stream`: the five server archives and the manifest payload),
+Android, and the container descriptor, plus, for Stable only, the iOS simulator archive and the
+`release-assets/` directory of the staged TestFlight artifact. It refuses a
+missing or empty allowlisted artifact, a nested entry, a symlink, and two
+producers that emit one file name. Build-provenance descriptors, scanner
+scratch, TestFlight receipts, the per-target `station-server-<target>` build
+artifacts, and test artifacts in the same download root are never copied. An
+unexpected flat file inside an allowlisted artifact is copied here and then
+refused by the inventory that runs next. A new producer artifact needs one allowlist entry there.
+
 The simulator archive is deliberately `verification-only` and unsigned. It is
 not an installable distribution or a readiness claim. The earlier recorded local probe
 compiled and packaged the arm64 simulator app, installed and launched it, and
@@ -117,7 +134,7 @@ SemVer as well as the shared `day * 100 + build` numeric code.
 
 ## Native Nightly cohort
 
-`nightly.yml` keeps the source gate and canonical full-regression receipt and
+`nightly.yml` runs daily, keeps the source gate and exact-source qualification receipt, and
 runs the native work as two reusable phases, both only on `refs/heads/main`
 when the gated SHA is the workflow event SHA.
 
@@ -273,7 +290,9 @@ host target, launcher protocol, signed size/hash and release identity, stages
 the bundled runtime under `versions/<version>`, then promotes the active link.
 When a running Station service's fixed launcher runs that install, the installer only
 stages the version and the launcher trials the switch instead.
-It does not run dependencies or build that archive. The default authenticated
+It does not run dependencies or build that archive. The Windows zip is
+`install.ps1`'s, which installs it the same way without a service
+(#2675 slice W2; a Windows service is not switched yet). The default authenticated
 GitHub path and schema-v1 public source manifests still install and build a source
 release under `releases/`. See the [consumer formats](../../packaging/manifest/README.md#formats-and-consumers)
 and [installation lifecycle](release-channel-ports.md) for prerequisites,
@@ -295,8 +314,12 @@ and `NOT_VERIFIED`. No staged portable artifact proves availability, an
 install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
-Normal operation is the scheduled Nightly build, which fires every six hours,
-uses the current workflow event SHA, and skips native staging only when the
+Normal operation is a Nightly started by a passing main qualification run for
+the commit it qualified, at most about once a day. Nightly has no independent
+schedule; manual dispatch remains available for recovery and requires
+exact-source qualification. Both entry points use their workflow event SHA,
+never stage a source their published markers already contain, and skip
+native staging only when the
 cohort decision has the required platform markers and matching ledger rows.
 The tag alone is insufficient, as described above. To request that normal behavior
 manually, leave the optional field empty:
@@ -451,7 +474,11 @@ The workflow declarations require these GitHub Environments. Their current
 reviewers and branch/tag policies must be inspected separately:
 
 - `native-release`: signing, native-cohort and Stable iOS jobs.
-- `native-release-publish`: manual publication.
+- `native-release-publish`: manual publication. It also holds the
+  `STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY` secret that signs the
+  host-stream manifest, read only when the repository variable
+  `STATION_PORTABLE_RELEASE_PUBLISH` is `enabled` (see
+  [signed host-stream manifests](release-rings.md#signed-host-stream-manifests)).
 - `ios-beta` and `ios-nightly`: the corresponding reusable TestFlight channels;
   Stable iOS uses `native-release`.
 
@@ -525,21 +552,22 @@ has its own readback receipt; physical installation remains separate.
 
 ## Stage, inspect, publish, and roll back
 
-Push an immutable tag. The `Stage Station release` preflight binds that tag to
+Push an immutable tag. The `Release: Stage` preflight binds that tag to
 one source SHA, then the reusable hosted full-regression gate must pass on that
 exact SHA before any preview or stable producer can build, sign, upload, or
 publish. The workflow preserves the GHCR image under
 `ghcr.io/kontourai/station:sha-<source-sha>` and creates a GitHub draft only
 after the inventory passes. Inspect the draft's
 `station-release-inventory.json`, `station-release-checksums.txt`, and
-`station-container-release.json`, then run `Publish Station release` with its
+`station-container-release.json`, then run `Release: Publish` with its
 tag through `native-release-publish`. Every platform payload is attested by its
 producing job. The inventory and checksum manifest are separately attested
 protocol roots because they cannot hash each other; the inventory covers every
 other uploaded sidecar and payload.
 
 Publish resolves the tag again and normally requires the release to still be a draft,
-downloads every `station-*` asset, verifies every asset's GitHub provenance and
+downloads every `station-*` asset, verifies every asset's GitHub provenance
+(except the signed host-stream manifest, described below) and
 the inventory/checksums, and compares the live `sha-<source-sha>` image to the
 digest recorded in `station-container-release.json`. It promotes only
 `image@recorded-digest` to the recorded version/channel aliases, then changes
@@ -560,6 +588,28 @@ workflow-crossing ref. Leave the new release public and empty, then explicitly e
 `latest.json` on a non-empty rolling release is treated as damage and fails
 closed. A failed draft is fixed with a new tag; never replace an immutable tag
 release asset under the same tag.
+
+The draft also carries the host stream: the five `station-server-*` archives
+and `station-server-manifest-payload.json`, attested by release.yml. Publish
+checks the payload against the tag and the archive bytes and dry-run signs it
+on every run. The attestation loop skips one asset,
+`station-portable-<ring>-manifest.json`. Publish attaches that signed
+manifest itself, so it carries no release.yml attestation; the inventory
+revalidation verifies it against the pinned release key and the attested
+payload instead. Behind `STATION_PORTABLE_RELEASE_PUBLISH`, publish signs
+the manifest and attaches it before publication. The separate `host-pointer`
+job then moves the `portable-<ring>` pointer. It runs once publish reports
+the release public, even if the deploy ledger later fails, and its own
+failure never skips the ledger or release availability. It takes the signed
+manifest from the public versioned release and verifies it with the pinned
+key before any pointer write. It re-verifies the public
+versioned assets and replaces only a strictly older pointer, restoring it if
+the re-verification fails. It only re-verifies when the pointer already
+serves this run's bytes, and it leaves the pointer alone for an older tag,
+such as a desktop rollback. A rerun that finds the manifest already attached
+to the release compares its bytes and never replaces it. Details and the
+owner actions are in
+[signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
 
 Stable and Preview desktop builds embed the endpoint for their rolling release.
 The default branch's policy checkout runs the updater manifest assembly and

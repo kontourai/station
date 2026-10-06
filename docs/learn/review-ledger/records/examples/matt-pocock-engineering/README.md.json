@@ -1,0 +1,29 @@
+{
+  "path": "examples/matt-pocock-engineering/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed public author inspection/review, portable materialization, definition source labels and explicit workflow stops against owning files. Read actual pinned source requirements for Grill Me, grilling, domain modelling, specification, tickets, setup and implementation dependencies.",
+
+  "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
+
+  "sources": [
+    "examples/matt-pocock-engineering/plugin.json",
+
+    "examples/matt-pocock-engineering/ADAPTATIONS.json",
+
+    "examples/matt-pocock-engineering/SOURCE-TRACE.json",
+
+    "packages/shared/src/skill-experience-author.ts",
+
+    "examples/matt-pocock-engineering/EVALUATION-CASES.json",
+
+    "examples/matt-pocock-engineering/qualification/browser-focus-board-20261003.json"
+  ],
+
+  "checks": [
+    "Focused author/workflow tests 29 passed; CLI typecheck passed; direct supported CLI inspection succeeds and unknown entry refuses; gap-review mutation caught one intended failure and restored green."
+  ]
+}

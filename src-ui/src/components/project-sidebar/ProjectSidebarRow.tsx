@@ -7,7 +7,7 @@ import {
   useNavigationActions,
 } from '../../contexts/NavigationContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
-import { LayoutIcon } from '../icons/LayoutIcon';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import {
   type ProjectLayoutChip,
   ProjectLayoutChips,
@@ -42,13 +42,13 @@ export function ProjectSidebarRow({
   /** The set-aware color `projectAccents` allocates over the sidebar's projects. */
   accent?: string;
   /**
-   * Sessions in this project's live lanes — Needs you plus Active now, the
+   * Sessions in this project's live lanes — Needs you, Running and Idle, the
    * Sessions list's own populations scoped to this project (archive#3202).
    */
   liveCount?: number;
   /**
-   * What that number means, in the lanes' own words ("Needs you: 2 · Active
-   * now: 1"). Supplied by the same derivation that produced `liveCount`, never
+   * What that number means, in the lanes' own words ("Needs you: 2 · Running:
+   * 1"). Supplied by the same derivation that produced `liveCount`, never
    * composed here, so the number and its explanation cannot drift.
    */
   liveLabel?: string;
@@ -168,22 +168,44 @@ export function ProjectSidebarRow({
           type="button"
           className={btnClass}
           onClick={handleClick}
-          title={collapsed ? project.name : undefined}
+          title={`Open ${project.name} workspace`}
         >
           <span
             className="sidebar__project-accent"
             style={{ backgroundColor: accent }}
             aria-hidden="true"
           />
-          {/* #2150: the initials monogram (`CA`, `FE`) is `LayoutIcon`'s
-              fallback for a project with no icon. At 18px it is a smudge, it
-              lands in the accessible name ("CA Campfit"), and the design
-              record draws the accent bar beside it for identity -- so an
-              icon-less project shows the bar alone. A project WITH an icon
-              keeps it: that is identity the user chose. */}
-          {project.icon ? (
-            <LayoutIcon layout={project} size={collapsed ? 28 : 18} />
-          ) : null}
+          {/* #2150: an initials monogram (`CA`, `FE`) at 18px is a smudge,
+              it would land in the accessible name ("CA Campfit"), and the
+              design record draws the accent bar beside it for identity -- so
+              an icon-less project never shows initials. A project WITH an
+              icon keeps the bar AND the icon: the bar is the colour every
+              surface shares, the icon is identity the user chose.
+              `ProjectIcon` draws only what the icon rule accepts, so a legacy
+              remote URL is never hotlinked from here.
+
+              Expanded, every row reserves the icon's slot, so names line up
+              whether or not a project has an icon. An icon-less project
+              leaves it empty: the bar already carries its colour, and a dot
+              there would read as a status or presence dot. The collapsed
+              rail has no names to align, so it draws only an icon there. */}
+          {collapsed ? (
+            <ProjectIcon
+              project={project}
+              size={28}
+              fallback="none"
+              className="sidebar__project-icon"
+            />
+          ) : (
+            <span className="sidebar__project-icon-slot" aria-hidden="true">
+              <ProjectIcon
+                project={project}
+                size={18}
+                fallback="none"
+                className="sidebar__project-icon"
+              />
+            </span>
+          )}
           <span className="sidebar__project-name">{project.name}</span>
           {liveCount > 0 && (
             <>
@@ -223,7 +245,7 @@ export function ProjectSidebarRow({
               SEAM — member avatars (#2066, design record D5). The record
               draws "[J][M]" here, but presence is what it draws: the avatars
               of members PRESENT. No per-project presence authority exists in
-              the UI today — `LiveCollaboratorsSection` reads a host-wide
+              the UI today — the footer presence tray reads a host-wide
               projection (connected clients, not people, and not per project),
               and task-room presence is scoped to a task room. The only
               per-project membership read, `useProjectAccess`, is an

@@ -1,0 +1,7 @@
+{
+  "revision": "d55b3c7896a9f7b347a2db676a8096f53931b5d2",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the operator bundle Compose, Caddy ingress, pinned coturn configuration, owner-only files, source build, restart, backup, restore, and credential rotation instructions. Compose interpolation and CLI isolation tests pass locally; public TLS/TURN, remote Station access, and physical iOS acceptance remain unverified.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

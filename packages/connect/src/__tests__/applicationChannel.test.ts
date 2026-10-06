@@ -38,9 +38,20 @@ function pair() {
         },
       }) satisfies ApplicationChannel,
   );
-  return { client: channels[0]!, server: channels[1]!, sent };
+  return {
+    client: channels[0]!,
+    server: channels[1]!,
+    sent,
+    isClosed: () => closed,
+  };
 }
-function fixture(handler: (request: Request) => Promise<Response> | Response) {
+function fixture(
+  handler: (request: Request) => Promise<Response> | Response,
+  options: {
+    prepareRequest?: ApplicationChannel['prepareRequest'];
+    assertCurrent?: () => void | Promise<void>;
+  } = {},
+) {
   const lifetime = new AbortController();
   const requests: Request[] = [];
   const pairs: ReturnType<typeof pair>[] = [];
@@ -54,13 +65,13 @@ function fixture(handler: (request: Request) => Promise<Response> | Response) {
         return handler(request);
       },
     });
-    return channels.client;
+    return { ...channels.client, prepareRequest: options.prepareRequest };
   });
   const fetch = createApplicationChannelFetch({
     origin: 'https://station.test',
     signal: lifetime.signal,
     open,
-    assertCurrent: () => {},
+    assertCurrent: options.assertCurrent ?? (() => {}),
   });
   return { fetch, requests, pairs, open, stop: () => lifetime.abort() };
 }
@@ -93,6 +104,188 @@ describe('application channel request and streaming response', () => {
     expect(h.requests).toHaveLength(1);
     h.stop();
   });
+  test('prepares after opening and dispatches the original query, binary bytes and headers', async () => {
+    const events: string[] = [];
+    let entered!: () => void;
+    const preparing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = fixture(
+      async (request) => {
+        events.push('dispatch');
+        return Response.json({
+          method: request.method,
+          path: new URL(request.url).pathname + new URL(request.url).search,
+          body: [...new Uint8Array(await request.arrayBuffer())],
+          original: request.headers.get('X-Original'),
+          proof: request.headers.get('X-Peer-Proof'),
+        });
+      },
+      {
+        prepareRequest: async (input) => {
+          events.push('prepare');
+          expect(input.method).toBe('POST');
+          expect(input.path).toBe('/api/action?mode=exact%2Bbytes&n=2');
+          expect([...input.body]).toEqual([0, 255, 128, 13, 10]);
+          expect(input.headers.get('X-Original')).toBe('retained');
+          expect(Reflect.set(input, 'method', 'DELETE')).toBe(false);
+          expect(Reflect.set(input, 'path', '/changed')).toBe(false);
+          input.body.fill(7);
+          input.headers.set('X-Original', 'changed');
+          entered();
+          await held;
+          events.push('prepared');
+          return [['X-Peer-Proof', 'channel-owned-proof']];
+        },
+      },
+    );
+    const open = h.open.getMockImplementation()!;
+    h.open.mockImplementation(async () => {
+      events.push('open');
+      return open();
+    });
+    const pending = h.fetch(
+      'https://station.test/api/action?mode=exact%2Bbytes&n=2',
+      {
+        method: 'POST',
+        headers: { 'X-Original': 'retained' },
+        body: Uint8Array.of(0, 255, 128, 13, 10),
+      },
+    );
+    await preparing;
+    expect(events).toEqual(['open', 'prepare']);
+    expect(h.pairs[0]!.sent[0]).toEqual([]);
+    expect(h.requests).toHaveLength(0);
+    release();
+    const response = await pending;
+    expect(await response.json()).toEqual({
+      method: 'POST',
+      path: '/api/action?mode=exact%2Bbytes&n=2',
+      body: [0, 255, 128, 13, 10],
+      original: 'retained',
+      proof: 'channel-owned-proof',
+    });
+    expect(events).toEqual(['open', 'prepare', 'prepared', 'dispatch']);
+    expect(h.open).toHaveBeenCalledTimes(1);
+    h.stop();
+  });
+
+  test.each([
+    {
+      name: 'signer failure',
+      prepare: async () => {
+        throw new Error('signing failed');
+      },
+      error: 'signing failed',
+    },
+    {
+      name: 'header collision',
+      prepare: async () =>
+        [['X-Station-Native-Device-Proof', 'overwrite']] as const,
+      error: 'header_collision',
+    },
+    {
+      name: 'frame limit',
+      prepare: async () => [['X-Proof', 'x'.repeat(16385)]] as const,
+      error: 'Application frame invalid',
+    },
+  ])(
+    '$name during preparation closes without dispatch',
+    async ({ prepare, error }) => {
+      const h = fixture(() => Response.json({}), { prepareRequest: prepare });
+      await expect(
+        h.fetch('https://station.test/api/action', {
+          headers: { 'x-station-native-device-proof': 'supplied-proof' },
+        }),
+      ).rejects.toThrow(error);
+      expect(h.open).toHaveBeenCalledTimes(1);
+      expect(h.pairs[0]!.sent[0]).toEqual([]);
+      expect(h.requests).toHaveLength(0);
+      expect(h.pairs[0]!.isClosed()).toBe(true);
+      h.stop();
+    },
+  );
+
+  test('caller abort closes a hanging preparation and ignores its late proof', async () => {
+    let entered!: () => void;
+    const preparing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let finish!: (headers: readonly (readonly [string, string])[]) => void;
+    const held = new Promise<readonly (readonly [string, string])[]>(
+      (resolve) => {
+        finish = resolve;
+      },
+    );
+    let signal: AbortSignal | undefined;
+    const h = fixture(() => Response.json({}), {
+      prepareRequest: async (input) => {
+        signal = input.signal;
+        entered();
+        return held;
+      },
+    });
+    const controller = new AbortController();
+    const reason = new Error('caller retired');
+    const pending = h.fetch('https://station.test/api/action', {
+      signal: controller.signal,
+    });
+    const rejected = expect(pending).rejects.toBe(reason);
+    await preparing;
+    controller.abort(reason);
+    await rejected;
+    expect(signal?.aborted).toBe(true);
+    expect(h.pairs[0]!.isClosed()).toBe(true);
+    finish([['X-Proof', 'late-proof']]);
+    await held;
+    expect(h.pairs[0]!.sent[0]).toEqual([]);
+    expect(h.requests).toHaveLength(0);
+    expect(h.open).toHaveBeenCalledTimes(1);
+    h.stop();
+  });
+
+  test.each(['trust', 'authority'] as const)(
+    'retired %s during preparation prevents dispatch',
+    async (owner) => {
+      let current = true;
+      const check = () => {
+        if (!current) throw new Error('authority retired');
+      };
+      let entered!: () => void;
+      const preparing = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const h = fixture(() => Response.json({}), {
+        assertCurrent: owner === 'trust' ? check : undefined,
+        prepareRequest: async () => {
+          entered();
+          await held;
+          return [['X-Proof', 'late-proof']];
+        },
+      });
+      const pending = h.fetch('https://station.test/api/action', {
+        authorityGuard: owner === 'authority' ? check : undefined,
+      });
+      const rejected = expect(pending).rejects.toThrow('authority retired');
+      await preparing;
+      current = false;
+      release();
+      await rejected;
+      expect(h.pairs[0]!.sent[0]).toEqual([]);
+      expect(h.requests).toHaveLength(0);
+      expect(h.pairs[0]!.isClosed()).toBe(true);
+      h.stop();
+    },
+  );
+
   test('streams binary content in bounded chunks only when consumed', async () => {
     const bytes = Uint8Array.from(
       { length: 120000 },

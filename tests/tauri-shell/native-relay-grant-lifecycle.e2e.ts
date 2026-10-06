@@ -40,7 +40,10 @@ import { SelfHostedBrokerRuntime } from '../../src-server/runtime/bootstrap/self
 import { createNativeV2PionDiagnosticAdapter } from '../../src-server/services/connections/native-v2-pion-diagnostic-adapter.js';
 import { startPionApplicationAdapter } from '../../src-server/services/connections/pion-application-adapter.js';
 import { SelfHostedBrokerClient } from '../../src-server/services/connections/self-hosted-broker-client.js';
-import { SelfHostedBrokerConnector } from '../../src-server/services/connections/self-hosted-broker-connector.js';
+import {
+  type BrokerNativeOfferAdapter,
+  SelfHostedBrokerConnector,
+} from '../../src-server/services/connections/self-hosted-broker-connector.js';
 import { SelfHostedBrokerService } from '../../src-server/services/connections/self-hosted-broker-service.js';
 import {
   spawnOwnedChild,
@@ -409,7 +412,11 @@ async function startBroker(echoMode = false) {
         },
         {
           surface: echoSurface,
-          answer: async (offer, approved, signal) => {
+          answer: async (
+            ...[offer, approved, signal]: Parameters<
+              BrokerNativeOfferAdapter['answer']
+            >
+          ) => {
             if (!nativeEchoEnabled || !echoAdapter)
               throw new Error('native_pion_diagnostic_approval_required');
             return await echoAdapter.adapter.answer(offer, approved, signal);

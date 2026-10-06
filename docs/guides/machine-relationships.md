@@ -45,14 +45,16 @@ OpenSSH configuration. This works through the server; it is not the retained
 native SSH-launcher API. An ordinary saved Station address is a connection
 profile, not an SSH execution environment or a new grant.
 
-**Save an encrypted broker route** — on native Desktop, **Add computer** can
+**Save an encrypted broker route** — in a native shell, **Add computer** can
 save a Station address, broker address, and exact Station enrollment. A separate
 invitation and out-of-band comparison can approve the Station signing key.
 Neither action connects the route, signs in, pairs a Device, or grants Project
-or compute access. Native application-route selection remains unavailable;
-the saved route cannot serve as an ordinary connection or CLI default yet.
-See [Connections](connections.md) for route storage, key approval, and the
-remaining native transport boundary.
+or compute access. After the separate Device setup, **Use this Station** selects
+a configured route for account sign-in and bounded health and member Project
+reads. Operator Workspace resources and contribution writes remain unsupported;
+the CLI still excludes native broker routes from defaults and explicit targets.
+See [Connections](connections.md) for the setup steps and the separate fresh,
+public application, physical-device and release qualification limits.
 
 ### What a paired device may do, and full access
 
@@ -68,8 +70,11 @@ station environment access scope <device> --add approval:full-access
 station environment access scope <device> --remove approval:full-access
 ```
 
-or, in the Station desktop app on that host, from the Station name (top
-right) → **Paired devices** → the device → **Change access**.
+The **Paired devices** panel (Station name, top right → **Paired devices** →
+the device → **Change access**) does not apply the change from the desktop
+app: the app holds a device credential, not the operator credential, and the
+route refuses it. Use the host CLI above. Remote operator access is
+[a proposal](../design/operator-device-access.md) (#2894).
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
@@ -91,15 +96,19 @@ access), Station records a new decision of **Ask**, attributed to the
 operator's revocation. Nothing is deleted from the conversation's history.
 
 The sessions its grant had unconfined also run confined again (inside the
-workspace), because Station checks the grant each time it hands the engine a
-posture. That happens at every turn while a decision stands, and at the
-session's next start. A turn already running finishes. The next turn is
-confined and asks. The command lists these conversations as re-confined.
+workspace), from their next turn, without restarting the engine. Station
+checks the grant each time it hands the engine a posture: at every turn while
+a decision stands, at the session's next start, and on the first turns after
+the grant was taken back even when no decision stands (for example a session
+at full access only because of its Agent's or the Station's default). A turn
+already running finishes, but it cannot be given new instructions by steering:
+Station refuses the steer and keeps the message for the next turn, which is
+confined.
 
-One case waits: a running session with no decision standing, at full access
-only because of its Agent's or the Station's default. Station re-applies no
-posture on a turn of such a session, so it stays unconfined until its engine
-restarts. It is listed as "still unconfined".
+The command lists each session whose engine is still running unconfined as
+"still unconfined" until its next turn, and a conversation whose sessions are
+stopped or have already taken a confined turn as re-confined. The desktop app's notice offers **Stop now** on each running
+session, which stops its engine at once; its next start is confined.
 
 Some conversations stay at full access, and the command lists them without
 changing them:

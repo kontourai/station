@@ -1,4 +1,4 @@
-name: Stage Station release
+name: "Release: Stage"
 
 # Preview and stable tags share one preflight-bound source. The reusable
 # full-regression job must succeed on that exact SHA before any platform or
@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: station-release-${{ github.ref }}
@@ -942,8 +943,100 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # #2959: the host stream. The five station-server-<os>-<arch> archives for
+  # this tag's ring, built by the same reusable workflow Nightly calls, with a
+  # read-only token and no secret.
+  host-archives:
+    name: Build host-stream archives
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/portable-server-archives.yml
+    with:
+      ref: ${{ needs.preflight.outputs.sha }}
+      version: ${{ needs.preflight.outputs.version }}
+      ring: ${{ needs.preflight.outputs.channel }}
+
+  # Assembles the schema v2 payload from the archive descriptors, dry-run
+  # signs it with a throwaway key, and stages the archives and the payload as
+  # attested draft assets. It never signs with the release key and reads no
+  # secret: publish-release.yml does that, behind the owner's gate.
+  # scripts/__tests__/portable-release-publish-workflow.test.ts pins it.
+  host-manifest:
+    name: Assemble and dry-run sign the host-stream manifest
+    needs: [preflight, host-archives]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_RING: ${{ needs.preflight.outputs.channel }}
+      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+      RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: station-server-*
+          path: ${{ runner.temp }}/archives
+      - id: locations
+        name: Name the versioned release and the rolling manifest
+        run: node scripts/portable-release-publication.mjs locations --ring "$RELEASE_RING" --repository "$GITHUB_REPOSITORY" --version "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+      - name: Assemble the schema v2 payload from the archive descriptors
+        env:
+          BASE_URL: ${{ steps.locations.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          node_version=$(node -p 'require("./config/portable-server-node-runtime.json").version')
+          protocol_min=$(node --input-type=module -e 'import { PORTABLE_LAUNCHER_PROTOCOL as p } from "./scripts/lib/portable-publication.mjs"; process.stdout.write(String(p.min))')
+          protocol_max=$(node --input-type=module -e 'import { PORTABLE_LAUNCHER_PROTOCOL as p } from "./scripts/lib/portable-publication.mjs"; process.stdout.write(String(p.max))')
+          mkdir -p "$RUNNER_TEMP/host-publication"
+          # Every target is required: a partial host stream is not assembled.
+          node scripts/ecosystem-manifest.mjs assemble --descriptors "$RUNNER_TEMP/archives" --version "$RELEASE_VERSION" --channel "$RELEASE_RING" --source-sha "$RELEASE_SHA" --base-url "$BASE_URL" --node-version "$node_version" --launcher-protocol-min "$protocol_min" --launcher-protocol-max "$protocol_max" --output "$RUNNER_TEMP/host-publication/payload.json"
+          node scripts/portable-release-publication.mjs check-payload --ring "$RELEASE_RING" --payload "$RUNNER_TEMP/host-publication/payload.json" --version "$RELEASE_VERSION" --source-sha "$RELEASE_SHA" --repository "$GITHUB_REPOSITORY"
+      - name: Sign with a throwaway key and verify
+        run: |
+          set -euo pipefail
+          publication="$RUNNER_TEMP/host-publication"
+          keys="$RUNNER_TEMP/dry-run-keys"
+          node scripts/portable-release-publication.mjs dry-run-keys --ring "$RELEASE_RING" --out-dir "$keys"
+          node scripts/ecosystem-manifest.mjs create --payload "$publication/payload.json" --key-id station-portable-release-dry-run --private-key "$keys/dry-run-private-key.pem" --allow-unpinned-key --output "$publication/dry-run-manifest.json"
+          rm -f "$keys/dry-run-private-key.pem"
+          node scripts/ecosystem-manifest.mjs verify --manifest "$publication/dry-run-manifest.json" --keys "$keys/dry-run-keys.json" > /dev/null
+          node scripts/portable-release-publication.mjs verify --ring "$RELEASE_RING" --manifest "$publication/dry-run-manifest.json" --keys "$keys/dry-run-keys.json" --expected-payload "$publication/payload.json"
+          # The throwaway envelope must never pass the pinned keys, and the
+          # refusal must be the unpinned-key one, not a wrong path or argument.
+          if node scripts/ecosystem-manifest.mjs verify --manifest "$publication/dry-run-manifest.json" > /dev/null 2> "$publication/pinned-verify.err"; then
+            echo '::error::the dry-run manifest verified against the pinned key table' >&2
+            exit 1
+          fi
+          grep -qxF 'manifest signing key station-portable-release-dry-run is not pinned' "$publication/pinned-verify.err" || { echo '::error::the pinned-key check refused the dry-run manifest for an unexpected reason:' >&2; cat "$publication/pinned-verify.err" >&2; exit 1; }
+      - name: Stage the host archives and payload as release assets
+        run: |
+          set -euo pipefail
+          mkdir release-assets
+          # Only the bytes the payload signs are staged; descriptors are not.
+          node scripts/portable-release-publication.mjs check-archives --payload "$RUNNER_TEMP/host-publication/payload.json" --archives "$RUNNER_TEMP/archives" > "$RUNNER_TEMP/host-archive-paths.txt"
+          mapfile -t archives < "$RUNNER_TEMP/host-archive-paths.txt"
+          cp "${archives[@]}" release-assets/
+          cp "$RUNNER_TEMP/host-publication/payload.json" release-assets/station-server-manifest-payload.json
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: release-assets/* }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: { name: station-host-stream, path: release-assets, if-no-files-found: error, retention-days: 14 }
+
   assemble-draft:
-    needs: [preflight, desktop-macos, desktop-windows, desktop-linux, portable, android, ios-simulator, ios-device, container]
+    needs: [preflight, desktop-macos, desktop-windows, desktop-linux, portable, host-manifest, android, ios-simulator, ios-device, container]
     if: >-
       ${{
         always() &&
@@ -952,6 +1045,7 @@ jobs:
         needs.desktop-windows.result == 'success' &&
         needs.desktop-linux.result == 'success' &&
         needs.portable.result == 'success' &&
+        needs.host-manifest.result == 'success' &&
         needs.android.result == 'success' &&
         needs.container.result == 'success' &&
         ((needs.preflight.outputs.channel == 'preview' && needs.ios-simulator.result == 'skipped' && needs.ios-device.result == 'success') ||
@@ -967,6 +1061,8 @@ jobs:
       RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
       RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
       RELEASE_CREATED_AT: ${{ needs.preflight.outputs.created_at }}
+      RELEASE_CHANNEL: ${{ needs.preflight.outputs.channel }}
+      IOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.ios_bundle_version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
@@ -987,7 +1083,7 @@ jobs:
       - name: Admit only producer release assets, never scanner scratch
         run: |
           mkdir release-assets
-          find "$RUNNER_TEMP/station-release-producer-artifacts" -type f -path '*/release-assets/*' -exec cp {} release-assets/ \;
+          node scripts/release-admit-producer-assets.mjs --artifacts-root "$RUNNER_TEMP/station-release-producer-artifacts" --output-dir release-assets --channel "$RELEASE_CHANNEL" --ios-bundle-version "$IOS_BUNDLE_VERSION"
           test ! -e release-assets/station-container-source.json
       - name: Download the descriptor-bound scanner inventory into scratch
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1036,5 +1132,5 @@ jobs:
             echo "Refusing to replace assets under existing release $RELEASE_TAG" >&2
             exit 1
           fi
-          gh release create "$RELEASE_TAG" --draft --verify-tag --title "Station $RELEASE_TAG" --notes "Validated release inventory; publish through the protected Publish Station release workflow."
+          gh release create "$RELEASE_TAG" --draft --verify-tag --title "Station $RELEASE_TAG" --notes "Validated release inventory; publish through the protected Release: Publish workflow."
           gh release upload "$RELEASE_TAG" release-assets/*

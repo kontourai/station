@@ -35,6 +35,9 @@ const PRE_SHELL_MAIN_OWNERS = new Set([
   'views/share/SharedAnswerBoundary.tsx',
   // main.tsx mounts account entry instead of App on standalone /account paths.
   'views/account/AccountEntryView.tsx',
+  // NativeRelayEntryBoundary in main.tsx replaces the operator-provider tree
+  // with this member shell before those providers mount for a native route.
+  'views/native-relay/NativeRelayMemberShell.tsx',
   // The shell's own landmark.
   'App.tsx',
 ]);

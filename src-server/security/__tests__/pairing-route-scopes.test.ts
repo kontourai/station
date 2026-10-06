@@ -303,6 +303,31 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
         '/api/projects',
         true,
       ],
+      // #3157: the usage-limit banner's read, and its two person-owned actions.
+      [
+        'GET',
+        '/api/orchestration/sessions/:threadId/usage-limit',
+        'orchestration:read',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/usage-limit/resume',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/usage-limit/cancel',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
     ] as const) {
       expect(requiredPairingScope(method, path)).toBe(scope);
       expect(matchPairingScopeRule(method, path)).toMatchObject({
@@ -769,8 +794,10 @@ describe('pairing-route-scopes: leaf-level coverage (station#1131)', () => {
 describe('pairing-route-scopes: table-driven lookups', () => {
   test.each([
     ['GET', '/api/projects', 'orchestration:read'],
+    ['GET', '/api/skills/experiences', 'orchestration:read'],
     ['GET', '/api/tasks/task-1/user-input-references', 'orchestration:read'],
     ['POST', '/api/tasks/task-1/references', 'orchestration:operate'],
+    ['POST', '/api/tasks/task-1/room/output-feedback', 'orchestration:operate'],
     ['GET', '/api/projects/my-proj/knowledge/status', 'orchestration:read'],
     ['POST', '/api/projects', 'orchestration:operate'],
     [
@@ -805,6 +832,11 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/orchestration/runs', 'orchestration:read'],
     [
       'GET',
+      '/api/orchestration/sessions/thread-1/skill-experience',
+      'orchestration:read',
+    ],
+    [
+      'GET',
       '/api/starter-work/inspect-approval/candidate',
       'orchestration:read',
     ],
@@ -836,6 +868,18 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/environments/ssh/sessions', 'orchestration:operate'],
     ['HEAD', '/api/environments/ssh/sessions', 'orchestration:operate'],
     ['GET', '/api/pairing/devices', 'access:manage'],
+    ['GET', '/api/pairing/native-relay-surfaces', 'access:manage'],
+    ['POST', '/api/pairing/native-relay-surfaces', 'access:manage'],
+    [
+      'GET',
+      '/api/pairing/native-device-bindings/11111111-1111-4111-8111-111111111111',
+      'access:manage',
+    ],
+    [
+      'POST',
+      '/api/pairing/native-device-bindings/11111111-1111-4111-8111-111111111111/approve',
+      'access:manage',
+    ],
     ['GET', '/api/secret-bindings', 'access:manage'],
     ['GET', '/api/secret-bindings/integrations/github', 'access:manage'],
     ['GET', '/api/secret-bindings/github', 'access:manage'],
@@ -876,6 +920,11 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['HEAD', '/monitoring/fleet-serve-receipts', 'access:manage'],
     ['GET', '/monitoring/stats', 'orchestration:read'],
     ['GET', '/monitoring/metrics', 'orchestration:read'],
+    ['GET', '/api/registry/sources', 'access:manage'],
+    ['POST', '/api/registry/sources', 'access:manage'],
+    ['PATCH', '/api/registry/sources/source-1', 'access:manage'],
+    ['POST', '/api/registry/sources/source-1/refresh', 'access:manage'],
+    ['DELETE', '/api/registry/sources/source-1', 'access:manage'],
     ['GET', '/api/registry/kits', 'orchestration:read'],
     ['GET', '/api/registry/kits/example/layout', 'orchestration:read'],
     ['POST', '/api/registry/kits/example/disable', 'orchestration:operate'],
@@ -1283,6 +1332,49 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         ),
       ).resolves.toBe(true);
     }
+  });
+
+  test('standard paired credentials cannot manage host marketplace sources', async () => {
+    const standardResolver = {
+      verifyCredential: vi.fn(async () => true),
+      resolveGrantedScope: vi.fn(async () =>
+        pairingScopePresetString('standard'),
+      ),
+    };
+    const operatorResolver = {
+      verifyCredential: vi.fn(async () => true),
+      resolveGrantedScope: vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE),
+    };
+    for (const [method, path] of [
+      ['GET', '/api/registry/sources'],
+      ['POST', '/api/registry/sources'],
+      ['PATCH', '/api/registry/sources/source-1'],
+      ['POST', '/api/registry/sources/source-1/refresh'],
+      ['DELETE', '/api/registry/sources/source-1'],
+    ] as const) {
+      const requiredScope = requiredPairingScope(method, path)!;
+      await expect(
+        credentialAuthorizedForScope(
+          standardResolver,
+          requiredScope,
+          'remote-standard-credential',
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        credentialAuthorizedForScope(
+          operatorResolver,
+          requiredScope,
+          'operator-credential',
+        ),
+      ).resolves.toBe(true);
+    }
+    await expect(
+      credentialAuthorizedForScope(
+        standardResolver,
+        requiredPairingScope('GET', '/api/registry/skills')!,
+        'remote-standard-credential',
+      ),
+    ).resolves.toBe(true);
   });
 
   test('a bare prefix segment collision does not falsely match (path boundary correctness)', () => {

@@ -1,3 +1,4 @@
+import type { PullRequestReviewComment } from '@kontourai/station-contracts/pull-request-provider';
 import {
   type DiffComment,
   useCodingDiffQuery,
@@ -34,18 +35,68 @@ import {
 } from '../../contexts/DeviceSettingsContext';
 import { DiffCommentThread } from './DiffCommentThread';
 import './DiffPanel.css';
+import { createPortal } from 'react-dom';
 import {
   browserEpochMs,
   emitDiffCommitPerformanceMark,
 } from '../../performance/interactive-workspace-performance-hooks';
+import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
 import { SkeletonBlock } from '../state';
+import {
+  CollapseAllGlyph,
+  ColumnsGlyph,
+  ExpandAllGlyph,
+  WrapGlyph,
+} from './diffGlyphs';
 
 type DiffCommentSide = DiffComment['side'];
+
+/**
+ * @pierre/diffs draws its own `-N +N` before the header's metadata slot, and
+ * has no option to leave it out short of replacing the whole header. Station
+ * draws the file's counts in that slot itself (`renderHeaderMetadata`,
+ * additions first like the pane's total, and a kind for a hunkless file), so
+ * the library's pair is hidden through its own stylesheet hook, which reaches
+ * into the diff's shadow root where a page rule cannot.
+ */
+const LIBRARY_FILE_COUNTS_HIDDEN =
+  '[data-metadata] > [data-additions-count], [data-metadata] > [data-deletions-count] { display: none; }';
 
 /** Metadata carried on each annotated diff line: its comments + composer flag. */
 interface DiffCommentAnnotation {
   comments: DiffComment[];
   composing: boolean;
+  /** Read-only comments the forge anchored to this line. */
+  provider?: PullRequestReviewComment[];
+}
+
+/** A forge's inline comments on one diff line, read-only. */
+function ProviderCommentThread({
+  comments,
+}: {
+  comments: PullRequestReviewComment[];
+}) {
+  return (
+    <div className="diff-comment-thread diff-comment-thread--provider">
+      {comments.map((comment) => (
+        <div
+          key={comment.id}
+          className="diff-comment"
+          data-provider-comment={comment.id}
+        >
+          <div className="diff-comment__meta">
+            <strong>{comment.author || 'Unknown author'}</strong>
+            <span className="diff-comment__time">
+              {Number.isNaN(Date.parse(comment.createdAt))
+                ? ''
+                : new Date(comment.createdAt).toLocaleString()}
+            </span>
+          </div>
+          <div className="diff-comment__body">{comment.body}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 interface ActiveComposer {
@@ -248,12 +299,14 @@ export function DiffPanel({
     data: diff = '',
     isLoading: loading,
     error: queryError,
+    refetch,
   } = useCodingDiffQuery({ projectSlug, workingDir }, apiBase);
   return (
     <ObservedDiffPanel
       diff={diff}
       loading={loading}
       error={queryError?.message || null}
+      onRetry={() => void refetch()}
       observationKey={workingDir}
       projectSlug={projectSlug}
     />
@@ -265,14 +318,23 @@ export function ObservedDiffPanel({
   diff,
   loading = false,
   error = null,
+  onRetry,
   observationKey,
   projectSlug,
+  providerComments,
 }: {
   diff: string;
   loading?: boolean;
   error?: string | null;
+  /** Re-read after an error; the error line offers it when given. */
+  onRetry?: () => void;
   observationKey: string;
   projectSlug?: string;
+  /**
+   * A forge's inline review comments to show read-only on their lines. Only
+   * comments with a line are placed; the caller lists the rest.
+   */
+  providerComments?: readonly PullRequestReviewComment[];
 }) {
   const performanceSurfaceRef = useRef<HTMLDivElement | null>(null);
 
@@ -425,6 +487,18 @@ export function ObservedDiffPanel({
     return byFile;
   }, [comments]);
 
+  const providerByFile = useMemo(() => {
+    const byFile = new Map<string, Map<string, PullRequestReviewComment[]>>();
+    for (const comment of providerComments ?? []) {
+      if (comment.line === null) continue;
+      const lines = byFile.get(comment.path) ?? new Map();
+      const key = sideLineKey(comment.side, comment.line);
+      lines.set(key, [...(lines.get(key) ?? []), comment]);
+      byFile.set(comment.path, lines);
+    }
+    return byFile;
+  }, [providerComments]);
+
   // @pierre/diffs' controlled CodeView only refreshes an item's internal
   // record — including re-invoking renderHeaderPrefix/renderHeaderMetadata —
   // when `item.version` changes (components/CodeView.js's `syncItemRecord`:
@@ -443,8 +517,12 @@ export function ObservedDiffPanel({
       const id = diffItemId(fileDiff, index);
       const filePath = fileDiff.name;
       const lineComments = commentsByFile.get(filePath);
+      const forgeComments = providerByFile.get(filePath);
       // Annotate every line that has comments, plus the active composer line.
-      const keys = new Set<string>(lineComments ? lineComments.keys() : []);
+      const keys = new Set<string>([
+        ...(lineComments ? lineComments.keys() : []),
+        ...(forgeComments ? forgeComments.keys() : []),
+      ]);
       if (composer && composer.filePath === filePath) {
         keys.add(sideLineKey(composer.side, composer.lineNumber));
       }
@@ -459,6 +537,9 @@ export function ObservedDiffPanel({
           lineNumber,
           metadata: {
             comments: lineComments?.get(key) ?? [],
+            ...(forgeComments?.has(key)
+              ? { provider: forgeComments.get(key) }
+              : {}),
             composing:
               !!composer &&
               composer.filePath === filePath &&
@@ -480,7 +561,14 @@ export function ObservedDiffPanel({
         ...(annotations.length > 0 ? { annotations } : {}),
       };
     });
-  }, [files, commentsByFile, composer, collapseOverrides, fileCounts]);
+  }, [
+    files,
+    commentsByFile,
+    providerByFile,
+    composer,
+    collapseOverrides,
+    fileCounts,
+  ]);
 
   const fileOf = (item: CodeViewItem<DiffCommentAnnotation>): string =>
     item.type === 'diff' ? item.fileDiff.name : '';
@@ -492,32 +580,39 @@ export function ObservedDiffPanel({
     const filePath = fileOf(item);
     const meta = annotation.metadata;
     if (!meta) return null;
+    if (!commentsEnabled)
+      return meta.provider ? (
+        <ProviderCommentThread comments={meta.provider} />
+      ) : null;
     return (
-      <DiffCommentThread
-        comments={meta.comments}
-        composing={meta.composing}
-        busy={createComment.isPending}
-        onSubmit={(body) =>
-          createComment.mutate(
-            {
+      <>
+        {meta.provider && <ProviderCommentThread comments={meta.provider} />}
+        <DiffCommentThread
+          comments={meta.comments}
+          composing={meta.composing}
+          busy={createComment.isPending}
+          onSubmit={(body) =>
+            createComment.mutate(
+              {
+                filePath,
+                side: annotation.side,
+                lineNumber: annotation.lineNumber,
+                body,
+              },
+              { onSuccess: () => setComposer(null) },
+            )
+          }
+          onCancel={() => setComposer(null)}
+          onStartReply={() =>
+            setComposer({
               filePath,
               side: annotation.side,
               lineNumber: annotation.lineNumber,
-              body,
-            },
-            { onSuccess: () => setComposer(null) },
-          )
-        }
-        onCancel={() => setComposer(null)}
-        onStartReply={() =>
-          setComposer({
-            filePath,
-            side: annotation.side,
-            lineNumber: annotation.lineNumber,
-          })
-        }
-        onDelete={(id) => deleteComment.mutate(id)}
-      />
+            })
+          }
+          onDelete={(id) => deleteComment.mutate(id)}
+        />
+      </>
     );
   };
 
@@ -621,7 +716,11 @@ export function ObservedDiffPanel({
       key={diffTheme}
       disableWorkerPool
       items={items}
-      renderAnnotation={commentsEnabled ? renderAnnotation : undefined}
+      renderAnnotation={
+        commentsEnabled || providerByFile.size > 0
+          ? renderAnnotation
+          : undefined
+      }
       renderGutterUtility={commentsEnabled ? renderGutterUtility : undefined}
       renderHeaderPrefix={renderHeaderPrefix}
       renderHeaderMetadata={renderHeaderMetadata}
@@ -631,114 +730,123 @@ export function ObservedDiffPanel({
         diffStyle,
         lineDiffType: 'none',
         overflow: wrap ? 'wrap' : 'scroll',
+        unsafeCSS: LIBRARY_FILE_COUNTS_HIDDEN,
       }}
     />
+  );
+
+  // The counts and the four icon tools, drawn in one of two places. Inside a
+  // host that draws the pane's head itself (the Coding layout's side panel,
+  // #3046 round), the head names the pane: the counts join it after the
+  // name and the tools before the host's close, and the pane draws no row of
+  // its own. On its own, the pane draws them as one quiet row. Either way
+  // the tools are icon-only, named and tipped; the two toggles say which way
+  // they are set (`aria-pressed`). The host keeps its own ⋯ (pop out,
+  // remove): the pane has no overflow to merge it into.
+  const headSlots = usePaneHeadSlots();
+  const stats = (
+    <span className="diff-stat">
+      <span className="diff-stat__files">
+        {files.length} {files.length === 1 ? 'file' : 'files'}
+      </span>
+      <span className="diff-stat__additions">+{totalCounts.additions}</span>
+      <span className="diff-stat__deletions">−{totalCounts.deletions}</span>
+    </span>
+  );
+  const renderTools = (placement: 'head' | 'bar') => (
+    <div
+      className={`diff-panel__tools${placement === 'head' ? ' diff-panel__tools--head' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={collapseAllFiles}
+        title="Collapse all files"
+        aria-label="Collapse all files"
+        className="diff-tool"
+      >
+        <CollapseAllGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={expandAllFiles}
+        title="Expand all files"
+        aria-label="Expand all files"
+        className="diff-tool"
+      >
+        <ExpandAllGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
+        }
+        title="Split view"
+        aria-label="Split view"
+        aria-pressed={diffStyle === 'split'}
+        className="diff-tool"
+      >
+        <ColumnsGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() => setWrap(!wrap)}
+        title="Wrap lines"
+        aria-label="Wrap lines"
+        aria-pressed={wrap}
+        className="diff-tool"
+      >
+        <WrapGlyph />
+      </button>
+    </div>
   );
 
   return (
     <div
       ref={performanceSurfaceRef}
+      className="diff-panel"
       data-station-performance-surface="worktree-diff"
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '8px',
-          padding: '6px 12px 4px',
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          Git Diff
-        </span>
-        {hasDiff && (
-          <span className="diff-stat">
-            <span className="diff-stat__files">
-              {files.length} {files.length === 1 ? 'file' : 'files'}
-            </span>
-            <span className="diff-stat__additions">
-              +{totalCounts.additions}
-            </span>
-            <span className="diff-stat__deletions">
-              −{totalCounts.deletions}
-            </span>
-          </span>
-        )}
-        {hasDiff && (
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button
-              type="button"
-              onClick={collapseAllFiles}
-              title="Collapse all files"
-              aria-label="Collapse all files"
-              className="diff-toggle"
-            >
-              Collapse all
-            </button>
-            <button
-              type="button"
-              onClick={expandAllFiles}
-              title="Expand all files"
-              aria-label="Expand all files"
-              className="diff-toggle"
-            >
-              Expand all
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
-              }
-              title={`Switch to ${diffStyle === 'unified' ? 'split' : 'unified'} view`}
-              aria-label={`Diff view: ${diffStyle} (click to switch)`}
-              className="diff-toggle"
-            >
-              {diffStyle === 'unified' ? 'Unified' : 'Split'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setWrap(!wrap)}
-              title={wrap ? 'Disable line wrap' : 'Enable line wrap'}
-              aria-pressed={wrap}
-              aria-label="Toggle line wrap"
-              className={
-                wrap ? 'diff-toggle diff-toggle--active' : 'diff-toggle'
-              }
-            >
-              Wrap
-            </button>
+      {headSlots ? (
+        <>
+          {headSlots.leading && hasDiff
+            ? createPortal(stats, headSlots.leading)
+            : null}
+          {headSlots.trailing && hasDiff
+            ? createPortal(renderTools('head'), headSlots.trailing)
+            : null}
+        </>
+      ) : (
+        hasDiff && (
+          <div className="diff-panel__bar">
+            {stats}
+            {renderTools('bar')}
           </div>
-        )}
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 12px' }}>
+        )
+      )}
+      <div className="diff-panel__body">
         {loading && <SkeletonBlock count={2} label="Loading diff" />}
         {error && (
-          <div style={{ fontSize: '12px', color: 'var(--error-text)' }}>
+          <p className="diff-panel__note diff-panel__note--error" role="alert">
             {error}
-          </div>
+            {onRetry && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="button button--link"
+                  onClick={onRetry}
+                >
+                  Retry
+                </button>
+              </>
+            )}
+          </p>
         )}
         {hasDiff && codeView}
         {!loading && !error && !hasDiff && (
-          <div
-            style={{
-              padding: '12px',
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-            }}
-          >
+          <p className="diff-panel__note">
             {hasPatchText ? 'Unable to parse diff.' : 'No changes'}
-          </div>
+          </p>
         )}
       </div>
     </div>

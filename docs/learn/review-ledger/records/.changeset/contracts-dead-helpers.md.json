@@ -1,0 +1,15 @@
+{
+  "path": ".changeset/contracts-dead-helpers.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for removing unused MCP ref formatting and registry lifecycle helper exports; parsing and lifecycle types remain.",
+
+  "limits": "A changeset is not proof of a published release or downstream consumer compatibility.",
+
+  "sources": [],
+
+  "checks": []
+}

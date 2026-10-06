@@ -7,6 +7,7 @@ import { useAgentCatalogRead, useAgents } from '../../contexts/AgentsContext';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
 import { useAddJob, useEditJob } from '../../hooks/useScheduler';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { agentFixRoute } from '../AgentReadinessCell';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonList } from '../state';
@@ -39,21 +40,35 @@ import {
  */
 const AGENT_CATALOG_ERROR_ID = 'schedule-agent-catalog-error';
 
+export type JobFormPrefill = Partial<{
+  name: string;
+  cron: string;
+  schedule?: SchedulerSchedule;
+  prompt: string;
+  agent: string;
+}>;
+
 export function JobFormModal({
   job,
   prefill,
   onClose,
+  onSetupAgent,
   providers = [],
+  hidden = false,
+  checkingSetup = false,
+  interactionDisabled = false,
+  setupError,
+  onReadinessChange,
 }: {
   job?: SchedulerJob;
-  prefill?: Partial<{
-    name: string;
-    cron: string;
-    schedule?: SchedulerSchedule;
-    prompt: string;
-    agent: string;
-  }>;
+  prefill?: JobFormPrefill;
   onClose: () => void;
+  onSetupAgent?: (target: string) => void;
+  hidden?: boolean;
+  checkingSetup?: boolean;
+  interactionDisabled?: boolean;
+  setupError?: unknown;
+  onReadinessChange?: (ready: boolean) => void;
   providers?: SchedulerProviderInfo[];
 }) {
   const isEdit = !!job;
@@ -179,8 +194,10 @@ export function JobFormModal({
   // answered, and never after the person has chosen: an auto-correction that
   // overrides a deliberate pick is worse than a bad default.
   const agentPickedRef = useRef(false);
+  const canChooseDefaultAgent =
+    !isEdit && !init.agent && !agentPickedRef.current;
   useEffect(() => {
-    if (isEdit || init.agent || agentPickedRef.current || !agentsLoaded) return;
+    if (!canChooseDefaultAgent || !agentsLoaded) return;
     const runnableDefault = agentOptions.defaultSlug;
     if (!runnableDefault) return;
     setForm((current) =>
@@ -188,7 +205,7 @@ export function JobFormModal({
         ? current
         : { ...current, agent: runnableDefault },
     );
-  }, [agents, agentOptions.defaultSlug, agentsLoaded, init.agent, isEdit]);
+  }, [agents, agentOptions.defaultSlug, agentsLoaded, canChooseDefaultAgent]);
 
   const jobAgentRunnability = schedulerAgentRunnability(agents, form.agent);
   const monitorAgentRunnability = schedulerAgentRunnability(
@@ -204,6 +221,45 @@ export function JobFormModal({
   // happened, permanently once the read had failed. Nothing derived from an
   // unanswered catalog may reach the reader.
   const agentRunnabilityKnown = agentsLoaded;
+  const needsAgentSetup =
+    !isEdit &&
+    !init.agent &&
+    agentRunnabilityKnown &&
+    !agentOptions.defaultSlug;
+
+  const repairCandidate =
+    agentOptions.eligible.find((agent) => agent.slug === form.agent) ??
+    (canChooseDefaultAgent ? agentOptions.eligible[0] : undefined);
+  const repairRoute = repairCandidate
+    ? agentFixRoute(repairCandidate)
+    : undefined;
+  const repairTarget = repairCandidate
+    ? repairRoute === 'models'
+      ? '/connections/models'
+      : repairRoute === 'edit'
+        ? `/agents/${encodeURIComponent(repairCandidate.slug)}`
+        : undefined
+    : needsAgentSetup
+      ? '/agents/new'
+      : undefined;
+  useEffect(() => {
+    onReadinessChange?.(
+      agentRunnabilityKnown &&
+        !checkingSetup &&
+        (namedAgentRunnability.runnable ||
+          (form.monitorType === 'none' &&
+            canChooseDefaultAgent &&
+            Boolean(agentOptions.defaultSlug))),
+    );
+  }, [
+    agentRunnabilityKnown,
+    checkingSetup,
+    namedAgentRunnability.runnable,
+    canChooseDefaultAgent,
+    agentOptions.defaultSlug,
+    form.monitorType,
+    onReadinessChange,
+  ]);
 
   const scheduleFromForm = (): SchedulerSchedule => {
     if (form.scheduleKind === 'every') {
@@ -253,6 +309,7 @@ export function JobFormModal({
       }));
 
   const handleSubmit = () => {
+    if (interactionDisabled) return;
     const nextSchedule = scheduleFromForm();
     const monitor =
       form.monitorType === 'github-pull-request'
@@ -355,6 +412,7 @@ export function JobFormModal({
       form.monitorMaxTokens >= 1 &&
       form.monitorMaxRuntimeMs >= 1);
 
+  if (hidden) return null;
   return (
     <Dialog
       eyebrow="Schedule"
@@ -374,6 +432,8 @@ export function JobFormModal({
             pending={pending}
             pendingLabel="Saving…"
             disabled={
+              interactionDisabled ||
+              checkingSetup ||
               !scheduleValid ||
               !monitorValid ||
               // A new job is refused while it names an Agent that cannot run
@@ -439,6 +499,11 @@ export function JobFormModal({
             The loading vocabulary names the wait in the skeleton's `label`; a
             new sentence is the eleven-treatments problem SHELL-13 removed, and
             `check-prepush-static-gates` refuses it. */}
+        {setupError ? (
+          <span role="alert" className="schedule__field-error">
+            {userFacingErrorMessage(setupError)}
+          </span>
+        ) : null}
         {!agentsSettled && <SkeletonList count={1} label="Loading agents" />}
         {agentsFailed && (
           <span className="schedule__field-error" id={AGENT_CATALOG_ERROR_ID}>
@@ -468,16 +533,31 @@ export function JobFormModal({
             />
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
-                {!isEdit && !init.agent && !agentOptions.defaultSlug
-                  ? 'Set up an agent in Agents before adding a job.'
+                {needsAgentSetup
+                  ? 'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.'
                   : jobAgentRunnability.reason}
               </span>
             )}
-            {agentOptions.excludedEngineAgents.length > 0 && (
-              <span className="schedule__field-hint">
-                {SCHEDULER_ENGINE_AGENT_NOTE}
-              </span>
-            )}
+            {agentRunnabilityKnown &&
+              !jobAgentRunnability.runnable &&
+              repairTarget &&
+              onSetupAgent && (
+                <Button
+                  type="button"
+                  variant="link"
+                  onClick={() => onSetupAgent(repairTarget)}
+                >
+                  {repairCandidate
+                    ? 'Repair this agent’s setup'
+                    : 'Set up a scheduled-job agent'}
+                </Button>
+              )}
+            {agentOptions.excludedEngineAgents.length > 0 &&
+              !needsAgentSetup && (
+                <span className="schedule__field-hint">
+                  {SCHEDULER_ENGINE_AGENT_NOTE}
+                </span>
+              )}
           </div>
         )}
         <label className="schedule__field">

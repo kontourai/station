@@ -207,3 +207,52 @@ describe('saved Station contract', () => {
     ).toBe(false);
   });
 });
+
+test('accepts only the native host publication metadata states while keeping CLI defaults separate', () => {
+  const native = {
+    ...profile,
+    name: 'native',
+    endpoint: 'https://station.example',
+    setupSource: 'manual',
+    relayRoute: {
+      brokerOrigin: 'https://broker.example',
+      stationId: '11111111-1111-4111-8111-111111111111',
+      enrollmentId: '22222222-2222-4222-8222-222222222222',
+    },
+    environmentId: '11111111-1111-4111-8111-111111111111',
+    clientInstanceId: '33333333-3333-4333-8333-333333333333',
+    credentialRef: { kind: 'station-bearer', id: 'opaque-host-reference' },
+    configurationState: 'configured',
+  };
+  expect(isStationProfile(native)).toBe(true);
+  expect(
+    isStationProfile({ ...native, configurationState: 'requires-auth' }),
+  ).toBe(true);
+  for (const change of [
+    { environmentId: 'foreign-station' },
+    { clientInstanceId: 'invalid' },
+    { credentialRef: undefined },
+    { configurationState: 'unconfigured' },
+    { credentialRef: { kind: 'plaintext', id: 'secret' } },
+    { setupSource: 'paired' },
+  ])
+    expect(isStationProfile({ ...native, ...change })).toBe(false);
+  expect(
+    isStationProfileStore({
+      schemaVersion: 1,
+      revision: 8,
+      defaultProfile: null,
+      projectProfiles: {},
+      profiles: [native],
+    }),
+  ).toBe(true);
+  expect(
+    isStationProfileStore({
+      schemaVersion: 1,
+      revision: 8,
+      defaultProfile: 'native',
+      projectProfiles: {},
+      profiles: [native],
+    }),
+  ).toBe(false);
+});

@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import { createHash, webcrypto } from 'node:crypto';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -73,10 +74,11 @@ const deleteOutputMutation = {
   mutate: vi.fn(),
 };
 const downloadOutputContent = vi.fn();
+const appendOutputFeedback = vi.fn();
 const taskWorkspaceAuthorityScope = vi.hoisted(() => ({
   apiBase: 'http://station.test',
   authorityKey: 'task-workspace-fixture',
-  isCurrent: () => true,
+  isCurrent: (): boolean => true,
 }));
 
 // AW-4: the optional Task experiences are now derived from this
@@ -85,6 +87,8 @@ const pluginsResult: {
   data: Array<{ enabled?: boolean; manifest?: { capabilities?: string[] } }>;
 } = { data: [] };
 const bindStarterWork = vi.hoisted(() => vi.fn());
+const roomAgentBinding = vi.hoisted(() => vi.fn());
+const roomAgentSend = vi.hoisted(() => vi.fn());
 const starterQueryClient = vi.hoisted(() => ({
   setQueryData: vi.fn(),
   invalidateQueries: vi.fn(async () => {}),
@@ -134,6 +138,26 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => {
   };
 });
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
+  TaskRoomWorkNotSentError: class extends Error {},
+  useAppendProjectTaskRoomOutputFeedbackMutation: () => ({
+    isPending: false,
+    mutateAsync: appendOutputFeedback,
+  }),
+  useTaskRoomAgentOptionsQuery: () => ({
+    data: { targets: [{ id: 'researcher', name: 'Researcher', ready: true }] },
+    isLoading: false,
+    isError: false,
+  }),
+  useTaskRoomAgentRequestsQuery: () => ({
+    data: { records: [] },
+    isError: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  useSubmitTaskRoomAgentRequestMutation: (...args: unknown[]) => {
+    roomAgentBinding(...args);
+    return { isPending: false, mutateAsync: roomAgentSend };
+  },
   useProjectTaskRoomDiscoveryQuery: () => roomDiscoveryResult,
   useProjectTaskRoomDocumentQuery: () => roomDocumentResult,
   useProjectTaskRoomHistoryQuery: () => ({
@@ -298,6 +322,18 @@ function taskOutput(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function bindDownloadedVersion(bytes: Uint8Array) {
+  const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+  const output = taskOutputsResult.data?.[0];
+  if (!output) throw new Error('expected selected output');
+  output.materialization = {
+    ...output.materialization,
+    digest,
+    byteLength: bytes.byteLength,
+  };
+  return { bytes, etag: `"${digest}"` };
+}
+
 describe('TaskWorkspaceView', () => {
   beforeEach(() => {
     queryResult = {
@@ -337,6 +373,8 @@ describe('TaskWorkspaceView', () => {
     deleteOutputMutation.isPending = false;
     deleteOutputMutation.mutate.mockReset();
     downloadOutputContent.mockReset();
+    appendOutputFeedback.mockReset();
+    vi.stubGlobal('crypto', webcrypto);
     pluginsResult.data = [];
     roomDiscoveryResult = {
       data: { kind: 'unavailable' },
@@ -415,6 +453,63 @@ describe('TaskWorkspaceView', () => {
     ).toBeTruthy();
     expect(screen.getByDisplayValue('Retained async context')).toBeTruthy();
     expect(screen.getByText(/Task room is unavailable/i)).toBeTruthy();
+  });
+
+  test('the Task conversation invokes an agent in the resolved Project slug and exact Task incarnation', async () => {
+    roomAgentBinding.mockClear();
+    roomAgentSend
+      .mockReset()
+      .mockResolvedValue({ kind: 'recorded', record: { state: 'dispatched' } });
+    roomDiscoveryResult = {
+      data: {
+        kind: 'existing',
+        scope: { taskId: 'task-alpha' },
+        capabilities: {
+          documentRead: true,
+          documentWrite: true,
+          historyRead: true,
+          messageWrite: true,
+          revisionLinks: true,
+          live: true,
+        },
+      },
+      isLoading: false,
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TaskWorkspaceView taskId="task-alpha" />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole('tab', { name: 'Task conversation' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ask an agent' }),
+    );
+    fireEvent.click(
+      screen.getByRole('option', { name: 'Researcher @researcher' }),
+    );
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Include Task brief' }),
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'Probe this idea' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+    await waitFor(() => expect(roomAgentSend).toHaveBeenCalledOnce());
+    expect(roomAgentBinding).toHaveBeenCalledWith(
+      'task-alpha',
+      '2026-07-19T00:00:00.000Z',
+      'alpha',
+      taskWorkspaceAuthorityScope,
+    );
+    expect(roomAgentSend.mock.calls[0][0]).toMatchObject({
+      agentId: 'researcher',
+      prompt: 'Probe this idea',
+    });
   });
 
   test('reopens an exact available answer with its provenance without calling it semantic support', () => {
@@ -1507,10 +1602,11 @@ describe('TaskWorkspaceView', () => {
       }),
     ];
     downloadOutputContent.mockResolvedValue({
-      bytes: new TextEncoder().encode('<script>window.pwned = true</script>'),
+      ...bindDownloadedVersion(
+        new TextEncoder().encode('<script>window.pwned = true</script>'),
+      ),
       mediaType: 'text/html',
       fileName: 'unsafe.html',
-      etag: null,
     });
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
@@ -1559,10 +1655,9 @@ describe('TaskWorkspaceView', () => {
       }),
     );
     downloadOutputContent.mockResolvedValue({
-      bytes: new Uint8Array([137, 80, 78, 71]),
+      ...bindDownloadedVersion(new Uint8Array([137, 80, 78, 71])),
       mediaType: 'image/png',
       fileName: 'safe.png',
-      etag: null,
       safePreview: 'image/png',
     });
     const { unmount } = render(<TaskWorkspaceView taskId="task-alpha" />);
@@ -1594,10 +1689,11 @@ describe('TaskWorkspaceView', () => {
       const createUrl = vi.fn();
       vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: createUrl }));
       downloadOutputContent.mockResolvedValue({
-        bytes: new TextEncoder().encode('<svg><script>x</script></svg>'),
+        ...bindDownloadedVersion(
+          new TextEncoder().encode('<svg><script>x</script></svg>'),
+        ),
         mediaType: type,
         fileName: title,
-        etag: null,
         safePreview: receipt,
       });
       const view = render(<TaskWorkspaceView taskId="task-alpha" />);
@@ -1781,4 +1877,189 @@ describe('TaskWorkspaceView', () => {
     expect(region.textContent).toContain('only.png · image/png · 12 bytes');
     expect(screen.queryByText('Authored prompt')).toBeNull();
   });
+
+  test('output review waits for exact bytes, preserves uncertain retry on canceled Hide, and records human speech', async () => {
+    taskOutputsResult.data = [taskOutput()];
+    roomDiscoveryResult.data = {
+      kind: 'existing',
+      capabilities: { messageWrite: true },
+    };
+    const bytes = new TextEncoder().encode('reviewed immutable content');
+    const content = {
+      ...bindDownloadedVersion(bytes),
+      mediaType: 'text/plain',
+      fileName: 'local.md',
+      safePreview: null,
+    };
+    let release!: (value: unknown) => void;
+    downloadOutputContent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View output local.md' }),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Review this version' }),
+    ).toBeNull();
+    await act(async () => {
+      release(content);
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Review this version' }),
+      ).toBeTruthy(),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Review this version' }),
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Comment' }), {
+      target: { value: 'This exact version is useful.' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Review' }), {
+      target: { value: 'accepted' },
+    });
+    appendOutputFeedback
+      .mockRejectedValueOnce(new Error('connection lost'))
+      .mockResolvedValueOnce({ kind: 'duplicate' });
+    fireEvent.click(screen.getByRole('button', { name: 'Record review' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Retry same statement' }),
+      ).toBeTruthy(),
+    );
+    const first = appendOutputFeedback.mock.calls[0][0];
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Hide output local.md' }),
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Unsaved Changes' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      (screen.getByRole('textbox', { name: 'Comment' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe(first.feedback.text);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry same statement' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Human review recorded in Task room history. Task status is unchanged.',
+        ),
+      ).toBeTruthy(),
+    );
+    expect(appendOutputFeedback.mock.calls[1][0]).toEqual(first);
+    expect(first.feedback.target.digest).toBe(
+      taskOutputsResult.data[0].materialization.digest,
+    );
+  });
+
+  test.each(['mismatch', 'unavailable', 'retired'] as const)(
+    'does not offer review after %s content admission',
+    async (failure) => {
+      taskOutputsResult.data = [taskOutput()];
+      const bytes = new TextEncoder().encode('expected bytes');
+      const content = {
+        ...bindDownloadedVersion(bytes),
+        mediaType: 'text/plain',
+        fileName: 'local.md',
+        safePreview: null,
+      };
+      roomDiscoveryResult.data = {
+        kind: 'existing',
+        capabilities: { messageWrite: true },
+      };
+      let release!: (value: unknown) => void;
+      let reject!: (error: Error) => void;
+      downloadOutputContent.mockImplementation(
+        () =>
+          new Promise((resolve, fail) => {
+            release = resolve;
+            reject = fail;
+          }),
+      );
+      const authority = vi.spyOn(taskWorkspaceAuthorityScope, 'isCurrent');
+      const view = render(<TaskWorkspaceView taskId="task-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'View output local.md' }),
+      );
+      try {
+        if (failure === 'retired') authority.mockReturnValue(false);
+        await act(async () => {
+          if (failure === 'unavailable') reject(new Error('deleted'));
+          else
+            release(
+              failure === 'mismatch'
+                ? { ...content, bytes: new TextEncoder().encode('other bytes') }
+                : content,
+            );
+        });
+        if (failure !== 'retired')
+          await waitFor(() =>
+            expect(
+              screen.getByText(/Output content is unavailable:/),
+            ).toBeTruthy(),
+          );
+        expect(
+          screen.queryByRole('button', { name: 'Review this version' }),
+        ).toBeNull();
+        expect(appendOutputFeedback).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        authority.mockRestore();
+      }
+    },
+  );
+
+  test.each([true, false])(
+    'plain HTTP without SubtleCrypto admits matching bytes=%s and retains preview support',
+    async (matching) => {
+      vi.stubGlobal('crypto', {
+        getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
+      });
+      taskOutputsResult.data = [taskOutput()];
+      const bytes = new TextEncoder().encode('portable digest preview');
+      const content = {
+        ...bindDownloadedVersion(bytes),
+        mediaType: 'text/plain',
+        fileName: 'local.md',
+        safePreview: null,
+      };
+      roomDiscoveryResult.data = {
+        kind: 'existing',
+        capabilities: { messageWrite: true },
+      };
+      downloadOutputContent.mockResolvedValue(
+        matching
+          ? content
+          : { ...content, bytes: new TextEncoder().encode('wrong digest') },
+      );
+      render(<TaskWorkspaceView taskId="task-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'View output local.md' }),
+      );
+      if (matching) {
+        await waitFor(() =>
+          expect(screen.getByText('portable digest preview')).toBeTruthy(),
+        );
+        expect(
+          screen.getByRole('button', { name: 'Review this version' }),
+        ).toBeTruthy();
+      } else {
+        await waitFor(() =>
+          expect(
+            screen.getByText(/Output content is unavailable:/),
+          ).toBeTruthy(),
+        );
+        expect(
+          screen.queryByRole('button', { name: 'Review this version' }),
+        ).toBeNull();
+      }
+    },
+  );
 });

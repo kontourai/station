@@ -1,0 +1,53 @@
+{
+  "path": "patches/android-native-keyring-store/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed Station patch claims through commit(false), AndroidKeyringError conversion, both credential-store callers and actual native write-before-KeyringWritten path; verified Cargo selection. Upstream generic setup, licenses and dated availability are retained as explicitly classified upstream context, not Station instructions or renewed device evidence.",
+
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration. Retained upstream historical/setup material remains upstream context and is not re-certified as current upstream release guidance.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "patches/android-native-keyring-store/Cargo.toml",
+
+    "patches/android-native-keyring-store/src/by_service/cred.rs",
+
+    "patches/android-native-keyring-store/src/by_store/cred.rs",
+
+    "patches/android-native-keyring-store/src/by_store/vault.rs",
+
+    "patches/android-native-keyring-store/src/error.rs",
+
+    "patches/android-native-keyring-store/src/shared_preferences.rs",
+
+    "src-desktop/Cargo.lock",
+
+    "src-desktop/Cargo.toml",
+
+    "src-desktop/src/lib.rs"
+  ],
+
+  "checks": [
+    "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+
+    "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
+
+    "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
+
+    "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
+
+    "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
+
+    "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
+
+    "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through e0314c727: the Cargo.toml ureq/rustls comment now names general native HTTPS and the new TLS test rather than the notification watch; the [patch.crates-io] path selection is unchanged; lib.rs removed only the notification watch and moved the TLS test. The patch, error-mapping and Cargo-selection claims hold, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

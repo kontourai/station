@@ -1,0 +1,7 @@
+{
+  "revision": "11f79a2a4fc292de1adfd5cd21e4925ca2d2501d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-reviewed after merging main: the bound sources gained one entry each (body-read-deadline.scan.test.ts in REPO_SCAN_SUITES and UNREPORTED_PATH_READING_SUITES). The guide describes these lists by role, not by membership, so its claims still hold.","inputs":["docs/guides/testing.md"]}
+  ]
+}

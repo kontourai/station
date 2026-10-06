@@ -1,0 +1,7 @@
+{
+  "revision": "86ae03b9a85cca01a8c06bb08e9ea9eb2c26240f",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated Station Docs MCP topic digest after fixture and StationHomeLifecycle documentation updates; static bundled source still reflects canonical reviewed inputs and no live authority.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

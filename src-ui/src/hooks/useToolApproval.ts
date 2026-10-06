@@ -110,7 +110,9 @@ export function useToolApproval(apiBase: string) {
       const pendingApprovals = (state.pendingApprovals || []).filter(
         (id) => id !== approvalId,
       );
-      updateChat(sessionId, { pendingApprovals });
+      const { [approvalId]: _answered, ...pendingApprovalTurnIds } =
+        state.pendingApprovalTurnIds ?? {};
+      updateChat(sessionId, { pendingApprovals, pendingApprovalTurnIds });
 
       // Which decision settled an already-answered request is not ours to
       // claim; the durable `request.resolved` carries it.

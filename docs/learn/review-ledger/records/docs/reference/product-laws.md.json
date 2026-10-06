@@ -1,0 +1,21 @@
+{
+  "path": "docs/reference/product-laws.md",
+
+  "kind": "generated",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the generated law inventory against the manifest, structured behavior/fault observations and runner verdict rules.",
+
+  "limits": "Generated contract or retained release evidence; no new hosted release, live label mutation or platform result is claimed.",
+
+  "sources": [
+    "scripts/lib/product-laws.mjs",
+
+    "scripts/product-law-gate.mjs"
+  ],
+
+  "checks": [
+    "Projection and bounded observation contract checked; this page contains laws, not a new completion receipt."
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "bd3c66c56cfee6af5662438fdf3ceda335eda251",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Executed the pinned Flow Agents reconcile-preflight CLI: the local full-regression command remains admitted; extended and hosted-attestation command evidence is rejected. Hosted workflow routing uses the distinct source-qualification artifact. This proves the command boundary, not external Builder admission of that artifact.","inputs":["docs/reference/verification-receipts.md"]}
+  ]
+}

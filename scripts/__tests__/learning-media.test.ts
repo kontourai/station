@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { buildLearningGuide } from '../build-learning-guide.mjs';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   freshnessRequirement,
   resolveDocumentationFreshness,
@@ -13,10 +14,15 @@ import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { renderLearningDocument } from '../lib/learning-markdown.mjs';
 import { compileLearningMedia } from '../lib/learning-media.mjs';
 import { createLearningSourceReader } from '../lib/learning-source-reader.mjs';
+import { readReviewState } from '../lib/review-ledger-store.mjs';
 import {
   forbidAmbientFreshnessMode,
   JOB_ENV,
 } from './helpers/freshness-env.js';
+import {
+  writeLearningMedia,
+  writeReviewLedger,
+} from './helpers/review-ledger-fixture.js';
 
 forbidAmbientFreshnessMode();
 
@@ -34,12 +40,12 @@ const capture = {
   scenario: 'Task inspection',
   evidence: 'Controlled browser fixture; no provider execution.',
   capturedRevision: 'a'.repeat(40),
-  reviewedRevision: 'a'.repeat(40),
   documents: ['guide.md'],
   sources: [
     {
       path: 'code.ts',
       digest: createHash('sha256').update(source).digest('hex'),
+      revision: 'a'.repeat(40),
     },
   ],
 };
@@ -47,28 +53,48 @@ const tracked = new Set([capture.path, 'guide.md', 'code.ts']);
 const read = async (path: string) => (path === capture.path ? image : source);
 const makeTempDir = trackTempDirs();
 
-it('renders only admitted local captures inline, with provenance and no external image fetch', async () => {
-  const media = await compileLearningMedia(
-    { version: 1, captures: [capture] },
-    tracked,
-    read,
-  );
-  const rendered = renderLearningDocument(
-    '![Task](docs/learn/media/task.png)\n\n![Remote](https://example.invalid/remote.png)',
-    'guide.md',
-    new Set(['guide.md']),
-    'a'.repeat(40),
-    tracked,
-    media,
-  );
-  expect(rendered.html).toContain('<img');
-  expect(rendered.html).toContain(`src="${media.get(capture.path).url}"`);
-  expect(rendered.html).toContain(capture.evidence);
-  expect(rendered.html).not.toContain('src="https://');
-  expect(rendered.links.map((link) => link.target)).toContain(
-    'docs/learn/media/task.png',
-  );
-});
+it.each(['legacy', 'path-only'])(
+  'renders admitted %s captures inline with provenance and no external image fetch',
+  async (layout) => {
+    const media = await compileLearningMedia(
+      {
+        version: 1,
+        captures: [
+          layout === 'legacy'
+            ? capture
+            : {
+                ...capture,
+                historyChanges: [],
+                reviewBaseline: 'b'.repeat(40),
+                sources: [{ path: 'code.ts' }],
+              },
+        ],
+      },
+      tracked,
+      read,
+    );
+    const rendered = renderLearningDocument(
+      '![Task](docs/learn/media/task.png)\n\n![Remote](https://example.invalid/remote.png)',
+      'guide.md',
+      new Set(['guide.md']),
+      'a'.repeat(40),
+      tracked,
+      media,
+    );
+    expect(rendered.html).toContain('<img');
+    expect(rendered.html).toContain(`src="${media.get(capture.path).url}"`);
+    expect(rendered.html).toContain(capture.evidence);
+    expect(rendered.html).toContain(
+      layout === 'legacy'
+        ? 'sources reviewed at aaaaaaaaaaaa'
+        : 'source reviews are recorded in append-only notes. Review history since bbbbbbbbbbbb',
+    );
+    expect(rendered.html).not.toContain('src="https://');
+    expect(rendered.links.map((link) => link.target)).toContain(
+      'docs/learn/media/task.png',
+    );
+  },
+);
 it('emits local video controls without autoplay and preserves explanatory text', async () => {
   const video = {
     ...capture,
@@ -117,7 +143,11 @@ it('warns on source drift and rejects it in the strict check without relabeling 
       changedRead,
       { requireFresh: true },
     ),
-  ).rejects.toThrow('Learning capture needs review');
+  ).rejects.toMatchObject({
+    code: 'needs-refresh',
+    path: capture.path,
+    changed: ['code.ts'],
+  });
   const rendered = renderLearningDocument(
     `![Task](${capture.path})`,
     'guide.md',
@@ -195,31 +225,21 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   );
   const digest = (bytes: string) =>
     createHash('sha256').update(bytes).digest('hex');
-  write(
-    'docs/learn/review-ledger.json',
-    JSON.stringify({
-      version: 1,
-      records: [
-        {
-          path: 'guide.md',
-          documentDigest: digest(guide),
-          sourceRevision: 'a'.repeat(40),
-          kind: 'current',
-          state: 'source-reviewed',
-          summary: 'Checked the owner.',
-          limits: 'Fixture only.',
-          sources: [
-            { path: 'owner.ts', digest: digest('export const owner = 1;\n') },
-          ],
-          checks: ['Fixture evidence.'],
-        },
+  writeReviewLedger(root, [
+    {
+      path: 'guide.md',
+      documentDigest: digest(guide),
+      kind: 'current',
+      state: 'source-reviewed',
+      summary: 'Checked the owner.',
+      limits: 'Fixture only.',
+      sources: [
+        { path: 'owner.ts', digest: digest('export const owner = 1;\n') },
       ],
-    }),
-  );
-  write(
-    'docs/learn/media.json',
-    JSON.stringify({ version: 1, captures: [localCapture] }),
-  );
+      checks: ['Fixture evidence.'],
+    },
+  ]);
+  writeLearningMedia(root, [localCapture]);
   for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
     write(`docs/learn/${asset}`, readFileSync(`docs/learn/${asset}`));
   const env = Object.fromEntries(
@@ -268,9 +288,14 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   const pr = { STATION_DOCS_FRESHNESS_BASE: 'fixture-base' };
   const queue = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'merge_group' };
   // No base resolves in this repository, so the scope is unknown: strict.
-  await expect(check({})).rejects.toThrow('Learning capture needs review');
+  const staleCapture = {
+    code: 'needs-refresh',
+    path: localCapture.path,
+    changed: ['code.ts'],
+  };
+  await expect(check({})).rejects.toMatchObject(staleCapture);
   // The change owns its stale capture; the merge queue only reports it.
-  await expect(check(pr)).rejects.toThrow('Learning capture needs review');
+  await expect(check(pr)).rejects.toMatchObject(staleCapture);
   const queued = await check(queue);
   expect(queued.captures[0].changed).toEqual(['code.ts']);
   // The same decision governs review records in the builder.
@@ -287,9 +312,11 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   expect(
     removed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
   ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
-  await expect(check(pr)).rejects.toThrow(
-    'Documentation review needs refresh: guide.md; changed: owner.ts',
-  );
+  await expect(check(pr)).rejects.toMatchObject({
+    code: 'needs-refresh',
+    path: 'guide.md',
+    changed: ['owner.ts'],
+  });
   expect(
     readFileSync(
       join(root, '.kontourai/docs-learning', decodeURIComponent(url)),
@@ -300,7 +327,7 @@ it('the real builder publishes immutable media bytes and its strict entry detect
 it('checks the actual capture manifest and recorded source bytes in the required documentation lane', async () => {
   const reader = createLearningSourceReader(process.cwd());
   const files = new Set(
-    execFileSync('git', ['ls-files', '-z'], {
+    execFileSyncBounded('git', ['ls-files', '-z'], {
       encoding: 'utf8',
       env: sanitizedGitEnvironment(),
       windowsHide: true,
@@ -308,9 +335,9 @@ it('checks the actual capture manifest and recorded source bytes in the required
       .split('\0')
       .filter(Boolean),
   );
-  const manifest = JSON.parse(
-    reader.read('docs/learn/media.json').toString('utf8'),
-  );
+  // media.json metadata joined with each capture's review (#2936).
+  const { media: manifest } = readReviewState(process.cwd());
+  if (!manifest) throw new Error('The repository has no capture manifest');
   // #2923: the same scoped/advisory/strict decision as the review ledger.
   const captures = await compileLearningMedia(
     manifest,

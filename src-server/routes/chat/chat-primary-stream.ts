@@ -91,6 +91,8 @@ interface StreamPrimaryAgentChatArgs {
    * persistence seams below keep receiving the typed `input`.
    */
   ambientContext?: string;
+  /** Private, source-admitted instructions from the authenticated native relay only. */
+  skillExperienceContext?: string;
   restOptions: Record<string, unknown>;
   injectContext: string | null;
   ragContext: string | null;
@@ -166,6 +168,7 @@ export function streamPrimaryAgentChat({
   plugin,
   input,
   ambientContext,
+  skillExperienceContext,
   restOptions,
   injectContext,
   ragContext,
@@ -425,18 +428,43 @@ export function streamPrimaryAgentChat({
             }
           : undefined;
 
-      // Model-facing choke point (archive#685): ambient context joins the model
-      // input here only — every persistence seam above/below keeps `input`.
-      const ambientApplication = applyAmbientContextToInput(
-        input,
-        ambientContext,
-      );
-      const combinedApplication = applyCombinedContextToInput(
-        ambientApplication.input,
-        injectContext,
-        effectiveRagContext,
-      );
-      const finalInput = combinedApplication.input;
+      // Model-facing choke point (archive#685): ambient, skill, project and
+      // retrieval context join the model input only. #3112: the agent is
+      // handed the authored `input` — the framework persists and titles from
+      // what it is handed — and applies this composition where the model
+      // reads the turn.
+      const composeModelInput = (authored: string | ChatMessage[]) => {
+        const ambientApplication = applyAmbientContextToInput(
+          authored,
+          ambientContext,
+        );
+        const skillInput = skillExperienceContext
+          ? typeof ambientApplication.input === 'string'
+            ? `${skillExperienceContext}\n\n${ambientApplication.input}`
+            : [
+                {
+                  role: 'user' as const,
+                  parts: [
+                    { type: 'text' as const, text: skillExperienceContext },
+                  ],
+                },
+                ...ambientApplication.input,
+              ]
+          : ambientApplication.input;
+        const combinedApplication = applyCombinedContextToInput(
+          skillInput,
+          injectContext,
+          effectiveRagContext,
+        );
+        return { ambientApplication, combinedApplication };
+      };
+      const { ambientApplication, combinedApplication } =
+        composeModelInput(input);
+      const streamOptions = {
+        ...operationContext,
+        composeModelInput: (authored: string | ChatMessage[]) =>
+          composeModelInput(authored).combinedApplication.input,
+      };
 
       // archive#2649 (review fix): the composers are the AUTHORITY for this
       // receipt, not the composition above. Both drop their whole block when
@@ -484,9 +512,9 @@ export function streamPrimaryAgentChat({
                 runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
                 ctx.activeAgents.get(slug) === nativeRuntimeAgent,
             },
-            () => agent.streamText(finalInput, operationContext),
+            () => agent.streamText(input as string, streamOptions),
           )
-        : await agent.streamText(finalInput, operationContext);
+        : await agent.streamText(input as string, streamOptions);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 
@@ -633,6 +661,12 @@ export function streamPrimaryAgentChat({
       );
       for await (const chunk of pipeline.run(wrappedStream)) {
         requireCurrentRuntimeConfiguration(ctx, configurationLease);
+        // A model error after output has started arrives as an error PART,
+        // not a throw. Fail the turn through the same catch as a thrown
+        // error: the outward frame, the reload-safe marker, and a turn the
+        // dedup store never records as a success.
+        const errorPartCause = StreamOrchestrator.streamErrorPartCause(chunk);
+        if (errorPartCause !== undefined) throw errorPartCause;
         await StreamOrchestrator.writeSSEChunk(streamWriter, chunk);
       }
 
@@ -673,7 +707,9 @@ export function streamPrimaryAgentChat({
         agentName: slug,
         error,
       });
-      turnFailureText = errorMessage(error);
+      // Persisted and served as the reload-safe failure marker
+      // (`chat-lifecycle.ts`), so never the provider's own text.
+      turnFailureText = StreamOrchestrator.outwardTurnFailureText(error);
       await StreamOrchestrator.writeSSEError(streamWriter, error);
       await StreamOrchestrator.writeSSEDone(streamWriter);
     } finally {

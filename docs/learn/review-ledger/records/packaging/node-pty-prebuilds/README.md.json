@@ -1,0 +1,43 @@
+{
+  "path": "packaging/node-pty-prebuilds/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Current empty Linux prebuild channel, future admission and actual staging limits. Full baseline read; empty manifest/version and allowlist source-build paths, workflow/verifier, stageNodePtyPrebuild and pinned upstream install hook reviewed. Corrected false shipped-artifact and libc-fallback claims. Focused lifecycle tests passed; no actual Linux build or binary tested.",
+
+  "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
+
+  "sources": [
+    ".github/workflows/node-pty-prebuilds.yml",
+
+    "config/dependency-lifecycle-allowlist.json",
+
+    "packaging/node-pty-prebuilds/manifest.json",
+
+    "pnpm-lock.yaml",
+
+    "scripts/__tests__/dependency-lifecycle.test.ts",
+
+    "scripts/lib/dependency-lifecycle-policy.mjs",
+
+    "scripts/lib/elf-symbol-floor.mjs",
+
+    "scripts/verify-node-pty-prebuild.mjs"
+  ],
+
+  "checks": [
+    "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+
+    "Root upstream delta review: ELF floor reader extracted to elf-symbol-floor.mjs; no install-time libc selection was added.",
+
+    "Root upstream delta review: Removed unused npm resolver test; Linux prebuild compatibility claim remains source-only.",
+
+    "Preserved the full ancillary correction and the independently reviewed #2813 follow-up link.",
+
+    "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Integration source review through e0314c727: pnpm-lock.yaml removed only the @kontourai/bearing and @kontourai/forage importer entries, leaving node-pty resolution unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

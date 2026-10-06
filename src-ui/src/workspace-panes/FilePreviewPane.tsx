@@ -2,7 +2,9 @@ import { WORKSPACE_CODING_FILE_BROWSER_PANE_RENDERER_NAME } from '@kontourai/sta
 import { parseWorkspaceOpenFilePreviewIntent } from '@kontourai/station-contracts/workspace-file-preview';
 import {
   downloadProjectWorkspaceFilePreview,
+  isRepositoryBusyError,
   isWorkspaceFilePreviewImageDataUrl,
+  useProjectWorkspaceFileChangesQuery,
   useProjectWorkspaceFilePreviewQuery,
   WORKSPACE_FILE_PREVIEW_MAX_BYTES,
   type WorkspaceFilePreview,
@@ -11,20 +13,31 @@ import {
   type WorkspaceFilePreviewStatus,
 } from '@kontourai/station-sdk/workspace-file-preview';
 import {
+  createContext,
+  type FormEvent,
   lazy,
-  type ReactNode,
+  type KeyboardEvent as ReactKeyboardEvent,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
+import { ActionOverflowMenu } from '../components/ActionOverflowMenu';
+import { Button } from '../components/Button';
+import { IconButton } from '../components/IconButton';
 import { ImageInspector } from '../components/ImageInspector';
-import { Empty, SkeletonBlock } from '../components/state';
+import { CheckGlyph, CopyGlyph } from '../components/icons/Glyph';
+import { LazyBoundary } from '../components/LazyBoundary';
+import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { langFromFilePath } from '../highlight/langFromFilePath';
+import type { PreviewTokenLine } from '../highlight/preview-tokens';
+import { copyToClipboard } from '../lib/clipboard';
 import {
   browserEpochMs,
   emitFilePreviewCommitPerformanceMark,
@@ -40,10 +53,16 @@ import {
   openFilePreviewDirectLink,
   serializeOpenFilePreviewIntent,
 } from './openFilePreviewIntent';
+import { PaneHeadSlotsContext, usePaneHeadSlots } from './PaneHeadSlots';
 import { useResolvedWorkspacePaneCatalog } from './resolvedWorkspacePaneCatalog';
 import { workspacePaneDirectRoute } from './workspacePaneDirectRoute';
+import './FilePreviewPane.css';
 
 const MAX_RENDERED_LINES = 2_000;
+const GO_TO_LINE_SHORTCUT =
+  typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(navigator.platform)
+    ? '⌘G'
+    : 'Ctrl+G';
 const MAX_RENDERED_MARKDOWN_CHARACTERS = 64 * 1024;
 const MAX_RENDERED_MARKDOWN_LINES = 1_000;
 const MAX_RENDERED_MARKDOWN_SYNTAX_TOKENS = 4_096;
@@ -72,8 +91,12 @@ const MARKDOWN_SYNTAX_CHARACTERS = new Set([
   '+',
   '!',
 ]);
-const MAX_SOURCE_HIGHLIGHT_TOKENS = 1_024;
-const MAX_SOURCE_HIGHLIGHT_REACT_NODES = 2_048;
+/**
+ * Coloured spans the pane will mount for one preview. Beyond it the whole
+ * preview renders as plain text and says so; a partial colouring would read
+ * as a grammar that stopped understanding the file.
+ */
+export const MAX_SOURCE_HIGHLIGHT_TOKENS = 40_000;
 
 const STATUS_COPY: Record<
   Exclude<WorkspaceFilePreviewStatus, 'ready'>,
@@ -277,86 +300,137 @@ function FilePreviewDownloadHandoff({
   );
 }
 
-type SourceTokenKind = 'comment' | 'keyword' | 'number' | 'string';
-const SOURCE_TOKEN =
-  /(\/\/.*$|#.*$|\/\*.*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:async|await|class|const|else|export|extends|false|for|function|if|import|interface|let|new|null|return|throw|true|type|undefined|while)\b|\b\d+(?:\.\d+)?\b)/g;
-
-function tokenKind(token: string): SourceTokenKind {
-  if (token.startsWith('//') || token.startsWith('#') || token.startsWith('/*'))
-    return 'comment';
-  if (/^\d/.test(token)) return 'number';
-  if (/^["'`]/.test(token)) return 'string';
-  return 'keyword';
-}
-
-// Syntax rungs are theme tokens (#2140). These were github-dark's literals in
-// `style={}`; on the light theme they rendered as TEXT at 1.5-2.5:1 against
-// the pane -- the string rung was nearly invisible. index.css maps each to
-// github-dark on dark and github-light on light, both measured.
-const TOKEN_COLOR: Record<SourceTokenKind, string> = {
-  comment: 'var(--text-muted)',
-  keyword: 'var(--syntax-keyword)',
-  number: 'var(--syntax-number)',
-  string: 'var(--syntax-string)',
+/**
+ * github-dark's foregrounds (the one theme the shared highlighter loads)
+ * mapped onto Station's measured syntax rungs. The theme's own pigments are
+ * dark-only and fail contrast on the light theme (#2140), so the grammar
+ * decides WHAT a token is and the Station theme decides how it looks. A
+ * foreground absent here (the default text colour, brackets, invalid markers)
+ * renders as ordinary text.
+ */
+const SYNTAX_RUNG_BY_THEME_FOREGROUND: Readonly<Record<string, string>> = {
+  '#F97583': 'var(--syntax-keyword)',
+  '#9ECBFF': 'var(--syntax-string)',
+  '#DBEDFF': 'var(--syntax-string)',
+  '#79B8FF': 'var(--syntax-number)',
+  '#6A737D': 'var(--text-muted)',
+  '#B392F0': 'var(--syntax-function)',
+  '#85E89D': 'var(--syntax-tag)',
+  '#FFAB70': 'var(--syntax-variable)',
 };
 
-/** React text nodes preserve content literally; no workspace markup is parsed. */
-function highlightFilePreviewLine(line: string, enabled: boolean): ReactNode {
-  if (!enabled) return line;
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  let tokens = 0;
-  for (const match of line.matchAll(SOURCE_TOKEN)) {
-    const index = match.index ?? 0;
-    if (index > cursor) nodes.push(line.slice(cursor, index));
-    const token = match[0];
-    tokens += 1;
-    if (
-      tokens > MAX_SOURCE_HIGHLIGHT_TOKENS ||
-      nodes.length + 1 > MAX_SOURCE_HIGHLIGHT_REACT_NODES
-    )
-      return line;
-    nodes.push(
-      <span
-        key={`${index}:${token.length}`}
-        data-file-preview-token="true"
-        style={{ color: TOKEN_COLOR[tokenKind(token)] }}
-      >
-        {token}
-      </span>,
-    );
-    cursor = index + token.length;
+type PreviewSyntax =
+  | { status: 'off' }
+  | { status: 'pending' }
+  | { status: 'ready'; lines: readonly PreviewTokenLine[] }
+  | { status: 'plain'; reason: string };
+
+/**
+ * Accepts Shiki's lines only when they reproduce the rendered text exactly:
+ * same line count, and each line's tokens concatenating to that line (a CRLF
+ * file's trailing `\r` is the one difference Shiki is allowed). Anything else
+ * would show the reader text the file does not contain, so it is refused and
+ * the preview stays plain.
+ */
+function acceptPreviewTokens(
+  lines: readonly FilePreviewLineProjection[],
+  tokens: readonly PreviewTokenLine[],
+): PreviewSyntax {
+  if (tokens.length !== lines.length)
+    return {
+      status: 'plain',
+      reason:
+        'Syntax colours are off: the highlighter split lines differently.',
+    };
+  let spans = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const text = lines[index].text;
+    const joined = tokens[index].map((token) => token.content).join('');
+    if (joined !== text && joined !== text.replace(/\r$/, ''))
+      return {
+        status: 'plain',
+        reason:
+          'Syntax colours are off: the highlighter did not reproduce this text exactly.',
+      };
+    for (const token of tokens[index])
+      if (token.color && SYNTAX_RUNG_BY_THEME_FOREGROUND[token.color])
+        spans += 1;
+    if (spans > MAX_SOURCE_HIGHLIGHT_TOKENS)
+      return {
+        status: 'plain',
+        reason: `Syntax colours are off: this preview has more than ${MAX_SOURCE_HIGHLIGHT_TOKENS.toLocaleString()} coloured tokens.`,
+      };
   }
-  if (cursor < line.length) nodes.push(line.slice(cursor));
-  return nodes;
+  return { status: 'ready', lines: tokens };
 }
 
-/** Preflights the whole response so token-dense content gets one inert text node. */
-function shouldHighlightFilePreviewLines(
+/**
+ * Real grammar highlighting through the shared highlight worker (main thread
+ * where no worker exists). Plain text is rendered until tokens arrive and
+ * whenever they are refused; the reason is surfaced, never swallowed.
+ */
+function usePreviewSyntax(
   lines: readonly FilePreviewLineProjection[],
-  source: boolean,
-): boolean {
-  if (!source) return false;
-  let tokens = 0;
-  let nodes = 0;
-  for (const line of lines) {
-    let cursor = 0;
-    for (const match of line.text.matchAll(SOURCE_TOKEN)) {
-      const index = match.index ?? 0;
-      if (index > cursor) nodes += 1;
-      tokens += 1;
-      nodes += 1;
-      if (
-        tokens > MAX_SOURCE_HIGHLIGHT_TOKENS ||
-        nodes > MAX_SOURCE_HIGHLIGHT_REACT_NODES
-      )
-        return false;
-      cursor = index + match[0].length;
+  lang: string | undefined,
+  enabled: boolean,
+): PreviewSyntax {
+  const [syntax, setSyntax] = useState<PreviewSyntax>({ status: 'off' });
+  useEffect(() => {
+    if (!enabled || !lang || lines.length === 0) {
+      setSyntax({ status: 'off' });
+      return;
     }
-    if (cursor < line.text.length) nodes += 1;
-    if (nodes > MAX_SOURCE_HIGHLIGHT_REACT_NODES) return false;
-  }
-  return true;
+    let current = true;
+    setSyntax({ status: 'pending' });
+    const code = lines.map((line) => line.text).join('\n');
+    void import('../highlight/highlight-client')
+      .then(({ tokenizeCode }) => tokenizeCode(code, lang))
+      .then(
+        (tokens) => {
+          if (current) setSyntax(acceptPreviewTokens(lines, tokens));
+        },
+        () => {
+          if (current)
+            setSyntax({
+              status: 'plain',
+              reason:
+                'Syntax colours are off: the highlighter did not answer for this file.',
+            });
+        },
+      );
+    return () => {
+      current = false;
+    };
+  }, [enabled, lang, lines]);
+  return syntax;
+}
+
+/** React text nodes preserve content literally; no workspace markup is parsed. */
+function FilePreviewLineText({
+  text,
+  tokens,
+}: {
+  text: string;
+  tokens?: PreviewTokenLine;
+}) {
+  if (!tokens) return text;
+  return tokens.map((token, index) => {
+    const rung = token.color
+      ? SYNTAX_RUNG_BY_THEME_FOREGROUND[token.color]
+      : undefined;
+    return rung ? (
+      <span
+        // Tokens are positional within one immutable line.
+        key={index}
+        data-file-preview-token="true"
+        style={{ color: rung }}
+      >
+        {token.content}
+      </span>
+    ) : (
+      token.content
+    );
+  });
 }
 
 function PreviewRangeStatus({
@@ -388,11 +462,11 @@ function PreviewRangeStatus({
 function FilePreviewLine({
   line,
   stateKey,
-  highlight,
+  tokens,
 }: {
   line: FilePreviewLineProjection;
   stateKey: string;
-  highlight: boolean;
+  tokens?: PreviewTokenLine;
 }) {
   return (
     <span
@@ -417,7 +491,7 @@ function FilePreviewLine({
       >
         {line.number}
       </a>
-      {highlightFilePreviewLine(line.text, highlight)}
+      <FilePreviewLineText text={line.text} tokens={tokens} />
     </span>
   );
 }
@@ -470,40 +544,138 @@ function useFilePreviewMarkdownModeController(
   } as const;
 }
 
-function FilePreviewToolbar({
+/** The line-range status, when a range was asked for or returned. */
+function FilePreviewRangeLine({
   preview,
   state,
-  wrap,
-  updateWrap,
 }: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
-  wrap: boolean;
-  updateWrap(next: boolean): void;
 }) {
+  if (!preview.lineRange && !state.lineRange) return null;
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        marginBottom: '6px',
-        fontSize: '11px',
-      }}
-    >
-      <label>
-        <input
-          type="checkbox"
-          checked={wrap}
-          onChange={(event) => updateWrap(event.target.checked)}
-        />{' '}
-        Wrap lines
-      </label>
+    <p className="workspace-file-preview__notice">
       <PreviewRangeStatus
         previewRange={preview.lineRange}
         requestedRange={state.lineRange}
       />
-    </div>
+    </p>
+  );
+}
+
+/**
+ * Go to line lives in the header's overflow menu (and ⌘G / Ctrl+G), but only
+ * the source view knows which lines are rendered. The source view says it is
+ * mounted; the header opens the popover it renders.
+ */
+const GoToLineContext = createContext<{
+  open: boolean;
+  close(): void;
+  setAvailable(available: boolean): void;
+}>({ open: false, close() {}, setAvailable() {} });
+
+/**
+ * The rendered-line cap, stated before the code rather than after it: a
+ * reader of a long file must learn it is truncated without scrolling 2,000
+ * lines to find out.
+ */
+function RenderedLineCapNotice({
+  lines,
+  totalLines,
+}: {
+  lines: readonly FilePreviewLineProjection[];
+  totalLines: number;
+}) {
+  if (totalLines <= lines.length || lines.length === 0) return null;
+  const first = lines[0].number;
+  const last = lines.at(-1)?.number ?? first;
+  return (
+    <p role="status" className="workspace-file-preview__notice">
+      Showing lines {first.toLocaleString()}–{last.toLocaleString()} of{' '}
+      {totalLines.toLocaleString()}. This bounded preview renders at most{' '}
+      {MAX_RENDERED_LINES.toLocaleString()} lines; the rest of the file is not
+      shown here.
+    </p>
+  );
+}
+
+function FilePreviewGoToLine({
+  lines,
+  stateKey,
+  onClose,
+}: {
+  lines: readonly FilePreviewLineProjection[];
+  stateKey: string;
+  onClose(): void;
+}) {
+  const [value, setValue] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  const first = lines[0]?.number ?? 1;
+  const last = lines.at(-1)?.number ?? first;
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const line = Number(value);
+    // Refuse rather than clamp: jumping to the nearest rendered line would
+    // show the reader a line they did not ask for under the one they did.
+    if (!Number.isInteger(line) || line < first || line > last) {
+      setNotice(
+        `Line ${value || '?'} is not among the rendered lines ${first.toLocaleString()}–${last.toLocaleString()}.`,
+      );
+      return;
+    }
+    const target = document.getElementById(lineId(stateKey, line));
+    if (!target) {
+      setNotice(`Line ${line} is not rendered.`);
+      return;
+    }
+    setNotice(null);
+    if (typeof target.scrollIntoView === 'function')
+      target.scrollIntoView({ block: 'center' });
+    target
+      .querySelector<HTMLAnchorElement>('a')
+      ?.focus({ preventScroll: true });
+    onClose();
+  };
+  return (
+    // noValidate: the refusal below names the rendered range; the browser's
+    // own range bubble would pre-empt it with a message that does not.
+    <form
+      className="workspace-file-preview__goto"
+      aria-label="Go to line"
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        onClose();
+      }}
+      noValidate
+    >
+      <label>
+        Line
+        <input
+          type="number"
+          inputMode="numeric"
+          min={first}
+          max={last}
+          value={value}
+          placeholder={`${first}–${last}`}
+          // biome-ignore lint/a11y/noAutofocus: the popover exists to take this one input; the shortcut that opened it expects to type.
+          autoFocus
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </label>
+      <Button type="submit" size="sm" disabled={!value}>
+        Go
+      </Button>
+      <IconButton
+        aria-label="Close go to line"
+        title="Close (Esc)"
+        onClick={onClose}
+      >
+        ×
+      </IconButton>
+      {notice && <span role="status">{notice}</span>}
+    </form>
   );
 }
 
@@ -522,11 +694,16 @@ function FilePreviewSourceLines({
     () => projectFilePreviewLines(preview, state),
     [preview, state],
   );
+  const totalLines = useMemo(
+    () => (preview.content ?? '').split('\n').length,
+    [preview.content],
+  );
   const revealLine = preview.lineRange?.start ?? state.lineRange?.start;
-  const highlight = useMemo(
-    () =>
-      shouldHighlightFilePreviewLines(lines, preview.renderKind === 'source'),
-    [lines, preview.renderKind],
+  const syntax = usePreviewSyntax(
+    lines,
+    langFromFilePath(state.path),
+    preview.renderKind === 'source' ||
+      (preview.renderKind === 'markdown' && !!preview.content),
   );
   useEffect(() => {
     if (revealLine === undefined) return;
@@ -534,38 +711,51 @@ function FilePreviewSourceLines({
     if (typeof target?.scrollIntoView === 'function')
       target.scrollIntoView({ block: 'center' });
   }, [revealLine, stateKey]);
+  const goTo = useContext(GoToLineContext);
+  const { setAvailable } = goTo;
+  useEffect(() => {
+    setAvailable(true);
+    return () => setAvailable(false);
+  }, [setAvailable]);
 
   return (
     <>
-      <section aria-label={`${state.path} source`}>
+      <RenderedLineCapNotice lines={lines} totalLines={totalLines} />
+      {syntax.status === 'plain' && (
+        <p role="status" className="workspace-file-preview__notice">
+          {syntax.reason}
+        </p>
+      )}
+      {goTo.open && (
+        <FilePreviewGoToLine
+          lines={lines}
+          stateKey={stateKey}
+          onClose={goTo.close}
+        />
+      )}
+      <section
+        aria-label={`${state.path} source`}
+        aria-busy={syntax.status === 'pending' || undefined}
+        data-file-preview-syntax={syntax.status}
+      >
         <pre
-          style={{
-            margin: 0,
-            fontFamily: 'monospace',
-            fontSize: '11px',
-            color: 'var(--text-secondary)',
-            whiteSpace: wrap ? 'pre-wrap' : 'pre',
-            overflowX: 'auto',
-          }}
+          className="workspace-file-preview__code"
+          style={{ whiteSpace: wrap ? 'pre-wrap' : 'pre' }}
         >
           <code>
-            {lines.map((line) => (
+            {lines.map((line, index) => (
               <FilePreviewLine
                 key={line.number}
                 line={line}
                 stateKey={stateKey}
-                highlight={highlight}
+                tokens={
+                  syntax.status === 'ready' ? syntax.lines[index] : undefined
+                }
               />
             ))}
           </code>
         </pre>
       </section>
-      {(preview.content ?? '').split('\n').length > MAX_RENDERED_LINES && (
-        <p role="status">
-          Only the first {MAX_RENDERED_LINES} lines are rendered in this bounded
-          preview.
-        </p>
-      )}
     </>
   );
 }
@@ -574,20 +764,12 @@ function ReadyPreview(props: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
   stateKey: string;
+  wrap: boolean;
 }) {
-  const { wrap, updateWrap } = useFilePreviewWrapController(
-    props.stateKey,
-    props.state,
-  );
   return (
     <>
-      <FilePreviewToolbar
-        preview={props.preview}
-        state={props.state}
-        wrap={wrap}
-        updateWrap={updateWrap}
-      />
-      <FilePreviewSourceLines {...props} wrap={wrap} />
+      <FilePreviewRangeLine preview={props.preview} state={props.state} />
+      <FilePreviewSourceLines {...props} />
     </>
   );
 }
@@ -597,46 +779,18 @@ function MarkdownPreviewToolbar({
   state,
   mode,
   forcedSource,
-  wrap,
   updateMode,
-  updateWrap,
 }: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
   mode: 'rendered' | 'source';
   forcedSource: boolean;
-  wrap: boolean;
   updateMode(next: 'rendered' | 'source'): void;
-  updateWrap(next: boolean): void;
 }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '8px',
-        marginBottom: '8px',
-        fontSize: '11px',
-      }}
-    >
-      <fieldset
-        style={{
-          border: 0,
-          padding: 0,
-          margin: 0,
-          display: 'inline-flex',
-        }}
-      >
-        <legend
-          style={{
-            position: 'absolute',
-            width: '1px',
-            height: '1px',
-            overflow: 'hidden',
-            clip: 'rect(0 0 0 0)',
-          }}
-        >
+    <div className="workspace-file-preview__toolbar">
+      <fieldset className="workspace-file-preview__segmented">
+        <legend className="workspace-file-preview__visually-hidden">
           Markdown preview mode
         </legend>
         <button
@@ -655,16 +809,6 @@ function MarkdownPreviewToolbar({
           Source
         </button>
       </fieldset>
-      {mode === 'source' && (
-        <label>
-          <input
-            type="checkbox"
-            checked={wrap}
-            onChange={(event) => updateWrap(event.target.checked)}
-          />{' '}
-          Wrap lines
-        </label>
-      )}
       <PreviewRangeStatus
         previewRange={preview.lineRange}
         requestedRange={state.lineRange}
@@ -757,11 +901,8 @@ function ReadyMarkdownPreview(props: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
   stateKey: string;
+  wrap: boolean;
 }) {
-  const { wrap, updateWrap } = useFilePreviewWrapController(
-    props.stateKey,
-    props.state,
-  );
   const { mode, forcedSource, updateMode } =
     useFilePreviewMarkdownModeController(props.stateKey, props.state);
   return (
@@ -771,12 +912,10 @@ function ReadyMarkdownPreview(props: {
         state={props.state}
         mode={mode}
         forcedSource={forcedSource}
-        wrap={wrap}
         updateMode={updateMode}
-        updateWrap={updateWrap}
       />
       {mode === 'source' ? (
-        <FilePreviewSourceLines {...props} wrap={wrap} />
+        <FilePreviewSourceLines {...props} />
       ) : (
         <InertRenderedMarkdown content={props.preview.content ?? ''} />
       )}
@@ -844,6 +983,7 @@ function PreviewContent(props: {
   preview: WorkspaceFilePreview;
   state: WorkspaceFilePreviewPaneState;
   stateKey: string;
+  wrap: boolean;
 }) {
   const status = <PreviewStatus preview={props.preview} />;
   return props.preview.status === 'ready' &&
@@ -872,6 +1012,170 @@ function PreviewContent(props: {
   );
 }
 
+const loadObservedDiff = () =>
+  import('../components/coding-layout/DiffPanel').then((module) => ({
+    default: module.ObservedDiffPanel,
+  }));
+
+/**
+ * This file's changes against HEAD, rendered by the same diff surface as the
+ * Diff pane. Read only while the view is open (it runs `git diff` on the
+ * host), and every state the server distinguishes is said in words; none is
+ * shown as an empty diff.
+ */
+function FilePreviewChanges({
+  projectSlug,
+  path,
+  thread,
+}: {
+  projectSlug: string;
+  path: string;
+  thread?: string;
+}) {
+  const query = useProjectWorkspaceFileChangesQuery(projectSlug, {
+    path,
+    ...(thread ? { thread } : {}),
+  });
+  if (query.isLoading)
+    return <SkeletonBlock count={3} label="Reading changes against HEAD" />;
+  if (isRepositoryBusyError(query.error))
+    // Not a refusal and nothing wrong with the file: the repository was
+    // being written each time Station read it (the query already asked
+    // again), and a read is only answered from one that held still.
+    return (
+      <div role="status">
+        <p>
+          The repository was being changed while Station read it. Nothing is
+          wrong with it; try again in a moment.
+        </p>
+        <Button size="sm" onClick={() => void query.refetch()}>
+          Try again
+        </Button>
+      </div>
+    );
+  if (query.isError || !query.data)
+    return (
+      <div role="alert">
+        <p>Station could not read this file's changes.</p>
+        <Button size="sm" onClick={() => void query.refetch()}>
+          Retry changes
+        </Button>
+      </div>
+    );
+  const changes = query.data;
+  switch (changes.state) {
+    case 'changed':
+      return (
+        <section
+          aria-label={`${path} changes against HEAD`}
+          className="workspace-file-preview__changes"
+        >
+          <LazyBoundary
+            load={loadObservedDiff}
+            componentProps={{
+              diff: changes.patch,
+              observationKey: `file-changes:${projectSlug}:${thread ?? ''}:${path}`,
+            }}
+            pending={<SkeletonBlock label="Preparing changes" />}
+          />
+        </section>
+      );
+    case 'unchanged':
+      return (
+        <p role="status">
+          No changes: this file matches the last commit (HEAD).
+        </p>
+      );
+    case 'untracked':
+      return (
+        <p role="status">
+          This file is not tracked by git, so there is no committed version to
+          compare it with.
+        </p>
+      );
+    case 'no-commits':
+      return (
+        <p role="status">
+          This repository has no commits yet, so there is no HEAD to compare
+          with.
+        </p>
+      );
+    case 'not-a-repository':
+      return <p role="status">This file is not inside a git repository.</p>;
+    case 'oversized':
+      return (
+        <ErrorState
+          variant="compact"
+          title="Changes too large"
+          description={`This file's changes exceed the ${Math.round(changes.limitBytes / 1024)} KB in-app limit. Use the Diff pane or git to review them.`}
+        />
+      );
+    case 'refused':
+      return (
+        <ErrorState
+          variant="compact"
+          title="Changes not read"
+          description={changes.reason}
+        />
+      );
+  }
+}
+
+type FilePreviewView = 'file' | 'changes';
+
+/** Lines a patch adds or removes, excluding its file headers. */
+function changedLineCount(patch: string): number {
+  let count = 0;
+  for (const line of patch.split('\n'))
+    if (
+      (line.startsWith('+') && !line.startsWith('+++')) ||
+      (line.startsWith('-') && !line.startsWith('---'))
+    )
+      count += 1;
+  return count;
+}
+
+/**
+ * The path as a quiet breadcrumb: project and folders muted and allowed to
+ * truncate, the file name bold and always whole. The full path and its type
+ * are the tooltip.
+ */
+function FilePreviewBreadcrumb({
+  projectSlug,
+  path,
+  detail,
+}: {
+  projectSlug: string;
+  path: string;
+  detail: string;
+}) {
+  const segments = path.split('/');
+  const file = segments.pop() || path;
+  return (
+    <nav
+      className="workspace-file-preview__crumbs"
+      aria-label="File path"
+      title={`${projectSlug} / ${path} · ${detail}`}
+    >
+      <span className="workspace-file-preview__crumbs-lead">
+        {[projectSlug, ...segments].map((segment, index) => (
+          // Positional: the same folder name can repeat along one path.
+          <span key={index}>
+            {segment}
+            <span
+              className="workspace-file-preview__crumb-sep"
+              aria-hidden="true"
+            >
+              /
+            </span>
+          </span>
+        ))}
+      </span>
+      <strong className="workspace-file-preview__crumb-file">{file}</strong>
+    </nav>
+  );
+}
+
 /** A data-only, project-bound source/text renderer. Host chrome owns close and tabs. */
 export function FilePreviewPane({
   projectSlug,
@@ -894,6 +1198,26 @@ export function FilePreviewPane({
   const { addFile, has, removeFile } = useCodingFilesContext();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
   const [contextNotice, setContextNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
+  const { wrap, updateWrap } = useFilePreviewWrapController(stateKey, state);
+  const [gotoOpen, setGotoOpen] = useState(false);
+  const [gotoAvailable, setGotoAvailable] = useState(false);
+  const goToLine = useMemo(
+    () => ({
+      open: gotoOpen && gotoAvailable,
+      close: () => setGotoOpen(false),
+      setAvailable: setGotoAvailable,
+    }),
+    [gotoAvailable, gotoOpen],
+  );
+  // Per path: a different file opens on its content, not a stale Changes view.
+  const [viewFor, setViewFor] = useState<{
+    path: string;
+    view: FilePreviewView;
+  }>({ path: state.path, view: 'file' });
+  const view = viewFor.path === state.path ? viewFor.view : 'file';
   const previewRequest = {
     path: state.path,
     ...(state.lineRange ? { lineRange: state.lineRange } : {}),
@@ -907,7 +1231,20 @@ export function FilePreviewPane({
     (import.meta.env.MODE === 'test' ||
       import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1') &&
     query.isFetching;
-  const fileName = state.path.split('/').pop() || state.path;
+  const textual =
+    query.data?.status === 'ready' &&
+    ['source', 'text', 'markdown'].includes(query.data.renderKind);
+  // The Changes toggle's pip needs the answer before the view is opened; the
+  // Changes view reads the same cached query.
+  const changesQuery = useProjectWorkspaceFileChangesQuery(
+    projectSlug,
+    { path: state.path, ...(state.thread ? { thread: state.thread } : {}) },
+    { enabled: textual, staleTime: 15_000 },
+  );
+  const changedLines =
+    changesQuery.data?.state === 'changed'
+      ? changedLineCount(changesQuery.data.patch)
+      : 0;
   const intent = parseWorkspaceOpenFilePreviewIntent({
     projectSlug: state.projectSlug,
     path: state.path,
@@ -990,6 +1327,22 @@ export function FilePreviewPane({
     state.projectSlug,
   ]);
 
+  const copyPath = () => {
+    void copyToClipboard(state.path).then((ok) => {
+      window.clearTimeout(copiedTimer.current);
+      if (!ok) {
+        setCopied(false);
+        setContextNotice(
+          'This browser refused clipboard access. Select the path to copy it.',
+        );
+        return;
+      }
+      setContextNotice(null);
+      setCopied(true);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
   const copyDirectLink = () => {
     if (!directLink || !navigator.clipboard) {
       setContextNotice('A shareable preview link is unavailable here.');
@@ -1003,8 +1356,128 @@ export function FilePreviewPane({
       );
   };
 
+  const headSlots = usePaneHeadSlots();
+  const segmented = textual ? (
+    <fieldset className="workspace-file-preview__segmented">
+      <legend className="workspace-file-preview__visually-hidden">
+        Preview view
+      </legend>
+      <button
+        type="button"
+        aria-pressed={view === 'file'}
+        title="The file as it is now"
+        onClick={() => setViewFor({ path: state.path, view: 'file' })}
+      >
+        File
+      </button>
+      <button
+        type="button"
+        aria-pressed={view === 'changes'}
+        aria-label={
+          changedLines > 0
+            ? `Changes vs HEAD, ${changedLines} changed line${changedLines === 1 ? '' : 's'}`
+            : 'Changes vs HEAD'
+        }
+        title="Changes against the last commit (HEAD)"
+        onClick={() => setViewFor({ path: state.path, view: 'changes' })}
+      >
+        Changes
+        {changedLines > 0 && (
+          <span className="workspace-file-preview__pip" aria-hidden="true">
+            {changedLines > 99 ? '99+' : changedLines}
+          </span>
+        )}
+      </button>
+    </fieldset>
+  ) : null;
+  const barActions = (
+    <>
+      <IconButton
+        className="workspace-file-preview__icon"
+        aria-label={copied ? 'Path copied' : 'Copy path'}
+        title={copied ? 'Copied' : `Copy path (${state.path})`}
+        onClick={copyPath}
+      >
+        {copied ? <CheckGlyph /> : <CopyGlyph />}
+      </IconButton>
+      <ActionOverflowMenu
+        label="More file actions"
+        triggerClassName="icon-button workspace-file-preview__icon"
+        actions={[
+          {
+            key: 'reveal',
+            label: 'Reveal in Files',
+            disabled: !revealRoute,
+            onSelect: () => {
+              if (!revealRoute || !intent) return;
+              const params = serializeOpenFilePreviewIntent(intent);
+              if (params) navigate(revealRoute, params);
+            },
+          },
+          {
+            key: 'link',
+            label: 'Copy preview link',
+            disabled: !directLink,
+            onSelect: copyDirectLink,
+          },
+          {
+            key: 'conversation',
+            label: attachedToConversation
+              ? 'Remove from conversation'
+              : 'Add to conversation',
+            disabled:
+              !intent ||
+              (!attachedToConversation && query.data?.status !== 'ready'),
+            onSelect: attachedToConversation
+              ? removeFromConversation
+              : addToConversation,
+          },
+          {
+            key: 'wrap',
+            label: 'Wrap lines',
+            checked: wrap,
+            glyph: wrap ? <CheckGlyph /> : undefined,
+            onSelect: () => updateWrap(!wrap),
+          },
+          {
+            key: 'goto',
+            label: 'Go to line…',
+            shortcut: GO_TO_LINE_SHORTCUT,
+            disabled: !gotoAvailable || view !== 'file',
+            onSelect: () => setGotoOpen(true),
+          },
+          // The host's own rows for this pane (pop out, remove), merged so
+          // the head has one ⋯; `takeHostActions` below tells it so.
+          ...(headSlots?.hostActions ?? []),
+        ]}
+      />
+    </>
+  );
+  const takeHostActions = headSlots?.takeHostActions;
+  useEffect(() => {
+    if (!takeHostActions) return;
+    takeHostActions(true);
+    return () => takeHostActions(false);
+  }, [takeHostActions]);
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: a scoped keyboard shortcut (⌘G / Ctrl+G) for the pane's focused content, not a control.
+    <div
+      className="workspace-file-preview"
+      onKeyDown={(event: ReactKeyboardEvent) => {
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          // Shift+⌘G is the browser's "find previous"; leave it alone.
+          !event.shiftKey &&
+          event.key.toLowerCase() === 'g' &&
+          gotoAvailable &&
+          view === 'file'
+        ) {
+          event.preventDefault();
+          setGotoOpen(true);
+        }
+      }}
+    >
       {import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE ===
       '1' ? (
         <ReferenceFilePreviewRefresh
@@ -1014,62 +1487,47 @@ export function FilePreviewPane({
           completed={setCompletedRefresh}
         />
       ) : null}
-      <div style={{ padding: '6px 12px 4px', flexShrink: 0 }}>
-        <div
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-          }}
-        >
-          {state.projectSlug} / {state.path}
-        </div>
-        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-          {fileName} ·{' '}
-          {query.data?.mimeType ?? langFromFilePath(state.path) ?? 'text'}
-        </div>
-        <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-          <button
-            type="button"
-            onClick={() => {
-              if (!revealRoute || !intent) return;
-              const params = serializeOpenFilePreviewIntent(intent);
-              if (params) navigate(revealRoute, params);
-            }}
-            disabled={!revealRoute}
-          >
-            Reveal in Files
-          </button>
-          <button type="button" onClick={copyDirectLink} disabled={!directLink}>
-            Copy preview link
-          </button>
-          <button
-            type="button"
-            onClick={
-              attachedToConversation
-                ? removeFromConversation
-                : addToConversation
+      {headSlots ? (
+        // Inside a host that draws the pane's head itself (the Coding
+        // layout's side panel), the head's title is the file's name and its
+        // tooltip the path, so the crumbs would say it twice: the view
+        // toggle joins the head after the name and the actions join it
+        // before the host's close, and the pane draws no bar of its own.
+        <>
+          {headSlots.leading
+            ? createPortal(segmented, headSlots.leading)
+            : null}
+          {headSlots.trailing
+            ? createPortal(barActions, headSlots.trailing)
+            : null}
+        </>
+      ) : (
+        <div className="workspace-file-preview__bar">
+          <FilePreviewBreadcrumb
+            projectSlug={state.projectSlug}
+            path={state.path}
+            detail={
+              query.data?.mimeType ?? langFromFilePath(state.path) ?? 'text'
             }
-            disabled={
-              !intent ||
-              (!attachedToConversation && query.data?.status !== 'ready')
-            }
-          >
-            {attachedToConversation
-              ? 'Remove from conversation'
-              : 'Add to conversation'}
-          </button>
+          />
+          {segmented}
+          {barActions}
         </div>
-        {contextNotice && <p role="status">{contextNotice}</p>}
-      </div>
+      )}
+      {contextNotice && (
+        <p role="status" className="workspace-file-preview__status">
+          {contextNotice}
+        </p>
+      )}
       <div
         ref={performanceSurfaceRef}
         data-station-performance-surface="workspace-file-preview"
         data-station-project-slug={state.projectSlug}
         data-station-file-path={state.path}
         style={{
+          // Fills the pane below the one-row header; the pane host bounds it.
           flex: 1,
-          maxHeight: '60vh',
+          minHeight: 0,
           overflowY: 'auto',
           padding: '4px 12px 12px',
         }}
@@ -1112,12 +1570,23 @@ export function FilePreviewPane({
               Retry preview
             </button>
           </div>
+        ) : query.data && view === 'changes' ? (
+          <PaneHeadSlotsContext.Provider value={null}>
+            <FilePreviewChanges
+              projectSlug={projectSlug}
+              path={state.path}
+              thread={state.thread}
+            />
+          </PaneHeadSlotsContext.Provider>
         ) : query.data ? (
-          <PreviewContent
-            preview={query.data}
-            state={state}
-            stateKey={stateKey}
-          />
+          <GoToLineContext.Provider value={goToLine}>
+            <PreviewContent
+              preview={query.data}
+              state={state}
+              stateKey={stateKey}
+              wrap={wrap}
+            />
+          </GoToLineContext.Provider>
         ) : (
           <div role="status">
             <Empty

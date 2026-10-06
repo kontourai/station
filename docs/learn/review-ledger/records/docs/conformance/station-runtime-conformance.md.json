@@ -1,0 +1,23 @@
+{
+  "path": "docs/conformance/station-runtime-conformance.md",
+
+  "kind": "generated",
+
+  "state": "classified",
+
+  "summary": "Read the host-conformance matrix and corrected its source path at the generator.",
+
+  "limits": "Adapter probe results do not establish a live model or every-engine conformance outcome.",
+
+  "sources": [
+    "docs/conformance/station-runtime-conformance.json",
+
+    "scripts/generate-runtime-conformance.mjs",
+
+    "src-server/runtime/frameworks/conduit-framework-adapter.ts"
+  ],
+
+  "checks": [
+    "Integration source review through d1e0facc2: Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

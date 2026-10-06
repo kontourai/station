@@ -14,7 +14,11 @@ import {
   LiveSurfaceControlLeaseState,
   type LiveSurfaceLeaseReader,
 } from './control-lease.js';
-import type { LiveSurfaceHeldInput, LiveSurfaceProducer } from './producer.js';
+import {
+  type LiveSurfaceHeldInput,
+  LiveSurfaceInputRefusal,
+  type LiveSurfaceProducer,
+} from './producer.js';
 import { LiveSurfaceHub, type LiveSurfaceHubOptions } from './surface-hub.js';
 
 /**
@@ -411,14 +415,16 @@ function enqueue<T>(
 async function dispatchWithTimeout(
   entry: LiveSurfaceEntry,
   run: () => Promise<void>,
-): Promise<'ok' | 'failed' | 'timeout'> {
+): Promise<'ok' | 'failed' | 'timeout' | LiveSurfaceInputRefusal> {
   const own = internalsOf(entry);
   const pending = run();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const outcome = await Promise.race([
     pending.then(
       () => 'ok' as const,
-      () => 'failed' as const,
+      // A refusal the viewer can act on is carried through, not flattened.
+      (error: unknown) =>
+        error instanceof LiveSurfaceInputRefusal ? error : ('failed' as const),
     ),
     new Promise<'timeout'>((resolve) => {
       timer = setTimeout(() => resolve('timeout'), own.dispatchTimeoutMs);
@@ -520,6 +526,13 @@ async function dispatchFenced(
         isCurrent: () => entry.lease.isCurrent(fence, controller).ok,
       }),
     );
+    if (outcome instanceof LiveSurfaceInputRefusal)
+      return {
+        ok: false,
+        code: outcome.code,
+        accepted,
+        lease: entry.lease.snapshot(),
+      };
     if (outcome !== 'ok')
       return {
         ok: false,
@@ -596,6 +609,18 @@ export function releaseHumanControl(
   const result = own.lease.release(human, { epoch });
   if (result.ok) notifyExplicit(own, 'release', human, result.lease.fence);
   return result;
+}
+
+/**
+ * A person's keep-alive of their own current hold (see
+ * `LiveSurfaceControlLeaseState.keepHumanAlive`): capped, never a claim.
+ */
+export function keepHumanControlAlive(
+  entry: LiveSurfaceEntry,
+  human: HumanController,
+  epoch: number,
+): FencedLeaseResult {
+  return internalsOf(entry).lease.keepHumanAlive(human, epoch);
 }
 
 /**

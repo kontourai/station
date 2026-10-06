@@ -1,0 +1,7 @@
+{
+  "revision": "fc7f2bc0dd66aa96e64b5b7e50f76504d98a2638",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"After merging main (#3015 step frames, #3025 failed tool-result output): the stream-frame paragraph states all three rules — step frames carry only their type, failed tool-result frames omit raw output, and any other frame field holding a raw error object is sent as fixed outward text with a mid-stream error part ending the turn in one outward error frame; verified against outwardStreamChunk/streamErrorPartCause in stream-orchestrator.ts and chat-primary-stream.ts. The failed-turn marker paragraph matches the writer, read-side scrubber and model exclusion at this revision.","inputs":["docs/reference/api.md"]}
+  ]
+}

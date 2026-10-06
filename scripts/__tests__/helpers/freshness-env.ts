@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, vi } from 'vitest';
+import { jobEventEnvironment } from '../../lib/ci-event-environment.mjs';
 import { withoutFreshnessEnv } from '../../lib/documentation-freshness.mjs';
 
 /**
@@ -10,8 +11,16 @@ import { withoutFreshnessEnv } from '../../lib/documentation-freshness.mjs';
  */
 export const LEAKED_FRESHNESS_MODE = 'ambient-mode-leaked-into-a-fixture';
 
-/** Snapshot of the real job environment, for tests over the real ledger. */
-export const JOB_ENV: NodeJS.ProcessEnv = { ...process.env };
+/**
+ * The real job environment, for tests over the real ledger: the worker's
+ * environment plus the event variables `vitest.setup.ts` scrubbed from it
+ * (#2922). Without them `GITHUB_ACTIONS=true` alone reads as an unknown event
+ * and the pull request's only freshness enforcement turns advisory.
+ */
+export const JOB_ENV: NodeJS.ProcessEnv = Object.freeze({
+  ...process.env,
+  ...jobEventEnvironment(),
+});
 
 export function forbidAmbientFreshnessMode() {
   beforeEach(() => {

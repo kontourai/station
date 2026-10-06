@@ -1,0 +1,67 @@
+{
+  "path": "examples/enterprise-layout/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete README: deferred provider registration and query keys, typed Calendar/CRM/email mappings, directory stub, local dependency declarations, command skills, document namespace mismatch, and host-action execution boundaries. Corrected all-MCP and configured-deployment overclaims.",
+
+  "limits": "EXECUTED FAIL: public Enterprise build reached standalone dependency preparation and timed out in spawnSync /bin/sh after 60 seconds. No intrinsic build defect inferred from that timeout. No live CRM, Outlook, directory, notes-vault MCP or model qualification. Source review is complete for README claims, not a deployment certification.",
+
+  "sources": [
+    "examples/enterprise-layout/agents/enterprise-assistant/agent.json",
+
+    "examples/enterprise-layout/integrations/calendar/integration.json",
+
+    "examples/enterprise-layout/integrations/crm/integration.json",
+
+    "examples/enterprise-layout/layout.json",
+
+    "examples/enterprise-layout/plugin.json",
+
+    "examples/enterprise-layout/src/data/index.ts",
+
+    "examples/enterprise-layout/src/data/init.ts",
+
+    "examples/enterprise-layout/src/data/notes-hooks.ts",
+
+    "examples/enterprise-layout/src/data/providers.ts",
+
+    "examples/enterprise-layout/src/data/providers/calendar.ts",
+
+    "examples/enterprise-layout/src/data/providers/crm.ts",
+
+    "examples/enterprise-layout/src/data/providers/directory.ts",
+
+    "examples/enterprise-layout/src/data/providers/email.ts",
+
+    "examples/enterprise-layout/src/index.tsx",
+
+    "examples/shared-providers/plugin.json",
+
+    "packages/sdk/src/api-agent-runtime.ts",
+
+    "packages/shared/src/build.ts",
+
+    "src-server/routes/projects/projects.ts",
+
+    "src-server/services/knowledge/knowledge-search.ts",
+
+    "src-server/services/plugins/plugin-command-skill-source.ts",
+
+    "src-server/services/plugins/workspace-pane-host-actions.ts",
+
+    "src-server/services/plugins/workspace-pane-host-admission.ts"
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d."
+  ]
+}

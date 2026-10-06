@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/design/shared-working-state.md","note":"#3071 review-fix round. Changed inputs: event-store.ts (the session projection also returns the turn facts the settle rule reads for unresolved requests; the session inventory reads an expired request.resolved as cancelled, not pending). Searched this page for respondToRequest, request.opened/request.resolved, expectedRequestEventId, approvals/operate request listing, the inventory decision status and shared export subpaths: it makes no statement those deltas change (subpath mentions are general guidance, not an enumeration). No prose change; the page's other claims were not re-reviewed.","inputs":["docs/design/shared-working-state.md"]}
+  ]
+}

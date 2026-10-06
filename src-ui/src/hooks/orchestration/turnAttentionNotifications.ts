@@ -1,5 +1,6 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import { showChatPageOrDock } from '../../app-shell/chat-placement';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { stripAnsi, toastStore } from '../../contexts/ToastContext';
@@ -193,8 +194,8 @@ function show(terminal: TurnTerminal & { turnId: string }): void {
   const answered = outcome === 'finished' || outcome === 'replied';
   const navigateTo = chat?.conversationId ?? chatKey;
   const open = () => {
-    navigationStore.setDockState(true);
     navigationStore.setActiveChat(navigateTo);
+    showChatPageOrDock(() => navigationStore.setDockState(true));
   };
   toastStore.showTurnActivity({
     sessionId: terminal.threadId,

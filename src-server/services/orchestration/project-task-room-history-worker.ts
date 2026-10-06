@@ -241,6 +241,25 @@ function validResolvedLink(value: unknown, exactKind?: string) {
 }
 function validBody(value: unknown) {
   if (!plainDataObject(value)) return false;
+  if (value.kind === 'output-feedback')
+    return (
+      exactObject(value, ['kind', 'target', 'review', 'text']) &&
+      exactObject(value.target, ['outputId', 'digest', 'taskCreatedAt']) &&
+      typeof value.target.outputId === 'string' &&
+      value.target.outputId.length > 0 &&
+      value.target.outputId.length <= 256 &&
+      typeof value.target.digest === 'string' &&
+      /^sha256:[0-9a-f]{64}$/.test(value.target.digest) &&
+      typeof value.target.taskCreatedAt === 'string' &&
+      value.target.taskCreatedAt.length === 24 &&
+      Number.isFinite(Date.parse(value.target.taskCreatedAt)) &&
+      new Date(value.target.taskCreatedAt).toISOString() ===
+        value.target.taskCreatedAt &&
+      typeof value.review === 'string' &&
+      ['comment', 'changes-requested', 'accepted'].includes(value.review) &&
+      typeof value.text === 'string' &&
+      value.text.length > 0
+    );
   if (value.kind === 'human-message')
     return (
       exactObject(value, ['kind', 'text']) && typeof value.text === 'string'
@@ -311,8 +330,9 @@ function validGrantReceipt(value: unknown): value is Record<string, unknown> {
 }
 function expectedCapability(principal: unknown, body: unknown) {
   if (!plainDataObject(principal) || !plainDataObject(body)) return undefined;
-  if (principal.kind === 'agent') return 'agent-publish';
-  return body.kind === 'human-message'
+  if (principal.kind === 'agent')
+    return body.kind === 'output-feedback' ? undefined : 'agent-publish';
+  return body.kind === 'human-message' || body.kind === 'output-feedback'
     ? 'message-write'
     : body.kind === 'live-work-started' ||
         body.kind === 'live-work-presence-ended' ||
@@ -999,7 +1019,15 @@ async function append(request: AppendRequest, requestId: number) {
     });
     if (!bodyMeasure.ok) throw new Error('room body exceeds budget');
     const record: ProjectTaskRoomRecord = {
-      schemaVersion: 'station.project-task-room/v2',
+      schemaVersion:
+        request.body.kind === 'output-feedback' ||
+        db
+          .prepare(
+            'SELECT version FROM project_task_room_formats WHERE channel_id=?',
+          )
+          .get(room.channel_id)
+          ? 'station.project-task-room/v3'
+          : 'station.project-task-room/v2',
       scope: request.scope,
       principal: request.principal,
       ...(request.correlationId
@@ -1096,7 +1124,10 @@ async function append(request: AppendRequest, requestId: number) {
     // INSERT would collide on its primary key if a room's head_seq ever
     // lagged its rows. Both strand an unresolved admission and both are
     // reconciliation's job, not a reordering's.
-    if (request.writeAdmissionRequired) {
+    if (
+      request.writeAdmissionRequired ||
+      request.body.kind === 'output-feedback'
+    ) {
       const admission = await authorizeCommit(
         requestId,
         request.authorizationId,
@@ -1107,6 +1138,10 @@ async function append(request: AppendRequest, requestId: number) {
         return refused(admission);
       }
     }
+    if (request.body.kind === 'output-feedback')
+      db.prepare(
+        'INSERT OR IGNORE INTO project_task_room_formats(channel_id,version) VALUES(?,3)',
+      ).run(room.channel_id);
     db.prepare(
       'INSERT INTO project_task_room_records(channel_id,epoch,seq,proposal_id,proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes) VALUES(?,?,?,?,?,?,?,?,?)',
     ).run(
@@ -1203,7 +1238,13 @@ function decode(row: Row): ProjectTaskRoomRecord | undefined {
       maxKeyCodeUnits: 64,
     });
     if (
-      record?.schemaVersion !== 'station.project-task-room/v2' ||
+      ![
+        'station.project-task-room/v2',
+        'station.project-task-room/v3',
+      ].includes(record?.schemaVersion) ||
+      (record.body?.kind === 'output-feedback' &&
+        (record.schemaVersion !== 'station.project-task-room/v3' ||
+          record.principal?.kind !== 'operator')) ||
       envelope.seq !== row.seq ||
       envelope.channelId !== row.channel_id ||
       envelope.proposal.proposalId !== row.proposal_id ||
@@ -1216,6 +1257,7 @@ function decode(row: Row): ProjectTaskRoomRecord | undefined {
       canonical(payload.scope) !== canonical(record.scope) ||
       canonical(payload.principal) !== canonical(record.principal) ||
       canonical(payload.body) !== canonical(record.body) ||
+      !validBody(record.body) ||
       payload.correlationId !== record.correlationId ||
       payload.causationId !== record.causationId ||
       !bodyMeasure.ok ||

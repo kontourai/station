@@ -1,0 +1,7 @@
+{
+  "revision": "404008de59f4664e8d5c4822bddfb0d3e39ef9a2",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Delta review includes full-width 256px document and 96px composer minima, with desktop/390px production UI observations and real single-user document/message writes. ProjectTasksSection now loads its existing owner stylesheet on direct layout entry. No new dispatch, sharing or completion authority; multi-human/provider/release proof remains open.","inputs":["docs/guides/starter-work.md"]}
+  ]
+}

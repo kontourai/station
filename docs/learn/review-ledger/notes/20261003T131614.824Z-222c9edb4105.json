@@ -1,0 +1,7 @@
+{
+  "revision": "6b192b274917a32f36ef47a142936a368e44247e",
+
+  "notes": [
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Replaced the '#550 and above' numbering note with 'bare numbers refer to this repository'. Verified #90, #121, #122, #125, #1969, #1970, #1973 are this repo's issues; archive refs keep the archive# prefix. No other claim changed.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md"]}
+  ]
+}

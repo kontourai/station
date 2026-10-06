@@ -373,6 +373,124 @@ describe('mapAcpSessionUpdate — content and tool events', () => {
   });
 });
 
+/**
+ * The exact update sequence OpenCode's ACP agent writes for its shell tool
+ * (opencode `acp/agent.ts`: `pending` → `in_progress` → `completed`). The
+ * title is the command line and there is no programmatic `name`; `kind` rides
+ * every update except `completed`, which sends only a title, content and
+ * rawOutput.
+ */
+const OPENCODE_COMMAND =
+  'echo "=== PROCS ==="; ps -o pid,lstart,etime,rss,cmd -p 946878,946886';
+const OPENCODE_SHELL_UPDATES = [
+  {
+    sessionUpdate: 'tool_call',
+    toolCallId: 'call_shell',
+    title: 'bash',
+    kind: 'execute',
+    status: 'pending',
+    locations: [],
+    rawInput: {},
+  },
+  {
+    sessionUpdate: 'tool_call_update',
+    toolCallId: 'call_shell',
+    status: 'in_progress',
+    kind: 'execute',
+    title: OPENCODE_COMMAND,
+    locations: [{ path: '/repo' }],
+    rawInput: {
+      command: OPENCODE_COMMAND,
+      description: 'List the Station processes',
+      cwd: '/repo',
+    },
+  },
+  {
+    sessionUpdate: 'tool_call_update',
+    toolCallId: 'call_shell',
+    status: 'completed',
+    title: OPENCODE_COMMAND,
+    content: [
+      { type: 'content', content: { type: 'text', text: '946878 ...' } },
+    ],
+    rawOutput: { output: '946878 ...', metadata: {} },
+  },
+];
+
+describe("mapAcpSessionUpdate — the engine's tool kind", () => {
+  test('carries ACP kind onto every tool.started and onto the terminal whose update omitted it', () => {
+    const events: CanonicalRuntimeEvent[] = [];
+    const ctx = makeCtx(events);
+    for (const update of OPENCODE_SHELL_UPDATES)
+      mapAcpSessionUpdate(update as any, ctx);
+
+    const started = events.filter((event) => event.method === 'tool.started');
+    expect(started.length).toBeGreaterThan(0);
+    for (const event of started)
+      expect(event).toMatchObject({ toolKind: 'execute' });
+    expect(started.at(-1)).toMatchObject({
+      toolName: OPENCODE_COMMAND,
+      arguments: { command: OPENCODE_COMMAND },
+    });
+    expect(
+      events.find((event) => event.method === 'tool.completed'),
+    ).toMatchObject({
+      toolName: OPENCODE_COMMAND,
+      toolKind: 'execute',
+      status: 'success',
+    });
+  });
+
+  test('keeps the last valid kind through an unknown one, and does not re-announce an unchanged kind', () => {
+    const events: CanonicalRuntimeEvent[] = [];
+    const ctx = makeCtx(events);
+    const update = (fields: Record<string, unknown>) =>
+      mapAcpSessionUpdate(
+        {
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'call_k',
+          ...fields,
+        } as any,
+        ctx,
+      );
+    mapAcpSessionUpdate(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'call_k',
+        title: 'bash',
+        kind: 'execute',
+      } as any,
+      ctx,
+    );
+    const started = () =>
+      events.filter((e) => e.method === 'tool.started').length;
+    const before = started();
+    update({ kind: 'execute' });
+    update({ kind: 'teleport' });
+    expect(started()).toBe(before);
+    update({ status: 'completed', title: 'bash' });
+    expect(events.find((e) => e.method === 'tool.completed')).toMatchObject({
+      toolKind: 'execute',
+    });
+  });
+
+  test('refuses a kind outside the ACP vocabulary instead of coercing it', () => {
+    const events: CanonicalRuntimeEvent[] = [];
+    const ctx = makeCtx(events);
+    mapAcpSessionUpdate(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'call_odd',
+        title: 'odd',
+        kind: 'teleport',
+      } as any,
+      ctx,
+    );
+    expect(events[0]).toMatchObject({ method: 'tool.started' });
+    expect(events[0]).not.toHaveProperty('toolKind');
+  });
+});
+
 describe('mapAcpSessionUpdate — tool name / argument resolution (chat-dock-maximize-readiness)', () => {
   test('tool_call prefers the programmatic name over the descriptive title', () => {
     const events: CanonicalRuntimeEvent[] = [];

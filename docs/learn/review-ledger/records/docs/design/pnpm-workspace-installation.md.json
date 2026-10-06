@@ -1,0 +1,79 @@
+{
+  "path": "docs/design/pnpm-workspace-installation.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete implemented installation design and delivery checklist against managed phase ordering, exact manager pin, inert pnpm arguments/settings, lock and workspace parity, lifecycle allowlist/hooks/artifacts, guard retirement, dependency receipt identity, importer-specific installed-version preflight, advisory closure and production SBOM graph. Checklist remains required evidence rather than a claim all delivery probes ran; root advisory view explicitly includes all managed importers.",
+
+  "limits": "No new frozen install, lifecycle execution, native handshake, second-worktree disk measurement, relocated package qualification or hosted platform job. Clone-or-copy is the configured isolation mechanism, not a measured saving on every filesystem. Installed-version preflight is not full installed-content integrity proof. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): No new frozen install, lifecycle execution, native handshake, second-worktree disk measurement, relocated package qualification or hosted platform job. Clone-or-copy is the configured isolation mechanism, not a measured saving on every filesystem. Installed-version preflight is not full installed-content integrity proof.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"oursMatch\"}]",
+
+  "sources": [
+    ".npmrc",
+
+    "config/dependency-lifecycle-allowlist.json",
+
+    "package.json",
+
+    "pnpm-lock.yaml",
+
+    "pnpm-workspace.yaml",
+
+    "scripts/__tests__/dependency-lifecycle.test.ts",
+
+    "scripts/__tests__/pnpm-lifecycle.test.ts",
+
+    "scripts/__tests__/release-sbom-generation.test.ts",
+
+    "scripts/__tests__/verification-environment-preflight.test.ts",
+
+    "scripts/__tests__/verification-receipt.test.ts",
+
+    "scripts/dependency-advisory-policy.mjs",
+
+    "scripts/dependency-lifecycle-workflow-gate.mjs",
+
+    "scripts/dependency-lifecycle.mjs",
+
+    "scripts/generate-pnpm-sbom.mjs",
+
+    "scripts/lib/dependency-install-retirement.mjs",
+
+    "scripts/lib/dependency-lifecycle-policy.mjs",
+
+    "scripts/lib/pnpm-advisory.mjs",
+
+    "scripts/lib/pnpm-dependency-graph.mjs",
+
+    "scripts/lib/pnpm-lockfile.mjs",
+
+    "scripts/lib/release-sbom-generation.mjs",
+
+    "scripts/lib/release-sboms.mjs",
+
+    "scripts/lib/test-reliability.mjs",
+
+    "scripts/lib/verification-environment-preflight.mjs",
+
+    "scripts/lockfile-sync-gate.mjs",
+
+    "scripts/release-sbom-context.mjs",
+
+    "scripts/workspace-dependency-provenance.mjs"
+  ],
+
+  "checks": [
+    "Source/caller review on 2026-09-27 completed for the whole document, separating implemented behavior, policy requirements and historical evidence. Current root document bytes at 45fcdd5230b0b5e5028e469864ab70693e6088b0 matched the lane before this prose correction; reviewed implementation remains the frozen 6fa523e4d5b5a265a9e545edcbba6f5602193bef integration.",
+
+    "EXECUTED: git diff --check passed. No production behavior changed. No new live audit, hosted job, browser suite, dependency installation, cloud deployment or price refresh was run for this tranche.",
+
+    "NOT_EXECUTED: gate:for could not spawn its shell (EAGAIN, host process capacity); retained the failure and avoided process-heavy verification. Parent owns final combined documentation/readiness checks. Existing tests were inspected for their actual assertions and limits, not reported as newly executed.",
+
+    "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root @kontourai/bearing and @kontourai/forage importer entries. The installation design names neither package, and its manager pin, lifecycle, lock-parity and advisory claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2914 removes a raw-backslash resolveLockEntry pin test; the nested-importer and toLockRelDir coverage remain. It also removes a schema-vs-guard receipt test and points to the guard suites. The design's preflight and receipt-identity claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

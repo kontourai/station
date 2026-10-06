@@ -1,0 +1,15 @@
+{
+  "path": ".veritas/GOVERNANCE.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Reviewed protected authority, additive guidance and generated-evidence boundaries; repaired the stale version label and missing retention-document reference.",
+
+  "limits": "No protected Repo Map, Standards, authority or attestation was changed. This documentation edit does not activate the proposed required check.",
+
+  "sources": [],
+
+  "checks": []
+}

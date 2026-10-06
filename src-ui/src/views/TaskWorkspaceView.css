@@ -2,6 +2,60 @@
   min-width: 0;
 }
 
+.task-workspace__record-details {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-3);
+}
+
+.task-workspace__record-details summary {
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  align-content: center;
+  cursor: pointer;
+  color: var(--k-text-muted);
+}
+
+.task-workspace__record-details summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.task-workspace__room .task-room-editor,
+.task-workspace__room .project-task-room-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  min-width: 0;
+  padding: var(--k-space-3);
+}
+
+.task-workspace__room textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(var(--k-space-6) * 3);
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.task-workspace__room .task-room-editor textarea {
+  min-height: calc(var(--k-space-6) * 8);
+}
+
+.task-workspace__room textarea:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.task-workspace__room h2,
+.task-workspace__room p {
+  margin: 0;
+}
+
 .task-workspace__body {
   flex: 1;
   min-height: 0;
@@ -852,4 +906,47 @@
   .task-outputs__confirmation-actions .button {
     flex: 1 1 8rem;
   }
+}
+
+.task-outputs__review-fields {
+  display: grid;
+  min-width: 0;
+  gap: var(--k-space-3);
+  margin-top: var(--k-space-3);
+}
+
+.task-outputs__review-fields label {
+  display: grid;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.task-outputs__review-fields select,
+.task-outputs__review-fields textarea {
+  min-width: 0;
+  width: 100%;
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  padding: var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+}
+
+.task-outputs__review-fields textarea {
+  min-height: calc(var(--k-space-6) * 3);
+  resize: vertical;
+}
+
+.task-outputs__review-fields select:focus-visible,
+.task-outputs__review-fields textarea:focus-visible {
+  outline: var(--k-border-thick) solid var(--k-focus);
+  outline-offset: var(--k-space-1);
+}
+
+.task-outputs__feedback .button {
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  white-space: normal;
 }

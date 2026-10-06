@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
+import { scaleLivenessMs } from './liveness-scale.mjs';
 
 export const PRODUCT_LAW_SCHEMA_VERSION = 1;
 export const PRODUCT_LAW_FAMILIES = Object.freeze([
@@ -40,6 +41,25 @@ export function productLawObservationTimeoutMs(env = process.env) {
   return Number.isFinite(configured) && configured > 0
     ? configured
     : PRODUCT_LAW_OBSERVATION_TIMEOUT_MS;
+}
+
+/**
+ * The bound the gate actually applies. Only the DEFAULT scales with host
+ * pressure (#3302); an explicit per-observation value is the caller's own
+ * bound. `productLawObservationTimeoutMs` stays the unscaled policy value
+ * because it feeds the receipt environment digest and provenance: scaling it
+ * would make receipt reuse depend on how busy the host was.
+ */
+export function productLawEffectiveObservationTimeoutMs(env = process.env) {
+  const policy = productLawObservationTimeoutMs(env);
+  return policy === PRODUCT_LAW_OBSERVATION_TIMEOUT_MS
+    ? scaleLivenessMs(policy, env)
+    : policy;
+}
+
+/** The shared liveness ceiling for all observations, scaled like the default. */
+export function productLawRuntimeBudgetMs(env = process.env) {
+  return scaleLivenessMs(MAX_PRODUCT_LAW_RUNTIME_MS, env);
 }
 
 function pathInsideRoot(rootDir, file) {

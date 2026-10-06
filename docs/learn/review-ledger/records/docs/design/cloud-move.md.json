@@ -1,0 +1,49 @@
+{
+  "path": "docs/design/cloud-move.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed full preparation, template, enrollment and target-observation claim review through shared provider composition, CLI/SDK callers and SSH worker probe. Checked bounded non-atomic inventory, explicit false transfer/resume flags, AWS template resource/access/persistence choices and GCP inventory-only scope. Clarified existing deployment authentication versus unimplemented Cloud IAM enrollment and template credential passing.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+
+  "sources": [
+    "packages/cli/src/commands/cloud-target.ts",
+
+    "packages/cli/src/commands/cloud.ts",
+
+    "packages/sdk/src/__tests__/cloud-move.test.ts",
+
+    "packages/sdk/src/client/cloud-move.ts",
+
+    "packages/shared/src/__tests__/cloud-move.test.ts",
+
+    "packages/shared/src/cloud-aws-ec2.ts",
+
+    "packages/shared/src/cloud-move.ts",
+
+    "src-desktop/src/ssh_launcher.rs",
+
+    "src-server/services/identity/deployment-authentication-service.ts",
+
+    "src-server/services/ssh/openssh-worker-probe.ts",
+
+    "src-ui/src/views/connections-hub/AddMachineModal.tsx",
+
+    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx"
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Required merge-queue recovery through 421517851: native account continuation is additive and separately admitted; existing browser/provider, Device and Project claims retain their documented scope. Changed inputs reviewed: src-server/services/identity/deployment-authentication-service.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical."
+  ]
+}

@@ -481,6 +481,76 @@ describe('SessionQueryModule', () => {
     });
   });
 
+  test('titles a conversation by its first user text, else as an untitled chat — never by the engine id', async () => {
+    const conversationFor = async (events: unknown[]) => {
+      const module = createSessionQueryModule({
+        findSession: vi.fn(async () => ({ id: 'thread-t' })),
+        projectConversation: vi.fn(() => ({
+          assignedAgentSlug: 'opencode',
+          createdAt: '2026-08-12T00:00:00.000Z',
+          updatedAt: '2026-08-12T00:01:00.000Z',
+        })),
+        canReadSession: vi.fn(() => true),
+        listEvents: vi.fn(() => events as CanonicalRuntimeEvent[]),
+      });
+      const outcome = await module.read(
+        { type: 'conversation', threadId: 'thread-t' },
+        sessionReadAuthorityFromRequest('owner', undefined, undefined),
+      );
+      if (outcome.status !== 'found') throw new Error(outcome.status);
+      return outcome;
+    };
+
+    // A first turn with no words (attachment-only, or blank) does not leave
+    // the conversation untitled when a later turn says something.
+    const later = await conversationFor([
+      {
+        method: 'turn.started',
+        threadId: 'thread-t',
+        turnId: 't1',
+        prompt: '   ',
+      },
+      {
+        method: 'turn.completed',
+        threadId: 'thread-t',
+        turnId: 't1',
+        outputText: 'Looked.',
+      },
+      {
+        method: 'turn.started',
+        threadId: 'thread-t',
+        turnId: 't2',
+        prompt: '  Deploy the docs  ',
+      },
+    ]);
+    expect(
+      later.messages.filter((message) => message.role === 'user'),
+      'premise: both turns project a user message',
+    ).toHaveLength(2);
+    expect(later.conversation.title).toBe('Deploy the docs');
+
+    // A long first message is cut at a word boundary and marked as cut,
+    // never sliced mid-word.
+    const long = await conversationFor([
+      {
+        method: 'turn.started',
+        threadId: 'thread-t',
+        turnId: 't3',
+        prompt:
+          'Are you running the latest version of the tooling here? Run `ls -la`, `git status`, and read README.md',
+      },
+    ]);
+    // ...and is a plain-text name: the markdown of the message is dropped.
+    expect(long.conversation.title).toBe(
+      'Are you running the latest version of the tooling here? Run ls -la, git\u2026',
+    );
+    expect(Array.from(long.conversation.title).length).toBeLessThanOrEqual(80);
+
+    const untitled = await conversationFor([]);
+    expect(untitled.conversation.title).toBe('New chat');
+    expect(untitled.conversation.title).not.toContain('opencode');
+  });
+
   test('makes an existing denied conversation indistinguishable from absent without replaying or projecting it', async () => {
     const listEvents = vi.fn();
     const projectConversation = vi.fn();
@@ -563,6 +633,56 @@ describe('SessionQueryModule', () => {
       },
     });
     expect(listEvents).toHaveBeenCalledOnce();
+  });
+
+  test('station#3415: a compaction marker at the end of a turn leaves its answer readable', async () => {
+    const at = (eventId: string, fields: Record<string, unknown>) => ({
+      eventId,
+      provider: 'codex',
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      createdAt: '2026-10-05T00:00:00.000Z',
+      ...fields,
+    });
+    const module = createSessionQueryModule({
+      findSession: vi.fn(async () => ({ id: 'thread-1' })),
+      projectConversation: vi.fn(() => ({
+        assignedAgentSlug: 'codex',
+        createdAt: '2026-10-05T00:00:00.000Z',
+        updatedAt: '2026-10-05T00:01:00.000Z',
+      })),
+      canReadSession: vi.fn(() => true),
+      listEvents: vi.fn(
+        () =>
+          [
+            at('e0', { method: 'turn.started', prompt: 'question' }),
+            at('e1', { method: 'content.text-delta', delta: 'the answer' }),
+            at('e2', {
+              method: 'extension.notification',
+              namespace: 'codex-rollout',
+              type: 'context-compacted',
+              payload: { source: 'provider-event' },
+            }),
+            at('e3', { method: 'turn.completed' }),
+          ] as unknown as CanonicalRuntimeEvent[],
+      ),
+    });
+
+    await expect(
+      module.readAssistantTurn(
+        { type: 'assistant-turn', threadId: 'thread-1', turnId: 'turn-1' },
+        sessionReadAuthorityFromRequest('owner', undefined, undefined),
+      ),
+    ).resolves.toMatchObject({
+      status: 'found',
+      turnId: 'turn-1',
+      message: {
+        id: 'e0:assistant',
+        role: 'assistant',
+        metadata: { turnId: 'turn-1', answerEligible: true },
+        parts: [expect.objectContaining({ text: 'the answer' })],
+      },
+    });
   });
 
   test('uses the indexed turn seam and never returns reasoning or a cancelled/partial terminal answer', async () => {

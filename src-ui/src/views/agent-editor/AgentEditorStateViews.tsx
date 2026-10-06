@@ -162,17 +162,21 @@ export function AgentEditorStartingPoints({
     <div className="agent-editor__template-picker">
       <h3 className="agent-editor__template-title">Choose a starting point</h3>
       <p className="agent-editor__template-desc">
-        What runs this agent decides everything else, so it is the first
-        question.
+        Choose how this agent runs. You can use a model service, an AI app
+        already connected to this Station, or an agent you created earlier.
       </p>
       <div className="template-grid">
         <button type="button" className="template-card" onClick={onStartModel}>
-          <strong>Run it on Station</strong>
-          <small>Station’s own engine runs it on a model you choose.</small>
+          <strong>Use a model connection</strong>
+          <small>
+            Station’s engine runs your instructions on a model you choose.
+          </small>
         </button>
         <button type="button" className="template-card" onClick={onStartCli}>
-          <strong>Run it on another engine</strong>
-          <small>Claude Code, Codex or another engine on this machine.</small>
+          <strong>Use an AI app</strong>
+          <small>
+            Claude Code, Codex or another engine connected to this Station.
+          </small>
         </button>
         <button
           type="button"

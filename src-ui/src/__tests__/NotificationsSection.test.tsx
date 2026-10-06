@@ -4,9 +4,8 @@
  * `NotificationsSection` (`views/settings/VoiceFeaturesSection.tsx`) — the
  * "View the notifications inbox" cross-link this section gained in
  * archive#settings-revamp. Only `NotificationsSection`'s own
- * dependencies are mocked; `pushNotificationsEnabled: false` keeps
- * `NotificationSubscribeButton` (a sibling export's concern) unmounted so
- * this file never needs to also stand up `usePushNotifications`.
+ * dependencies are mocked; the app shell's browser push state is stubbed
+ * here because this file owns the inbox navigation and its unsaved guard.
  */
 
 import { DEFAULT_NOTIFICATION_SOUND_PREFERENCES } from '@kontourai/station-contracts/device-settings';
@@ -15,6 +14,9 @@ import { describe, expect, test, vi } from 'vitest';
 import { navigationStore } from '../contexts/navigation-store';
 
 const toggleFeature = vi.fn();
+vi.mock('../contexts/PushNotificationsContext', () => ({
+  usePushNotificationsState: () => ({ supported: false }),
+}));
 vi.mock('../hooks/useFeatureSettings', () => ({
   useFeatureSettings: () => ({
     settings: {
@@ -41,7 +43,7 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
   const { DiscardModal } = useUnsavedGuard(dirty);
   return (
     <>
-      <NotificationsSection apiBase="http://localhost:3141" />
+      <NotificationsSection />
       <DiscardModal />
     </>
   );
@@ -49,7 +51,7 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 
 describe('NotificationsSection', () => {
   test('renders the push-notifications toggle and the notifications-inbox cross-link', () => {
-    render(<NotificationsSection apiBase="http://localhost:3141" />);
+    render(<NotificationsSection />);
 
     expect(screen.getByText('Push notifications')).toBeTruthy();
     expect(

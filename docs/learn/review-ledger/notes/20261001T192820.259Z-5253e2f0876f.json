@@ -1,0 +1,7 @@
+{
+  "revision": "8fb86e238ff256f452a6d28ef6392e211082c7cd",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Scoped independent navigation review at8fb86e238: API reference adds declared-output keep contract under Task requests. Integrating guide line26 remains an accurate route to that authority; this endpoint does not change its architecture or SDK guidance. No prose change needed; unrelated claims and hosted acceptance are not recertified.","inputs":["docs/guides/deployment-authentication.md","docs/guides/documentation.md","docs/guides/plugins.md","docs/guides/workspace-packages.md","docs/reference/api.md","docs/reference/cli.md","docs/reference/contracts.md","docs/reference/sdk.md","packages/contracts/src/deployment-authentication.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

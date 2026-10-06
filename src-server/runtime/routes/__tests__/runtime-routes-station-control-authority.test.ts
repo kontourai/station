@@ -15,6 +15,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { orchestrationCommandSchema } from '../../../routes/orchestration/orchestration.js';
 import {
   __resetStationServerSelfAttestationForTests,
   runAsStationServer,
@@ -88,6 +89,17 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const HOSTED_ENV = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
+/** The `/commands` commands held to the caller's scope (slices C1 and C3). */
+const SCOPED_COMMANDS = [
+  'steerTurn',
+  'steerTurnOnce',
+  'inspectSteerInput',
+  'adoptSession',
+  'interruptTurn',
+  'stopSession',
+  'discardDraft',
+] as const;
+type ScopedCommand = (typeof SCOPED_COMMANDS)[number];
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-authority-guard';
 const makeTempDir = trackTempDirs();
 
@@ -401,10 +413,14 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     support.hostThreads.add('op-thread-host');
     support.hostThreads.add('person-thread-host');
     support.slugOnly.set('op-thread-slug', 'project-a-slug');
-    const bodyFor = (type: 'steerTurn' | 'adoptSession', threadId: string) =>
-      type === 'steerTurn'
-        ? { type, threadId, input: 'also check the tests' }
-        : { type, sourceThreadId: threadId };
+    const bodyFor = (type: ScopedCommand, threadId: string) =>
+      type === 'steerTurn' ||
+      type === 'steerTurnOnce' ||
+      type === 'inspectSteerInput'
+        ? { type, threadId, input: 'also check the tests', clientInputId: 'i' }
+        : type === 'adoptSession'
+          ? { type, sourceThreadId: threadId }
+          : { type, threadId };
     const bearer = () => callerFor('op-codex', 'url-token');
     const delegated = () =>
       internal({
@@ -506,7 +522,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
           'station_control_caller_required',
         ],
       ];
-    for (const type of ['steerTurn', 'adoptSession'] as const) {
+    for (const type of SCOPED_COMMANDS) {
       support.dispatched.length = 0;
       // Minted per request: a new mint for a session replaces its last token.
       for (const [label, headers, threadId, expected] of cases)
@@ -521,36 +537,70 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
             bodyFor(type, threadId),
           ),
         ]).toEqual([type, label, expected]);
-      // The admitted commands reached the service through the real route;
-      // the refused ones never did.
+      // The admitted commands reached the service through the real route
+      // (which hands a receipted steer on as a steer); the refused ones
+      // never did.
+      const handedOn = type === 'steerTurnOnce' ? 'steerTurn' : type;
       expect(support.dispatched).toEqual(
         cases
           .filter(([, , , expected]) => expected === 'passed-guard')
-          .map(([, , threadId]) => `${type} ${threadId}`),
+          .map(([, , threadId]) => `${handedOn} ${threadId}`),
       );
     }
 
-    // The operator's UI is never an internal request: it steers any thread,
-    // host and other Project included, and the route hands it on.
-    support.dispatched.length = 0;
-    for (const threadId of ['op-thread-host', 'person-thread', 'op-thread-b'])
-      expect(
+    // The operator's UI is never an internal request: it steers, stops and
+    // interrupts any thread, host and other Project included, and the route
+    // hands it on.
+    for (const type of ['steerTurn', 'interruptTurn', 'stopSession'] as const) {
+      support.dispatched.length = 0;
+      for (const threadId of ['op-thread-host', 'person-thread', 'op-thread-b'])
+        expect(
+          await outcome(
+            base,
+            'POST',
+            '/api/orchestration/commands',
+            {
+              'content-type': 'application/json',
+              authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+            },
+            bodyFor(type, threadId),
+          ),
+        ).toBe('passed-guard');
+      expect(support.dispatched).toEqual([
+        `${type} op-thread-host`,
+        `${type} person-thread`,
+        `${type} op-thread-b`,
+      ]);
+    }
+  });
+
+  // #2377 slice C3: every command `/commands` accepts is either an approval
+  // command (a bound operator's) or held to the caller's scope, so a command
+  // added to the route's schema cannot reach another Project's session by
+  // default. Read from the route's own schema, not restated.
+  test('slice C3: no /commands command reaches an other-Project session for a caller that is not bound', async () => {
+    const { base } = await setup();
+    support.projects.set('op-thread-b', 'project-b');
+    const types = orchestrationCommandSchema.options.map(
+      (option) => option.shape.type.value,
+    );
+    expect(types.length).toBeGreaterThan(0);
+    for (const type of types) {
+      const thread = (threadId: string) =>
+        type === 'adoptSession'
+          ? { sourceThreadId: threadId }
+          : { threadId: threadId };
+      expect([
+        type,
         await outcome(
           base,
           'POST',
           '/api/orchestration/commands',
-          {
-            'content-type': 'application/json',
-            authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
-          },
-          bodyFor('steerTurn', threadId),
+          callerFor('op-codex', 'url-token'),
+          { type, ...thread('op-thread-b') },
         ),
-      ).toBe('passed-guard');
-    expect(support.dispatched).toEqual([
-      'steerTurn op-thread-host',
-      'steerTurn person-thread',
-      'steerTurn op-thread-b',
-    ]);
+      ]).toEqual([type, 'station_control_assurance_insufficient']);
+    }
   });
 
   // #2377 slice C1: the production composition hands the Agent routes this

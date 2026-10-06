@@ -1,0 +1,7 @@
+{
+  "revision": "c5364f269c1fa068755974e957adba21c461a6fa",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"#3071 final round, after merging origin/main. Changed inputs: CLI operate derive.ts (shared settle fold; rows carry requestEventId and isQuestion); operate shell.ts (sends expectedRequestEventId); operate state.ts (binds the listed event for an approval or permission that is not a question). Re-read the approvals paragraph and the operate approvals-pane paragraph against approvals.ts (expectedRequestEvent now also skips a request carrying a questionnaire) and operate state.ts; added nothing this round, the paragraph's 'for an approval or permission this Station still lists' does not say questions are excluded and that omission is noted here rather than fixed. Executed core-http.test.ts and operate-keys.test.ts. Rest of the page, including main's merged changes, not re-reviewed.","inputs":["docs/reference/cli.md"]}
+  ]
+}

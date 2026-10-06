@@ -1192,6 +1192,26 @@ export function HostDevicePairingPanel({
     [apiBase, getCredential, request],
   );
 
+  // #2898: "Stop now" on a session the revocation left running unconfined.
+  const stopSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        const response = await authenticatedFetch(
+          '/api/orchestration/commands',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'stopSession', threadId: sessionId }),
+          },
+        );
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    [authenticatedFetch],
+  );
+
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current;
     try {
@@ -2047,6 +2067,7 @@ export function HostDevicePairingPanel({
         <FullAccessRevocationNotice
           outcome={revocation}
           onDismiss={() => setRevocation(null)}
+          onStopSession={stopSession}
         />
       )}
       {error && (

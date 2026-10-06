@@ -1,0 +1,31 @@
+{
+  "path": "docs/design/plugin-knowledge-store-contributions.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Proposal status confirmed against namespace-only manifest, current provider/root routes, and absent proposed reader/permission surface; managed retention corrected separately from legacy deletion.",
+
+  "limits": "Proposed descriptor-anchored traversal, zero-write readers, binding opacity, contribution permissions and lifecycle are not implemented/certified here; all requirements stay proposals.",
+
+  "sources": [
+    "packages/contracts/src/plugin.ts",
+
+    "src-server/knowledge-store/knowledge-store-provider.ts",
+
+    "src-server/routes/knowledge/knowledge-store-routes.ts",
+
+    "src-server/services/plugins/plugin-install-transaction.ts"
+  ],
+
+  "checks": [
+    "Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
+
+    "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
+
+    "Reviewed source changes: Recursive dependencies now set stagedAsDependency true and pass fetchPluginSource dependency mode matching preview; consent and digest checks retained. Existing documented consent principle unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Integration source review through e0314c727: knowledge-store-routes.ts now returns 404 for deleting an unknown root before the conversation-root 403. plugin-install-transaction.ts stages dependencies and proposed installs in matching modes. The namespace-only manifest, mutable root registry, legacy-deletion vs managed-retention and proposal-status claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

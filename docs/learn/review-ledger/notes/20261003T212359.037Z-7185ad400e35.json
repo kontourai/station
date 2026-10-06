@@ -1,0 +1,7 @@
+{
+  "revision": "933430b75d35242601d9ac5adf9fb4c703c50c0a",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed native-only header and nested frame spacing delta. It does not change paired Device, account, Station or Project authority; existing relationship claims remain accurate. Shared theme and safe-area/touch-target rules are retained.","inputs":["docs/guides/machine-relationships.md"]}
+  ]
+}

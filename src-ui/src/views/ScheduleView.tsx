@@ -1,12 +1,10 @@
-import type {
-  SchedulerJob,
-  SchedulerSchedule,
-} from '@kontourai/station-contracts/scheduler';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageFrameActions } from '../components/page-frame';
-import { JobDetail, JobFormModal } from '../components/scheduler';
+import { JobDetail } from '../components/scheduler';
 import { ErrorState, SkeletonBlock } from '../components/state';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { schedulerJobDialogStore } from '../contexts/scheduler-job-dialog-store';
 import { useToast } from '../contexts/ToastContext';
 import {
   useDeleteJob,
@@ -14,7 +12,6 @@ import {
   useRunsQuery,
   useSchedulerEvents,
   useSchedulerJobs,
-  useSchedulerProviders,
   useSchedulerStats,
   useSchedulerStatus,
   useToggleJob,
@@ -44,6 +41,7 @@ function parseQualifiedScheduleRun(runId: string | null) {
 }
 
 export function ScheduleView() {
+  const authority = useHostRequestAuthorityScope();
   const {
     data: jobs = [],
     isLoading,
@@ -57,7 +55,6 @@ export function ScheduleView() {
     isError: statusError,
     error: statusFailure,
   } = useSchedulerStatus();
-  const { data: providers = [] } = useSchedulerProviders();
   const { data: runs = [], isLoading: runsLoading } = useRunsQuery();
   const schedulerAvailable = !jobsError && !statusError;
   const { isRunning, markErrorShown, getMissedCount } =
@@ -67,18 +64,6 @@ export function ScheduleView() {
   const deleteJob = useDeleteJob();
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [editingJob, setEditingJob] = useState<SchedulerJob | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [prefill, setPrefill] = useState<
-    | Partial<{
-        name: string;
-        cron: string;
-        schedule: SchedulerSchedule;
-        prompt: string;
-        agent: string;
-      }>
-    | undefined
-  >(undefined);
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
     message: string;
@@ -196,7 +181,10 @@ export function ScheduleView() {
         <Button
           variant="primary"
           size="sm"
-          onClick={() => setShowAddForm(true)}
+          disabled={!authority}
+          onClick={() => {
+            if (authority) schedulerJobDialogStore.open({ authority });
+          }}
         >
           Add job
         </Button>
@@ -242,8 +230,11 @@ export function ScheduleView() {
               filterText={filterText}
               onClearFilter={() => setFilterText('')}
               onSelectTemplate={(template) => {
-                setPrefill(template);
-                setShowAddForm(true);
+                if (authority)
+                  schedulerJobDialogStore.open({
+                    authority,
+                    prefill: template,
+                  });
               }}
             />
           ) : sortedJobs.length > 0 ? (
@@ -268,16 +259,21 @@ export function ScheduleView() {
                 });
               }}
               onDuplicate={(job) => {
-                setPrefill({
-                  name: `${job.name}-copy`,
-                  cron: job.cron,
-                  schedule: job.schedule,
-                  prompt: job.prompt,
-                  agent: job.agent,
+                if (!authority) return;
+                schedulerJobDialogStore.open({
+                  authority,
+                  prefill: {
+                    name: `${job.name}-copy`,
+                    cron: job.cron,
+                    schedule: job.schedule,
+                    prompt: job.prompt,
+                    agent: job.agent,
+                  },
                 });
-                setShowAddForm(true);
               }}
-              onEdit={setEditingJob}
+              onEdit={(job) => {
+                if (authority) schedulerJobDialogStore.open({ authority, job });
+              }}
               onExpand={setExpanded}
               onFilterChange={setFilterText}
               onToggle={(job, running) => {
@@ -309,23 +305,6 @@ export function ScheduleView() {
             />
           ) : null}
         </>
-      )}
-      {editingJob && (
-        <JobFormModal
-          job={editingJob}
-          onClose={() => setEditingJob(null)}
-          providers={providers}
-        />
-      )}
-      {showAddForm && (
-        <JobFormModal
-          prefill={prefill}
-          onClose={() => {
-            setShowAddForm(false);
-            setPrefill(undefined);
-          }}
-          providers={providers}
-        />
       )}
       {confirmAction && (
         <ConfirmModal

@@ -1,0 +1,7 @@
+{
+  "revision": "ca8e5cdd8eb91aca69bf001cfce6abc73aebaa3c",
+
+  "notes": [
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Re-read the calibration note against scripts/orchestration-transfer-gate.mjs after its FAIL-line patterns were anchored to the thrown error's line. The note covers the fixed logical clock, byte comparison and policy ceilings; it says monotonic real time bounds capture barriers, which still holds (the bound now derives from STATION_TRANSFER_CAPTURE_TIMEOUT_MS). Nothing in it describes FAIL-line text. No text change.","inputs":["scripts/fixtures/orchestration-transfer/README.md","scripts/orchestration-transfer-gate.mjs"]}
+  ]
+}

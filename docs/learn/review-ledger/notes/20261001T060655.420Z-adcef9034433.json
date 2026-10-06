@@ -1,0 +1,7 @@
+{
+  "revision": "c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#3071 source delta in orchestration-session-state.ts: openRequestIds and the run fold's open-request check now exclude requests settled by their turn's abort. The page's one claim routed to that file is the requested/applied/reported model separation, which the delta does not touch. No prose change.","inputs":["docs/reference/api.md"]}
+  ]
+}

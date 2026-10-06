@@ -1,0 +1,117 @@
+{
+  "path": "docs/design/chat-composer.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Composer interaction and navigability policy with dated audit evidence and corrected current public HTTP entry points.",
+
+  "limits": "Current HTTP schemas and send/per-Agent caller boundaries were checked. Dated UI observations and mobile policy are preserved; no exhaustive composer, approval, accessibility, or physical-device certification.",
+
+  "sources": [
+    "packages/contracts/src/orchestration.ts",
+
+    "src-server/routes/chat/chat.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/lib/foregroundMessageDispatch.ts",
+
+    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
+
+    "src-ui/src/components/PickerCreateAction.tsx",
+
+    "src-ui/src/components/PickerCreateAction.css",
+
+    "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
+
+    "src-ui/src/contexts/navigation-store.ts",
+
+    "tests/cross-runtime-chat-switching.spec.ts",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/views/home/work-facts.ts",
+
+    "src-ui/src/hooks/useLongPress.ts",
+
+    "tests/helpers/long-press.ts",
+
+    "src-ui/src/components/chat/ChatInputArea.tsx",
+
+    "src-ui/src/components/chat/QueuedMessages.tsx",
+
+    "src-ui/src/components/chat/ComposerIconAction.tsx",
+
+    "src-ui/src/components/chat/PortableDraftsMenu.tsx",
+
+    "src-ui/src/components/chat/ChatSettingsPanel.tsx",
+
+    "packages/contracts/src/device-settings.ts",
+
+    "src-ui/src/components/status/chatStatus.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-ui/src/__tests__/ChatInputArea.test.tsx",
+
+    "src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx",
+
+    "src-ui/src/components/chat/QueuedMessages.css",
+
+    "src-ui/src/components/chat/ComposerStopButton.tsx",
+
+    "src-ui/src/components/NewChatAction.tsx",
+
+    "src-ui/src/components/chat-start/RecentChatList.tsx",
+
+    "src-ui/src/components/modals/NewChatModal.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
+
+    "src-ui/src/components/chat/MessageBubble.tsx",
+
+    "src-ui/src/components/chat/message-bubble/MessageContent.tsx",
+
+    "src-ui/src/components/chat/tool-call-runs.ts",
+
+    "src-ui/src/components/chat/tool-call-groups.ts",
+
+    "src-ui/src/components/chat/tool-call-labels.ts"
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Dated July audit and full September mobile-contract section byte-identical; current HTTP table/prose corrected.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

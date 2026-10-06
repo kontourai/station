@@ -1,0 +1,11 @@
+{
+  "revision": "585dab19b97279b8e074fc192c8dd2a97c052ace",
+
+  "notes": [
+    {"path":"docs/design/pane-or-shell.md","note":"Reviewed the settings-only delta: existing pane/shell boundaries and routed governance requirements remain intact. Customize is shell navigation, not a plugin pane; runtime authority and required checks are unchanged.","inputs":["docs/design/pane-or-shell.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the settings-only delta: existing pane/shell boundaries and routed governance requirements remain intact. Customize is shell navigation, not a plugin pane; runtime authority and required checks are unchanged.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the settings-only delta: existing pane/shell boundaries and routed governance requirements remain intact. Customize is shell navigation, not a plugin pane; runtime authority and required checks are unchanged.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

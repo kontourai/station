@@ -1,0 +1,103 @@
+{
+  "path": "docs/guides/dependency-security.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete dependency-security guide against managed inert installation and exact hook admission, allowlist/artifact ownership, VoltAgent patch and real-framework regression, pnpm advisory normalization/reachability, exact exception/residual policy, event-based scope classification, scheduled issue lifecycle, legacy npm diagnostics, and protected-base CodeQL/dependency-review workflow. Clarified root workspace closure and structural SARIF validation versus producer provenance. Dated advisory matrices remain historical.",
+
+  "limits": "No fresh registry audit or current advisory disposition, hosted CodeQL/dependency-review capability, GitHub SARIF ingestion, Rust scan, full lifecycle threat-model proof or Windows native artifact qualification. Structural local SARIF acceptance is not proof of trusted production. Historical July/August inventories and timing observations were not promoted to current evidence. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): No fresh registry audit or current advisory disposition, hosted CodeQL/dependency-review capability, GitHub SARIF ingestion, Rust scan, full lifecycle threat-model proof or Windows native artifact qualification. Structural local SARIF acceptance is not proof of trusted production. Historical July/August inventories and timing observations were not promoted to current evidence.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/ci.yml\",\"ours\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"main\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"oursMatch\"},{\"path\":\"scripts/__tests__/dependency-advisory-policy.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/dependency-advisory-policy.test.ts\",\"digest\":\"c1addc6e597e61d26ea55291e670d7dd0f2c27ef04d635250fb74fc5529d8229\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"main\":{\"path\":\"scripts/__tests__/dependency-advisory-policy.test.ts\",\"digest\":\"31779347634626ddbd22bf88ab67bb029416544eb47362ecf922b644cf800528\",\"revision\":\"a33fbfe917004ff85a30e503fd141a47233b74e7\"},\"active\":{\"path\":\"scripts/__tests__/dependency-advisory-policy.test.ts\",\"digest\":\"31779347634626ddbd22bf88ab67bb029416544eb47362ecf922b644cf800528\",\"revision\":\"a33fbfe917004ff85a30e503fd141a47233b74e7\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/dependency-advisory-exceptions.json\",\"ours\":{\"path\":\"scripts/dependency-advisory-exceptions.json\",\"digest\":\"493e0b7dad9b3a6c9820e288aea2829d4289ad8be113ced5e7133d00796c88db\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"main\":{\"path\":\"scripts/dependency-advisory-exceptions.json\",\"digest\":\"0fb4da6e30f5363ff33bbe1634a8267383766e88651fc878ad958d10d4730ab0\",\"revision\":\"a43b54f6cfe9479ea77cd6e783aa5e1419bc5168\"},\"active\":{\"path\":\"scripts/dependency-advisory-exceptions.json\",\"digest\":\"0fb4da6e30f5363ff33bbe1634a8267383766e88651fc878ad958d10d4730ab0\",\"revision\":\"a43b54f6cfe9479ea77cd6e783aa5e1419bc5168\"},\"decision\":\"mainMatch\"}]",
+
+  "sources": [
+    ".github/workflows/ci.yml",
+
+    ".github/workflows/dependency-advisory.yml",
+
+    ".github/workflows/main-health.yml",
+
+    ".github/workflows/security-analysis.yml",
+
+    ".npmrc",
+
+    "config/dependency-lifecycle-allowlist.json",
+
+    "package.json",
+
+    "patches/voltagent-core-2.10.0.patch",
+
+    "pnpm-lock.yaml",
+
+    "pnpm-workspace.yaml",
+
+    "scripts/__tests__/codeql-sarif-policy.test.ts",
+
+    "scripts/__tests__/dependency-advisory-policy.test.ts",
+
+    "scripts/__tests__/pnpm-advisory-command.test.ts",
+
+    "scripts/actionlint-gate.mjs",
+
+    "scripts/classify-ci-change.mjs",
+
+    "scripts/codeql-error-baseline.json",
+
+    "scripts/codeql-sarif-normalize.mjs",
+
+    "scripts/codeql-sarif-policy.mjs",
+
+    "scripts/dependency-advisory-exceptions.json",
+
+    "scripts/dependency-advisory-policy.mjs",
+
+    "scripts/dependency-lifecycle.mjs",
+
+    "scripts/generate-pnpm-sbom.mjs",
+
+    "scripts/lib/dependency-audit-diagnostics.mjs",
+
+    "scripts/lib/dependency-install-retirement.mjs",
+
+    "scripts/lib/dependency-lifecycle-policy.mjs",
+
+    "scripts/lib/pnpm-advisory.mjs",
+
+    "scripts/lib/pnpm-dependency-graph.mjs",
+
+    "scripts/lib/pnpm-lockfile.mjs",
+
+    "scripts/lib/release-sbom-generation.mjs",
+
+    "scripts/lib/release-sboms.mjs",
+
+    "scripts/lib/test-reliability.mjs",
+
+    "scripts/lib/verification-environment-preflight.mjs",
+
+    "scripts/lockfile-sync-gate.mjs",
+
+    "scripts/release-sbom-context.mjs",
+
+    "scripts/workspace-dependency-provenance.mjs",
+
+    "src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts",
+
+    "src-ui/src/components/chat/SanitizedHtml.tsx",
+
+    "src-ui/src/core/pluginSharedRuntime.ts"
+  ],
+
+  "checks": [
+    "Source/caller review on 2026-09-27 completed for the whole document, separating implemented behavior, policy requirements and historical evidence. Current root document bytes at 45fcdd5230b0b5e5028e469864ab70693e6088b0 matched the lane before this prose correction; reviewed implementation remains the frozen 6fa523e4d5b5a265a9e545edcbba6f5602193bef integration.",
+
+    "EXECUTED: git diff --check passed. No production behavior changed. No new live audit, hosted job, browser suite, dependency installation, cloud deployment or price refresh was run for this tranche.",
+
+    "NOT_EXECUTED: gate:for could not spawn its shell (EAGAIN, host process capacity); retained the failure and avoided process-heavy verification. Parent owns final combined documentation/readiness checks. Existing tests were inspected for their actual assertions and limits, not reported as newly executed.",
+
+    "Integration source review through e0314c727: package.json and pnpm-lock.yaml dropped the unused root @kontourai/bearing and @kontourai/forage dependencies; ci.yml fast-checks shards gained a zsh provisioning step (timeout 60 to 65) that actionlint-gate.mjs pins. The guide names neither package, and the advisory tables are dated history, so the managed-install, allowlist, advisory and workflow claims are unaffected and the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2914 reworks dependency-advisory-policy tests with no advisory-policy source change. The guide's policy claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

@@ -1,3 +1,4 @@
+import { templateVariableFormatError } from '@kontourai/station-contracts/config';
 import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
 import {
   DEVICE_SETTINGS_REGISTRY,
@@ -42,6 +43,8 @@ export function getSettingsValidation(config: AppConfig): {
       break;
     }
   }
+  const formatError = templateVariableFormatError(config.templateVariables);
+  if (formatError && !errors.templateVars) errors.templateVars = formatError;
 
   const warnings: Record<string, string> = {};
   for (const variable of config.templateVariables || []) {
@@ -83,6 +86,9 @@ function sanitizeStationConfig(raw: unknown): Partial<AppConfig> {
   const record = raw as Record<string, unknown>;
   const station: Partial<AppConfig> = {};
   for (const definition of APP_SETTINGS_REGISTRY) {
+    // Progress belongs to this home's first-run transition, which the settings
+    // write route refuses. Older exports may still contain it on import.
+    if (definition.key === 'firstRun') continue;
     const key = definition.key as string;
     if (Object.hasOwn(record, key)) {
       (station as Record<string, unknown>)[key] = record[key];

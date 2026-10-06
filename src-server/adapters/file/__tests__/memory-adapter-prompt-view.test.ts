@@ -144,6 +144,47 @@ describe('createPromptOnlyMemoryView (#191 code-review HIGH-1)', () => {
   });
 });
 
+describe('createPromptOnlyMemoryView writes (#3112)', () => {
+  test('an empty response placeholder is not stored; a reply and a cancelled placeholder are', async () => {
+    const adapter = await createAdapter();
+    const view = createPromptOnlyMemoryView(adapter);
+    const userId = 'agent:agent-a';
+    const conversationId = 'conversation-writes';
+    const aborted = new AbortController();
+    aborted.abort();
+
+    await view.addMessage(
+      { id: 'empty', role: 'assistant', parts: [] } as any,
+      userId,
+      conversationId,
+    );
+    await view.addMessages(
+      [
+        { id: 'blank', role: 'assistant', parts: [{ type: 'step-start' }] },
+        {
+          id: 'reply',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Hi' }],
+        },
+      ] as any,
+      userId,
+      conversationId,
+    );
+    await view.addMessage(
+      { id: 'cancelled', role: 'assistant', parts: [] } as any,
+      userId,
+      conversationId,
+      { abortController: aborted } as any,
+    );
+
+    const stored = await adapter.getMessages(userId, conversationId);
+    expect(stored.map((message: any) => message.id)).toEqual([
+      'reply',
+      'cancelled',
+    ]);
+  });
+});
+
 describe('excludeChatErrorMarkers', () => {
   test('drops only user [CHAT_ERROR] markers and preserves the order of the rest', () => {
     const messages = [
@@ -174,5 +215,28 @@ describe('excludeChatErrorMarkers', () => {
       'd',
       'e',
     ]);
+  });
+});
+
+describe("excludeChatErrorMarkers accepts the scrubber's message shapes", () => {
+  test('a legacy content-string marker is excluded like a parts marker', () => {
+    const plain = { role: 'user', content: 'please answer' };
+    const contentMarker = {
+      role: 'user',
+      content: '[SYSTEM_EVENT] [CHAT_ERROR] upstream exploded sk-live-SECRET',
+    };
+    const partsMarker = {
+      role: 'user',
+      parts: [
+        {
+          type: 'text',
+          text: '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
+        },
+      ],
+    };
+
+    expect(
+      excludeChatErrorMarkers([plain, contentMarker, partsMarker]),
+    ).toEqual([plain]);
   });
 });

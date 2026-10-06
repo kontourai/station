@@ -9,6 +9,7 @@ import { useMutationState } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { ChatSession } from '../../types';
 import { log } from '../../utils/logger';
+import { ActionRow } from '../ActionRow';
 
 interface GenerateRunState {
   status: 'pending' | 'error' | 'success' | 'idle';
@@ -129,24 +130,24 @@ export function SessionSummaryCard({
     // only way to summarize (archive#3310 — ACPChatPanel).
     if (hasSettingsEntryPoint) return null;
     return (
-      <aside className="session-summary" aria-label="Derived session summary">
+      <aside className="session-summary" aria-label="Derived chat summary">
         <button
           type="button"
           disabled={pending}
           onClick={() => generate.mutate({ agentSlug, conversationId })}
         >
-          Summarize session
+          Summarize chat
         </button>
       </aside>
     );
   }
 
   return (
-    <aside className="session-summary" aria-label="Derived session summary">
+    <aside className="session-summary" aria-label="Derived chat summary">
       {data ? (
         <>
           <div className="session-summary__header">
-            <strong>Session summary</strong>
+            <strong>Chat summary</strong>
             <span>Derived, not evidence</span>
             {data.stale && (
               <span className="session-summary__stale">
@@ -267,29 +268,36 @@ export function SessionSummaryCard({
               {new Date(data.generatedAt).toLocaleString()}
             </time>
           </p>
-          <div className="session-summary__actions">
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => generate.mutate({ agentSlug, conversationId })}
-            >
-              Regenerate
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => dismiss.mutate({ agentSlug, conversationId })}
-            >
-              Dismiss summary
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => setDeleteConfirmation(true)}
-            >
-              Delete
-            </button>
-          </div>
+          {/* #3045: one labelled action; the two ways of putting the
+              summary away fold into the menu. */}
+          <ActionRow
+            className="session-summary__actions"
+            overflowLabel="More summary actions"
+            primary={
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => generate.mutate({ agentSlug, conversationId })}
+              >
+                Regenerate
+              </button>
+            }
+            overflow={[
+              {
+                key: 'dismiss',
+                label: 'Dismiss summary',
+                disabled: pending,
+                onSelect: () => dismiss.mutate({ agentSlug, conversationId }),
+              },
+              {
+                key: 'delete',
+                label: 'Delete',
+                tone: 'danger',
+                disabled: pending,
+                onSelect: () => setDeleteConfirmation(true),
+              },
+            ]}
+          />
           {deleteConfirmation ? (
             <div role="alertdialog" aria-label="Delete derived summary">
               <p>

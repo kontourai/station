@@ -1,0 +1,7 @@
+{
+  "revision": "a69ac3067ea76a45568bb88fdf6b11e23a5c0bd7",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed Android mobile-layout navigation update: optional knowledge and deployed provenance journeys use the visible grouped settings picker while preserving all overlay, clipboard and overflow assertions. Both formerly failing merge-queue cases pass in the Android viewport lane. No coverage or guard was removed.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

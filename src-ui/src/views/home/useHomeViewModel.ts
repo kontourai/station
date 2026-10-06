@@ -5,9 +5,11 @@ import {
   useRemoteSessionsQuery,
   useTasksQuery,
 } from '@kontourai/station-sdk';
+import { listProjectLayouts } from '@kontourai/station-sdk/client';
+import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useReducer } from 'react';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useApiBase } from '../../contexts/ApiBaseContext';
 import {
   openChatsStore,
   useOpenWorkChats,
@@ -16,9 +18,15 @@ import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
-import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
+import {
+  availablePlacements,
+  dockFoldsToOneRegion,
+  useDockSlotDevice,
+} from '../../hooks/useIsMobile';
 import type { NavigationView } from '../../types';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
+import { useWorkFacts } from './useWorkFacts';
+import type { WorkFactsById } from './work-facts';
 import {
   focusChatEventDetailForAction,
   resolveWorkItemOpenAction,
@@ -38,11 +46,14 @@ interface HomeWorkData {
    * fetching its own would be a second read that can disagree.
    */
   agents: ReturnType<typeof useAgents>;
-  defaultSelection: ReturnType<
-    typeof useNewChatSelectionModel
-  >['defaultSelection'];
   actionsLoading: boolean;
   workItems: HomeWorkItem[];
+  /**
+   * Status facts by item id (`buildWorkFacts`), derived beside `workItems`
+   * from the same session, chat and Task records rather than carried on the
+   * items: `HomeWorkItem` is the Home role's projection surface.
+   */
+  workFacts?: WorkFactsById;
   workLoading: boolean;
   workDegraded: boolean;
   workError: boolean;
@@ -69,18 +80,13 @@ function useHomeWorkData(): HomeWorkData {
   const { resolveModelLabel, isLoading: pickerCatalogLoading } =
     useCatalogModelLabel();
   // #1582 B9: Home names WORK, so a chat nothing has been put into is not one
-  // of its items. The inboxes keep `useOpenChats` — see `useOpenWorkChats`.
+  // of its items. The inboxes list every open chat — see `useInboxWorkItems`
+  // and `useOpenWorkChats`.
   const openChatItems = useOpenWorkChats(
     agents,
     sessions.data ?? [],
     resolveModelLabel,
   );
-  const selectedProject = useNavigation((state) => state.selectedProject);
-  const { defaultSelection } = useNewChatSelectionModel({
-    agents,
-    projects,
-    selectedContext: selectedProject || '__global__',
-  });
   const remoteEnvironments = remoteSessionsResult?.environments ?? [];
   const inventoryById = useMemo(
     () =>
@@ -123,6 +129,11 @@ function useHomeWorkData(): HomeWorkData {
     sessions.data,
     tasks.data,
   ]);
+  const factSources = useMemo(
+    () => ({ tasks: tasks.data ?? [], remoteEnvironments }),
+    [remoteEnvironments, tasks.data],
+  );
+  const workFacts = useWorkFacts(workItems, sessions.data ?? [], factSources);
   const workLoading =
     workItems.length === 0 &&
     (sessions.isLoading || tasks.isLoading || inventory.isLoading);
@@ -138,10 +149,10 @@ function useHomeWorkData(): HomeWorkData {
   return {
     projects,
     agents,
-    defaultSelection,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
+    workFacts,
     workLoading,
     workDegraded: workQueryState === 'degraded',
     workError,
@@ -157,6 +168,19 @@ function useHomeWorkData(): HomeWorkData {
   };
 }
 
+/**
+ * U1 (design round 2026-10): where a chat opened from Home LIVES. A chat
+ * whose project has a Coding layout belongs in that layout's centre, not in
+ * a dock squeezed under Home; a chat with no project, or whose project has
+ * no Coding layout, stays in the dock, and a device that folds every region
+ * into the bottom dock (a phone) keeps the dock everywhere. Resolves to the
+ * layout's slug, or `null` when the dock is the destination. Read from the
+ * query cache, fetched once when cold; a failed read means "no layout".
+ */
+type CodingLayoutFor = (
+  projectSlug: string | undefined,
+) => Promise<string | null>;
+
 function createContinueWork(
   onNavigate: (view: NavigationView) => void,
   // #928: Activity is a region surface, not a route, so "open this session"
@@ -166,6 +190,7 @@ function createContinueWork(
   // canonical deep link when no region host is mounted.
   showActivitySession: (sessionId: string) => void,
   acknowledge: (conversationId: string, updatedAt: string) => void,
+  codingLayoutFor: CodingLayoutFor,
 ) {
   return (task: HomeWorkItem) => {
     if (task.conversationUpdatedAt) {
@@ -186,7 +211,16 @@ function createContinueWork(
       showActivitySession(task.id);
       return;
     }
+    // The chat is focused first, synchronously: the shared focus action is
+    // what opens or rehydrates it, and the layout route below keeps the
+    // active chat (`navigation-store` carries `chat` across a route change),
+    // so the Coding host centres the chat it finds active.
     openChatsStore.focus(detail);
+    const { projectSlug } = task;
+    if (!projectSlug) return;
+    void codingLayoutFor(projectSlug).then((layoutSlug) => {
+      if (layoutSlug) onNavigate({ type: 'layout', projectSlug, layoutSlug });
+    });
   };
 }
 
@@ -194,19 +228,33 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
   const data = useHomeWorkData();
   const acknowledge = useAcknowledgeConversationMutation();
   const showSurface = useShowSurface();
+  const queryClient = useQueryClient();
+  const { apiBase } = useApiBase();
+  // The same fold the region model uses to decide the dock is the only
+  // region: on such a device the Coding layout's chat IS the dock, so the
+  // route adds nothing but a page change.
+  const bottomOnly = dockFoldsToOneRegion(
+    availablePlacements(useDockSlotDevice()),
+  );
+  const codingLayoutFor: CodingLayoutFor = async (projectSlug) => {
+    if (!projectSlug || bottomOnly) return null;
+    try {
+      // The same key `useProjectLayoutsQuery` writes, so a sidebar that has
+      // already listed this project's layouts answers without a request.
+      const layouts: Array<{ slug: string; type?: string }> =
+        await queryClient.fetchQuery({
+          queryKey: ['projects', projectSlug, 'layouts'],
+          queryFn: () => listProjectLayouts(apiBase, projectSlug),
+          staleTime: 60_000,
+        });
+      return layouts.find((layout) => layout.type === 'coding')?.slug ?? null;
+    } catch {
+      return null;
+    }
+  };
   return {
     ...data,
-    /**
-     * Whether the card can honestly recommend anything. False on a home where
-     * no Agent is runnable — a fresh install, or one whose engines all need
-     * setting up — and the card becomes a set-up CTA rather than naming an
-     * Agent the New Chat picker would refuse one click later.
-     */
-    startReady: data.defaultSelection.agent !== undefined,
-    startIdentity: data.defaultSelection.agent
-      ? `${data.defaultSelection.agent.name} · ${data.defaultSelection.effectiveModel.label}`
-      : 'No agent is ready yet',
-    // #2310 review M3: "Continue most recent work" must name work. A Draft
+    // #2310 review M3: the "Continue" card must name work. A Draft
     // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(
       (task) =>
@@ -217,6 +265,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
       (sessionId) => showSurface('activity', { session: sessionId }),
       (conversationId, updatedAt) =>
         acknowledge.mutate({ conversationId, updatedAt }),
+      codingLayoutFor,
     ),
   };
 }

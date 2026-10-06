@@ -549,7 +549,10 @@ describe('Codex native attached-session adoption', () => {
 
   test('resumes an adopted child in its source home and preserves affinity through turn cursors', async () => {
     const process = new FakeCodexProcess();
-    const getAppHomeEnv = vi.fn(async () => ({ CODEX_HOME: '/profile' }));
+    const getAppHomeEnv = vi.fn(async () => ({
+      env: { CODEX_HOME: '/profile' },
+      profileRef: null,
+    }));
     const processFactory = vi.fn(() => process);
     const adapter = new CodexAdapter({
       processFactory,

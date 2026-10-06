@@ -26,13 +26,95 @@ vi.mock('../hooks/useQueuedMessages', () => ({
 
 import { QueuedMessages } from '../components/chat/QueuedMessages';
 
+function renderQueue(ui: Parameters<typeof render>[0]) {
+  const result = render(ui);
+  const toggle = screen.queryByRole('button', { name: /pending messages?/ });
+  if (toggle) fireEvent.click(toggle);
+  return result;
+}
+
+describe('pending message disclosure', () => {
+  it('starts compact, announces required review, and reveals actions only after expansion', () => {
+    render(
+      <QueuedMessages
+        sessionId="s1"
+        messages={['Held input']}
+        metadata={[{ id: 'held-id', mode: 'steer', delivery: 'indeterminate' }]}
+        canSteer
+        onSteer={async () => false}
+      />,
+    );
+    const toggle = screen.getByRole('button', {
+      name: '1 pending message, needs review',
+    });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Retry steering' })).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByRole('button', { name: 'Retry steering' }),
+    ).not.toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.queryByRole('button', { name: 'Retry steering' })).toBeNull();
+  });
+});
+
+describe('#3157 usage-limit hold', () => {
+  it('says why the queue is held, even while collapsed, and only while held', () => {
+    const { rerender } = render(
+      <QueuedMessages sessionId="s1" messages={['next']} heldByUsageLimit />,
+    );
+    expect(screen.getByRole('status').textContent).toBe(
+      'Held because of the usage limit. Send now to send anyway.',
+    );
+    rerender(<QueuedMessages sessionId="s1" messages={['next']} />);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
+describe('pending message actions', () => {
+  it('shows persisted mode and coalesces repeated Send now clicks for the selected row', async () => {
+    let resolve!: () => void;
+    const onSendMessageNow = vi.fn(
+      () =>
+        new Promise<void>((done) => {
+          resolve = done;
+        }),
+    );
+    renderQueue(
+      <QueuedMessages
+        sessionId="s1"
+        messages={['first', 'second']}
+        metadata={[
+          { id: 'first-id', mode: 'queue' },
+          { id: 'second-id', mode: 'steer' },
+        ]}
+        onSendMessageNow={onSendMessageNow}
+      />,
+    );
+    expect(screen.getByText('Queue · Queued for next turn')).not.toBeNull();
+    expect(
+      screen.getByText(/Steer · Waiting for this turn to finish/),
+    ).not.toBeNull();
+    const button = screen.getByRole('button', {
+      name: 'Send pending message 2 now',
+    });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onSendMessageNow).toHaveBeenCalledExactlyOnceWith('second-id');
+    await act(async () => {
+      resolve();
+    });
+  });
+});
+
 describe('QueuedMessages — reorder buttons (#613)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('renders order numbers 1 = next-to-send on a display list reversed from array order', () => {
-    render(
+    renderQueue(
       <QueuedMessages sessionId="s1" messages={['first', 'second', 'third']} />,
     );
 
@@ -45,7 +127,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
   });
 
   it('disables the visual-up button only for the top rendered row (real last index)', () => {
-    render(
+    renderQueue(
       <QueuedMessages sessionId="s1" messages={['first', 'second', 'third']} />,
     );
 
@@ -60,7 +142,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
   });
 
   it('disables the visual-down button only for the bottom rendered row (real index 0, next to send)', () => {
-    render(
+    renderQueue(
       <QueuedMessages sessionId="s1" messages={['first', 'second', 'third']} />,
     );
 
@@ -75,7 +157,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
   });
 
   it('visual direction maps to the correct real-array operation (review #613-1)', () => {
-    render(
+    renderQueue(
       <QueuedMessages sessionId="s1" messages={['first', 'second', 'third']} />,
     );
 
@@ -99,7 +181,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
   });
 
   it('marks every queue action as a non-submit button', () => {
-    render(
+    renderQueue(
       <QueuedMessages sessionId="s1" messages={['first', 'second', 'third']} />,
     );
 
@@ -109,7 +191,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
   });
 
   it('renders nothing for an empty queue', () => {
-    const { container } = render(
+    const { container } = renderQueue(
       <QueuedMessages sessionId="s1" messages={[]} />,
     );
     expect(container.firstChild).toBeNull();
@@ -123,7 +205,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
   ])(
     'gates Send as steer for capability=$capable active=$active',
     ({ capable, active, visible }) => {
-      render(
+      renderQueue(
         <QueuedMessages
           sessionId="s1"
           messages={['redirect']}
@@ -145,7 +227,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
           resolve = done;
         }),
     );
-    render(
+    renderQueue(
       <QueuedMessages
         sessionId="s1"
         messages={['redirect']}
@@ -167,7 +249,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
   // turn.completed, so a refusal the user has since fixed stranded it.
   it('explains why the queue is held and offers a retry', () => {
     const onRetry = vi.fn();
-    render(
+    renderQueue(
       <QueuedMessages
         sessionId="s1"
         messages={['keep this follow-up']}
@@ -196,7 +278,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
 
   it('offers a plain retry for a transient refusal', () => {
     const onRetry = vi.fn();
-    render(
+    renderQueue(
       <QueuedMessages
         sessionId="s1"
         messages={['retry me']}
@@ -215,13 +297,13 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
   });
 
   it('shows no refusal row when the queue is simply waiting its turn', () => {
-    render(<QueuedMessages sessionId="s1" messages={['waiting']} />);
+    renderQueue(<QueuedMessages sessionId="s1" messages={['waiting']} />);
     expect(
       screen.queryByRole('button', { name: 'Retry the queued message' }),
     ).toBeNull();
   });
 
-  it('removes a steered row by identity after concurrent queue removal', async () => {
+  it('leaves receipt retirement to the caller after concurrent queue changes', async () => {
     let resolve!: (sent: boolean) => void;
     const onSteer = vi.fn(
       () =>
@@ -229,12 +311,14 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
           resolve = done;
         }),
     );
-    const { rerender } = render(
+    const onPendingSettled = vi.fn();
+    const { rerender } = renderQueue(
       <QueuedMessages
         sessionId="s1"
         messages={['first', 'redirect', 'last']}
         canSteer
         onSteer={onSteer}
+        onPendingSettled={onPendingSettled}
       />,
     );
     fireEvent.click(
@@ -246,10 +330,12 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
         messages={['redirect', 'last']}
         canSteer
         onSteer={onSteer}
+        onPendingSettled={onPendingSettled}
       />,
     );
     await act(async () => resolve(true));
 
-    expect(removeMock).toHaveBeenCalledWith(0);
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(onPendingSettled).toHaveBeenCalledTimes(1);
   });
 });

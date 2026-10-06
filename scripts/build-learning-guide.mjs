@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +7,9 @@ import {
   assertMarkdownLinks,
   findBrokenRenderedMarkdownLinks,
 } from './check-markdown-links.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
+  assertDocumentationFresh,
   formatFreshnessAdvisory,
   freshnessRequirement,
   resolveDocumentationFreshness,
@@ -23,6 +24,8 @@ import {
 } from './lib/learning-media.mjs';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { bindingFile } from './lib/review-binding.mjs';
+import { readReviewState } from './lib/review-ledger-store.mjs';
 
 export {
   learningHref,
@@ -33,7 +36,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const moduleMap = 'docs/architecture/module-map.md';
 
 function git(args, cwd = root) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd,
     encoding: 'utf8',
     windowsHide: true,
@@ -109,11 +112,20 @@ export async function buildLearningGuide({
   const policy = check
     ? (freshness ?? resolveDocumentationFreshness({ root: inputRoot }))
     : undefined;
-  const media = sourceFiles.has(LEARNING_MEDIA_MANIFEST)
+  if (policy?.sourceDrops?.length)
+    assertDocumentationFresh({ policy, blocking: policy.sourceDrops });
+  // One read of the ledger directory and capture manifest (#2936).
+  const reviewState = readReviewState(inputRoot);
+  if (reviewState.ledger.historyUnavailable) {
+    if (policy?.mode === 'strict')
+      throw new Error(
+        `Strict documentation freshness cannot judge freshness. ${reviewState.ledger.historyUnavailable}`,
+      );
+    console.warn(reviewState.ledger.historyUnavailable);
+  }
+  const media = reviewState.media
     ? await compileLearningMedia(
-        JSON.parse(
-          (await captureSource(LEARNING_MEDIA_MANIFEST)).toString('utf8'),
-        ),
+        reviewState.media,
         sourceFiles,
         captureSource,
         {
@@ -183,9 +195,7 @@ export async function buildLearningGuide({
     }
   }
   const reviews = await compileDocumentationReviews(
-    JSON.parse(
-      (await captureSource('docs/learn/review-ledger.json')).toString('utf8'),
-    ),
+    reviewState.ledger,
     new Map(documents.map((doc) => [doc.path, doc.digest])),
     sourceFiles,
     captureSource,
@@ -236,12 +246,12 @@ export async function buildLearningGuide({
       // bytes to snapshot.
       ...[...media.values()].flatMap((capture) =>
         capture.sources
-          .map((source) => source.path)
+          .map((source) => bindingFile(source.path))
           .filter((file) => sourceFiles.has(file)),
       ),
       ...[...reviews.values()].flatMap((review) =>
         review.sources
-          .map((source) => source.path)
+          .map((source) => bindingFile(source.path))
           .filter((file) => sourceFiles.has(file)),
       ),
       ...[...documents, ...renderedModules].flatMap((doc) =>
@@ -276,7 +286,7 @@ export async function buildLearningGuide({
       reviewRecord: reviews.get(doc.path) ?? null,
     };
     const evidence = (snapshot.reviewRecord?.sources ?? []).map(
-      ({ path: file }) => sourceSnapshots[file],
+      ({ path: file }) => sourceSnapshots[bindingFile(file)],
     );
     return {
       ...snapshot,

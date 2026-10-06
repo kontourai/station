@@ -1,0 +1,47 @@
+{
+  "path": "docs/design/knowledge-recall-ui.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete recall decision against SDK exports, canonical record queries, metadata-key revalidation, selection/link/provenance rendering and caller-owned graph/shell/Neo4j behavior. Updated Library composition to reflect its actual list plus scroll/focus shell; distinguished fixture and installed-browser evidence.",
+
+  "limits": "Executed shared/example tests and three Knowledge plugin builds; existing Playwright cases were inspected as regression ownership, not rerun as new proof. Actual Library browser receipt is snapshot-specific. No live model/embedding/Neo4j, native or authorization qualification.",
+
+  "sources": [
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
+
+    "examples/knowledge-library/src/knowledge-library.css",
+
+    "examples/meeting-notes/src/GraphPane.tsx",
+
+    "packages/sdk/src/client/knowledge.ts",
+
+    "packages/sdk/src/components/KnowledgeRecall.css",
+
+    "packages/sdk/src/components/KnowledgeRecall.tsx",
+
+    "packages/sdk/src/index.ts",
+
+    "packages/sdk/src/query-domains/knowledgeStores.ts",
+
+    "packages/shared/src/knowledge-root-identity.ts",
+
+    "tests/knowledge-library.spec.ts",
+
+    "tests/meeting-notes.spec.ts"
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery exports to the SDK index. The knowledge-recall exports the design names are unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

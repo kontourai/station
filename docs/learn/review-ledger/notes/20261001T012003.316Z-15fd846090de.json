@@ -1,0 +1,7 @@
+{
+  "revision": "3cc2806e5e1cb691b37ee0b62f688bb456f2971e",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Rechecked the complete operator section after removing its literal bridge address to satisfy repo documentation hygiene. Compose interpolation and focused CLI and hygiene checks pass locally; public TLS/TURN, remote Station access, and physical iOS acceptance remain unverified.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

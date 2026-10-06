@@ -1,0 +1,43 @@
+{
+  "revision": "e3aa94d61398bd351129bb14663daefd2b11e2ec",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Slice D delta review: updated the hosted shard claim to one through four; statics still invokes readiness and required documentation evidence. Workflow permissions, required name, and base-controlled verdict remain intact. Source inspection and local workflow tests only; hosted behavior unverified.","inputs":[".veritas/README.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Slice D delta review of Browser test evidence: the mutation registry adds threshold and skipped-planned-shard defects; clean baseline, owned processes, exact-byte restoration and named assertion interpretation are unchanged. No browser lifecycle or architectural boundary changed.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Slice D delta: corrected the fixed four-shard account to one through four planned shards. Reviewed unchanged statics bundle enforcement, optional attribution, scoped documentation evidence and non-required repository scans against ci.yml. No product or hosted performance proof.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Slice D delta review: inspected the ci.yml change against this guide. It changes only affected-test matrix sizing and planner outputs; all checkout trust, permissions, statics, repository scans and existing runtime verification paths remain intact. This guide makes no fixed fast-checks shard-count claim and its product/API contracts are unchanged. Source-scope review only; product journeys not re-executed.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Slice D delta: candidate checkout stays repo/SHA pinned with persist-credentials false and read-only contents permission; dependency installation, audit policy and statics checks are unchanged. Adaptive matrix outputs add no credentials or secret exposure. No dependency policy change.","inputs":["docs/guides/dependency-security.md"]},
+
+    {"path":"docs/guides/development.md","note":"Slice D delta: corrected four fixed jobs to one through four planned jobs. Selection, statics scope, receipt identity, local ci:fast and merge-queue completion semantics remain intact; traced current CI/CLI and focused workflow tests. Hosted rollout unverified.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Slice D delta review: inspected the ci.yml change against this guide. It changes only affected-test matrix sizing and planner outputs; all checkout trust, permissions, statics, repository scans and existing runtime verification paths remain intact. This guide makes no fixed fast-checks shard-count claim and its product/API contracts are unchanged. Source-scope review only; product journeys not re-executed.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Slice D delta: all affected jobs remain ubuntu-22.04 hosted jobs. The documented physical-listener partition remains an optional operator plan; matrix sizing changes no runner labels, physical-host lease or deployment.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Slice D delta review: inspected the ci.yml change against this guide. It changes only affected-test matrix sizing and planner outputs; all checkout trust, permissions, statics, repository scans and existing runtime verification paths remain intact. This guide makes no fixed fast-checks shard-count claim and its product/API contracts are unchanged. Source-scope review only; product journeys not re-executed.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Slice D delta review: inspected the ci.yml change against this guide. It changes only affected-test matrix sizing and planner outputs; all checkout trust, permissions, statics, repository scans and existing runtime verification paths remain intact. This guide makes no fixed fast-checks shard-count claim and its product/API contracts are unchanged. Source-scope review only; product journeys not re-executed.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Slice D: traced file-count planning through CLI GitHub outputs, dynamic matrix and denominator, exact-plan receipts and aggregate. Reviewed literal 40/41, 80/81, 120/121 boundaries, four-shard cap, empty/deferred handling and both rollout directions. Updated measured rationale and explicit duration-estimate limitation. Local CLI/workflow tests establish contracts; no PR run or queue-wait measurement.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Slice D delta review: inspected the ci.yml change against this guide. It changes only affected-test matrix sizing and planner outputs; all checkout trust, permissions, statics, repository scans and existing runtime verification paths remain intact. This guide makes no fixed fast-checks shard-count claim and its product/API contracts are unchanged. Source-scope review only; product journeys not re-executed.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Slice D delta review: inspected the ci.yml change against this guide. It changes only affected-test matrix sizing and planner outputs; all checkout trust, permissions, statics, repository scans and existing runtime verification paths remain intact. This guide makes no fixed fast-checks shard-count claim and its product/API contracts are unchanged. Source-scope review only; product journeys not re-executed.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Slice D delta: performance smoke remains in fast-checks-statics, and reference hardware evidence stays in its separate manual workflow. Adaptive test shards do not change measurements, budgets or bridge contracts. No reference-hardware run.","inputs":["docs/reference/interactive-workspace-performance.md"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Slice D delta: browser smoke remains in fast-checks-statics under identical PR/merge-group admission, timeout and failure semantics. Dynamic affected-test matrix changes no manifest, fixture or browser-health boundary. No browser journey run in this review.","inputs":["docs/testing/browser-smoke.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Slice D delta review: the cited testing/development guide changes only hosted shard counts and rollout details. Scoped instruction routes, focused-test evidence, fixture/mutation interpretation and product boundaries remain accurate; no instruction edits needed. The new planner child-process file is explicitly classified process-heavy; no worker or timeout ceiling changed.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Slice D delta review: the cited testing/development guide changes only hosted shard counts and rollout details. Scoped instruction routes, focused-test evidence, fixture/mutation interpretation and product boundaries remain accurate; no instruction edits needed.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Slice D delta review: the cited testing/development guide changes only hosted shard counts and rollout details. Scoped instruction routes, focused-test evidence, fixture/mutation interpretation and product boundaries remain accurate; no instruction edits needed.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Slice D delta review: the cited testing/development guide changes only hosted shard counts and rollout details. Scoped instruction routes, focused-test evidence, fixture/mutation interpretation and product boundaries remain accurate; no instruction edits needed.","inputs":["tests/AGENTS.md"]}
+  ]
+}

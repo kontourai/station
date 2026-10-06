@@ -62,7 +62,7 @@ import { existsSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import type { EnvVariable, McpServer } from '@agentclientprotocol/sdk';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { findCliBinary } from '../auth/cli-auth.js';
 
 /** Matches the `any`-typed logger threaded through the ACP substrate. */
@@ -121,6 +121,11 @@ interface ResolveAcpPassthroughMcpServersInput {
    * server is skipped, never delivered by some other means.
    */
   stationControlAuth?: { url: string; token: string };
+  stationKnowledgeAuth?: { url: string; token: string };
+  stationKnowledgeUnavailable?: {
+    reason: AcpToolServerSkipReason;
+    detail: string;
+  };
   /**
    * Why `stationControlAuth` is absent, when the caller knows. Both fields
    * are caller-owned, including the REASON: this module observes only "no
@@ -173,6 +178,7 @@ interface ResolveAcpPassthroughMcpServersResult {
    * credential was never handed to anyone.
    */
   stationControlDelivered: boolean;
+  stationKnowledgeDelivered: boolean;
 }
 
 function toEnvVariables(
@@ -219,8 +225,14 @@ export async function resolveAcpPassthroughMcpServers(
   // Set on the ONE branch below that pushes the http entry — never derived
   // from `servers`, see the field's doc comment.
   let stationControlDelivered = false;
+  let stationKnowledgeDelivered = false;
   if (!toolServerIds || toolServerIds.length === 0) {
-    return { servers, skipped, stationControlDelivered };
+    return {
+      servers,
+      skipped,
+      stationControlDelivered,
+      stationKnowledgeDelivered,
+    };
   }
 
   for (const id of toolServerIds) {
@@ -249,38 +261,51 @@ export async function resolveAcpPassthroughMcpServers(
     // branch is that none of it is sent. `isBuiltinStationControl` is an
     // exact command/args identity match, so an unrelated integration saved
     // under the id `station-control` never reaches here.
-    if (isBuiltinStationControl(id, toolDef)) {
-      if (!stationControlAuth) {
+    const builtin = builtinStationApiServerId(id, toolDef);
+    if (builtin) {
+      const auth =
+        builtin === 'station-knowledge'
+          ? input.stationKnowledgeAuth
+          : stationControlAuth;
+      const unavailable =
+        builtin === 'station-knowledge'
+          ? (input.stationKnowledgeUnavailable ?? {
+              reason: 'delivery-failed' as const,
+              detail: 'Knowledge session auth is unavailable',
+            })
+          : stationControlUnavailable;
+      if (!auth) {
         // Fail closed. NOT a fall-through to the stdio path below: that path
         // would hand the external agent app the real station-control binary
         // with no credential, which is a broken server presented as a
         // working one.
         skipped.push({
           id,
-          reason: stationControlUnavailable.reason,
-          detail: stationControlUnavailable.detail,
+          reason: unavailable.reason,
+          detail: unavailable.detail,
         });
         logger.warn?.(
-          'ACP MCP passthrough: the built-in station-control server was not delivered — ' +
-            `${stationControlUnavailable.detail}.`,
+          `ACP MCP passthrough: the built-in ${builtin} server was not delivered — ` +
+            `${unavailable.detail}.`,
         );
         continue;
       }
       servers.push({
         type: 'http',
         name: toolDef.id,
-        url: stationControlAuth.url,
+        url: auth.url,
         // The credential, and the whole payload Station sends for this
         // server. No `env` field exists on an `McpServerHttp` — the token
         // replaces the env rather than travelling beside it.
         headers: [
           {
             name: 'Authorization',
-            value: `Bearer ${stationControlAuth.token}`,
+            value: `Bearer ${auth.token}`,
           },
         ],
       });
-      stationControlDelivered = true;
+      if (builtin === 'station-control') stationControlDelivered = true;
+      else stationKnowledgeDelivered = true;
       continue;
     }
 
@@ -347,5 +372,10 @@ export async function resolveAcpPassthroughMcpServers(
     });
   }
 
-  return { servers, skipped, stationControlDelivered };
+  return {
+    servers,
+    skipped,
+    stationControlDelivered,
+    stationKnowledgeDelivered,
+  };
 }

@@ -9,6 +9,8 @@
     "*.css"
   ],
   "exports": {
+    "./native-relay-link": "./src/core/nativeRelayLink.ts",
+    "./relay-ice": "./src/core/relayIceConfiguration.ts",
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
@@ -23,9 +25,11 @@
     "./local-self-provision": "./src/core/localSelfProvision.ts",
     "./known-environment": "./src/core/knownEnvironmentRegistry.ts",
     "./application-channel": "./src/core/applicationChannel.ts",
+    "./application-channel-frames": "./src/core/applicationChannelFrames.ts",
     "./self-hosted-browser": "./src/core/selfHostedBrowser.ts",
     "./native-diagnostic-echo": "./src/core/nativeDiagnosticEcho.ts",
-    "./native-application": "./src/core/nativeApplicationTransport.ts"
+    "./native-application": "./src/core/nativeApplicationTransport.ts",
+    "./native-enrollment": "./src/core/nativeEnrollmentExchange.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets && node ../../scripts/write-dist-stamp.mjs",
@@ -54,8 +58,8 @@
     "url": "https://github.com/kontourai/station/issues"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.7.0",
-    "@kontourai/station-shared": "^0.7.0",
+    "@kontourai/station-contracts": "^0.8.0",
+    "@kontourai/station-shared": "^0.8.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4"
   },

@@ -1,0 +1,19 @@
+{
+  "revision": "16b9e62cea8eee62012e37a39235b1216a0a9b7f",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["deploy/gcp-dev/README.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["deploy/public-ingress/README.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/release-channel-ports.md"]}
+  ]
+}

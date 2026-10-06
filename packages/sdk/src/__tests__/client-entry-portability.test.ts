@@ -32,6 +32,8 @@ function listTsFilesRecursively(dir: string): string[] {
   return files;
 }
 
+const LAZY_SHARED_SUBPATH = /^@kontourai\/station-shared\/[a-z0-9-]+$/;
+
 function scanSource(contents: string, file: string): string[] {
   const violations: string[] = [];
   const ast = ts.createSourceFile(file, contents, ts.ScriptTarget.Latest, true);
@@ -65,8 +67,20 @@ function scanSource(contents: string, file: string): string[] {
     if (
       ts.isCallExpression(node) &&
       node.expression.kind === ts.SyntaxKind.ImportKeyword
-    )
-      report('dynamic import(...) call');
+    ) {
+      // One exception: a literal @kontourai/station-shared subpath may load
+      // lazily, so a heavy shared validator stays out of the UI entry chunk
+      // (#3149). Any other target, or a computed one, is still refused.
+      const [target] = node.arguments;
+      if (
+        node.arguments.length === 1 &&
+        target &&
+        ts.isStringLiteral(target) &&
+        LAZY_SHARED_SUBPATH.test(target.text)
+      )
+        checkSpecifier(target.text);
+      else report('dynamic import(...) call');
+    }
     if (
       ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression) &&
@@ -113,7 +127,10 @@ describe('client-entry portability (#167 AC6)', () => {
     writeFileSync(
       fixturePath,
       "import { useSomething } from '../hooks/useSomething';\n" +
-        "const lazy = () => import('./http');\n",
+        "const lazy = () => import('./http');\n" +
+        "const pkg = () => import('@kontourai/station-contracts/agent');\n" +
+        'const computed = (name: string) => import(`@kontourai/station-shared/${name}`);\n' +
+        "const allowed = () => import('@kontourai/station-shared/skill-experience-reader');\n",
     );
     try {
       const violations = scanForViolations([fixturePath]);
@@ -131,6 +148,11 @@ describe('client-entry portability (#167 AC6)', () => {
             v.includes('dynamic import(...) call'),
         ),
       ).toBe(true);
+      // './http', another package and a computed shared path each still
+      // refuse; only the literal station-shared subpath is admitted.
+      expect(
+        violations.filter((v) => v.includes('dynamic import(...) call')),
+      ).toHaveLength(3);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }

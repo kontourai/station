@@ -1,0 +1,7 @@
+{
+  "revision": "0cd7af01c7070ecf0f5fdf06ba3eb87ab575abce",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"Contribution source delta through 0cd7af01c: inspected the retained screenshot and its media evidence/capturedRevision fbb464a6f. It shows one human saving a document and message, with no independent agent request or contribution. Runtime changes add private bound-request lifecycle history/presence and original-scope delivery checks; the human document/message journey remains in its existing owners. Keep the image, digest, caption and capture revision as historical single-human evidence. It does not verify the new composer, independent agent lifecycle, current geometry, live provider, team/public/native flow or a new browser run. No historical receipt is renewed.","inputs":["docs/learn/media/shared-task-document.png"]}
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "path": "AGENTS.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Worktree isolation, managed dependencies, bounded gates, merge-queue procedure, evidence discipline, archival issue interpretation, scope routes, and protected Veritas block. All named npm scripts and local routes resolve. Live main rules match the six named required checks, non-strict updates, ALLGREEN 3/3 SQUASH queue, and unattributed-change approval rule.",
+
+  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No merge, push, queue mutation, release, full regression, or behavioral conformance audit was performed. GitHub rules are a time-specific observation.",
+
+  "sources": [
+    ".agents/skills/documentation-audit/SKILL.md",
+
+    ".githooks/pre-push",
+
+    ".veritas/GOVERNANCE.md",
+
+    "scripts/dependency-lifecycle.mjs",
+
+    "scripts/gate-for.mjs",
+
+    "scripts/lib/typecheck-host-slots.mjs",
+
+    "scripts/orchestration-transfer-gate.mjs",
+
+    "scripts/run-focused-tests.mjs",
+
+    "package.json#/scripts/ci:fast",
+
+    "package.json#/scripts/dependencies:ci",
+
+    "package.json#/scripts/full:regression",
+
+    "package.json#/scripts/gate:for",
+
+    "package.json#/scripts/test:changed",
+
+    "package.json#/scripts/test:focused",
+
+    "package.json#/packageManager"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions. Removed only the unused resolveNpmCli re-export; managed dependency installation and hook arming instructions are unchanged. Pre-edit guidance now includes recorded documentation dependencies. Default scope includes committed, staged, unstaged and untracked changes; explicit paths still avoid Git. Independent actual CLI/collector tests confirmed scope and refusal behavior.",
+
+    "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged.",
+
+    "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+
+    "Integration source review through e0314c727: package.json only removed the @kontourai/bearing and @kontourai/forage dependencies. Every npm script and route AGENTS.md names is unchanged. GitHub rules were not re-observed. Source review is separate from executed test evidence.",
+
+    "Reviewed deltas: the audit skill gained freshness and slice guidance and package.json gained documentation scripts; the routing table and landing rules here are unchanged."
+  ]
+}

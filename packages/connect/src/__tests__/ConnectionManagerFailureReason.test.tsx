@@ -257,7 +257,11 @@ describe('Connection Manager — profile selection failures', () => {
       </ConnectionsProvider>,
     );
 
-    fireEvent.click(screen.getByLabelText('Select Next Station'));
+    fireEvent.click(screen.getByLabelText('View details for Next Station'));
+    expect(store.getActive()?.id).toBe(current.id);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Switch to Next Station' }),
+    );
 
     expect(
       await screen.findByText('Could not switch Stations: access denied'),

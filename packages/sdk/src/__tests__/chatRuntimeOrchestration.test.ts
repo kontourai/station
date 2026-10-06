@@ -7,6 +7,7 @@ vi.mock('../api', () => ({
 import { COOPERATIVE_STOP_BUDGET_MS } from '@kontourai/station-contracts/orchestration';
 import { ChatHttpError } from '../client/chatHttpError';
 import { StationRequestTimeoutError } from '../client/http';
+import { inspectSteerInput, steerTurn } from '../client/orchestration';
 import {
   cleanupTerminalProcess,
   dispatchOrchestrationCommand,
@@ -39,6 +40,40 @@ describe('chatRuntimeOrchestration', () => {
     vi.clearAllMocks();
     vi.stubGlobal('fetch', vi.fn());
   });
+
+  it.each([
+    ['steer', steerTurn],
+    ['inspect', inspectSteerInput],
+  ] as const)(
+    'keeps the complete Station refusal on %s requests',
+    async (_name, request) => {
+      const details = { reason: 'capacity' };
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Wait before retrying',
+            code: 'capacity_limited',
+            details,
+          }),
+          { status: 429, headers: { 'Retry-After': '2' } },
+        ),
+      );
+      await expect(
+        request('http://example.test', {
+          threadId: 'thread-1',
+          text: 'redirect',
+          clientInputId: 'input-1',
+        }),
+      ).rejects.toMatchObject({
+        status: 429,
+        code: 'capacity_limited',
+        details,
+        retryAfterMs: 2000,
+        stationEnvelope: true,
+      });
+    },
+  );
 
   it('fetches orchestration sessions through the read-model route', async () => {
     mockJsonResponse({ success: true, data: [{ threadId: 'thread-1' }] });

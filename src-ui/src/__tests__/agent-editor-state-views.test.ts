@@ -1,6 +1,9 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   AgentEditorLoadFailureState,
   AgentEditorLoadingState,
@@ -49,22 +52,31 @@ describe('agent editor state views', () => {
     expect(markup).toContain('Back to agents');
   });
 
-  test('AgentEditorStartingPoints renders engine-shaped starting points', () => {
-    const markup = renderToStaticMarkup(
+  test('starting points let users choose a model connection, an AI app, or an existing agent', () => {
+    const onStartModel = vi.fn();
+    const onStartCli = vi.fn();
+    const onCopy = vi.fn();
+    render(
       createElement(AgentEditorStartingPoints, {
-        onStartModel: () => {},
-        onStartCli: () => {},
-        onCopy: () => {},
+        onStartModel,
+        onStartCli,
+        onCopy,
         copyDisabled: false,
       }),
     );
 
-    // #946: the starting points name the ENGINE that runs the agent, not the
-    // shape of the thing being wrapped. "Wrap an installed agent CLI" asked
-    // the reader to know what a CLI is before it told them what it does.
-    expect(markup).toContain('Run it on Station');
-    expect(markup).toContain('Run it on another engine');
-    expect(markup).toContain('Copy an existing agent');
+    fireEvent.click(
+      screen.getByRole('button', { name: /Use a model connection/ }),
+    );
+    expect(onStartModel).toHaveBeenCalledTimes(1);
+    expect(onStartCli).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Use an AI app/ }));
+    expect(onStartCli).toHaveBeenCalledTimes(1);
+    expect(onStartModel).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Copy an existing agent/ }),
+    );
+    expect(onCopy).toHaveBeenCalledTimes(1);
   });
 
   // §4: nothing to copy is a DISABLED card that says so, not a card that

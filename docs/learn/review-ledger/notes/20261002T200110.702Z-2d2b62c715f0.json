@@ -1,0 +1,7 @@
+{
+  "revision": "20d703d387612f032748b56eae2b17a60d1e6984",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the authority distinctions in this guide against the updated Connections recovery copy. Station trust, device approval, account sign-in and shared Project access remain separate. The updated mounted tests verify the UI wording; no installed-device claim is made.","inputs":["docs/guides/machine-relationships.md"]}
+  ]
+}

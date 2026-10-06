@@ -14,7 +14,7 @@ import {
 } from 'vitest';
 import { describeApiError } from '../commands/core-api.js';
 import {
-  resetProfileCredentialStoreForTests,
+  getProfileCredentialStore,
   setProfileCredentialStore,
 } from '../commands/profile-credentials.js';
 import { upsertProfile } from '../commands/profile-store.js';
@@ -446,9 +446,13 @@ describe('CLI core commands over HTTP', () => {
         const slug = decodeURIComponent(conversationsMatch[1]);
         sendJson(200, {
           success: true,
-          data: state.conversations.filter(
-            (conversation) => conversation.resourceId === slug,
-          ),
+          // The real route's page envelope, not a bare array.
+          data: {
+            items: state.conversations.filter(
+              (conversation) => conversation.resourceId === slug,
+            ),
+            hasMore: false,
+          },
         });
         return;
       }
@@ -1253,6 +1257,30 @@ describe('CLI core commands over HTTP', () => {
     });
   });
 
+  test("does not send this machine's shell directory to another Environment by default", async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'chat',
+      'codex',
+      'use the remote workspace',
+      '--on=remote-env',
+      `--api-base=${apiBase}`,
+    ]);
+
+    expect(orchestrationCommands[0]).toEqual({
+      type: 'executeTarget',
+      input: {
+        conversationId: expect.any(String),
+        message: 'use the remote workspace',
+        target: {
+          environment: { kind: 'saved', id: 'remote-env' },
+          agent: 'codex',
+        },
+      },
+    });
+  });
+
   test('rejects --cwd combined with --project as a usage error before any request (review r1 HIGH fix 2)', async () => {
     const { runCli } = await import('../cli.js');
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -1579,28 +1607,29 @@ describe('CLI core commands over HTTP', () => {
 
   test('attaches a stored host credential to a self-targeted loopback mutation', async () => {
     const { runCli } = await import('../cli.js');
+    const previousCredentialStore = getProfileCredentialStore();
     const previousHome = process.env.STATION_HOME;
     const previousRoot = process.env.STATION_ROOT;
     const profileHome = mkdtempSync(join(tmpdir(), 'station-loopback-auth-'));
     const credential = 'cli-self-target-read-only-credential';
     const credentialRef = { kind: 'station-bearer' as const, id: 'self' };
 
-    process.env.STATION_HOME = profileHome;
-    process.env.STATION_ROOT = profileHome;
-    setProfileCredentialStore({
-      get: (ref) => (ref.id === credentialRef.id ? credential : undefined),
-      set: () => {},
-      delete: () => {},
-      status: () => 'available',
-    });
-    upsertProfile({
-      name: 'self',
-      endpoint: apiBase,
-      credentialRef,
-      makeDefault: true,
-    });
-
     try {
+      process.env.STATION_HOME = profileHome;
+      process.env.STATION_ROOT = profileHome;
+      setProfileCredentialStore({
+        get: (ref) => (ref.id === credentialRef.id ? credential : undefined),
+        set: () => {},
+        delete: () => {},
+        status: () => 'available',
+      });
+      upsertProfile({
+        name: 'self',
+        endpoint: apiBase,
+        credentialRef,
+        makeDefault: true,
+      });
+
       await runCli([
         'projects',
         'create',
@@ -1608,7 +1637,7 @@ describe('CLI core commands over HTTP', () => {
         '--data={"name":"Scoped loopback","slug":"scoped-loopback"}',
       ]);
     } finally {
-      resetProfileCredentialStoreForTests();
+      setProfileCredentialStore(previousCredentialStore);
       rmSync(profileHome, { recursive: true, force: true });
       if (previousHome === undefined) delete process.env.STATION_HOME;
       else process.env.STATION_HOME = previousHome;
@@ -1672,9 +1701,21 @@ describe('CLI core commands over HTTP', () => {
       `--api-base=${apiBase}`,
     ]);
 
-    expect(_consoleLog).toHaveBeenCalledWith(
-      expect.stringContaining('"kind": "managed"'),
-    );
+    // #3304: the route answers `{ items, hasMore }`; the listing must map
+    // the items rather than crash on `conversations.map`.
+    const listed = _consoleLog.mock.calls
+      .map(([line]) => String(line))
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return undefined;
+        }
+      })
+      .find((value) => Array.isArray(value));
+    expect(listed).toEqual([
+      expect.objectContaining({ id: 'conv-http-test', kind: 'managed' }),
+    ]);
     expect(_consoleLog).toHaveBeenCalledWith(
       expect.stringContaining('"id": "conv-http-test"'),
     );
@@ -2313,6 +2354,135 @@ describe('CLI core commands over HTTP', () => {
     ).toBe(true);
   });
 
+  describe('#3071: a request its turn left behind is not offered', () => {
+    const opened = (requestId: string, eventId: string) => ({
+      provider: 'codex',
+      threadId: 'settled-thread',
+      eventId,
+      createdAt: '2026-04-18T00:00:02.000Z',
+      method: 'request.opened',
+      requestId,
+      requestType: 'approval',
+      title: `Approve ${requestId}`,
+    });
+
+    function seedSettledThread(session: Record<string, unknown> = {}): void {
+      state.runtimeSessions = [
+        ...state.runtimeSessions,
+        {
+          provider: 'codex',
+          threadId: 'settled-thread',
+          status: 'ready',
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 5,
+          createdAt: '2026-04-18T00:00:00.000Z',
+          updatedAt: '2026-04-18T00:00:09.000Z',
+          ...session,
+        },
+      ];
+      state.runtimeSessionEvents['settled-thread'] = [
+        {
+          provider: 'codex',
+          threadId: 'settled-thread',
+          eventId: 'evt-start',
+          createdAt: '2026-04-18T00:00:01.000Z',
+          method: 'turn.started',
+          turnId: 'turn-1',
+        },
+        opened('req-dead', 'evt-open-dead'),
+        // Recovery's abort after a restart, with no resolution recorded.
+        {
+          provider: 'codex',
+          threadId: 'settled-thread',
+          eventId: 'turn-interrupted-abort:b1',
+          createdAt: '2026-04-18T00:00:05.000Z',
+          method: 'turn.aborted',
+          turnId: 'turn-1',
+          reason: 'interrupted',
+          recoveryTerminal: true,
+        },
+        opened('req-live', 'evt-open-live'),
+        opened('req-server-closed', 'evt-open-server-closed'),
+        {
+          ...opened('req-question', 'evt-open-question'),
+          payload: { questionnaire: { questions: [] } },
+        },
+      ];
+    }
+
+    const listed = async () => {
+      const { runCli } = await import('../cli.js');
+      await runCli([
+        'approvals',
+        'list',
+        '--agent=codex',
+        '--thread=settled-thread',
+        '--json',
+        `--api-base=${apiBase}`,
+      ]);
+      return (JSON.parse(printedApprovals()) as Array<{ requestId: string }>)
+        .map((row) => row.requestId)
+        .sort();
+    };
+
+    test('list drops a request settled by its turn’s abort, by the shared fold alone', async () => {
+      seedSettledThread();
+      expect(await listed()).toEqual([
+        'req-live',
+        'req-question',
+        'req-server-closed',
+      ]);
+    });
+
+    test('list also drops a request the server no longer lists as open', async () => {
+      seedSettledThread({ openRequestIds: ['req-live', 'req-question'] });
+      expect(await listed()).toEqual(['req-live', 'req-question']);
+    });
+
+    test('respond binds the decision to the listed request event; a settled request and a question are posted unbound for the server to decide', async () => {
+      const { runCli } = await import('../cli.js');
+      seedSettledThread({ openRequestIds: ['req-live', 'req-question'] });
+      for (const requestId of ['req-live', 'req-dead', 'req-question']) {
+        await runCli([
+          'approvals',
+          'respond',
+          'settled-thread',
+          requestId,
+          'accept',
+          `--api-base=${apiBase}`,
+        ]);
+      }
+      const posted = orchestrationCommands.filter(
+        (command) =>
+          command.type === 'respondToRequest' &&
+          command.threadId === 'settled-thread',
+      );
+      expect(posted).toEqual([
+        {
+          type: 'respondToRequest',
+          threadId: 'settled-thread',
+          requestId: 'req-live',
+          expectedRequestEventId: 'evt-open-live',
+          decision: 'accept',
+        },
+        {
+          type: 'respondToRequest',
+          threadId: 'settled-thread',
+          requestId: 'req-dead',
+          decision: 'accept',
+        },
+        // A question is listed, and still posted unbound.
+        {
+          type: 'respondToRequest',
+          threadId: 'settled-thread',
+          requestId: 'req-question',
+          decision: 'accept',
+        },
+      ]);
+    });
+  });
+
   test('approvals list aggregates pending requests across every thread for an agent when --thread is omitted', async () => {
     const { runCli } = await import('../cli.js');
 
@@ -2464,6 +2634,7 @@ describe('CLI core commands over HTTP', () => {
         threadId: 'approval-thread-1',
         requestId: 'req-open',
         requestType: 'approval',
+        requestEventId: 'evt-open-1',
         title: 'Run rm -rf tmp/?',
         ageMs: expect.any(Number),
         // station#1782: the joined summary carried no decoration, and

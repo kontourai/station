@@ -1,0 +1,25 @@
+{
+  "path": "docs/design/entity-hierarchy.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Original taxonomy, tabs, checkboxes and absence claims classified historical; current engine-capability one-page agent form linked to canonical guides.",
+
+  "limits": "Not whole-agent/skill/runtime/project semantic audit. Original design and supersession notes retained; unchecked phases are not current backlog status.",
+
+  "sources": [
+    "src-ui/src/__tests__/AgentEditorForm.test.tsx",
+
+    "src-ui/src/views/AgentEditorForm.tsx"
+  ],
+
+  "checks": [
+    "Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
+
+    "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
+
+    "Integration source review through d1e0facc2: Heading assertions replace obsolete button checks; actual Commands positive control retained. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -1,9 +1,5 @@
-import {
-  useActivityUsageQuery,
-  useResetUsageStatsMutation,
-} from '@kontourai/station-sdk';
-import { useEffect, useMemo, useState } from 'react';
-import { log } from '@/utils/logger';
+import { useActivityUsageQuery } from '@kontourai/station-sdk';
+import { useState } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useAnalytics } from '../../contexts/AnalyticsContext';
 import { useModels } from '../../contexts/ModelsContext';
@@ -14,7 +10,6 @@ import {
   MoneyGlyph,
   WarningGlyph,
 } from '../icons/Glyph';
-import { ConfirmModal } from '../modals/ConfirmModal';
 import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
 import {
   buildTrendDays,
@@ -141,45 +136,18 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
 }
 
 export function UsageStatsPanel() {
-  const { usageStats, loading, error, refresh, rescan } = useAnalytics();
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const { usageStats, loading, error, refresh } = useAnalytics();
   const models = useModels();
   const agents = useAgents();
   const [drillDown, setDrillDown] = useState<{
     type: DrillDownType;
     id: string;
   } | null>(null);
-  const [hasAutoRescanned, setHasAutoRescanned] = useState(false);
   // Default "all" keeps the panel's first render the complete lifetime
   // accounting (the only view that includes engine sessions); the bounded
   // views are one tap away.
   const [period, setPeriod] = useState<UsagePeriod>('all');
-  const range = useMemo(() => periodRange(period), [period]);
-
-  const resetMutation = useResetUsageStatsMutation({
-    onSuccess: () => {
-      refresh();
-    },
-  });
-
-  // Auto-rescan if we have messages but no conversations
-  useEffect(() => {
-    if (
-      !hasAutoRescanned &&
-      usageStats &&
-      usageStats.lifetime.totalMessages > 0
-    ) {
-      const hasConversations = Object.values(usageStats.byAgent).some(
-        (stats: any) => (stats.conversations || 0) > 0,
-      );
-
-      if (!hasConversations) {
-        setHasAutoRescanned(true);
-        log.api('Auto-rescanning to populate conversation counts...');
-        rescan();
-      }
-    }
-  }, [usageStats, hasAutoRescanned, rescan]);
+  const range = periodRange(period);
 
   if (loading && !usageStats) {
     return <SkeletonBlock count={3} label="Loading usage stats" />;
@@ -220,30 +188,13 @@ export function UsageStatsPanel() {
           </span>
           <span>Usage Statistics</span>
         </h3>
-        <button
-          type="button"
-          onClick={() => setShowResetConfirm(true)}
-          disabled={resetMutation.isPending}
-          className="usage-stats-reset-btn"
-        >
-          {resetMutation.isPending ? 'Resetting...' : 'Reset'}
-        </button>
       </div>
 
-      <ConfirmModal
-        isOpen={showResetConfirm}
-        title="Reset Usage Statistics"
-        message="This will permanently clear all usage data including message counts, costs, and agent statistics. This cannot be undone."
-        confirmLabel="Reset All"
-        cancelLabel="Cancel"
-        variant="danger"
-        onConfirm={async () => {
-          setShowResetConfirm(false);
-          await resetMutation.mutateAsync();
-        }}
-        onCancel={() => setShowResetConfirm(false)}
-      />
-
+      <p className="usage-period-note">
+        Lifetime summaries retain historical totals. Engine model totals use the
+        session’s latest model; use usage receipts for comparisons across
+        models.
+      </p>
       <UsagePeriodSelector value={period} onChange={setPeriod} />
 
       {range ? (

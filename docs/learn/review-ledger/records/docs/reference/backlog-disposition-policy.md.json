@@ -1,0 +1,23 @@
+{
+  "path": "docs/reference/backlog-disposition-policy.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed classification labels, uncapped P1 policy, non-actionable conflicts and scheduled workflow triggers against executable policy.",
+
+  "limits": "This defines required classification, not a claim that the live backlog is always compliant.",
+
+  "sources": [
+    ".github/workflows/backlog-priority-policy.yml",
+
+    "scripts/__tests__/backlog-priority-policy.test.ts",
+
+    "scripts/backlog-priority-policy.mjs"
+  ],
+
+  "checks": [
+    "Read policy constants, evaluator and workflow."
+  ]
+}

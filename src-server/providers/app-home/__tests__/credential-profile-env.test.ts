@@ -36,7 +36,9 @@ describe('credential profile env resolver (#2966)', () => {
       }),
     });
 
-    const env = await resolve('proxy');
+    const resolved = await resolve('proxy');
+    const env = resolved?.env;
+    expect(resolved?.profileRef).toBe('proxy');
 
     const dir = credentialProfileAppHomeDir('claude', 'proxy', homeDir);
     expect(env).toEqual({ ...routed, CLAUDE_CONFIG_DIR: dir });
@@ -60,8 +62,11 @@ describe('credential profile env resolver (#2966)', () => {
     });
 
     await expect(resolve()).resolves.toEqual({
-      OPENAI_BASE_URL: 'http://127.0.0.1:9',
-      CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy', homeDir),
+      profileRef: 'proxy',
+      env: {
+        OPENAI_BASE_URL: 'http://127.0.0.1:9',
+        CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy', homeDir),
+      },
     });
   });
 

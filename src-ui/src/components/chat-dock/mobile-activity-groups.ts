@@ -5,6 +5,8 @@ import {
   writeSnooze,
 } from '../../utils/activity-snooze-store';
 import {
+  LIVE_LANE_LABELS,
+  type LiveLaneId,
   partitionHomeWorkItems,
   terminalSinceFromRecency,
 } from '../../views/home/home-lane-model';
@@ -17,26 +19,41 @@ export { clearSnooze, readSnoozes, type SnoozeMap, writeSnooze };
 
 export type MobileActivityGroupId =
   | 'external'
-  | 'active'
+  | LiveLaneId
   | 'drafts'
   | 'settled'
   | 'snoozed'
   | 'earlier';
 
+/**
+ * THE snooze presets — one set for the dock, the phone picker and Home
+ * (design round 2026-10, V49: the dock said "30 min / 3 hours / Until 9 AM"
+ * while Home said "In 1 hour / This evening / Tomorrow 9am / Next week Mon
+ * 9am"). Two durations and two mornings, in local time.
+ */
 export const SNOOZE_OPTIONS = [
-  { label: '30 min', ms: 30 * 60_000 },
+  { label: '1 hour', ms: 3_600_000 },
   { label: '3 hours', ms: 3 * 3_600_000 },
-  { label: 'Until 9 AM', ms: null },
+  { label: 'Tomorrow 9am', ms: null, morning: 'tomorrow' },
+  { label: 'Next Monday 9am', ms: null, morning: 'next-monday' },
 ] as const;
 
 export type SnoozeOption = (typeof SNOOZE_OPTIONS)[number];
 
-/** Resolve a preset against an injected clock; null means the next local 9am. */
+const MORNING_HOUR = 9;
+
+/** Resolve a preset against an injected clock, in local time. */
 export function snoozeWakeAt(option: SnoozeOption, now: number): number {
   if (option.ms !== null) return now + option.ms;
   const wake = new Date(now);
-  wake.setHours(9, 0, 0, 0);
-  if (wake.getTime() <= now) wake.setDate(wake.getDate() + 1);
+  if (option.morning === 'tomorrow') {
+    wake.setDate(wake.getDate() + 1);
+  } else {
+    // "Next Monday" always lands in a later week: on a Monday it skips today.
+    const day = wake.getDay(); // 0 = Sunday .. 6 = Saturday
+    wake.setDate(wake.getDate() + ((8 - day) % 7 || 7));
+  }
+  wake.setHours(MORNING_HOUR, 0, 0, 0);
   return wake.getTime();
 }
 
@@ -77,7 +94,8 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
 }
 
 /**
- * Split work items into Active now / Just finished / Snoozed / Earlier.
+ * Split work items into Needs you / Running / Idle / Drafts / Just finished /
+ * Snoozed / Earlier / From other apps.
  *
  * NOT A SECOND CLASSIFIER (station#3227 A6). This used to carry its own
  * "active" predicate (`Running`/`Needs attention` only) and its own 10-minute
@@ -87,13 +105,13 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
  * switcher, with the difference parked under "Just finished" having finished
  * nothing. Same label, two derivations, contradicting counts.
  *
- * The groups are now a straight rename of the shared partition's lanes:
- * active ("Active now"), recentlyFinished ("Just finished"), drafts
- * ("Drafts", #2310), snoozed, settled ("Earlier") — the same mapping the Sessions lanes already use
- * (`sessions-lane-model.ts`). An unfinished-but-idle item (`Ready`/`Recent`/
- * `Current`/`Unanswerable`) is active here for the same reason it is on
- * desktop: "Just finished"/"Earlier" assert the work FINISHED, and it did
- * not. `terminalSince` uses the shared fresh-load proxy
+ * The groups are a straight rename of the shared partition's lanes:
+ * needsYou/running/idle (`workStatus`), drafts ("Drafts", #2310),
+ * recentlyFinished ("Just finished"), snoozed, settled ("Earlier") — the
+ * same mapping the Sessions lanes use (`sessions-lane-model.ts`). An
+ * unfinished-but-idle item (`Ready`/`Recent`/`Current`/`Unanswerable`) is
+ * Idle, not "Active now": nothing is running, and "Just finished"/"Earlier"
+ * would assert the work FINISHED, which it did not. `terminalSince` uses the shared fresh-load proxy
  * (`terminalSinceFromRecency`) because this surface, like the Sessions list,
  * has no persisted transition store.
  *
@@ -116,19 +134,26 @@ export function groupMobileActivity(
     terminalSince: terminalSinceFromRecency(items),
   });
 
+  // Live groups are emitted only when non-empty, like Drafts and "From
+  // other apps": three always-present headers would print empty "Needs you"
+  // and "Running" sections above most inboxes. The historic groups below
+  // (Just finished, Snoozed, Earlier) keep their always-present shape.
+  const live = (['needsYou', 'running', 'idle'] as const)
+    .filter((id) => partition[id].length > 0)
+    .map((id) => ({ id, label: LIVE_LANE_LABELS[id], items: partition[id] }));
   return [
-    { id: 'active', label: 'Active now', items: partition.active },
-    {
-      id: 'settled',
-      label: 'Just finished',
-      items: partition.recentlyFinished,
-    },
+    ...live,
     // #2310: never-prompted sessions. Their own group rather than a chip in
     // "Earlier", which asserts the work finished — a draft has not started.
     // Emitted only when non-empty, like "From other apps".
     ...(partition.drafts?.length
       ? [{ id: 'drafts' as const, label: 'Drafts', items: partition.drafts }]
       : []),
+    {
+      id: 'settled',
+      label: 'Just finished',
+      items: partition.recentlyFinished,
+    },
     { id: 'snoozed', label: 'Snoozed', items: partition.snoozed },
     { id: 'earlier', label: 'Earlier', items: partition.settled },
     ...(partition.external?.length

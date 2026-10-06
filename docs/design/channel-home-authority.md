@@ -426,13 +426,15 @@ Known completion or compensation releases the record; uncertain effects or
 publication preparation retain it. Preparation requires the worker's actual
 durable acknowledgement; an unavailable write cannot be treated as success.
 The outbox refuses a different payload under an existing intent and refuses
-new lifecycle entries after the source seal. Tasks without an Agent have no
-Agent-start publication to prepare. A crashed dispatch therefore needs explicit
+new lifecycle entries after the source seal. Tasks without a dispatch-associated Agent have no Task-dispatch
+Agent-start publication to prepare; independent room requests retain their own
+lifecycle publications. A crashed dispatch therefore needs explicit
 dispatch reconciliation, not an assumption that provider exit completed every
 other phase.
 
-At startup, the room lifecycle readiness path repairs only demonstrably
-completed dispatches. It joins the immutable session binding, a unique
+At startup, the completed-dispatch recovery subpath repairs only demonstrably
+completed dispatches. Separate room lifecycle reconciliation also recovers
+independent request sessions from their journal and immutable room binding. It joins the immutable session binding, a unique
 completed Task association without an active reservation, and the persisted
 provider session. It durably prepares the lifecycle publication and rechecks
 the Task association before releasing the exact dead owner's record. A live

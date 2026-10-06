@@ -1301,11 +1301,11 @@ describe('persistent runner policy', () => {
     });
   });
 
-  test('admits only the exact read-only hosted Secret Scan pull_request workflow', () => {
+  test('admits only the exact read-only hosted PR: Secret scan pull_request workflow', () => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/secret-scan.yml',
     );
-    if (!workflow) throw new Error('Expected the Secret Scan workflow.');
+    if (!workflow) throw new Error('Expected the PR: Secret scan workflow.');
 
     expect(persistentRunnerPolicyFindings([workflow])).toEqual([]);
 
@@ -3416,14 +3416,14 @@ describe('merge-queue regression workflow policy', () => {
 
   test('rejects a test job that stops checking out the explicit candidate', () => {
     const document = mergeQueueRegressionDocument();
-    const checkout = document.jobs.static.steps.find((step) =>
+    const checkout = document.jobs.diff.steps.find((step) =>
       String(step.uses).startsWith('actions/checkout@'),
     ) as { with: Record<string, unknown> };
     delete checkout.with.ref;
     expect(persistentRunnerPolicyFindings([{ file, document }])).toContainEqual(
       {
         file,
-        jobId: 'static',
+        jobId: 'diff',
         message:
           'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
       },
@@ -3442,15 +3442,15 @@ describe('merge-queue regression workflow policy', () => {
         'base-controlled PR workflows must declare only permissions: { contents: read }',
     });
     const cached = mergeQueueRegressionDocument();
-    const setupNode = cached.jobs.ordinary.steps.find((step) =>
-      String(step.uses).startsWith('actions/setup-node@'),
-    ) as { with: Record<string, unknown> };
-    setupNode.with.cache = 'pnpm';
+    cached.jobs.diff.steps.push({
+      uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+      with: { cache: 'pnpm' },
+    });
     expect(
       persistentRunnerPolicyFindings([{ file, document: cached }]),
     ).toContainEqual({
       file,
-      jobId: 'ordinary',
+      jobId: 'diff',
       message:
         'pull-request and merge-queue workflows must not write a shared cache',
     });
@@ -3798,10 +3798,10 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
     // reach if its guard ever stopped excluding untrusted events.
     expect(docOf(workflows, CI).jobs['full-regression'].uses).toBe(`./${FULL}`);
     expect(
-      docOf(workflows, FULL).jobs['full-regression'].steps?.find((step) =>
+      docOf(workflows, FULL).jobs.static.steps?.find((step) =>
         String(step.uses).startsWith('actions/setup-node@'),
-      )?.with?.cache,
-    ).toBe('pnpm');
+      )?.with?.['package-manager-cache'],
+    ).toBe(false);
   });
 
   describe('reusable-workflow callees', () => {
@@ -3822,7 +3822,13 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       caller.if = expr(
         "always() && !cancelled() && github.event_name != 'pull_request_target'",
       );
-      const jobId = calledFrom(CI, 'full-regression', 'full-regression');
+      const node = docOf(workflows, FULL).jobs.static.steps?.find((step) =>
+        String(step.uses).startsWith('actions/setup-node@'),
+      );
+      if (!node?.with) throw new Error('Setup Node missing');
+      node.with.cache = 'pnpm';
+      delete node.with['package-manager-cache'];
+      const jobId = calledFrom(CI, 'full-regression', 'static');
       expect(cacheFindings(workflows)).toEqual([
         { file: FULL, jobId, message: WRITE },
         { file: FULL, jobId, message: AUTO_CACHE },
@@ -4018,12 +4024,12 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       ].steps?.find((step) => step.uses === REVIEWED_CACHE_RESTORE_ACTION);
       expect(restore).toBeTruthy();
       docOf(workflows, CI).jobs['full-regression'].if = undefined;
-      docOf(workflows, FULL).jobs['full-regression'].steps = [
+      docOf(workflows, FULL).jobs.static.steps = [
         structuredClone(restore) as Step,
       ];
       expect(cacheFindings(workflows)).toContainEqual({
         file: FULL,
-        jobId: calledFrom(CI, 'full-regression', 'full-regression'),
+        jobId: calledFrom(CI, 'full-regression', 'static'),
         message: RESTORE,
       });
     });
@@ -4044,11 +4050,11 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         const full = docOf(workflows, FULL);
         expect(cacheFindings(workflows)).toEqual([]);
         if (level === 'workflow') full['cache-mode'] = 'write';
-        else full.jobs['full-regression']['cache-mode'] = 'write';
+        else full.jobs.static['cache-mode'] = 'write';
         expect(cacheFindings(workflows)).toEqual([
           {
             file: FULL,
-            jobId: level === 'workflow' ? 'workflow' : 'full-regression',
+            jobId: level === 'workflow' ? 'workflow' : 'static',
             message: CALLEE_CACHE_MODE,
           },
         ]);

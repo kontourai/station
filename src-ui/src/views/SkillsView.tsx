@@ -3,7 +3,10 @@ import type {
   SkillWriteRefusal,
   SkillWriteRefusalReason,
 } from '@kontourai/station-contracts/catalog';
-import { skillCommandNameError } from '@kontourai/station-contracts/skill-command';
+import {
+  resolveSkillCommandName,
+  skillCommandNameError,
+} from '@kontourai/station-contracts/skill-command';
 import { serializeSkillMarkdown } from '@kontourai/station-contracts/skill-markdown';
 import {
   type SkillImportFile,
@@ -16,7 +19,8 @@ import {
   useUninstallSkillMutation,
   useUpdateLocalSkillMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EngineGlyph } from '../components/icons/Glyph';
@@ -26,12 +30,10 @@ import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
-import {
-  useCreateChatSession,
-  useSendMessage,
-} from '../hooks/useActiveChatSessions';
+import { useLaunchChat } from '../hooks/useActiveChatSessions';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
@@ -121,6 +123,10 @@ export function SkillsView({
   const selectedId = rawSelectedId === 'new' ? null : rawSelectedId;
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(rawSelectedId === 'new');
+  const [isEditing, setIsEditing] = useState(false);
+  const [pendingCreatedSkill, setPendingCreatedSkill] = useState<string | null>(
+    null,
+  );
   const [showRunModal, setShowRunModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importResults, setImportResults] = useState<
@@ -130,12 +136,15 @@ export function SkillsView({
   const [dirty, setDirty] = useState(false);
   const splitPaneSelectedId = isCreating ? '__new__' : selectedId;
   const [form, setForm] = useState<SkillForm>(EMPTY_SKILL_FORM);
-  const { navigate, setDockState, setActiveChat } = useNavigation();
+  const formRef = useRef(form);
+  formRef.current = form;
+  const selectionRef = useRef(rawSelectedId);
+  selectionRef.current = rawSelectedId;
+  const { navigate } = useNavigation();
   const { showToast } = useToast();
   const { apiBase } = useApiBase();
   const agents = useAgents();
-  const createChatSession = useCreateChatSession();
-  const sendMessage = useSendMessage(apiBase);
+  const launchChat = useLaunchChat(apiBase);
 
   // SHELL-09: this read `const isLoading = false`, so for the ~2.2s the skills
   // query was in flight the list panel rendered its DEFINITIVE empty state —
@@ -249,12 +258,15 @@ export function SkillsView({
   // request dispatch — the dead path audited in #890 stalled before fetch.
   const importSkillsMutation = useImportSkills(apiBase);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
+  useEffect(() => {
+    if (!pendingCreatedSkill || dirty) return;
+    setPendingCreatedSkill(null);
+    select(pendingCreatedSkill);
+  }, [pendingCreatedSkill, dirty, select]);
+
   useCloseShortcut(() => {
     if (isCreating || selectedId) {
-      guard(() => {
-        deselect();
-        setIsCreating(false);
-      });
+      deselect();
       return;
     }
     // Escape is a dismissal: return to `/` and whatever occupies `main`, not
@@ -264,6 +276,7 @@ export function SkillsView({
 
   useEffect(() => {
     setIsCreating(rawSelectedId === 'new');
+    setIsEditing(false);
   }, [rawSelectedId]);
 
   useEffect(() => {
@@ -302,16 +315,22 @@ export function SkillsView({
       return;
     }
     const payload = buildSkillPayload(form);
+    const submittedForm = form;
+    const submittedSelection = rawSelectedId;
     try {
       if (isCreating) {
         await createLocalMutation.mutateAsync(payload);
-        setIsCreating(false);
-        select(payload.name);
       } else {
         await updateLocalMutation.mutateAsync(payload);
       }
-      setDirty(false);
       showToast('Skill saved');
+      if (
+        formRef.current !== submittedForm ||
+        selectionRef.current !== submittedSelection
+      )
+        return;
+      if (isCreating) setPendingCreatedSkill(payload.name);
+      setDirty(false);
     } catch (error) {
       showToast(
         error instanceof Error
@@ -377,15 +396,9 @@ export function SkillsView({
   async function handleRun(resolvedContent: string, agentSlug: string) {
     const agent = agents.find((entry) => entry.slug === agentSlug);
     if (!agent) return;
-    const sessionId = createChatSession(
-      agent.slug,
-      agent.name,
-      form.name || 'Skill test',
-    );
-    setDockState(true);
-    setActiveChat(null);
     setShowRunModal(false);
-    await sendMessage(sessionId, agent.slug, undefined, resolvedContent);
+    const sessionId = await launchChat(agent.slug, agent.name, resolvedContent);
+    activeChatsStore.updateChat(sessionId, { title: form.name || 'Skill' });
     if (selected) {
       await runSkillMutation.mutateAsync(selected.name).catch(() => undefined);
     }
@@ -417,25 +430,19 @@ export function SkillsView({
   }
 
   function handleSelectSkill(id: string) {
-    guard(() => {
-      select(id);
-      setIsCreating(false);
-      setDirty(false);
-    });
+    select(id);
   }
 
   function handleDeselectSkill() {
-    guard(() => {
-      deselect();
-      setIsCreating(false);
-      setDirty(false);
-    });
+    deselect();
   }
 
   function handleAddSkill() {
-    guard(() => {
+    if (rawSelectedId !== 'new') {
       select('new');
-      setIsCreating(true);
+      return;
+    }
+    guard(() => {
       setForm(newSkillForm);
       setDirty(false);
     });
@@ -459,6 +466,9 @@ export function SkillsView({
     ? skillSourceLabel(selected.origin)
     : 'Source unrecorded';
   const statsSummary = selected ? formatSkillStatsSummary(selected) : null;
+  const showEditor = isCreating || isEditing;
+  const variables = formVariables(form);
+  const commandWord = selected ? resolveSkillCommandName(selected) : null;
   const savePending =
     createLocalMutation.isPending || updateLocalMutation.isPending;
 
@@ -466,7 +476,7 @@ export function SkillsView({
     <div className="pane-host skills-view">
       <SplitPaneLayout
         label="skills"
-        title="Installed Skills"
+        title="Your skills"
         subtitle={SKILLS_SUBTITLE}
         items={items}
         loading={isLoading}
@@ -531,7 +541,50 @@ export function SkillsView({
           </Button>
         }
         emptyIcon={<EngineGlyph />}
-        emptyDescription="Select a skill to view details"
+        listIntro={
+          <p className="skill-library__intro">
+            Select a skill to see what it does and use it in a new chat.
+          </p>
+        }
+        emptyContent={
+          <div className="skill-library__welcome">
+            <EngineGlyph />
+            <h3>Good instructions, ready to reuse</h3>
+            <p>
+              Skills give an agent a repeatable way to approach a task. Choose
+              one from your library, review its instructions, and start a chat.
+            </p>
+            <div className="skill-library__next">
+              <h3>Find your next skill</h3>
+              <p>Browse the skill catalogs available through Registry.</p>
+              <Button onClick={() => navigate('/registry/skills')}>
+                Find skills in Registry
+              </Button>
+            </div>
+            <div className="skill-library__next">
+              <h3>Bring your own instructions</h3>
+              <p>
+                Import standalone Markdown skill files, or write a skill here.
+                Plugin packages are loaded through Registry.
+              </p>
+              <div className="skill-library__actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setImportResults(null);
+                    setImportError(null);
+                    setShowImportModal(true);
+                  }}
+                >
+                  Import skill files
+                </Button>
+                <Button variant="secondary" onClick={handleAddSkill}>
+                  Create a skill
+                </Button>
+              </div>
+            </div>
+          </div>
+        }
       >
         {(editableLocal || selected) && (
           <div className="skill-detail">
@@ -547,63 +600,102 @@ export function SkillsView({
                   : undefined
               }
             >
-              {!isCreating && selected && editableLocal && (
-                <Button
-                  size="sm"
-                  onClick={() => void handleDuplicate()}
-                  disabled={savePending || detailBusy}
-                >
-                  Duplicate
-                </Button>
-              )}
-              {!isCreating && selected && (
-                <Button
-                  size="sm"
-                  onClick={handleExport}
-                  disabled={detailBusy || !form.body.trim()}
-                >
-                  Export .md
-                </Button>
-              )}
-              {!isCreating && selected && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowRunModal(true)}
-                  disabled={detailBusy || !form.body.trim()}
-                >
-                  ▶ Test
-                </Button>
-              )}
-              {!isCreating && selected && (
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={detailBusy}
-                  onClick={() =>
-                    uninstallMutation.mutate(selected.name, {
-                      onSuccess: () => {
-                        showToast('Skill removed');
-                        deselect();
-                      },
-                      onError: () => showToast('Failed to remove skill'),
-                    })
-                  }
-                >
-                  Remove
-                </Button>
-              )}
-              {editableLocal && (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={handleSaveLocalSkill}
-                  disabled={savePending || detailBusy}
-                  pending={savePending}
-                  pendingLabel="Saving…"
-                >
-                  {isCreating ? 'Create' : 'Save'}
-                </Button>
-              )}
+              <ActionRow
+                overflowLabel="More skill actions"
+                secondary={
+                  !isCreating && selected && editableLocal ? (
+                    <Button
+                      size="sm"
+                      disabled={detailBusy || savePending}
+                      onClick={() => {
+                        if (!isEditing) {
+                          setIsEditing(true);
+                          return;
+                        }
+                        guard(() => {
+                          if (selectedSkillDetail) {
+                            setForm(skillDetailToForm(selectedSkillDetail));
+                          }
+                          setDirty(false);
+                          setIsEditing(false);
+                        });
+                      }}
+                    >
+                      {isEditing ? 'Back to overview' : 'Edit skill'}
+                    </Button>
+                  ) : null
+                }
+                primary={
+                  showEditor && editableLocal ? (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={handleSaveLocalSkill}
+                      disabled={savePending || detailBusy}
+                      pending={savePending}
+                      pendingLabel="Saving…"
+                    >
+                      {isCreating ? 'Create' : 'Save'}
+                    </Button>
+                  ) : selected ? (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => setShowRunModal(true)}
+                      disabled={detailBusy || !form.body.trim()}
+                    >
+                      Use in a new chat
+                    </Button>
+                  ) : null
+                }
+                overflow={
+                  !isCreating && selected
+                    ? [
+                        ...(isEditing
+                          ? [
+                              {
+                                key: 'try',
+                                label: 'Try draft in a new chat',
+                                disabled: detailBusy || !form.body.trim(),
+                                onSelect: () => setShowRunModal(true),
+                              },
+                            ]
+                          : []),
+                        ...(editableLocal
+                          ? [
+                              {
+                                key: 'duplicate',
+                                label: 'Duplicate',
+                                disabled: savePending || detailBusy,
+                                onSelect: () => void handleDuplicate(),
+                              },
+                            ]
+                          : []),
+                        {
+                          key: 'export',
+                          label: 'Export .md',
+                          disabled: detailBusy || !form.body.trim(),
+                          onSelect: handleExport,
+                        },
+                        {
+                          key: 'remove',
+                          label: 'Remove',
+                          tone: 'danger' as const,
+                          disabled: detailBusy,
+                          onSelect: () =>
+                            uninstallMutation.mutate(selected.name, {
+                              onSuccess: () => {
+                                showToast('Skill removed');
+                                deselect();
+                              },
+                              onError: () =>
+                                showToast('Failed to remove skill'),
+                            }),
+                        },
+                      ]
+                    : []
+                }
+              />
             </DetailHeader>
 
             {detailFailed ? (
@@ -667,92 +759,171 @@ export function SkillsView({
                   </div>
                 )}
 
-                <div className="agent-editor__section">
-                  <div className="editor-field">
-                    <label className="editor-label" htmlFor="skill-name">
-                      Name
-                    </label>
-                    <input
-                      id="skill-name"
-                      className="editor-input"
-                      value={form.name}
-                      disabled={!isCreating}
-                      onChange={(e) => updateForm({ name: e.target.value })}
-                    />
-                  </div>
-                  <div className="editor-field">
-                    <label className="editor-label" htmlFor="skill-description">
-                      Description
-                    </label>
-                    <input
-                      id="skill-description"
-                      className="editor-input"
-                      value={form.description}
-                      disabled={!editableLocal}
-                      onChange={(e) =>
-                        updateForm({ description: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="editor-field">
-                    <label className="editor-label" htmlFor="skill-body">
-                      Body
-                    </label>
-                    <textarea
-                      id="skill-body"
-                      className="editor-textarea editor-textarea--tall editor-textarea--mono"
-                      value={form.body}
-                      disabled={!editableLocal}
-                      onChange={(e) => updateForm({ body: e.target.value })}
-                    />
-                  </div>
-                </div>
+                {!showEditor && selected && (
+                  <section
+                    className="skill-overview"
+                    aria-label="Skill overview"
+                  >
+                    <p className="skill-overview__description">
+                      {form.description ||
+                        'This skill has no description. Review its instructions before using it.'}
+                    </p>
+                    <div className="skill-overview__section">
+                      <h3>What you’ll provide</h3>
+                      {variables.length > 0 ? (
+                        <dl className="skill-overview__inputs">
+                          {variables.map((variable) => (
+                            <div key={variable.name}>
+                              <dt>{variable.name}</dt>
+                              <dd>
+                                {variable.description && (
+                                  <span>{variable.description}</span>
+                                )}
+                                <span>
+                                  {variable.default?.trim()
+                                    ? `Default: ${variable.default}`
+                                    : 'Required before starting'}
+                                </span>
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : (
+                        <p>
+                          No template inputs. You can add context in the
+                          conversation.
+                        </p>
+                      )}
+                    </div>
+                    <div className="skill-overview__section">
+                      <h3>How you’ll use it</h3>
+                      <p>
+                        Review the inputs and choose an agent. Station sends the
+                        instructions as the first message in a new chat. The
+                        agent’s tools and permissions still apply.
+                      </p>
+                      {commandWord && (
+                        <p>
+                          Also declared as <code>/{commandWord}</code>. Its
+                          availability in chat depends on the selected agent.
+                        </p>
+                      )}
+                    </div>
+                    {selected.commandDiagnostic && (
+                      <p role="status" className="editor-error">
+                        {selected.commandDiagnostic}
+                      </p>
+                    )}
+                    <details className="skill-overview__instructions">
+                      <summary>View instructions</summary>
+                      <pre>{form.body}</pre>
+                    </details>
+                  </section>
+                )}
 
-                <SkillCommandSection
-                  form={form}
-                  editable={!!editableLocal}
-                  commandDiagnostic={(selected as any)?.commandDiagnostic}
-                  onChange={updateForm}
-                />
-
-                <div className="agent-editor__section">
-                  <details className="editor__expandable">
-                    <summary className="editor__expandable-header">
-                      <span className="editor__section-title">Metadata</span>
-                    </summary>
-                    <div className="editor__expandable-content">
+                {showEditor && (
+                  <fieldset
+                    className="skill-editor__fields"
+                    disabled={savePending}
+                  >
+                    <div className="agent-editor__section">
+                      <div className="editor-field">
+                        <label className="editor-label" htmlFor="skill-name">
+                          Name
+                        </label>
+                        <input
+                          id="skill-name"
+                          className="editor-input"
+                          value={form.name}
+                          disabled={!isCreating}
+                          onChange={(e) => updateForm({ name: e.target.value })}
+                        />
+                      </div>
                       <div className="editor-field">
                         <label
                           className="editor-label"
-                          htmlFor="skill-category"
+                          htmlFor="skill-description"
                         >
-                          Category
+                          Description
                         </label>
                         <input
-                          id="skill-category"
+                          id="skill-description"
                           className="editor-input"
-                          value={form.category}
+                          value={form.description}
                           disabled={!editableLocal}
                           onChange={(e) =>
-                            updateForm({ category: e.target.value })
+                            updateForm({ description: e.target.value })
                           }
                         />
                       </div>
                       <div className="editor-field">
-                        <label className="editor-label" htmlFor="skill-tags">
-                          Tags
+                        <label className="editor-label" htmlFor="skill-body">
+                          Body
                         </label>
-                        <input
-                          id="skill-tags"
-                          className="editor-input"
-                          value={form.tags}
+                        <textarea
+                          id="skill-body"
+                          className="editor-textarea editor-textarea--tall editor-textarea--mono"
+                          value={form.body}
                           disabled={!editableLocal}
-                          onChange={(e) => updateForm({ tags: e.target.value })}
+                          onChange={(e) => updateForm({ body: e.target.value })}
                         />
                       </div>
                     </div>
-                  </details>
-                </div>
+
+                    <SkillCommandSection
+                      form={form}
+                      editable={!!editableLocal}
+                      commandDiagnostic={selected?.commandDiagnostic}
+                      onChange={updateForm}
+                    />
+
+                    <div className="agent-editor__section">
+                      <details className="editor__expandable">
+                        <summary className="editor__expandable-header">
+                          <span className="editor__section-title">
+                            Metadata
+                          </span>
+                        </summary>
+                        <div className="editor__expandable-content">
+                          <div className="editor-field">
+                            <label
+                              className="editor-label"
+                              htmlFor="skill-category"
+                            >
+                              Category
+                            </label>
+                            <input
+                              id="skill-category"
+                              className="editor-input"
+                              value={form.category}
+                              disabled={!editableLocal}
+                              onChange={(e) =>
+                                updateForm({ category: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="editor-field">
+                            <label
+                              className="editor-label"
+                              htmlFor="skill-tags"
+                            >
+                              Tags
+                            </label>
+                            <input
+                              id="skill-tags"
+                              className="editor-input"
+                              value={form.tags}
+                              disabled={!editableLocal}
+                              onChange={(e) =>
+                                updateForm({ tags: e.target.value })
+                              }
+                            />
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+                  </fieldset>
+                )}
 
                 {!isCreating && selected && (
                   <div className="editor__footer">
@@ -771,7 +942,7 @@ export function SkillsView({
       <SkillRunModal
         isOpen={showRunModal}
         skill={{ name: form.name, body: form.body }}
-        variables={formVariables(form)}
+        variables={variables}
         agents={agents.map((agent) => ({
           slug: agent.slug,
           name: agent.name,
@@ -785,6 +956,7 @@ export function SkillsView({
         results={importResults}
         error={importError}
         onImport={(files) => void handleImport(files)}
+        onOpenSkill={handleSelectSkill}
         onCancel={() => {
           setShowImportModal(false);
           setImportResults(null);

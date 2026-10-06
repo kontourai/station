@@ -1,0 +1,51 @@
+{
+  "path": "packaging/homebrew/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Actual CLI cask still admits schema-v1/macOS only. Platform-array v2 is accepted for verify/create but refused for cask; older installer-shape v2 is a separate contract. Renderer/template and explicit-key fixture boundary remain. Workflow source delta only expands tracked triggers; no Homebrew or publish proof.",
+
+  "limits": "No brew install/audit, actual tap publication, workflow execution, external approval/settings inspection or real signing-key custody proof. Probe uses an ephemeral synthetic signer and writes only disposable cask files.",
+
+  "sources": [
+    ".github/workflows/ecosystem-packaging.yml",
+
+    "config/release-manifest-keys.json",
+
+    "packages/shared/src/release-manifest.mjs",
+
+    "packaging/homebrew/Casks/station.rb.template",
+
+    "packaging/manifest/README.md",
+
+    "scripts/ecosystem-manifest.mjs",
+
+    "scripts/ecosystem-publish-boundary.sh"
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+
+    "Actual CLI cask still admits schema-v1/macOS only. Platform-array v2 is accepted for verify/create but refused for cask; older installer-shape v2 is a separate contract. Renderer/template and explicit-key fixture boundary remain. Workflow source delta only expands tracked triggers; no Homebrew or publish proof.",
+
+    "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
+
+    "Landing review through d0d9d33f7: Updated current platform-v2 consumers, explicit former-v2 refusal and same-version cross-layout exception. Homebrew still requires v1 application artifacts. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained.",
+
+    "Integration source review through c8bae67da: packaging/manifest/README.md added that only the Linux prebuilt-installer smoke leg covers a systemd service. The linked #formats-and-consumers section and the cask claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: packaging/manifest/README.md changed only its Linux smoke description (a launcher trial and commit hand-off). The linked #formats-and-consumers section and the cask claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

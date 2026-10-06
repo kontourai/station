@@ -1,0 +1,21 @@
+{
+  "path": "src-server/CLAUDE.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
+
+  "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
+
+  "sources": [
+    "src-server/AGENTS.md"
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+  ]
+}

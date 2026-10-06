@@ -1,0 +1,33 @@
+{
+  "path": "docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "A dated reading-status note separates the 2026-08-03 vendor survey from current support. The current ACP adapter installs the inbound refusal policy instead of fabricated empty success; original layer definitions, authority decision and vendor observations remain untouched.",
+
+  "limits": "No live Kiro/authentication run or refreshed ACP ecosystem survey was performed. The generic channel, every proposed core/vendor binding, receipt path and upstream filing are not certified complete. Fake-agent wire tests establish the selected refusal boundary only.",
+
+  "sources": [
+    "src-server/providers/__tests__/acp-adapter-inbound-extension.test.ts",
+
+    "src-server/providers/adapters/acp-adapter.ts",
+
+    "src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts",
+
+    "src-server/services/acp/acp-inbound-extension-policy.ts",
+
+    "src-shared/extension-notification-bindings.ts"
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Integration source review through e0314c727: extension-notification-bindings.ts removed EXTENSION_NOTIFICATION_EVIDENCE_GAPS, EXTENSION_NOTIFICATION_PROMOTIONS and the reset seam. The `_kiro` v3 spelling stays unbound, with only a source comment. Corrected the rendering-table paragraph, which said the authority records an explicit gap entry. The dated survey and decisions are untouched. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata and a request.resolved acknowledgement stamp in acp-adapter.ts. The ADR's claims about extension-method binding (onExtMethod and friends) are unaffected. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

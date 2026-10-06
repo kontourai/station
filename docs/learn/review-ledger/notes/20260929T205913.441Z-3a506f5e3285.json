@@ -1,0 +1,7 @@
+{
+  "revision": "65d713300b1eced3ae3199360cf8c03e0fa5394a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-reviewed after fast-checks-shard-cli.test.ts changed: its discovery-deadline refusal case now edits scripts/lib/icns.mjs (a module with a related edge and no deferred lane) instead of module-entry.mjs, whose spawned-script fan-out now defers test-full so related discovery never runs, and it checks that premise. The guide's discovery budget, 30-second reserve, refusal below 60 seconds and deadline variable claims are unchanged and still match run-changed-verification.mjs.","inputs":["docs/guides/testing.md"]}
+  ]
+}

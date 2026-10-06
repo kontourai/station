@@ -32,6 +32,8 @@ type ActiveChatsContextType = {
       attachments?: any[];
       action?: { label: string; handler: () => void };
       fullAccessRefusal?: FullAccessRefusalNotice;
+      sendFailure?: boolean;
+      queuedRetry?: boolean;
     },
   ) => void;
   clearEphemeralMessages: (sessionId: string) => void;
@@ -100,6 +102,8 @@ export function ActiveChatsProvider({ children }: { children: ReactNode }) {
         content: string;
         attachments?: any[];
         action?: { label: string; handler: () => void };
+        sendFailure?: boolean;
+        queuedRetry?: boolean;
       },
     ) => {
       activeChatsStore.addEphemeralMessage(sessionId, message);

@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { replaceRuntimeTemplateVariables } from '../../../runtime/agents/runtime-template-variables.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -943,6 +944,55 @@ describe('Config Routes', () => {
 // (the on-load purge in `loadAppConfigFile`, the null-clearing merge in
 // `mergeAppConfigUpdate`) — a mock loader can't exercise either.
 describe('Config Routes (real ConfigLoader + filesystem)', () => {
+  test('date formats are rejected before persistence, while valid JSON options reach runtime instructions', async () => {
+    const home = makeTempDir('station-template-format-route-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    await loader.loadAppConfig();
+    const app = createConfigRoutes(loader, mockLogger);
+    const path = join(home, 'config', 'app.json');
+    const baseline = readFileSync(path, 'utf8');
+    try {
+      for (const format of [
+        'YYYY-MM-DD',
+        '[]',
+        'null',
+        '{"year":"banana"}',
+        '{"timeStyle":"short"}',
+      ]) {
+        const response = await app.request('/app', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            templateVariables: [{ key: 'YEAR', type: 'date', format }],
+          }),
+        });
+        expect(response.status, format).toBe(400);
+        expect((await json(response)).error).toContain('Format for "YEAR"');
+        expect(readFileSync(path, 'utf8')).toBe(baseline);
+      }
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateVariables: [
+            { key: 'YEAR', type: 'date', format: '{"year":"numeric"}' },
+          ],
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(
+        replaceRuntimeTemplateVariables(
+          'year={{YEAR}}',
+          await loader.loadAppConfig(),
+        ),
+      ).toBe(`year=${new Date().getFullYear()}`);
+    } finally {
+      await loader.dispose();
+    }
+  });
   let tempDir: string;
 
   beforeEach(() => {

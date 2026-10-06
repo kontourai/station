@@ -1,7 +1,7 @@
 {
   "name": "@kontourai/station-sdk",
-  "version": "0.7.0",
-  "description": "SDK for building Station workspace plugins",
+  "version": "0.8.0",
+  "description": "SDK for Station plug-in UI and headless Agent development",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./agent": "./src/agent/index.ts",
     "./mobile-device": "./src/mobile-device.ts",
     "./mobile-devices-query": "./src/query-domains/mobileDevices.ts",
     ".": "./src/index.ts",
@@ -33,6 +34,7 @@
     "./flow-gate-evaluations": "./src/flow-gate-evaluations.ts",
     "./client/flow-gate-evaluations": "./src/client/flow-gate-evaluations.ts",
     "./client/checkpoint-restore": "./src/client/checkpoint-restore.ts",
+    "./client/plugin-command-effects": "./src/client/plugin-command-effects.ts",
     "./client": "./src/client/index.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
@@ -64,7 +66,10 @@
     "./authority-observation": "./src/client/authority-observation.ts",
     "./application-session": "./src/client/application-session.ts",
     "./relay-enrollment": "./src/client/relay-enrollment.ts",
-    "./application-session-native": "./src/client/application-session-native.ts"
+    "./native-device-proof": "./src/client/native-device-proof.ts",
+    "./application-session-native": "./src/client/application-session-native.ts",
+    "./device-code-login": "./src/device-code-login.ts",
+    "./engine-accounts": "./src/engine-accounts.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -99,12 +104,12 @@
   "dependencies": {
     "@kontourai/console-core": "^0.3.0",
     "@kontourai/flow": "5.1.1",
-    "@kontourai/flow-agents": "6.4.0",
-    "@kontourai/station-contracts": "^0.7.0",
-    "@kontourai/station-shared": "^0.7.0",
+    "@kontourai/flow-agents": "6.5.1",
+    "@kontourai/station-contracts": "^0.8.0",
+    "@kontourai/station-shared": "^0.8.0",
     "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0",
-    "@kontourai/ui": "^1.12.0",
+    "@kontourai/ui": "^1.18.0",
     "zod": "^4.6.5"
   },
   "peerDependencies": {

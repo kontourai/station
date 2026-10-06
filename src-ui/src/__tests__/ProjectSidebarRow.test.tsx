@@ -162,7 +162,7 @@ describe('ProjectSidebarRow', () => {
         activeLayout={null}
         collapsed={false}
         liveCount={3}
-        liveLabel="Needs you: 2 · Active now: 1"
+        liveLabel="Needs you: 2 · Running: 1"
       />,
     );
 
@@ -170,13 +170,13 @@ describe('ProjectSidebarRow', () => {
     const label = container.querySelector('.sidebar__project-live-label');
     expect(count?.textContent).toBe('3');
     // Visible to a pointer user…
-    expect(count?.getAttribute('title')).toBe('Needs you: 2 · Active now: 1');
+    expect(count?.getAttribute('title')).toBe('Needs you: 2 · Running: 1');
     // …announced once to everyone else, and the two are the same sentence.
     expect(label?.textContent).toBe(count?.getAttribute('title'));
     expect(count?.getAttribute('aria-hidden')).toBe('true');
     expect(
       screen.getByRole('button', {
-        name: /demo project.*needs you: 2 · active now: 1/i,
+        name: /demo project.*needs you: 2 · running: 1/i,
       }),
     ).toBeTruthy();
   });

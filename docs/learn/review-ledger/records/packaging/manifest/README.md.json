@@ -1,0 +1,65 @@
+{
+  "path": "packaging/manifest/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Updated producer/consumer table from actual CLI/shared verifier and exact inline install.sh parser. Controlled signed platform payload: CLI accepts, installer parser rejects; signed old installer v2: inverse. Workflow uploads server CI archives/descriptors; no production URL connects assembler output to shell installer. Existing ring/source archive staging manifests are distinct evidence, not signed public ecosystem envelopes.",
+
+  "limits": "install.sh was read, not executed. No release/attestation download, actual installation/upgrade, profile operation, live distribution or production signing-custody proof. The manifest/cask CLI fixture does not establish installer/platform behavior.",
+
+  "sources": [
+    ".github/workflows/portable-server-archives.yml",
+
+    "config/release-manifest-keys.json",
+
+    "install.sh",
+
+    "packages/shared/src/portable-server-targets.mjs",
+
+    "packages/shared/src/release-manifest.mjs",
+
+    "scripts/__tests__/release-manifest-vectors.test.ts",
+
+    "scripts/ecosystem-manifest.mjs",
+
+    "scripts/ecosystem-publish-boundary.sh",
+
+    "scripts/exercise-ecosystem-packaging-dry-run.sh",
+
+    "scripts/smoke-install-prebuilt-archive.sh",
+
+    ".github/workflows/install-smoke.yml",
+
+    ".github/workflows/portable-nightly-publish.yml"
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+
+    "Updated producer/consumer table from actual CLI/shared verifier and exact inline install.sh parser. Controlled signed platform payload: CLI accepts, installer parser rejects; signed old installer v2: inverse. Workflow uploads server CI archives/descriptors; no production URL connects assembler output to shell installer. Existing ring/source archive staging manifests are distinct evidence, not signed public ecosystem envelopes.",
+
+    "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
+
+    "Reviewed integration deltas: .github/workflows/portable-server-archives.yml: Adds diagnostics and stop-hint helpers to both workflow path filters; build/smoke matrix and publication authority unchanged. Native release guide already distinguishes qualification from publication.",
+
+    "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified.",
+
+    "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Integration source review through e0314c727: #2867 extended install.sh (archive service restart and rollback, recorded ports, uninstall refusal) and the prebuilt-archive smoke. The Linux leg now builds a second archive from an empty local commit and installs a systemd user service, requiring it to restart as archive 2 across `station upgrade`; macOS skips the service path. Added that Linux-only service coverage to the smoke description. Manifest format and consumer table claims remain accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) changes smoke-install-prebuilt-archive.sh so the systemd unit runs the fixed launcher and `station upgrade` hands the second archive to it. The launcher trials and commits (runtime/service-state.json), and install.sh gains that handoff. Corrected 'checks that it restarts on the upgraded archive' to describe the launcher trial and commit handoff. Source review is separate from executed test evidence."
+  ]
+}

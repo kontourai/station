@@ -1,0 +1,13 @@
+{
+  "revision": "426153191586e330abfdfca99debbeab43855d09",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"activity-nav: D3 Home/Activity row semantics updated from 'pressed, not current' to 'each row opens its surface as the page and the row whose surface is the page is current'; ProjectSidebar.tsx change is a comment on isHomeActive only.","inputs":["docs/design/shell-ownership-and-boards.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"activity-nav: only the activity-pane.spec.ts manifest rationale text changed (sidebar place-row journey and the #2549 phone-layer variant); bucket, tier, membership and parallel-safe classification unchanged. The matrix names no activity-pane assertion, so no prose change.","inputs":["docs/guides/e2e-coverage-matrix.md"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"activity-nav: e2e-manifest change is the activity-pane.spec.ts rationale string only; the PR smoke selection, fixtures and runner flags this doc describes are unchanged.","inputs":["docs/testing/browser-smoke.md"]},
+
+    {"path":"examples/custom-branding/README.md","note":"activity-nav: ProjectSidebar.tsx change is a comment beside isHomeActive; the browser sidebar still consumes branding appName and native chrome keeps installed identity.","inputs":["examples/custom-branding/README.md"]}
+  ]
+}

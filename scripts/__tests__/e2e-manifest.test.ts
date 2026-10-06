@@ -153,6 +153,7 @@ describe('e2e manifest', () => {
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
       'tests/native-conversation-restart.spec.ts',
+      'tests/chat-send-again-failed-turn.spec.ts',
       'tests/chat-multi-turn-context.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
       'tests/agents-new-muse-echo-turn.spec.ts',
@@ -249,6 +250,9 @@ describe('e2e manifest', () => {
       // mocked suite), so neither can share an instance with a sibling spec.
       'tests/agents-editor-gates.spec.ts',
       'tests/skills-command-routes.spec.ts',
+      // Writes a Project's icon through the real settings PUT, which every
+      // spec on the shared instance would then see in its sidebar.
+      'tests/project-icons.spec.ts',
       // UX audit D9/D8: both reset instance-wide state (the notification
       // store and attention acknowledgements; two fixed project slugs).
       'tests/notifications-attention.spec.ts',

@@ -1587,7 +1587,7 @@ describe('orchestration-session-state', () => {
         provider: 'codex',
         threadId: 'title-thread',
         status: 'ready',
-        cwd: '/Users/brian/dev/github/kontourai/station',
+        cwd: '/Users/me/dev/github/kontourai/station',
         createdAt: '2026-07-30T00:00:00.000Z',
         updatedAt: '2026-07-30T00:00:00.000Z',
       },
@@ -1614,7 +1614,7 @@ describe('orchestration-session-state', () => {
     });
 
     expect(summary.displayTitle).toBe('Ship the Home history fix');
-    expect(summary.cwd).toBe('/Users/brian/dev/github/kontourai/station');
+    expect(summary.cwd).toBe('/Users/me/dev/github/kontourai/station');
   });
 
   test('skips timezone-only prompts, bounds long titles, and remains compatible with promptless history', () => {
@@ -2557,7 +2557,7 @@ describe('orchestration-session-state', () => {
             method: 'runtime.error',
             turnId: 'turn-1',
             severity: 'error',
-            message: 'Station agent turn failed',
+            message: 'The response stream failed.',
             code: 'station_agent_turn_failed',
             retriable: true,
           } as any,
@@ -4266,4 +4266,153 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
     });
     expect(run.status).toBe('cancelled');
   });
+});
+
+test('nonblocking questions retain running/settled status and snapshot blocking ids exclude them', () => {
+  const base = {
+    provider: 'codex' as const,
+    threadId: 'async-thread',
+    createdAt: '2026-09-29T10:00:00Z',
+  };
+  const loaded = {
+    provider: 'codex' as const,
+    threadId: base.threadId,
+    status: 'running' as const,
+    createdAt: base.createdAt,
+    updatedAt: base.createdAt,
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...base,
+      eventId: 'async-start',
+      method: 'turn.started',
+      turnId: 'async-turn',
+      prompt: 'go',
+    },
+    {
+      ...base,
+      eventId: 'async-open',
+      method: 'request.opened',
+      requestId: 'async-q',
+      requestType: 'approval',
+      title: 'Question',
+      blocking: false,
+    },
+  ];
+  expect(
+    buildAgentRunSummary({ answerability: OBSERVATION, loaded, events })
+      ?.status,
+  ).toBe('running');
+  expect(
+    buildOrchestrationSessionSummary({
+      answerability: OBSERVATION,
+      loaded,
+      events,
+      openRequestIds: ['async-q'],
+    }),
+  ).toMatchObject({ openRequestIds: ['async-q'], blockingOpenRequestIds: [] });
+  events.push({
+    ...base,
+    eventId: 'async-done',
+    method: 'turn.completed',
+    turnId: 'async-turn',
+  });
+  const settled = buildAgentRunSummary({
+    answerability: OBSERVATION,
+    loaded,
+    events,
+  })?.status;
+  events.push({
+    ...base,
+    eventId: 'async-close',
+    method: 'request.resolved',
+    requestId: 'async-q',
+    status: 'cancelled',
+    blocking: false,
+  });
+  expect(
+    buildAgentRunSummary({ answerability: OBSERVATION, loaded, events })
+      ?.status,
+  ).toBe(settled);
+});
+
+test('configured sessions retain their actual safe proxy route and a direct re-launch clears it', () => {
+  const sessions = new Map<string, ProviderSession>();
+  const providers = new Map();
+  const apply = (modelRoute?: unknown) =>
+    projectOrchestrationEventToReadModel({
+      event: {
+        provider: 'codex',
+        threadId: 'proxy-route',
+        method: 'session.configured',
+        sessionId: 'proxy-route',
+        createdAt: '2026-10-03T00:00:00Z',
+        metadata: { modelRoute },
+      } as any,
+      threadProviders: providers,
+      sessionReadModel: sessions,
+    });
+  apply({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example:8317/v1',
+  });
+  expect(sessions.get('proxy-route')?.modelRoute).toEqual({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example:8317',
+  });
+  apply({
+    connectionId: 'proxy-home',
+    label: 'bad',
+    endpoint: 'https://user:key@proxy.example',
+  });
+  expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
+  apply({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example',
+  });
+  apply();
+  expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
+});
+
+test('session summaries expose the captured route when the loaded runtime has no new route field', () => {
+  const route = {
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example',
+  };
+  const loaded: ProviderSession = {
+    provider: 'codex',
+    threadId: 'route-summary',
+    status: 'ready',
+    createdAt: '2026-10-03T00:00:00Z',
+    updatedAt: '2026-10-03T00:00:00Z',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      eventId: 'route-summary-configured',
+      provider: 'codex',
+      threadId: loaded.threadId,
+      createdAt: loaded.createdAt,
+      method: 'session.configured',
+      sessionId: loaded.threadId,
+      metadata: { modelRoute: route },
+    },
+  ];
+  expect(
+    buildOrchestrationSessionSummary({
+      loaded,
+      events,
+      answerability: OBSERVATION,
+    }).modelRoute,
+  ).toEqual(route);
+  expect(
+    buildOrchestrationSessionSummary({
+      loaded: { ...loaded, modelRoute: undefined },
+      events,
+      answerability: OBSERVATION,
+    }).modelRoute,
+  ).toBeUndefined();
 });

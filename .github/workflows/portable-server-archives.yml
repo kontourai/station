@@ -1,4 +1,4 @@
-name: Portable server archives
+name: "PR: Portable archives"
 
 # Builds station-server-<os>-<arch> on each target's native runner and proves
 # it runs with no Node.js on PATH (#2675). An archive carries the build host's
@@ -69,6 +69,7 @@ on:
       - 'docs/architecture/module-map.md'
       - 'docs/learn/atlas.json'
       - 'install.sh'
+      - 'install.ps1'
       - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
@@ -84,6 +85,7 @@ on:
       - 'scripts/station-cli.ts'
       - 'scripts/station-cli-implementation.ts'
       - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/container-release-metadata.mjs'
       - 'scripts/lib/desktop-build-manifest.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
@@ -110,6 +112,7 @@ on:
       - 'docs/architecture/module-map.md'
       - 'docs/learn/atlas.json'
       - 'install.sh'
+      - 'install.ps1'
       - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
@@ -125,6 +128,7 @@ on:
       - 'scripts/station-cli.ts'
       - 'scripts/station-cli-implementation.ts'
       - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/container-release-metadata.mjs'
       - 'scripts/lib/desktop-build-manifest.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'

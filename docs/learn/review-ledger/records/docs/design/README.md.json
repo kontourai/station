@@ -1,0 +1,19 @@
+{
+  "path": "docs/design/README.md",
+
+  "kind": "generated",
+
+  "state": "classified",
+
+  "summary": "Reviewed the navigation and generated index boundaries; individual records retain their own purpose and evidence.",
+
+  "limits": "Index coverage is navigation evidence, not semantic review of linked documents. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/design/README.md\",\"ours\":{\"digest\":\"62d7eaaa2a46a3994c850cb85080cdc5f26340144f41d9670e11d8e73745f749\",\"revision\":\"cfe5e7f40028437d518c2bce1e29633d508b9e31\"},\"main\":{\"digest\":\"229a1d6390563244ccaf7847781f1327d776fa49308e6011ccb7f59dd68b4c72\",\"revision\":\"3411e53b043de4cbf57cf8b4571991ba9ee6674a\"}}].",
+
+  "sources": [
+    "scripts/docs-index.mjs"
+  ],
+
+  "checks": [
+    "Integration source review through d1e0facc2: Directory list is now private; generated index behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

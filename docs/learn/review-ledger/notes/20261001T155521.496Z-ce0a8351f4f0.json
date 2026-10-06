@@ -1,0 +1,7 @@
+{
+  "revision": "74141966c510f72845b72b7b4c8d2a2128079034",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"This branch's delta to the bound source conversationOpenController.ts is one line: a child change now also resets pendingApprovalTurnIds, an internal chat-store field recording which turn each pending request names. The page documents the SDK surface and does not describe the chat store's pending-approval state, so no statement changes. Other claims were not re-reviewed.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

@@ -9,7 +9,7 @@ import { buildHomeWorkItems } from '../views/home/home-view-model';
 /**
  * archive#3391. Home showed one session two model names: the "Start direct
  * chat" card resolved the id against the connection catalog and read
- * "Selected Test Model", while "Continue most recent work" printed the stored
+ * "Selected Test Model", while the Continue card printed the stored
  * `model-selected` beside it. Two derivations of one user-visible fact, and
  * one of them handing a user an internal id.
  *
@@ -73,7 +73,7 @@ function startCardLabel(model: string) {
   ).label;
 }
 
-/** What the "Continue most recent work" card renders in the same position. */
+/** What the Continue card renders in the same position. */
 function continueCardLabel(model: string, catalog = CATALOG) {
   const [item] = buildHomeWorkItems({
     chats: {},

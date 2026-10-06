@@ -1,0 +1,75 @@
+{
+  "path": "docs/contexts/workspace-surfaces/CONTEXT.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full context vocabulary and relationships; added actual composition routing, ambient/mode/region semantics, Task declaration vs real owner view, UI availability merge and persistence/rollback boundaries, authorized Session-directory previews and separately composed coding panes.",
+
+  "limits": "No device or cross-tab storage proof; file-preview multiwriter remains explicitly unverified. External product experience contract implementation is not claimed.",
+
+  "sources": [
+    "packages/contracts/src/workspace-file-preview.ts",
+
+    "packages/contracts/src/workspace-pane-host.ts",
+
+    "packages/contracts/src/workspace-pane.ts",
+
+    "src-server/routes/projects/workspace-pane-previews.ts",
+
+    "src-server/services/projects/proposed-change-service.ts",
+
+    "src-server/services/projects/session-workspace-directory.ts",
+
+    "src-server/services/projects/workspace-file-preview-service.ts",
+
+    "src-server/services/projects/workspace-pane-availability-resolver.ts",
+
+    "src-server/services/projects/workspace-pane-catalog.ts",
+
+    "src-ui/src/contexts/navigation-store.ts",
+
+    "src-ui/src/regions/region-arrangement-record.ts",
+
+    "src-ui/src/regions/region-model.ts",
+
+    "src-ui/src/regions/region-surface-panes.ts",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
+    "src-ui/src/views/task-experiences.ts",
+
+    "src-ui/src/workspace-panes/CodingChatPane.tsx",
+
+    "src-ui/src/workspace-panes/FilePreviewPane.tsx",
+
+    "src-ui/src/workspace-panes/InertRenderedMarkdown.tsx",
+
+    "src-ui/src/workspace-panes/RegionPaneHost.tsx",
+
+    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
+
+    "src-ui/src/workspace-panes/compactWorkspacePaneProjection.ts",
+
+    "src-ui/src/workspace-panes/filePreviewPaneStateStorage.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneAvailabilityAdapters.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneHostNavigation.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneHostRuntime.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneHostStorage.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneHostTransactions.ts"
+  ],
+
+  "checks": [
+    "775 focused tests across 44 files passed; local source/caller and controlled UI/runtime evidence.",
+
+    "Integration source review through e0314c727: the document's own delta repoints the module-map link from #collaborativeeditorpane to #projecttaskroom and records that the unmounted editor controller was deleted. The anchor resolves to '## ProjectTaskRoom' and src-shared/collaborative-editor-pane.ts is gone, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) made FilePreviewPane helpers module-private and made AMBIENT_CHAT_DOCK_DOCUMENT_ID private. It also removed createAmbientChatDockPaneDocument and dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry. There is no behavior change, the linked files still exist, and the doc names none of the removed exports. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

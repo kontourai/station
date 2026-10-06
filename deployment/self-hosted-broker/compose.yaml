@@ -1,0 +1,127 @@
+services:
+  ingress:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    user: "0:0"
+    environment:
+      BROKER_HOST: ${BROKER_HOST:?set BROKER_HOST}
+    ports:
+      - "${PUBLIC_BIND_ADDRESS:?set PUBLIC_BIND_ADDRESS}:${BROKER_HTTPS_PORT:-8443}:443/tcp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${TLS_CERT_DIR:?set TLS_CERT_DIR}/fullchain.pem:/run/tls/fullchain.pem:ro
+      - ${TLS_CERT_DIR:?set TLS_CERT_DIR}/privkey.pem:/run/tls/privkey.pem:ro
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /data:size=16m
+      - /config:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  broker:
+    image: station-community-broker:source
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        STATION_RELEASE_SHA: ${STATION_RELEASE_SHA:?set STATION_RELEASE_SHA to a 40-character source commit}
+        STATION_RELEASE_REF: ${STATION_RELEASE_REF:?set STATION_RELEASE_REF}
+        STATION_RELEASE_CREATED_AT: ${STATION_RELEASE_CREATED_AT:?set STATION_RELEASE_CREATED_AT}
+    command:
+      - npm
+      - run
+      - broker:self-hosted
+      - --
+      - serve
+      - /run/broker/serve.json
+    user: "1000:1000"
+    network_mode: service:ingress
+    depends_on:
+      - ingress
+    volumes:
+      - ./private:/run/broker
+      - ./state:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cpus: 1.0
+    mem_limit: 512m
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:18765/', {signal: AbortSignal.timeout(2000)})
+          .then(r => process.exit(r.status === 404 ? 0 : 1), () => process.exit(1))
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  turn:
+    image: coturn/coturn@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3
+    command:
+      - -n
+      - --log-file=stdout
+      - --lt-cred-mech
+      - --user=${TURN_USERNAME:?set TURN_USERNAME}:${TURN_PASSWORD:?set TURN_PASSWORD}
+      - --realm=${TURN_REALM:?set TURN_REALM}
+      - --listening-port=${TURN_PORT:-13478}
+      - --tls-listening-port=${TURN_TLS_PORT:-15349}
+      - --cert=/run/tls/fullchain.pem
+      - --pkey=/run/tls/privkey.pem
+      - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP}/172.31.250.10
+      - --no-cli
+      - --min-port=49160
+      - --max-port=49200
+      - --total-quota=128
+      - --user-quota=8
+      - --max-bps=1048576
+    ports:
+      - "${PUBLIC_BIND_ADDRESS:?set PUBLIC_BIND_ADDRESS}:${TURN_PORT:-13478}:${TURN_PORT:-13478}/udp"
+      - "${PUBLIC_BIND_ADDRESS:?set PUBLIC_BIND_ADDRESS}:${TURN_PORT:-13478}:${TURN_PORT:-13478}/tcp"
+      - "${PUBLIC_BIND_ADDRESS:?set PUBLIC_BIND_ADDRESS}:${TURN_TLS_PORT:-15349}:${TURN_TLS_PORT:-15349}/tcp"
+      - "${PUBLIC_BIND_ADDRESS:?set PUBLIC_BIND_ADDRESS}:49160-49200:49160-49200/udp"
+    volumes:
+      - ${TLS_CERT_DIR:?set TLS_CERT_DIR}/fullchain.pem:/run/tls/fullchain.pem:ro
+      - ${TLS_CERT_DIR:?set TLS_CERT_DIR}/privkey.pem:/run/tls/privkey.pem:ro
+    restart: unless-stopped
+    networks:
+      relay:
+        ipv4_address: 172.31.250.10
+    cpus: 1.0
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  relay:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24

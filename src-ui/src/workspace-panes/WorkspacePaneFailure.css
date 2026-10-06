@@ -1,0 +1,170 @@
+/* A pane whose renderer threw. In the dock this box sits directly inside the
+   dock shell with the pane's own header gone, so it carries its own gutter
+   and clears the shell's resize grip rather than rendering flush to the
+   screen edge under it. */
+.workspace-pane-failure {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: calc(var(--k-space-4) + var(--k-space-3)) var(--k-space-4)
+    var(--k-space-4);
+  overflow-y: auto;
+}
+
+/* One card, everything inside it, one reading width: heading, what failed,
+   why, the actions, and the raw details under them. */
+.workspace-pane-failure__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-space-2);
+  width: 100%;
+  max-width: 40rem;
+  margin-inline: auto;
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  text-align: center;
+}
+
+.workspace-pane-failure__dismiss {
+  position: absolute;
+  top: var(--k-space-1);
+  right: var(--k-space-1);
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text-muted);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+
+.workspace-pane-failure__dismiss:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.workspace-pane-failure__icon {
+  color: var(--color-error, var(--k-negative));
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.workspace-pane-failure__title {
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-lg);
+  font-weight: 600;
+}
+
+/* What failed, secondary to the heading: a small caption over the plain-text
+   name, clamped to two lines. */
+.workspace-pane-failure__subject {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  margin: 0;
+}
+
+.workspace-pane-failure__subject-label {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.workspace-pane-failure__subject-name {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workspace-pane-failure__reason {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.workspace-pane-failure__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-2);
+}
+
+.workspace-pane-failure__details {
+  width: 100%;
+  margin-top: var(--k-space-2);
+  border-top: 1px solid var(--k-line);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-align: left;
+}
+
+/* A disclosure that reads as one: a chevron that turns when open, a 44px
+   row, and a visible keyboard focus ring. The summary is natively focusable
+   and toggled by Enter and Space. The chevron turns with a transform only,
+   on the motion token the global reduced-motion reset zeroes. */
+.workspace-pane-failure__details summary {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  border-radius: var(--k-radius-sm);
+  cursor: pointer;
+  list-style: none;
+}
+
+.workspace-pane-failure__details summary::-webkit-details-marker {
+  display: none;
+}
+
+.workspace-pane-failure__details summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.workspace-pane-failure__details[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.workspace-pane-failure__details summary:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.workspace-pane-failure__detail-text {
+  margin: 0 0 var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  max-height: 12rem;
+  overflow: auto;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

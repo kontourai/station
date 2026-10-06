@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { PluginComponent } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { type Context, Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
@@ -16,6 +17,7 @@ import {
 } from '../../services/plugins/installed-plugin-inventory.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { readPluginCatalogInstallationAsync } from '../../services/plugins/plugin-catalog-installation.js';
+import { settlePluginCommandEffectsForResponse } from '../../services/plugins/plugin-command-effects.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
@@ -51,6 +53,7 @@ import {
   readPluginGrantRecord,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
+import { pluginInstallationGeneration } from '../../services/plugins/plugin-runtime-artifact.js';
 import {
   detectPluginConflicts,
   detectWorkspacePaneCatalogConflicts,
@@ -82,6 +85,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { commandChoiceOnly } from '../working-directory-authority.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import { personOnly } from './plugin-person-approval.js';
@@ -280,6 +284,20 @@ export function registerPluginInstallRoutes(
               Array.isArray(manifest.settings) &&
               manifest.settings.length > 0,
             layout: manifest.layout,
+            // Command declarations and the generation a command request must
+            // echo are published only for a ready installation: a pending or
+            // unavailable one has no generation that admission would accept.
+            ...(catalog.readiness.state === 'ready'
+              ? {
+                  commands: manifest.commands ?? [],
+                  ...(manifest.commandsRejected
+                    ? { commandsRejected: manifest.commandsRejected }
+                    : {}),
+                  installationGeneration: pluginInstallationGeneration(
+                    catalog.artifact,
+                  ),
+                }
+              : {}),
             workspacePanes: manifest.workspacePanes,
             agents: manifest.agents,
             providers: manifest.providers,
@@ -389,6 +407,10 @@ export function registerPluginInstallRoutes(
   // internal caller learns what to do instead of which field it got wrong.
   app.use('/:name/recover', personOnly('recover a plugin'));
   app.use('/install', personOnly('install a plugin'));
+  // Installing runs the package's code, so a device also needs command
+  // authority (the person check above is not that).
+  app.use('/install', commandChoiceOnly);
+  app.use('/:name/recover', commandChoiceOnly);
   app.post('/:name/recover', validate(pluginRecoverySchema), async (c) => {
     try {
       const body = getBody(c);
@@ -413,13 +435,20 @@ export function registerPluginInstallRoutes(
           ),
         { rediscoverSkills: true },
       );
+      // LP-C: the recovery released its locks.
+      const settled = await settlePluginCommandEffectsForResponse(
+        projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error) {
       return c.json(
@@ -597,6 +626,15 @@ export function registerPluginInstallRoutes(
             name: pane.name,
             detail: `${pane.renderer.kind}:${pane.rendererId}`,
             conflict,
+            skippable: false,
+          });
+        }
+
+        for (const command of manifest.commands ?? []) {
+          components.push({
+            type: 'command',
+            id: command.id,
+            detail: command.intent.kind,
             skippable: false,
           });
         }
@@ -969,14 +1007,21 @@ export function registerPluginInstallRoutes(
         { kind: 'install', source },
         logger,
       );
+      // LP-C: installing over a plugin may have withdrawn command effects.
+      const settled = await settlePluginCommandEffectsForResponse(
+        projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
           ...proposalOutcome,
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       if (isRegistryAcquisitionRefusal(error))

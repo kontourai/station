@@ -1,0 +1,99 @@
+{
+  "path": "packages/sdk/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
+
+  "limits": "Scope is the README named surfaces and corrected examples, not every SDK export or the full SDK reference. No fresh npm installation/publication, full package build, live Agent/tool/voice execution, rendered visual/theme audit, real provider or native-device proof. Code-fence checks establish syntax only; the extracted authoring bundle uses preprovided dependencies.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/sdk/package.json ours={\"digest\":\"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
+
+  "sources": [
+    "packages/cli/src/commands/core-api.ts",
+
+    "packages/cli/src/commands/install.ts",
+
+    "packages/sdk/package.json",
+
+    "packages/sdk/src/agent/index.ts",
+
+    "packages/sdk/src/api-agent-runtime.ts",
+
+    "packages/sdk/src/client/skill-experiences.ts",
+
+    "packages/sdk/src/client/task-tool-results.ts",
+
+    "packages/sdk/src/components/Button.tsx",
+
+    "packages/sdk/src/components/Pill.tsx",
+
+    "packages/sdk/src/hooks/context.ts",
+
+    "packages/sdk/src/hooks/operations.ts",
+
+    "packages/sdk/src/index.ts",
+
+    "packages/sdk/src/providers.tsx",
+
+    "packages/sdk/src/query-domains/skillExperiences.ts",
+
+    "packages/sdk/src/task-tool-results.ts",
+
+    "packages/sdk/src/voice/session-manager.ts",
+
+    "packages/sdk/src/voice/session-registry.ts",
+
+    "packages/sdk/src/workspace-pane.ts",
+
+    "packages/sdk/tsconfig.json",
+
+    "packages/shared/src/build.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-server/services/plugins/plugin-install-transaction.ts",
+
+    "src-ui/src/core/SDKAdapter.tsx",
+
+    "src-ui/src/core/pluginSharedRuntime.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx"
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+
+    "Independent changed-claim source review accepted the recorded document and source bytes; no live operations or new test execution in that review.",
+
+    "Reviewed source changes: Uses shared envelopeDetailsMessage instead of duplicated formatter; reviewed CLI sentence semantics and inherited SDK refusal documentation. Root reviewed the corresponding diff and the affected current-document claims. Recursive dependencies now set stagedAsDependency true and pass fetchPluginSource dependency mode matching preview; consent and digest checks retained. Existing documented consent principle unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Reviewed landing deltas through 111744681: Protected Task-result reads retain opaque generic errors with supplied status/code/retry metadata; canonical content and read authority are unchanged. Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Read the changed document in context; its purpose and prior evidence limits remain. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Required merge-queue recovery through 421517851: package export maps add opt-in source subpaths; existing package/build and public-entry claims remain. Changed inputs reviewed: packages/sdk/package.json. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: the install transaction added .git exclusion only for sources that an open install proposal names (#2719). The README's CLI install from the author's own directory has no proposal, so it keeps its .git, and the preview/consent and target-selection wording is still accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts and the SDK's `DelegationApiError` keep the envelope's `details`. tasks.ts answers the dispatch full-access refusal with the structured `fullAccessRefusal` body, and useActiveChatSessionMessaging renders a refusal card. The README does not document DelegationApiError fields or the refusal shape. Its `TaskToolResultRequestError` claims and 'a send may be queued or refused' are still true. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864's install.ts now also carries the preview's optional gitMetadata into the install consent. Corrected the list of fields the install command carries so it includes any gitMetadata: \"excluded\". Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery root exports. The README defers the detailed API to docs/reference/sdk.md and makes no exhaustive export claim; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

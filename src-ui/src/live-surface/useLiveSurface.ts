@@ -75,6 +75,8 @@ export type LiveSurfaceInputNotice =
   | 'control-changed'
   | 'input-failed'
   | 'host-busy'
+  /** The page is showing a dialog that waits for an answer. */
+  | 'page-dialog'
   | null;
 
 /** A retryable 503 `surface-busy` answer (#2433). */
@@ -131,6 +133,17 @@ export interface UseLiveSurfaceResult {
   inputNotice: LiveSurfaceInputNotice;
   sendInput: (events: LiveSurfaceInput[]) => void;
   claimControl: () => Promise<void>;
+  /**
+   * Give control up explicitly (a hand-back): the server records the
+   * release, and an agent may claim at once instead of waiting out this
+   * person's hold. Only the holder's release is accepted.
+   */
+  releaseControl: () => Promise<void>;
+  /**
+   * Keep this person's current hold alive while they are shown something
+   * that needs them (not input; the server caps it from their last input).
+   */
+  keepControlAlive: () => Promise<void>;
   retry: () => void;
 }
 
@@ -502,6 +515,9 @@ export function useLiveSurface(
         for (const id of pressedRef.current) orphanedRef.current.add(id);
         pressedRef.current.clear();
         setInputNotice('control-changed');
+      } else if (result && !result.ok && result.code === 'page-dialog-open') {
+        queueRef.current = [];
+        setInputNotice('page-dialog');
       } else {
         queueRef.current = [];
         setInputNotice('input-failed');
@@ -575,6 +591,60 @@ export function useLiveSurface(
     }
   }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
+  const leaseRef = useRef(lease);
+  leaseRef.current = lease;
+  const releaseControl = useCallback(async () => {
+    const current = leaseRef.current;
+    if (!current) return;
+    try {
+      const response = await transportRef.current(
+        `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'release', epoch: current.epoch }),
+        },
+      );
+      const envelope = (await response.json().catch(() => null)) as {
+        data?: LiveSurfaceLeaseResult;
+      } | null;
+      if (isSurfaceBusy(response, envelope)) {
+        showHostBusy();
+        return;
+      }
+      const nextLease = envelope?.data
+        ? parseLiveSurfaceControlLease(envelope.data.lease)
+        : null;
+      if (nextLease) adoptLease(nextLease);
+    } catch {
+      setInputNotice('input-failed');
+    }
+  }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
+
+  const keepControlAlive = useCallback(async () => {
+    const current = leaseRef.current;
+    if (!current) return;
+    try {
+      const response = await transportRef.current(
+        `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'keep-alive', epoch: current.epoch }),
+        },
+      );
+      const envelope = (await response.json().catch(() => null)) as {
+        data?: LiveSurfaceLeaseResult;
+      } | null;
+      const nextLease = envelope?.data
+        ? parseLiveSurfaceControlLease(envelope.data.lease)
+        : null;
+      if (nextLease) adoptLease(nextLease);
+    } catch {
+      // A missed keep-alive only lets the hold lapse as it would anyway.
+    }
+  }, [apiBase, surfaceId, projectSlug, adoptLease]);
+
   const retry = useCallback(() => setRetryToken((value) => value + 1), []);
 
   return {
@@ -589,6 +659,8 @@ export function useLiveSurface(
     inputNotice,
     sendInput,
     claimControl,
+    releaseControl,
+    keepControlAlive,
     retry,
   };
 }

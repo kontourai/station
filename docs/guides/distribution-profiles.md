@@ -75,3 +75,11 @@ For plugin authoring and explicit plugin installation, see the
 [Plugin Guide](./plugins.md). Deployment operators should keep profile and
 Station home configuration under their normal configuration-management controls;
 see the [Deployment Guide](./deployment.md).
+
+## Marketplace sources
+
+The Registry's connected marketplaces are a separate discovery input over the
+same installed plugin lifecycle. [Source management](../reference/api.md#manage-marketplaces)
+adds catalogs; it does not grant, install or enable every entry. Distribution
+profiles still decide which installed layouts a Project can use. Removing or
+disabling a marketplace preserves installed packages and profile policy.

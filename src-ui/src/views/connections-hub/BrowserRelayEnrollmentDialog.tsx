@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import type { BrowserRelayEnrollmentState } from '../../lib/browserRelayEnrollmentController';
 import { captureBrowserRelayRoute } from '../../lib/browserRelayRouteBinding';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 const STATUS: Record<BrowserRelayEnrollmentState, string> = {
   idle: 'Ready to verify this account.',
@@ -74,7 +75,7 @@ export function BrowserRelayEnrollmentDialog({
       if (!operation.signal.aborted)
         setError(
           cause instanceof Error
-            ? cause.message
+            ? userFacingErrorMessage(cause)
             : 'Station did not accept this Project invitation.',
         );
     } finally {
@@ -177,7 +178,7 @@ export function BrowserRelayEnrollmentDialog({
       if (!operation.signal.aborted)
         setError(
           cause instanceof Error
-            ? cause.message
+            ? userFacingErrorMessage(cause)
             : 'Station account verification did not complete.',
         );
     } finally {

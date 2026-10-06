@@ -1,0 +1,489 @@
+/**
+ * The shared inbox row (#3043): the dock inbox, the mobile sheet, Home's work
+ * lanes and the sidebar's open chats all render this.
+ *
+ * Fixed line budget: meta, title, one status line, and a chip line that
+ * exists only when a chip does. Every line is a single non-wrapping line, so
+ * a row's height is decided by which lines it has and never by their text.
+ *
+ * The time at the end of the meta line and the hover/focus actions share one
+ * slot. The actions are absolutely positioned over that slot, so revealing
+ * them moves nothing: no reflow, no height change, no text shift.
+ */
+.inbox-row {
+  /* Sized for a rail by default; a wider host (Home) raises these. */
+  /* 12px title and an 11px floor on the metadata (C7): the kit's smallest
+     readable size, never the 10px the rail used to set. */
+  --inbox-row-title-size: var(--text-base);
+  --inbox-row-text-size: var(--text-sm);
+  --inbox-row-line: 18px;
+  --inbox-row-pad-block: var(--space-3);
+  --inbox-row-pad-inline: var(--space-4);
+  position: relative;
+  min-width: 0;
+  border-radius: var(--radius-md);
+}
+
+.inbox-row__open {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  padding: var(--inbox-row-pad-block) var(--inbox-row-pad-inline);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inbox-row__open:hover,
+.inbox-row__open:focus-visible,
+.inbox-row.is-current .inbox-row__open {
+  border-color: var(--border-secondary);
+  background: var(--bg-tertiary);
+}
+
+.inbox-row.is-current .inbox-row__open {
+  border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+
+.inbox-row__open:focus-visible,
+.inbox-row__action:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+/* Meta line: agent mark, agent and project, then the time slot. */
+.inbox-row__meta {
+  display: flex;
+  min-width: 0;
+  height: var(--inbox-row-line);
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--inbox-row-text-size);
+}
+
+.inbox-row__meta-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The project's mark before its name (decorative; the name is the identity):
+   its icon, else its colour as a dot. ProjectIcon sets the size inline (a
+   12px icon, a 6px dot), below the meta line's 18px, so it never sets the
+   height. */
+.inbox-row__project-accent {
+  display: inline-block;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+.inbox-row__project-accent.brand-icon {
+  display: inline-flex;
+  /* Optical centre on the 11-12px meta text. */
+  vertical-align: -2px;
+}
+
+.inbox-row__time {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: var(--inbox-row-text-size);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.inbox-row__title {
+  overflow: hidden;
+  font-size: var(--inbox-row-title-size);
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The ONE status line. Icon and word always; colour only reinforces them. */
+.inbox-row__status {
+  display: flex;
+  min-width: 0;
+  height: var(--inbox-row-line);
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: var(--inbox-row-text-size);
+  white-space: nowrap;
+}
+
+.inbox-row__status-glyph {
+  flex: 0 0 auto;
+  margin-right: var(--space-2);
+  width: 13px;
+  height: 13px;
+}
+
+.inbox-row__word {
+  flex: 0 0 auto;
+  font-weight: 650;
+}
+
+.inbox-row__detail {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A failure or unanswerable REASON is the one place the line budget yields:
+ * the line flows as text and may take a second line rather than cut off
+ * what the user needs to read. Anything longer than two lines is in full in
+ * the row's details and is always the whole of its accessible description. */
+.inbox-row__status--reason {
+  display: -webkit-box;
+  height: auto;
+  min-height: var(--inbox-row-line);
+  overflow: hidden;
+  line-height: var(--inbox-row-line);
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.inbox-row__status--reason .inbox-row__status-glyph {
+  vertical-align: -2px;
+}
+
+.inbox-row__status--reason .inbox-row__detail {
+  overflow: visible;
+  white-space: normal;
+}
+
+/* Its own element because the line is a flex row, which would collapse a
+ * bare text separator's spaces. */
+.inbox-row__sep {
+  flex: 0 0 auto;
+  white-space: pre;
+}
+
+.inbox-row__elapsed {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Four coloured meanings (`WorkStatusTone`), each its own colour (C6):
+ * act-now is the accent (it is the thing to click), a quiet run is the
+ * caution amber, in-motion is the positive green, broken is the error red.
+ * Everything else stays neutral. Attention and caution used to share the
+ * amber, so "needs you" and "might be stuck" read as one. */
+.inbox-row__status[data-tone="attention"] .inbox-row__word,
+.inbox-row__status[data-tone="attention"] .inbox-row__status-glyph,
+.inbox-row__slim-status[data-tone="attention"] {
+  color: var(--accent-primary);
+}
+
+.inbox-row__status[data-tone="caution"] .inbox-row__word,
+.inbox-row__status[data-tone="caution"] .inbox-row__status-glyph,
+.inbox-row__slim-status[data-tone="caution"] {
+  color: var(--warning-text);
+}
+
+.inbox-row__status[data-tone="active"] .inbox-row__word,
+.inbox-row__status[data-tone="active"] .inbox-row__status-glyph,
+.inbox-row__slim-status[data-tone="active"] {
+  color: var(--success-text);
+}
+
+.inbox-row__status[data-tone="broken"] .inbox-row__word,
+.inbox-row__status[data-tone="broken"] .inbox-row__status-glyph,
+.inbox-row__slim-status[data-tone="broken"] {
+  color: var(--status-error);
+}
+
+/* The only motion on a row: a waiting-on-you icon pulses. Running is a
+ * static icon, a word and a ticking number, and so is a `caution` row. The global reduced-motion reset
+ * in tokens.css limits this to one near-instant iteration. */
+.inbox-row__status[data-tone="attention"] .inbox-row__status-glyph {
+  animation: inbox-row-attention-pulse var(--motion-status-pulse)
+    var(--ease-standard) infinite;
+}
+
+@keyframes inbox-row-attention-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Chip line. Absent from the DOM when there is no chip. */
+.inbox-row__chips {
+  display: flex;
+  min-width: 0;
+  height: 20px;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+  margin-top: var(--space-1);
+}
+
+.inbox-row__chip {
+  display: inline-flex;
+  min-width: 0;
+  height: 18px;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--k-text) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--inbox-row-text-size);
+  white-space: nowrap;
+}
+
+.inbox-row__chip svg {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+}
+
+.inbox-row__chip bdi {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A local reminder, outlined rather than filled so it does not read as a
+ * state of the work. */
+.inbox-row__chip--draft,
+.inbox-row__chip--woke {
+  flex-shrink: 0;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-primary);
+}
+
+/* ── The shared slot ───────────────────────────────────────────────────── */
+
+.inbox-row__actions {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  box-shadow: var(--k-elevation-overlay);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* `:has(:focus-visible)`, not `:focus-within`: a mouse click leaves the row
+ * button focused, and focus-within would pin the actions over the time after
+ * the pointer has gone. An open snooze menu keeps them up too. */
+.inbox-row--hover:hover .inbox-row__actions,
+.inbox-row--hover:has(:focus-visible) .inbox-row__actions,
+.inbox-row--hover:has([aria-expanded="true"]) .inbox-row__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The time yields its slot rather than being covered: hidden, never removed,
+ * so the meta line keeps its width. */
+.inbox-row--hover.inbox-row--has-actions:hover .inbox-row__time,
+.inbox-row--hover.inbox-row--has-actions:has(:focus-visible) .inbox-row__time,
+.inbox-row--hover.inbox-row--has-actions:has([aria-expanded="true"])
+  .inbox-row__time,
+.inbox-row--hover.inbox-row--has-actions:hover .inbox-row__slim-word,
+.inbox-row--hover.inbox-row--has-actions:has(:focus-visible)
+  .inbox-row__slim-word,
+.inbox-row--hover.inbox-row--has-actions:has([aria-expanded="true"])
+  .inbox-row__slim-word {
+  visibility: hidden;
+}
+
+.inbox-row__action {
+  position: relative;
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* An always-on invisible hit area: the drawn control stays 26px while the
+ * target is 44px tall on every pointer, with no media query deciding who
+ * gets it. It starts at the ROW's top edge (the slot sits `--space-2` below
+ * it) and extends downward, so it never reaches into the row above or
+ * below. Horizontally it reaches only to the midpoint of the gap, so
+ * neighbouring targets never overlap. */
+.inbox-row__action::after {
+  position: absolute;
+  top: calc(var(--space-2) * -1);
+  right: calc(var(--space-2) / -2);
+  left: calc(var(--space-2) / -2);
+  height: 44px;
+  content: "";
+}
+
+.inbox-row__action:hover,
+.inbox-row__action:focus-visible {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.inbox-row__action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.inbox-row__actions .chat-dock-inbox__snooze-menu-trigger {
+  width: 18px;
+  font-size: var(--text-xs);
+}
+
+/* ── Slim: one line for snoozed and settled work ───────────────────────── */
+
+.inbox-row--slim .inbox-row__open {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--inbox-row-pad-inline);
+}
+
+.inbox-row--slim .inbox-row__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.inbox-row__slim-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+}
+
+.inbox-row__slim-remote {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--inbox-row-text-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-row__slim-word {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: var(--inbox-row-text-size);
+  white-space: nowrap;
+}
+
+.inbox-row--slim .inbox-row__actions {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* A slim row is 30px tall, so the hit area is the row's own height: staying
+ * inside the row's box outranks the 44px floor here. The touch chrome's slim
+ * rows are 44px tall and use real 44px buttons. */
+.inbox-row--slim .inbox-row__action::after {
+  top: -2px;
+  height: 30px;
+}
+
+/* ── Touch chrome: always-visible ≥44px actions beside the row ─────────── */
+
+.inbox-row--touch {
+  display: flex;
+  /* Stated, not assumed: a wrapped row would drop its actions onto a line
+     of their own under a long title. */
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: var(--space-1);
+  border: 1px solid transparent;
+}
+
+/* The row, not the open button, carries the hover/current treatment here:
+ * the actions are a sibling of the button, so a button-only highlight
+ * stopped short of them and read as a second, unrelated control. */
+.inbox-row--touch:has(.inbox-row__open:hover),
+.inbox-row--touch:has(.inbox-row__open:focus-visible),
+.inbox-row--touch.is-current {
+  border-color: var(--border-secondary);
+  background: var(--bg-tertiary);
+}
+
+.inbox-row--touch.is-current {
+  border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+
+.inbox-row--touch .inbox-row__open,
+.inbox-row--touch .inbox-row__open:hover,
+.inbox-row--touch .inbox-row__open:focus-visible,
+.inbox-row--touch.is-current .inbox-row__open {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.inbox-row--touch.inbox-row--slim .inbox-row__open {
+  min-height: 44px;
+}
+
+.inbox-row--touch .inbox-row__actions {
+  position: static;
+  flex: 0 0 auto;
+  align-self: center;
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.inbox-row--touch .inbox-row__action {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: var(--radius-md);
+}
+
+.inbox-row--touch .inbox-row__action::after {
+  content: none;
+}
+
+.inbox-row--touch .inbox-row__action svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Touch lists give the work title room while metadata remains compact. */
+.inbox-row--card.inbox-row--touch .inbox-row__title {
+  font-size: max(var(--inbox-row-title-size), var(--k-text-md));
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+}

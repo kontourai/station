@@ -687,7 +687,7 @@ a user's ssh config to change matching behavior should be an explicit action,
 not a silent one.
 
 **(b) Forks — a binding concern, and it must stay private.** My checkout's
-`origin` is `github.com/brian/station`; `upstream` is
+`origin` is `github.com/casey/station`; `upstream` is
 `github.com/kontourai/station`. The fix is to stop treating `origin` as
 privileged: **a binding records the canonicalized set of *all* remotes the
 local checkout advertises**, and matching is set-intersection against the
@@ -840,7 +840,7 @@ implicit; the shape reserves the slot so #1392 does not have to reshape it.
       "resourceId": "github.com/kontourai/station",
       "kind": "git-checkout",
       "path": "~/dev/github/kontourai/station",
-      "remotes": ["github.com/kontourai/station", "github.com/brian/station"],
+      "remotes": ["github.com/kontourai/station", "github.com/casey/station"],
       "verifiedAt": 1754000000000,
       "state": "bound"
     }

@@ -5,19 +5,24 @@
  * `ChatDockInboxRows.tsx` must render identically rich rows inside BOTH
  * hosts: the desktop dock panel (`ChatDockInboxPanel`) and the mobile
  * portaled sheet (`MobileTaskSwitcher`). This suite renders the same item
- * through each host and asserts the shared anatomy — project chip, meta
- * line, lifecycle chip, snooze + snooze-duration + close actions — instead
- * of trusting that two files that look alike stay alike.
+ * through each host and asserts the shared anatomy — meta line, title, the
+ * one status line, snooze + snooze-duration + close actions — instead of
+ * trusting that two files that look alike stay alike.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
-import { InboxRow } from '../components/chat-dock/ChatDockInboxRows';
+import {
+  InboxRow,
+  inboxRowIconAgent,
+} from '../components/chat-dock/ChatDockInboxRows';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 const NOW = Date.parse('2026-08-18T12:00:00Z');
 
@@ -69,41 +74,44 @@ function renderSheetHost(
   onCloseChat = vi.fn(),
   agents?: typeof AGENTS,
 ) {
-  return render(
-    <MobileTaskSwitcher
-      open
-      tasks={[item]}
-      activeChatSessionId={null}
-      visualViewportStyle={{}}
-      triggerRef={createRef<HTMLButtonElement>()}
-      onClose={vi.fn()}
-      onFocusChat={vi.fn()}
-      onOpenConversation={vi.fn()}
-      onOpenSession={vi.fn()}
-      onCloseChat={onCloseChat}
-      now={NOW}
-      agents={agents}
-    />,
+  return renderWithIsolatedConnections(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MobileTaskSwitcher
+        open
+        tasks={[item]}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={onCloseChat}
+        now={NOW}
+        agents={agents}
+      />
+    </QueryClientProvider>,
   );
 }
 
 function expectSharedRowAnatomy(root: ParentNode) {
   // One shared row implementation: the class family is the contract.
   expect(root.querySelector('.chat-dock-inbox__row')).not.toBeNull();
-  expect(root.querySelector('.chat-dock-inbox__project')?.textContent).toBe(
+  expect(root.querySelector('.inbox-row__agent')?.textContent).toBe(
+    'Claude Code',
+  );
+  expect(root.querySelector('.inbox-row__project')?.textContent).toBe(
     'Shared project',
   );
-  expect(root.querySelector('.chat-dock-inbox__meta')?.textContent).toBe(
-    'Claude Code · Sonnet',
-  );
-  // Lifecycle chip, not the raw wire enum — AND the recency beside it: a
-  // chip row used to drop its time entirely, leaving "how long has it sat
-  // like this?" unanswerable from the inbox (chat-surface honesty pass).
-  const state = root.querySelector('.chat-dock-inbox__state');
-  expect(state?.querySelector('.lifecycle-chip')?.textContent).toBe('Active');
-  expect(state?.querySelector('.chat-dock-inbox__since')?.textContent).toBe(
-    '1m',
-  );
+  // The ladder's word, not the raw wire enum — AND the recency in the meta
+  // line's slot: a status row used to drop its time entirely, leaving "how
+  // long has it sat like this?" unanswerable from the inbox.
+  expect(root.querySelector('.inbox-row__word')?.textContent).toBe('Running');
+  expect(root.querySelector('.inbox-row__time')?.textContent).toBe('1m');
 }
 
 describe('shared inbox rows render in both hosts (station#3312)', () => {
@@ -124,15 +132,16 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
 
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
-    const dialog = screen.getByRole('dialog', { name: 'Switch task' });
+    const dialog = screen.getByRole('dialog', { name: 'Chats and tasks' });
     expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
         name: 'Shared row title, Shared project',
       }),
     ).not.toBeNull();
-    // The sheet's list opts into the ≥44px always-visible action chrome.
-    expect(dialog.querySelector('.chat-dock-inbox--touch')).not.toBeNull();
+    // The sheet's rows use the always-visible ≥44px action chrome.
+    expect(dialog.querySelector('.inbox-row--touch')).not.toBeNull();
+    expect(dialog.querySelector('.inbox-row--hover')).toBeNull();
     // Chrome stays host-owned: the pinned accessible names survive.
     expect(
       screen.getByRole('button', { name: 'Close task switcher' }),
@@ -142,7 +151,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
   // Rendered through the shared row directly: a 3h-old terminal row lives in
   // the collapsed "Earlier" section in the panel host, and what these two pin
   // is the ROW anatomy, not the section chrome.
-  it('a terminal row keeps its recency beside the lifecycle chip', () => {
+  it('a terminal row keeps its recency beside its status', () => {
     const { container } = render(
       <InboxRow
         item={workItem({
@@ -156,14 +165,13 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         onActivate={vi.fn()}
       />,
     );
-    const state = container.querySelector('.chat-dock-inbox__state');
-    expect(state?.querySelector('.lifecycle-chip')?.textContent).toBe('Failed');
-    expect(state?.querySelector('.chat-dock-inbox__since')?.textContent).toBe(
-      '3h',
+    expect(container.querySelector('.inbox-row__word')?.textContent).toBe(
+      'Failed',
     );
+    expect(container.querySelector('.inbox-row__time')?.textContent).toBe('3h');
   });
 
-  it('a chip row with no real timestamp renders the chip alone, never a fabricated duration', () => {
+  it('a row with no real timestamp renders its status alone, never a fabricated duration', () => {
     const { container } = render(
       <InboxRow
         item={workItem({ lifecycleLabel: 'Failed', updatedAt: 0 })}
@@ -174,47 +182,47 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         onActivate={vi.fn()}
       />,
     );
-    const state = container.querySelector('.chat-dock-inbox__state');
-    expect(state?.querySelector('.lifecycle-chip')?.textContent).toBe('Failed');
-    expect(state?.querySelector('.chat-dock-inbox__since')).toBeNull();
+    expect(container.querySelector('.inbox-row__word')?.textContent).toBe(
+      'Failed',
+    );
+    expect(container.querySelector('.inbox-row__time')).toBeNull();
   });
 
-  it('sheet host rows gained the desktop row actions: snooze menu and close', () => {
-    const onCloseChat = vi.fn();
-    renderSheetHost(workItem(), onCloseChat);
+  it('the sheet keeps one overflow control and snoozes from its actions sheet', async () => {
+    renderSheetHost(workItem());
+    expect(
+      screen.queryByRole('button', { name: 'Snooze Shared row title' }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Shared row title' }),
+    );
+    expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
+  });
 
-    // Touch rows fold the one-tap snooze and its duration caret into ONE
-    // 44px control that opens the menu — two targets for one action cost
-    // the title a third of a phone row.
+  it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
+    renderPanelHost(workItem());
+    const snooze = screen.getByRole('button', {
+      name: 'Snooze Shared row title',
+    });
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
     expect(
       screen.queryByRole('button', {
         name: 'Choose snooze duration for Shared row title',
       }),
     ).toBeNull();
-    const snooze = screen.getByRole('button', {
-      name: 'Snooze Shared row title',
-    });
-    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    // Pressing it opens the choice and snoozes nothing: a one-tap default
+    // would hide the row before the user said for how long.
     fireEvent.click(snooze);
-    expect(screen.getByRole('menuitem', { name: '3 hours' })).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Close snooze menu' }));
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close Shared row title' }),
-    );
-    expect(onCloseChat).toHaveBeenCalledWith('shared');
-  });
-
-  it('the desktop panel keeps the one-tap snooze beside its duration caret', () => {
-    renderPanelHost(workItem());
-    const snooze = screen.getByRole('button', {
-      name: 'Snooze Shared row title',
-    });
-    expect(snooze.getAttribute('aria-haspopup')).toBeNull();
-    const caret = screen.getByRole('button', {
-      name: 'Choose snooze duration for Shared row title',
-    });
-    expect(caret.querySelector('svg.choice-caret')).not.toBeNull();
+    const menu = screen.getByRole('menu', { name: 'Snooze Shared row title' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((option) => option.textContent?.trim()),
+    ).toEqual(['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am']);
+    expect(screen.queryByRole('button', { name: 'Snoozed · 1' })).toBeNull();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
+    expect(screen.getByRole('button', { name: 'Snoozed · 1' })).not.toBeNull();
   });
 
   it('sheet host renders the answerability observation through the shared row', () => {
@@ -249,17 +257,17 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     }
   });
 
-  it('a snooze written in one host is read by the other (same store, same key)', () => {
+  it('a snooze written in one host is read by the other (same store, same key)', async () => {
     const item = workItem();
     const sheet = renderSheetHost(item);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Snooze Shared row title' }),
+      screen.getByRole('button', { name: 'Details for Shared row title' }),
     );
-    fireEvent.click(screen.getByRole('menuitem', { name: '30 min' }));
+    fireEvent.click(await screen.findByRole('button', { name: '1 hour' }));
     sheet.unmount();
 
     renderPanelHost(item);
-    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed (1)' });
+    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
     expect(
       screen.getByRole('button', { name: 'Unsnooze Shared row title' }),
@@ -292,7 +300,6 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     );
     const row = screen.getByTestId('inbox-row');
     expect(row.textContent).toContain('Claude Code');
-    expect(row.textContent).toContain('Opus 5');
     expect(row.textContent).not.toContain('Codex');
   });
   beforeEach(() => {
@@ -352,17 +359,15 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     expect(container.querySelector('.brand-icon')).toBeNull();
   });
 
-  it('adds the avatar-column modifier for an unresolved row with a catalog', () => {
-    // jsdom cannot derive grid geometry; this test only proves the modifier
-    // that the CSS uses to reserve the column is present.
+  it('an unresolved row keeps its whole meta line, in words', () => {
     const { container } = renderPanelHost(
       sessionItem({ agentSlug: 'agent-that-is-gone' }),
       vi.fn(),
       AGENTS,
     );
-    expect(
-      container.querySelector('.chat-dock-inbox__item--avatars'),
-    ).not.toBeNull();
+    expect(container.querySelector('.inbox-row__meta-text')?.textContent).toBe(
+      'Codex · Shared project',
+    );
   });
 
   it('adds no icon column at all for a host that supplies no catalog', () => {
@@ -370,9 +375,6 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     // its layout must be untouched by this feature.
     const { container } = renderPanelHost(sessionItem({ agentSlug: 'codex' }));
     expect(avatarOf(container)).toBeNull();
-    expect(
-      container.querySelector('.chat-dock-inbox__item--avatars'),
-    ).toBeNull();
     expect(container.querySelector('.chat-dock-inbox__item')).not.toBeNull();
   });
 
@@ -407,7 +409,109 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
 
   it('renders the same icon through the mobile sheet chrome', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
-    const dialog = screen.getByRole('dialog', { name: 'Switch task' });
+    const dialog = screen.getByRole('dialog', { name: 'Chats and tasks' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
+  });
+});
+
+/**
+ * #3355: the catalog resolved the row's agent but could not report its
+ * engine (the server's attribution read failed). The row's own recorded
+ * `provider` then supplies the mark — gated so it never names an engine for
+ * an unresolved agent, an ACP agent, or an agent with no engine binding.
+ */
+describe('inbox row engine fallback for a resolved agent without engineId (#3355)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    deviceSettingsStore.reloadFromStorage();
+  });
+
+  const reviewer = {
+    slug: 'reviewer',
+    name: 'Reviewer',
+    execution: { agentConnectionId: 'codex' },
+  };
+
+  function rowFor(overrides: Partial<HomeWorkItem>) {
+    return workItem({
+      kind: 'orchestration',
+      kindLabel: 'Session',
+      chatSessionId: undefined,
+      orchestrationThreadId: 'thread-1',
+      agentLabel: 'Reviewer',
+      agentSlug: 'reviewer',
+      ...overrides,
+    });
+  }
+
+  function avatar(agents: unknown[], item: HomeWorkItem) {
+    const { container } = renderPanelHost(item, vi.fn(), agents as any);
+    return container.querySelector('.chat-dock-inbox__avatar');
+  }
+
+  it('draws the recorded engine mark, not initials, for an engine-bound agent', () => {
+    expect(
+      avatar([reviewer], rowFor({ provider: 'codex' as never }))?.getAttribute(
+        'data-brand-key',
+      ),
+    ).toBe('codex');
+  });
+
+  it('keeps the agent’s own identicon when the row recorded no engine', () => {
+    const icon = avatar([reviewer], rowFor({}));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('never stands an engine in for an agent the catalog does not resolve', () => {
+    expect(
+      avatar(
+        [reviewer],
+        rowFor({ agentSlug: 'gone', provider: 'codex' as never }),
+      ),
+    ).toBeNull();
+  });
+
+  it('an ACP-bound agent keeps its initials even beside a branded provider', () => {
+    const acpAgent = {
+      slug: 'reviewer',
+      name: 'Reviewer',
+      execution: { agentConnectionId: 'kiro' },
+      engineConnectionType: 'acp',
+    };
+    const icon = avatar([acpAgent], rowFor({ provider: 'codex' as never }));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('an agent reporting acp keeps its initials', () => {
+    const icon = avatar(
+      [{ ...reviewer, engineId: 'acp' }],
+      rowFor({ provider: 'codex' as never }),
+    );
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('an agent with no engine binding is not given the Station mark', () => {
+    const icon = avatar(
+      [{ slug: 'reviewer', name: 'Reviewer' }],
+      rowFor({ provider: 'station-agent' as never }),
+    );
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('a recorded engine with no bundled mark adds nothing', () => {
+    const icon = avatar([reviewer], rowFor({ provider: 'acp' as never }));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('returns the catalog entry by reference when no fallback applies', () => {
+    const agents = [{ ...reviewer, engineId: 'codex' as never }];
+    expect(
+      inboxRowIconAgent(rowFor({ provider: 'claude' as never }), agents),
+    ).toBe(agents[0]);
   });
 });

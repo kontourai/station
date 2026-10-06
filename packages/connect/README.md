@@ -10,8 +10,8 @@ not grant any of those permissions.
 [package.json](./package.json), not an advertised standalone npm installation.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
-`/application-channel`, `/self-hosted-browser`, `/native-diagnostic-echo` and
-`/native-application`,
+`/application-channel`, `/application-channel-frames`, `/self-hosted-browser`, `/native-diagnostic-echo` and
+`/native-application`, `/native-enrollment` and `/relay-ice`,
 select TypeScript source. The former `/node-storage` entry is no longer exported.
 
 From a managed Station checkout, `npm run build --prefix packages/connect`
@@ -39,17 +39,107 @@ host's current credential/transport integration. See
 [storage](./src/core/storage.ts), [ConnectionStore](./src/core/ConnectionStore.ts)
 and the [host profile adapter](../../src-ui/src/platform/native/stationProfileStorage.ts).
 
+## Connection manager integration
+
+Render `ConnectionManagerModal` inside `ConnectionsProvider`. Supply the
+host's authenticated `checkHealth` adapter and `checkCompatibility`; adding a
+Station or completing pairing is blocked when the compatibility checker is
+missing. Native hosts keep credential values in their existing host transport
+and profile owners.
+
+Pass `activeHealth` with the selected connection's ID, live status and optional
+failure reason. The manager uses that snapshot only for the matching selected
+connection; other unchecked rows remain idle. Opening a row reveals details,
+and **Switch to this Station** performs the selection separately. Supply
+`guardConnectionChange(proceed)` when the host owns unsaved work, and call
+`proceed` only after its guard allows the switch. Omitting the optional guard
+does not add an unsaved-work decision automatically.
+
+The manager offers access recovery when the selected connection needs it,
+rather than asking every paired device to request access again. These UI
+props report observations and coordinate a selection; they do not grant
+credentials or Project authority. See the
+[Connect reference](../../docs/reference/connect.md#connectionmanagermodal)
+and [complete prop contract](./src/react/ConnectionManagerModal.tsx).
+
 ## Optional native application transport
 
 `@kontourai/station-connect/native-application` exports
-`createNativeApplicationTransport`. Its caller supplies host-owned v2 signaling,
-approved Station trust with an authoritative recheck, a Station origin and a
-lifetime signal. The client verifies the Station proof before applying the
+`createNativeApplicationTransport`. Its caller supplies an independent
+host-owned peer adapter, approved Station trust with an authoritative recheck,
+a Station origin and a lifetime signal. The adapter prepares a host-issued
+opaque peer handle and nonce before SDP creation, then opens and reads that same
+peer. The client verifies the complete Station proof before applying the
 answer and exposes `fetch` and `openChannel` over the reliable ordered
-`station-application-v1` DataChannel. It has no direct HTTP fallback and does
-not read the routing grant bearer. Device and account credentials remain with
-their existing owners. This opt-in library does not activate a saved Desktop
-route or establish a packaged native journey.
+`station-application-v1` DataChannel. After opening, `prepareRequest` asks the
+host to sign the exact bounded request for the approved Device; it refuses
+caller-supplied Authorization, Cookie or Device-proof headers. It has no direct
+HTTP fallback and does not read the routing-grant bearer or signing key.
+
+When relay-only ICE gathering stalls, a bounded offer snapshot can proceed
+with validated UDP relay candidates. Trust, cancellation and transport failure
+checks still apply, and signaling and proof verification retain the same exact
+SDP bytes. See the [native transport contract](../../docs/reference/connect.md#optional-native-application-transport)
+for the fallback's candidate and deadline conditions.
+
+The library does not enroll or activate a Device, authenticate an account or
+grant Project access. Station now composes it in its native saved-route owner
+for a configured host-owned Device binding. Each peer obtains fresh ICE, and
+a separate account bridge supplies continuation proof for bounded Project
+reads. Unsupported resources and writes fail before peer allocation in the
+[Station runtime owner](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
+The generic library does not choose that policy.
+[ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx) and the
+[selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+mount the host transport; the
+[member entry boundary](../../src-ui/src/platform/native/NativeRelayEntryBoundary.tsx)
+keeps its account-partitioned reads separate from operator Workspace providers.
+The CLI continues to exclude these routes from default selection.
+Source and focused tests do not establish executed Tauri IPC, packaged-client,
+physical-device or complete authenticated Project-journey evidence.
+
+## Native enrollment exchange composition
+
+The `/native-application` entry also exports
+`createNativeVerifiedPeerTransport`. It shares the verified handshake without
+Device signing. Its explicit peer version distinguishes an enrollment peer
+from an authenticated application peer; verifying the Station transcript does
+not create Device, account or Project authority. The returned owner exposes
+its channel, captured public peer metadata, an asynchronous close, and an
+authoritative trust check that remains usable after the one-request channel
+closes. Preparing or sending another request still requires a live channel.
+
+`@kontourai/station-connect/native-enrollment` exports
+`createNativeEnrollmentExchange`. The host bridge supplies one freshly admitted
+peer and fixed prepared operation for each exchange. Connect copies the exact
+POST target, JSON body and headers, pins them to that peer, bounds the request
+at 16 KiB and JSON response at 64 KiB, and forwards the opaque request handle,
+successful response and HTTP status to host acceptance. Non-success responses
+retain only an exact allowlisted refusal code, or a fixed generic refusal, at
+the application-response stage. It uses the encrypted application
+channel with no direct HTTP or cookie fallback. The exchange deadline is 45
+seconds, in addition to the peer deadline.
+
+The application-channel core closes at response EOF. Host acceptance therefore
+checks its retained operation capture and current owners, rather than requiring
+a live RTC channel. It must authenticate signed Station responses and perform
+credential custody or activation itself; this generic transport does neither.
+The host also owns cancellation of pending enrollment and reconciliation of an
+unknown activation outcome. Closing a network peer alone is not cancellation
+of a staged or committed enrollment. These library primitives do not establish
+a mounted native onboarding workflow or a released client. Station supplies
+that source composition in its
+[default native enrollment client](../../src-ui/src/platform/native/nativeRelayEnrollmentClient.ts)
+and [wizard](../../src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx).
+The simulator Station manager entry reaches that UI, but fresh enrollment,
+public native application traffic and physical Nightly acceptance remain
+unverified; the library tests do not establish them.
+
+The `/relay-ice` entry validates a closed relay-only receipt against the exact
+scope/surface and current time. The host/connector owns obtaining it with its
+current routing credential, and callers must keep peer lifetime within the
+credential expiry. End-user TURN credentials are allocation metadata, not
+Station, Device, account or Project authority; no issuer secret belongs here.
 
 ## Optional self-hosted browser transport
 
@@ -127,6 +217,13 @@ HTTPS is required except for the explicit loopback HTTP development profile.
 Requests retain the application channel's 16 KiB pilot body limit; responses use
 its bounded, backpressured streaming protocol. This interface is Fetch, not an
 arbitrary WebSocket or terminal proxy.
+
+An admitted channel owner may supply optional `prepareRequest` to add headers
+for that peer's exact request. The adapter keeps the original target/body,
+refuses header replacement and closes on cancellation or failed preparation.
+See the [Connect reference](../../docs/reference/connect.md#application-channel-request-preparation)
+for the copied inputs, bounds and lifetime rules. This does not install a
+native signer or enable ordinary UI transport selection.
 
 The [self-hosted broker guide](../../docs/guides/self-hosted-broker.md) documents
 operator setup. The [free collaboration lab](../../docs/guides/local-collaboration-lab.md)

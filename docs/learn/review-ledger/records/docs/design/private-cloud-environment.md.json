@@ -1,0 +1,29 @@
+{
+  "path": "docs/design/private-cloud-environment.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Working single-operator VM deployment design already identifies unvalidated provisioning and restore drills; no prose edit needed. Located runtime image and actual container smoke owners without treating them as executed cloud evidence.",
+
+  "limits": "No container build/smoke run, provider provisioning, workload sizing, quota proof, backup/restore drill, cloud service or live ingress validation. External Docker guidance and every operational recommendation were not independently re-audited.",
+
+  "sources": [
+    ".github/workflows/container-smoke.yml",
+
+    "Dockerfile",
+
+    "scripts/container-smoke.sh"
+  ],
+
+  "checks": [
+    "Full document read: 114 original lines; all original body bytes preserved.",
+
+    "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+
+    "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+
+    "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+  ]
+}

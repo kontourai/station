@@ -63,6 +63,10 @@ describe('settings utils', () => {
       const config = {
         region: 'us-east-1',
         logLevel: 'debug',
+        firstRun: {
+          status: 'completed',
+          completedAt: '2026-10-02T00:00:00.000Z',
+        },
         // Internal, runtime-derived — never in APP_SETTINGS_REGISTRY, must
         // never appear in an exported file.
         mcpUiFrameOrigin: 'http://127.0.0.1:1234',
@@ -81,6 +85,7 @@ describe('settings utils', () => {
       expect(payload.station).not.toHaveProperty('mcpUiFrameOrigin');
       expect(payload.station).not.toHaveProperty('managedChatOrchestration');
       expect(payload.station).not.toHaveProperty('someUnknownField');
+      expect(payload.station).not.toHaveProperty('firstRun');
       expect(payload.device).toEqual(deviceSettingsStore.getEnvelope());
     });
 

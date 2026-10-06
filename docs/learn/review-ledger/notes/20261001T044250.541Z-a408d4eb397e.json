@@ -1,0 +1,7 @@
+{
+  "revision": "52a7a90d631c5c5a5e45095904b56ea175d1f35a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed actual scheduler requirement and navigation owners; repeated engine caveat is suppressed when the empty-catalog setup message already explains it. Setup action and disabled submission remain verified.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

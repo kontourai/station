@@ -1,0 +1,9 @@
+{
+  "revision": "72ad2fb97f80c4b5bdccf534460a3aecf81e4d02",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed author-test-only cleanup delta: replace raw mkdtemp/custom teardown with the mandated existing trackTempDirs hook owner, preserving per-test isolated real package files, child build/FIFO assertions and failure cleanup. No author validator, schema, public type, example bytes or runtime behavior changes. Updated focused20 author tests and Shared typecheck pass; raw temp-directory ratchet passes without baseline changes. Prior FIFO mutation, installed/runtime/Windows and release limits remain.","inputs":["docs/reference/skill-experiences.md"]},
+
+    {"path":"examples/visual-skill-experience/README.md","note":"Reviewed author-test-only cleanup delta: replace raw mkdtemp/custom teardown with the mandated existing trackTempDirs hook owner, preserving per-test isolated real package files, child build/FIFO assertions and failure cleanup. No author validator, schema, public type, example bytes or runtime behavior changes. Updated focused20 author tests and Shared typecheck pass; raw temp-directory ratchet passes without baseline changes. Prior FIFO mutation, installed/runtime/Windows and release limits remain.","inputs":["examples/visual-skill-experience/README.md"]}
+  ]
+}

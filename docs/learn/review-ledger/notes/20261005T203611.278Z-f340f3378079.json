@@ -1,0 +1,7 @@
+{
+  "revision": "80e9054a6d084703a9037b9a7194a378d9b17bca",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the native caller bridge claims against station-knowledge-native-tools.ts: the tools keep their plain JSON Schema (Strands reads it as-is) and drop the user-defined marker so VoltAgent wraps them like other MCP tools; session-scoped HTTP custody and authorized-turn checks are unchanged, so no prose change.","inputs":["docs/guides/knowledge.md","src-server/runtime/mcp/station-knowledge-native-tools.ts"]}
+  ]
+}

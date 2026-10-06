@@ -1,0 +1,23 @@
+{
+  "path": "docs/reference/issue-lifecycle.md",
+
+  "kind": "generated",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed label transitions, reporter-comment filtering, delivery-stage admission and bounded uncertain-write reconciliation against generators and callers.",
+
+  "limits": "Generated contract or retained release evidence; no new hosted release, live label mutation or platform result is claimed.",
+
+  "sources": [
+    ".github/labels.json",
+
+    "scripts/generate-issue-lifecycle-reference.mjs",
+
+    "scripts/issue-lifecycle-reducer.mjs"
+  ],
+
+  "checks": [
+    "Focused issue lifecycle and release/source availability checks passed; an unavailable response is not proof that no label changed."
+  ]
+}

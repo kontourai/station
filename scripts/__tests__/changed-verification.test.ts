@@ -113,6 +113,7 @@ const EXPECTED_GOVERNED_READERS = {
     'scripts/__tests__/android-firebase-workflow-env.test.ts',
     'scripts/__tests__/android-network-policy.test.ts',
     'scripts/__tests__/backlog-priority-policy.test.ts',
+    'scripts/__tests__/ci-event-environment.test.ts',
     'scripts/__tests__/ci-workflow-contract.test.ts',
     'scripts/__tests__/ci-workflow-governance.test.ts',
     'scripts/__tests__/container-release.test.ts',
@@ -1820,15 +1821,20 @@ setInterval(() => {}, 1000);`,
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
     });
-    expect(run).toHaveBeenCalledOnce();
-    expect(run.mock.calls[0][1]).toEqual(
+    // One invocation per resource group: the suites that spawn a script
+    // importing this module join the named targets (#2922), and every
+    // invocation is explicit -- none comes from related discovery.
+    expect(run).toHaveBeenCalled();
+    expect(run.mock.calls.flatMap((call) => call[1])).toEqual(
       expect.arrayContaining([
-        'run',
         './scripts/__tests__/prepush-tier.test.ts',
         './scripts/__tests__/verification-lanes.test.ts',
       ]),
     );
-    expect(result.executed.map((entry) => entry.kind)).toEqual(['explicit']);
+    expect(result.executed.length).toBe(run.mock.calls.length);
+    expect(new Set(result.executed.map((entry) => entry.kind))).toEqual(
+      new Set(['explicit']),
+    );
   });
   test('keeps broad related-test expansion deferred', async () => {
     const run = vi.fn();
@@ -3133,7 +3139,9 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
       run: slow.run,
       changedPathsFn: () => ({
         mergeBase: 'base-sha',
-        paths: ['scripts/lib/module-entry.mjs'],
+        // Below the spawned-script fan-out limit, so the diff runs inline
+        // rather than deferring to test-full (#2922 review).
+        paths: ['scripts/lib/learning-markdown.mjs'],
       }),
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
@@ -3151,7 +3159,9 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
       run: unbudgeted.run,
       changedPathsFn: () => ({
         mergeBase: 'base-sha',
-        paths: ['scripts/lib/module-entry.mjs'],
+        // Below the spawned-script fan-out limit, so the diff runs inline
+        // rather than deferring to test-full (#2922 review).
+        paths: ['scripts/lib/learning-markdown.mjs'],
       }),
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
@@ -3172,7 +3182,9 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
       }),
       changedPathsFn: () => ({
         mergeBase: 'HEAD',
-        paths: ['scripts/lib/module-entry.mjs'],
+        // Below the spawned-script fan-out limit, so the diff runs inline
+        // rather than deferring to test-full (#2922 review).
+        paths: ['scripts/lib/learning-markdown.mjs'],
       }),
       discoveryDeadlineAt: deadline,
     });
@@ -3229,7 +3241,9 @@ describe('an exhausted budget and the selector children (#2855 review)', () => {
       run,
       changedPathsFn: () => ({
         mergeBase: 'base-sha',
-        paths: ['scripts/lib/module-entry.mjs'],
+        // Below the spawned-script fan-out limit, so the diff runs inline
+        // rather than deferring to test-full (#2922 review).
+        paths: ['scripts/lib/learning-markdown.mjs'],
       }),
       collectProvenance: provenance,
       writeReceipt,

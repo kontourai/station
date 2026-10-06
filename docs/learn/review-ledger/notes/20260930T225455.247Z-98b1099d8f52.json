@@ -1,0 +1,7 @@
+{
+  "revision": "e56b7b6bf847135adcce152d99112d104542d029",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed mobile Settings section picker, grouped options, stable section keys and setup routes against SettingsView, destination registry and deep-link hook. Mobile/desktop E2E passed and old-UI mutation failed for intended missing-picker reason. Existing URL healing and highlight contracts unchanged; native release NOT_VERIFIED.","inputs":["docs/reference/settings-deep-links.md"]}
+  ]
+}

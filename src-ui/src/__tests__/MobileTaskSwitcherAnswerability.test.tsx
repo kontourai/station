@@ -8,11 +8,21 @@
  * files over carried both. Same label, two answers, one of them a bare
  * adjective.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
+import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { buildOrchestrationItems } from '../views/home/home-view-model';
+import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 const NOTICE =
   "Unanswerable by the serving Station (no adapter for provider 'acme') — observed by station-7f3a at 2026-08-03T12:04:03.000Z.";
@@ -34,11 +44,20 @@ function task(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   };
 }
 
-function renderSheet(tasks: HomeWorkItem[], pending = false) {
+function renderSheet(
+  tasks: HomeWorkItem[],
+  pending = false,
+  attention?: 'answer' | 'approval',
+) {
   return render(
     <MobileTaskSwitcher
       open
       tasks={tasks}
+      workFacts={
+        attention
+          ? new Map(tasks.map((item) => [item.id, { attention }]))
+          : undefined
+      }
       pending={pending}
       activeChatSessionId={null}
       visualViewportStyle={{}}
@@ -53,6 +72,57 @@ function renderSheet(tasks: HomeWorkItem[], pending = false) {
 }
 
 describe('MobileTaskSwitcher answerability basis', () => {
+  test.each([
+    { items: [] },
+    {
+      items: [
+        task({ lifecycleLabel: 'Running', unanswerableNotice: undefined }),
+      ],
+    },
+  ])('can start a new chat from the empty or populated picker', ({ items }) => {
+    const calls: string[] = [];
+    render(
+      <MobileTaskSwitcher
+        open
+        tasks={items}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={() => calls.push('close')}
+        onNewChat={() => calls.push('new')}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(calls).toEqual(['close', 'new']);
+  });
+
+  // The ladder's own words, unshortened: the picker row says what the dock
+  // row says for the same chat (one vocabulary, design round 2026-10).
+  test.each([
+    { attention: 'answer' as const, label: 'Needs answer' },
+    { attention: 'approval' as const, label: 'Needs approval' },
+  ])(
+    'shows $label only for its recorded attention kind',
+    ({ attention, label }) => {
+      renderSheet(
+        [
+          task({
+            lifecycleLabel: 'Needs attention',
+            unanswerableNotice: undefined,
+          }),
+        ],
+        false,
+        attention,
+      );
+      expect(
+        screen.getByText(label, { selector: '.inbox-row__word' }),
+      ).toBeTruthy();
+    },
+  );
+
   test('reports pending reads instead of claiming there are no chats', () => {
     renderSheet([], true);
     expect(
@@ -102,7 +172,7 @@ describe('MobileTaskSwitcher answerability basis', () => {
 
   test('translates the label instead of leaking the wire enum', () => {
     renderSheet([task()]);
-    expect(screen.getByText("Can't answer here")).toBeTruthy();
+    expect(screen.getByText('Elsewhere')).toBeTruthy();
     expect(screen.queryByText('Unanswerable')).toBeNull();
   });
 
@@ -115,9 +185,107 @@ describe('MobileTaskSwitcher answerability basis', () => {
       }),
     ]);
     expect(screen.queryByTestId('inbox-row-answerability')).toBeNull();
-    // The shared row renders the lifecycle CHIP ("Active"), not the raw
-    // 'Running' wire enum the old bespoke row leaked (#3312 richness parity).
-    expect(screen.getByText('Active')).toBeTruthy();
-    expect(screen.queryByText('Running')).toBeNull();
+    // The shared row renders ONE status line (#3043). Its word is the lane's
+    // word, "Running" (never "Active"), and it appears once.
+    const row = screen.getByTestId('inbox-row');
+    expect(
+      within(row).getByText('Running', { selector: '.inbox-row__word' }),
+    ).toBeTruthy();
+    expect(within(row).getAllByText('Running')).toHaveLength(1);
+    expect(within(row).queryByText('Active')).toBeNull();
+    expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
+  });
+});
+
+describe('MobileTaskSwitcher lane-move focus', () => {
+  test('a focused row that moves Running -> Idle keeps focus in the sheet', () => {
+    // The move out of Running is held (useHeldLifecycles); it lands, with
+    // the focus hand-off, once the hold elapses.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const props = {
+        open: true,
+        activeChatSessionId: null,
+        visualViewportStyle: {},
+        triggerRef: createRef<HTMLButtonElement>(),
+        onClose: vi.fn(),
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession: vi.fn(),
+        now: Date.now(),
+      };
+      const running = task({
+        id: 'chat:moving',
+        chatSessionId: 'moving',
+        title: 'Moving row',
+        lifecycleLabel: 'Running',
+        unanswerableNotice: undefined,
+      });
+      const other = task({
+        id: 'chat:other',
+        chatSessionId: 'other',
+        title: 'Other row',
+        lifecycleLabel: 'Ready',
+        unanswerableNotice: undefined,
+      });
+      const view = render(
+        <MobileTaskSwitcher {...props} tasks={[running, other]} />,
+      );
+      const name = 'Moving row, Station';
+      screen.getByRole('button', { name }).focus();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+
+      view.rerender(
+        <MobileTaskSwitcher
+          {...props}
+          tasks={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+        />,
+      );
+      expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(LIFECYCLE_HOLD_MS);
+      });
+      expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+/**
+ * A delegated task running on a PAIRED Station: its record carries the
+ * peer's agent slug and conversation id, so activating it in the switcher
+ * must open its Activity detail and never rehydrate a local chat.
+ */
+describe('MobileTaskSwitcher on a paired-Station record', () => {
+  test('activating it opens Activity, not a chat on the peer conversation', async () => {
+    const [peerItem] = buildOrchestrationItems(
+      [peerRecordSummary({ displayTitle: 'Verify on the peer' })] as never,
+      [],
+    );
+    const onOpenConversation = vi.fn().mockResolvedValue(true);
+    const onOpenSession = vi.fn();
+    render(
+      <MobileTaskSwitcher
+        open
+        tasks={[peerItem]}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={onOpenConversation}
+        onOpenSession={onOpenSession}
+        now={Date.now()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Verify on the peer/ }),
+    );
+    await waitFor(() =>
+      expect(onOpenSession).toHaveBeenCalledWith('peer-delegation:abc'),
+    );
+    expect(onOpenConversation).not.toHaveBeenCalled();
   });
 });

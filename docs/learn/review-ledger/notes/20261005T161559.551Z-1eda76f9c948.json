@@ -1,0 +1,7 @@
+{
+  "revision": "09c85b03ddb2c50e48c18d6617e000a59a0bec58",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3386: new 'See Conversations Started Outside Station' section and a Continue caveat. Checked: Claude projects under CLAUDE_CONFIG_DIR or ~/.claude and Codex sessions under CODEX_HOME or ~/.codex with STATION_EXTERNAL_*_SOURCE_ROOT overrides (source constructors); 2 s default poll (DEFAULT_POLL_INTERVAL_MS); 128 newest candidates per source (DEFAULT_MAX_CANDIDATES, mtime sort); folder-then-repository attribution, ambiguity naming, No project filter, kept project after worktree removal (follow service + tests); owner-only via LOCAL_OPERATOR owner and personalConversationAccess; hosted skip. Observed end to end on an isolated instance with a temp Claude root: worktree session filed under its project, scratch session under No project. Limit: Codex path not exercised live.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/attached-session-repository.ts","src-ui/src/views/activity/activity-list-model.ts","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/providers/sessions/codex-rollout-session-source.ts"]}
+  ]
+}

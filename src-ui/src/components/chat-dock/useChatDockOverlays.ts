@@ -15,6 +15,10 @@ import {
 } from '../../contexts/DeviceSettingsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
+import type {
+  NewChatClosedOutcome,
+  NewChatIntent,
+} from '../../lib/newChatIntent';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
 
@@ -56,9 +60,40 @@ export function useChatDockOverlays({
     (threadId: string) => setImportedSessionId(threadId),
     [],
   );
+  const [newChatInitialPrompt, setNewChatInitialPrompt] = useState<
+    string | undefined
+  >();
+  const newChatOnClosed = useRef<
+    ((outcome: NewChatClosedOutcome, draft?: string) => void) | undefined
+  >(undefined);
+  // The open draft's text as the modal last reported it, handed back with a
+  // dismissal so the sender gets what the person left there.
+  const newChatDraftText = useRef<string | undefined>(undefined);
+  const reportNewChatDraft = useCallback((text: string) => {
+    newChatDraftText.current = text;
+  }, []);
+  const [newChatStartWithDefault, setNewChatStartWithDefault] = useState(false);
+  const [newChatSelection, setNewChatSelection] =
+    useState<NewChatIntent['selection']>();
+  const [newChatHandoff, setNewChatHandoff] =
+    useState<NewChatIntent['handoff']>();
+  const [newChatSelectionInvalid, setNewChatSelectionInvalid] = useState(false);
   const [newChatRequestEpoch, setNewChatRequestEpoch] = useState(0);
   const setShowNewChatModal = useCallback(
-    (open: boolean) => {
+    (
+      open: boolean,
+      options?: NewChatIntent,
+      /** Why an open request ends: its chat started, or it was dismissed. */
+      closedAs: NewChatClosedOutcome = 'dismissed',
+    ) => {
+      newChatOnClosed.current?.(closedAs, newChatDraftText.current);
+      newChatDraftText.current = undefined;
+      newChatOnClosed.current = open ? options?.onClosed : undefined;
+      setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
+      setNewChatStartWithDefault(open && options?.startWithDefault === true);
+      setNewChatSelection(open ? options?.selection : undefined);
+      setNewChatHandoff(open ? options?.handoff : undefined);
+      setNewChatSelectionInvalid(open && options?.selectionInvalid === true);
       if (open) {
         setImportedSessionId(null);
         setNewChatRequestEpoch((epoch) => epoch + 1);
@@ -145,6 +180,12 @@ export function useChatDockOverlays({
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
+    newChatStartWithDefault,
+    newChatInitialPrompt,
+    newChatSelection,
+    newChatHandoff,
+    newChatSelectionInvalid,
+    reportNewChatDraft,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,

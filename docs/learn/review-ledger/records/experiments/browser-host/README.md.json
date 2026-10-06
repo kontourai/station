@@ -1,0 +1,31 @@
+{
+  "path": "experiments/browser-host/README.md",
+
+  "kind": "fixture",
+
+  "state": "source-reviewed",
+
+  "summary": "Isolated host API/identity experiments, with a repaired current-contract Node fixture. Full baseline read; adapter and parser traced. Baseline four FAIL at removed contextRequirement; fixture moved to modes; four PASS. Guard-disable negative control catches runtime-only field acceptance; restored four PASS. Rust crate manifests read, no native compilation.",
+
+  "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence.",
+
+  "sources": [
+    "experiments/browser-host/scripts/workspace-pane-adapter.node.ts",
+
+    "experiments/browser-host/scripts/workspace-pane-adapter.ts",
+
+    "experiments/browser-host/tauri-child-webview/Cargo.toml",
+
+    "experiments/browser-host/tauri-child-webview/src/main.rs",
+
+    "experiments/browser-host/tauri-separate-window/Cargo.toml",
+
+    "packages/contracts/src/workspace-pane.ts"
+  ],
+
+  "checks": [
+    "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+
+    "Added explicit ./ to valid local links so the separate source-path scanner does not misread them as repository-root paths; destinations unchanged."
+  ]
+}

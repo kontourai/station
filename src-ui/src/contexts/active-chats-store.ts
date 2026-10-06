@@ -40,6 +40,8 @@ export class ActiveChatsStore {
   private chats: ActiveChatsMap = {};
   private listeners = new Set<() => void>();
   private snapshot = this.chats;
+  /** Ephemeral draft occurrence tokens; never persisted or reused after removal. */
+  private draftRevisions = new Map<string, object>();
   private readonly storageKey: string;
   private readonly storage: Pick<Storage, 'getItem' | 'setItem'> | null;
   private getBackendMessages: (
@@ -94,13 +96,15 @@ export class ActiveChatsStore {
     }
   }
 
-  private saveToStorage() {
+  private saveToStorage(): boolean {
+    if (!this.storage) return false;
     try {
       const minimal = serializeActiveChats(this.chats);
-      this.storage?.setItem(this.storageKey, JSON.stringify(minimal));
+      this.storage.setItem(this.storageKey, JSON.stringify(minimal));
       // A write got through: the run is over and a later failure is news
       // again, for every chat.
       this.storageFailureReportedFor.clear();
+      return true;
     } catch (error) {
       log.api('Failed to save active chats to sessionStorage:', error);
       // review: this used to be console-only. A failed write means
@@ -115,7 +119,12 @@ export class ActiveChatsStore {
         // whose "Not sent" rows are populated was the exact state a
         // permanent drop creates, and a refused write left those rows
         // LOOKING retained while reload would destroy them.
-        if (!chat.queuedMessages?.length && !chat.unsentMessages?.length)
+        if (
+          !chat.queuedMessages?.length &&
+          !chat.unsentMessages?.length &&
+          !chat.skillExperienceDraft &&
+          !chat.skillExperienceDraftInvalid
+        )
           continue;
         if (this.storageFailureReportedFor.has(sessionId)) continue;
         this.storageFailureReportedFor.add(sessionId);
@@ -126,6 +135,7 @@ export class ActiveChatsStore {
         notified = true;
       }
       if (notified) this.notify(false);
+      return false;
     }
   }
 
@@ -134,11 +144,11 @@ export class ActiveChatsStore {
    * otherwise restores the state from before the last change: for an
    * approval pick that is an OLDER, possibly looser pick (#2334).
    */
-  flushPendingSave = () => {
-    if (!this.saveTimer) return;
+  flushPendingSave = (): boolean => {
+    if (!this.saveTimer) return false;
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    this.saveToStorage();
+    return this.saveToStorage();
   };
 
   /**
@@ -180,6 +190,24 @@ export class ActiveChatsStore {
   };
 
   getSnapshot = () => this.snapshot;
+
+  /** Capture a single-use seed capability for this exact composer draft. */
+  captureComposerDraft(sessionId: string) {
+    if (!this.chats[sessionId]) return null;
+    const revision = this.draftRevisions.get(sessionId) ?? {};
+    this.draftRevisions.set(sessionId, revision);
+    return Object.freeze({
+      replaceInputIfUnchanged: (input: string): boolean => {
+        if (
+          !this.chats[sessionId] ||
+          this.draftRevisions.get(sessionId) !== revision
+        )
+          return false;
+        this.updateChat(sessionId, { input });
+        return true;
+      },
+    });
+  }
 
   /**
    * Locate the durable chat that owns an execution-session event. Runtime
@@ -309,6 +337,7 @@ export class ActiveChatsStore {
     this.chats[sessionId] = this.withKnownActivity(
       createDefaultChatState(metadata, this.now()),
     );
+    this.draftRevisions.set(sessionId, {});
     this.notify(true);
   }
 
@@ -340,6 +369,13 @@ export class ActiveChatsStore {
       if (newest) {
         this.activityByConversation.set(newest.conversationId, newest);
       }
+    }
+    if (
+      Object.hasOwn(updates, 'input') ||
+      Object.hasOwn(updates, 'attachments') ||
+      Object.hasOwn(updates, 'attachmentStages')
+    ) {
+      this.draftRevisions.set(targetSessionId!, {});
     }
     // review: a bounded queue that discards silently is the same
     // loss the ceiling exists to make safe. Say what was dropped, with the
@@ -378,6 +414,7 @@ export class ActiveChatsStore {
 
   removeChat(sessionId: string) {
     delete this.chats[sessionId];
+    this.draftRevisions.delete(sessionId);
     // A chat re-created under the same id is a different chat, and is owed its
     // own storage-refusal notice.
     this.storageFailureReportedFor.delete(sessionId);
@@ -403,6 +440,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = clearInputState(current);
+    this.draftRevisions.set(sessionId, {});
     this.notify(false);
   }
 
@@ -416,6 +454,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = next;
+    this.draftRevisions.set(sessionId, {});
     this.notify(false);
   }
 
@@ -429,6 +468,7 @@ export class ActiveChatsStore {
       return;
     }
     this.chats[sessionId] = next;
+    this.draftRevisions.set(sessionId, {});
     this.notify(false);
   }
 
@@ -439,6 +479,8 @@ export class ActiveChatsStore {
       content: string;
       attachments?: any[];
       action?: { label: string; handler: () => void };
+      sendFailure?: boolean;
+      queuedRetry?: boolean;
     },
   ) {
     const chat = this.chats[sessionId];

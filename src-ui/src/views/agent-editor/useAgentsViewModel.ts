@@ -126,10 +126,10 @@ export function useAgentsViewModel({
   const [copyPicking, setCopyPicking] = useState(false);
   /**
    * §4's "one-line success notice" lives in the URL, not in state. Navigating
-   * from `/agents/new` to `/agents/<slug>` re-mounts this hook, so a
-   * `useState` notice was set and then discarded before it could render
-   * (`notice: false` in this lane's live capture, on a create that otherwise
-   * worked end to end). `?created=1` survives the remount and is cleared for
+   * from `/agents/new` to `/agents/<slug>` resets this hook's per-record
+   * state, so a `useState` notice was set and then discarded before it could
+   * render (`notice: false` in this lane's live capture, on a create that
+   * otherwise worked end to end). `?created=1` survives that and is cleared for
    * free: `navigationStore` strips non-shell params on any route change, so
    * selecting another agent drops it without anyone remembering to.
    */
@@ -168,10 +168,21 @@ export function useAgentsViewModel({
   const [isSaving, setIsSaving] = useState(false);
   const [isLocked, setIsLocked] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [enableError, setEnableError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
   >({});
   const previousUrlSlugRef = useRef(urlSlug);
+  // Counts selections, for work that awaits: a save that settles after the
+  // reader moved to another record must not write into that record's state
+  // (the hook outlives a selection since #2992). A count rather than the slug,
+  // so leaving and coming back to the same record is still a different visit.
+  const liveUrlSlugRef = useRef(urlSlug);
+  const selectionVisitRef = useRef(0);
+  if (liveUrlSlugRef.current !== urlSlug) {
+    liveUrlSlugRef.current = urlSlug;
+    selectionVisitRef.current += 1;
+  }
   const createNavigationRef = useRef(false);
 
   const { data: availableTools = [] } = useIntegrationsQuery() as {
@@ -230,6 +241,18 @@ export function useAgentsViewModel({
     generation: number;
     agent: AgentData;
   }>();
+  // `refetchOnMount: 'always'` only covers a mount. Agents keeps this hook
+  // mounted across selections (#2992), and a change of query key refetches
+  // only when the cached entry is stale — so coming back to a recently read
+  // Agent would wait forever for the newer response this generation requires.
+  // Ask for it. `cancelRefetch: false` joins a fetch the key change started.
+  const refreshedGenerationRef = useRef(0);
+  useEffect(() => {
+    if (isCreating || !selectedAgentSlug) return;
+    if (refreshedGenerationRef.current === detailRoute.generation) return;
+    refreshedGenerationRef.current = detailRoute.generation;
+    void refetchAgent({ cancelRefetch: false });
+  }, [detailRoute.generation, isCreating, refetchAgent, selectedAgentSlug]);
   useEffect(() => {
     if (isCreating || !selectedAgentSlug) {
       setAuthoritativeDetail(undefined);
@@ -383,7 +406,23 @@ export function useAgentsViewModel({
 
     previousUrlSlugRef.current = urlSlug;
     if (urlSlug !== 'new') {
+      // The hook outlives a selection now that Agents keeps one surface
+      // across its routes (#2992), so what belonged to the previous record
+      // is dropped here — for Back/Forward as well as a row click.
+      // Until #2992 a remount did this, so it mirrors a fresh mount: an
+      // unsaved edit that Back walked away from must not keep the discard
+      // guard armed for a form nobody can see.
+      const blank = createEmptyAgentForm(defaultManagedRuntimeId);
       setIsCreating(false);
+      setStartingPointChosen(false);
+      setCopyPicking(false);
+      setEngineKindOverride(null);
+      setForm(blank);
+      setSavedForm(blank);
+      setIsLocked(true);
+      setActionError(null);
+      setValidationErrors({});
+      setEnableError(null);
       return;
     }
 
@@ -401,6 +440,7 @@ export function useAgentsViewModel({
     setSavedForm(base);
     setActionError(null);
     setValidationErrors({});
+    setEnableError(null);
   }, [defaultManagedRuntimeId, urlSlug]);
 
   useEffect(() => {
@@ -491,6 +531,17 @@ export function useAgentsViewModel({
   const dirty = isAgentFormDirty(form, savedForm);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
 
+  // See `handleDuplicate`: the prepared copy goes to /agents/new once the
+  // form it replaced no longer needs guarding.
+  const [pendingNewNavigation, setPendingNewNavigation] = useState(false);
+  useEffect(() => {
+    if (!pendingNewNavigation || dirty) return;
+    setPendingNewNavigation(false);
+    if (urlSlug === 'new') return;
+    createNavigationRef.current = true;
+    urlSelect('new');
+  }, [dirty, pendingNewNavigation, urlSelect, urlSlug]);
+
   // See `handleSave`: navigate to the created Agent only once the guard has
   // nothing to guard.
   useEffect(() => {
@@ -502,17 +553,26 @@ export function useAgentsViewModel({
     );
   }, [dirty, pendingCreatedSlug]);
 
+  // A selection is a route change, and a dirty form's route change is already
+  // arbitrated by the unsaved guard (`registerNavigationGuard`). Wrapping that
+  // navigation in `guard` as well asked "Discard?" twice for one decision, so
+  // a dirty form only navigates here; the URL effect above resets the
+  // per-record state once the navigation is admitted.
   function handleSelect(slug: string) {
-    guard(() => {
-      urlSelect(slug);
-      setIsCreating(false);
-      setEngineKindOverride(null);
-      setActionError(null);
-      setValidationErrors({});
-    });
+    urlSelect(slug);
+    if (dirty) return;
+    setIsCreating(false);
+    setEngineKindOverride(null);
+    setActionError(null);
+    setValidationErrors({});
   }
 
   function handleNew(initialForm?: Partial<AgentFormData>) {
+    if (dirty && !initialForm && urlSlug !== 'new') {
+      // Same single decision; the URL effect prepares the blank form.
+      urlSelect('new');
+      return;
+    }
     guard(() => {
       // When this action changes the URL, the URL effect must retain the form
       // prepared below instead of replacing the starting point just chosen.
@@ -590,17 +650,28 @@ export function useAgentsViewModel({
 
   function handleDuplicate(source: AgentData) {
     guard(() => {
-      createNavigationRef.current = true;
-      urlSelect('new');
       setIsCreating(true);
       setStartingPointChosen(true);
       setCopyPicking(false);
       handleCopyAgent(source);
+      if (urlSlug === 'new') return;
+      // Confirming the discard prompt does not make the form clean in this
+      // tick, and the route guard is still registered: navigating now asked
+      // "Discard?" a second time for the same decision. Navigate once the
+      // prepared copy has rendered clean, as `handleSave` does after a create.
+      if (dirty) {
+        setPendingNewNavigation(true);
+        return;
+      }
+      createNavigationRef.current = true;
+      urlSelect('new');
     });
   }
 
   function handleDeselect() {
     urlDeselect();
+    // As in `handleSelect`: a dirty form's exit is the route guard's decision.
+    if (dirty) return;
     setIsCreating(false);
     setEngineKindOverride(null);
     setActionError(null);
@@ -615,6 +686,9 @@ export function useAgentsViewModel({
     // connection just because another connection happens to be ready.
     if (isCreating && !createEngineReady) return;
     if (!validate()) return;
+    const savedDuringVisit = selectionVisitRef.current;
+    const stillOnSavedRecord = () =>
+      selectionVisitRef.current === savedDuringVisit;
     try {
       setIsSaving(true);
       setActionError(null);
@@ -627,6 +701,9 @@ export function useAgentsViewModel({
         // gains the row and this selects it, with no reload.
         const { data } = await createAgent(payload as any);
         const createdSlug = (data as { slug?: string })?.slug ?? form.slug;
+        // The write landed and the list gains the row either way; only a
+        // reader still on the create form is taken to the new Agent.
+        if (!stillOnSavedRecord()) return;
         setSavedForm(savedSnapshot);
         setIsCreating(false);
         // §4: the editor opens on the new agent with one line saying so.
@@ -644,10 +721,13 @@ export function useAgentsViewModel({
         setPendingCreatedSlug(createdSlug);
       } else {
         await updateAgent(selectedSlug!, payload);
+        // A snapshot of the record just left would make the one now on
+        // screen read dirty against a form it never had.
+        if (!stillOnSavedRecord()) return;
         setSavedForm(savedSnapshot);
       }
     } catch (err: unknown) {
-      setActionError(agentSaveErrorMessage(err));
+      if (stillOnSavedRecord()) setActionError(agentSaveErrorMessage(err));
     } finally {
       setIsSaving(false);
     }
@@ -712,7 +792,9 @@ export function useAgentsViewModel({
   const [loadRetrySeq, bumpLoadRetry] = useReducer((n: number) => n + 1, 0);
   const detailReadState = useDegradedQueryState({
     isPending: editorIsLoading,
-    resetKey: loadRetrySeq,
+    // A new selection gets a fresh loading window as well as a retry does;
+    // the pending flag alone stays true straight across A -> B.
+    resetKey: `${loadRetrySeq}:${detailRoute.generation}`,
   });
   const detailReadStalled = detailReadState === 'degraded';
   const error = actionError ?? visibleRefreshError;
@@ -736,8 +818,6 @@ export function useAgentsViewModel({
   const selectedIsUnmaterializedEngine =
     !isCreating && selectedAgent?.engineDefault === true;
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
-  const [enableError, setEnableError] = useState<string | null>(null);
-
   async function handleEnableSelected() {
     const enable =
       selectedRunnability && !selectedRunnability.runnable

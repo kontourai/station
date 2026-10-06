@@ -153,8 +153,8 @@ test.describe('Android — Mobile Layout', () => {
     await expect(page).toHaveURL(/\/settings/);
 
     await page
-      .getByRole('link', { name: 'My knowledge store', exact: true })
-      .click();
+      .getByRole('combobox', { name: 'Settings section' })
+      .selectOption({ label: 'My knowledge' });
     await expect(page).toHaveURL(/[?&]view=knowledge/);
     const section = page.locator('#section-knowledge');
     await expect(section).toBeVisible();
@@ -234,8 +234,9 @@ test.describe('Android — Mobile Layout', () => {
     await page.goto('/');
     await openSettingsFromMobileDrawer(page);
 
-    await expect(page.locator('.settings__section-nav')).toBeVisible();
-    await page.getByRole('link', { name: 'System', exact: true }).click();
+    const sections = page.getByRole('combobox', { name: 'Settings section' });
+    await expect(sections).toBeVisible();
+    await sections.selectOption({ label: 'Advanced' });
 
     // #1063 renamed the group and renders the timestamp as `date · age` with
     // a separate screen-reader description that repeats the age, so match the
@@ -298,12 +299,12 @@ test.describe('Android — Mobile Layout', () => {
     const toggle = page.getByRole('button', { name: 'Toggle menu' });
     await expect(toggle).toBeVisible();
     // The toolbar brand only shows on phones (index.css hides it on desktop),
-    // beside the toggle that replaces the desktop nav.
-    const brand = page
-      .locator('.app-toolbar')
-      .getByRole('link', { name: 'Station home' });
-    await expect(brand).toBeVisible();
-    await expect(brand).toHaveText('Station');
+    // beside the toggle that replaces the desktop nav. Since #3235 the logo is
+    // the home link and the wordmark beside it is an aria-hidden repeat.
+    const toolbar = page.locator('.app-toolbar');
+    const home = toolbar.getByRole('link', { name: 'Station home' });
+    await expect(home).toBeVisible();
+    await expect(toolbar.locator('.app-toolbar__brand')).toHaveText('Station');
     await toggle.focus();
     await toggle.press('Enter');
 
@@ -339,7 +340,7 @@ test.describe('Android — Mobile Layout', () => {
     // it would sweep clean.
     await expect(page.locator('.app-toolbar')).toBeVisible({ timeout: 15_000 });
     await dismissSetupLauncher(page);
-    const { candidates, tooSmall } = await page.evaluate(() => {
+    const { candidates, tooSmall } = await page.evaluate((minimumTarget) => {
       const buttons = Array.from(
         document.querySelectorAll(
           'button, a[href], [role="button"], input, select, textarea',
@@ -368,15 +369,15 @@ test.describe('Android — Mobile Layout', () => {
         tooSmall: visible
           .filter((el) => {
             const rect = el.getBoundingClientRect();
-            return rect.width < 44 || rect.height < 44;
+            return rect.width < minimumTarget || rect.height < minimumTarget;
           })
           .map((el) => {
             const rect = el.getBoundingClientRect();
-            return `${el.tagName}.${el.className.toString().slice(0, 50)} ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}`;
+            return `${el.tagName}.${el.className.toString().slice(0, 50)} ${rect.width.toFixed(3)}x${rect.height.toFixed(3)}`;
           })
           .slice(0, 20),
       };
-    });
+    }, MIN_TOUCH_TARGET_PX);
     expect(candidates).toBeGreaterThan(0);
     expect(tooSmall).toHaveLength(0);
   });

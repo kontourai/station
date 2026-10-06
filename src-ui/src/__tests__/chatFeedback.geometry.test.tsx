@@ -18,6 +18,18 @@ import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockPr
 import { ProjectSidebarHeader } from '../components/project-sidebar/ProjectSidebarHeader';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
 vi.mock('../contexts/NavigationContext', () => {
   // #1798 split the actions-only read out of `useNavigation`; the mock has to
   // answer both or every consumer of the new hook throws at render.
@@ -193,7 +205,7 @@ describe('September 8 visual feedback regressions', () => {
       try {
         await page.setContent(`<style>${css}</style>${markup}`);
         const panel = await page
-          .getByRole('dialog', { name: 'Switch project' })
+          .getByRole('dialog', { name: 'Projects' })
           .boundingBox();
         expect(panel).not.toBeNull();
         expect(panel!.y).toBeGreaterThanOrEqual(0);

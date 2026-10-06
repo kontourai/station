@@ -1,0 +1,41 @@
+{
+  "revision": "390e7e49c0412fd4d2604f588b8279779d98605a",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["CONTEXT.md"]},
+
+    {"path":"README.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["README.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["docs/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed StationHomeLifecycle ownership against exact own-PID retry: publication still requires birth identity and other-owner scans remain one-shot and fail closed.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed fresh fixture link and broker contract; opaque operator enrollment ID correction changes only test operator request input, not broker or application authority.","inputs":["docs/design/connection-broker.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["docs/design/event-store-ledger-migration.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed native fixture link and installed evidence limits; operator approval uses the pending opaque enrollment ID and exact candidate, while physical Project proof remains outstanding.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed fixture/operator approval and broker boundaries; opaque enrollment ID parsing repairs diagnostic fixture only, not broker grant or trust authority.","inputs":["docs/guides/self-hosted-broker.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["docs/reference/settings-deep-links.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["examples/repository-knowledge-graph/README.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed module-map dependency: bounded exact own-PID runtime lease retry changes no concepts, links, or downstream module contract described here.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed actual G12 pending payload, operator route and fixture approve parser; documented opaque enrollmentId instead of UUID requestId.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md"]}
+  ]
+}

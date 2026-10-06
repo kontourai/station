@@ -1,0 +1,19 @@
+{
+  "revision": "318e1c7f8a01d1cd8a842edceacd6e35297516a7",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Bounded review against the grouping delta: the integration GET projection adds optional display group metadata; no route authority, raw identity, transport, App resource metadata or Agent identity contract changes. Relevant MCP/integration and Agent setup passages remain accurate. This source-delta review does not establish full semantic reread, live subsystem verification or promotion.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed compact grouped picker against UI selection helpers, native Station Control metadata and focused UI/API/MCP behavior. Group shortcuts preserve other selections and surviving approval grants; metadata is display-only and does not change execution authorization. Native titles, behavioral hints and the vendor group key are distinguished from a standard MCP category. No portable tool-search broker or separate Knowledge MCP is claimed.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Bounded review against the grouping delta: the integration GET projection adds optional display group metadata; no route authority, raw identity, transport, App resource metadata or Agent identity contract changes. Relevant MCP/integration and Agent setup passages remain accurate. This source-delta review does not establish full semantic reread, live subsystem verification or promotion.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Bounded review against the grouping delta: the integration GET projection adds optional display group metadata; no route authority, raw identity, transport, App resource metadata or Agent identity contract changes. Relevant MCP/integration and Agent setup passages remain accurate. This source-delta review does not establish full semantic reread, live subsystem verification or promotion.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]},
+
+    {"path":"docs/reference/api.md","note":"Bounded review against the grouping delta: the integration GET projection adds optional display group metadata; no route authority, raw identity, transport, App resource metadata or Agent identity contract changes. Relevant MCP/integration and Agent setup passages remain accurate. This source-delta review does not establish full semantic reread, live subsystem verification or promotion.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the canonical MCP setup paragraph and regenerated shipped tool-servers topic. Group selection narrows the UI and presets preserve other choices; native authorization and engine delivery limits are unchanged. Generation and focused owner tests passed. No model-driven deferred-discovery, release or physical-device claim.","inputs":["docs/reference/station-docs.md"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Bounded review against the grouping delta: the integration GET projection adds optional display group metadata; no route authority, raw identity, transport, App resource metadata or Agent identity contract changes. Relevant MCP/integration and Agent setup passages remain accurate. This source-delta review does not establish full semantic reread, live subsystem verification or promotion.","inputs":["examples/mcp-ui-demo/README.md"]}
+  ]
+}

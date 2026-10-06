@@ -1,0 +1,7 @@
+{
+  "revision": "f7157a46f27d18a9ce19bc7def38aee15270f3af",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Re-checked after merging origin/main: the branch only adds the codingPanels device setting (classified as direct manipulation beside main's chatReturnBehavior preference); the starter-work guidance does not depend on the setting list.","inputs":["packages/contracts/src/device-settings.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

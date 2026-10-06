@@ -1,0 +1,63 @@
+{
+  "path": "src-desktop/icons/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
+
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
+
+  "sources": [
+    ".github/workflows/build-ios.yml",
+
+    ".github/workflows/nightly-native-stage.yml",
+
+    ".github/workflows/release.yml",
+
+    ".github/workflows/testflight-delivery.yml",
+
+    "scripts/__tests__/ios-channel-icons.test.ts",
+
+    "scripts/__tests__/verify-desktop-clean-checkout.test.ts",
+
+    "scripts/apply-android-channel-icons.mjs",
+
+    "scripts/generate-app-icons.mjs",
+
+    "scripts/ios-channel-icons.mjs",
+
+    "scripts/verify-desktop-clean-checkout.mjs",
+
+    "src-desktop/tauri.conf.json",
+
+    "src-ui/src/index.css"
+  ],
+
+  "checks": [
+    "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+
+    "Prior review receipt (not rerun here): Root upstream delta review: Added Notification Service signing/validation; icon generation/copy steps remain owned by the same helpers.",
+
+    "Prior review receipt (not rerun here): Root upstream delta review: Intel macOS pnpm setup fallback changed, not icon-generation ownership.",
+
+    "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
+
+    "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
+
+    "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
+
+    "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
+
+    "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
+
+    "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+
+    "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through 5731eba07: 8b48e2b35 (#2914) removed two negative source-text assertions from scripts/__tests__/ios-channel-icons.test.ts. The TestFlight apply/verify ordering assertions remain, and the README's apply/verify description is unchanged. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -1744,7 +1744,7 @@ describe('verification submission handoff', () => {
     const temp = fixture();
     const before = provenance(temp.worktree);
     const request = createVerificationRequest('full-regression', before);
-    const raw = 'Bearer super-secret-token at /Users/brian/private-token.txt';
+    const raw = 'Bearer super-secret-token at /Users/me/private-token.txt';
     try {
       const acquired = __verificationSubmissionInternals.acquireHandoff({
         root: temp.root,
@@ -1763,7 +1763,7 @@ describe('verification submission handoff', () => {
       }).submissions;
 
       expect(stored.error).not.toContain('super-secret-token');
-      expect(stored.error).not.toContain('/Users/brian');
+      expect(stored.error).not.toContain('/Users/me');
       expect(status.error).toBe(stored.error);
     } finally {
       temp.remove();
