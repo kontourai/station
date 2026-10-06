@@ -423,7 +423,7 @@ interface MapClaudeMessageParams {
  * the installed code, so this fails closed: an absent `source` (an older CLI),
  * a second entry of the name, or a non-`sdk` source all read as unverified.
  */
-export function stationBrowserVerifiedByInit(
+function stationBrowserVerifiedByInit(
   mcpServers: readonly { name: string; source?: string }[] | undefined,
 ): boolean {
   const named = (mcpServers ?? []).filter(
