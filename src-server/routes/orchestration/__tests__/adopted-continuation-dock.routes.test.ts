@@ -321,10 +321,15 @@ async function fixture(options: { engineAgent: boolean }) {
   const ownFolder = join(userHome, 'code', 'scratch');
   mkdirSync(ownFolder, { recursive: true });
   const otherProject = repository(join(userHome, 'dev', 'other'));
-  const projects = () => [
+  let projectList = [
     { slug: 'station', workingDirectory: project },
     { slug: 'other', workingDirectory: otherProject },
   ];
+  const projects = () => projectList;
+  /** The operator edits the Station's projects. */
+  const setProjects = (next: typeof projectList) => {
+    projectList = next;
+  };
   installStationDiscovery(loader, security, projects);
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
@@ -517,6 +522,8 @@ async function fixture(options: { engineAgent: boolean }) {
     folder,
     worktree,
     ownFolder,
+    otherProject,
+    setProjects,
     attached,
     adopt,
     request,
@@ -710,6 +717,61 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       ]);
     },
   );
+
+  /** Adopt a worktree child, then let its engine exit so the next follow-up starts a successor. */
+  async function exitedWorktreeChild(f: Awaited<ReturnType<typeof fixture>>) {
+    const child = await f.adopt(f.attached('claude', f.worktree));
+    f.engines.claude.exit(child);
+    await vi.waitFor(async () => {
+      const read = await f.request(
+        `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+      );
+      expect(read.body.data.session.status).toBe('closed');
+    });
+    return child;
+  }
+
+  test('a successor of a conversation adoption did not create is refused outside the project, even with the folder recorded', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await exitedWorktreeChild(f);
+    // The same recorded start (the worktree as `dispatchCanonicalCwd`, the
+    // project, the Agent binding), as a scoped dispatch records it, but the
+    // conversation carries no adoption marker.
+    const row = f.store.readSessionByThread(child)!;
+    expect(row.continuationSourceThreadId).toBeDefined();
+    f.store.upsertSession({ ...row, continuationSourceThreadId: undefined });
+    expect(
+      f.store.readSessionByThread(child)!.continuationSourceThreadId,
+    ).toBeUndefined();
+    const followUp = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', child, 'station', 'pick it up'),
+    );
+    expect(followUp.status).not.toBe(200);
+    expect(followUp.text).toMatch(/outside project 'station'/);
+    expect(f.engines.claude.starts).toHaveLength(1);
+    expect(f.engines.claude.turns).toEqual([]);
+  });
+
+  test('a successor naming a project the worktree no longer belongs to is refused', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await exitedWorktreeChild(f);
+    // `station` now names another repository; the worktree's repository is
+    // configured as a different project. The conversation still names
+    // `station`, which the worktree is not part of.
+    f.setProjects([
+      { slug: 'station', workingDirectory: f.otherProject },
+      { slug: 'moved', workingDirectory: f.project },
+    ]);
+    const followUp = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', child, 'station', 'pick it up'),
+    );
+    expect(followUp.status).not.toBe(200);
+    expect(followUp.text).toMatch(/outside project 'station'/);
+    expect(f.engines.claude.starts).toHaveLength(1);
+    expect(f.engines.claude.turns).toEqual([]);
+  });
 
   test('a successor is refused once the worktree is no longer a checkout of the project', async () => {
     const f = await fixture({ engineAgent: true });

@@ -8890,12 +8890,6 @@ export class OrchestrationService {
   }
 
   /**
-   * #2873: the canonical folder the conversation's previous session
-   * recorded, for a session that starts in that same folder (a continuation
-   * child, or the same thread started again). The newest session with a
-   * start record decides; a different folder carries nothing forward.
-   */
-  /**
    * #3429: a later session of a conversation Continue in Station created
    * (its root Session records `continuationSourceThreadId`, written only by
    * adoption) may start in the folder that conversation was admitted into,
@@ -8938,6 +8932,12 @@ export class OrchestrationService {
     return { threadId: input.threadId, projectSlug, cwd };
   }
 
+  /**
+   * #2873: the canonical folder the conversation's previous session
+   * recorded, for a session that starts in that same folder (a continuation
+   * child, or the same thread started again). The newest session with a
+   * start record decides; a different folder carries nothing forward.
+   */
   private inheritedDispatchCanonicalCwd(
     input: ProviderSessionStartInput,
   ): string | undefined {
