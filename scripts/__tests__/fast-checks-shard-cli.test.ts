@@ -401,6 +401,80 @@ describe('fast-checks shard runner (in process)', () => {
     ).toMatchObject({ status: 'failed', passed: false, runAttempt: 2 });
   });
 
+  test('a failing slice annotates each failed test and keeps its reports beside the receipt (#3101 C)', async () => {
+    const cwd = inProcessFixture();
+    const lines: string[] = [];
+    const runShard = vi.fn(
+      async (_plan: unknown, _slice: unknown, _options: unknown) => ({
+        status: 'failed',
+        counts: { executed: 2, passed: 0, failed: 2, infrastructureErrors: 0 },
+        executions: [
+          {
+            resourceGroup: 'ordinary',
+            exitCode: 1,
+            failedTests: [
+              {
+                file: 'a/a.test.ts',
+                name: 'row, at 390px: wraps',
+                excerpt: 'AssertionError: 100% wrapped\n    at a.test.ts:4',
+              },
+              { file: 'a/a.test.ts', name: 'second', excerpt: 'Error: two' },
+            ],
+          },
+        ],
+      }),
+    );
+    const status = await runFastChecksShardCli(
+      ['run', '--plan=plan.json', '--shard=1/4', '--receipt=out/receipt.json'],
+      {
+        cwd,
+        env: { ...env, GITHUB_ACTIONS: 'true' },
+        runShard,
+        report: (line) => lines.push(String(line)),
+        error: () => {},
+      },
+    );
+    expect(status).toBe(1);
+    expect(runShard.mock.calls[0][2]).toMatchObject({
+      failedReportDir: join(cwd, 'out', 'vitest-reports'),
+    });
+    expect(lines.filter((line) => line.startsWith('::error'))).toEqual([
+      '::error file=a/a.test.ts,title=row%2C at 390px%3A wraps::AssertionError: 100%25 wrapped%0A    at a.test.ts:4\n',
+      '::error file=a/a.test.ts,title=second::Error: two\n',
+    ]);
+  });
+
+  test('annotations are workflow commands only on GitHub Actions', async () => {
+    const cwd = inProcessFixture();
+    const lines: string[] = [];
+    await runFastChecksShardCli(
+      ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+      {
+        cwd,
+        env,
+        runShard: async () => ({
+          status: 'failed',
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 1,
+            infrastructureErrors: 0,
+          },
+          executions: [
+            {
+              resourceGroup: 'ordinary',
+              exitCode: 1,
+              failedTests: [{ file: 'a/a.test.ts', name: 'x', excerpt: 'y' }],
+            },
+          ],
+        }),
+        report: (line) => lines.push(String(line)),
+        error: () => {},
+      },
+    );
+    expect(lines.some((line) => line.startsWith('::error'))).toBe(false);
+  });
+
   test('a non-empty shard refuses to run outside its npm entry (review F1)', async () => {
     const cwd = inProcessFixture();
     const runShard = vi.fn();
@@ -527,6 +601,45 @@ describe('fast-checks shard execution verdicts', () => {
       expect(result.status).toBe(expected);
     },
   );
+
+  test('keeps the redacted JSON report of a failing slice, and nothing for a passing one (#3101 C)', async () => {
+    const directory = makeTempDir('station-fast-checks-reports-');
+    const failing = join(directory, 'failing');
+    const contents = JSON.stringify({
+      numTotalTestSuites: 1,
+      numTotalTests: 1,
+      numPassedTests: 0,
+      numFailedTests: 1,
+      testResults: [
+        {
+          name: 'x',
+          message: `token ghp_${'A'.repeat(36)} leaked`,
+          assertionResults: [],
+        },
+      ],
+    });
+    await runChangedVerificationShard({ deferredLanes: [] }, slice, {
+      root,
+      run: fakeRun(1, contents),
+      vitestPath: 'vitest.mjs',
+      prepareExecution: boundExecution,
+      failedReportDir: failing,
+    });
+    const kept = readFileSync(join(failing, 'ordinary-0.json'), 'utf8');
+    expect(kept).toContain('numFailedTests');
+    expect(kept).toContain('[REDACTED]');
+    expect(kept).not.toContain('ghp_');
+
+    const passing = join(directory, 'passing');
+    await runChangedVerificationShard({ deferredLanes: [] }, slice, {
+      root,
+      run: fakeRun(0, report(0)),
+      vitestPath: 'vitest.mjs',
+      prepareExecution: boundExecution,
+      failedReportDir: passing,
+    });
+    expect(() => readdirSync(passing)).toThrow();
+  });
 
   test('runs the dependency provenance preflight before any Vitest child', async () => {
     const run = fakeRun(0, report(0));
