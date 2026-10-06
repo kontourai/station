@@ -527,6 +527,45 @@ are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
 deduplication.
 
+Grok observation reads `GROK_HOME/sessions` (`~/.grok/sessions` by default)
+through the same bounded, read-only follower
+([`grok-session-source.ts`](../../src-server/providers/sessions/grok-session-source.ts)).
+Each session's `updates.jsonl` is Grok's append-only log of ACP session updates,
+so a byte offset resumes it. The working directory comes from the session's
+`summary.json`, never from its folder name, which Grok shortens to a lossy
+slug-plus-hash for long paths. A session is listed once its log holds a user
+prompt; this excludes the prompt-less sessions Station's own engine probes
+leave behind. Subagent child sessions are not listed. A Station chat on the
+Grok engine runs through ACP; the follower treats the Grok session named by its
+resume cursor as Station-owned and does not import it again. Prompts, reasoning,
+assistant messages, tool calls and results with their success or failure,
+plans, per-turn token usage, stop reasons and compaction markers are imported;
+a mid-turn interjection is a steer. Where Grok records what the user typed
+separately (`displayText`, for interjections and locally expanded slash
+skills), Station shows that rather than the model-facing text. A new prompt
+after a turn that never recorded its completion ends that turn as aborted and
+its open tools as unresolved. User text Grok writes without a prompt index while
+a turn is open (interjections, echoed host turns and direct `!command` runs) is
+imported as a steer on that turn and never starts or aborts one. A
+rewind appends a marker rather than removing turns; Station keeps the rewound
+turns, because a live follower has already published them and the event log
+has no retraction. The marker is recorded as an extension notification but is
+not shown in the transcript yet. A log
+or summary in an unrecognized shape is skipped with one logged warning per
+file kind, never guessed at. Discovery skips every working directory that is one of
+Station's own ACP workspaces, for this or another Station home (the layout
+`runtime/acp-workspaces/<session|probe>/<digest>` that
+[`managed-acp-workspace.ts`](../../src-server/services/acp/managed-acp-workspace.ts)
+creates), before reading it. Of the rest, it re-reads a working directory's
+folder list only when it changed, newest first, and per poll reads at most
+131,072 entries, stats at most 16,384 folders and inspects at most 1,024. New
+folders in a changed working directory and folders with new activity come
+first, so a new session is found on the poll it appears. The index holds at
+most 131,072 folders; past that it slides over the tree no faster than it can
+inspect, so an untouched old session in such a tree can take a few minutes to
+appear. A single working directory with more session folders than that is
+only partly listed.
+
 Claude transcript observation persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
 unknown or evicted parents leave the current turn's usage accumulator intact.
@@ -565,9 +604,11 @@ usage unavailable until it can establish a durable child-only baseline, rather
 than reporting inherited tokens as new spending. This limitation does not
 prevent transcript observation or continuation.
 
-`STATION_EXTERNAL_CODEX_SOURCE_ROOT` and `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`
-can select separate history roots for observation. Each root contains the engine's
-`sessions` or `projects` directory, respectively. Discovery does not change the
+`STATION_EXTERNAL_CODEX_SOURCE_ROOT`, `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and
+`STATION_EXTERNAL_GROK_SOURCE_ROOT` can select separate history roots for
+observation. Each root contains the engine's `sessions`, `projects` or
+`sessions` directory, respectively. Grok observation otherwise uses `GROK_HOME`,
+then `~/.grok`; Grok sessions offer no continuation. Discovery does not change the
 process environment or ordinary launch configuration. Continuation has an
 additional binding: Codex adoption and resume set the child process's
 `CODEX_HOME` to the verified source home, ahead of a credential-profile home.
