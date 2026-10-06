@@ -6,19 +6,151 @@ import type {
   McpElicitationStringFormat,
   McpElicitationValue,
 } from '@kontourai/station-contracts/mcp-elicitation';
-import { MCP_ELICITATION_MAX_TEXT_CHARS } from './mcp-elicitation-form.js';
+import {
+  MCP_ELICITATION_MAX_FIELDS,
+  MCP_ELICITATION_MAX_MESSAGE_CHARS,
+  MCP_ELICITATION_MAX_TEXT_CHARS,
+  readMcpElicitationForm,
+} from './mcp-elicitation-form.js';
 
 export {
   MCP_ELICITATION_MAX_FIELDS,
   MCP_ELICITATION_MAX_MESSAGE_CHARS,
   MCP_ELICITATION_MAX_OPTIONS,
   MCP_ELICITATION_MAX_TEXT_CHARS,
-  mcpElicitationFormFromRequest,
   readMcpElicitationForm,
 } from './mcp-elicitation-form.js';
 
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function schemaOptions(values: unknown, labels?: unknown): unknown {
+  if (!Array.isArray(values)) return null;
+  if (
+    labels !== undefined &&
+    (!Array.isArray(labels) || labels.length !== values.length)
+  )
+    return null;
+  return values.map((value, index) => ({
+    value,
+    label: Array.isArray(labels) ? labels[index] : value,
+  }));
+}
+
+function titledSchemaOptions(entries: unknown): unknown {
+  if (!Array.isArray(entries)) return null;
+  return entries.map((entry) =>
+    record(entry)
+      ? { value: entry.const, label: entry.title ?? entry.const }
+      : null,
+  );
+}
+
+function fieldFromSchema(
+  name: string,
+  schema: unknown,
+  required: boolean,
+): unknown {
+  if (!record(schema)) return null;
+  const base = {
+    name,
+    title: schema.title,
+    description: schema.description,
+    required,
+    default: schema.default,
+  };
+  switch (schema.type) {
+    case 'string': {
+      const options =
+        schema.oneOf !== undefined
+          ? titledSchemaOptions(schema.oneOf)
+          : schema.enum !== undefined
+            ? schemaOptions(schema.enum, schema.enumNames)
+            : undefined;
+      return options !== undefined
+        ? { ...base, kind: 'choice', options }
+        : {
+            ...base,
+            kind: 'string',
+            minLength: schema.minLength,
+            maxLength: schema.maxLength,
+            format: schema.format,
+          };
+    }
+    case 'number':
+    case 'integer':
+      return {
+        ...base,
+        kind: schema.type,
+        minimum: schema.minimum,
+        maximum: schema.maximum,
+      };
+    case 'boolean':
+      return { ...base, kind: 'boolean' };
+    case 'array': {
+      if (!record(schema.items)) return null;
+      const options =
+        schema.items.anyOf !== undefined
+          ? titledSchemaOptions(schema.items.anyOf)
+          : schema.items.type === 'string'
+            ? schemaOptions(schema.items.enum)
+            : null;
+      return {
+        ...base,
+        kind: 'multi-choice',
+        options,
+        minItems: schema.minItems,
+        maxItems: schema.maxItems,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Normalize a form-mode `elicitation/create` request into the fields Station
+ * renders. Returns null for a request Station cannot render faithfully: an
+ * unsupported property type, a bound exceeded, or a `required` entry that
+ * names no property.
+ */
+export function mcpElicitationFormFromRequest(
+  serverId: string,
+  params: unknown,
+): McpElicitationForm | null {
+  if (!record(params) || (params.mode !== undefined && params.mode !== 'form'))
+    return null;
+  const message = params.message;
+  const schema = params.requestedSchema;
+  if (
+    typeof message !== 'string' ||
+    message.length > MCP_ELICITATION_MAX_MESSAGE_CHARS ||
+    !record(schema) ||
+    schema.type !== 'object' ||
+    !record(schema.properties)
+  )
+    return null;
+  const required = schema.required ?? [];
+  if (
+    !Array.isArray(required) ||
+    required.some(
+      (name) =>
+        typeof name !== 'string' ||
+        !Object.hasOwn(schema.properties as object, name),
+    )
+  )
+    return null;
+  const entries = Object.entries(schema.properties);
+  if (entries.length > MCP_ELICITATION_MAX_FIELDS) return null;
+  const fields: unknown[] = [];
+  for (const [name, property] of entries) {
+    if (!name || name.length > MAX_NAME_CHARS) return null;
+    const field = fieldFromSchema(name, property, required.includes(name));
+    if (!field) return null;
+    fields.push(field);
+  }
+  return readMcpElicitationForm({ serverId, message, fields });
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

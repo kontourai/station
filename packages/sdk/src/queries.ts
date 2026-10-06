@@ -1,3 +1,4 @@
+export { runAgentMcpPrompt } from './client/mcp-prompts';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery
@@ -40,7 +41,6 @@ export {
   type ModelCapabilitiesEnvelope,
   materializeEngineAgent,
   recordFirstRunDecision,
-  runAgentMcpPrompt,
   submitToolApproval,
   type UpdateAppConfigResult,
   type UpdateAppLogLevelResult,

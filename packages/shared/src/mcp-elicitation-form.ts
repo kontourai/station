@@ -74,189 +74,6 @@ function readOptions(
   return options;
 }
 
-function readTitledOptions(entries: unknown): McpElicitationOption[] | null {
-  if (!Array.isArray(entries)) return null;
-  const values: unknown[] = [];
-  const labels: unknown[] = [];
-  for (const entry of entries) {
-    if (!record(entry)) return null;
-    values.push(entry.const);
-    labels.push(entry.title ?? entry.const);
-  }
-  return readOptions(values, labels);
-}
-
-/**
- * Convert one MCP `PrimitiveSchemaDefinition` into a Station field, or null
- * when it is outside the restricted subset the spec defines.
- */
-function fieldFromSchema(
-  name: string,
-  schema: unknown,
-  required: boolean,
-): McpElicitationField | null {
-  if (!record(schema)) return null;
-  const title = optionalText(schema.title, MAX_LABEL_CHARS);
-  const description = optionalText(schema.description, MAX_DESCRIPTION_CHARS);
-  if (title === null || description === null) return null;
-  const base = {
-    name,
-    ...(title !== undefined ? { title } : {}),
-    ...(description !== undefined ? { description } : {}),
-    required,
-  };
-  if (schema.type === 'string') {
-    const options =
-      schema.oneOf !== undefined
-        ? readTitledOptions(schema.oneOf)
-        : schema.enum !== undefined
-          ? readOptions(schema.enum, schema.enumNames)
-          : undefined;
-    if (options === null) return null;
-    if (options) {
-      if (
-        schema.default !== undefined &&
-        (typeof schema.default !== 'string' ||
-          !options.some((option) => option.value === schema.default))
-      )
-        return null;
-      return {
-        ...base,
-        kind: 'choice',
-        options,
-        ...(schema.default !== undefined
-          ? { default: schema.default as string }
-          : {}),
-      };
-    }
-    const minLength = optionalCount(schema.minLength);
-    const maxLength = optionalCount(schema.maxLength);
-    if (minLength === null || maxLength === null) return null;
-    if (
-      schema.format !== undefined &&
-      !FORMATS.has(schema.format as McpElicitationStringFormat)
-    )
-      return null;
-    const fallback = optionalText(
-      schema.default,
-      MCP_ELICITATION_MAX_TEXT_CHARS,
-    );
-    if (fallback === null) return null;
-    return {
-      ...base,
-      kind: 'string',
-      ...(minLength !== undefined ? { minLength } : {}),
-      ...(maxLength !== undefined ? { maxLength } : {}),
-      ...(schema.format !== undefined
-        ? { format: schema.format as McpElicitationStringFormat }
-        : {}),
-      ...(fallback !== undefined ? { default: fallback } : {}),
-    };
-  }
-  if (schema.type === 'number' || schema.type === 'integer') {
-    const minimum = optionalFinite(schema.minimum);
-    const maximum = optionalFinite(schema.maximum);
-    const fallback = optionalFinite(schema.default);
-    if (minimum === null || maximum === null || fallback === null) return null;
-    return {
-      ...base,
-      kind: schema.type,
-      ...(minimum !== undefined ? { minimum } : {}),
-      ...(maximum !== undefined ? { maximum } : {}),
-      ...(fallback !== undefined ? { default: fallback } : {}),
-    };
-  }
-  if (schema.type === 'boolean') {
-    if (schema.default !== undefined && typeof schema.default !== 'boolean')
-      return null;
-    return {
-      ...base,
-      kind: 'boolean',
-      ...(schema.default !== undefined
-        ? { default: schema.default as boolean }
-        : {}),
-    };
-  }
-  if (schema.type === 'array') {
-    const items = schema.items;
-    if (!record(items)) return null;
-    const options =
-      items.anyOf !== undefined
-        ? readTitledOptions(items.anyOf)
-        : items.type === 'string'
-          ? readOptions(items.enum)
-          : null;
-    if (!options) return null;
-    const minItems = optionalCount(schema.minItems);
-    const maxItems = optionalCount(schema.maxItems);
-    if (minItems === null || maxItems === null) return null;
-    const fallback = schema.default;
-    if (
-      fallback !== undefined &&
-      (!Array.isArray(fallback) ||
-        fallback.some(
-          (value) =>
-            typeof value !== 'string' ||
-            !options.some((option) => option.value === value),
-        ))
-    )
-      return null;
-    return {
-      ...base,
-      kind: 'multi-choice',
-      options,
-      ...(minItems !== undefined ? { minItems } : {}),
-      ...(maxItems !== undefined ? { maxItems } : {}),
-      ...(fallback !== undefined ? { default: fallback as string[] } : {}),
-    };
-  }
-  return null;
-}
-
-/**
- * Normalize a form-mode `elicitation/create` request into the fields Station
- * renders. Returns null for a request Station cannot render faithfully: an
- * unsupported property type, a bound exceeded, or a `required` entry that
- * names no property.
- */
-export function mcpElicitationFormFromRequest(
-  serverId: string,
-  params: unknown,
-): McpElicitationForm | null {
-  if (!record(params) || (params.mode !== undefined && params.mode !== 'form'))
-    return null;
-  const message = params.message;
-  const schema = params.requestedSchema;
-  if (
-    typeof message !== 'string' ||
-    message.length > MCP_ELICITATION_MAX_MESSAGE_CHARS ||
-    !record(schema) ||
-    schema.type !== 'object' ||
-    !record(schema.properties)
-  )
-    return null;
-  const required = schema.required ?? [];
-  if (
-    !Array.isArray(required) ||
-    required.some(
-      (name) =>
-        typeof name !== 'string' ||
-        !Object.hasOwn(schema.properties as object, name),
-    )
-  )
-    return null;
-  const entries = Object.entries(schema.properties);
-  if (entries.length > MCP_ELICITATION_MAX_FIELDS) return null;
-  const fields: McpElicitationField[] = [];
-  for (const [name, property] of entries) {
-    if (!name || name.length > MAX_NAME_CHARS) return null;
-    const field = fieldFromSchema(name, property, required.includes(name));
-    if (!field) return null;
-    fields.push(field);
-  }
-  return readMcpElicitationForm({ serverId, message, fields });
-}
-
 /**
  * Re-read a normalized form from untrusted storage (an event payload). Shared
  * by the server that validates an answer and the browser that renders it.
@@ -296,54 +113,108 @@ function readField(value: unknown): McpElicitationField | null {
   const title = optionalText(value.title, MAX_LABEL_CHARS);
   const description = optionalText(value.description, MAX_DESCRIPTION_CHARS);
   if (title === null || description === null) return null;
-  // Rebuild through the same schema reader, so storage cannot hold a field
-  // the request reader would have refused.
-  const schema: Record<string, unknown> = {
+  const base = {
+    name: value.name,
     ...(title !== undefined ? { title } : {}),
     ...(description !== undefined ? { description } : {}),
-    ...(value.default !== undefined ? { default: value.default } : {}),
+    required: value.required,
   };
-  switch (value.kind) {
-    case 'string':
-      Object.assign(schema, {
-        type: 'string',
-        minLength: value.minLength,
-        maxLength: value.maxLength,
-        format: value.format,
-      });
-      break;
-    case 'number':
-    case 'integer':
-      Object.assign(schema, {
-        type: value.kind,
-        minimum: value.minimum,
-        maximum: value.maximum,
-      });
-      break;
-    case 'boolean':
-      schema.type = 'boolean';
-      break;
-    case 'choice':
-    case 'multi-choice': {
-      if (!Array.isArray(value.options)) return null;
-      const oneOf = value.options.map((option) =>
-        record(option) ? { const: option.value, title: option.label } : null,
-      );
-      if (value.kind === 'choice')
-        Object.assign(schema, { type: 'string', oneOf });
-      else
-        Object.assign(schema, {
-          type: 'array',
-          items: { anyOf: oneOf },
-          minItems: value.minItems,
-          maxItems: value.maxItems,
-        });
-      break;
-    }
-    default:
+  if (value.kind === 'string') {
+    const minLength = optionalCount(value.minLength);
+    const maxLength = optionalCount(value.maxLength);
+    if (minLength === null || maxLength === null) return null;
+    if (
+      value.format !== undefined &&
+      !FORMATS.has(value.format as McpElicitationStringFormat)
+    )
       return null;
+    const fallback = optionalText(
+      value.default,
+      MCP_ELICITATION_MAX_TEXT_CHARS,
+    );
+    if (fallback === null) return null;
+    return {
+      ...base,
+      kind: 'string',
+      ...(minLength !== undefined ? { minLength } : {}),
+      ...(maxLength !== undefined ? { maxLength } : {}),
+      ...(value.format !== undefined
+        ? { format: value.format as McpElicitationStringFormat }
+        : {}),
+      ...(fallback !== undefined ? { default: fallback } : {}),
+    };
   }
-  for (const key of Object.keys(schema))
-    if (schema[key] === undefined) delete schema[key];
-  return fieldFromSchema(value.name, schema, value.required);
+  if (value.kind === 'number' || value.kind === 'integer') {
+    const minimum = optionalFinite(value.minimum);
+    const maximum = optionalFinite(value.maximum);
+    const fallback = optionalFinite(value.default);
+    if (minimum === null || maximum === null || fallback === null) return null;
+    return {
+      ...base,
+      kind: value.kind,
+      ...(minimum !== undefined ? { minimum } : {}),
+      ...(maximum !== undefined ? { maximum } : {}),
+      ...(fallback !== undefined ? { default: fallback } : {}),
+    };
+  }
+  if (value.kind === 'boolean') {
+    if (value.default !== undefined && typeof value.default !== 'boolean')
+      return null;
+    return {
+      ...base,
+      kind: 'boolean',
+      ...(value.default !== undefined
+        ? { default: value.default as boolean }
+        : {}),
+    };
+  }
+  if (value.kind === 'choice' || value.kind === 'multi-choice') {
+    if (!Array.isArray(value.options)) return null;
+    const options = readOptions(
+      value.options.map((option) => (record(option) ? option.value : null)),
+      value.options.map((option) =>
+        record(option) ? (option.label ?? option.value) : null,
+      ),
+    );
+    if (!options) return null;
+    if (value.kind === 'choice') {
+      if (
+        value.default !== undefined &&
+        (typeof value.default !== 'string' ||
+          !options.some((option) => option.value === value.default))
+      )
+        return null;
+      return {
+        ...base,
+        kind: 'choice',
+        options,
+        ...(value.default !== undefined
+          ? { default: value.default as string }
+          : {}),
+      };
+    }
+    const minItems = optionalCount(value.minItems);
+    const maxItems = optionalCount(value.maxItems);
+    if (minItems === null || maxItems === null) return null;
+    const fallback = value.default;
+    if (
+      fallback !== undefined &&
+      (!Array.isArray(fallback) ||
+        fallback.some(
+          (value) =>
+            typeof value !== 'string' ||
+            !options.some((option) => option.value === value),
+        ))
+    )
+      return null;
+    return {
+      ...base,
+      kind: 'multi-choice',
+      options,
+      ...(minItems !== undefined ? { minItems } : {}),
+      ...(maxItems !== undefined ? { maxItems } : {}),
+      ...(fallback !== undefined ? { default: fallback as string[] } : {}),
+    };
+  }
+  return null;
 }
