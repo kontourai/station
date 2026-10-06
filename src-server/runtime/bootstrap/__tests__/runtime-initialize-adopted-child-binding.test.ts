@@ -8,10 +8,8 @@
  * construction, captures the options it is built with, and stops there. The
  * captured resolver reads a real Agent store.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { materializeEngineAgent } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 
@@ -20,6 +18,8 @@ const captured = vi.hoisted(() => ({
 }));
 
 class StopAfterConstruction extends Error {}
+
+const makeTempDir = trackTempDirs();
 
 vi.mock(
   '../../../services/orchestration/orchestration-service.js',
@@ -58,13 +58,12 @@ function fakeAdapter(provider: string) {
 
 describe('runtime composition: a continued attached conversation’s Agent and Environment', () => {
   let initializeRuntime: typeof import('../runtime-initialize.js')['initializeRuntime'];
-  const home = mkdtempSync(join(tmpdir(), 'station-3429-'));
   beforeAll(async () => {
     ({ initializeRuntime } = await import('../runtime-initialize.js'));
   }, 120_000);
-  afterAll(() => rmSync(home, { recursive: true, force: true }));
 
   test('is the engine’s own Agent on this Station’s Environment, or none', async () => {
+    const home = makeTempDir('station-3429-');
     const loader = new ConfigLoader({ projectHomeDir: home });
     await materializeEngineAgent(loader, 'claude', 'Claude Code');
     let environmentId = 'environment-before-reset';
