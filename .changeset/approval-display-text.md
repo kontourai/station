@@ -10,7 +10,11 @@ untrusted text in. It provides:
   `displayMultilineText`;
 - `boundedJoinedLines` and `boundedDisplayText` (lines kept apart with " ⏎ ",
   "…" on a cut, and "(+N lines)" for lines a cut hides);
-- `compactDisplaySource`, `truncateDisplay` and `displayLength` (code points);
+- `compactDisplaySource`, `truncateDisplay` and `displayLength` (code points).
+
+Also a new `./display-reveal` subpath, kept apart so an entry bundle that
+only needs the display form does not carry it:
+
 - `revealHiddenCharacters`, `revealHiddenCharactersText`,
   `hasHiddenCharacters` and `hiddenCharacterToken`, for raw views that show a
   hidden character as a «U+XXXX» token instead of applying it.
