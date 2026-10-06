@@ -291,6 +291,33 @@ describe('applyChildWorkDelta', () => {
         'a',
       )?.usage,
     ).toEqual({ totalTokens: 100, durationMs: 5 });
+    // An empty or unknown-only running list is not a settled report: the
+    // replay restates running figures, and the real final figure still wins.
+    const live = fold(
+      snapshot(item('d', { usage: { totalTokens: 40141 } })),
+      settle('d', 'completed'),
+    );
+    for (const usageRunningFields of [[], ['bogus']] as never[]) {
+      const replayed = applyChildWorkDelta(
+        live,
+        settle('d', 'completed', {
+          usage: { totalTokens: 1 },
+          usageProvisional: true,
+          usageRunningFields,
+        }),
+      );
+      expect(replayed).toBe(live);
+      const coldReplay = fold(
+        settle('d', 'completed', {
+          usage: { totalTokens: 1 },
+          usageProvisional: true,
+          usageRunningFields,
+        }),
+        settle('d', 'completed', { usage: { totalTokens: 41833 } }),
+      );
+      expect(get(coldReplay, 'd')?.usage).toEqual({ totalTokens: 41833 });
+      expect(get(coldReplay, 'd')?.usageProvisional).toBeUndefined();
+    }
     // Producers cannot claim the field split: identity never carries it.
     const tomb = fold(
       settle('c', 'completed', {

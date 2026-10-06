@@ -783,9 +783,12 @@ function applySettle(
   const usage = normalizeUsage(delta.usage);
   const identity = delta.identity ?? {};
   const provisional = delta.usageProvisional === true;
-  const runningFields = Array.isArray(delta.usageRunningFields)
-    ? delta.usageRunningFields
-    : undefined;
+  // Canonical form, as an item holds it: an empty or unknown-only list
+  // means every field is running, never that nothing is.
+  const runningFields =
+    provisional && usage
+      ? normalizeRunningFields(usage, delta.usageRunningFields)
+      : undefined;
   let next: ChildWorkItem;
   if (!existing) {
     // Settle before any listing: record the terminal as a tombstone, so a
