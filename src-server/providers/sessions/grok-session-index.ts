@@ -191,6 +191,12 @@ export class GrokSessionIndex {
       );
     }
     const inspected = new Set<string>();
+    // The backlog's order is admission order because it needs no sort. It
+    // does not decide what is found: the admission gate (see `admit`) keeps
+    // the backlog to about one poll of inspections once the index is full,
+    // so any order drains it within a poll or two. No test pins this order on
+    // its own for that reason; with the gate removed, it is what keeps the
+    // backlog draining (the full-ratio test fails without both).
     let inspections = 0;
     for (const path of chain([admitted, changed, this.uninspected])) {
       const entry = this.entries.get(path);

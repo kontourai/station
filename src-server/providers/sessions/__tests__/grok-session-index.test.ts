@@ -131,6 +131,42 @@ describe('GrokSessionIndex', () => {
     ]);
   }, 120_000);
 
+  test('past the cap, an old session in a group that just changed is inspected at once', async () => {
+    // Same scaled shape. Rotation may admit a folder only while the waiting
+    // work fits one poll; without that gate it would have queued the old
+    // `a-user` folder at the back of a long backlog before its group changed.
+    const root = tree();
+    const old = new Date(Date.now() - 86_400_000);
+    folder(root, 'a-user', 'real-old');
+    utimesSync(join(root, 'a-user', 'real-old'), old, old);
+    utimesSync(join(root, 'a-user'), old, old);
+    for (let group = 0; group < 11; group += 1) {
+      for (let item = 0; item < 100; item += 1) {
+        folder(
+          root,
+          `m-probe-${String(group).padStart(2, '0')}`,
+          `probe-${item}`,
+        );
+      }
+    }
+    const target = index({
+      maxEntries: 1000,
+      maxInspections: 8,
+      maxStats: 125,
+      maxSweepStats: 8,
+    });
+    for (let round = 0; round < 20; round += 1) await poll(target, root);
+    // A new session in the old group changes the group.
+    folder(root, 'a-user', 'real-new');
+    const found = new Set<string>();
+    for (let round = 0; round < 2; round += 1) {
+      for (const session of (await poll(target, root)).sessions) {
+        found.add(session.inspection.session!.sessionId);
+      }
+    }
+    expect([...found].sort()).toEqual(['real-new', 'real-old']);
+  }, 120_000);
+
   test('the newest group is read first, ahead of older ones past the budget', async () => {
     const root = tree();
     for (let item = 0; item < 15; item += 1)
