@@ -552,7 +552,9 @@
 
     "src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx",
 
-    "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx"
+    "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx",
+
+    "packages/sdk/src/query-domains/mcpPromptRun.ts"
   ],
 
   "checks": [
