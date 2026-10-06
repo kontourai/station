@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { resolve } from 'node:path';
 import { externalSessionContinuationSupport } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AdoptedSessionResult,
@@ -28,6 +29,7 @@ import {
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrantor } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { expandTilde } from '../../utils/paths.js';
 import type {
   AdoptionLedger,
   AdoptionReservation,
@@ -648,7 +650,7 @@ export class AttachedSessionAdoption {
           : {}),
         ...(sourceBoundary ? { sourceBoundary } : {}),
         cwd: input.place.cwd,
-        projectRoot: input.place.workingDirectory,
+        projectRoot: resolve(expandTilde(input.place.workingDirectory)),
         createdAt: now,
         updatedAt: now,
       },

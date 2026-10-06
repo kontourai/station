@@ -216,7 +216,9 @@ export async function resolveContinuationPlace(input: {
     return {
       // The folder the attribution matched: the conversation's own.
       cwd: attribution.cwd,
-      workingDirectory: attribution.workingDirectory,
+      // Already canonical from the attribution; expanded again so a stored
+      // `~/...` can never reach here raw (station#3155).
+      workingDirectory: resolve(expandTilde(attribution.workingDirectory)),
       project: { slug: attribution.slug, ...(id ? { id } : {}) },
     };
   }
