@@ -113,7 +113,7 @@
         "package": "sprintf-js",
         "version": "1.0.3",
         "patchPath": "patches/sprintf-js-1.0.3.patch",
-        "patchSha256": "ddcddc58f18573895595a7b9fd9153b834cc47a1a7b096494f8a35dc328d0654",
+        "patchSha256": "d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6",
         "installedEntrypoints": [
           {
             "path": "node_modules/sprintf-js/src/sprintf.js",
