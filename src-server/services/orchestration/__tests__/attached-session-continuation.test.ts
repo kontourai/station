@@ -422,6 +422,23 @@ describe('after a restart (#3386)', () => {
 });
 
 describe('a conversation no project claims (#3386)', () => {
+  test('an ambiguous folder is refused by its candidates, naming no path', async () => {
+    const shared = join(dir, 'home', 'code', 'shared');
+    mkdirSync(shared, { recursive: true });
+    projects.push(
+      { slug: 'alpha', workingDirectory: shared },
+      { slug: 'beta', workingDirectory: shared },
+    );
+    const error = (await adopt(attached(shared)).catch(
+      (caught: unknown) => caught,
+    )) as Error;
+    expect(error.message).toBe(
+      "This conversation's folder is configured as more than one project (alpha, beta). Continue it from the project you meant, or remove the duplicate project.",
+    );
+    expect(error.message).not.toContain(dir);
+    expect(adapter.adoptions).toHaveLength(0);
+  });
+
   test('a folder refusal carries its code to callers', async () => {
     const folder = join(dir, 'outside');
     mkdirSync(folder);
@@ -550,6 +567,34 @@ describe('a conversation no project claims (#3386)', () => {
       ]);
     },
   );
+
+  test('a home folder reached through a linked ancestor allows its folders, and still refuses a link inside it', async () => {
+    // Like a home under a linked /home, or an automounted home: the link is
+    // above the home folder, and the home folder's own path goes through it.
+    const realRoot = join(dir, 'real-root');
+    mkdirSync(join(realRoot, 'home', 'code', 'app'), { recursive: true });
+    mkdirSync(join(realRoot, 'home', 'code', 'other'), { recursive: true });
+    symlinkSync(realRoot, join(dir, 'link-root'));
+    const home = join(dir, 'link-root', 'home');
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('STATION_HOME', join(dir, 'station-data-elsewhere'));
+
+    await adopt(attached(join(home, 'code', 'app')), { kind: 'own-folder' });
+    expect(adapter.adoptions.map((input) => input.cwd)).toEqual([
+      join(realRoot, 'home', 'code', 'app'),
+    ]);
+
+    symlinkSync(
+      join(realRoot, 'home', 'code', 'other'),
+      join(realRoot, 'home', 'code', 'shown'),
+    );
+    await expect(
+      adopt(attached(join(home, 'code', 'shown')), { kind: 'own-folder' }),
+    ).rejects.toThrow(
+      "This conversation's folder leads to another folder through a symbolic link.",
+    );
+    expect(adapter.adoptions).toHaveLength(1);
+  });
 
   test('refuses a No project chat whose recorded folder leads elsewhere in the home folder', async () => {
     const real = inHome('code', 'real');

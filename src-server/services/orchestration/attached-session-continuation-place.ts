@@ -137,20 +137,29 @@ export function noProjectFolderRefusal(folder: string): string | undefined {
 
 /**
  * Whether reaching `recorded` (absolute, lexically resolved) goes through a
- * symbolic link: one of its components, from the root down, is a link.
+ * symbolic link INSIDE the home folder: a component that is a link and sits
+ * in the home folder or below it. A link above home is the system's own (a
+ * home under a linked `/home`, an automounted home), not the conversation's
+ * folder leading elsewhere, so it is allowed; where a link sits is decided
+ * by its parent's resolved path, so another spelling of the home folder's
+ * path does not change the answer.
+ *
  * `lstat` looks each component up the way the file system does, so a
  * spelling that differs only by case or Unicode normalization finds the
  * same entry and is not a link. A component that cannot be read counts as a
  * link: the caller then refuses.
  */
 function recordedPathFollowsLink(recorded: string): boolean {
+  const home = canonicalOrLexical(homedir());
   const { root } = parse(recorded);
   let current = root;
   for (const component of recorded.slice(root.length).split(sep)) {
     if (!component) continue;
+    const parent = current;
     current = join(current, component);
     try {
-      if (lstatSync(current).isSymbolicLink()) return true;
+      if (!lstatSync(current).isSymbolicLink()) continue;
+      if (isSameOrInside(home, realpathSync.native(parent))) return true;
     } catch {
       return true;
     }
@@ -187,7 +196,7 @@ export async function resolveContinuationPlace(input: {
   // workspace refuses by name instead of adopting into an arbitrary winner.
   if (attribution.state === 'ambiguous')
     throw new ContinuationPlaceRefusedError(
-      `The attached session workspace ${attribution.workingDirectory} is configured as more than one project (${attribution.candidates.join(', ')}). Continue it from the project you meant, or remove the duplicate project.`,
+      `This conversation's folder is configured as more than one project (${attribution.candidates.join(', ')}). Continue it from the project you meant, or remove the duplicate project.`,
     );
   if (attribution.state === 'attributed') {
     if (input.target?.kind === 'own-folder')
