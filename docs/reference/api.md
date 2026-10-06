@@ -72,7 +72,10 @@ command, `POST /api/plugins/install`, `/:name/recover` and `/:name/update`,
 entering an API key for a command-launching tool server from a paired device now
 needs the grant. Binding a secret to a command-launching server
 (`POST /api/secret-bindings/:id/bind`, `migrate-stored-env`, and `PUT` on a binding
-already bound to one) and `POST /api/registry/agents/install` take it too. A saved
+already bound to one) and `POST /api/registry/agents/install` take it too. A bind
+of a binding the caller cannot see still answers `404`, and of a person-owned
+binding still answers the service's `400`, ahead of that check; no env name is
+exempt. A saved
 Environment's dispatch that names no Project
 is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project

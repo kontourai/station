@@ -768,7 +768,16 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
     A bound value becomes the launched command's environment, so attaching one
     or changing the value of one that is attached chooses that environment.
     Unbind, revoke, create, list and get are not refused, and a binding to a URL
-    server or an ACP provider header is not either. One device cannot hold both
+    server or an ACP provider header is not either. A bind on a binding the
+    caller cannot see still answers 404 exactly as a missing id, and a bind of a
+    person-owned binding still gets the service's own refusal (400: it can never
+    be granted to a shared integration), because nothing can attach in either
+    case and the command refusal would otherwise tell them apart. There is no
+    exemption for a person's own token on a command-launching server: person-owned
+    bindings cannot be created or granted today, and an integration definition
+    declares no per-principal environment variable name (`credentialOwnership` is
+    a flag for per-person OAuth tokens on URL servers, with no env name; a stdio
+    server's `env` keys are instance-level) One device cannot hold both
     `access:manage` and `coding:exec` (a scope edit cannot re-grant
     `access:manage`), so in practice only the operator passes these;
   - `POST /api/registry/agents/install` when the id is not a plugin the plugin
