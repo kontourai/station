@@ -516,6 +516,46 @@ export class ApprovalPosture {
       : undefined;
   }
 
+  /**
+   * #3290: what Station last applied on `threadId`, and putting it back.
+   * `resolve` records a mode before the engine takes it; an engine that
+   * refuses the mode (an OpenCode whose own rules would override it) still
+   * runs what it ran before, and a Default pick must resolve against that,
+   * not against the mode that never applied.
+   */
+  appliedOf(
+    threadId: string,
+  ): { mode: ApprovalMode; startConfinement?: StationConfinement } | undefined {
+    return this.stationApplied.get(threadId);
+  }
+
+  restoreApplied(
+    threadId: string,
+    prior:
+      | { mode: ApprovalMode; startConfinement?: StationConfinement }
+      | undefined,
+  ): void {
+    if (prior) this.stationApplied.set(threadId, prior);
+    else this.stationApplied.delete(threadId);
+  }
+
+  /**
+   * #3290: why a Default pick on a Station-governed ACP thread would still
+   * request a mode, or `undefined` when it requests nothing (the engine's
+   * own settings). Read by the governance refusal, so its advice about
+   * Default is true for this chat.
+   */
+  async defaultPickRequest(input: {
+    threadId: string;
+    agentSlug?: string;
+    capturedAgent?: { approvalMode?: ApprovalMode };
+  }): Promise<'configured' | 'takeover' | undefined> {
+    if (await this.defaultPosture(input)) return 'configured';
+    return (await this.resolveDefaultPick({ ...input, durableTakeover: true }))
+      ? 'takeover'
+      : undefined;
+  }
+
   forgetThread(threadId: string): void {
     this.stationApplied.delete(threadId);
   }

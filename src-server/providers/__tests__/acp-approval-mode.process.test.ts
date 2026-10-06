@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
+import { openCodeAgentReader } from '../../services/acp/opencode-approval-verify.js';
 
 /**
  * #3290: Station's approval mode governs OpenCode over ACP.
@@ -753,6 +754,70 @@ describe.skipIf(process.platform === 'win32')(
         } as never),
       ).rejects.toThrow(/could not read OpenCode's resolved approval rules/);
       await adapter.stopAll();
+    });
+
+    test('the start preflight refuses definitively, before anything launches, and a pass is not checked twice', async () => {
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        agent: { build: { permission: { 'bas?': 'allow', '*?': 'allow' } } },
+      });
+      h = harness('opencode');
+      const { command, cwd } = h;
+      const reads: string[] = [];
+      const adapter = new AcpAdapter({
+        getConnections: async () => [
+          {
+            id: 'engine-under-test',
+            name: 'OpenCode',
+            command,
+            args: ['acp'],
+            enabled: true,
+          } as never,
+        ],
+        readOpenCodeAgents: (input) => {
+          const read = openCodeAgentReader(input);
+          return (agent) => {
+            reads.push(agent);
+            return read(agent);
+          };
+        },
+      });
+      const input = (threadId: string, approvalMode?: ApprovalMode) =>
+        ({
+          provider: 'acp',
+          threadId,
+          cwd,
+          confinement: 'workspace',
+          metadata: { connectionId: 'engine-under-test' },
+          ...(approvalMode ? { modelOptions: { approvalMode } } : {}),
+        }) as never;
+      try {
+        await expect(
+          adapter.preflightStart(input('pre-refused', 'ask')),
+        ).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(
+            /overrides Station's approval rules for bash in the build agent/,
+          ),
+        });
+        expect(launches(h)).toHaveLength(0);
+        // Default asks Station to apply nothing: no check, no refusal.
+        reads.length = 0;
+        await adapter.preflightStart(input('pre-native'));
+        expect(reads).toEqual([]);
+
+        delete process.env.FAKE_OPENCODE_USER_CONFIG;
+        reads.length = 0;
+        await adapter.preflightStart(input('pre-passed', 'ask'));
+        const preflightReads = reads.length;
+        expect(preflightReads).toBeGreaterThan(0);
+        await adapter.startSession(input('pre-passed', 'ask'));
+        expect(reads).toHaveLength(preflightReads);
+        // A start with no preflight behind it still checks.
+        await adapter.startSession(input('no-preflight', 'ask'));
+        expect(reads.length).toBeGreaterThan(preflightReads);
+      } finally {
+        await adapter.stopAll();
+      }
     });
 
     test('a mode at start (a pick or a configured default) launches on the floor', async () => {

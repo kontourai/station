@@ -1232,7 +1232,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
     expect(notice?.content).toContain('for bash in the build agent');
     expect(notice?.content).toContain(
-      "Change the OpenCode setting named above, or pick Default to keep using OpenCode's own settings.",
+      'Change the OpenCode setting or mode named above.',
     );
     expect(notice?.content).not.toContain('Retrying may help');
     expect(notice?.action).toBeUndefined();

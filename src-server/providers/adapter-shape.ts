@@ -381,6 +381,13 @@ export interface ProviderAdapterShape {
      */
     connectionId?: string;
   }): Promise<Prerequisite[]>;
+  /**
+   * #3290: a pre-effect check the orchestrator runs before it claims the
+   * start boundary. A refusal thrown here is definitive (nothing was
+   * started), unlike a failure of `startSession` itself, which the boundary
+   * must treat as possibly started.
+   */
+  preflightStart?(input: ProviderSessionStartInput): Promise<void>;
   /** Reads provider-reported connection quota data when the engine supports it. */
   readQuotaSnapshot?(options: {
     connectionId: string;

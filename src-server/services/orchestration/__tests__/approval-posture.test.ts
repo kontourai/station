@@ -46,6 +46,16 @@ class RecordingAdapter implements ProviderAdapterShape {
   readonly turns: ProviderSendTurnInput[] = [];
   /** Thrown by the next `sendTurn`, before it has any effect. */
   nextTurnError: Error | undefined;
+  /**
+   * A start the engine refuses before any effect. Like the ACP adapter, the
+   * refusal is raised by the preflight AND by `startSession` itself, which
+   * re-checks when no preflight ran.
+   */
+  startRefusal: Error | undefined;
+
+  async preflightStart(): Promise<void> {
+    if (this.startRefusal) throw this.startRefusal;
+  }
   private turnCount = 0;
 
   constructor(readonly provider: 'claude' | 'codex' | 'acp') {
@@ -59,6 +69,7 @@ class RecordingAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    if (this.startRefusal) throw this.startRefusal;
     this.starts.push(input);
     const now = new Date().toISOString();
     // Like every real adapter: the start's metadata (the Agent slug the
@@ -711,6 +722,98 @@ describe('server-ordered approval posture (#2436)', () => {
       );
       await expect(turn('t-opencode-refused')).rejects.toMatchObject({
         code: 'acp_approval_governance_refused',
+      });
+    });
+
+    test('a governance refusal at start keeps its code, and is not reported as a start that may have happened', async () => {
+      acp.startRefusal = new ApprovalGovernanceRefusedError(
+        "Station can't apply its approval mode to OpenCode, so the chat was not started: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+      );
+      try {
+        const startsBefore = acp.starts.length;
+        await expect(
+          service.dispatch({
+            type: 'startSession',
+            input: {
+              threadId: 't-opencode-start-refused',
+              provider: 'acp',
+              metadata: { connectionId: 'opencode' },
+              modelOptions: { approvalMode: 'ask' },
+            },
+          }),
+        ).rejects.toMatchObject({ code: 'acp_approval_governance_refused' });
+        expect(acp.starts).toHaveLength(startsBefore);
+      } finally {
+        acp.startRefusal = undefined;
+      }
+    });
+
+    describe('a governance refusal says truthfully what Default would do', () => {
+      const refusal = () =>
+        new ApprovalGovernanceRefusedError(
+          "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings, so this message was not sent: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+        );
+      const KEEP_OWN = /Pick Default to keep using OpenCode's own settings\.$/;
+
+      test('with nothing configured and no takeover, Default keeps OpenCode on its own settings, and does', async () => {
+        await startOn('t-default-native', 'opencode');
+        await decide('t-default-native', 'ask');
+        acp.nextTurnError = refusal();
+        await expect(turn('t-default-native')).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(KEEP_OWN),
+        });
+        // The refused Ask never applied, so Default asks for nothing.
+        await decide('t-default-native', 'connection-default');
+        await turn('t-default-native');
+        expect(acp.turns.at(-1)?.modelOptions?.approvalMode).toBeUndefined();
+      });
+
+      test('with a Station default, the refusal says Default applies it too', async () => {
+        stationDefault = 'auto';
+        acp.startRefusal = refusal();
+        try {
+          await expect(
+            startOn('t-default-configured', 'opencode'),
+          ).rejects.toMatchObject({
+            code: 'acp_approval_governance_refused',
+            message: expect.stringMatching(
+              /Picking Default won't avoid this: it applies the approval mode set as this Agent's or this Station's default\.$/,
+            ),
+          });
+        } finally {
+          acp.startRefusal = undefined;
+        }
+      });
+
+      test('after Station took the chat over, the refusal says Default keeps Ask', async () => {
+        await startOn('t-default-takeover', 'opencode', {
+          approvalMode: 'ask',
+        });
+        await turn('t-default-takeover');
+        await decide('t-default-takeover', 'auto');
+        acp.nextTurnError = refusal();
+        await expect(turn('t-default-takeover')).rejects.toMatchObject({
+          message: expect.stringMatching(
+            /Picking Default won't avoid this: Station already applied its approval rules in this chat, so Default keeps them at Ask\.$/,
+          ),
+        });
+        await decide('t-default-takeover', 'connection-default');
+        await turn('t-default-takeover');
+        expect(acp.lastTurnMode()).toBe('ask');
+      });
+
+      test("a start refusal with nothing configured says Default starts on OpenCode's own settings", async () => {
+        acp.startRefusal = refusal();
+        try {
+          await expect(
+            startOn('t-default-start-native', 'opencode', {
+              approvalMode: 'ask',
+            }),
+          ).rejects.toMatchObject({ message: expect.stringMatching(KEEP_OWN) });
+        } finally {
+          acp.startRefusal = undefined;
+        }
       });
     });
 

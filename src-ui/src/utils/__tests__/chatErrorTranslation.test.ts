@@ -671,8 +671,10 @@ describe('approval governance refusal (acp_approval_governance_refused, #3290)',
       }).body,
     ).toMatch(/permission rules\. Nothing was sent\.$/);
     expect(translated.hint).toBe(
-      "Change the OpenCode setting named above, or pick Default to keep using OpenCode's own settings.",
+      'Change the OpenCode setting or mode named above.',
     );
+    // Whether Default helps is the server's to say for this chat (#3290).
+    expect(translated.hint).not.toContain('Default');
     expect(translated.hint).not.toContain('temporary');
     expect(translated.retryable).toBe(false);
   });

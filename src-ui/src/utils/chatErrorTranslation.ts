@@ -394,7 +394,10 @@ export function translateChatError(
       body: /not (sent|started)/.test(text)
         ? text
         : `${text || "Station couldn't apply its approval mode to this engine."} Nothing was sent.`,
-      hint: "Change the OpenCode setting named above, or pick Default to keep using OpenCode's own settings.",
+      // What Default would do depends on the chat (a configured default,
+      // or Station's earlier takeover, makes Default apply a mode too), so
+      // the server's sentence says it; this hint claims nothing about it.
+      hint: 'Change the OpenCode setting or mode named above.',
       retryable: false,
     };
   }

@@ -322,6 +322,9 @@ export function acpConnectionDefaultCwd(config: {
   return config.cwd ? resolve(expandTilde(config.cwd)) : undefined;
 }
 
+/** How long a passed start preflight stands for the start that follows. */
+const START_PREFLIGHT_REUSE_MS = 60_000;
+
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
   /**
@@ -687,6 +690,11 @@ export class AcpAdapter implements ProviderAdapterShape {
   private shuttingDown = false;
 
   private readonly approvalRelaunchTimeoutMs: number;
+  /** #3290: governance checks `preflightStart` passed, by thread. */
+  private readonly startPreflights = new Map<
+    string,
+    { command: string; cwd: string; floor: OpenCodeApprovalFloor; at: number }
+  >();
 
   constructor(private readonly options: AcpAdapterOptions) {
     this.approvalRelaunchTimeoutMs =
@@ -735,6 +743,69 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       this.maybeForgetGeneration(input.threadId);
     }
+  }
+
+  /**
+   * #3290: Station governs only build and plan, and only once OpenCode itself
+   * resolves Station's rules for them. Otherwise the chat is not started
+   * under a mode nothing would apply.
+   */
+  private async assertStartGovernable(
+    input: ProviderSessionStartInput,
+    command: string,
+    cwd: string,
+    floor: OpenCodeApprovalFloor,
+  ): Promise<void> {
+    const startMode = requestedAcpSessionMode(input.modelOptions);
+    if (startMode && !isOpenCodeGovernedMode(startMode)) {
+      throw new ApprovalGovernanceRefusedError(governedModeRefusal(startMode));
+    }
+    const verified = await this.verifyApprovalFloor(command, cwd, floor);
+    if (!verified.ok) {
+      throw new ApprovalGovernanceRefusedError(
+        `Station can't apply its approval mode to OpenCode, so the chat was not started: ${verified.reason}.`,
+      );
+    }
+  }
+
+  /**
+   * #3290: the governance check of a start, run by the orchestrator before
+   * it claims the start boundary, so a refusal is definitive. The result is
+   * kept briefly for the start that follows.
+   */
+  async preflightStart(input: ProviderSessionStartInput): Promise<void> {
+    // The same connection the start resolves, a resumed one included.
+    const connectionId =
+      typeof input.metadata?.connectionId === 'string'
+        ? input.metadata.connectionId
+        : isAcpResumeCursor(input.resumeCursor)
+          ? input.resumeCursor.connectionId
+          : undefined;
+    const config = (await this.options.getConnections()).find(
+      (candidate) => candidate.id === connectionId,
+    );
+    if (!config || acpApprovalControl(config.command) !== 'station') return;
+    const floor = acpApprovalFloor(
+      acpAppliedApprovalMode(
+        readApprovalMode(input.modelOptions),
+        input.confinement,
+      ),
+    );
+    if (!floor) return;
+    const cwd =
+      input.cwd ||
+      acpConnectionDefaultCwd(config) ||
+      (await prepareManagedAcpWorkspace(
+        { kind: 'session', connectionId: config.id, threadId: input.threadId },
+        this.options.managedWorkspaceHomeDir,
+      ));
+    await this.assertStartGovernable(input, config.command, cwd, floor);
+    this.startPreflights.set(input.threadId, {
+      command: config.command,
+      cwd,
+      floor,
+      at: Date.now(),
+    });
   }
 
   private async startReservedSession(
@@ -917,23 +988,22 @@ export class AcpAdapter implements ProviderAdapterShape {
         : undefined;
     const startApprovalFloor = acpApprovalFloor(startApprovalMode);
     if (startApprovalFloor) {
-      // #3290: Station governs only build and plan, and only once OpenCode
-      // itself resolves Station's rules for them. Otherwise the chat is not
-      // started under a mode nothing would apply.
-      const startMode = requestedAcpSessionMode(input.modelOptions);
-      if (startMode && !isOpenCodeGovernedMode(startMode)) {
-        throw new ApprovalGovernanceRefusedError(
-          governedModeRefusal(startMode),
-        );
-      }
-      const verified = await this.verifyApprovalFloor(
-        config.command,
-        cwd,
-        startApprovalFloor,
-      );
-      if (!verified.ok) {
-        throw new ApprovalGovernanceRefusedError(
-          `Station can't apply its approval mode to OpenCode, so the chat was not started: ${verified.reason}.`,
+      const preflight = this.startPreflights.get(input.threadId);
+      this.startPreflights.delete(input.threadId);
+      // A preflight this start already passed (moments ago, same command,
+      // directory and floor) is not repeated; anything else is checked here.
+      if (
+        !preflight ||
+        preflight.command !== config.command ||
+        preflight.cwd !== cwd ||
+        preflight.floor !== startApprovalFloor ||
+        Date.now() - preflight.at > START_PREFLIGHT_REUSE_MS
+      ) {
+        await this.assertStartGovernable(
+          input,
+          config.command,
+          cwd,
+          startApprovalFloor,
         );
       }
     }

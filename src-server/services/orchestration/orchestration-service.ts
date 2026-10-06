@@ -5760,6 +5760,9 @@ export class OrchestrationService {
             postureInput.threadId,
             context.fullAccessGrant,
           );
+          const priorApplied = this.approvalPosture.appliedOf(
+            postureInput.threadId,
+          );
           const startModelOptions = await this.approvalPosture.resolve({
             threadId: postureInput.threadId,
             provider: adapter.provider,
@@ -6022,6 +6025,29 @@ export class OrchestrationService {
             startInput,
             internal?.foregroundInvocationAdmission,
           );
+          // #3290: before the start boundary, so a definitive refusal (an
+          // approval mode the engine's own rules would override) is not
+          // recorded as a start that may have happened.
+          try {
+            await adapter.preflightStart?.(startInput);
+          } catch (error) {
+            if (!(error instanceof ApprovalGovernanceRefusedError)) throw error;
+            throw await this.completeGovernanceRefusal(error, {
+              threadId: startInput.threadId,
+              agentSlug:
+                typeof startInput.metadata?.agentSlug === 'string'
+                  ? startInput.metadata.agentSlug
+                  : undefined,
+              capturedAgent: internal?.foregroundInvocationAdmission
+                ? {
+                    approvalMode:
+                      internal.foregroundInvocationAdmission.agentSpec.execution
+                        ?.approvalMode,
+                  }
+                : undefined,
+              prior: priorApplied,
+            });
+          }
           throwIfAborted(startInput.signal);
           this.assertAdapterCurrent(adapter);
           chatStartGate.add(1, {
@@ -6672,6 +6698,14 @@ export class OrchestrationService {
                   : pendingPrompt,
               }
             : publicTurnInput;
+          // #3290: what a governance refusal of this turn needs to say
+          // what Default would do, and to put back what the engine still runs.
+          let turnGovernance:
+            | {
+                agentSlug: string | undefined;
+                prior: ReturnType<ApprovalPosture['appliedOf']>;
+              }
+            | undefined;
           let turnInput = stripReservedCapabilityMetadata(
             composeAmbientSendTurnInput(turnInputWithFirstTurnPrompt),
           );
@@ -6739,6 +6773,10 @@ export class OrchestrationService {
               turnInput.threadId,
               this.readStartConfinementStamp(turnInput.threadId),
             );
+            turnGovernance = {
+              agentSlug: typeof agentSlug === 'string' ? agentSlug : undefined,
+              prior: this.approvalPosture.appliedOf(turnInput.threadId),
+            };
             const modelOptions = await this.approvalPosture.resolve({
               threadId: turnInput.threadId,
               provider: adapter.provider,
@@ -7542,6 +7580,19 @@ export class OrchestrationService {
                   attachmentReservationBytes,
                 );
               }
+              if (error instanceof ApprovalGovernanceRefusedError)
+                throw await this.completeGovernanceRefusal(error, {
+                  threadId: turnInput.threadId,
+                  agentSlug: turnGovernance?.agentSlug,
+                  capturedAgent: internal?.foregroundInvocationAdmission
+                    ? {
+                        approvalMode:
+                          internal.foregroundInvocationAdmission.agentSpec
+                            .execution?.approvalMode,
+                      }
+                    : undefined,
+                  prior: turnGovernance?.prior,
+                });
               throw error;
             }
             obtainedResult = result;
@@ -9696,6 +9747,38 @@ export class OrchestrationService {
       this.approvalKnobForThread(threadId, provider, connectionId)
       ? unsupported.filter((key) => key !== 'approvalMode')
       : unsupported;
+  }
+
+  /**
+   * #3290: a governance refusal completed with what Default would do in this
+   * chat. Station's record of the applied mode goes back to what the engine
+   * still runs first: the refused mode never applied, and a Default pick
+   * must not resolve against it.
+   */
+  private async completeGovernanceRefusal(
+    error: ApprovalGovernanceRefusedError,
+    input: {
+      threadId: string;
+      agentSlug: string | undefined;
+      capturedAgent: { approvalMode?: ApprovalMode } | undefined;
+      prior: ReturnType<ApprovalPosture['appliedOf']>;
+    },
+  ): Promise<ApprovalGovernanceRefusedError> {
+    this.approvalPosture.restoreApplied(input.threadId, input.prior);
+    const request = await this.approvalPosture.defaultPickRequest({
+      threadId: input.threadId,
+      ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+      ...(input.capturedAgent ? { capturedAgent: input.capturedAgent } : {}),
+    });
+    return new ApprovalGovernanceRefusedError(
+      `${error.message} ${
+        request === 'configured'
+          ? "Picking Default won't avoid this: it applies the approval mode set as this Agent's or this Station's default."
+          : request === 'takeover'
+            ? "Picking Default won't avoid this: Station already applied its approval rules in this chat, so Default keeps them at Ask."
+            : "Pick Default to keep using OpenCode's own settings."
+      }`,
+    );
   }
 
   private acpApprovalControlOfThread(
