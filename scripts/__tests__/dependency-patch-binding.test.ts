@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -11,15 +10,15 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs';
 import {
   evaluateAuditPolicy,
   runPolicyCli,
 } from '../dependency-advisory-policy.mjs';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 const nodeVersion = process.versions.node;
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const source = 'reviewed source formatter';
@@ -27,8 +26,7 @@ const minified = 'reviewed minified formatter';
 const patch = 'reviewed package patch\n';
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'station-patch-binding-'));
-  roots.push(root);
+  const root = makeTempDir('station-patch-binding-');
   const write = (path: string, text: string) => {
     mkdirSync(join(root, path, '..'), { recursive: true });
     writeFileSync(join(root, path), text);
@@ -151,8 +149,6 @@ function fixture() {
 afterEach(() => {
   vi.restoreAllMocks();
   Object.defineProperty(process.versions, 'node', { value: nodeVersion });
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 
 describe('machine-bound production residual acceptance', () => {
