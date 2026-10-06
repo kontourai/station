@@ -2399,6 +2399,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/session-control/:sessionId/wait',
     },
+    // #3413 Station Control's Project activity reads: agent-only at the route
+    // (each answers 403 `station_control_caller_required` to a request with no
+    // verified station-control caller), so a paired credential at the family's
+    // tier reaches nothing. Both only read.
+    { method: 'GET', path: '/api/orchestration/session-activity' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-activity/:sessionId/digest',
+    },
     // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
     // request the runtime boundary did not accept as Station's own internal
     // principal gets a 404 whatever its scope, and the session it records on

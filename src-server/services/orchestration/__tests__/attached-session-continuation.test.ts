@@ -246,7 +246,12 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
     const workspace = await sessionWorkspaceDirectoryFor(
       {
         canRead: () => true,
-        listSessions: async () => [child],
+        // #3412: the binding the preview route reads, not the summary.
+        readSession: async (thread) =>
+          service.readSessionWorkspaceBinding(
+            thread,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
         projectDirectory: async () => main,
       },
       'station',
