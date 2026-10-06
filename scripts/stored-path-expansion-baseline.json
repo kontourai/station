@@ -389,6 +389,11 @@
       "entry": "packages/cli/src/commands/service-windows.ts :: workingDirectory :: `cd /d ${quoteWindowsArgument(command.workingDirectory)} || exit /b 1`,",
       "category": 2,
       "reason": "Expanded upstream: resolveServiceCommand (packages/cli/src/commands/service-command.ts) sets workingDirectory from fs.realpathSync(codeRoot.root), or from path.join(installRoot, \"current\") where installRoot is derived from that same realpath, so the value is always absolute and never holds \"~\"."
+    },
+    {
+      "entry": "src-server/routes/projects/project-identity-routes.ts :: workingDirectory :: input.workingDirectory === undefined",
+      "category": 1,
+      "reason": "Presence check that decides whether the attach request names a folder (and so needs the folder authority); the value never reaches the filesystem here."
     }
   ]
 }

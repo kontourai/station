@@ -149,6 +149,7 @@ export function createProjectIdentityRoutes(
   app.post('/attach', validate(attachSchema), (c) => {
     const input: z.infer<typeof attachSchema> = getBody(c);
     // Naming a checkout folder chooses one; omitting it takes the default.
+    // Presence check only: the path itself is expanded where the service reads it.
     const refused =
       input.workingDirectory === undefined
         ? undefined
