@@ -143,15 +143,34 @@ picker uses 18px titles with up to two lines, Agent icons, 14px project/status
 metadata, and a pinned New chat action at the lower right. Project names wrap.
 The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
 for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
-across the mobile bar, task picker, desktop inbox, the collapsed dock bar (icon
-only) and the open, empty dock, with a 44px minimum target and an accessible
-name. It opens the start composer: its two chips stay on one line (the Agent
+across the task picker, desktop inbox, the collapsed dock bar (icon only) and
+the open, empty dock. The mobile bar composes the same conversation-plus glyph
+with its toolbar button styles. Both forms retain a 44px minimum target and
+an accessible name. It opens the start composer: its two chips stay on one line (the Agent
 chip gives up width first) and the overflow sits with Start, so a phone gets
 the chips on row one and [⋯ … Start] on row two with no viewport query; every
 target is 44px, and the chip menus are edge sheets on a phone with their own
 scrolling list. Creation controls remain outside the scrolling lists. The task picker presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
+
+A page's one creation action uses
+[PageCreateAction](../../src-ui/src/components/PageCreateAction.tsx): the
+labelled primary button in the page header on desktop, and on phones a floating
+round "+" in the lower right, so the stacked header does not give it a row of
+its own. The "+" is [CreatePlusButton](../../src-ui/src/components/CreatePlusButton.tsx),
+the same control the picker footers use. It keeps the label as its accessible
+name, sits on the floating-action layer above `--dock-bottom-clearance` (dock,
+safe area and on-screen keyboard), stays below dialogs, and hides while a
+maximized chat or a detail sheet fills the screen. Use it only for creating
+something; Connections is the first adopter.
+
+The mobile header's **New chat** uses an icon-only chat-bubble-plus control in
+the same toolbar button family as its neighbours, retaining its accessible
+name. Source and component checks establish these placements and disabled
+states. The relay UX screenshot harness omits the real dock and uses stubbed
+data, so its geometry does not qualify dock/keyboard clearance, native operator
+flow, physical devices or a released Nightly.
 
 Shared panel entrances fade and translate upward by `--k-space-4` on mobile,
 without scaling touch targets. Existing surfaces with a directional entrance

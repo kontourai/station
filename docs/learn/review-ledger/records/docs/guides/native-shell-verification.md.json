@@ -142,7 +142,19 @@
 
     "tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts",
 
-    "tests/tauri-shell/plugin-host-security.e2e.ts"
+    "tests/tauri-shell/plugin-host-security.e2e.ts",
+
+    "src-desktop/src/native_account_operations.rs",
+
+    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts"
   ],
 
   "checks": [

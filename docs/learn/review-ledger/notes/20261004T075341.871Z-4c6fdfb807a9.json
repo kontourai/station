@@ -1,0 +1,7 @@
+{
+  "revision": "87be9ae6d5ecacae6ff1ec848348bc05f2ee0fac",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Bounded merged-main paragraph check: inspected the new Start-time repeat section from #3223 against DispatchCwdAdmission, prepareStart metadata stripping/recording, the repeat immediately before adapter start outside the uncertain-start boundary, and runtime ACP default-directory wiring. The paragraph retains the string/path-handle gap, pre-existing sessions without a record, forks/non-engine uses, and absent credential-profile restart test. This stronger constrained-caller dispatch check neither opens the closed relay-management grant nor adds execution authority to invited/native members. Source inspection only; upstream review notes and historical test limits retained, no new execution/platform proof.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

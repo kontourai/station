@@ -81,6 +81,7 @@
     "./notification-envelope": "./src/notification-envelope.ts",
     "./client-protocol": "./src/client-protocol.ts",
     "./native-shell-origin": "./src/native-shell-origin.ts",
+    "./native-relay-link": "./src/native-relay-link.ts",
     "./answer-share-projection": "./src/answer-share-projection.ts",
     "./thread-projection": "./src/thread-projection.ts",
     "./durable-json-file": "./src/durable-json-file.ts",
