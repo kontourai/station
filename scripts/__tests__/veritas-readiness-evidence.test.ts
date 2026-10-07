@@ -201,8 +201,10 @@ describe('Station Veritas readiness evidence boundary', () => {
       const readiness = FAST_STATIC_COMMANDS.find(
         ([, args]) => args[1] === 'veritas:readiness',
       );
-      expect(readiness).toBeDefined();
-      const invocation = npmInvocation(readiness![1]);
+      const args = readiness?.[1];
+      if (!args || typeof args === 'string')
+        throw new Error('Fast readiness must define an argument list.');
+      const invocation = npmInvocation(args);
       const result = spawnSyncBounded(invocation.command, invocation.args, {
         cwd: root,
         env: fixtureEnv(),
