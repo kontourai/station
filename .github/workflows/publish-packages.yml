@@ -450,6 +450,29 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
+      - name: Select version PR credential boundary
+        id: version-operation
+        run: node scripts/version-pr-operation.mjs
+
+      - name: Mint version PR installation token
+        if: steps.version-operation.outputs.version-pr == 'true'
+        id: version-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.STATION_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.STATION_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: station
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Require version PR installation token
+        if: steps.version-operation.outputs.version-pr == 'true'
+        env:
+          VERSION_PR_TOKEN: ${{ steps.version-token.outputs.token }}
+        run: |
+          test -n "$VERSION_PR_TOKEN" || { echo '::error::Version PR installation token is missing'; exit 1; }
+
       - name: Create Release PR or Publish
         id: changesets
         # v2.1.1, NOT v1.x (station#3710): v1.9.0's API-commit path bundles
@@ -468,8 +491,12 @@ jobs:
         with:
           # v2 requires the token as an INPUT; the GITHUB_TOKEN env var is
           # explicitly not a substitute (v2.0.0 release notes).
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          publish-script: ${{ env.PUBLISH_RUN == 'true' && 'npm run publish-packages' || '' }}
+          # App-generated PR events reach protected-base pull_request_target
+          # checks. The required-token step prevents fallback on mint failure.
+          github-token: ${{ steps.version-operation.outputs.version-pr == 'true' && steps.version-token.outputs.token || github.token }}
+          # An App-authenticated action can only version, even if changesets
+          # disappear between planning and the action's own state read.
+          publish-script: ${{ env.PUBLISH_RUN == 'true' && steps.version-operation.outputs.version-pr != 'true' && 'npm run publish-packages' || '' }}
           version-script: npm run version-packages
           pr-title: 'chore: version packages'
           commit-message: 'chore: version packages'
@@ -486,13 +513,9 @@ jobs:
         # v3 replaces the allocating walk outright. If this step OOMs again,
         # that is NEW evidence; reopen station#3710 rather than re-raising.
         #
-        # No NPM_TOKEN / NODE_AUTH_TOKEN by design. This repo has no Actions
-        # secrets at all (`gh api repos/kontourai/station/actions/secrets`
-        # returns total_count 0), so `${{ secrets.NPM_TOKEN }}` had always
-        # expanded to the empty string — a phantom reference that made the
-        # workflow read as token-authenticated while authenticating as nobody.
-        # Authentication is the job's OIDC id-token, exchanged by npm with the
-        # registry against the trusted publishers named above.
+        # No NPM_TOKEN / NODE_AUTH_TOKEN by design. The installation credential
+        # above is for GitHub version-PR writes only. npm authentication remains
+        # the job's OIDC id-token, exchanged with the trusted publishers above.
         #
         # NPM_CONFIG_PROVENANCE is deliberately NOT set. The job now runs on
         # github-hosted ubuntu-latest (station#683): npm trusted publishing
