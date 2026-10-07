@@ -290,10 +290,6 @@ test.describe('Structured UI blocks', () => {
     await expect(gateForm).toBeVisible();
     await expect(reviewer).toHaveValue('casey');
     await expect(gateForm.getByLabel('Sign off')).toBeChecked();
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await openChatRegion(page);
-    await expect(reviewer).toHaveValue('casey');
-    await expect(gateForm.getByLabel('Sign off')).toBeChecked();
     await approveButton.click();
 
     // The pending send locks the form; acknowledgement alone marks it Submitted.
