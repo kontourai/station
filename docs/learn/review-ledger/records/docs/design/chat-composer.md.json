@@ -108,7 +108,11 @@
 
     "src-ui/src/components/session/SessionModelPicker.tsx",
 
-    "src-ui/src/views/ProjectPage.tsx"
+    "src-ui/src/views/ProjectPage.tsx",
+
+    "src-ui/src/components/chat-start/AgentPickerRow.tsx",
+
+    "src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx"
   ],
 
   "checks": [
