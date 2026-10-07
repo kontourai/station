@@ -69,6 +69,18 @@ lands later in the cascade (today the Diff tools in the Coding side panel's
 head). Nested controls and overflowing content still need their own caller
 test.
 
+On a phone, a request that needs the person — an MCP elicitation form or a
+tool approval — keeps a compact card in the transcript and is answered in
+[`RequestSheet`](../../src-ui/src/components/chat/RequestSheet.tsx), one
+`ResponsiveDialogSurface` consumer shared by every such feature (#3331). It pins
+the feature's own action row below a scrolling body, fits its height to the
+content, and treats every dismissal path (backdrop, a swipe down on its grab
+strip, Escape, back, the close control) as hide-only: the request stays pending
+until one of its explicit actions answers it. `useRequestSheet(pending)` closes
+the sheet when an answer given on this page settles the request; a request
+resolved elsewhere leaves the pending list instead, which unmounts the card and
+its sheet together. Desktop keeps the feature's inline card.
+
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
 anchored surface-popover, navigation, notification and palette tiers as well as

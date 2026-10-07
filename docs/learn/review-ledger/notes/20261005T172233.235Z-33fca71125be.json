@@ -1,0 +1,7 @@
+{
+  "revision": "7b0c7f2dc324aaf1a0aeafb6b7a1bf8bf71aaa87",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"#3331 round 1: reworded useRequestSheet. Its pending flag closes the sheet for an answer given on this page; a remote resolution removes the request from the pending list and unmounts card and sheet. Verified against RequestSheet.tsx, McpElicitationCard, ToolCallDisplay and the R7 tests.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}
