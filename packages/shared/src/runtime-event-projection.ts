@@ -2,6 +2,7 @@ import type { ClientOriginSender } from '@kontourai/station-contracts/client-ori
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { agentMessageInput } from './agent-message-frame.js';
@@ -182,6 +183,7 @@ export function projectRuntimeEventsToMessages(
   let turnAnchorEventId: string | undefined;
   /** The agent that sent the user row being emitted, when one did (#3419). */
   let userRowSender: ClientOriginSender | undefined;
+  let providerSender: ClientOriginSender | undefined;
   let approvalTargets = new Map<string, MessagePart>();
   // #2316: every card still awaiting its answer, across turns, keyed by the
   // requesting thread AND request id (a lineage window folds several
@@ -344,6 +346,9 @@ export function projectRuntimeEventsToMessages(
       ...(turnTimestamp !== undefined ? { timestamp: turnTimestamp } : {}),
       ...(role === 'user' && inputKind ? { inputKind } : {}),
       ...(role === 'user' && userRowSender ? { sender: userRowSender } : {}),
+      ...(role === 'assistant' && providerSender
+        ? { sender: providerSender }
+        : {}),
       ...(role === 'user' && turnAnchorEventId
         ? { sourceEventId: turnAnchorEventId }
         : {}),
@@ -460,6 +465,7 @@ export function projectRuntimeEventsToMessages(
     turnModelOptions = undefined;
     turnReportedModel = undefined;
     turnIdentity = undefined;
+    providerSender = undefined;
     turnSessionId = undefined;
     turnAnswerEligible = false;
     turnAnchorEventId = undefined;
@@ -626,6 +632,9 @@ export function projectRuntimeEventsToMessages(
         turnOpen = true;
         turnIdentity = ev.turnId;
         turnSessionId = ev.threadId;
+        providerSender = isProviderTriggeredTurn(ev)
+          ? { kind: 'provider', sessionId: ev.threadId, engine: ev.provider }
+          : undefined;
         turnAnchorEventId = ev.eventId;
         stamp(ev.createdAt);
         turnModel =

@@ -311,10 +311,20 @@ Session by its `sessionId`, without creating a task.
   `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
   title, Agent and engine as Station recorded them, and the call's `requestKey`)
   beside the unchanged `internal` actor. The transcript, Activity and
-  `read_conversation` show the sender's own words as that agent's message, with
+  `read_conversation` and Session digest carry the sender provenance; transcript
+  reads show the sender's own words as that agent's message, with
   a link to the sending Session; the sender's transcript shows the call as
-  "Sent to <Session>" with its outcome. The links open the Session, not the
-  exact message or call, which waits for the read-at-message anchor (#3413).
+  "Sent to <Session>" with its outcome. Links open the exact sending call or
+  received input in Activity by its recorded request key. The transcript may
+  read up to 20 older pages to establish a unique match, then focuses and
+  announces it. A missing or repeated key is an explicit unavailable or
+  ambiguous anchor; reaching the page limit selects nothing.
+  On phones, a muted cause row expands to the sender details, message and link.
+  Engine-opened replies retain a provider cause on the assistant row after
+  settlement and reload; origin is never inferred from prompt text.
+  Inbox and Activity mark the latest agent-delivered input without changing
+  the status ladder. Settled delegated-result delivery remains dependent on
+  #3158; a declared provenance kind alone does not deliver a result.
   The engine's own tool-call id is not visible to Station's tool server, so
   `requestKey` is what identifies the call in the sender's transcript.
 

@@ -7,15 +7,20 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
+  useSyncExternalStore,
 } from 'react';
+import { navigationStore } from '../../contexts/navigation-store';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSessionTranscriptEvents';
 import { Button } from '../Button';
 import { agentAccentStyle } from '../chat/agent-message/agentSenderAccent';
 import {
+  IncomingAgentCause,
   IncomingAgentHeader,
   incomingMessageLabel,
 } from '../chat/agent-message/IncomingAgentHeader';
+import { describeStationControlCall } from '../chat/agent-message/station-control-calls';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
 import {
   TranscriptMarker,
@@ -108,7 +113,7 @@ export const SessionTranscript = memo(function SessionTranscript({
       id: message.id,
       role: message.role,
       // #3419: another agent's message is shown as that agent's.
-      sender: message.role === 'user' ? message.metadata?.sender : undefined,
+      sender: message.metadata?.sender,
       contentParts: message.parts.flatMap(conversationPartToContentParts),
     }));
     if (!failureShownAbove) return projected;
@@ -120,6 +125,85 @@ export const SessionTranscript = memo(function SessionTranscript({
       ? projected.slice(0, -1)
       : [...projected.slice(0, -1), { ...last, contentParts: kept }];
   }, [events, failureShownAbove]);
+  const navigation = useSyncExternalStore(
+    navigationStore.subscribe,
+    navigationStore.getSnapshot,
+    navigationStore.getSnapshot,
+  );
+  const anchor =
+    navigation.transcriptAnchor?.sessionId === session.threadId ||
+    navigation.transcriptAnchor?.sessionId === session.conversationId
+      ? navigation.transcriptAnchor
+      : undefined;
+  const anchoredRows = anchor
+    ? rows.filter((row) =>
+        anchor.direction === 'received'
+          ? row.role === 'user' && row.sender?.requestKey === anchor.requestKey
+          : row.contentParts.some(
+              (part) =>
+                describeStationControlCall(part)?.requestKey ===
+                anchor.requestKey,
+            ),
+      )
+    : [];
+  const anchorKey = anchor
+    ? `${anchor.sessionId}/${anchor.direction}/${anchor.requestKey}`
+    : undefined;
+  const anchorReads = useRef<{ key?: string; pages: number }>({ pages: 0 });
+  const [anchorLimit, setAnchorLimit] = useState(false);
+  const announcedAnchor = useRef<string | undefined>(undefined);
+  const anchorId = anchoredRows.length === 1 ? anchoredRows[0]?.id : undefined;
+  useEffect(() => {
+    if (anchorReads.current.key !== anchorKey) {
+      anchorReads.current = { key: anchorKey, pages: 0 };
+      announcedAnchor.current = undefined;
+      setAnchorLimit(false);
+    }
+    if (!anchor || loading || !settled || error || upgradeRequired) return;
+    if (hasMore) {
+      if (anchorReads.current.pages >= 20) {
+        setAnchorLimit(true);
+        return;
+      }
+      anchorReads.current.pages += 1;
+      void loadOlder();
+      return;
+    }
+    if (announcedAnchor.current === anchorKey) return;
+    if (anchorId) {
+      const row = [
+        ...(contentRef.current?.querySelectorAll<HTMLElement>(
+          '[data-transcript-message-id]',
+        ) ?? []),
+      ].find((node) => node.dataset.transcriptMessageId === anchorId);
+      const target =
+        anchor.direction === 'sent'
+          ? ([
+              ...(row?.querySelectorAll<HTMLElement>(
+                '[data-station-send-request]',
+              ) ?? []),
+            ].find(
+              (node) => node.dataset.stationSendRequest === anchor.requestKey,
+            ) ?? row)
+          : row;
+      target?.scrollIntoView?.({ block: 'center' });
+      if (target) {
+        target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+        announcedAnchor.current = anchorKey;
+      }
+    }
+  }, [
+    anchor,
+    anchorKey,
+    anchorId,
+    loading,
+    settled,
+    error,
+    upgradeRequired,
+    hasMore,
+    loadOlder,
+  ]);
   const lastIndex = rows.length - 1;
   const lastIsAssistant = rows[lastIndex]?.role === 'assistant';
 
@@ -198,6 +282,8 @@ export const SessionTranscript = memo(function SessionTranscript({
               key={message.id}
               className={`session-transcript__message session-transcript__message--${message.role}${message.sender ? ' agent-incoming' : ''}`}
               data-testid="session-transcript-message"
+              data-transcript-message-id={message.id}
+              tabIndex={message.id === anchorId ? -1 : undefined}
               data-role={message.role}
               data-agent-sender-session={message.sender?.sessionId}
               aria-label={
@@ -211,24 +297,75 @@ export const SessionTranscript = memo(function SessionTranscript({
               aria-busy={streaming || undefined}
             >
               {message.sender ? (
-                <IncomingAgentHeader sender={message.sender} />
+                <>
+                  <div className="agent-incoming__desktop">
+                    <IncomingAgentHeader sender={message.sender} />
+                  </div>
+                  <div className="agent-incoming__mobile">
+                    <IncomingAgentCause sender={message.sender}>
+                      {message.role === 'user' && (
+                        <MessageContent
+                          contentParts={message.contentParts}
+                          textContent=""
+                          chatFontSize={14}
+                          showReasoning={false}
+                          showToolDetails
+                          isStreamingMessage={false}
+                        />
+                      )}
+                    </IncomingAgentCause>
+                  </div>
+                </>
               ) : (
                 <p className="session-transcript__role">
                   {message.role === 'user' ? 'You' : agentLabel}
                 </p>
               )}
-              <MessageContent
-                contentParts={message.contentParts}
-                textContent=""
-                chatFontSize={14}
-                showReasoning={false}
-                showToolDetails
-                isStreamingMessage={streaming}
-              />
+              <div
+                className={
+                  message.sender && message.role === 'user'
+                    ? 'agent-incoming__desktop'
+                    : undefined
+                }
+              >
+                <MessageContent
+                  contentParts={message.contentParts}
+                  textContent=""
+                  chatFontSize={14}
+                  showReasoning={false}
+                  showToolDetails
+                  isStreamingMessage={streaming}
+                />
+              </div>
             </article>
           );
         })
       )}
+      {anchorLimit && (
+        <p role="status">
+          Exact message lookup reached its 20-page limit. Load older messages to
+          continue; no target has been selected.
+        </p>
+      )}
+      {anchor && !hasMore && anchorId && (
+        <p className="sr-only" role="status">
+          Opened the exact{' '}
+          {anchor.direction === 'sent' ? 'sending call' : 'received message'}.
+        </p>
+      )}
+      {anchor &&
+        settled &&
+        !loading &&
+        !error &&
+        !upgradeRequired &&
+        !hasMore &&
+        !anchorId && (
+          <p role="status">
+            {anchoredRows.length > 1
+              ? 'Message anchor is ambiguous: more than one recorded delivery has this request key.'
+              : 'The exact message is not available in this conversation.'}
+          </p>
+        )}
       {isStreaming && !lastIsAssistant && rows.length > 0 && (
         <p className="session-transcript__working" role="status">
           {agentLabel} is working…

@@ -10,21 +10,34 @@ import { openChatsStore } from '../../../contexts/open-chats-store';
  * canonical deep link (`/?surface=activity&session=<id>`), which reads any
  * Session Station knows.
  *
- * It goes to the Session, not to a message in it: the exact message or call
- * needs the read-at-message anchor of #3413.
+ * A request key addresses its exact recorded send or received message.
+ * Anchored links open Activity, whose transcript pages to that record.
  */
 export function AgentSessionLink({
   sessionId,
+  requestKey,
+  direction,
   className,
   label,
   children,
 }: {
   sessionId: string;
+  requestKey?: string;
+  direction?: 'sent' | 'received';
   className?: string;
   /** What the link says it opens, for a screen reader. */
   label: string;
   children: ReactNode;
 }) {
+  const params =
+    requestKey && direction
+      ? {
+          messageSession: sessionId,
+          messageDirection: direction,
+          messageRequest: requestKey,
+        }
+      : undefined;
+  const href = `${activityDeepLink({ sessionId })}${params ? `&${new URLSearchParams(params)}` : ''}`;
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
     // Let the browser keep new-tab and download gestures.
     if (
@@ -40,16 +53,11 @@ export function AgentSessionLink({
     const isOpenChat = Object.entries(openChatsStore.getSnapshot()).some(
       ([id, chat]) => id === sessionId || chat.conversationId === sessionId,
     );
-    if (isOpenChat) openChatsStore.focus({ sessionId });
-    else navigationStore.navigate(activityDeepLink({ sessionId }));
+    if (isOpenChat && !params) openChatsStore.focus({ sessionId });
+    else navigationStore.navigate(href);
   };
   return (
-    <a
-      className={className}
-      href={activityDeepLink({ sessionId })}
-      aria-label={label}
-      onClick={onClick}
-    >
+    <a className={className} href={href} aria-label={label} onClick={onClick}>
       {children}
     </a>
   );

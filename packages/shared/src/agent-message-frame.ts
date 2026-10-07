@@ -95,10 +95,22 @@ export function unframeAgentMessage(prompt: string): string | undefined {
  */
 export function agentMessageInput(event: {
   prompt?: string;
-  clientOrigin?: { sender?: unknown };
+  threadId?: string;
+  clientOrigin?: { sender?: unknown; actor?: { kind?: string } };
 }): { sender?: ClientOriginSender; prompt: string | undefined } {
   const sender = clientOriginSender(event.clientOrigin);
-  if (!sender) return { prompt: event.prompt };
+  if (!sender)
+    return {
+      prompt: event.prompt,
+      ...(event.clientOrigin?.actor?.kind === 'internal' && event.threadId
+        ? {
+            sender: {
+              kind: 'unattributed' as const,
+              sessionId: event.threadId,
+            },
+          }
+        : {}),
+    };
   return {
     sender,
     prompt: event.prompt

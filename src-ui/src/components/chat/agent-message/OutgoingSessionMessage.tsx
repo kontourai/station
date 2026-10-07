@@ -65,6 +65,7 @@ export const OutgoingSessionMessage = memo(function OutgoingSessionMessage({
     <div
       className={`agent-outgoing agent-outgoing--${call.outcome}`}
       role="group"
+      data-station-send-request={call.requestKey}
       aria-label={`${lead} ${title}: ${outcome}`}
     >
       <div className="agent-outgoing__line">
@@ -76,6 +77,12 @@ export const OutgoingSessionMessage = memo(function OutgoingSessionMessage({
           {call.targetSessionId ? (
             <AgentSessionLink
               sessionId={call.targetSessionId}
+              requestKey={
+                call.outcome === 'started' || call.outcome === 'steered'
+                  ? call.requestKey
+                  : undefined
+              }
+              direction="received"
               className="agent-outgoing__link"
               label={`Open ${title}, the Session this message went to`}
             >

@@ -24,7 +24,11 @@ import {
   validateChatAttachments,
   validatePersistedChatAttachmentDescriptor,
 } from '@kontourai/station-contracts/chat-attachment';
-import { isClientOrigin } from '@kontourai/station-contracts/client-origin';
+import {
+  type ClientOriginSender,
+  clientOriginSender,
+  isClientOrigin,
+} from '@kontourai/station-contracts/client-origin';
 import type {
   ConnectionRecoveryIntent,
   ConnectionRecoveryOutcome,
@@ -551,6 +555,7 @@ export interface TurnDigestFacts {
   promptPrefix?: string;
   /** The engine opened this turn on its own (`PROVIDER_TURN_TRIGGER`). */
   providerTriggered?: true;
+  sender?: ClientOriginSender;
   terminal?: { method: TurnDigestTerminalMethod; finishReason?: string };
   toolCalls: Array<{ toolName: string; calls: number }>;
   /**
@@ -4761,7 +4766,8 @@ export class EventStore {
       .prepare(
         `SELECT thread_id, turn_id, created_at, global_sequence,
                 substr(json_extract(payload, '$.prompt'), 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
-                json_extract(payload, '$.metadata.trigger') AS turn_trigger
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger,
+                json_quote(json_extract(payload, '$.clientOrigin.sender')) AS sender_json
            FROM orchestration_events
           WHERE ${isTurnStart} AND global_sequence < ?
           ORDER BY global_sequence DESC LIMIT ?`,
@@ -4777,6 +4783,7 @@ export class EventStore {
       global_sequence: number;
       prompt: unknown;
       turn_trigger: unknown;
+      sender_json: string | null;
     }>;
     const selected = starts.slice(0, options.turnLimit);
     const terminal = this.db.prepare(
@@ -4844,7 +4851,11 @@ export class EventStore {
           // json_valid held in SQL; a row that still fails to parse is skipped.
         }
       }
+      const sender = start.sender_json
+        ? clientOriginSender({ sender: JSON.parse(start.sender_json) })
+        : undefined;
       return {
+        ...(sender ? { sender } : {}),
         threadId: start.thread_id,
         turnId: start.turn_id,
         startedAt: start.created_at,

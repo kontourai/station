@@ -1192,7 +1192,16 @@ text cannot imitate. The route stamps the same sender on the turn's
 `clientOrigin.sender` beside the unchanged `internal` actor, which is what keeps
 `isPersonActor` false and a link in the message from granting `read_conversation`
 access. The transcript projection reads the sender from that record, never from
-the prompt, and unframes the text for display.
+the prompt, and unframes the text for display. The digest reads this sender
+from the recorded start event. Engine-opened turns use the adapter's durable
+`metadata.trigger: 'provider'` fact; projected assistant rows retain that
+cause through settlement and rehydration. Phone transcripts show a compact
+cause disclosure, while desktop incoming bubbles keep their sender treatment.
+Exact send/receive navigation uses the recorded request key, reads at most
+20 older pages to rule out ambiguity, and focuses a uniquely resolved record.
+Missing, ambiguous and page-limit outcomes remain visible. Delegation-result
+delivery is still the #3158 prerequisite, not behavior supplied by declaring
+a sender kind.
 
 **Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
 `clientInputId` of a steer, so the durable turn claim and the steer receipt

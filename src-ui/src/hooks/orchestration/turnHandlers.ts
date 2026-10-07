@@ -268,6 +268,15 @@ export function handleTurnStartedEvent(
       role: 'assistant',
       content: '',
       contentParts: [],
+      ...(isProviderTriggeredTurn(event)
+        ? {
+            sender: {
+              kind: 'provider' as const,
+              sessionId: event.threadId,
+              engine: event.provider,
+            },
+          }
+        : {}),
     },
     ...(approvalMode
       ? {

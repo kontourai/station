@@ -1,6 +1,7 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { ReactNode } from 'react';
 import { InboxGlyph } from '../../icons/Glyph';
 import { AgentSessionLink } from './AgentSessionLink';
 import './agent-message.css';
@@ -24,6 +25,9 @@ export function senderAgentLabel(
 
 /** The accessible name of the whole incoming message. */
 export function incomingMessageLabel(sender: ClientOriginSender): string {
+  if (sender.kind === 'unattributed')
+    return 'Non-person input: sender not recorded';
+  if (sender.kind === 'provider') return 'The engine replied on its own';
   const agent = senderAgentLabel(sender);
   return `Message from another agent: ${senderSessionLabel(sender)}${agent ? `, ${agent}` : ''}`;
 }
@@ -38,6 +42,20 @@ export function IncomingAgentHeader({
 }: {
   sender: ClientOriginSender;
 }) {
+  if (sender.kind === 'unattributed')
+    return (
+      <p className="agent-cause">
+        <InboxGlyph />
+        Non-person input · sender not recorded
+      </p>
+    );
+  if (sender.kind === 'provider')
+    return (
+      <p className="agent-cause">
+        <InboxGlyph />
+        The engine replied on its own
+      </p>
+    );
   const session = senderSessionLabel(sender);
   const agent = senderAgentLabel(sender);
   return (
@@ -47,6 +65,8 @@ export function IncomingAgentHeader({
       </span>
       <AgentSessionLink
         sessionId={sender.sessionId}
+        requestKey={sender.requestKey}
+        direction="sent"
         className="agent-incoming__link"
         label={`Open ${session}, the Session that sent this message`}
       >
@@ -64,5 +84,36 @@ export function IncomingAgentHeader({
         This is a message from another agent, not from you.
       </span>
     </div>
+  );
+}
+
+/** The phone cause stays one row until the reader asks for its details. */
+export function IncomingAgentCause({
+  sender,
+  children,
+}: {
+  sender: ClientOriginSender;
+  children?: ReactNode;
+}) {
+  const label =
+    sender.kind === 'unattributed'
+      ? 'Non-person input · sender not recorded'
+      : sender.kind === 'provider'
+        ? 'The engine replied on its own'
+        : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
+  return (
+    <details className="agent-cause-disclosure">
+      <summary className="agent-cause">
+        <InboxGlyph />
+        <span>{label}</span>
+      </summary>
+      <div className="agent-cause-disclosure__details">
+        <IncomingAgentHeader sender={sender} />
+        {sender.kind === 'provider' && (
+          <p>No person or Session sent a request for this turn.</p>
+        )}
+        {children}
+      </div>
+    </details>
   );
 }

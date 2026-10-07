@@ -44,6 +44,7 @@
  * clients, a paired device) read with their own authority, as they can on
  * the `/messages` route; the reference rule is about what an agent may read.
  */
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
@@ -185,12 +186,7 @@ export interface ReadConversationMessage {
    * Station's own record of who sent it. `text` is that agent's words, not a
    * person's request.
    */
-  sender?: {
-    kind: string;
-    sessionId: string;
-    title?: string;
-    agent?: string;
-  };
+  sender?: ClientOriginSender;
 }
 
 /**
@@ -254,6 +250,8 @@ function compactMessage(
             sessionId: sender.sessionId,
             ...(sender.title ? { title: sender.title } : {}),
             ...(sender.agent ? { agent: sender.agent } : {}),
+            ...(sender.engine ? { engine: sender.engine } : {}),
+            ...(sender.requestKey ? { requestKey: sender.requestKey } : {}),
           },
         }
       : {}),

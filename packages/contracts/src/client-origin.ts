@@ -36,14 +36,20 @@ export interface ClientReportedOrigin {
  * read from a request header or body, so it is provenance and never
  * authority: `actor` alone decides whether a turn was a person's.
  *
- * `agent-session` is the only kind that exists: an agent in another Session
- * messaging this one (`send_to_session`). A delegation result, the
+ * `agent-session` identifies an agent in another Session
+ * messaging this one (`send_to_session`). `provider` identifies an engine-opened
+ * turn; `delegation-result` identifies a result from a child Session. The
  * coordinator and a scheduled job are expected to join as further kinds; a
  * reader that does not know a kind drops the sender
  * ({@link clientOriginSender}) and keeps the `actor`, so a newer writer's
  * record still reads as the non-person it is.
  */
-export const CLIENT_ORIGIN_SENDER_KINDS = ['agent-session'] as const;
+export const CLIENT_ORIGIN_SENDER_KINDS = [
+  'agent-session',
+  'delegation-result',
+  'provider',
+  'unattributed',
+] as const;
 export type ClientOriginSenderKind =
   (typeof CLIENT_ORIGIN_SENDER_KINDS)[number];
 

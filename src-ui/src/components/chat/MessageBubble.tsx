@@ -17,6 +17,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
 import { agentAccentStyle } from './agent-message/agentSenderAccent';
 import {
+  IncomingAgentCause,
   IncomingAgentHeader,
   incomingMessageLabel,
 } from './agent-message/IncomingAgentHeader';
@@ -254,6 +255,8 @@ function MessageBubbleComponent({
   // #3419: a user-role row another agent sent is that agent's message, never
   // the person's: its own speaker, header and bubble.
   const sender = msg.role === 'user' ? msg.sender : undefined;
+  const providerSender =
+    msg.sender?.kind === 'provider' ? msg.sender : undefined;
   // A row is the open turn when it carries the live turn's id, or when the
   // live turn renders as the last row instead of the streaming shell.
   const rowIsLiveTurn =
@@ -767,8 +770,8 @@ function MessageBubbleComponent({
         sender
           ? 'Message actions'
           : msg.role === 'user'
-          ? 'Your message actions'
-          : 'Answer details and actions'
+            ? 'Your message actions'
+            : 'Answer details and actions'
       }
     >
       {metadataBefore}
@@ -797,6 +800,27 @@ function MessageBubbleComponent({
   ) : (
     details
   );
+
+  if (isMobile && sender)
+    return (
+      <div
+        className="message-row message-row--agent message-row--compact"
+        data-chat-message-key={anchorKey}
+      >
+        <IncomingAgentCause sender={sender}>
+          <MessageContent
+            contentParts={msg.contentParts}
+            textContent={textContent}
+            chatFontSize={chatFontSize}
+            showReasoning={showReasoning}
+            showToolDetails={showToolDetails}
+            isStreamingMessage={false}
+          />
+          {metadataBefore}
+          {metadataAfter}
+        </IncomingAgentCause>
+      </div>
+    );
 
   return (
     <div
@@ -834,7 +858,13 @@ function MessageBubbleComponent({
             }
           : {})}
       >
-        {sender && <IncomingAgentHeader sender={sender} />}
+        {providerSender &&
+          (isMobile ? (
+            <IncomingAgentCause sender={providerSender} />
+          ) : (
+            <IncomingAgentHeader sender={providerSender} />
+          ))}
+        {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
         {!isMobile && metadataBefore}
         <div
           data-quote-source-message={

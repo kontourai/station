@@ -76,7 +76,7 @@ describe('client origin contract', () => {
         undefined,
         'agent',
         {},
-        { kind: 'delegation-result', sessionId: 's' },
+        { kind: 'scheduled-job', sessionId: 's' },
         { kind: 'agent-session' },
         { kind: 'agent-session', sessionId: '' },
         { kind: 'agent-session', sessionId: 'x'.repeat(513) },

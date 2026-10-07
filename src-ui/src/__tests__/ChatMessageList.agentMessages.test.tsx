@@ -53,11 +53,13 @@ vi.mock('../components/icons/UserIcon', () => ({
   UserIcon: () => <span aria-hidden="true">U</span>,
 }));
 
-const { windowEvents } = vi.hoisted(() => ({
+const { windowEvents, mobile } = vi.hoisted(() => ({
+  mobile: { current: false },
   windowEvents: {
     current: [] as Array<{ sequence: number; event: unknown }>,
   },
 }));
+vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => mobile.current }));
 vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
   useSessionEventWindow: () => ({
     events: windowEvents.current,
@@ -231,6 +233,7 @@ function recipientEvents(options: { keepSender?: boolean } = {}) {
 }
 
 beforeEach(() => {
+  mobile.current = false;
   _setApiBase(API_BASE);
   sequence = 0;
   vi.stubGlobal(
@@ -330,17 +333,16 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
     expect(accents[0]).not.toBe(accents[1]);
   });
 
-  test('a message that drops its sender is not shown as another agent’s, so the rendering above cannot pass by accident', async () => {
+  test('a non-person input that drops its sender names the gap and never becomes a person bubble', async () => {
     windowEvents.current = recipientEvents({ keepSender: false });
     renderTranscript();
     await waitFor(() =>
-      expect(document.querySelectorAll('.message.user').length).toBeGreaterThan(
-        1,
-      ),
+      expect(document.querySelectorAll('.agent-incoming')).toHaveLength(2),
     );
-    // Without the provenance the rows are plain user rows: the exact failure
-    // the assertions above are there to catch.
-    expect(document.querySelectorAll('.agent-incoming')).toHaveLength(0);
+    expect(document.querySelectorAll('.message.user')).toHaveLength(1);
+    expect(
+      screen.getAllByText('Non-person input · sender not recorded'),
+    ).toHaveLength(2);
   });
 
   test('the header links to the Session that sent it', async () => {
@@ -357,7 +359,7 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
       return found!;
     });
     expect(link.getAttribute('href')).toBe(
-      `/?surface=activity&session=${SENDER_THREAD}`,
+      `/?surface=activity&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
     );
     expect(link.getAttribute('aria-label')).toBe(
       'Open Fix login, the Session that sent this message',
@@ -368,17 +370,17 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
       .mockImplementation(() => {});
     fireEvent.click(link);
     expect(navigate).toHaveBeenCalledWith(
-      `/?surface=activity&session=${SENDER_THREAD}`,
+      `/?surface=activity&session=${SENDER_THREAD}&messageSession=${SENDER_THREAD}&messageDirection=sent&messageRequest=request-key-1`,
     );
     expect(focus).not.toHaveBeenCalled();
-    // An open chat is focused in the dock instead.
+    // Exact anchors keep opening the durable Activity record even for an open chat.
     vi.spyOn(openChatsStore, 'getSnapshot').mockReturnValue({
       [SENDER_THREAD]: { conversationId: SENDER_THREAD },
     } as never);
     navigate.mockClear();
     fireEvent.click(link);
-    expect(focus).toHaveBeenCalledWith({ sessionId: SENDER_THREAD });
-    expect(navigate).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(link.getAttribute('href'));
     // A modified click is the browser's (new tab), not ours. jsdom cannot
     // navigate, so the document absorbs the default action after React ran.
     const absorb = (event: Event) => event.preventDefault();
@@ -496,8 +498,23 @@ describe('the sending call in the sender’s transcript (#3419)', () => {
       );
       expect(
         row.querySelector('a.agent-outgoing__link')?.getAttribute('href'),
-      ).toBe('/?surface=activity&session=other-recipient');
+      ).toContain('/?surface=activity&session=other-recipient');
     }
+    expect(
+      new URL(rows[0]!.querySelector('a')!.href).searchParams.get(
+        'messageRequest',
+      ),
+    ).toBe('key-c1');
+    expect(
+      new URL(rows[1]!.querySelector('a')!.href).searchParams.get(
+        'messageDirection',
+      ),
+    ).toBe('received');
+    expect(
+      new URL(rows[2]!.querySelector('a')!.href).searchParams.has(
+        'messageRequest',
+      ),
+    ).toBe(false);
     expect(screen.queryByText(/Used \d tools/u)).toBeNull();
   });
 
@@ -535,4 +552,29 @@ describe('the sending call in the sender’s transcript (#3419)', () => {
     });
     expect(row.getAttribute('aria-label')).toMatch(/^Sending to .*: Sending$/u);
   });
+});
+
+test('phone input uses a cause disclosure with full sender details and exact navigation behind the tap', async () => {
+  mobile.current = true;
+  windowEvents.current = recipientEvents();
+  renderTranscript();
+  const disclosures = await waitFor(() => {
+    const found = document.querySelectorAll<HTMLDetailsElement>(
+      'details.agent-cause-disclosure',
+    );
+    expect(found).toHaveLength(2);
+    return found;
+  });
+  const details = disclosures[0]!;
+  expect(details.open).toBe(false);
+  const summary = details.querySelector('summary')!;
+  expect(summary.textContent).toContain('From Fix login · Claude Code');
+  fireEvent.click(summary);
+  expect(details.open).toBe(true);
+  expect(details.textContent).toContain('Skip the lockfile.');
+  const link = details.querySelector('a')!;
+  expect(new URL(link.href).searchParams.get('messageRequest')).toBe(
+    'request-key-1',
+  );
+  expect(new URL(link.href).searchParams.get('messageDirection')).toBe('sent');
 });

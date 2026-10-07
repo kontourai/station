@@ -2945,3 +2945,51 @@ describe('another agent’s message (#3419)', () => {
     );
   });
 });
+
+describe('engine-opened cause survives settlement and rehydration (#3419)', () => {
+  it('keeps the provider cause on the settled answer and resets it at a person turn', () => {
+    const recorded = [
+      ev({
+        method: 'turn.started',
+        turnId: 'provider-1',
+        metadata: { trigger: 'provider' },
+      }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'provider-1',
+        delta: 'Background work finished.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'provider-1',
+        outputText: 'Background work finished.',
+        metadata: { trigger: 'provider' },
+      }),
+      ev({ method: 'turn.started', turnId: 'person-2', prompt: 'Thanks.' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'person-2',
+        delta: 'You are welcome.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'person-2',
+        outputText: 'You are welcome.',
+      }),
+    ];
+    const reopened = projectRuntimeEventsToMessages(
+      JSON.parse(JSON.stringify(recorded)),
+      { stableIds: true },
+    );
+    const answers = reopened.filter((message) => message.role === 'assistant');
+    expect(answers[0]?.metadata?.sender).toEqual({
+      kind: 'provider',
+      sessionId: 't1',
+      engine: 'claude',
+    });
+    expect(answers[1]?.metadata?.sender).toBeUndefined();
+    expect(reopened.filter((message) => message.role === 'user')).toHaveLength(
+      1,
+    );
+  });
+});

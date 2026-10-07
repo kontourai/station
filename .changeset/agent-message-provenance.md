@@ -18,3 +18,12 @@ sender's own words. The chat and Activity transcripts show such a message as a
 third speaker, with a header, icon and accent derived from the sender, linking
 to the sending Session, and the sender's transcript shows the call as "Sent to
 <Session>" with its outcome.
+
+Engine-opened replies retain their recorded provider cause after settlement
+and reload. Phone widths show a compact cause row with full details behind a
+tap. Delivery links focus the exact request-key record, with bounded lookup
+and explicit unavailable or ambiguous outcomes. Digests include sender
+provenance; Inbox and Activity mark the latest agent-delivered input.
+The Home projection adds this marker to its consent field list, so previous
+Home role grants must be renewed. Automatic settled-child delivery remains a
+separate prerequisite (#3158).
