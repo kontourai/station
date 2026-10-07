@@ -1,0 +1,7 @@
+{
+  "revision": "de2fee314d15c81850e015ffd2d65da106887dcf",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Re-reviewed the fixed smoke manifest, browser-health limits and approval fixture after de2fee314d. The desktop leg now navigates Home in-app and selects Chat through the public Right region chooser, then asserts actual dock width, label containment and disabled width stability. No manifest, runner retry, deadline or health-policy change. Exact de2 full PR smoke completed 36/36 PASS. A later disabled-border negative-control attempt timed out during server build before browser execution and establishes no assertion verdict; CSS bytes restored by hash. Prior source controls remain historical evidence only. Guide prose still accurately describes synthetic event and browser-only limits.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}
