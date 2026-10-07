@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
   agentCommandSkills,
-  assignSkillVariableArgs,
   findMatchingSkillCommand,
   isSkillCommandOfferedTo,
+} from '../utils/skill-command-catalog';
+import {
+  assignSkillVariableArgs,
   parseShellWords,
   substituteSkillVariables,
 } from '../utils/skill-commands';

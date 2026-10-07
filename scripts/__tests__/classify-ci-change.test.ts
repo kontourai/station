@@ -4,14 +4,16 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
-import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  removeTempDirs,
+  trackTempDirs,
+} from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   classifyChangedPaths,
   classifyDesktopRustChangedPaths,
@@ -23,6 +25,24 @@ import {
   classifyIosGitRange,
   renderGithubOutputs,
 } from '../classify-ci-change.mjs';
+import { runWorkflowShell } from './fixtures/workflow-shell.js';
+
+function withFixtureCleanup(root: string, run: () => void): void {
+  try {
+    run();
+  } catch (error) {
+    try {
+      removeTempDirs([root]);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'Workflow assertion failed and fixture cleanup failed',
+      );
+    }
+    throw error;
+  }
+  removeTempDirs([root]);
+}
 
 function git(root: string, args: string[]) {
   return execFileSync('git', args, {
@@ -91,23 +111,19 @@ function runIosRelevanceShell(
   const githubOutput = join(root, '.github-output');
   mkdirSync(runnerTemp, { recursive: true });
   writeFileSync(githubOutput, '');
-  execFileSync(
-    'bash',
-    ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', shell],
-    {
-      cwd: root,
-      env: {
-        ...process.env,
-        BASE_SHA: before,
-        GITHUB_EVENT_NAME: eventName,
-        GITHUB_OUTPUT: githubOutput,
-        HEAD_SHA: after,
-        RUNNER_TEMP: runnerTemp,
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    },
-  );
+  const result = runWorkflowShell(shell, root, {
+    BASE_SHA: before,
+    GITHUB_EVENT_NAME: eventName,
+    GITHUB_OUTPUT: githubOutput,
+    HEAD_SHA: after,
+    RUNNER_TEMP: runnerTemp,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `Workflow shell exited ${result.status} (${result.signal ?? 'no signal'})\n${result.stdout}\n${result.stderr}`,
+      { cause: result.error },
+    );
+  }
   return readFileSync(githubOutput, 'utf8').trim();
 }
 
@@ -117,7 +133,7 @@ const makeTempDir = trackTempDirs();
 describe('exact CI change classification', () => {
   test('separates candidate-only iOS changes from base-only divergence and direct pushes', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-ios-change-range-'));
-    try {
+    withFixtureCleanup(root, () => {
       git(root, ['init', '--initial-branch=main']);
       git(root, ['config', 'user.email', 'fixture@example.test']);
       git(root, ['config', 'user.name', 'Fixture']);
@@ -280,9 +296,7 @@ describe('exact CI change classification', () => {
         relevant: true,
         classification: 'classifier-error-fail-closed',
       });
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+    });
   });
   test.each([
     'pnpm-lock.yaml',
@@ -476,7 +490,7 @@ describe('desktop Rust relevance for the Windows PR floor', () => {
 
   test('runs the workflow step against a base-controlled classifier and fails closed', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-rust-change-range-'));
-    try {
+    withFixtureCleanup(root, () => {
       git(root, ['init', '--initial-branch=main']);
       git(root, ['config', 'user.email', 'fixture@example.test']);
       git(root, ['config', 'user.name', 'Fixture']);
@@ -578,9 +592,7 @@ describe('desktop Rust relevance for the Windows PR floor', () => {
         relevant: true,
         classification: 'classifier-error-fail-closed',
       });
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+    });
   });
 
   test('refuses an unknown scope instead of answering with the default classifier', () => {
@@ -785,7 +797,7 @@ describe('gallery relevance for the PR gallery check (#2428)', () => {
 
   test('runs the workflow step against a base-controlled classifier and fails closed', () => {
     const root = makeTempDir('station-gallery-change-range-');
-    try {
+    withFixtureCleanup(root, () => {
       git(root, ['init', '--initial-branch=main']);
       git(root, ['config', 'user.email', 'fixture@example.test']);
       git(root, ['config', 'user.name', 'Fixture']);
@@ -878,8 +890,6 @@ describe('gallery relevance for the PR gallery check (#2428)', () => {
         relevant: true,
         classification: 'classifier-error-fail-closed',
       });
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+    });
   });
 });

@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./usage-stats": "./src/usage-stats.ts",
     "./native-relay-link": "./src/native-relay-link.ts",
     "./relay-ice": "./src/relay-ice.ts",
     "./self-hosted-broker": "./src/self-hosted-broker.ts",
@@ -203,7 +204,9 @@
     "./application-session": "./src/application-session.ts",
     "./relay-enrollment": "./src/relay-enrollment.ts",
     "./registry-trust": "./src/registry-trust.ts",
-    "./harness-questions": "./src/harness-questions.ts"
+    "./harness-questions": "./src/harness-questions.ts",
+    "./mcp-elicitation": "./src/mcp-elicitation.ts",
+    "./mcp-prompts": "./src/mcp-prompts.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

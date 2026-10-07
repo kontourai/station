@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'a3e657add7f30c348298c822bbf4cb111042e3ad4074c49c8d71efbf6d2ae3b5';
+  'ab1d6b64567a7e374943306291871a2e4f933d592140904ac5ab5b3d5ca882a1';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -365,7 +365,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Projects and durable work',
     summary:
       'How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.',
-    body: "How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which record owns the work when no engine is running?\n- Can a workspace move without silently changing the Task's identity?\n- What does a failed or uncertain dispatch leave behind?\n\nRead module topics with get_station_docs_topic:\n- architecture-projectfiletransactions: ProjectFileTransactions\n- architecture-projectidentity: ProjectIdentity\n- architecture-taskdispatcher-and-taskgraph: TaskDispatcher and TaskGraph\n- architecture-whole-task-basis-collection: Whole Task Basis collection\n- architecture-project-session-directory: Project session directory\n- architecture-starterworkregistry: StarterWorkRegistry\n\nCanonical reading:\n- docs/user/concepts.md\n- docs/design/portable-project-identity.md\n- docs/design/task-dispatcher.md\n- docs/reference/task-basis-mcp-app.md\n- docs/learn/walkthroughs.md#projects-and-tasks",
+    body: "How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which record owns the work when no engine is running?\n- Can a workspace move without silently changing the Task's identity?\n- What does a failed or uncertain dispatch leave behind?\n\nRead module topics with get_station_docs_topic:\n- architecture-projectfiletransactions: ProjectFileTransactions\n- architecture-projectidentity: ProjectIdentity\n- architecture-project-tool-defaults: Project tool defaults\n- architecture-taskdispatcher-and-taskgraph: TaskDispatcher and TaskGraph\n- architecture-whole-task-basis-collection: Whole Task Basis collection\n- architecture-project-session-directory: Project session directory\n- architecture-starterworkregistry: StarterWorkRegistry\n\nCanonical reading:\n- docs/user/concepts.md\n- docs/design/portable-project-identity.md\n- docs/design/task-dispatcher.md\n- docs/reference/task-basis-mcp-app.md\n- docs/learn/walkthroughs.md#projects-and-tasks",
     tags: ['architecture', 'work'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -392,6 +392,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-work',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'projectidentity',
+  },
+  {
+    id: 'architecture-project-tool-defaults',
+    title: 'Project tool defaults',
+    summary:
+      'Interface, composition, invariants, and documented evidence for Project tool defaults.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## Project tool defaults\n\n[Project tool composition](../../src-server/services/projects/project-tools.ts)\nadds configured MCP IDs and detects registered Project Knowledge stores.\nThe external [session resolver](../../src-server/services/orchestration/session-agent-resolution.ts)\ncaptures those defaults at session start. Native chats use\n[Project tool context](../../src-server/routes/chat/project-tool-context.ts) and an\n[Agent-owned tool view](../../src-server/runtime/tools/agent-tool-view.ts), retaining\nprompt, memory, hooks and configuration-generation guards. Hookless temporary\nmodel recovery refuses positive additions. Agent restrictions and store ACLs\nremain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)\nexplains the UI and opt-out behavior.',
+    tags: ['architecture', 'work', 'Project tool defaults'],
+    parentId: 'architecture-work',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'project-tool-defaults',
   },
   {
     id: 'architecture-taskdispatcher-and-taskgraph',

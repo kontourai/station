@@ -37,6 +37,20 @@ const opts = { timeoutMs: 20 } as const;
 
 const families: Array<[string, () => Promise<unknown>]> = [
   [
+    'station usage overview',
+    async () =>
+      (await import('../client/analytics')).fetchStationUsage(BASE, opts),
+  ],
+  [
+    'usage rollup',
+    async () =>
+      (await import('../client/analytics')).fetchUsageRollup(
+        BASE,
+        { days: 14 },
+        opts,
+      ),
+  ],
+  [
     'readEnvelopeOrThrow (integrations)',
     async () =>
       (await import('../client/integrations')).listIntegrations(BASE, opts),
