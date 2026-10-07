@@ -13,8 +13,6 @@
  * hand-off `continueExecutionTargetMessage` makes.
  */
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -23,6 +21,7 @@ import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenanc
 import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -48,6 +47,7 @@ import {
 import { createSessionAgentControlRoutes } from '../session-agent-control.js';
 
 const OWNER = LOCAL_OPERATOR_PRINCIPAL_ID;
+const makeTempDir = trackTempDirs();
 
 /** An engine that records what it was handed and publishes what real ones publish. */
 class FixtureEngine implements ProviderAdapterShape {
@@ -186,7 +186,7 @@ describe('#3419 an agent message carries who sent it', () => {
       .filter((payload) => payload.method === 'turn.started');
 
   beforeEach(async () => {
-    tmp = mkdtempSync(join(tmpdir(), 'agent-message-provenance-'));
+    tmp = makeTempDir('agent-message-provenance-');
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
     eventBus = new EventBus();
     engine = new FixtureEngine();
@@ -296,7 +296,6 @@ describe('#3419 an agent message carries who sent it', () => {
 
   afterEach(() => {
     eventStore.close();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   test('a start is framed for the engine and recorded with its sender, and projects as that agent’s message', async () => {
