@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   PeerCredentialMutationAuthorizationError,
   type PeerCredentialStore,
 } from '../../services/peers/peer-credential-store.js';
+import type { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
 import {
   errorMessage,
   getBody,
@@ -56,6 +58,7 @@ export function createPeerCredentialRoutes(
    */
   hasSshProfile?: (environmentId: string) => boolean,
   authorize?: (request: Request) => boolean,
+  enrollments?: PeerEnrollmentService,
 ) {
   const app = new Hono();
 
@@ -69,6 +72,114 @@ export function createPeerCredentialRoutes(
       return false;
     }
   };
+
+  app.post('/enrollments', async (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request))
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!enrollments)
+      return c.json({ success: false, error: 'Enrollment unavailable' }, 503);
+    const body = await readBoundedRequestBody(request, 2048);
+    if (body.status !== 'ok')
+      return c.json({ success: false, error: 'Invalid enrollment' }, 400);
+    try {
+      const parsed: unknown = JSON.parse(body.body);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+        throw new Error('Invalid enrollment');
+      const value = parsed as Record<string, unknown>;
+      if (
+        Object.keys(value).some(
+          (key) => !['id', 'apiBase', 'environmentId', 'label'].includes(key),
+        ) ||
+        typeof value.id !== 'string' ||
+        typeof value.apiBase !== 'string' ||
+        typeof value.environmentId !== 'string' ||
+        (value.label !== undefined && typeof value.label !== 'string')
+      )
+        throw new Error('Invalid enrollment');
+      const data = await enrollments.start(
+        {
+          id: value.id,
+          apiBase: value.apiBase,
+          environmentId: value.environmentId,
+          ...(typeof value.label === 'string' ? { label: value.label } : {}),
+        },
+        () => mutationAuthorized(request),
+      );
+      return c.json({ success: true, data }, 201);
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          error:
+            error instanceof PeerCredentialMutationAuthorizationError
+              ? 'Forbidden'
+              : errorMessage(error),
+        },
+        error instanceof PeerCredentialMutationAuthorizationError ? 403 : 400,
+      );
+    }
+  });
+  app.get('/enrollments/:id', (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request))
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!enrollments)
+      return c.json({ success: false, error: 'Enrollment unavailable' }, 503);
+    try {
+      return c.json({
+        success: true,
+        data: enrollments.get(param(c, 'id'), () =>
+          mutationAuthorized(request),
+        ),
+      });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 404);
+    }
+  });
+  app.post('/enrollments/:id/complete', async (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request))
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!enrollments)
+      return c.json({ success: false, error: 'Enrollment unavailable' }, 503);
+    try {
+      return c.json({
+        success: true,
+        data: await enrollments.complete(param(c, 'id'), () =>
+          mutationAuthorized(request),
+        ),
+      });
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          error:
+            error instanceof PeerCredentialMutationAuthorizationError
+              ? 'Forbidden'
+              : errorMessage(error),
+        },
+        error instanceof PeerCredentialMutationAuthorizationError ? 403 : 400,
+      );
+    }
+  });
+  app.delete('/enrollments/:id', (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request))
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!enrollments)
+      return c.json({ success: false, error: 'Enrollment unavailable' }, 503);
+    try {
+      return c.json({
+        success: true,
+        data: enrollments.cancel(param(c, 'id'), () =>
+          mutationAuthorized(request),
+        ),
+      });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
 
   app.get('/', (c) => c.json({ success: true, data: store.list() }));
 

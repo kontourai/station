@@ -19,6 +19,10 @@ import {
 } from '../../contexts/ProjectsContext';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import {
+  CONNECTION_SETUP_RETURN_EVENT,
+  openConnectionsModal,
+} from '../../lib/connectionModalEvents';
+import {
   peerStationLabel,
   selectablePeerStations,
 } from '../../utils/peerEnvironmentOptions';
@@ -284,6 +288,23 @@ export function DelegationLauncher({
   const [target, setTarget] = useState(defaultTarget);
   const [model, setModel] = useState(currentModel ?? '');
   const [showRouting, setShowRouting] = useState(false);
+  const [setupRequestId, setSetupRequestId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!setupRequestId) return;
+    const resume = (event: Event) => {
+      if (
+        !(event instanceof CustomEvent) ||
+        event.detail?.setupRequestId !== setupRequestId
+      )
+        return;
+      setSetupRequestId(null);
+      void peerCredentialsQuery.refetch();
+      void retryDiscovery();
+    };
+    window.addEventListener(CONNECTION_SETUP_RETURN_EVENT, resume);
+    return () =>
+      window.removeEventListener(CONNECTION_SETUP_RETURN_EVENT, resume);
+  }, [setupRequestId, peerCredentialsQuery.refetch, retryDiscovery]);
   // Public repo labels/ids for the portable placement selector. The declared
   // execution-root repo wins; a sole repo is unambiguous; anything else
   // requires an explicit choice — never a guess.
@@ -322,6 +343,7 @@ export function DelegationLauncher({
       requestAnimationFrame(() => promptRef.current?.focus());
     }
     if (!isOpen) {
+      setSetupRequestId(null);
       setEnvironmentId(null);
       setChosenResourceId(null);
     }
@@ -352,7 +374,7 @@ export function DelegationLauncher({
     target,
   ]);
 
-  if (!isOpen) return null;
+  if (!isOpen || setupRequestId) return null;
 
   const selectedTarget = targets.find((option) => option.value === target);
   const unavailableTargets = targets.filter((option) => !option.ready);
@@ -653,6 +675,21 @@ export function DelegationLauncher({
               {showRouting ? 'Hide routing' : 'Change routing'}
             </button>
           </div>
+
+          <Button
+            onClick={() => {
+              const id = crypto.randomUUID();
+              setSetupRequestId(id);
+              openConnectionsModal({
+                mode: 'connect-station',
+                setupRequestId: id,
+                projectName: projectName ?? undefined,
+                peerOnly: true,
+              });
+            }}
+          >
+            Connect a Station for this task
+          </Button>
 
           {discoveryError && (
             <div className="delegation-launcher__discovery-error" role="alert">

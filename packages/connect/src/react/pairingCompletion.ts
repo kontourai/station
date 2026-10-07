@@ -35,13 +35,15 @@ export interface PairingCompletionTarget {
   connectionId: string;
   name: string;
   endpoint: string;
+  /** Save Device access while retaining the caller's selected Station. */
+  activate?: boolean;
 }
 
 /**
  * The post-exchange completion every successful device-pairing flow shares:
  * commit the verified identity through the host-owned vault (native OS
  * keyring + profile `credentialRef` on desktop; the browser-local vault
- * everywhere else), then activate it as the current connection.
+ * everywhere else), then activate it unless the caller is saving access for later use.
  *
  * Extracted from `ConnectionManagerModalContent`'s access-request completion /
  * `handlePaired` (station#1715) so a caller outside that component — the
@@ -57,6 +59,11 @@ export async function completeVerifiedPairing(
   target: PairingCompletionTarget,
   result: PairingResult,
 ): Promise<string> {
+  if (result.device.kind === 'delegation') {
+    throw new Error(
+      'Peer Station access cannot be saved as this device’s interactive access. Connect it as a peer instead.',
+    );
+  }
   const handshake: StationHandshakeIdentity = {
     environmentId: result.environmentId,
     authentication: { scheme: 'bearer', protocolVersion: 1 },
@@ -81,7 +88,7 @@ export async function completeVerifiedPairing(
   } else if (result.credential) {
     deps.setCredential(connectionId, result.credential);
   }
-  await deps.setActiveConnection(connectionId);
+  if (target.activate !== false) await deps.setActiveConnection(connectionId);
   // Optional host hook (station#1954): mobile shells fire a success haptic
   // without connect needing a platform dependency.
   deps.onPairingSucceeded?.();

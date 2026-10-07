@@ -1,4 +1,11 @@
 export { runAgentMcpPrompt } from './query-domains/mcpPromptRun';
+export {
+  peerEnrollmentQueries,
+  useCancelPeerEnrollmentMutation,
+  useCompletePeerEnrollmentMutation,
+  usePeerEnrollmentQuery,
+  useStartPeerEnrollmentMutation,
+} from './query-domains/peerEnrollments';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery

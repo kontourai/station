@@ -120,6 +120,7 @@ export function PendingPairingReconciler({
                 connectionId: target.id,
                 name: target.name,
                 endpoint: pending.endpoint,
+                activate: pending.activateConnection,
               },
               { ...result, endpoint: pending.endpoint },
             );

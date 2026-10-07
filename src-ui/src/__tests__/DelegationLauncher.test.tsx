@@ -239,6 +239,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     // non-operator browser session receives.
     usePeerCredentialsQuery: () => ({
       data: peerCredentials,
+      refetch: vi.fn(),
       isSuccess: peerCredentials !== undefined,
       isError: peerCredentials === undefined,
     }),
@@ -1707,5 +1708,86 @@ describe('DelegationLauncher', () => {
     // Explicit retry dispatches exactly once more — never automatically.
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
+  });
+  test('connection setup returns to the same task draft and explicit Station without dispatching', async () => {
+    const { consumePendingConnectionsModal, CONNECTION_SETUP_RETURN_EVENT } =
+      await import('../lib/connectionModalEvents');
+    projectIdentity = singleRepoIdentity();
+    const resource = 'https://git.example.test/docs.git';
+    projectIdentity.identity.repos.push({
+      kind: 'git',
+      id: resource,
+      canonicalRemote: resource,
+      label: 'Docs',
+    });
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Original task"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Task'), {
+      target: { value: 'Keep my edited draft' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    fireEvent.change(screen.getByLabelText('Project resource'), {
+      target: { value: resource },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Connect a Station for this task' }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const request = consumePendingConnectionsModal();
+    expect(request).toEqual(
+      expect.objectContaining({
+        mode: 'connect-station',
+        peerOnly: true,
+        projectName: 'Station',
+      }),
+    );
+    fireEvent(
+      window,
+      new CustomEvent(CONNECTION_SETUP_RETURN_EVENT, {
+        detail: { setupRequestId: 'another-task' },
+      }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent(
+      window,
+      new CustomEvent(CONNECTION_SETUP_RETURN_EVENT, {
+        detail: { setupRequestId: request?.setupRequestId },
+      }),
+    );
+    expect(screen.getByLabelText('Task')).toHaveProperty(
+      'value',
+      'Keep my edited draft',
+    );
+    expect(screen.getByLabelText('Station')).toHaveProperty(
+      'value',
+      'env-peer-b',
+    );
+    expect(screen.getByLabelText('Project resource')).toHaveProperty(
+      'value',
+      resource,
+    );
+    expect(mutateAsync).not.toHaveBeenCalled();
   });
 });

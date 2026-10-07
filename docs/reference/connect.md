@@ -433,6 +433,39 @@ URL.
 
 ## one-time device pairing
 
+The Station host's **Connect a Station** journey can save Device access without
+activating the destination. `completeVerifiedPairing` accepts `activate: false`
+on its target; persistent approval requests carry `activateConnection: false`
+through completion. Both paths preserve an existing selected Station and keep
+native credential custody with the host. Hosts that omit the option retain
+the existing activation behavior.
+
+Pairing offers and pending requests can disclose `kind: 'device' | 'delegation'`;
+absence in an older response means Device. A server's requested delegation kind
+does not grant it approval authority. The public access-request route accepts
+the delegation intent only with the fixed delegation preset and without account
+binding or client-instance inputs. The receiving trusted approver sees **Station
+peer** separately from Device access.
+
+The server-held peer ceremony is composed by
+[PeerEnrollmentService](../../src-server/services/peers/peer-enrollment-service.ts)
+and the [peer routes](../../src-server/routes/environments/peer-credential-routes.ts).
+The controlling operator submits a stable UUID, exact origin and expected
+environment identity. Proofs and exchanged bearers stay in private server
+records; only enrollment metadata crosses the API. A reported environment ID is
+not signing-key verification. Redirects are refused, and public addresses require
+HTTPS; private/loopback HTTP remains supported for personal setup.
+
+An explicit completion checks the same receiver and exchanges once after
+approval, then publishes to the existing peer store under current authority.
+Duplicate starts with the same UUID and intent return the same record. A restart
+or lost response during a remote effect can leave **outcome unknown**, which does
+not authorize another exchange. If publication fails after the credential is
+retained privately, completion can retry publication without exchanging again.
+Local cancellation does not revoke a receiver grant. This enrollment neither
+offers a Project resource nor implements operator elevation, reciprocal access,
+provider-process migration or foreground peer execution.
+
 For a browser already open at the Station URL, choose **Connections → Request
 access to this Station**. Station creates a rate-limited, five-minute request
 for that same origin without asking for a URL, camera, code, or operator

@@ -189,6 +189,12 @@ export {
   setClientRawEgressPolicyResolver,
 } from './client/http';
 export {
+  cancelPeerEnrollment,
+  completePeerEnrollment,
+  getPeerEnrollment,
+  startPeerEnrollment,
+} from './client/peer-enrollments';
+export {
   applyProjectLayout,
   bindProjectResource,
   closeProjectTerminal,
@@ -1168,6 +1174,13 @@ export {
   usePatchNotificationPreferencesMutation,
   useUpdateNotificationPreferencesMutation,
 } from './query-domains/notificationPreferences.js';
+export {
+  peerEnrollmentQueries,
+  useCancelPeerEnrollmentMutation,
+  useCompletePeerEnrollmentMutation,
+  usePeerEnrollmentQuery,
+  useStartPeerEnrollmentMutation,
+} from './query-domains/peerEnrollments';
 export type {
   PersonalLayoutCreateInput,
   PersonalLayoutUpdateInput,

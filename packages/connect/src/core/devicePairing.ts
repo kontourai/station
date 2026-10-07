@@ -19,6 +19,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 
 const PAYLOAD_PREFIX = 'station-pairing:v1:';
 const CANONICAL_SCANNED_PAIRING_OFFER_FIELDS = new Set([
+  'kind',
   'protocolVersion',
   'environmentId',
   'offerId',
@@ -121,6 +122,7 @@ export function setNativePairingExchangeTransport(
 }
 
 export interface ScannedPairingOffer {
+  kind?: 'device' | 'delegation';
   protocolVersion: typeof DEVICE_PAIRING_PROTOCOL_VERSION;
   environmentId: string;
   offerId: string;
@@ -152,6 +154,7 @@ function decodeBase64Url(value: string): string {
 
 export function encodeDevicePairingPayload(offer: DevicePairingOffer): string {
   const payload: ScannedPairingOffer = {
+    ...(offer.kind ? { kind: offer.kind } : {}),
     protocolVersion: offer.protocolVersion,
     environmentId: offer.environmentId,
     offerId: offer.offerId,
@@ -181,6 +184,9 @@ export function decodeDevicePairingPayload(
       return null;
     }
     if (
+      (payload.kind !== undefined &&
+        payload.kind !== 'device' &&
+        payload.kind !== 'delegation') ||
       payload.protocolVersion !== DEVICE_PAIRING_PROTOCOL_VERSION ||
       typeof payload.scope !== 'string' ||
       parsePairingScope(payload.scope) === null ||
@@ -513,6 +519,8 @@ export interface PendingPairingExchange {
   targetConnectionId?: string;
   /** Snapshot of that row's user-facing label, retained across active-host changes. */
   targetConnectionLabel?: string;
+  /** Project setup saves access without switching its controlling Station. */
+  activateConnection?: boolean;
   /**
    * When the request was created (station#1876). Optional because records
    * written by an earlier build do not carry it, and rejecting those would
@@ -643,6 +651,8 @@ export function loadPendingExchange(
         typeof parsed.expectedEnvironmentId !== 'string') ||
       (parsed.targetConnectionId !== undefined &&
         typeof parsed.targetConnectionId !== 'string') ||
+      (parsed.activateConnection !== undefined &&
+        typeof parsed.activateConnection !== 'boolean') ||
       (parsed.targetConnectionLabel !== undefined &&
         typeof parsed.targetConnectionLabel !== 'string')
     ) {
@@ -737,6 +747,8 @@ function readPendingExchangeWithoutExpiry(
       parsed.requestKind !== requestKind ||
       (parsed.targetConnectionId !== undefined &&
         typeof parsed.targetConnectionId !== 'string') ||
+      (parsed.activateConnection !== undefined &&
+        typeof parsed.activateConnection !== 'boolean') ||
       (parsed.targetConnectionLabel !== undefined &&
         typeof parsed.targetConnectionLabel !== 'string')
     ) {
