@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, platform as hostPlatform } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -58,6 +59,7 @@ Context report:
   --json | --format <human|json>
   --root <path>
   --strict
+  --trace-probes
 
 Official Tauri documentation:
   --list-topics
@@ -120,6 +122,20 @@ function readJson(path) {
 }
 
 function checkCommand(id, command, args, options = {}) {
+  const started = performance.now();
+  if (options.traceProbes) {
+    process.stderr.write(
+      `${JSON.stringify({ id, phase: 'start', elapsedMs: 0, status: 'running' })}\n`,
+    );
+  }
+  const finish = (check) => {
+    if (options.traceProbes) {
+      process.stderr.write(
+        `${JSON.stringify({ id, phase: 'end', elapsedMs: Math.round(performance.now() - started), status: check.status })}\n`,
+      );
+    }
+    return check;
+  };
   const result = spawnSyncBounded(command, args, {
     cwd: options.cwd,
     encoding: 'utf8',
@@ -127,28 +143,38 @@ function checkCommand(id, command, args, options = {}) {
     windowsHide: true,
   });
   if (result.error?.code === 'ENOENT') {
-    return { id, status: 'skipped', reason: 'command-not-found', command };
+    return finish({
+      id,
+      status: 'skipped',
+      reason: 'command-not-found',
+      command,
+    });
   }
   if (result.error) {
-    return { id, status: 'failed', reason: result.error.message, command };
+    return finish({
+      id,
+      status: 'failed',
+      reason: result.error.message,
+      command,
+    });
   }
   const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
   if (result.status !== 0 && !options.acceptNonzero) {
-    return {
+    return finish({
       id,
       status: 'failed',
       reason: combined.slice(0, 1_000) || `exit-${result.status}`,
       command,
-    };
+    });
   }
-  return {
+  return finish({
     id,
     status: 'checked',
     command,
     value: options.parse
       ? options.parse(combined, result)
       : combined.split('\n')[0],
-  };
+  });
 }
 
 function firstExisting(paths) {
@@ -233,12 +259,12 @@ function capabilityReport(desktopRoot, selected) {
     });
 }
 
-function gitGeneratedState(root, relativePath) {
+function gitGeneratedState(root, relativePath, traceProbes) {
   const check = checkCommand(
     `git-${relativePath}`,
     'git',
     ['status', '--short', '--', relativePath],
-    { cwd: root, parse: (output) => output },
+    { cwd: root, parse: (output) => output, traceProbes },
   );
   return {
     path: relativePath,
@@ -255,7 +281,9 @@ function gitGeneratedState(root, relativePath) {
   };
 }
 
-function collectChecks(root) {
+function collectChecks(root, traceProbes) {
+  const probe = (id, command, args, options = {}) =>
+    checkCommand(id, command, args, { ...options, traceProbes });
   let npm;
   let npmResolutionError;
   try {
@@ -289,18 +317,18 @@ function collectChecks(root) {
     'adb',
   ]);
   const checks = {
-    node: checkCommand('node', process.execPath, ['--version']),
+    node: probe('node', process.execPath, ['--version']),
     npm: npm
-      ? checkCommand('npm', npm.command, npm.args)
+      ? probe('npm', npm.command, npm.args)
       : {
           id: 'npm',
           status: 'failed',
           reason: npmResolutionError,
           command: 'npm',
         },
-    rustc: checkCommand('rustc', 'rustc', ['--version']),
-    cargo: checkCommand('cargo', 'cargo', ['--version']),
-    rustTargets: checkCommand(
+    rustc: probe('rustc', 'rustc', ['--version']),
+    cargo: probe('cargo', 'cargo', ['--version']),
+    rustTargets: probe(
       'rust-targets',
       'rustup',
       ['target', 'list', '--installed'],
@@ -316,21 +344,21 @@ function collectChecks(root) {
             reason: 'command-not-found',
             command: tauriBin,
           }
-        : checkCommand(
+        : probe(
             'tauri-cli',
             windows ? process.execPath : tauriBin,
             windows ? [tauriBin, '--version'] : ['--version'],
           ),
-    java: checkCommand('java', 'java', ['-version']),
-    adb: checkCommand('adb', adb ?? 'adb', ['devices', '-l'], {
+    java: probe('java', 'java', ['-version']),
+    adb: probe('adb', adb ?? 'adb', ['devices', '-l'], {
       parse: parseAdbDevices,
     }),
   };
   if (hostPlatform() === 'darwin') {
-    checks.xcode = checkCommand('xcode', 'xcodebuild', ['-version'], {
+    checks.xcode = probe('xcode', 'xcodebuild', ['-version'], {
       parse: (output) => output.split('\n').filter(Boolean),
     });
-    checks.appleDevices = checkCommand(
+    checks.appleDevices = probe(
       'apple-devices',
       'xcrun',
       ['xcdevice', 'list', '--timeout', '2'],
@@ -421,7 +449,11 @@ export function collectFindings({ versions, checks, generated }) {
   return findings;
 }
 
-export function buildContextReport(root, selectedPlatform = 'all') {
+export function buildContextReport(
+  root,
+  selectedPlatform = 'all',
+  { traceProbes = false } = {},
+) {
   const cargoPath = join(root, 'src-desktop', 'Cargo.toml');
   const desktopRoot = dirname(cargoPath);
   const cargoToml = readFileSync(cargoPath, 'utf8');
@@ -465,10 +497,10 @@ export function buildContextReport(root, selectedPlatform = 'all') {
       },
     ]),
   );
-  const checks = collectChecks(root);
+  const checks = collectChecks(root, traceProbes);
   const generated = {
     android: {
-      ...gitGeneratedState(root, 'src-desktop/gen/android'),
+      ...gitGeneratedState(root, 'src-desktop/gen/android', traceProbes),
       owners: [
         'src-desktop/tauri.android.conf.json',
         'scripts/apply-android-native-bootstrap.mjs',
@@ -476,7 +508,7 @@ export function buildContextReport(root, selectedPlatform = 'all') {
       ].filter((path) => existsSync(join(root, path))),
     },
     ios: {
-      ...gitGeneratedState(root, 'src-desktop/gen/apple'),
+      ...gitGeneratedState(root, 'src-desktop/gen/apple', traceProbes),
       owners: [
         'src-desktop/tauri.ios.conf.json',
         'src-desktop/gen/apple/project.yml',
@@ -579,6 +611,7 @@ function parseArgs(argv) {
     platform: 'all',
     root: resolve(dirname(fileURLToPath(import.meta.url)), '..'),
     strict: false,
+    traceProbes: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -590,6 +623,7 @@ function parseArgs(argv) {
     else if (value === '--topic') options.topic = argv[++index];
     else if (value === '--max-chars') options.maxChars = Number(argv[++index]);
     else if (value === '--strict') options.strict = true;
+    else if (value === '--trace-probes') options.traceProbes = true;
     else if (value === '--list-topics') options.listTopics = true;
     else if (value === '--help' || value === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${value}`);
@@ -631,7 +665,9 @@ async function main() {
     await printDocumentation(options.topic, options.maxChars);
     return;
   }
-  const report = buildContextReport(options.root, options.platform);
+  const report = buildContextReport(options.root, options.platform, {
+    traceProbes: options.traceProbes,
+  });
   process.stdout.write(
     options.format === 'json'
       ? `${JSON.stringify(report, null, 2)}\n`

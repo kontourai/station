@@ -52,6 +52,14 @@ macOS, Windows, and Linux requirements.
 
 ## Verify a fresh checkout
 
+For a slow or stalled context report, run
+`node scripts/tauri-context.mjs --platform windows --json --trace-probes`.
+The report stays JSON on stdout; stderr records each spawned probe's stable
+id, start/end phase, elapsed milliseconds and running/checked/failed/skipped
+status. If an outer timeout interrupts the report, the last start without an
+end identifies its active probe. Probe command limits and report exit status
+remain unchanged.
+
 ```sh
 npm run dependencies:ci
 npm run verify:desktop-clean-checkout
