@@ -12,11 +12,11 @@ import {
   useKnowledgeStatusQuery,
   useProjectConversationsQuery,
   useProjectLayoutsQuery,
-  useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { useMemo, useReducer, useState } from 'react';
 import { selectChatReadyAgents } from '../components/agent-selection-policy';
 import { Button } from '../components/Button';
+import { HomeStartComposer } from '../components/home/HomeStartComposer';
 import { BranchGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { PageCallout, PageCalloutStack } from '../components/PageCallout';
@@ -31,7 +31,7 @@ import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
 import { requestProjectChat } from '../lib/projectChatEvents';
-import { errorText, userFacingErrorMessage } from '../utils/errorText';
+import { errorText } from '../utils/errorText';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
@@ -247,8 +247,6 @@ function ProjectOperatorPage({
   const { data: conversations = [] } = useProjectConversationsQuery(slug);
   const paneCatalog = useResolvedWorkspacePaneCatalog(slug);
 
-  const [editingDir, setEditingDir] = useState(false);
-  const [dirDraft, setDirDraft] = useState('');
   const [showAddLayout, setShowAddLayout] = useState(false);
   const [showAddPane, setShowAddPane] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
@@ -259,7 +257,6 @@ function ProjectOperatorPage({
   });
   const available = layoutCatalog.data ?? [];
 
-  const updateProjectMutation = useUpdateProjectMutation();
   const applyLayoutMutation = useApplyProjectLayoutMutation(slug);
 
   async function addLayout(item: AvailableLayout) {
@@ -275,13 +272,6 @@ function ProjectOperatorPage({
       setApplyError(error);
     }
     setAdding(null);
-  }
-
-  function updateWorkingDirectory(value: string) {
-    updateProjectMutation.mutate(
-      { slug, workingDirectory: value || undefined },
-      { onSuccess: () => setEditingDir(false) },
-    );
   }
 
   function handleConversationClick(conversation: ConversationRecord) {
@@ -358,22 +348,15 @@ function ProjectOperatorPage({
         <ProjectPageHeader
           project={project}
           gitStatus={gitStatus}
-          editingDir={editingDir}
-          setEditingDir={(editing: boolean) => {
-            // A refusal belongs to the attempt it answered, not the next one.
-            if (editing) updateProjectMutation.reset();
-            setEditingDir(editing);
-          }}
-          dirDraft={dirDraft}
-          setDirDraft={setDirDraft}
-          updateWorkingDirectory={updateWorkingDirectory}
-          workingDirectoryError={
-            updateProjectMutation.error
-              ? userFacingErrorMessage(updateProjectMutation.error)
-              : null
-          }
           navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
         />
+
+        <section
+          aria-label="Start work in this project"
+          className="project-page__start"
+        >
+          <HomeStartComposer key={project.id} compact projectSlug={slug} />
+        </section>
 
         {/* archive#3202: what is live in this project leads the page, because
             that is what the sidebar badge sent you here for. Renders nothing

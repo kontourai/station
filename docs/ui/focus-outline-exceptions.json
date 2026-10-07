@@ -123,11 +123,6 @@
     },
     {
       "path": "src-ui/src/views/ProjectPage.css",
-      "selector": ".project-page__dir-input",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
-      "path": "src-ui/src/views/ProjectPage.css",
       "selector": ".project-page__ns-config-input",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
     },

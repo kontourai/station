@@ -40,13 +40,59 @@ detail, with a Back to list control, instead of squeezing both columns.
 
 ## Starting and resuming work
 
-New chat opens the start composer, the same component Home renders inline: a
-text box, an Agent chip (icon, Agent · Model; it lists the Agents with their
-readiness, repair and Model picker), a project chip (accent, name, folder, No
-project; a project with no folder can be chosen and runs where the server
-puts it: the home folder, or for an ACP engine its connection folder or a
-private Station-managed workspace, which the chip and list say), and, beside
-Start, an overflow for visual skills. Up to five recent chats from the
+The phone-width captures compare the baseline and redesigned controls in the
+same isolated sample home and light theme. They show appearance, not task
+execution or native-shell qualification. Capture revisions and limits are in
+[the media manifest](../learn/media.json).
+
+| Surface | Before | After |
+| --- | --- | --- |
+| New chat | ![Baseline new chat](../learn/media/new-chat-start-before.png) | ![Redesigned new chat](../learn/media/new-chat-start-after.png) |
+| Project page | ![Baseline Project page](../learn/media/project-start-before.png) | ![Project start composer](../learn/media/project-start-after.png) |
+
+The Project comparison captures precede the removal of the header's local
+folder controls. Their capture revisions remain recorded; folder details now
+live in Settings.
+
+New chat opens the shared start composer. Home renders it inline, and an
+operator's Project page renders a compact version above its activity with
+the Project fixed. Project and Station controls sit above the text box;
+separate Agent and Model controls sit inside it beside Start and the overflow
+for visual skills. The Agent list retains each Agent's readiness and repair
+action, with a short purpose for custom Agents. The Model picker offers search, recent choices, favorites and provider
+filters; Options reveals capability filters and the selected model's supported
+runtime controls. Reviewed canonical model identities still own grouping across
+provider routes; similar names do not establish equivalence.
+
+Home keeps a screen-reader page title while the shared composer owns the
+visible start heading. An empty Home does not add a second welcome question.
+
+The **on <host>** control names the answering Station's host projection, or
+**on Project default** when the Project has a saved execution environment. It
+opens the existing task launcher with the current message, Project and Agent,
+and with its Station/worker/model routing controls expanded. The launcher
+loads the selected environment's own worker inventory and retains portable
+Project/resource admission and the explicit no-fallback refusals. **Run task**
+starts a task; it does not place or migrate a foreground chat on a peer. Editing
+the task message updates the originating draft, so Cancel retains those edits.
+A successful launch clears only the text submitted and names its captured
+Station; newly typed text stays. Remote task submission and Escape do not
+submit or dismiss the underlying foreground composer. Prepared visual skills
+and coding-context drafts keep their existing chat-only path.
+
+The Project header leads with its name, description and observed Git branch.
+The local working-directory path and editor live in Project Settings, alongside
+resource bindings. A branch badge does not claim a GitHub integration or whole
+Project synchronization: portable Project identity and per-Station resource
+bindings remain separate from Git content synchronization.
+
+A Project page start hands the dock its fixed Project without changing the
+ambient dock binding. An unavailable fixed Project blocks starting and keeps
+the message. Returned drafts are scoped to that Project and Station authority.
+A project with no folder can still be chosen and runs where the server puts it:
+the home folder, or for an ACP engine its connection folder or a private
+Station-managed workspace. The project menu states the run-location hint.
+Up to five recent chats from the
 selected project or No project follow; with none, the composer stands alone.
 A start or hand-off from Home is taken only by the ambient dock, which says
 so (the intent is cancelable); Home keeps its message until the chat starts,
