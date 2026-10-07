@@ -153,6 +153,10 @@ async function checkCommand(id, command, args, options = {}) {
     () => rejectBoundary(new Error(`${id} timed out after ${timeout}ms`)),
     timeout,
   );
+  const onAbort = () =>
+    rejectBoundary(options.signal.reason ?? new Error(`${id} cancelled`));
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+  if (options.signal?.aborted) onAbort();
   const execution = executeOwnedCommand(command, args, spawn, id, {
     cwd: options.cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -174,6 +178,7 @@ async function checkCommand(id, command, args, options = {}) {
     failure = error;
   } finally {
     clearTimeout(timer);
+    options.signal?.removeEventListener('abort', onAbort);
   }
   const cleanup = await terminateSuiteExecution(execution, {
     waitForSuiteSettlement,
@@ -520,7 +525,7 @@ export function collectFindings({ versions, checks, generated }) {
 export async function buildContextReport(
   root,
   selectedPlatform = 'all',
-  { traceProbes = false } = {},
+  { traceProbes = false, signal } = {},
 ) {
   const cargoPath = join(root, 'src-desktop', 'Cargo.toml');
   const desktopRoot = dirname(cargoPath);
@@ -571,6 +576,7 @@ export async function buildContextReport(
       : undefined;
   const probeOptions = {
     traceProbes,
+    signal,
     ...(process.platform === 'win32'
       ? { resolveParentIdentity: () => parentIdentity }
       : {}),
@@ -747,9 +753,26 @@ async function main() {
     await printDocumentation(options.topic, options.maxChars);
     return;
   }
-  const report = await buildContextReport(options.root, options.platform, {
-    traceProbes: options.traceProbes,
-  });
+  const controller = new AbortController();
+  const cancel = (signal, exitCode) => () => {
+    process.exitCode = exitCode;
+    controller.abort(new Error(`Context report cancelled by ${signal}`));
+  };
+  const interrupt = cancel('SIGINT', 130);
+  const terminate = cancel('SIGTERM', 143);
+  process.on('SIGINT', interrupt);
+  process.on('SIGTERM', terminate);
+  let report;
+  try {
+    report = await buildContextReport(options.root, options.platform, {
+      traceProbes: options.traceProbes,
+      signal: controller.signal,
+    });
+  } finally {
+    process.off('SIGINT', interrupt);
+    process.off('SIGTERM', terminate);
+  }
+  if (controller.signal.aborted) return;
   process.stdout.write(
     options.format === 'json'
       ? `${JSON.stringify(report, null, 2)}\n`

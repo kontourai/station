@@ -66,6 +66,8 @@ Apple device discovery retains 15 seconds), bounded output and process cleanup.
 A stalled tool stays failed in the report and findings; it does not prevent
 unrelated version probes from returning. The exported `buildContextReport`
 builder returns a promise; its CLI caller awaits the completed report.
+SIGINT and SIGTERM cancel active probes and await their process cleanup before
+the CLI exits with status 130 or 143, without printing a partial report.
 
 ```sh
 npm run dependencies:ci

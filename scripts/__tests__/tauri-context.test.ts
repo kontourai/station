@@ -1,5 +1,11 @@
-import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -53,7 +59,7 @@ describe('tauri context', () => {
     return directory;
   }
 
-  function stalledToolEnvironment(): NodeJS.ProcessEnv {
+  function stalledToolEnvironment(pidDirectory?: string): NodeJS.ProcessEnv {
     const directory = makeTempDir('station-tauri-stalled-tools-');
     const tools = ['rustc', 'cargo', 'rustup'];
     if (process.platform === 'win32') {
@@ -79,7 +85,7 @@ describe('tauri context', () => {
       for (const tool of tools) {
         writeFileSync(
           join(directory, tool),
-          `#!${process.execPath}\nsetTimeout(() => {}, 11000);\n`,
+          `#!${process.execPath}\n${pidDirectory ? `require('node:fs').writeFileSync(${JSON.stringify(join(pidDirectory, tool))}, String(process.pid));\n` : ''}setTimeout(() => {}, 11000);\n`,
           { mode: 0o755 },
         );
       }
@@ -120,6 +126,112 @@ describe('tauri context', () => {
       );
     }
   });
+
+  function stopFixture(pid: number) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch (error) {
+      if (
+        !(error instanceof Error && 'code' in error && error.code === 'ESRCH')
+      )
+        throw error;
+    }
+  }
+
+  test
+    .skipIf(process.platform === 'win32')
+    .each(['SIGINT', 'SIGTERM'] as const)(
+    'settles active owned probes before exiting on %s',
+    async (signal) => {
+      const directory = makeTempDir('station-tauri-cancelled-');
+      const child = spawn(
+        process.execPath,
+        [
+          join(root, 'scripts/tauri-context.mjs'),
+          '--json',
+          '--trace-probes',
+          '--platform',
+          'windows',
+          '--root',
+          root,
+        ],
+        {
+          env: stalledToolEnvironment(directory),
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      child.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+      const closed = new Promise<number | null>((resolve, reject) => {
+        child.once('error', reject);
+        child.once('close', resolve);
+      });
+      const tools = ['rustc', 'cargo', 'rustup'];
+      const pids: number[] = [];
+      try {
+        const deadline = Date.now() + 5_000;
+        while (!tools.every((tool) => existsSync(join(directory, tool)))) {
+          if (Date.now() >= deadline)
+            throw new Error(`Stalled probes did not start: ${stderr}`);
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        pids.push(
+          ...tools.map((tool) =>
+            Number(readFileSync(join(directory, tool), 'utf8')),
+          ),
+        );
+        expect(child.kill(signal)).toBe(true);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let status: number | null;
+        try {
+          status = await Promise.race([
+            closed,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () =>
+                  reject(new Error(`Cancellation did not settle: ${stderr}`)),
+                5_000,
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+        expect(stdout).toBe('');
+        for (const pid of pids) {
+          expect(() => process.kill(pid, 0)).toThrow(
+            expect.objectContaining({ code: 'ESRCH' }),
+          );
+        }
+        expect(status).toBe(signal === 'SIGINT' ? 130 : 143);
+        const traces = stderr
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line));
+        for (const id of ['rustc', 'cargo', 'rust-targets']) {
+          expect(traces).toContainEqual(
+            expect.objectContaining({ id, phase: 'end', status: 'failed' }),
+          );
+        }
+      } finally {
+        if (child.exitCode === null && child.signalCode === null)
+          child.kill('SIGKILL');
+        for (const tool of tools) {
+          if (!existsSync(join(directory, tool))) continue;
+          const pid = Number(readFileSync(join(directory, tool), 'utf8'));
+          stopFixture(pid);
+        }
+        await closed;
+      }
+    },
+  );
 
   test.skipIf(process.platform !== 'win32')(
     'reports versions from the real installed npm and local Tauri CLIs on Windows',
