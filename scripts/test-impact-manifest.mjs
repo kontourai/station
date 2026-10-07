@@ -707,6 +707,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
+  // Discovers server-owned history roots so e2e isolation covers new engines.
+  'scripts/__tests__/run-e2e-suite-ports.test.ts',
   'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
