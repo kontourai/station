@@ -136,6 +136,15 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
           : {}),
       },
     } as CanonicalRuntimeEvent);
+    this.events.push({
+      eventId: `${input.threadId}:started`,
+      method: 'session.started',
+      provider: this.provider,
+      threadId: input.threadId,
+      sessionId: input.threadId,
+      createdAt: now,
+      metadata: { ...input.metadata },
+    });
     const session: ProviderSession = {
       provider: this.provider,
       threadId: input.threadId,

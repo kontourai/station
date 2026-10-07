@@ -1370,15 +1370,16 @@ function continuationLaunchContext(
 function executionMetadata(
   events: readonly CanonicalRuntimeEvent[],
 ): Record<string, unknown> | undefined {
-  return [...events]
-    .reverse()
-    .flatMap((event) =>
+  let metadata: Record<string, unknown> | undefined;
+  for (const event of events) {
+    if (
       event.method === 'session.started' ||
       event.method === 'session.configured'
-        ? [event.metadata]
-        : [],
-    )
-    .find((metadata) => typeof metadata?.agentSlug === 'string');
+    ) {
+      metadata = { ...metadata, ...event.metadata };
+    }
+  }
+  return typeof metadata?.agentSlug === 'string' ? metadata : undefined;
 }
 
 /**
