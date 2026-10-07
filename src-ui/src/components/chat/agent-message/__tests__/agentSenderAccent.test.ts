@@ -32,49 +32,47 @@ const SURFACES = {
 } as const;
 
 describe('agent sender accent', () => {
-  test('is stable: the same agent always gets the same accent', () => {
-    const first = agentAccentFor({ agent: 'Reviewer', sessionId: 's1' });
-    for (let attempt = 0; attempt < 5; attempt += 1)
-      expect(agentAccentFor({ agent: 'Reviewer', sessionId: 'other' })).toBe(
-        first,
-      );
-    // Case and padding are not a different agent.
-    expect(agentAccentFor({ agent: '  reviewer ', sessionId: 'x' })).toBe(
-      first,
-    );
-    // Pinned: a changed hash would recolour every transcript at once.
-    expect(agentAccentFor({ agent: 'Reviewer', sessionId: 's1' }).id).toBe(
-      'amber',
-    );
-    expect(agentAccentFor({ agent: 'Planner', sessionId: 's2' }).id).toBe(
-      'rose',
+  test('the same sending Session keeps its accent across label and engine changes', () => {
+    const first = agentAccentFor({
+      agent: 'Reviewer',
+      engine: 'claude',
+      sessionId: 'reviewer',
+    });
+    expect(
+      agentAccentFor({
+        agent: 'Renamed reviewer',
+        engine: 'codex',
+        sessionId: 'reviewer',
+      }),
+    ).toBe(first);
+    expect(first.id).toBe('amber');
+    expect(agentAccentFor({ sessionId: 'planner' }).id).toBe('rose');
+  });
+
+  test('two sending Sessions with the same labels remain distinct', () => {
+    expect(
+      agentAccentFor({
+        agent: 'Same label',
+        engine: 'claude',
+        sessionId: 'reviewer',
+      }),
+    ).not.toBe(
+      agentAccentFor({
+        agent: 'Same label',
+        engine: 'claude',
+        sessionId: 'planner',
+      }),
     );
   });
 
-  test('distinct agents get distinct accents', () => {
-    expect(agentAccentFor({ agent: 'Reviewer', sessionId: 's1' })).not.toBe(
-      agentAccentFor({ agent: 'Planner', sessionId: 's2' }),
-    );
-    expect(agentAccentFor({ engine: 'claude', sessionId: 's' })).not.toBe(
-      agentAccentFor({ engine: 'codex', sessionId: 's' }),
-    );
-  });
-
-  test('keys on the agent, else the engine, else the Session id', () => {
-    expect(agentAccentFor({ sessionId: 'abc' })).toBe(
-      agentAccentFor({ sessionId: 'abc' }),
-    );
+  test('canonical sender Session ids spread over the fixed palette', () => {
     const bySession = new Set(
       Array.from(
         { length: 40 },
         (_, index) => agentAccentFor({ sessionId: `session-${index}` }).id,
       ),
     );
-    // Session ids spread over the palette; the agent beats them when named.
     expect(bySession.size).toBeGreaterThan(3);
-    expect(agentAccentFor({ agent: 'Writer', sessionId: 'a' })).toBe(
-      agentAccentFor({ agent: 'Writer', sessionId: 'b' }),
-    );
   });
 
   test('hands the stylesheet both themes’ values', () => {

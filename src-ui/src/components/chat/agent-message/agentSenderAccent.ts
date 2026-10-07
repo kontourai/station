@@ -51,9 +51,7 @@ function hash(value: string): number {
 }
 
 export function agentAccentFor(sender: AgentAccentKey): AgentAccent {
-  const key = (sender.agent ?? sender.engine ?? sender.sessionId)
-    .trim()
-    .toLowerCase();
+  const key = sender.sessionId;
   return AGENT_ACCENTS[hash(key) % AGENT_ACCENTS.length]!;
 }
 

@@ -325,6 +325,8 @@ Session by its `sessionId`, without creating a task.
   Session and drops an invalid anchor without treating it as an exact target.
   Activity takes the anchor through its ordinary one-shot surface intent;
   remounting cannot replay it, while a new intent token can reveal it again.
+  Sender accents use the canonical sending Session id, so a changed display
+  name or engine does not recolor that Session.
   On phones, a muted cause row expands to the sender details, message and link.
   Engine-opened replies retain a provider cause on the assistant row after
   settlement and reload; origin is never inferred from prompt text.

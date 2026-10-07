@@ -898,6 +898,25 @@ describe('EventStore', () => {
 
     test('counts its reply but not its start as a message', () => {
       seed();
+      store.close();
+      store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const restored = projectRuntimeEventsToMessages(
+        store.listEvents(threadId).map((row) => row.payload),
+      );
+      const providerReply = restored.find(
+        (message) =>
+          message.role === 'assistant' &&
+          message.metadata?.turnId === 'provider:p',
+      );
+      expect(providerReply?.metadata?.sender).toEqual({
+        kind: 'provider',
+        sessionId: threadId,
+        engine: 'claude',
+      });
+      expect(
+        restored.find((message) => message.metadata?.turnId === 'user-turn')
+          ?.metadata?.sender,
+      ).toBeUndefined();
       expect(
         store.listConversationHistoryPage({
           ownerUserId: 'owner-alpha',
