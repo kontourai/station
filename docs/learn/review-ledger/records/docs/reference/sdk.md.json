@@ -574,7 +574,13 @@
 
     "packages/shared/src/usage-fold.ts",
 
-    "packages/sdk/src/query-domains/mcpPromptRun.ts"
+    "packages/sdk/src/query-domains/mcpPromptRun.ts",
+
+    "packages/sdk/src/client/peer-enrollments.ts",
+
+    "packages/sdk/src/query-domains/peerEnrollments.ts",
+
+    "packages/sdk/src/__tests__/peerEnrollmentRequestAuthority.test.ts"
   ],
 
   "checks": [
