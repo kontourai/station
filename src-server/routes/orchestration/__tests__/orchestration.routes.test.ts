@@ -2447,12 +2447,24 @@ describe('Orchestration Routes', () => {
       status: 'dispatched',
       resumable: true,
     });
-    const app = createOrchestrationRoutes({} as any, {
+    const routes = createOrchestrationRoutes({} as any, {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
       getUserId: () => 'bound-user',
       delegateTask,
     });
+    // A plain folder takes the operator in person (or a granted device), and
+    // a request no auth boundary saw is refused.
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        credential: 'operator-credential',
+        authority: 'operator-credential',
+        source: 'bearer',
+      });
+      await next();
+    });
+    app.route('/', routes);
 
     const res = await app.request('/delegations', {
       method: 'POST',
@@ -2472,7 +2484,7 @@ describe('Orchestration Routes', () => {
     expect(delegateTask).toHaveBeenCalledWith({
       clientOrigin: {
         version: 1,
-        actor: { kind: 'unknown' },
+        actor: { kind: 'operator' },
         reported: { version: 1, surface: 'unknown', build: null },
       },
       prompt: 'Review the mobile shell',
@@ -2484,8 +2496,8 @@ describe('Orchestration Routes', () => {
         model: { options: { approvalMode: 'auto', effort: 'high' } },
       },
       userId: 'bound-user',
-      // #2493: the test app has no auth boundary, so no grant.
-      fullAccessGrant: null,
+      // The operator credential may grant full access (#2493).
+      fullAccessGrant: expect.anything(),
     });
   });
 

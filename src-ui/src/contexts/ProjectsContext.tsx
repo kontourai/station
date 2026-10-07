@@ -3,6 +3,7 @@ import type {
   MemberProjectView,
   ProjectRunLocations,
   ProjectRunsAt,
+  ProjectToolDefaults,
 } from '@kontourai/station-contracts/project';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
@@ -497,6 +498,7 @@ export interface ProjectMetadata {
 }
 
 export interface ProjectConfig extends ProjectMetadata {
+  toolDefaults?: ProjectToolDefaults;
   workingDirectory?: string;
   defaultModel?: string;
   defaultAgent?: AgentId;

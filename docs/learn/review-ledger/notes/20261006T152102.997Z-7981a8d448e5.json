@@ -1,0 +1,7 @@
+{
+  "revision": "c02475e0d13466465df1d41b50dd9cc529553703",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Phone chat bar: the project (New chats) control collapses to a folder glyph when a long title leaves it too narrow; added one sentence. The compose button, title (Chats and tasks) and three-dot menu claims are unchanged by ChatDockMobileHeader's edit; chat.css changes are transcript density and fold styling, no claim here.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

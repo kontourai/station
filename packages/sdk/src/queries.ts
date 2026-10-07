@@ -1,3 +1,4 @@
+export { runAgentMcpPrompt } from './query-domains/mcpPromptRun';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery
@@ -33,6 +34,7 @@ export {
   type AgentCreateResult,
   type AgentTemplate,
   type AwsProfilesResult,
+  agentMcpPromptsQueryKey,
   createAgent,
   createAgentDetailed,
   deleteAgent,
@@ -45,6 +47,7 @@ export {
   updateAgent,
   updateAppConfig,
   updateAppLogLevel,
+  useAgentMcpPromptsQuery,
   useAgentQuery,
   useAgentsQuery,
   useAgentTemplatesQuery,

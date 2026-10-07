@@ -236,6 +236,7 @@ for creating a project, including a short first-project prompt when empty.
 Selecting a project in the sidebar opens its workspace and makes it the default
 for new chats. An existing chat stays with its original project. The chat bar's
 **New chats** value lets you choose another default without leaving the workspace.
+On a phone with a long chat title, that control shows only a folder icon.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its

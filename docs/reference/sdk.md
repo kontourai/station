@@ -4109,6 +4109,16 @@ question before forwarding it. See the [Session API](session-api.md#respondtoreq
 for the wire shape and limits. Inspection preserves `requiresAnswers` for
 clients that must direct the user to the inline question card.
 
+The same call accepts `elicitationContent` for a tool server's form
+elicitation (#3284), with the same exact-event rule; the server validates it
+against the opened form. `useAgentMcpPromptsQuery(agentSlug)` reads
+`GET /agents/:slug/mcp-prompts` (cache key `agentMcpPromptsQueryKey`) and
+`runAgentMcpPrompt(agentSlug, { serverId, name, arguments })` reads one prompt
+and returns the text to send; a refusal throws the server's reason as a
+`StationHttpError`, retaining HTTP status, machine code, details and
+`Retry-After` when present. See the [commands guide](../guides/commands.md)
+for scope and limits.
+
 
 ## Engine account queries
 

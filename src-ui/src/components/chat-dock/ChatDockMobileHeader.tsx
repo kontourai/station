@@ -5,7 +5,7 @@ import type {
 } from 'react';
 import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
-import { ArrowDownGlyph, MenuGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, FolderGlyph, MenuGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
@@ -188,6 +188,15 @@ export function ChatDockMobileHeader({
             data-dock-drag-passthrough=""
             onClick={() => setIsProjectOpen(true)}
           >
+            {/* Too narrow for words (a long chat title takes the bar), the
+                control shows only its glyph; its aria-label still names the
+                project. The CSS container query decides which shows. */}
+            <span
+              className="chat-dock__mobile-project-glyph"
+              aria-hidden="true"
+            >
+              <FolderGlyph />
+            </span>
             <span className="chat-dock__mobile-project-lines">
               <span
                 className="chat-dock__mobile-project-caption"

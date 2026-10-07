@@ -58,7 +58,10 @@ import {
   assertSafeLayoutPathSegment,
   type IStorageAdapter,
 } from '../../domain/storage-adapter.js';
-import { mayRunCommandsOnHost } from '../../security/coding-authority.js';
+import {
+  mayChooseWorkingDirectory,
+  WORKING_DIRECTORY_NOT_GRANTED_CODE,
+} from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -747,7 +750,7 @@ export function createProjectRoutes(
    * read, edit and run. Setting it (create) or changing it (update) is
    * therefore reserved for the callers who may run commands on this
    * computer anyway: the operator in person, or a device holding the
-   * operator's `coding:exec` grant (`mayRunCommandsOnHost`, the same
+   * operator's `coding:exec` grant (`mayChooseWorkingDirectory`, the same
    * derivation `POST /api/coding/exec` reads). An operate-tier device can
    * still edit everything else about a Project, and an update that sends the
    * directory it already has (a settings form saving the whole record) is not
@@ -774,7 +777,7 @@ export function createProjectRoutes(
       return undefined;
     }
     if (
-      mayRunCommandsOnHost(
+      mayChooseWorkingDirectory(
         c.req.raw,
         grantedPairingScope(c as unknown as PairingScopeContextStore),
       )
@@ -784,7 +787,7 @@ export function createProjectRoutes(
     return c.json(
       {
         success: false,
-        code: 'working-directory-not-granted',
+        code: WORKING_DIRECTORY_NOT_GRANTED_CODE,
         error:
           "Only this Station's operator, or a device the operator allowed to run commands, can choose a Project's folder. Nothing was saved.",
       },

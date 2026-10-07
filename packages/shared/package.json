@@ -106,6 +106,8 @@
     "./prebuilt-archive": "./src/prebuilt-archive.ts",
     "./service-launcher-protocol": "./src/service-launcher-protocol.ts",
     "./harness-questions": "./src/harness-questions.ts",
+    "./mcp-elicitation": "./src/mcp-elicitation.ts",
+    "./mcp-elicitation-form": "./src/mcp-elicitation-form.ts",
     "./skill-experience-workflow": "./src/skill-experience-workflow.ts"
   },
   "publishConfig": {
@@ -114,7 +116,7 @@
   "dependencies": {
     "@kontourai/station-contracts": "^0.8.0",
     "@kontourai/thread": "0.5.0",
-    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/client": "2.2.0",
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
     "jose": "6.2.12"
