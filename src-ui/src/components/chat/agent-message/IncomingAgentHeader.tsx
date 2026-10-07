@@ -7,12 +7,12 @@ import { AgentSessionLink } from './AgentSessionLink';
 import './agent-message.css';
 
 /** What to call a sender's Session when it has no title. */
-export function senderSessionLabel(sender: ClientOriginSender): string {
+function senderSessionLabel(sender: ClientOriginSender): string {
   return sender.title ?? `Session ${sender.sessionId.slice(0, 8)}`;
 }
 
 /** The sender's Agent for the header: its own name, else its engine's. */
-export function senderAgentLabel(
+function senderAgentLabel(
   sender: ClientOriginSender,
 ): string | undefined {
   return (
