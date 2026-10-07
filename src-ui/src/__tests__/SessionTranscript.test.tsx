@@ -997,3 +997,50 @@ test('two sends sharing a request key in one answer remain an ambiguous anchor (
     ),
   ).toBeNull();
 });
+
+test('the durable incoming cause follows canonical phone state and expands full details (#3419)', () => {
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  const sender = {
+    kind: 'agent-session' as const,
+    sessionId: 'sender',
+    title: 'Fix login',
+    engine: 'claude',
+    requestKey: 'phone-key',
+  };
+  windowState.events = [
+    {
+      sequence: 1,
+      event: ev({
+        method: 'turn.started',
+        turnId: 'phone-input',
+        prompt: frameAgentMessage(sender, 'Please inspect the login patch.'),
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'internal' },
+          reported: { version: 1, surface: 'unknown', build: null },
+          sender,
+        },
+      }),
+    },
+  ];
+  renderTranscript(false);
+  expect(
+    screen
+      .getByTestId('session-transcript')
+      .getAttribute('data-transcript-mobile'),
+  ).toBe('true');
+  const details = screen
+    .getByTestId('session-transcript-message')
+    .querySelector<HTMLDetailsElement>('details.agent-cause-disclosure')!;
+  expect(details.open).toBe(false);
+  fireEvent.click(details.querySelector('summary')!);
+  expect(details.open).toBe(true);
+  expect(details.textContent).toContain('Please inspect the login patch.');
+  expect(details.querySelector('a')?.href).toContain(
+    'messageRequest=phone-key',
+  );
+});

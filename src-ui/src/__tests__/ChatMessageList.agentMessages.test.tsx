@@ -575,6 +575,9 @@ test('phone input uses a cause disclosure with full sender details and exact nav
   expect(accents[0]).not.toBe(accents[1]);
   const details = disclosures[0]!;
   expect(details.open).toBe(false);
+  expect(
+    details.closest('.message-row')?.getAttribute('data-message-mobile'),
+  ).toBe('true');
   const summary = details.querySelector('summary')!;
   expect(summary.textContent).toContain('From Fix login · Claude Code');
   fireEvent.click(summary);
