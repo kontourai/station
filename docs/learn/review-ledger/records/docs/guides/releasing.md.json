@@ -56,7 +56,9 @@
 
     "scripts/version-pr-operation.mjs",
 
-    "scripts/__tests__/version-pr-operation.test.ts"
+    "scripts/__tests__/version-pr-operation.test.ts",
+
+    "scripts/nightly-qualification-decide.mjs"
   ],
 
   "checks": [
