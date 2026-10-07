@@ -50,6 +50,10 @@ execution or native-shell qualification. Capture revisions and limits are in
 | New chat | ![Baseline new chat](../learn/media/new-chat-start-before.png) | ![Redesigned new chat](../learn/media/new-chat-start-after.png) |
 | Project page | ![Baseline Project page](../learn/media/project-start-before.png) | ![Project start composer](../learn/media/project-start-after.png) |
 
+The Project comparison captures precede the removal of the header's local
+folder controls. Their capture revisions remain recorded; folder details now
+live in Settings.
+
 New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with
 the Project fixed. Project and Station controls sit above the text box;
