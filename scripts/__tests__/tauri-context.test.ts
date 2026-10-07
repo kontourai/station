@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -23,6 +23,7 @@ describe('tauri context', () => {
       [
         fileURLToPath(new URL('../tauri-context.mjs', import.meta.url)),
         '--json',
+        '--trace-probes',
         '--platform',
         'windows',
         '--root',
@@ -30,9 +31,26 @@ describe('tauri context', () => {
       ],
       { encoding: 'utf8', timeout: 30_000, windowsHide: true, env },
     );
-    expect(result.error).toBeUndefined();
+    expect(result.error, result.stderr).toBeUndefined();
     expect(result.status).toBe(0);
     return JSON.parse(result.stdout);
+  }
+
+  function contextFixture(prefix = 'station-tauri-context-') {
+    const directory = makeTempDir(prefix);
+    for (const path of [
+      'package.json',
+      'pnpm-lock.yaml',
+      'src-desktop/Cargo.toml',
+      'src-desktop/tauri.conf.json',
+      'src-desktop/tauri.windows.conf.json',
+    ]) {
+      const destination = join(directory, path);
+      mkdirSync(dirname(destination), { recursive: true });
+      copyFileSync(join(root, path), destination);
+    }
+    mkdirSync(join(directory, 'src-desktop/capabilities'), { recursive: true });
+    return directory;
   }
 
   test.skipIf(process.platform !== 'win32')(
@@ -74,21 +92,7 @@ describe('tauri context', () => {
   test.skipIf(process.platform !== 'win32')(
     'reports a missing local Tauri CLI even when Node is available',
     () => {
-      const directory = makeTempDir('station-tauri-missing cli-');
-      for (const path of [
-        'package.json',
-        'pnpm-lock.yaml',
-        'src-desktop/Cargo.toml',
-        'src-desktop/tauri.conf.json',
-        'src-desktop/tauri.windows.conf.json',
-      ]) {
-        const destination = join(directory, path);
-        mkdirSync(dirname(destination), { recursive: true });
-        copyFileSync(join(root, path), destination);
-      }
-      mkdirSync(join(directory, 'src-desktop/capabilities'), {
-        recursive: true,
-      });
+      const directory = contextFixture('station-tauri-missing cli-');
       const report = reportFor(directory);
       expect(report.checks.node.status).toBe('checked');
       expect(report.checks.tauriCli.status).toBe('skipped');
@@ -96,6 +100,71 @@ describe('tauri context', () => {
       expect(report.checks.tauriCli.value).toBeUndefined();
     },
   );
+
+  test('probe tracing preserves JSON stdout and failure status while naming the failed child', () => {
+    const directory = contextFixture();
+    const cli = join(
+      directory,
+      'node_modules',
+      ...(process.platform === 'win32'
+        ? ['@tauri-apps', 'cli', 'tauri.js']
+        : ['.bin', 'tauri']),
+    );
+    mkdirSync(dirname(cli), { recursive: true });
+    writeFileSync(
+      cli,
+      `#!${process.execPath}\nprocess.stderr.write('fixture refusal\\n'); process.exit(7);\n`,
+      { mode: 0o755 },
+    );
+    for (const trace of [false, true]) {
+      const result = spawnSyncBounded(
+        process.execPath,
+        [
+          fileURLToPath(new URL('../tauri-context.mjs', import.meta.url)),
+          '--json',
+          '--platform',
+          'windows',
+          '--root',
+          directory,
+          '--strict',
+          ...(trace ? ['--trace-probes'] : []),
+        ],
+        {
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+          env: { ...process.env, PATH: '' },
+        },
+      );
+      expect(result.error, result.stderr).toBeUndefined();
+      expect(result.status).toBe(2);
+      const report = JSON.parse(result.stdout);
+      expect(report.checks.tauriCli.status).toBe('failed');
+      expect(report.checks.tauriCli.reason).toBe('fixture refusal');
+      expect(report.findings).toContainEqual(
+        expect.objectContaining({ code: 'check-failed-tauri-cli' }),
+      );
+      if (!trace) {
+        expect(result.stderr).toBe('');
+        continue;
+      }
+      const events = result.stderr
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      expect(events.filter((event) => event.id === 'tauri-cli')).toEqual([
+        { id: 'tauri-cli', phase: 'start', elapsedMs: 0, status: 'running' },
+        {
+          id: 'tauri-cli',
+          phase: 'end',
+          elapsedMs: expect.any(Number),
+          status: 'failed',
+        },
+      ]);
+      expect(events.every((event) => event.elapsedMs >= 0)).toBe(true);
+    }
+  });
 
   test.each(['--help', '-h'])(
     '%s prints usage and exits without a report',
