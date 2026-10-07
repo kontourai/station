@@ -40,6 +40,16 @@ detail, with a Back to list control, instead of squeezing both columns.
 
 ## Starting and resuming work
 
+The phone-width captures compare the baseline and redesigned controls in the
+same isolated sample home and light theme. They show appearance, not task
+execution or native-shell qualification. Capture revisions and limits are in
+[the media manifest](../learn/media.json).
+
+| Surface | Before | After |
+| --- | --- | --- |
+| New chat | ![Baseline new chat](../learn/media/new-chat-start-before.png) | ![Redesigned new chat](../learn/media/new-chat-start-after.png) |
+| Project page | ![Baseline Project page](../learn/media/project-start-before.png) | ![Project start composer](../learn/media/project-start-after.png) |
+
 New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with
 the Project fixed. Project and Station controls sit above the text box;

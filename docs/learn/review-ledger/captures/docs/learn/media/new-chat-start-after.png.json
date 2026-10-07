@@ -1,0 +1,9 @@
+{
+  "path": "docs/learn/media/new-chat-start-after.png",
+  "sources": [
+    "src-ui/src/components/modals/NewChatModal.tsx",
+    "src-ui/src/components/chat-start/StartComposer.tsx",
+    "src-ui/src/components/chat-start/StartComposer.css"
+  ],
+  "reviewNotes": []
+}
