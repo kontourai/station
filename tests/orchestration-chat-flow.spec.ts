@@ -869,9 +869,11 @@ test.describe('Orchestration Chat Flow', () => {
     // than overflow it with buttons squeezed into vertical letters.
     answer = 'refuse';
     await page.setViewportSize({ width: 1280, height: 800 });
-    // A route whose Chat is the dock: the Coding layout's centre owns Chat on
-    // a wide screen (#928 coding stack), so the narrow right dock is Home's.
-    await page.goto('/?chat=conv-1&dock=open&dockSlotPlacement=right');
+    // Use a route with ambient regions. Restoring the active conversation on
+    // Home can open its full-screen workspace pane rather than the dock.
+    await page.goto(
+      '/developer/logs?chat=conv-1&dock=open&dockSlotPlacement=right',
+    );
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
     await page.addStyleTag({
       content:
