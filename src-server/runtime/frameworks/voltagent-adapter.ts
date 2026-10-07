@@ -35,9 +35,9 @@ import type { MCPToolProvenanceGeneration } from '../../services/orchestration/m
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import { stationDenial } from '../agents/denial-message.js';
 import {
-  currentScheduledPrincipal,
-  currentScheduledRunId,
-} from '../agents/scheduled-principal-context.js';
+  currentUnattendedPrincipal,
+  currentUnattendedRunId,
+} from '../agents/unattended-principal-context.js';
 import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
@@ -771,10 +771,10 @@ function voltAgentInvocationContext(
         }
       : {}),
     userId: context.userId,
-    traceId: currentScheduledRunId() ?? context.traceId,
+    traceId: currentUnattendedRunId() ?? context.traceId,
     delegation: (options?.delegation ??
       context.delegation) as InvocationContext['delegation'],
-    unattendedPrincipal: currentScheduledPrincipal(),
+    unattendedPrincipal: currentUnattendedPrincipal(),
   };
 }
 

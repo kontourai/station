@@ -32,7 +32,9 @@
 
     "src-server/services/scheduling/external-monitor.ts",
 
-    "src-server/services/webhooks/inbound-webhook-store.ts"
+    "src-server/services/webhooks/inbound-webhook-store.ts",
+
+    "src-server/runtime/agents/unattended-principal-context.ts"
   ],
 
   "checks": [

@@ -82,8 +82,9 @@ Four findings shape the design.
   [`monitor-task-supervisor.ts`](../../src-server/services/scheduling/monitor-task-supervisor.ts),
   [`external-monitor.ts`](../../src-server/services/scheduling/external-monitor.ts).
   Principal context:
-  [`scheduled-principal-context.ts`](../../src-server/runtime/agents/scheduled-principal-context.ts)
-  (an `AsyncLocalStorage` holding `{kind:'scheduled-job', jobId}`).
+  [`unattended-principal-context.ts`](../../src-server/runtime/agents/unattended-principal-context.ts)
+  (the shared `AsyncLocalStorage` for server-issued unattended contexts;
+  scheduled jobs retain `{kind:'scheduled-job', jobId}`).
 - **The monitor Task path.** `onActionableMonitor` in
   [`runtime-route-support.ts`](../../src-server/runtime/routes/runtime-route-support.ts)
   (around line 440) calls
