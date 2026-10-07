@@ -142,6 +142,10 @@ describe('SessionModelPicker', () => {
   test('selects a model and provider-supported effort directly', () => {
     const props = renderPicker();
 
+    expect(
+      screen.queryByRole('combobox', { name: 'Thinking effort' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     fireEvent.click(screen.getByRole('option', { name: /GPT-5.5/ }));
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
@@ -159,10 +163,18 @@ describe('SessionModelPicker', () => {
       },
     });
     expect(props.onRuntimeOptionChange).toHaveBeenCalledWith('effort', 'xhigh');
+    fireEvent.click(screen.getByRole('button', { name: 'Recent' }));
+    expect(
+      within(screen.getByRole('listbox', { name: 'Models' })).getAllByRole(
+        'option',
+      ),
+    ).toHaveLength(1);
+    expect(screen.getByRole('option', { name: /GPT-5.5/ })).toBeTruthy();
   });
 
   test('removes the effort override when model default is selected', () => {
     const props = renderPicker();
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
       { target: { value: '' } },
@@ -197,6 +209,7 @@ describe('SessionModelPicker', () => {
       runtimeOptions: {},
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     const autoMode = screen.getByRole('checkbox', { name: 'Auto mode' });
     expect(screen.getAllByRole('checkbox', { name: 'Auto mode' })).toHaveLength(
       1,
@@ -398,6 +411,7 @@ describe('SessionModelPicker', () => {
       ],
     });
     expect(screen.getByText(/200k/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     expect(screen.queryByText('Vision')).toBeTruthy();
     expect(screen.getByRole('option', { name: /Plain/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Vision' }));
@@ -531,7 +545,11 @@ describe('SessionModelPicker', () => {
         },
       ],
     });
-    expect(screen.queryByRole('group')).toBeNull();
+    expect(
+      within(screen.getByRole('listbox', { name: 'Models' })).queryByRole(
+        'group',
+      ),
+    ).toBeNull();
     expect(screen.getByRole('option', { name: /sonnet/ })).toBeTruthy();
   });
 
@@ -617,6 +635,7 @@ describe('SessionModelPicker', () => {
       runtimeOptions: { effort: 'high' },
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     const select = screen.getByRole('combobox', { name: 'Thinking effort' });
     expect(select.className).toContain('editor-select');
 

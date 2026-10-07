@@ -834,7 +834,7 @@ test.describe('Orchestration Chat Flow', () => {
     await expectLegibleButtons('pending row', answerControl);
 
     await answerControl.click();
-    const sheet = page.getByRole('dialog', { name: 'Approval needed' });
+    const sheet = page.getByRole('dialog', { name: 'Needs approval' });
     const sheetActions = sheet.locator('.request-sheet__actions button');
     const sheetAllow = sheet.getByRole('button', {
       name: 'Allow Once',

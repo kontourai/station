@@ -1,0 +1,13 @@
+{
+  "path": "docs/learn/media/project-start-after.png",
+
+  "sources": [
+    "src-ui/src/views/ProjectPage.tsx",
+
+    "src-ui/src/components/home/HomeStartComposer.tsx",
+
+    "src-ui/src/components/chat-start/StartComposer.tsx"
+  ],
+
+  "reviewNotes": []
+}
