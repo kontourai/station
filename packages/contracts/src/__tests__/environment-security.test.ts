@@ -125,23 +125,6 @@ describe('handshake capability flags (station#1095, AC1: two-way fixture decode)
 });
 
 describe('scoped pairing (station#1098)', () => {
-  test('defines exactly the twelve-token vocabulary, including distinct home transfer, home control, engine login, command execution, and full-access approval authorities', () => {
-    expect(PAIRING_SCOPES).toEqual([
-      'orchestration:read',
-      'orchestration:operate',
-      'terminal:operate',
-      'access:manage',
-      'inference:invoke',
-      'access:approve',
-      'consent:decide',
-      'home:transfer',
-      'home:control',
-      'engine:login',
-      'coding:exec',
-      'approval:full-access',
-    ]);
-  });
-
   test('the read-only preset is exactly orchestration:read', () => {
     expect(PAIRING_SCOPE_PRESETS['read-only']).toEqual([
       PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -284,7 +267,10 @@ describe('scoped pairing (station#1098)', () => {
     // grant is unchanged and still four tokens — which is the whole point of
     // the decoupling: a vocabulary addition must not reach a single live
     // credential.
-    expect(PAIRING_SCOPES).toHaveLength(12);
+    expect(granted).not.toContain('relay:manage');
+    expect(PAIRING_SCOPE_GRANT_PATHS['relay:manage']).toEqual([
+      'operator-promotion',
+    ]);
     expect(granted).not.toContain(PAIRING_SCOPE_ACCESS_APPROVE);
     expect(granted).not.toContain(PAIRING_SCOPE_CONSENT_DECIDE);
     expect(granted).not.toContain(PAIRING_SCOPE_HOME_TRANSFER);

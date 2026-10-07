@@ -1362,6 +1362,7 @@ export function runtimeRequestPrincipalMayAccessHttpRoute(
       capability.scope,
       { method, path },
       security.verifyOperatorCredential?.(principal.credential) === true,
+      principal.locality === 'home-possession',
     )
   );
 }

@@ -35,7 +35,14 @@ import {
   createNativeRelayEnrollmentRoutes,
 } from '../../../routes/system/native-relay-enrollment-routes.js';
 import { createNativeRelaySurfaceRoutes } from '../../../routes/system/native-relay-surface-routes.js';
+import { createRelayManagementRoutes } from '../../../routes/system/relay-management-routes.js';
+import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { captureRelayManagementActor } from '../../../security/relay-management-actor.js';
+import {
+  captureRelayManagementApproval,
+  hasRelayManagementAuthority,
+} from '../../../security/relay-management-authority.js';
 import { NativeSurfaceRegistry } from '../../connections/native-surface-registry.js';
 import {
   createResolvedNativeV2PionApplicationAdapter,
@@ -102,7 +109,7 @@ function pair() {
   server.other = client;
   return { client, server };
 }
-async function fixture(initialGeneration = 1) {
+async function fixture(initialGeneration = 1, actorRefresh = () => true) {
   const home = makeTempDir('native-enrollment-integration-');
   const security = new EnvironmentSecurityService({ homeDir: home });
   const { environmentId: stationId, credential: operator } =
@@ -173,6 +180,21 @@ async function fixture(initialGeneration = 1) {
     operatorSecurity: security,
     now: () => Date.now(),
   });
+  const actorCurrency = (
+    request: Request,
+    actor: import('@kontourai/station-contracts/principal').PrincipalRef,
+  ) => {
+    const base = captureRelayManagementActor(
+      request,
+      actor,
+      pairing,
+      accounts.service,
+    );
+    return {
+      current: base.current,
+      refresh: async () => actorRefresh() && (await base.refresh()),
+    };
+  };
   const app = new Hono();
   configureRuntimeHttp({
     app: app as never,
@@ -202,6 +224,40 @@ async function fixture(initialGeneration = 1) {
   const routes = createNativeRelayEnrollmentRoutes(service);
   for (const path of NATIVE_RELAY_ENROLLMENT_PATHS)
     app.post(path, (c) => routes.fetch(c.req.raw));
+  app.route(
+    '/api/relay-management',
+    createRelayManagementRoutes({
+      registry,
+      enrollment: service,
+      resolveActor: createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService: security,
+        deploymentAuthentication: accounts.service,
+      }),
+      actorCurrency,
+      captureDecision: (request, subjectId, actor) =>
+        captureRelayManagementApproval(
+          request,
+          subjectId,
+          security,
+          pairing,
+          actor,
+          actorCurrency(request, actor),
+        ),
+      owner: {
+        describe: async () => {
+          throw new Error('Unused broker boundary');
+        },
+        prepare: async () => {
+          throw new Error('Unused broker boundary');
+        },
+        issueNativeInvitation: async () => {
+          throw new Error('Unused broker boundary');
+        },
+      },
+      isManager: (request) =>
+        hasRelayManagementAuthority(request, security, pairing),
+    }),
+  );
   app.route(
     '/api/pairing/native-relay-surfaces',
     createNativeRelaySurfaceRoutes({ registry, security }),
@@ -531,6 +587,7 @@ async function fixture(initialGeneration = 1) {
     );
   return {
     app,
+    operatorPost,
     service,
     security,
     signing,
@@ -867,3 +924,151 @@ test.each(['backward', 'different-installation'] as const)(
     expect(h.journal.get(h.challenge.enrollmentId)?.state).toBe('challenge');
   },
 );
+
+test('an operator declines an actual pending native registration through the management route and clears provider and Device authority', async () => {
+  const h = await fixture();
+  const registration = await h.proved('register', {
+    enrollmentId: h.challenge.enrollmentId,
+    candidate: h.candidate,
+    credentials: {
+      username: 'declined-user',
+      password: 'Native invitation fixture password',
+    },
+    invitation: h.invite.token,
+  });
+  expect(registration.response.status, registration.raw).toBe(200);
+  const pending = h.journal.get(h.challenge.enrollmentId);
+  expect(pending?.state).toBe('requested');
+  const denied = await h.operatorPost(
+    `/api/relay-management/devices/${h.challenge.enrollmentId}/deny`,
+    { candidate: h.candidate },
+  );
+  expect(denied.status).toBe(200);
+  expect(h.journal.get(h.challenge.enrollmentId)?.state).toBe('cancelled');
+  expect(
+    h.pairing.resolveActiveRelayEnrollmentDevice(
+      h.candidate.deviceId,
+      h.challenge.enrollmentId,
+    ),
+  ).toBeNull();
+  expect(
+    (
+      await h.accounts.service.verifySessionReference(
+        pending!.providerSessionId!,
+        new AbortController().signal,
+      )
+    ).kind,
+  ).toBe('invalid');
+});
+
+test('delegated native approval durably records the authenticated manager rather than the local owner', async () => {
+  const h = await fixture();
+  const registered = await h.proved('register', {
+    enrollmentId: h.challenge.enrollmentId,
+    candidate: h.candidate,
+    credentials: {
+      username: 'managed-recipient',
+      password: 'Native invitation fixture password',
+    },
+    invitation: h.invite.token,
+  });
+  expect(registered.response.status, registered.raw).toBe(200);
+  const offer = h.pairing.createOffer({ endpoint: ORIGIN });
+  const pending = h.pairing.requestPairing({
+    requesterPosition: 'off-box',
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'Manager phone',
+    source: 'tailnet',
+    requester: { provider: 'tailscale-serve', login: 'manager@example.test' },
+  });
+  h.pairing.confirmRequest(
+    pending.requestId,
+    { kind: 'presented-credential' },
+    { principalId: 'human:local:operator', kind: 'verified-ingress' },
+  );
+  const manager = h.pairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: pending.requestId,
+  });
+  h.pairing.setDeviceScope(
+    manager.device.id,
+    ['orchestration:read', 'relay:manage'],
+    { kind: 'presented-credential' },
+  );
+  const approved = await h.operatorPost(
+    `/api/relay-management/devices/${h.challenge.enrollmentId}/approve`,
+    { candidate: h.candidate },
+    manager.credential,
+  );
+  expect(approved.status, await approved.clone().text()).toBe(200);
+  const actorId = humanPrincipal(
+    'tailscale-serve',
+    'manager@example.test',
+    'Manager',
+  ).id;
+  expect(h.journal.get(h.challenge.enrollmentId)?.approvedBy).toBe(actorId);
+  const finalized = await h.proved('finalize', {
+    enrollmentId: h.challenge.enrollmentId,
+  });
+  expect(finalized.response.status, finalized.raw).toBe(200);
+  const activated = await h.activate(finalized.data);
+  expect(activated.response.status, activated.raw).toBe(200);
+  expect(
+    h.pairing.listDevices().find((device) => device.id === h.candidate.deviceId)
+      ?.principalBinding?.approvedBy,
+  ).toBe(actorId);
+  expect(
+    h.bindings.bindingById({ bindingId: h.candidate.bindingId })?.approvedBy,
+  ).toBe(actorId);
+  h.pairing.setDeviceScope(
+    h.candidate.deviceId,
+    ['orchestration:read', 'relay:manage'],
+    { kind: 'presented-credential' },
+  );
+  const promoted = await h.proved('status', {
+    enrollmentId: h.challenge.enrollmentId,
+  });
+  expect(promoted.response.status, promoted.raw).toBe(200);
+  expect(promoted.data.state).toBe('active');
+  expect(h.pairing.deviceHoldsScope(h.candidate.deviceId, 'relay:manage')).toBe(
+    true,
+  );
+});
+
+test('account revocation after awaited recipient verification refuses approval even while the management scope remains valid', async () => {
+  let actorLive = true;
+  const h = await fixture(1, () => actorLive);
+  const registration = await h.proved('register', {
+    enrollmentId: h.challenge.enrollmentId,
+    candidate: h.candidate,
+    credentials: {
+      username: 'revocation-recipient',
+      password: 'Native invitation fixture password',
+    },
+    invitation: h.invite.token,
+  });
+  expect(registration.response.status, registration.raw).toBe(200);
+  const verify = h.accounts.service.verifyPendingEnrollment.bind(
+    h.accounts.service,
+  );
+  vi.spyOn(
+    h.accounts.service,
+    'verifyPendingEnrollment',
+  ).mockImplementationOnce(async (...args) => {
+    const verified = await verify(...args);
+    actorLive = false;
+    return verified;
+  });
+  const response = await h.operatorPost(
+    `/api/relay-management/devices/${h.challenge.enrollmentId}/approve`,
+    { candidate: h.candidate },
+  );
+  expect(response.status).toBe(401);
+  expect(h.journal.get(h.challenge.enrollmentId)?.state).toBe('requested');
+  expect(h.journal.get(h.challenge.enrollmentId)?.approvalId).toBeUndefined();
+  expect(
+    h.bindings.bindingById({ bindingId: h.candidate.bindingId }),
+  ).toBeNull();
+});

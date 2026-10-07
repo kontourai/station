@@ -5,6 +5,7 @@ import {
 import { encodeNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
 import type { StationProfile } from '@kontourai/station-contracts';
 import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
+import { readProjectInvitationToken } from '@kontourai/station-sdk/project-access-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,
@@ -40,6 +41,7 @@ import {
 import { NativeRelayEnrollmentWizard } from './NativeRelayEnrollmentWizard';
 import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
+import { RelaySetupHelp } from './RelaySetupHelp';
 import './ComputersSection.css';
 
 const NO_RELAY_PROFILES: readonly StationProfile[] = [];
@@ -262,16 +264,6 @@ function NativeRelayGrantControls({
       className="connections-computers__note"
       aria-label={`Routing grant for ${profile.name}`}
     >
-      <h3>
-        {profile.configurationState === 'configured'
-          ? 'Device access ready'
-          : 'Connect this device'}
-      </h3>
-      <p>
-        {trustMatchesRoute
-          ? 'Use the setup invitation from the Station owner to continue.'
-          : 'Confirm this Station first. Device approval comes next.'}
-      </p>
       {trust.isPending ? (
         <SkeletonBlock count={1} label="Checking Station key trust" />
       ) : null}
@@ -280,12 +272,6 @@ function NativeRelayGrantControls({
           Station key trust could not be checked. Retry when the device key
           store is available.
         </p>
-      ) : null}
-      {!trust.isPending && !trust.isError && !trustMatchesRoute ? (
-        <p role="status">Confirm this Station before continuing.</p>
-      ) : null}
-      {trustMatchesRoute ? (
-        <p role="status">Station confirmed. Your device still needs access.</p>
       ) : null}
       {status.isPending ? (
         <SkeletonBlock count={1} label="Checking this device’s routing grant" />
@@ -532,7 +518,9 @@ function NativeRelayAccountSessionPanel({
         throw new Error('native_relay_selection_changed');
       if (operation.kind !== 'invitation' || !operation.invitation)
         throw new Error('native_account_invitation_missing');
-      return account.acceptInvitation(operation.invitation);
+      const token = readProjectInvitationToken(operation.invitation);
+      if (!token) throw new Error('native_account_invitation_invalid');
+      return account.acceptInvitation(token);
     },
     onSuccess: (accepted, id) => {
       const operation = operationsRef.current.get(id);
@@ -611,12 +599,18 @@ function NativeRelayAccountSessionPanel({
       className="connections-computers__note"
       aria-label={`Station account for ${profile.name}`}
     >
-      <h3>Sign in</h3>
-      <p>Sign in to see the projects shared with your account.</p>
+      {!hasAccountSession && (
+        <>
+          <h3>Sign in</h3>
+          <p>Sign in to see the Projects shared with you.</p>
+        </>
+      )}
       {hasAccountSession ? (
         <>
           <label className="editor-field">
-            <span className="editor-label">Account invitation token</span>
+            <span className="editor-label">
+              Project invitation link or code
+            </span>
             <input
               className="editor-input"
               type="password"
@@ -645,7 +639,7 @@ function NativeRelayAccountSessionPanel({
                   acceptInvitation.mutate(id);
                 }}
               >
-                Accept account invitation
+                Join Project
               </Button>
             }
             secondary={
@@ -775,8 +769,11 @@ function NativeRelaySetupQueryRefresh() {
 
 export function RelayRouteProfiles({
   onInvitationAccepted,
+  showHeading = true,
 }: {
   readonly onInvitationAccepted?: InvitationAcceptedCallback;
+  /** False when a surrounding dialog already titles this list. */
+  readonly showHeading?: boolean;
 } = {}) {
   const { isTauri, channel, pairingDeepLinkScheme } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
@@ -819,14 +816,14 @@ export function RelayRouteProfiles({
   const routeStatus = (profile: StationProfile) => {
     if (isSelected(profile)) {
       return accountIsCurrent(profile)
-        ? 'Station selected · account session active'
+        ? 'In use'
         : profile.configurationState === 'configured'
-          ? 'Station selected · account sign-in required'
-          : 'Station selected · Device setup required';
+          ? 'In use · sign in needed'
+          : 'In use · setup needed';
     }
     return profile.configurationState === 'configured'
-      ? 'Device configured · not selected'
-      : 'Device setup required';
+      ? 'Not in use'
+      : 'Setup needed';
   };
 
   async function selectStation(profile: StationProfile) {
@@ -892,7 +889,7 @@ export function RelayRouteProfiles({
       );
       await navigator.clipboard.writeText(link);
     } catch {
-      setError('Station could not copy the public iOS setup link.');
+      setError('Station could not copy the setup link.');
     }
   }
 
@@ -918,15 +915,30 @@ export function RelayRouteProfiles({
       aria-label="Saved broker routes"
     >
       <NativeRelaySetupQueryRefresh />
-      <h2 className="relay-route-profiles__heading">Your Stations</h2>
-      <p className="connections-computers__note">
-        Choose a Station, then finish the steps to access its shared projects.
-      </p>
-      <Button onClick={() => setCreating(true)}>Add a Station</Button>
+      <div className="native-relay-setup__heading">
+        {showHeading && (
+          <>
+            <h2 className="relay-route-profiles__heading">Your Stations</h2>
+            <RelaySetupHelp label="About your Stations">
+              <p>
+                Choose a Station, then finish its steps to see shared Projects.
+                Approved routing grants renew while this app is awake. Remove a
+                Station to stop maintaining its connection.
+              </p>
+            </RelaySetupHelp>
+          </>
+        )}
+        <Button
+          size="sm"
+          className="relay-route-profiles__add"
+          onClick={() => setCreating(true)}
+        >
+          Add a Station
+        </Button>
+      </div>
       {profiles.length === 0 && (
         <p className="connections-computers__note">
-          No broker routes are saved on this device yet. Save the Station and
-          broker details provided by the Station operator to begin setup.
+          No Stations yet. Open a setup link from the Station owner, or add one.
         </p>
       )}
       {profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
@@ -936,13 +948,6 @@ export function RelayRouteProfiles({
           resume renewal.
         </p>
       )}
-      <details>
-        <summary>Connection upkeep</summary>
-        <p>
-          Approved routing grants renew while this app is awake. Remove a
-          Station to stop maintaining its connection.
-        </p>
-      </details>
       {profiles.map((profile) => (
         <PageRow
           key={profile.name.toLowerCase()}
@@ -979,6 +984,19 @@ export function RelayRouteProfiles({
                 </Button>
               }
               overflowLabel={`More actions for ${profile.name}`}
+              overflow={[
+                {
+                  key: 'copy-setup-link',
+                  label: 'Copy setup link',
+                  onSelect: () => void copyPublicSetupLink(profile),
+                },
+                {
+                  key: 'remove',
+                  label: 'Remove',
+                  tone: 'danger',
+                  onSelect: () => setRemoveTarget(profile),
+                },
+              ]}
             />
           }
         >
@@ -994,21 +1012,6 @@ export function RelayRouteProfiles({
             profile={profile}
             onInvitationAccepted={onInvitationAccepted}
           />
-          <details>
-            <summary>Connection settings</summary>
-
-            <Button onClick={() => void copyPublicSetupLink(profile)}>
-              Copy public iOS setup link
-            </Button>
-            <p>This setup link shares connection details, not access.</p>
-            <button
-              type="button"
-              className="connections-computers__remove tap-target"
-              onClick={() => setRemoveTarget(profile)}
-            >
-              Remove this route
-            </button>
-          </details>
         </PageRow>
       ))}
       {error && (
@@ -1032,13 +1035,9 @@ export function RelayRouteProfiles({
       )}
       <ConfirmModal
         isOpen={removeTarget !== null}
-        title="Remove broker route?"
-        message={
-          removeTarget
-            ? `Remove the saved route to ${removeTarget.name}? This does not change the Station or revoke its separately stored trust.`
-            : ''
-        }
-        confirmLabel="Remove route"
+        title={`Remove ${removeTarget?.name ?? 'this Station'}?`}
+        message="It’s removed from this device only. The Station and its confirmation are unchanged."
+        confirmLabel="Remove"
         onConfirm={() => void removeRoute()}
         onCancel={() => setRemoveTarget(null)}
         variant="danger"

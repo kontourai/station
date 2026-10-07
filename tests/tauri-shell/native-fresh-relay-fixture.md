@@ -1,5 +1,14 @@
 # Fresh native relay fixture
 
+The fixture's invitation and pending-Device operator commands are CLI/API
+evidence for their own exact scopes. They do not exercise the desktop/native
+**Devices → Invite device** controls or their explicitly promoted `relay:manage` caller.
+[Connections](../../docs/guides/connections.md#invite-a-device-to-a-relay-station)
+owns that new source journey. Exact native account-bound manager admission is
+now integrated; current Device/account proof and independent management scope
+remain required. Fixture receipts do not qualify released Nightly, physical-device
+or two-human delivery of those controls.
+
 This opt-in fixture prepares a genuine isolated Station, a supported local
 account provider, an unconsumed Project invitation, and registry-backed native
 Pion enrollment. The receiver uses the public broker and broker-issued TURN.

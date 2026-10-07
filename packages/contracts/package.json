@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./relay-management": "./src/relay-management.ts",
     "./usage-stats": "./src/usage-stats.ts",
     "./native-relay-link": "./src/native-relay-link.ts",
     "./relay-ice": "./src/relay-ice.ts",

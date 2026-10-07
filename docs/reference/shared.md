@@ -25,6 +25,23 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Native relay link codec
+
+`@kontourai/station-shared/native-relay-link` owns `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink`.
+The [canonical implementation](../../packages/shared/src/native-relay-link.ts)
+validates the closed native link envelope, channel scheme and bounded fragment
+payload. Public route intent and installation-bound invitation parsing grant
+no Station trust, Device, account or Project authority. Receiving invitation
+secrets remains the native host's responsibility.
+
+The SDK and server use this published Shared leaf; Connect's existing
+`/native-relay-link` entry re-exports it for compatibility. There is one parser,
+with the existing wire format and rejection rules. Use a package release that
+contains the new subpath and a toolchain that handles its TypeScript source;
+source availability is not publication or native delivery proof. See the
+[link contract and custody boundary](connect.md#native-relay-link-publication).
+
 ## Skill experience validation
 
 `@kontourai/station-shared/skill-experience-author` owns

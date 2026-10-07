@@ -145,7 +145,8 @@ The [native relay link contract](../../packages/contracts/src/native-relay-link.
 distinguishes public first contact from an invitation already bound to the
 installation's proof key. Its receiving `NativeRelayLinkDelivery` omits the
 invitation secret and exposes only routing metadata and a pending handle.
-The [publication codec](../../packages/connect/src/core/nativeRelayLink.ts) and
+The [publication codec](../../packages/shared/src/native-relay-link.ts), published
+as `@kontourai/station-shared/native-relay-link`, and
 [native intake](../../src-desktop/src/native_relay_link_intake.rs) own parsing
 and lifetime checks; declarations neither create a proof key nor approve a
 surface. Origin hints are not Station identity. The existing operator surface
@@ -170,6 +171,23 @@ inferred from transport success. The provider's optional
 is server-private, invitation-gated and returns a still-pending real person.
 Unsupported providers fail closed; it neither invents a principal nor changes
 browser cookie flows.
+
+The [relay-management contract](../../packages/contracts/src/relay-management.ts)
+exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
+and `RelayManagementView`. The view contains public route/signing-confirmation
+facts, channel-specific setup links, exact approved surfaces and pending
+account-bound Device candidates; it contains no connector issuer credential.
+`approvedBy` preserves actual human actor attribution. `relay:manage`, declared
+in [environment security](../../packages/contracts/src/environment-security.ts),
+is an explicitly operator-promoted Device scope excluded from presets/defaults.
+It admits closed management leaves and does not replace Project roles or grant
+Agent, terminal, or Task publication authority. Native account-managed POSTs
+use their dedicated host operation, not the generic read signer. For relay
+management, account-bound Devices reach only exact leaves through current native proof
+and account binding/session, with separate `relay:manage` for management.
+Credential-only account-bound Devices remain gated; capabilities return neutral
+false without management authority. Contract availability is not a released
+native journey receipt.
 
 ## Scheduler deferral events
 

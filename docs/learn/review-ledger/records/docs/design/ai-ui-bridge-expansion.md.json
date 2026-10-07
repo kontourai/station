@@ -22,7 +22,17 @@
 
     "src-ui/src/hooks/useActiveChatSessions.ts",
 
-    "src-ui/src/lib/foregroundMessageDispatch.ts"
+    "src-ui/src/lib/foregroundMessageDispatch.ts",
+
+    "src-ui/src/contexts/chat-form-drafts-store.ts",
+
+    "src-ui/src/components/chat/ui-block-identity.ts",
+
+    "src-ui/src/components/chat/UIBlockActionsContext.tsx",
+
+    "src-ui/src/components/chat/StreamingMessage.tsx",
+
+    "src-ui/src/components/chat/message-bubble/MessageContent.tsx"
   ],
 
   "checks": [

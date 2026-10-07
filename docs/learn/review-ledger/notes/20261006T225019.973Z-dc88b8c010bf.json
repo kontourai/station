@@ -1,0 +1,7 @@
+{
+  "revision": "1dbb270a5d1fe801e5d53c43111e9065578a76b8",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed integrated relay addition to Shared package manifest: only native-relay-link public export is added; existing MCPclient2.2 declaration, SDK/shell/proxy/copy pins and D7 formatter patchedDependencies/Oct13residual are inherited unchanged from actual31793 landing. Native link module consumes Station contracts, not OAuth token storage or shell quoting. Own merged managed install/verify passed and actual integrated formatter binding passed D7/oneaccountedinstance; no new advisory acceptance/trust migration or payload changes. 44 other selected suites801tests passed on1db; original45-suite result remains801PASS1FAIL for this freshness claim; note is semantic manifest review, not newwhole-source/native/device/hosted proof.","inputs":["docs/guides/dependency-security.md","packages/shared/package.json"]}
+  ]
+}

@@ -25,6 +25,7 @@ import {
 import { TurnActivityProgress } from './TurnActivityProgress';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
+import { uiBlockIdentity } from './ui-block-identity';
 
 export type StreamingMessageProps = {
   sessionId: string;
@@ -235,7 +236,14 @@ export function StreamingMessageView({
             return <StreamingMarkdown key={i} content={part.content} />;
           }
           if (part.type === 'ui-block' && part.uiBlock) {
-            return <UIBlockRenderer key={i} block={part.uiBlock} />;
+            const identity = uiBlockIdentity(contentParts, i, sessionId);
+            return (
+              <UIBlockRenderer
+                key={identity}
+                instanceKey={identity}
+                block={part.uiBlock}
+              />
+            );
           }
           if (part.type === 'input-request' && part.inputRequestRecord) {
             return (
