@@ -96,7 +96,19 @@
 
     "src-ui/src/components/chat/tool-call-groups.ts",
 
-    "src-ui/src/components/chat/tool-call-labels.ts"
+    "src-ui/src/components/chat/tool-call-labels.ts",
+
+    "src-ui/src/components/chat-start/StartComposer.tsx",
+
+    "src-ui/src/components/chat-start/StartStationControl.tsx",
+
+    "src-ui/src/components/home/HomeStartComposer.tsx",
+
+    "src-ui/src/components/chat-dock/DelegationLauncher.tsx",
+
+    "src-ui/src/components/session/SessionModelPicker.tsx",
+
+    "src-ui/src/views/ProjectPage.tsx"
   ],
 
   "checks": [
