@@ -5862,7 +5862,12 @@ describe('verification coordinator host-pressure admission', () => {
         });
         // The later lane reaches healthy but must remain queued behind the
         // earlier contender despite free capacity.
-        await queued;
+        await Promise.race([
+          queued,
+          later.then(() => {
+            expect(calls).toBe(0);
+          }),
+        ]);
         expect(calls).toBe(0);
         // Removing the earlier contender lets the later lane admit in FIFO order.
         rmSync(earlier, { recursive: true, force: true });
