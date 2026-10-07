@@ -12,9 +12,7 @@ function senderSessionLabel(sender: ClientOriginSender): string {
 }
 
 /** The sender's Agent for the header: its own name, else its engine's. */
-function senderAgentLabel(
-  sender: ClientOriginSender,
-): string | undefined {
+function senderAgentLabel(sender: ClientOriginSender): string | undefined {
   return (
     sender.agent ??
     (sender.engine
