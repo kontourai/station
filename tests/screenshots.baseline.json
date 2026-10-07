@@ -137,13 +137,13 @@
       "name": "mobile-http-consent-320",
       "width": 320,
       "height": 844,
-      "sha256": "2fee463010fafa79aaf48b03e948f107483b7b4d46dc6a2fb5742a49f7547455"
+      "sha256": "c8bd4a61efc3fd0c1e3fe3b790128eac24decfca0371f14d5e5e3b1cc56c7216"
     },
     {
       "name": "mobile-http-consent-390",
       "width": 390,
       "height": 844,
-      "sha256": "da0ab11ab125ded2492908628dcb2ff43edde73ae301eb45a97b307d49032909"
+      "sha256": "056ac909600223da39550f5bf1dd2760df5c699e85e6340238e3ac8365684cda"
     },
     {
       "name": "mobile-onboarding-setup",
