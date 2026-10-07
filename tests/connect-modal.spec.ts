@@ -203,6 +203,11 @@ async function receiverFixture(
       if (!device)
         throw new Error('The verified receiver grant has no Device record');
       const principal = pairedDevicePrincipal(device);
+      if (principal.kind !== 'human' && principal.kind !== 'tenant') {
+        throw new Error(
+          'The receiver Device resolved a principal kind unsupported by authority observations',
+        );
+      }
       const observation: AuthorityObservation = {
         schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
         environmentId,
