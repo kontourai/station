@@ -46,6 +46,11 @@ const wire = vi.hoisted(() => ({
   completePending: vi.fn(),
   pairingFailure: vi.fn(),
   compatibility: vi.fn(),
+  joinPanel: vi.fn(),
+  fakeJoinPanel: vi.fn(),
+  actualJoinPanel: null as
+    | typeof import('@kontourai/station-connect')['JoinDevicePairingPanel']
+    | null,
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual =
@@ -78,11 +83,9 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@kontourai/station-connect')>();
   wire.actualUseConnections = actual.useConnections;
-  return {
-    ...actual,
-    useConnections: wire.useConnections,
-    completePendingPairing: wire.completePending,
-    JoinDevicePairingPanel: ({
+  wire.actualJoinPanel = actual.JoinDevicePairingPanel;
+  wire.fakeJoinPanel.mockImplementation(
+    ({
       onPaired,
       onApprovalPending,
     }: {
@@ -136,6 +139,12 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
         </button>
       </>
     ),
+  );
+  return {
+    ...actual,
+    useConnections: wire.useConnections,
+    completePendingPairing: wire.completePending,
+    JoinDevicePairingPanel: wire.joinPanel,
   };
 });
 
@@ -227,6 +236,8 @@ describe('Connect Station grant composition', () => {
     }));
     wire.completePending.mockReset();
     wire.pairingFailure.mockReset();
+    wire.joinPanel.mockReset();
+    wire.joinPanel.mockImplementation(wire.fakeJoinPanel);
     wire.compatibility.mockReset();
     wire.compatibility.mockResolvedValue({
       blocking: false,
@@ -797,5 +808,48 @@ describe('Connect Station grant composition', () => {
     expect(
       screen.queryByRole('button', { name: 'Approve device transport' }),
     ).toBeNull();
+  });
+  test('a real refused cross-origin Device request retains its refusal and offers a usable alternative without saving a grant', async () => {
+    localStorage.clear();
+    wire.joinPanel.mockImplementation(wire.actualJoinPanel!);
+    const transport = vi.mocked(fetch);
+    transport.mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/.well-known/station/v1')
+        return Response.json({ environmentId: 'remote-station' });
+      if (url.pathname === '/.well-known/station/v1/pairing/access-request')
+        return Response.json({ error: 'origin_forbidden' }, { status: 403 });
+      throw new Error(`Unexpected request ${url.pathname}`);
+    });
+    mount(false);
+    await identify();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request selected access' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    await screen.findByText(
+      'This Station does not allow access requests from this app address.',
+    );
+    expect(
+      screen.getByRole('complementary', { name: 'Browser Device pairing' })
+        .textContent,
+    ).toContain('If access requests are refused in this browser');
+    expect(
+      screen.getByRole('link', {
+        name: 'open the destination directly in another tab',
+      }),
+    ).toHaveProperty('href', 'https://destination.test/');
+    expect(
+      transport.mock.calls.some(
+        ([url, init]) =>
+          String(url).endsWith('/pairing/access-request') &&
+          init?.method === 'POST',
+      ),
+    ).toBe(true);
+    expect(wire.start).not.toHaveBeenCalled();
+    expect(wire.commit).not.toHaveBeenCalled();
+    expect(wire.credential).not.toHaveBeenCalled();
+    expect(wire.select).not.toHaveBeenCalled();
+    localStorage.clear();
   });
 });

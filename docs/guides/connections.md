@@ -239,8 +239,12 @@ In a browser, the destination must permit the current page's exact origin
 through its existing `--allowed-origin` startup setting. HTTPS pages may also
 block an HTTP destination. If identification fails, no access request has been
 submitted. Use the native app or open the destination directly for Device
-pairing when the browser cannot read its response; peer setup still belongs to
-the sending Station's trusted session.
+pairing when the browser cannot read its response. The current receiver also
+checks browser pairing-request provenance separately: Chromium requests from
+another page origin are refused even when discovery is allowed. That refusal
+does not create a pending request. Use the native app to request Device access,
+or open the receiver's own page; peer setup still belongs to the sending
+Station's trusted session.
 
 Choose either or both access requests:
 
@@ -872,7 +876,7 @@ Connections has one clear home for each relationship:
   authorization from observed reachability. **Add computer** asks whether to
   invite a device, connect another Station, or run work over SSH. Connecting a
   Station opens the same destination and independent-access journey as
-  **Add Station**.
+  **Connect a Station** in the Station manager.
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
   or tool availability.

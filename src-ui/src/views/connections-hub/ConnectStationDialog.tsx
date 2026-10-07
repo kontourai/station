@@ -626,6 +626,23 @@ export function ConnectStationDialog({
             {deviceStarted && !deviceSaved && !stale ? (
               <section aria-label="Device access">
                 <h3>This device → {destination.label}</h3>
+                {!profile.isTauri &&
+                destination.apiBase !== window.location.origin ? (
+                  <aside aria-label="Browser Device pairing">
+                    <p>
+                      If access requests are refused in this browser, use the
+                      native app to request access, or{' '}
+                      <a
+                        href={destination.apiBase}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        open the destination directly in another tab
+                      </a>
+                      . Your current Station and Project stay here.
+                    </p>
+                  </aside>
+                ) : null}
                 <JoinDevicePairingPanel
                   initialMode={
                     pairingPayload || manualPairingCode ? 'manual' : 'direct'

@@ -1,20 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { type HttpBindings, serve } from '@hono/node-server';
+import { serve } from '@hono/node-server';
 import {
   CLIENT_PROTOCOL_HEADER,
+  type DevicePairingAccessRequestResponse,
+  type DevicePairingBearerExchangeResponse,
+  type PeerEnrollment,
   STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
-import { Hono } from 'hono';
 import { afterEach, describe, expect, test } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createPeerCredentialRoutes } from '../../../routes/environments/peer-credential-routes.js';
 import {
   configureDevicePairingHostRoutes,
   configureDevicePairingPublicRoutes,
 } from '../../../runtime/routes/runtime-routes.js';
-import { GRANTED_PAIRING_SCOPE_VAR } from '../../../security/pairing-route-scopes.js';
+import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { HOST_STATION_COMPATIBILITY } from '../../ssh/environment-security-service.js';
 import {
@@ -28,6 +31,8 @@ const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
+const readEnrollment = (response: Response) =>
+  readJson<{ success: true; data: PeerEnrollment }>(response);
 const json = (body: unknown): RequestInit => ({
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -45,10 +50,21 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
     environmentId,
     now: () => receiverNow,
   });
-  const receiver = new Hono<{
-    Bindings: HttpBindings;
-    Variables: { stationGrantedPairingScope: string };
-  }>();
+  const [
+    { createVoltAgentApp },
+    { AgentRegistry, WorkflowRegistry, TriggerRegistry },
+  ] = await Promise.all([
+    import('@voltagent/server-hono'),
+    import('@voltagent/core'),
+  ]);
+  const { app: receiver } = await createVoltAgentApp(
+    {
+      agentRegistry: AgentRegistry.getInstance(),
+      workflowRegistry: WorkflowRegistry.getInstance(),
+      triggerRegistry: TriggerRegistry.getInstance(),
+    },
+    { cors: false, configureFullApp: () => {} },
+  );
   let exchangeMode: 'normal' | 'lost-response' | 'wrong-kind' | 'wrong-scope' =
     'normal';
   let redirectHandshake = false;
@@ -79,7 +95,7 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
     await next();
     if (c.req.path === '/.well-known/station/v1') afterHandshake?.();
     if (accessRequest && oversizedProof && c.res.status === 202) {
-      const body = await c.res.json();
+      const body = await readJson<DevicePairingAccessRequestResponse>(c.res);
       body.proof = '';
       const baseBytes = Buffer.byteLength(JSON.stringify(body));
       body.proof = 'P'.repeat(16_384 - baseBytes - 1);
@@ -90,7 +106,7 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
       c.res = new Response('truncated', { status: 200 });
       return;
     }
-    const body = await c.res.json();
+    const body = await readJson<DevicePairingBearerExchangeResponse>(c.res);
     if (exchangeMode === 'wrong-kind') body.device.kind = 'device';
     if (exchangeMode === 'wrong-scope')
       body.device.scope += ' terminal:operate';
@@ -99,7 +115,7 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
   receiver.use('/api/pairing/*', async (c, next) => {
     if (c.req.header('authorization') !== 'Bearer operator')
       return c.json({ error: 'Forbidden' }, 403);
-    c.set(GRANTED_PAIRING_SCOPE_VAR, 'access:manage');
+    setGrantedPairingScope(c, 'access:manage');
     await next();
   });
   receiver.get('/.well-known/station/v1', (c) =>
@@ -196,7 +212,7 @@ describe('server-owned peer enrollment through Station routes', () => {
     const h = await stations();
     const started = await h.start();
     expect(started.status).toBe(201);
-    const startBody = await started.json();
+    const startBody = await readEnrollment(started);
     expect(startBody.data.status).toBe('pending');
     expect(h.pairing.listRequests()).toMatchObject([
       {
@@ -205,13 +221,15 @@ describe('server-owned peer enrollment through Station routes', () => {
         scope: 'orchestration:read orchestration:operate',
       },
     ]);
-    expect((await (await h.start()).json()).data.id).toBe(h.input.id);
+    expect((await readEnrollment(await h.start())).data.id).toBe(h.input.id);
     expect(h.pairing.listRequests()).toHaveLength(1);
-    expect((await (await h.complete()).json()).data.status).toBe('pending');
+    expect((await readEnrollment(await h.complete())).data.status).toBe(
+      'pending',
+    );
     expect((await h.approve()).status).toBe(200);
     const responses = await Promise.all([h.complete(), h.complete()]);
     for (const response of responses)
-      expect((await response.json()).data.status).toBe('connected');
+      expect((await readEnrollment(response)).data.status).toBe('connected');
     expect(h.store.list()).toMatchObject([
       {
         environmentId: h.input.environmentId,
@@ -274,8 +292,12 @@ describe('server-owned peer enrollment through Station routes', () => {
       { method: 'DELETE', headers: { authorization: 'Bearer operator' } },
     );
     expect(denied.status).toBe(200);
-    expect((await (await h.complete()).json()).data.status).toBe('denied');
-    expect((await (await h.complete()).json()).data.status).toBe('denied');
+    expect((await readEnrollment(await h.complete())).data.status).toBe(
+      'denied',
+    );
+    expect((await readEnrollment(await h.complete())).data.status).toBe(
+      'denied',
+    );
     expect(h.store.list()).toEqual([]);
   });
 
@@ -285,7 +307,9 @@ describe('server-owned peer enrollment through Station routes', () => {
       '/enrollments',
       json({ ...h.input, environmentId: randomUUID() }),
     );
-    expect((await mismatch.json()).data.status).toBe('identity-changed');
+    expect((await readEnrollment(mismatch)).data.status).toBe(
+      'identity-changed',
+    );
     expect(h.pairing.listRequests()).toEqual([]);
     h.revokeLocal();
     const refused = await h.local.request(
@@ -336,7 +360,7 @@ describe('server-owned peer enrollment through Station routes', () => {
     await h.start();
     await h.approve();
     h.setExchangeMode('lost-response');
-    expect((await (await h.complete()).json()).data.status).toBe(
+    expect((await readEnrollment(await h.complete())).data.status).toBe(
       'outcome-unknown',
     );
     expect(h.pairing.listDevices()).toHaveLength(1);
@@ -360,7 +384,9 @@ describe('server-owned peer enrollment through Station routes', () => {
       await h.start();
       await h.approve();
       h.setExchangeMode(mode);
-      expect((await (await h.complete()).json()).data.status).toBe('failed');
+      expect((await readEnrollment(await h.complete())).data.status).toBe(
+        'failed',
+      );
       expect(h.store.list()).toEqual([]);
     },
   );
@@ -369,7 +395,7 @@ describe('server-owned peer enrollment through Station routes', () => {
     const expired = await stations();
     await expired.start();
     expired.expireReceiver();
-    expect((await (await expired.complete()).json()).data.status).toBe(
+    expect((await readEnrollment(await expired.complete())).data.status).toBe(
       'expired',
     );
     expect(expired.store.list()).toEqual([]);
@@ -379,8 +405,8 @@ describe('server-owned peer enrollment through Station routes', () => {
       `/enrollments/${cancelled.input.id}`,
       { method: 'DELETE' },
     );
-    expect((await response.json()).data.status).toBe('cancelled');
-    expect((await (await cancelled.complete()).json()).data.status).toBe(
+    expect((await readEnrollment(response)).data.status).toBe('cancelled');
+    expect((await readEnrollment(await cancelled.complete())).data.status).toBe(
       'cancelled',
     );
     expect(cancelled.pairing.listRequests()).toMatchObject([
@@ -392,7 +418,7 @@ describe('server-owned peer enrollment through Station routes', () => {
   test('does not follow a receiver redirect to a different route or start an access request', async () => {
     const h = await stations();
     h.redirectReceiver();
-    expect((await (await h.start()).json()).data.status).toBe(
+    expect((await readEnrollment(await h.start())).data.status).toBe(
       'outcome-unknown',
     );
     expect(h.redirectWasFollowed()).toBe(false);
@@ -402,7 +428,7 @@ describe('server-owned peer enrollment through Station routes', () => {
   test('a near-limit malicious proof is rejected without creating an unreadable private record', async () => {
     const h = await stations();
     h.returnOversizedProof();
-    expect((await (await h.start()).json()).data.status).toBe('failed');
+    expect((await readEnrollment(await h.start())).data.status).toBe('failed');
     expect(h.pairing.listRequests()).toHaveLength(1);
     const raw = readFileSync(
       join(h.localHome, 'security', 'peer-enrollments', `${h.input.id}.json`),
