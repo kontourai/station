@@ -6,6 +6,7 @@ import type {
   StorageAdapter,
 } from '@kontourai/station-connect';
 import {
+  ConnectionStore,
   ConnectionsProvider,
   completeVerifiedPairing,
   useConnections,
@@ -24,7 +25,6 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ConnectionStore } from '../../../packages/connect/src/core/ConnectionStore';
 import { PendingPairingReconciler } from '../components/PendingPairingReconciler';
 
 const wire = vi.hoisted(() => ({
@@ -45,6 +45,7 @@ const wire = vi.hoisted(() => ({
     | null,
   completePending: vi.fn(),
   pairingFailure: vi.fn(),
+  compatibility: vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual =
@@ -71,7 +72,7 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isTauri: false }),
 }));
 vi.mock('../lib/compatibilityLoader', () => ({
-  checkHostCompatibility: vi.fn(async () => ({ blocking: false })),
+  checkHostCompatibility: wire.compatibility,
 }));
 vi.mock('@kontourai/station-connect', async (importOriginal) => {
   const actual =
@@ -226,6 +227,12 @@ describe('Connect Station grant composition', () => {
     }));
     wire.completePending.mockReset();
     wire.pairingFailure.mockReset();
+    wire.compatibility.mockReset();
+    wire.compatibility.mockResolvedValue({
+      blocking: false,
+      verdict: 'compatible',
+      reason: 'Compatible',
+    });
     wire.start.mockReset();
     wire.get.mockReset();
     wire.complete.mockReset();
@@ -753,4 +760,42 @@ describe('Connect Station grant composition', () => {
       ).toBeNull();
     },
   );
+  test('an unreadable cross-origin browser handshake explains origin configuration without declaring the receiver unreachable or submitting enrollment', async () => {
+    wire.compatibility.mockResolvedValue({
+      blocking: true,
+      verdict: 'unknown',
+      reason:
+        'Station compatibility could not be verified because the host could not be reached.',
+    });
+    mount(false);
+    fireEvent.change(screen.getByLabelText('Station address'), {
+      target: { value: 'https://destination.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('region', { name: 'Browser connection guidance' });
+    expect(screen.getByRole('alert').textContent).toContain(
+      'This browser could not verify',
+    );
+    expect(screen.getByRole('alert').textContent).not.toContain(
+      'host could not be reached',
+    );
+    expect(
+      screen.getByText(`--allowed-origin=${window.location.origin}`),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'No access request was submitted during this identification check.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('link', {
+        name: 'open the destination Station directly',
+      }),
+    ).toHaveProperty('href', 'https://destination.test/');
+    expect(wire.start).not.toHaveBeenCalled();
+    expect(wire.commit).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Approve device transport' }),
+    ).toBeNull();
+  });
 });

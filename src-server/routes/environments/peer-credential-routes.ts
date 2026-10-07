@@ -25,12 +25,12 @@ import {
  * station-control tools): the bearer is now read in-process, only by the
  * one remote seam runtime composition builds (`RemoteStationForwarder`).
  *
- * Provisioning UX (slice 2, explicit stopgap): these routes are the whole
- * provisioning mechanism for now — a `station environment peers add/list/
- * remove` CLI verb calls them directly against a loopback `--api-base`, the
- * same pattern `station environment access approve/deny` already uses for
- * other loopback-only operator actions. Slice 4's mutual pairing exchange
- * protocol supersedes this manual path entirely; do not build on top of it.
+ * The manual `station environment peers add/list/remove` CLI remains
+ * available. Operator-owned `/enrollments` requests separately obtain a
+ * one-way delegation grant from a receiver, then publish it directly to this
+ * server's store without returning its credential. Receiver approval remains
+ * independent; this enrollment does not implement mutual pairing or grant
+ * Project execution consent.
  */
 export function createPeerCredentialRoutes(
   store: PeerCredentialStore,
@@ -134,7 +134,16 @@ export function createPeerCredentialRoutes(
         ),
       });
     } catch (error) {
-      return c.json({ success: false, error: errorMessage(error) }, 404);
+      return c.json(
+        {
+          success: false,
+          error:
+            error instanceof PeerCredentialMutationAuthorizationError
+              ? 'Forbidden'
+              : errorMessage(error),
+        },
+        error instanceof PeerCredentialMutationAuthorizationError ? 403 : 404,
+      );
     }
   });
   app.post('/enrollments/:id/complete', async (c) => {
@@ -177,7 +186,16 @@ export function createPeerCredentialRoutes(
         ),
       });
     } catch (error) {
-      return c.json({ success: false, error: errorMessage(error) }, 400);
+      return c.json(
+        {
+          success: false,
+          error:
+            error instanceof PeerCredentialMutationAuthorizationError
+              ? 'Forbidden'
+              : errorMessage(error),
+        },
+        error instanceof PeerCredentialMutationAuthorizationError ? 403 : 400,
+      );
     }
   });
 

@@ -232,9 +232,16 @@ Project access administration still requires Project IAM. See the
 
 ## Saved Station addresses
 
-**Add Station** opens **Connect a Station**. Enter its address, a pairing code,
+Choose **Manage Stations**, then **Connect a Station**. Enter its address, a pairing code,
 or scan a QR code. Station checks compatibility and displays the destination's
 reported identity. That public response is not a signing-key trust decision.
+In a browser, the destination must permit the current page's exact origin
+through its existing `--allowed-origin` startup setting. HTTPS pages may also
+block an HTTP destination. If identification fails, no access request has been
+submitted. Use the native app or open the destination directly for Device
+pairing when the browser cannot read its response; peer setup still belongs to
+the sending Station's trusted session.
+
 Choose either or both access requests:
 
 - **Use the destination from this device** saves this device's approved access.

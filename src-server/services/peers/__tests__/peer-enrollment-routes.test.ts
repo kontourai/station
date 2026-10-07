@@ -1,13 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { type HttpBindings, serve } from '@hono/node-server';
 import {
@@ -16,6 +8,7 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createPeerCredentialRoutes } from '../../../routes/environments/peer-credential-routes.js';
 import {
   configureDevicePairingHostRoutes,
@@ -30,6 +23,7 @@ import {
 } from '../peer-credential-store.js';
 import { PeerEnrollmentService } from '../peer-enrollment-service.js';
 
+const makeTempDir = trackTempDirs();
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -41,12 +35,8 @@ const json = (body: unknown): RequestInit => ({
 });
 
 async function stations(storeOptions?: PeerCredentialStoreOptions) {
-  const localHome = mkdtempSync(join(tmpdir(), 'station-peer-local-'));
-  const remoteHome = mkdtempSync(join(tmpdir(), 'station-peer-receiver-'));
-  cleanups.push(() => {
-    rmSync(localHome, { recursive: true, force: true });
-    rmSync(remoteHome, { recursive: true, force: true });
-  });
+  const localHome = makeTempDir('station-peer-local-');
+  const remoteHome = makeTempDir('station-peer-receiver-');
   mkdirSync(join(remoteHome, 'security'), { mode: 0o700 });
   const environmentId = randomUUID();
   let receiverNow = Date.now();

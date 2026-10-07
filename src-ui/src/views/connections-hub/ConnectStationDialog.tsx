@@ -118,7 +118,15 @@ export function ConnectStationDialog({
           apiBase,
           controller.signal,
         );
-        if (compatibility.blocking) throw new Error(compatibility.reason);
+        if (compatibility.blocking) {
+          throw new Error(
+            !profile.isTauri &&
+              apiBase !== window.location.origin &&
+              compatibility.verdict === 'unknown'
+              ? 'This browser could not verify the Station. Browser origin restrictions, HTTPS-to-HTTP blocking, or connectivity may prevent reading its response.'
+              : compatibility.reason,
+          );
+        }
         const transport = profile.isTauri
           ? (await import('../../platform/native/publicHandshakeTransport'))
               .nativePublicHandshakeTransport
@@ -241,7 +249,7 @@ export function ConnectStationDialog({
       enabled: Boolean(reservation) && peerAvailable,
       refetchInterval:
         enrollment?.status === 'connected' || enrollment?.status === 'cancelled'
-          ? false
+          ? undefined
           : 3_000,
     },
   );
@@ -320,6 +328,26 @@ export function ConnectStationDialog({
     start.error?.message ||
     complete.error?.message ||
     cancel.error?.message;
+
+  let failedBrowserOrigin: string | undefined;
+  if (identify.isError && !profile.isTauri && identify.variables) {
+    try {
+      const target = new URL(normalizeHostInput(identify.variables.address));
+      if (
+        ['http:', 'https:'].includes(target.protocol) &&
+        target.origin !== window.location.origin &&
+        !target.username &&
+        !target.password &&
+        !target.search &&
+        !target.hash &&
+        target.pathname === '/'
+      ) {
+        failedBrowserOrigin = target.origin;
+      }
+    } catch {
+      // Invalid addresses retain their input-validation message.
+    }
+  }
 
   if (!isOpen) {
     return reservation && status !== 'cancelled' ? (
@@ -718,6 +746,37 @@ export function ConnectStationDialog({
           </>
         )}
         {failure ? <p role="alert">{failure}</p> : null}
+        {failedBrowserOrigin ? (
+          <section aria-label="Browser connection guidance">
+            <p>
+              A Station can be reachable while this browser cannot read it. The
+              destination must permit this page’s exact origin:{' '}
+              <code>{window.location.origin}</code>. HTTPS pages may also block
+              HTTP destinations.
+            </p>
+            <p>
+              Ask the destination operator to configure{' '}
+              <code>{`--allowed-origin=${window.location.origin}`}</code>{' '}
+              through its existing Station startup or service settings, then
+              retry. Origin permission does not approve Device or peer access.
+            </p>
+            <p>
+              You can use the native app instead. For Device pairing,{' '}
+              <a
+                href={failedBrowserOrigin}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                open the destination Station directly
+              </a>
+              . Peer setup still belongs to the sending Station’s trusted
+              session.
+            </p>
+            <p>
+              No access request was submitted during this identification check.
+            </p>
+          </section>
+        ) : null}
       </div>
     </Dialog>
   );
