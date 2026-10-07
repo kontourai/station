@@ -135,7 +135,7 @@ test.describe('Structured UI blocks', () => {
     ).toBeVisible();
   });
 
-  test('submitting a form block re-enters the conversation as a tagged user turn', async ({
+  test('retains form input across responsive reparenting and submits a tagged user turn', async ({
     page,
   }) => {
     await seedActiveChats(page, [
@@ -263,7 +263,7 @@ test.describe('Structured UI blocks', () => {
     await expect(gateForm.getByText('"Reviewer" is required.')).toBeVisible();
     expect(sentBody).toBeNull();
 
-    // Fill while streaming, then settle the turn: the form changes transcript renderers.
+    // Fill before settlement, then move Chat between its workspace pane and dock.
     const reviewer = gateForm.getByLabel('Reviewer');
     await reviewer.fill('casey');
     await gateForm.getByText('Sign off').click();
@@ -277,6 +277,21 @@ test.describe('Structured UI blocks', () => {
       },
     });
     await expect(page.locator('.streaming-message')).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(
+      page
+        .locator('#chat-dock')
+        .getByRole('heading', { name: 'Approve gate', exact: true }),
+    ).toBeVisible();
+    const notifications = page.getByRole('button', {
+      name: /^Dismiss notifications/,
+    });
+    if (await notifications.isVisible()) await notifications.click();
+    await expect(gateForm).toBeVisible();
+    await expect(reviewer).toHaveValue('casey');
+    await expect(gateForm.getByLabel('Sign off')).toBeChecked();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openChatRegion(page);
     await expect(reviewer).toHaveValue('casey');
     await expect(gateForm.getByLabel('Sign off')).toBeChecked();
     await approveButton.click();
