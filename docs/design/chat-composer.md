@@ -50,6 +50,11 @@ execution or native-shell qualification. Capture revisions and limits are in
 | New chat | ![Baseline new chat](../learn/media/new-chat-start-before.png) | ![Redesigned new chat](../learn/media/new-chat-start-after.png) |
 | Project page | ![Baseline Project page](../learn/media/project-start-before.png) | ![Project start composer](../learn/media/project-start-after.png) |
 
+These frozen comparisons record #3490's redesign at the revisions in the media
+manifest. Later Project identity marks and server run-location updates are not
+pictured; the images are not captures or visual qualification of the current
+composer.
+
 The Project comparison captures precede the removal of the header's local
 folder controls. Their capture revisions remain recorded; folder details now
 live in Settings.
