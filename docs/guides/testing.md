@@ -952,6 +952,15 @@ repository opens a font — only that the dependency is written down. Note that
 DM Sans is published in latin and latin-ext only, so this cannot be closed by
 re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
 
+Gallery and Ubuntu zsh preflight callers use
+[`install-ci-ubuntu-packages.sh`](../../scripts/install-ci-ubuntu-packages.sh).
+It replaces the known Azure Ubuntu archive URI with the canonical HTTPS
+archive in legacy lists, DEB822 sources, and the hosted runner mirror list.
+Suites, components, signing keys, and mirror priorities remain intact. APT
+index retrieval must succeed before installing the required compiler or zsh
+package; an unavailable index stops the bootstrap. The Gallery renderer image
+remains pinned by digest.
+
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
 on pull requests and synthesized merge-queue candidates, in the same container
 (#2428, #3342). PRs compare their exact head; the queue compares the combined

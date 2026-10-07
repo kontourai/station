@@ -126,10 +126,7 @@ jobs:
         with: { install: false }
 
       - name: Install the native build toolchain node-pty needs
-        run: |
-          set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential
+        run: bash scripts/install-ci-ubuntu-packages.sh build-essential
 
       - name: Trust the workspace checkout inside the container
         run: |

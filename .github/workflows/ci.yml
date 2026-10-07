@@ -291,8 +291,7 @@ jobs:
         timeout-minutes: 5
         run: |
           if [[ ! -x /bin/zsh ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes zsh
+            sudo bash scripts/install-ci-ubuntu-packages.sh zsh
           fi
           command -v zsh
           test -x /bin/zsh

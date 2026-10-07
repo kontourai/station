@@ -122,10 +122,7 @@ jobs:
       # through `node-pty-prebuilds.yml` (whose matrix already has that
       # target), which removes this step; tracked separately.
       - name: Install the native build toolchain node-pty needs
-        run: |
-          set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential
+        run: bash scripts/install-ci-ubuntu-packages.sh build-essential
 
       # `actions/checkout` adds the workspace to `safe.directory` in a
       # TEMPORARY global git config (it overrides HOME, writes, then reverts),

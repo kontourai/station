@@ -1902,7 +1902,9 @@ describe('CI verification workflow contracts', () => {
         jobs: Record<string, Job>;
       }
     ).jobs.ordinary.steps?.find((step) => step.name === zshName);
-    expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
+    expect(fullRegressionZsh?.run).toContain(
+      'sudo bash scripts/install-ci-ubuntu-packages.sh zsh',
+    );
     const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
     expect(shardZshIndex).toBeGreaterThan(-1);
     expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);

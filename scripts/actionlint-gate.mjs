@@ -2225,7 +2225,7 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   // package and reads no secret or credential; the shard's selection can
   // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
   name: 'Provision and preflight zsh for process-heavy installer fixtures',
-  run: 'if [[ ! -x /bin/zsh ]]; then\n  sudo apt-get update\n  sudo apt-get install --yes zsh\nfi\ncommand -v zsh\ntest -x /bin/zsh\n/bin/zsh --version\n',
+  run: 'if [[ ! -x /bin/zsh ]]; then\n  sudo bash scripts/install-ci-ubuntu-packages.sh zsh\nfi\ncommand -v zsh\ntest -x /bin/zsh\n/bin/zsh --version\n',
 });
 
 /**
