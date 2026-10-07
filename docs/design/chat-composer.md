@@ -60,6 +60,9 @@ filters; Options reveals capability filters and the selected model's supported
 runtime controls. Reviewed canonical model identities still own grouping across
 provider routes; similar names do not establish equivalence.
 
+Home keeps a screen-reader page title while the shared composer owns the
+visible start heading. An empty Home does not add a second welcome question.
+
 The **on <host>** control names the answering Station's host projection, or
 **on Project default** when the Project has a saved execution environment. It
 opens the existing task launcher with the current message, Project and Agent,
