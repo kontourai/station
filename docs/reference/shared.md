@@ -64,10 +64,13 @@ person a structured question" source maps into. Types come from
   `__proto__` is refused, because the request route's schema drops that key
   and an answer to it could never arrive. The MCP and harness adapters read
   each engine or server payload through the same own-key snapshots
-  (`ownRecord`, `ownArray`) before mapping it.
+  (`ownRecord`, `ownArray`) before mapping it. Raw MCP messages with a
+  `__proto__` schema property are refused at the connection transport before
+  SDK normalization, for legacy push requests and modern input-required results.
 - `inputRequestFromRequestEvent` reads a `request.opened` event's
-  `payload.inputRequest`, or a pre-#3390 stored `payload.questionnaire`,
-  adapted to a form.
+  `payload.inputRequest`, or a pre-#3390 stored `payload.questionnaire` or
+  `payload.mcpElicitation`, adapted to a validated form. The public legacy
+  `mcp-elicitation-form` reader delegates to this same admission owner.
 - `validateInputRequestContent` validates accepted content against the form
   that was opened and throws the first problem, worded for the person. It
   returns a detached, null-prototype snapshot of exactly what it checked
