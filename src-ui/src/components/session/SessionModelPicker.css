@@ -9,7 +9,7 @@
   max-height: min(520px, calc(100dvh - 32px));
   overflow: hidden;
   border: 1px solid var(--k-line-strong);
-  border-radius: var(--k-radius-lg);
+  border-radius: var(--k-radius-md);
   background: var(--k-bg);
   box-shadow: var(--shadow-lg);
   color: var(--k-text);

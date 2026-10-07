@@ -277,7 +277,7 @@ function ToolCallDisplayComponent({
   const grantToolName = toolCall.approvalThreadId
     ? toolCall.approvalToolName
     : toolCall.toolName;
-  // The header "Approval needed" pill brings the user here: an answerable
+  // The header "Needs approval" pill brings the user here: an answerable
   // card names the request it answers.
   const answerable = awaitingApproval && Boolean(onApprove);
   return (
@@ -484,7 +484,7 @@ function ToolApprovalSheet({
       {!sheet.open && status}
       {sheet.open && (
         <RequestSheet
-          title="Approval needed"
+          title="Needs approval"
           subtitle={summary}
           onDismiss={sheet.dismiss}
           returnFocusTarget={sheet.triggerRef.current}
