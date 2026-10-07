@@ -629,7 +629,7 @@ test.describe('Mobile request sheet (#3331)', () => {
     const row = page.locator('.tool-call[data-approval-id="approval-1"]');
     await expect(row).toBeVisible();
     await expect(
-      row.getByRole('img', { name: 'Awaiting approval' }),
+      row.getByRole('img', { name: 'Needs approval' }),
     ).toBeVisible();
     await expect(row.getByRole('button', { name: 'Allow Once' })).toHaveCount(
       0,
@@ -686,7 +686,7 @@ test.describe('Mobile request sheet (#3331)', () => {
     expect(answers(posted)).toEqual([]);
     await expect(answer).toBeFocused();
     await expect(
-      row.getByRole('img', { name: 'Awaiting approval' }),
+      row.getByRole('img', { name: 'Needs approval' }),
     ).toBeVisible();
 
     await open();
