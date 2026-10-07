@@ -90,13 +90,12 @@
   outline-offset: 2px;
 }
 
-/* A thumb needs 44px; a pointer reads a 28px line as well. */
-@media (pointer: coarse), (max-width: 640px) {
-  .agent-incoming__link,
-  .agent-outgoing__link {
-    min-height: 44px;
-    padding-block: 0;
-  }
+[data-message-mobile="true"] .agent-incoming__link,
+[data-message-mobile="true"] .agent-outgoing__link,
+[data-transcript-mobile="true"] .agent-incoming__link,
+[data-transcript-mobile="true"] .agent-outgoing__link {
+  min-height: 44px;
+  padding-block: 0;
 }
 
 /* The sender's own call, in its own transcript. */
@@ -194,18 +193,16 @@
 .agent-incoming__mobile {
   display: none;
 }
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .agent-incoming__mobile {
-    display: block;
-  }
-  .agent-incoming__desktop {
-    display: none;
-  }
-  .session-transcript__message.agent-incoming {
-    background: transparent;
-    border: none;
-    padding: 0;
-  }
+[data-transcript-mobile="true"] .agent-incoming__mobile {
+  display: block;
+}
+[data-transcript-mobile="true"] .agent-incoming__desktop {
+  display: none;
+}
+[data-transcript-mobile="true"] .session-transcript__message.agent-incoming {
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 .agent-cause > span {

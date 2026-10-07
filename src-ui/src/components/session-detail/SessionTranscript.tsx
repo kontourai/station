@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSessionTranscriptEvents';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useActivityWorkspacePaneBinding } from '../../views/activity/ActivityWorkspacePaneBinding';
 import { Button } from '../Button';
 import { agentAccentStyle } from '../chat/agent-message/agentSenderAccent';
@@ -74,6 +75,7 @@ export const SessionTranscript = memo(function SessionTranscript({
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   preserveReading?: boolean;
 }) {
+  const isMobile = useIsMobile();
   const {
     events,
     hasMore,
@@ -237,6 +239,7 @@ export const SessionTranscript = memo(function SessionTranscript({
       className="session-transcript"
       aria-label="Conversation"
       data-testid="session-transcript"
+      data-transcript-mobile={isMobile}
       ref={contentRef}
     >
       {!atLatest && (

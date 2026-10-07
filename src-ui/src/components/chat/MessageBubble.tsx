@@ -806,6 +806,7 @@ function MessageBubbleComponent({
       <div
         className="message-row message-row--agent message-row--compact"
         data-chat-message-key={anchorKey}
+        data-message-mobile={isMobile}
         style={agentAccentStyle(sender)}
       >
         <IncomingAgentCause sender={sender}>
@@ -833,6 +834,7 @@ function MessageBubbleComponent({
           : ''
       }`}
       data-chat-message-key={anchorKey}
+      data-message-mobile={isMobile}
       // The sender's accent (agentSenderAccent.ts); the avatar and the bubble
       // both read it, so it is set on the row.
       style={sender ? agentAccentStyle(sender) : undefined}
