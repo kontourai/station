@@ -4495,10 +4495,10 @@ describe('landing policy revision and credential binding', () => {
   });
 
   test.each([
-    ['arm', '${{ github.event.pull_request.base.sha || github.sha }}'],
-    ['dequeue', '${{ github.event.pull_request.base.sha }}'],
-    ['arm', '${{ github.event.pull_request.head.sha }}'],
-    ['dequeue', '${{ github.event.pull_request.head.sha }}'],
+    ['arm', `\${{ github.event.pull_request.base.sha || github.sha }}`],
+    ['dequeue', `\${{ github.event.pull_request.base.sha }}`],
+    ['arm', `\${{ github.event.pull_request.head.sha }}`],
+    ['dequeue', `\${{ github.event.pull_request.head.sha }}`],
     ['arm', 'main'],
     ['dequeue', 'main'],
   ])('rejects %s helper checkout at %s', (job, ref) => {
