@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
@@ -34,6 +35,14 @@ function fixture({ poisoned = false, failedFetch = false } = {}) {
   writeFileSync(
     trusted,
     '#!/usr/bin/env bash\nprintf "trusted:%s\\n" "$*" > "$BOOTSTRAP_SELECTION_LOG"\n',
+  );
+  const helperHash = createHash('sha256')
+    .update(readFileSync(trusted))
+    .digest('hex');
+  writeFileSync(
+    join(bin, 'sha256sum'),
+    '#!/usr/bin/env bash\nset -euo pipefail\ntest -f "$1"\nprintf "%s  %s\\n" "$BOOTSTRAP_FIXTURE_HASH" "$1"\n',
+    { mode: 0o755 },
   );
   if (poisoned) {
     mkdirSync(join(head, 'scripts'));
@@ -75,6 +84,7 @@ cp "$BOOTSTRAP_TRUSTED_FIXTURE" "$output"
         BOOTSTRAP_SELECTION_LOG: selected,
         BOOTSTRAP_TRANSPORT_LOG: transport,
         BOOTSTRAP_TRUSTED_FIXTURE: trusted,
+        BOOTSTRAP_FIXTURE_HASH: helperHash,
         BOOTSTRAP_FETCH_STATUS: failedFetch ? '22' : '0',
       },
     },
