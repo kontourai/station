@@ -63,8 +63,12 @@ import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tool
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
+import { withProjectToolDefaults } from '../projects/project-tools.js';
 
 interface SessionAgentResolverOptions {
+  resolveProjectToolServers?: (
+    input: ProviderSessionStartInput,
+  ) => Promise<readonly string[]>;
   /** Load an agent's spec by slug; `null` for an unknown/not-on-disk agent. */
   loadAgentSpec: (slug: string) => Promise<AgentSpec | null>;
   /** Resolve a Station tool-server id (`ToolDef.id`, kind 'mcp'); `null` when unknown. */
@@ -288,13 +292,20 @@ export function createSessionAgentResolver(
     }
 
     try {
-      const spec = captured
+      let spec = captured
         ? captured.agentId === slug
           ? structuredClone(captured.spec)
           : null
         : withBuiltinStationAgentCapabilities(slug, await loadAgentSpec(slug));
       if (!spec) {
         return input;
+      }
+
+      if (options.resolveProjectToolServers) {
+        spec = withProjectToolDefaults(
+          spec,
+          await options.resolveProjectToolServers(input),
+        );
       }
 
       const definition: ResolvedAgentDefinition = { slug };

@@ -106,6 +106,8 @@
     "./prebuilt-archive": "./src/prebuilt-archive.ts",
     "./service-launcher-protocol": "./src/service-launcher-protocol.ts",
     "./harness-questions": "./src/harness-questions.ts",
+    "./mcp-elicitation": "./src/mcp-elicitation.ts",
+    "./mcp-elicitation-form": "./src/mcp-elicitation-form.ts",
     "./skill-experience-workflow": "./src/skill-experience-workflow.ts"
   },
   "publishConfig": {

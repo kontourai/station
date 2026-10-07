@@ -1,0 +1,7 @@
+{
+  "revision": "be3bf00a988573d6e71fe01ac57e601905d78d92",
+
+  "notes": [
+    {"path":"docs/design/project-membership.md","note":"Re-read the Agent audience section after #3284 added POST /agents/:slug/mcp-prompts/run to the turn-refused leaves and GET .../mcp-prompts to the read-only leaves. Checked against agent-audience-gate.ts classify/addressedTurn and the runtime-mounted test in runtime-routes-agent-audience.test.ts (hidden: uniform 404 on list and run; admitted: 403 member_agent_turns_unavailable on both; operator reaches the routes).","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/agent-audience-gate.ts"]}
+  ]
+}

@@ -50,6 +50,8 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
 | `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
+| `@kontourai/station-contracts/mcp-elicitation` | A tool server's form-mode elicitation normalized to Station's rendered field subset, its accepted content, and the accept/decline/cancel result; validation lives in shared |
+| `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |

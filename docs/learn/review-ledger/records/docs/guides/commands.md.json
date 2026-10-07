@@ -28,7 +28,13 @@
 
     "src-ui/src/utils/skill-commands.ts",
 
-    "src-ui/src/views/agent-editor/AgentEditorCommandsTab.tsx"
+    "src-ui/src/views/agent-editor/AgentEditorCommandsTab.tsx",
+
+    "src-ui/src/slashCommands/dispatch.ts",
+
+    "src-ui/src/slashCommands/mcpPrompt.ts",
+
+    "src-ui/src/utils/skill-command-catalog.ts"
   ],
 
   "checks": [

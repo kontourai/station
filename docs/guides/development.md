@@ -495,7 +495,8 @@ Hosted CI splits that work: `fast-checks-plan` selects once, one to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
 The required `fast-checks` result combines job outcomes with exact-plan shard
-receipts. Local `ci:fast` remains unsharded; see the
+receipts. A failing shard also annotates each failed test and uploads its
+redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
 GitHub's merge queue verifies the synthesized latest-main candidate.
