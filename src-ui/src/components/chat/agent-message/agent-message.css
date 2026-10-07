@@ -207,3 +207,16 @@
     padding: 0;
   }
 }
+
+.agent-cause > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-cause__caret {
+  margin-left: auto;
+}
+.agent-cause-disclosure[open] > summary .agent-cause__caret {
+  transform: rotate(180deg);
+}

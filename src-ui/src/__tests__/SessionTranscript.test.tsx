@@ -1,5 +1,7 @@
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
+import { type ReactNode, useSyncExternalStore } from 'react';
+import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 // @vitest-environment jsdom
 
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -13,7 +15,10 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { navigationStore } from '../contexts/navigation-store';
+import {
+  navigationEntryIndex,
+  navigationStore,
+} from '../contexts/navigation-store';
 
 /**
  * The session detail's conversation reads the chat dock's source: a durable
@@ -117,6 +122,26 @@ function live(events: CanonicalRuntimeEvent[]) {
   });
 }
 
+function CanonicalActivityBinding({ children }: { children: ReactNode }) {
+  const navigation = useSyncExternalStore(
+    navigationStore.subscribe,
+    navigationStore.getSnapshot,
+  );
+  const intent = navigation.surfaceIntent;
+  return (
+    <ActivityWorkspacePaneBindingProvider
+      binding={{
+        apiBase: API,
+        sessionId: intent?.sessionId,
+        messageAnchor: intent?.messageAnchor,
+        intentToken: navigationEntryIndex(window.history.state),
+      }}
+    >
+      {children}
+    </ActivityWorkspacePaneBindingProvider>
+  );
+}
+
 function renderTranscript(
   isStreaming = true,
   failureShownAbove = false,
@@ -129,14 +154,16 @@ function renderTranscript(
   const tree = (streaming: boolean) => (
     <QueryClientProvider client={queryClient}>
       <PreviewProvider>
-        <SessionTranscript
-          apiBase={API}
-          session={session}
-          agentLabel="Code Reviewer"
-          isStreaming={streaming}
-          failureShownAbove={failureShownAbove}
-          scrollContainerRef={scrollContainerRef}
-        />
+        <CanonicalActivityBinding>
+          <SessionTranscript
+            apiBase={API}
+            session={session}
+            agentLabel="Code Reviewer"
+            isStreaming={streaming}
+            failureShownAbove={failureShownAbove}
+            scrollContainerRef={scrollContainerRef}
+          />
+        </CanonicalActivityBinding>
       </PreviewProvider>
     </QueryClientProvider>
   );
@@ -917,4 +944,56 @@ describe('real anchor paging failure and resource bound (#3419)', () => {
       expect(pages).toBe(mode === 'page-limit' ? 21 : 2);
     },
   );
+});
+
+test('two sends sharing a request key in one answer remain an ambiguous anchor (#3419)', async () => {
+  const key = 'replayed-send-key';
+  const events = [
+    ev({
+      method: 'turn.started',
+      turnId: 'duplicate-sends',
+      prompt: 'Coordinate.',
+    }),
+    ...['first', 'retry'].flatMap((id) => [
+      ev({
+        method: 'tool.started',
+        turnId: 'duplicate-sends',
+        toolCallId: id,
+        toolName: 'mcp__station-control__send_to_session',
+        arguments: {
+          sessionId: 'recipient',
+          text: 'Same delivery',
+          requestKey: key,
+        },
+      }),
+      ev({
+        method: 'tool.completed',
+        turnId: 'duplicate-sends',
+        toolCallId: id,
+        toolName: 'mcp__station-control__send_to_session',
+        output: {
+          success: true,
+          data: { outcome: 'started', sessionId: 'recipient' },
+        },
+      }),
+    ]),
+    ev({ method: 'turn.completed', turnId: 'duplicate-sends' }),
+  ];
+  windowState.events = events.map((event, index) => ({
+    sequence: index + 1,
+    event,
+  }));
+  navigationStore.navigate(
+    `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=sent&messageRequest=${key}`,
+  );
+  renderTranscript(false);
+  await screen.findByText(
+    'Message anchor is ambiguous: more than one recorded call or input has this request key.',
+  );
+  expect(screen.queryByText('Opened the exact sending call.')).toBeNull();
+  expect(
+    document.activeElement?.closest(
+      '[data-testid="session-transcript-message"]',
+    ),
+  ).toBeNull();
 });

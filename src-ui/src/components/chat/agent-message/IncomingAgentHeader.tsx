@@ -2,7 +2,7 @@ import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ReactNode } from 'react';
-import { InboxGlyph } from '../../icons/Glyph';
+import { ArrowDownGlyph, InboxGlyph } from '../../icons/Glyph';
 import { AgentSessionLink } from './AgentSessionLink';
 import './agent-message.css';
 
@@ -106,11 +106,15 @@ export function IncomingAgentCause({
       <summary className="agent-cause">
         <InboxGlyph />
         <span>{label}</span>
+        <ArrowDownGlyph className="agent-cause__caret" />
       </summary>
       <div className="agent-cause-disclosure__details agent-incoming">
         <IncomingAgentHeader sender={sender} />
         {sender.kind === 'provider' && (
-          <p>No person or Session sent a request for this turn.</p>
+          <p>
+            {senderAgentLabel(sender) ?? 'The engine'} started this turn without
+            a person or Session sending a request.
+          </p>
         )}
         {children}
       </div>

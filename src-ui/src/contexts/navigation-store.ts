@@ -39,29 +39,7 @@ function canonicalSearch(search: string): string {
   return params.toString();
 }
 
-export type TranscriptAnchor = {
-  sessionId: string;
-  direction: 'sent' | 'received';
-  requestKey: string;
-};
-
-function parseTranscriptAnchor(
-  params: URLSearchParams,
-): TranscriptAnchor | undefined {
-  const sessionId = params.get('messageSession');
-  const direction = params.get('messageDirection');
-  const requestKey = params.get('messageRequest');
-  return sessionId &&
-    sessionId.length <= 512 &&
-    requestKey &&
-    requestKey.length <= 128 &&
-    (direction === 'sent' || direction === 'received')
-    ? { sessionId, direction, requestKey }
-    : undefined;
-}
-
 export type NavigationState = {
-  transcriptAnchor?: TranscriptAnchor;
   pathname: string;
   selectedAgent: string | null;
   selectedLayout: string | null;
@@ -507,19 +485,22 @@ class NavigationStore {
       ...(this.state.openFilePreviewIntent
         ? serializeOpenFilePreviewIntent(this.state.openFilePreviewIntent)
         : {}),
-      ...(this.state.transcriptAnchor
-        ? {
-            messageSession: this.state.transcriptAnchor.sessionId,
-            messageDirection: this.state.transcriptAnchor.direction,
-            messageRequest: this.state.transcriptAnchor.requestKey,
-          }
-        : {}),
       ...(this.state.surfaceIntent
         ? {
             surface: this.state.surfaceIntent.surfaceId,
             ...(this.state.surfaceIntent.sessionId && {
               session: this.state.surfaceIntent.sessionId,
             }),
+            ...(this.state.surfaceIntent.messageAnchor &&
+            this.state.surfaceIntent.sessionId
+              ? {
+                  messageSession: this.state.surfaceIntent.sessionId,
+                  messageDirection:
+                    this.state.surfaceIntent.messageAnchor.direction,
+                  messageRequest:
+                    this.state.surfaceIntent.messageAnchor.requestKey,
+                }
+              : {}),
             ...(this.state.surfaceIntent.focus && {
               focus: this.state.surfaceIntent.focus,
             }),
@@ -649,7 +630,6 @@ class NavigationStore {
         )
           ? this.state.openFilePreviewIntentFrom
           : 'link'),
-      transcriptAnchor: parseTranscriptAnchor(params),
       surfaceIntent: parseSurfaceDeepLink(params),
       isDockOpen: params.get('dock') === 'open',
       isDockMaximized: params.get('maximize') === 'true',
@@ -939,8 +919,9 @@ class NavigationStore {
         if (SHELL_SCOPED_QUERY_PARAMS.has(key)) continue;
         if (
           surfaceSurvives &&
-          (key === SURFACE_DEEP_LINK_QUERY_KEYS.session ||
-            key === SURFACE_DEEP_LINK_QUERY_KEYS.focus)
+          Object.values(SURFACE_DEEP_LINK_QUERY_KEYS).some(
+            (surfaceKey) => surfaceKey === key,
+          )
         )
           continue;
         if (params && key in params) continue;

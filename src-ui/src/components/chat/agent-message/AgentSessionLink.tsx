@@ -29,15 +29,12 @@ export function AgentSessionLink({
   label: string;
   children: ReactNode;
 }) {
-  const params =
-    requestKey && direction
-      ? {
-          messageSession: sessionId,
-          messageDirection: direction,
-          messageRequest: requestKey,
-        }
-      : undefined;
-  const href = `${activityDeepLink({ sessionId })}${params ? `&${new URLSearchParams(params)}` : ''}`;
+  const messageAnchor =
+    requestKey && direction ? { direction, requestKey } : undefined;
+  const href = activityDeepLink({
+    sessionId,
+    ...(messageAnchor ? { messageAnchor } : {}),
+  });
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
     // Let the browser keep new-tab and download gestures.
     if (
@@ -53,7 +50,7 @@ export function AgentSessionLink({
     const isOpenChat = Object.entries(openChatsStore.getSnapshot()).some(
       ([id, chat]) => id === sessionId || chat.conversationId === sessionId,
     );
-    if (isOpenChat && !params) openChatsStore.focus({ sessionId });
+    if (isOpenChat && !messageAnchor) openChatsStore.focus({ sessionId });
     else navigationStore.navigate(href);
   };
   return (

@@ -318,7 +318,13 @@ Session by its `sessionId`, without creating a task.
   received input in Activity by its recorded request key. The transcript may
   read up to 20 older pages to establish a unique match, then focuses and
   announces it. A missing or repeated key is an explicit unavailable or
-  ambiguous anchor; reaching the page limit selects nothing.
+  ambiguous anchor; reaching the page limit selects nothing. The public
+  [SessionMessageAnchor](../../packages/contracts/src/surface-deep-link.ts)
+  carries a sent/received direction and a 1–128 character request key, with
+  a 1–512 character Session id. The parser refuses a mismatched or absent
+  Session and drops an invalid anchor without treating it as an exact target.
+  Activity takes the anchor through its ordinary one-shot surface intent;
+  remounting cannot replay it, while a new intent token can reveal it again.
   On phones, a muted cause row expands to the sender details, message and link.
   Engine-opened replies retain a provider cause on the assistant row after
   settlement and reload; origin is never inferred from prompt text.

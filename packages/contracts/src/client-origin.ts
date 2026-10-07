@@ -55,7 +55,11 @@ export type ClientOriginSenderKind =
 
 export interface ClientOriginSender {
   kind: ClientOriginSenderKind;
-  /** The sending Session. */
+  /**
+   * Sending Session for agent-session/delegation-result; the engine's Session
+   * for provider. Unattributed input carries its receiving Session as context,
+   * never as a claim identifying the missing sender.
+   */
   sessionId: string;
   /** The sender's Session title when it had one, as of the send. */
   title?: string;
@@ -119,10 +123,12 @@ export function clientOriginSender(
   const title = senderText(value.title, MAX_SENDER_TITLE_LENGTH);
   const agent = senderText(value.agent, MAX_SENDER_LABEL_LENGTH);
   const engine = senderText(value.engine, MAX_SENDER_LABEL_LENGTH);
-  const requestKey = senderText(
-    value.requestKey,
-    MAX_SENDER_REQUEST_KEY_LENGTH,
-  );
+  const requestKey =
+    typeof value.requestKey === 'string' &&
+    value.requestKey.length > 0 &&
+    value.requestKey.length <= MAX_SENDER_REQUEST_KEY_LENGTH
+      ? value.requestKey
+      : undefined;
   return {
     kind: value.kind as ClientOriginSenderKind,
     sessionId: value.sessionId,

@@ -1,3 +1,11 @@
+import { engineId } from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
+import type { TurnStartedEvent } from '@kontourai/station-contracts/runtime-events';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { SessionTranscript } from '../../components/session-detail/SessionTranscript';
+import { PreviewProvider } from '../PreviewContext';
 /** @vitest-environment jsdom */
 
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -24,12 +32,32 @@ import {
 import { useShowSurface } from '../useShowSurface';
 
 const sessionsProps = vi.hoisted(() => vi.fn());
+const transcriptProbe = vi.hoisted(() => ({ enabled: false }));
 
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: (props: Record<string, unknown>) => {
     sessionsProps(props);
+    if (transcriptProbe.enabled && typeof props.sessionId === 'string')
+      return (
+        <SessionTranscript
+          apiBase="http://test.local"
+          session={{
+            threadId: props.sessionId,
+            conversationId: props.sessionId,
+          }}
+          agentLabel="Agent"
+          isStreaming={false}
+        />
+      );
     return <div data-testid="sessions-view" />;
   },
+}));
+vi.mock('../../hooks/orchestration/ensureOrchestrationEventStream', () => ({
+  ensureOrchestrationEventStream: () => () => {},
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  fetchSessionEventWindowCapability: async () => true,
 }));
 // Chat's pane would mount the whole chat data stack; `RegionShells` is here
 // as the region surface HOST, not for what it renders inside. Since #2045
@@ -160,6 +188,7 @@ function setUrl(url: string) {
 }
 
 beforeEach(() => {
+  transcriptProbe.enabled = false;
   model = null;
   revealSurface = null;
   sessionsProps.mockReset();
@@ -835,4 +864,124 @@ describe('a delivered surface intent is never delivered a second time', () => {
     await waitFor(() => expect(activityShellLandmark()).not.toBeNull());
     await expectFreshSurfaceThenOnly('s9');
   });
+});
+
+test('an exact message traverses the real region intent outbox and Activity binding once (#3419)', async () => {
+  transcriptProbe.enabled = true;
+  const sender = {
+    kind: 'agent-session' as const,
+    sessionId: 'sender',
+    title: 'Fix login',
+    engine: 'claude',
+    requestKey: 'root-delivery-key',
+  };
+  const received: TurnStartedEvent = {
+    eventId: 'received-event',
+    provider: engineId('claude'),
+    threadId: 'recipient',
+    method: 'turn.started',
+    turnId: 'received-turn',
+    createdAt: '2026-10-06T00:00:00Z',
+    prompt: frameAgentMessage(sender, 'Please inspect the login patch.'),
+    clientOrigin: {
+      version: 1,
+      actor: { kind: 'internal' },
+      reported: { version: 1, surface: 'unknown', build: null },
+      sender,
+    },
+  };
+  const newest: TurnStartedEvent = {
+    ...received,
+    eventId: 'newer-event',
+    turnId: 'newer-turn',
+    prompt: 'Newer unrelated input',
+    clientOrigin: {
+      version: 1,
+      actor: { kind: 'operator' },
+      reported: { version: 1, surface: 'web', build: null },
+    },
+  };
+  const requests: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith('/event-window'))
+        return Response.json({ success: true, data: [] });
+      requests.push(url.search);
+      const older = url.searchParams.get('cursor') === 'older-page';
+      const page = {
+        protocolVersion: 1,
+        conversationId: 'recipient',
+        currentSessionId: 'recipient',
+        watermark: 20,
+        hasMore: !older,
+        ...(older ? {} : { nextCursor: 'older-page' }),
+        events: [
+          { sequence: older ? 1 : 20, event: older ? received : newest },
+        ],
+        handoffs: [],
+        contextBoundaries: [],
+        session: {
+          threadId: 'recipient',
+          provider: engineId('claude'),
+          status: 'ready',
+          controlMode: 'station-owned',
+          answerability: { answerable: true },
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 20,
+          createdAt: '2026-10-06T00:00:00Z',
+          updatedAt: '2026-10-06T00:00:00Z',
+        },
+      } satisfies OrchestrationConversationEventWindow;
+      return Response.json({ success: true, data: page });
+    }),
+  );
+  const view = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PreviewProvider>
+        <Harness host />
+      </PreviewProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(model).not.toBeNull());
+  act(() =>
+    navigationStore.navigate(
+      activityDeepLink({
+        sessionId: 'recipient',
+        messageAnchor: {
+          direction: 'received',
+          requestKey: 'root-delivery-key',
+        },
+      }),
+    ),
+  );
+  await screen.findByText('Opened the exact received message.');
+  expect(requests).toHaveLength(2);
+  expect(new URLSearchParams(requests[1]).get('cursor')).toBe('older-page');
+  expect(document.activeElement?.textContent).toContain(
+    'Please inspect the login patch.',
+  );
+  expect(liveModel()?.surfaceIntents.activity).toBeUndefined();
+  expect(
+    new URLSearchParams(window.location.search).has('messageRequest'),
+  ).toBe(false);
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <PreviewProvider>
+        <Harness />
+      </PreviewProvider>
+    </QueryClientProvider>,
+  );
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <PreviewProvider>
+        <Harness host />
+      </PreviewProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByTestId('sessions-view')).toBeTruthy());
+  expect(screen.queryByText('Opened the exact received message.')).toBeNull();
+  expect(requests).toHaveLength(2);
 });

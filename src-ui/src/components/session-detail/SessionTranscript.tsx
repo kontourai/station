@@ -8,11 +8,10 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react';
-import { navigationStore } from '../../contexts/navigation-store';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSessionTranscriptEvents';
+import { useActivityWorkspacePaneBinding } from '../../views/activity/ActivityWorkspacePaneBinding';
 import { Button } from '../Button';
 import { agentAccentStyle } from '../chat/agent-message/agentSenderAccent';
 import {
@@ -125,29 +124,47 @@ export const SessionTranscript = memo(function SessionTranscript({
       ? projected.slice(0, -1)
       : [...projected.slice(0, -1), { ...last, contentParts: kept }];
   }, [events, failureShownAbove]);
-  const navigation = useSyncExternalStore(
-    navigationStore.subscribe,
-    navigationStore.getSnapshot,
-    navigationStore.getSnapshot,
+  const activityBinding = useActivityWorkspacePaneBinding();
+  const anchor = useMemo(
+    () =>
+      activityBinding?.sessionId &&
+      activityBinding.messageAnchor &&
+      (activityBinding.sessionId === session.threadId ||
+        activityBinding.sessionId === session.conversationId)
+        ? {
+            ...activityBinding.messageAnchor,
+            sessionId: activityBinding.sessionId,
+          }
+        : undefined,
+    [
+      activityBinding?.sessionId,
+      activityBinding?.messageAnchor,
+      session.threadId,
+      session.conversationId,
+    ],
   );
-  const anchor =
-    navigation.transcriptAnchor?.sessionId === session.threadId ||
-    navigation.transcriptAnchor?.sessionId === session.conversationId
-      ? navigation.transcriptAnchor
-      : undefined;
   const anchoredRows = anchor
-    ? rows.filter((row) =>
+    ? rows.flatMap((row) =>
         anchor.direction === 'received'
           ? row.role === 'user' && row.sender?.requestKey === anchor.requestKey
-          : row.contentParts.some(
-              (part) =>
-                describeStationControlCall(part)?.requestKey ===
-                anchor.requestKey,
-            ),
+            ? [row]
+            : []
+          : row.contentParts
+              .filter(
+                (part) =>
+                  describeStationControlCall(part)?.requestKey ===
+                  anchor.requestKey,
+              )
+              .map(() => row),
       )
     : [];
   const anchorKey = anchor
-    ? `${anchor.sessionId}/${anchor.direction}/${anchor.requestKey}`
+    ? JSON.stringify([
+        anchor.sessionId,
+        anchor.direction,
+        anchor.requestKey,
+        activityBinding?.intentToken,
+      ])
     : undefined;
   const anchorReads = useRef<{ key?: string; pages: number }>({ pages: 0 });
   const [anchorLimit, setAnchorLimit] = useState(false);
@@ -160,6 +177,8 @@ export const SessionTranscript = memo(function SessionTranscript({
       setAnchorLimit(false);
     }
     if (!anchor || loading || !settled || error || upgradeRequired) return;
+    if (announcedAnchor.current === anchorKey) return;
+    pauseFollowing();
     if (hasMore) {
       if (anchorReads.current.pages >= 20) {
         setAnchorLimit(true);
@@ -169,7 +188,6 @@ export const SessionTranscript = memo(function SessionTranscript({
       void loadOlder();
       return;
     }
-    if (announcedAnchor.current === anchorKey) return;
     if (anchorId) {
       const row = [
         ...(contentRef.current?.querySelectorAll<HTMLElement>(
@@ -186,6 +204,12 @@ export const SessionTranscript = memo(function SessionTranscript({
               (node) => node.dataset.stationSendRequest === anchor.requestKey,
             ) ?? row)
           : row;
+      if (anchor.direction === 'received') {
+        const details = target?.querySelector<HTMLDetailsElement>(
+          'details.agent-cause-disclosure',
+        );
+        if (details) details.open = true;
+      }
       target?.scrollIntoView?.({ block: 'center' });
       if (target) {
         target.tabIndex = -1;
@@ -203,6 +227,7 @@ export const SessionTranscript = memo(function SessionTranscript({
     upgradeRequired,
     hasMore,
     loadOlder,
+    pauseFollowing,
   ]);
   const lastIndex = rows.length - 1;
   const lastIsAssistant = rows[lastIndex]?.role === 'assistant';
@@ -362,7 +387,7 @@ export const SessionTranscript = memo(function SessionTranscript({
         !anchorId && (
           <p role="status">
             {anchoredRows.length > 1
-              ? 'Message anchor is ambiguous: more than one recorded delivery has this request key.'
+              ? 'Message anchor is ambiguous: more than one recorded call or input has this request key.'
               : 'The exact message is not available in this conversation.'}
           </p>
         )}

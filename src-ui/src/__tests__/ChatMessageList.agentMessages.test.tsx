@@ -565,6 +565,14 @@ test('phone input uses a cause disclosure with full sender details and exact nav
     expect(found).toHaveLength(2);
     return found;
   });
+  const accents = [...disclosures].map((disclosure) =>
+    (disclosure.closest('.message-row') as HTMLElement).style.getPropertyValue(
+      '--agent-accent-light',
+    ),
+  );
+  expect(accents[0]).toMatch(/^#[0-9a-f]{6}$/u);
+  expect(accents[1]).toMatch(/^#[0-9a-f]{6}$/u);
+  expect(accents[0]).not.toBe(accents[1]);
   const details = disclosures[0]!;
   expect(details.open).toBe(false);
   const summary = details.querySelector('summary')!;

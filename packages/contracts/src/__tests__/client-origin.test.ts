@@ -83,6 +83,15 @@ describe('client origin contract', () => {
       ])
         expect(clientOriginSender({ sender })).toBeUndefined();
       expect(clientOriginSender(undefined)).toBeUndefined();
+      expect(
+        clientOriginSender({
+          sender: {
+            kind: 'agent-session',
+            sessionId: 's',
+            requestKey: 'x'.repeat(129),
+          },
+        })?.requestKey,
+      ).toBeUndefined();
     });
 
     it('does not change what makes an origin valid: a record with or without a sender stays readable', () => {
