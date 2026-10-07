@@ -265,7 +265,7 @@ describe('describeDeviceScope', () => {
     // A scope missing any single token (here consent:decide) is not Full.
     expect(
       describeDeviceScope(
-        'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve',
+        fullAccessScope.filter((token) => token !== 'consent:decide').join(' '),
       ),
     ).toBe('Custom access');
   });
