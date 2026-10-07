@@ -319,7 +319,7 @@ describe('phone transcript: one work row per settled turn', () => {
     expect(within(answerRow()).getByText(/BETWEEN:/)).toBeTruthy();
   });
 
-  test('a call still waiting on a grant stays visible, with its Allow control, outside the fold', async () => {
+  test('a call still waiting on a grant stays outside the fold and opens its approval controls', async () => {
     windowEvents.current = [
       runtimeEvent({ method: 'turn.started', turnId: 't1', prompt: 'List' }),
       say('t1', 'INTENT: checking the plugins.'),
@@ -361,8 +361,14 @@ describe('phone transcript: one work row per settled turn', () => {
     expect(within(row).getByText(/LAST:/)).toBeTruthy();
     const pending = row.querySelector('.tool-call-batch__pending-grant');
     expect(pending?.textContent).toContain('ls plugins');
+    fireEvent.click(
+      within(pending as HTMLElement).getByRole('button', { name: 'Answer' }),
+    );
+    const approval = await screen.findByRole('dialog', {
+      name: 'Needs approval',
+    });
     expect(
-      within(pending as HTMLElement).getByRole('button', {
+      within(approval).getByRole('button', {
         name: 'Allow Once',
       }),
     ).toBeTruthy();
