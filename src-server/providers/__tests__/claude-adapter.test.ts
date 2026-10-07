@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
 import {
   CredentialProfileEnvironmentError,
   usageCredentialAccountKey,
@@ -21,6 +22,12 @@ import {
   resolveConfigHomeAffinity,
 } from '../sessions/transcript-file-io.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
+
+// Adapter wiring fixtures must not borrow this Mac's real secure-store account.
+vi.mock('node:os', async (original) => ({
+  ...(await original<typeof import('node:os')>()),
+  platform: () => 'linux',
+}));
 
 // The genuine built-in station-control server as it appears in a resolved
 // agent's toolServers — required for `station-control_*` auto-approval to be
@@ -7994,6 +8001,56 @@ describe('ClaudeAdapter', () => {
           {},
         ),
       ).toEqual({});
+      expect(
+        await hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'mcp__existing__read',
+            tool_input: {},
+            tool_use_id: 'existing',
+          },
+          '',
+          {},
+        ),
+      ).toEqual({});
+    });
+
+    test('Project MCP defaults preserve inherited harness discovery when the Agent declares no tool servers', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+      const resolve = createSessionAgentResolver({
+        loadAgentSpec: async () => ({
+          name: 'Reader',
+          prompt: 'Reader prompt',
+        }),
+        resolveProjectToolServers: async () => ['weather'],
+        resolveToolServer: async () => ({
+          id: 'weather',
+          kind: 'mcp',
+          transport: 'stdio',
+          command: process.execPath,
+          disabledTools: ['write'],
+          probe: {
+            ok: true,
+            checkedAt: '2026-10-03T00:00:00Z',
+            toolNames: ['read', 'write'],
+            toolCount: 2,
+          },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      await adapter.startSession(
+        await resolve({
+          provider: 'claude',
+          threadId: 'project-tools',
+          metadata: { agentSlug: 'reader', projectSlug: 'demo' },
+        }),
+      );
+      const { options } = mockQuery.mock.calls[0][0];
+      expect(options.strictMcpConfig).toBe(false);
+      expect(options.mcpServers.weather.command).toBe(process.execPath);
+      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      const hook = options.hooks.PreToolUse[0].hooks[0];
       expect(
         await hook(
           {

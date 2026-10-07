@@ -166,11 +166,24 @@ describe('UnattendedGrantStore', () => {
       kind: 'delegated-child',
       originAgentSlug: 'x',
     });
-    expect(new Set([voice, scheduledJob, delegatedChild])).toHaveLength(3);
+    const automationRule = principalKey({
+      kind: 'automation-rule',
+      ruleId: 'x',
+    });
+    expect(
+      new Set([voice, scheduledJob, delegatedChild, automationRule]),
+    ).toHaveLength(4);
+    expect(automationRule).toBe('{"kind":"automation-rule","ruleId":"x"}');
 
     await store.grantTool(voice, 'reports.send', 'casey');
     expect(store.isGranted(scheduledJob, 'reports.send')).toBe(false);
     expect(store.isGranted(delegatedChild, 'reports.send')).toBe(false);
+    expect(store.isGranted(automationRule, 'reports.send')).toBe(false);
+
+    // A rule's grant does not leak to a job that happens to share its id.
+    await store.grantTool(automationRule, 'reports.archive', 'casey');
+    expect(store.isGranted(automationRule, 'reports.archive')).toBe(true);
+    expect(store.isGranted(scheduledJob, 'reports.archive')).toBe(false);
   });
 
   test('grant is isolated to its exact tool', async () => {

@@ -92,7 +92,23 @@
 
     "src-server/runtime/agents/runtime-default-agent.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts",
+
+    "src-server/services/projects/project-tools.ts",
+
+    "src-server/services/projects/project-native-tools.ts",
+
+    "src-server/routes/chat/project-tool-context.ts",
+
+    "src-ui/src/views/project-settings/ToolsSection.tsx",
+
+    "src-ui/src/views/project-page/ProjectKnowledgeStores.tsx",
+
+    "src-ui/src/views/project-page/__tests__/ProjectKnowledgeStores.test.tsx",
+
+    "src-ui/src/views/project-settings/__tests__/ToolsSection.test.tsx",
+
+    "src-server/runtime/frameworks/__tests__/strands-tool-loader.test.ts"
   ],
 
   "checks": [
