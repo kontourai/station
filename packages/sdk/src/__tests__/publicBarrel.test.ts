@@ -41,6 +41,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'personalLayouts',
   'pluginVisibility',
   'knowledgeStores',
+  'mcpPromptRun',
   'knownEnvironments',
   'notificationPreferences',
   'notifications',

@@ -56,6 +56,20 @@ complete answer batch and translate selected IDs to display labels/custom
 text. They do not authorize a reply or prove engine delivery. Stable types
 come from `@kontourai/station-contracts/harness-questions`.
 
+## MCP elicitation helpers
+
+`@kontourai/station-shared/mcp-elicitation` owns the browser-safe
+`mcpElicitationFormFromRequest`, `readMcpElicitationForm`,
+`validateMcpElicitationContent` and `readMcpElicitationResult` helpers. They
+normalize a form-mode `elicitation/create` request into the field subset
+Station renders, refuse anything outside it or over a bound, and validate
+accepted content against the form with a reason, never coercing or
+truncating. The server's answer path and the browser card run the same
+validator. Eager event and pending-card readers use the form-only
+`@kontourai/station-shared/mcp-elicitation-form` subpath; answer validation
+loads with the form renderer. The public facade retains the same helpers.
+Stable types come from `@kontourai/station-contracts/mcp-elicitation`.
+
 ## Request settlement
 
 `@kontourai/station-shared/request-settlement` owns

@@ -1,7 +1,10 @@
 import assert from 'node:assert';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
+import type { McpClient } from '@strands-agents/sdk';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
 import { withTenantExecutionContext } from '../../bootstrap/runtime-tenant-context.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
 import {
@@ -26,6 +29,8 @@ const strandsMcpTestState = vi.hoisted(() => ({
   resolveDeferredClient: undefined as (() => void) | undefined,
   rejectNextListTools: undefined as Error | undefined,
 }));
+
+const makeTempDir = trackTempDirs();
 
 vi.mock('@strands-agents/sdk', () => ({
   FunctionTool: class {
@@ -118,6 +123,54 @@ async function loadBuiltinStationControlTools(
     state: { mcpClients: new Map(), agentMcpClients: new Map() },
   });
 }
+
+test('Agent retirement closes clients retained by successive Project tool loads', async () => {
+  const home = makeTempDir('station-project-tools-');
+  const loader = new ConfigLoader({ projectHomeDir: home });
+  const custody = new MCPLocalConnectionCustody();
+  const state = {
+    mcpClients: new Map<string, McpClient>(),
+    agentMcpClients: new Map<string, string[]>(),
+  };
+  try {
+    for (const id of ['project-a', 'project-b'])
+      await loader.saveIntegration(id, {
+        id,
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'fixture-command',
+      });
+    const opts = {
+      configLoader: loader,
+      mcpCustody: custody,
+      mcpConnectionStatus: new Map(),
+      integrationMetadata: new Map(),
+      toolNameMapping: new Map(),
+      toolNameReverseMapping: new Map(),
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      serverPort: 43291,
+    };
+    const [a, b] = await Promise.all(
+      ['project-a', 'project-b'].map((id) =>
+        loadStrandsTools({
+          slug: 'reader',
+          spec: { name: 'Reader', prompt: 'Read', tools: { mcpServers: [id] } },
+          opts,
+          state,
+        }),
+      ),
+    );
+    expect(a.map((tool) => tool.name)).toEqual(['projectA_render']);
+    expect(b.map((tool) => tool.name)).toEqual(['projectB_render']);
+    expect(strandsMcpClients).toHaveLength(2);
+    await destroyStrandsAgentTools('reader', state);
+    for (const client of strandsMcpClients)
+      expect(client.disconnect).toHaveBeenCalled();
+    expect(state.mcpClients.size).toBe(0);
+  } finally {
+    await custody.shutdown();
+  }
+});
 
 describe('applyStrandsAvailableToolFilter', () => {
   test('keeps exact and wildcard tool matches', () => {

@@ -9,6 +9,19 @@ For usage context, see [docs/guides/agents.md](../guides/agents.md).
 
 ---
 
+## Project tool defaults
+
+[ProjectConfig](../../packages/contracts/src/project.ts) accepts optional
+`toolDefaults: { mcpServers?: string[], knowledge?: boolean }`. The server list
+contains up to 32 configured MCP IDs, each at most 128 characters. Omitted
+`knowledge` enables delivery of `station-knowledge` when a registered Project
+store exists; `false` disables that Project addition.
+
+These defaults add servers while retaining Agent availability restrictions,
+approval patterns and an explicit harness replacement mode. They grant no
+credentials or store access. External sessions resolve them at session start;
+native chats use a per-turn Agent tool view. See [Project Knowledge and tools](../guides/knowledge.md#project-tools-and-automatic-store-detection).
+
 Claude Code and Codex engine connections can set
 `agentConnections.<engine>.config.proxyConnectionId` to a saved OpenAI-compatible
 Model connection. The UI exposes this as **Connect through**. The engine uses the

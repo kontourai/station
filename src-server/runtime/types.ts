@@ -169,6 +169,8 @@ export interface IAgent {
   readonly id: string;
   readonly name: string;
   readonly model?: any;
+  readonly instructions?: string | (() => string);
+  withAdditionalTools?(tools: ITool[]): IAgent;
   generateText(prompt: string, options?: any): Promise<IGenerateResult>;
   /**
    * `input` is the authored turn: what the framework persists as the user
@@ -581,6 +583,10 @@ export type AgentConfigurationMutationRunner = <T>(
 ) => Promise<T>;
 
 export interface RuntimeContext {
+  loadProjectTools?: (
+    slug: string,
+    projectSlug: string,
+  ) => Promise<ITool[] | undefined>;
   // Maps
   activeAgents: Map<string, any>;
   agentSpecs: Map<string, AgentSpec>;

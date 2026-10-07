@@ -148,7 +148,24 @@ unlabelled lanes remain under their owner's control.
 
 A true conflict needs its owning session. A new successful CI run can re-arm an
 opted-in PR; a failing run cannot. The merge queue owns combined-candidate checks
-and the final merge. Use [the development guide](development.md#github-automation-token)
+and the final merge.
+
+When the queue removes a PR, the same workflow's `dequeue` job explains it on
+the PR. Each reported removal gets a new comment, so the owner is notified, and the
+app's earlier reports are minimized as outdated; a removal already reported is
+not reported again. Reports for one PR run one at a time, and each run reports
+the PR's latest removal on its timeline rather than the one that triggered it.
+GitHub also keeps only the newest waiting run. So a quick burst of removals can
+skip a middle one, and a latest removal that needs no report (a manual dequeue,
+for example) leaves the earlier report as the newest comment. A failing-checks removal names the merge group's failing checks, their
+error annotations (each failing `fast-checks` shard annotates its failed tests)
+and the run's artifacts, including the shard's redacted Vitest JSON report. A
+conflict removal runs `git merge-tree` against current main without checking out
+the candidate: real conflicts are listed for the owner. A PR that merges cleanly
+with main conflicted only with an entry ahead of it, so an opted-in PR is
+re-armed once per head, pinned to the head that was checked, and other PRs get
+a comment. Automation never resolves a
+conflict or pushes to the branch. Use [the development guide](development.md#github-automation-token)
 for local automation credentials and the repository instructions for arm/confirm/stop.
 
 ## Release procedure

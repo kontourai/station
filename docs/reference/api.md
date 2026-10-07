@@ -19,6 +19,15 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Project tool defaults
+
+Project create and update bodies accept optional `toolDefaults` with
+`mcpServers` and `knowledge`, through the [Project schema](../../src-server/routes/schemas/schema-definitions/content.ts).
+The nested object rejects unknown fields. Server IDs must pass the configured
+MCP ID validator; the list is limited to 32 IDs of at most 128 characters.
+These values configure additive tool delivery, subject to the Agent's existing
+restrictions and ordinary Project edit authority. See [configuration](./config.md#project-tool-defaults).
+
 ## Station MCP endpoints
 
 `/mcp/station-control` serves platform controls. `/mcp/station-knowledge`

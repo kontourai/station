@@ -573,7 +573,9 @@ export async function loadStrandsTools(options: {
     }
   }
 
-  state.agentMcpClients.set(slug, agentClientIds);
+  state.agentMcpClients.set(slug, [
+    ...new Set([...(state.agentMcpClients.get(slug) ?? []), ...agentClientIds]),
+  ]);
   return applyStrandsAvailableToolFilter(
     allTools,
     spec.tools.available || ['*'],

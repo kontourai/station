@@ -2,7 +2,10 @@ import { fetchOrchestrationConversationEventWindow } from '@kontourai/station-sd
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
-import { raiseRequestOpenedToast } from './approvalHandlers';
+import {
+  carriesMcpElicitationForm,
+  raiseRequestOpenedToast,
+} from './approvalHandlers';
 import type { OrchestrationEvent } from './types';
 
 /** Older pages read after the newest turn while placeholders remain. */
@@ -96,7 +99,12 @@ function hydratePage(
           },
         }
       : {};
-    if (readHarnessQuestionnaire(event.payload?.questionnaire)) {
+    // A questionnaire or an MCP form is answered on its own card, not by the
+    // approval toast, so the placeholder stays; only the turn is bound.
+    if (
+      readHarnessQuestionnaire(event.payload?.questionnaire) ||
+      carriesMcpElicitationForm(event.payload)
+    ) {
       if (learnedTurnId) activeChatsStore.updateChat(event.threadId, bindTurn);
       continue;
     }

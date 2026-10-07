@@ -562,7 +562,9 @@
 
     "packages/shared/src/usage-semantics.ts",
 
-    "packages/shared/src/usage-fold.ts"
+    "packages/shared/src/usage-fold.ts",
+
+    "packages/sdk/src/query-domains/mcpPromptRun.ts"
   ],
 
   "checks": [
