@@ -29,6 +29,7 @@ import {
   STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   PeerCredentialMutationAuthorizationError,
   type PeerCredentialStore,
@@ -36,6 +37,9 @@ import {
 
 const DELEGATION_SCOPE = PAIRING_SCOPE_PRESETS.delegation.join(' ');
 const MAX_RESPONSE_BYTES = 16_384;
+const OFFER_ID = /^[A-Za-z0-9_-]{32}$/;
+const SECRET = /^[A-Za-z0-9_-]{43}$/;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const MAX_ENROLLMENTS = 32;
 const RETENTION_MS = 15 * 60_000;
 const STATUSES: ReadonlySet<string> = new Set([
@@ -73,7 +77,8 @@ function hasControls(value: string): boolean {
 }
 
 function enrollmentOrigin(value: unknown): string {
-  if (typeof value !== 'string') throw new Error('Invalid Station address');
+  if (typeof value !== 'string' || value.length > 2048)
+    throw new Error('Invalid Station address');
   const url = new URL(value);
   if (
     !['http:', 'https:'].includes(url.protocol) ||
@@ -103,7 +108,7 @@ function enrollmentOrigin(value: unknown): string {
   return url.origin;
 }
 
-/** One server owns each exchange; neither its proof nor its bearer leaves this owner. */
+/** Durable mutation ownership serializes each exchange; proofs and bearers stay server-side. */
 export class PeerEnrollmentService {
   readonly #states = new Map<string, EnrollmentState>();
 
@@ -123,98 +128,111 @@ export class PeerEnrollmentService {
       (process.platform !== 'win32' && (directory.mode & 0o777) !== 0o700)
     )
       throw new Error('Unsafe peer enrollment directory');
-    for (const file of readdirSync(this.#directory)) {
-      if (!/^[a-f0-9-]{36}\.json$/.test(file)) continue;
-      const path = join(this.#directory, file);
-      const stat = lstatSync(path);
+  }
+
+  #readState(id: string): EnrollmentState {
+    const path = join(this.#directory, `${id}.json`);
+    const stat = lstatSync(path);
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      stat.nlink !== 1 ||
+      stat.size > MAX_RESPONSE_BYTES ||
+      (process.platform !== 'win32' && (stat.mode & 0o777) !== 0o600)
+    )
+      throw new Error('Unsafe peer enrollment record');
+    const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    let parsed: unknown;
+    try {
+      const opened = fstatSync(fd);
       if (
-        !stat.isFile() ||
-        stat.isSymbolicLink() ||
-        stat.nlink !== 1 ||
-        stat.size > MAX_RESPONSE_BYTES ||
-        (process.platform !== 'win32' && (stat.mode & 0o777) !== 0o600)
+        opened.ino !== stat.ino ||
+        opened.dev !== stat.dev ||
+        opened.nlink !== 1
       )
-        throw new Error('Unsafe peer enrollment record');
-      const fd = openSync(
-        path,
-        constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
-      );
-      let parsed: unknown;
-      try {
-        const opened = fstatSync(fd);
-        if (
-          opened.ino !== stat.ino ||
-          opened.dev !== stat.dev ||
-          opened.nlink !== 1
-        )
-          throw new Error('Peer enrollment record changed while reading');
-        parsed = JSON.parse(readFileSync(fd, 'utf8'));
-      } finally {
-        closeSync(fd);
-      }
-      if (
-        !record(parsed) ||
-        !record(parsed.view) ||
-        parsed.view.id !== file.slice(0, -5) ||
-        typeof parsed.view.expiresAt !== 'number' ||
-        typeof parsed.view.apiBase !== 'string' ||
-        typeof parsed.view.environmentId !== 'string' ||
-        typeof parsed.view.status !== 'string' ||
-        !STATUSES.has(parsed.view.status) ||
-        !Number.isSafeInteger(parsed.view.expiresAt) ||
-        (parsed.view.label !== null && typeof parsed.view.label !== 'string') ||
-        (parsed.view.error !== undefined &&
-          typeof parsed.view.error !== 'string') ||
-        Object.keys(parsed.view).some(
-          (key) =>
-            ![
-              'id',
-              'apiBase',
-              'environmentId',
-              'label',
-              'status',
-              'expiresAt',
-              'error',
-            ].includes(key),
-        ) ||
-        Object.keys(parsed).some(
-          (key) =>
-            ![
-              'view',
-              'offerId',
-              'proof',
-              'requestId',
-              'credential',
-              'phase',
-            ].includes(key),
-        ) ||
-        ['offerId', 'proof', 'requestId', 'credential'].some(
-          (key) => parsed[key] !== undefined && typeof parsed[key] !== 'string',
-        ) ||
-        (parsed.phase !== undefined &&
-          parsed.phase !== 'requesting' &&
-          parsed.phase !== 'exchanging')
-      )
-        throw new Error('Invalid peer enrollment record');
-      const state = parsed as EnrollmentState;
-      enrollmentOrigin(state.view.apiBase);
-      if (state.phase) {
-        state.phase = undefined;
-        state.view.status = 'outcome-unknown';
-        state.view.error =
-          'Station restarted during a remote operation; reconcile or revoke the receiver grant before starting again';
-        state.proof = undefined;
-        state.credential = undefined;
-        this.#save(state);
-      }
-      this.#states.set(state.view.id, state);
+        throw new Error('Peer enrollment record changed while reading');
+      parsed = JSON.parse(readFileSync(fd, 'utf8'));
+    } finally {
+      closeSync(fd);
     }
-    this.#prune();
-    if (this.#states.size > MAX_ENROLLMENTS)
-      throw new Error('Too many retained enrollments');
+    if (
+      !record(parsed) ||
+      !record(parsed.view) ||
+      parsed.view.id !== id ||
+      typeof parsed.view.expiresAt !== 'number' ||
+      typeof parsed.view.apiBase !== 'string' ||
+      typeof parsed.view.environmentId !== 'string' ||
+      typeof parsed.view.status !== 'string' ||
+      !STATUSES.has(parsed.view.status) ||
+      !Number.isSafeInteger(parsed.view.expiresAt) ||
+      (parsed.view.label !== null && typeof parsed.view.label !== 'string') ||
+      (parsed.view.error !== undefined &&
+        typeof parsed.view.error !== 'string') ||
+      Object.keys(parsed.view).some(
+        (key) =>
+          ![
+            'id',
+            'apiBase',
+            'environmentId',
+            'label',
+            'status',
+            'expiresAt',
+            'error',
+          ].includes(key),
+      ) ||
+      Object.keys(parsed).some(
+        (key) =>
+          ![
+            'view',
+            'offerId',
+            'proof',
+            'requestId',
+            'credential',
+            'phase',
+          ].includes(key),
+      ) ||
+      ['offerId', 'proof', 'requestId', 'credential'].some(
+        (key) => parsed[key] !== undefined && typeof parsed[key] !== 'string',
+      ) ||
+      (parsed.phase !== undefined &&
+        parsed.phase !== 'requesting' &&
+        parsed.phase !== 'exchanging')
+    )
+      throw new Error('Invalid peer enrollment record');
+    const state = parsed as EnrollmentState;
+    enrollmentOrigin(state.view.apiBase);
+    return state;
+  }
+
+  async #exclusive<T>(
+    authorize: () => boolean,
+    operation: () => Promise<T> | T,
+  ): Promise<T> {
+    if (!authorize()) throw new PeerCredentialMutationAuthorizationError();
+    const release = await acquireFileMutationLockAsync(
+      `${this.#directory}.mutation`,
+    );
+    try {
+      if (!authorize()) throw new PeerCredentialMutationAuthorizationError();
+      this.#states.clear();
+      for (const file of readdirSync(this.#directory)) {
+        if (/^[a-f0-9-]{36}\.json$/.test(file)) {
+          const state = this.#readState(file.slice(0, -5));
+          this.#states.set(state.view.id, state);
+        }
+      }
+      this.#prune();
+      return await operation();
+    } finally {
+      await release();
+    }
   }
 
   #save(state: EnrollmentState, reserve = false) {
+    const { flight: _flight, ...persisted } = state;
+    const payload = JSON.stringify(persisted);
+    if (Buffer.byteLength(payload, 'utf8') > MAX_RESPONSE_BYTES)
+      throw new Error('Peer enrollment record too large');
     const directory = lstatSync(this.#directory);
     if (
       !directory.isDirectory() ||
@@ -246,8 +264,7 @@ export class PeerEnrollmentService {
     );
     try {
       if (process.platform !== 'win32') fchmodSync(fd, 0o600);
-      const { flight: _flight, ...persisted } = state;
-      writeFileSync(fd, JSON.stringify(persisted));
+      writeFileSync(fd, payload);
       fsyncSync(fd);
     } finally {
       closeSync(fd);
@@ -262,9 +279,10 @@ export class PeerEnrollmentService {
 
   get(id: string, authorize: () => boolean): PeerEnrollment {
     if (!authorize()) throw new PeerCredentialMutationAuthorizationError();
-    const state = this.#states.get(id);
-    if (!state) throw new Error('Enrollment unavailable');
-    return { ...state.view };
+    if (!UUID.test(id)) throw new Error('Invalid enrollment id');
+    const path = join(this.#directory, `${id}.json`);
+    if (!existsSync(path)) throw new Error('Enrollment unavailable');
+    return { ...this.#readState(id).view };
   }
 
   async #request(
@@ -325,6 +343,13 @@ export class PeerEnrollmentService {
     input: PeerEnrollmentInput,
     authorize: () => boolean,
   ): Promise<PeerEnrollment> {
+    return this.#exclusive(authorize, () => this.#start(input, authorize));
+  }
+
+  async #start(
+    input: PeerEnrollmentInput,
+    authorize: () => boolean,
+  ): Promise<PeerEnrollment> {
     if (!authorize()) throw new PeerCredentialMutationAuthorizationError();
     const origin = enrollmentOrigin(input.apiBase);
     if (
@@ -341,6 +366,12 @@ export class PeerEnrollmentService {
         existing.view.label !== (input.label?.trim() || null)
       )
         throw new Error('Enrollment id belongs to another intent');
+      if (existing.phase)
+        return this.#finish(
+          existing,
+          'outcome-unknown',
+          'A previous remote operation ended without a receipt; reconcile the receiver grant',
+        );
       return { ...existing.view };
     }
     if (
@@ -402,8 +433,11 @@ export class PeerEnrollmentService {
         value.kind !== 'delegation' ||
         value.environmentId !== input.environmentId ||
         typeof value.offerId !== 'string' ||
+        !OFFER_ID.test(value.offerId) ||
         typeof value.proof !== 'string' ||
+        !SECRET.test(value.proof) ||
         typeof value.requestId !== 'string' ||
+        !UUID.test(value.requestId) ||
         typeof value.expiresAt !== 'number' ||
         !Number.isSafeInteger(value.expiresAt) ||
         value.expiresAt <= Date.now() ||
@@ -446,7 +480,11 @@ export class PeerEnrollmentService {
     return { ...state.view };
   }
 
-  cancel(id: string, authorize: () => boolean): PeerEnrollment {
+  async cancel(id: string, authorize: () => boolean): Promise<PeerEnrollment> {
+    return this.#exclusive(authorize, () => this.#cancel(id, authorize));
+  }
+
+  #cancel(id: string, authorize: () => boolean): PeerEnrollment {
     if (!authorize()) throw new PeerCredentialMutationAuthorizationError();
     const state = this.#states.get(id);
     if (!state)
@@ -468,19 +506,20 @@ export class PeerEnrollmentService {
     id: string,
     authorize: () => boolean,
   ): Promise<PeerEnrollment> {
-    if (!authorize()) throw new PeerCredentialMutationAuthorizationError();
-    const state = this.#states.get(id);
-    if (!state)
-      throw new Error(
-        'Enrollment unavailable; this Station may have restarted',
-      );
-    if (state.flight) return state.flight;
-    state.flight = this.#complete(state, authorize);
-    try {
-      return await state.flight;
-    } finally {
-      state.flight = undefined;
-    }
+    return this.#exclusive(authorize, async () => {
+      const state = this.#states.get(id);
+      if (!state)
+        throw new Error(
+          'Enrollment unavailable; this Station may have restarted',
+        );
+      if (state.phase)
+        return this.#finish(
+          state,
+          'outcome-unknown',
+          'A previous exchange ended without a receipt; reconcile the receiver grant before starting again',
+        );
+      return this.#complete(state, authorize);
+    });
   }
 
   async #complete(
@@ -551,7 +590,8 @@ export class PeerEnrollmentService {
           !record(value.device) ||
           value.device.kind !== 'delegation' ||
           value.device.scope !== DELEGATION_SCOPE ||
-          typeof value.credential !== 'string'
+          typeof value.credential !== 'string' ||
+          !SECRET.test(value.credential)
         )
           return this.#finish(
             state,

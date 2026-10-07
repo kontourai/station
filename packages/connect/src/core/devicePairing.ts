@@ -154,7 +154,7 @@ function decodeBase64Url(value: string): string {
 
 export function encodeDevicePairingPayload(offer: DevicePairingOffer): string {
   const payload: ScannedPairingOffer = {
-    ...(offer.kind ? { kind: offer.kind } : {}),
+    ...(offer.kind === 'delegation' ? { kind: offer.kind } : {}),
     protocolVersion: offer.protocolVersion,
     environmentId: offer.environmentId,
     offerId: offer.offerId,

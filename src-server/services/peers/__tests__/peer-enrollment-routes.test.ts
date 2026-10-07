@@ -55,6 +55,7 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
   let exchangeMode: 'normal' | 'lost-response' | 'wrong-kind' | 'wrong-scope' =
     'normal';
   let redirectHandshake = false;
+  let oversizedProof = false;
   let redirectFollowed = false;
   let exchangeCount = 0;
   const observedProtocols: Array<{
@@ -73,9 +74,18 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
       redirectFollowed = true;
       return c.json({});
     }
+    const accessRequest =
+      c.req.path === '/.well-known/station/v1/pairing/access-request';
     const exchange = c.req.path === '/.well-known/station/v1/pairing/exchange';
     if (exchange) exchangeCount += 1;
     await next();
+    if (accessRequest && oversizedProof && c.res.status === 202) {
+      const body = await c.res.json();
+      body.proof = '';
+      const baseBytes = Buffer.byteLength(JSON.stringify(body));
+      body.proof = 'P'.repeat(16_384 - baseBytes - 1);
+      c.res = Response.json(body, { status: 202 });
+    }
     if (!exchange || exchangeMode === 'normal' || c.res.status !== 200) return;
     if (exchangeMode === 'lost-response') {
       c.res = new Response('truncated', { status: 200 });
@@ -160,6 +170,9 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
     },
     expireReceiver: () => {
       receiverNow += 20 * 60_000;
+    },
+    returnOversizedProof: () => {
+      oversizedProof = true;
     },
     redirectReceiver: () => {
       redirectHandshake = true;
@@ -378,6 +391,127 @@ describe('server-owned peer enrollment through Station routes', () => {
     );
     expect(h.redirectWasFollowed()).toBe(false);
     expect(h.pairing.listRequests()).toEqual([]);
+  });
+
+  test('a near-limit malicious proof is rejected without creating an unreadable private record', async () => {
+    const h = await stations();
+    h.returnOversizedProof();
+    expect((await (await h.start()).json()).data.status).toBe('failed');
+    expect(h.pairing.listRequests()).toHaveLength(1);
+    const raw = readFileSync(
+      join(h.localHome, 'security', 'peer-enrollments', `${h.input.id}.json`),
+      'utf8',
+    );
+    expect(Buffer.byteLength(raw)).toBeLessThan(16_384);
+    const restarted = new PeerEnrollmentService(
+      h.store,
+      'Kontour',
+      h.localHome,
+    );
+    expect(restarted.get(h.input.id, () => true).status).toBe('failed');
+    expect((await restarted.complete(h.input.id, () => true)).status).toBe(
+      'failed',
+    );
+    expect(h.exchangeCount()).toBe(0);
+  });
+
+  test('independent owners loading one pending record serialize the single-use remote exchange and observe terminal state', async () => {
+    const h = await stations();
+    await h.start();
+    const other = new PeerEnrollmentService(
+      new PeerCredentialStore(h.localHome),
+      'Kontour',
+      h.localHome,
+    );
+    await h.approve();
+    const before = h.exchangeCount();
+    const results = await Promise.all([
+      h.service.complete(h.input.id, () => true),
+      other.complete(h.input.id, () => true),
+    ]);
+    expect(results.map((result) => result.status)).toEqual([
+      'connected',
+      'connected',
+    ]);
+    expect(h.exchangeCount()).toBe(before + 1);
+    expect(h.pairing.listDevices()).toHaveLength(1);
+    await expect(other.cancel(h.input.id, () => true)).rejects.toThrow(
+      'Remove the saved peer connection',
+    );
+    expect(h.service.get(h.input.id, () => true).status).toBe('connected');
+    expect(h.store.list()).toHaveLength(1);
+  });
+
+  test('independent owners reserve the final capacity slot from current durable inventory', async () => {
+    const h = await stations();
+    for (let index = 0; index < 31; index += 1) {
+      expect(
+        (
+          await h.service.start(
+            { ...h.input, id: randomUUID(), environmentId: randomUUID() },
+            () => true,
+          )
+        ).status,
+      ).toBe('identity-changed');
+    }
+    const other = new PeerEnrollmentService(
+      new PeerCredentialStore(h.localHome),
+      'Kontour',
+      h.localHome,
+    );
+    const intents = [
+      { ...h.input, id: randomUUID() },
+      { ...h.input, id: randomUUID() },
+    ];
+    const reserved = await Promise.allSettled([
+      h.service.start(intents[0], () => true),
+      other.start(intents[1], () => true),
+    ]);
+    expect(
+      reserved.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      reserved.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1);
+    expect(h.pairing.listRequests()).toHaveLength(1);
+    const restarted = new PeerEnrollmentService(
+      h.store,
+      'Kontour',
+      h.localHome,
+    );
+    const accepted = reserved.find((result) => result.status === 'fulfilled');
+    if (accepted?.status !== 'fulfilled')
+      throw new Error('Missing successful reservation');
+    expect(restarted.get(accepted.value.id, () => true).status).toBe('pending');
+  });
+
+  test('completion and cancellation from independent owners preserve one durable outcome', async () => {
+    const h = await stations();
+    await h.start();
+    const other = new PeerEnrollmentService(
+      new PeerCredentialStore(h.localHome),
+      'Kontour',
+      h.localHome,
+    );
+    await h.approve();
+    const [completion, cancellation] = await Promise.allSettled([
+      h.service.complete(h.input.id, () => true),
+      other.cancel(h.input.id, () => true),
+    ]);
+    expect(completion.status).toBe('fulfilled');
+    const final = h.service.get(h.input.id, () => true);
+    if (final.status === 'connected') {
+      expect(cancellation.status).toBe('rejected');
+      expect(h.store.list()).toHaveLength(1);
+      expect(h.exchangeCount()).toBe(1);
+    } else {
+      expect(final.status).toBe('cancelled');
+      expect(cancellation.status).toBe('fulfilled');
+      expect(h.store.list()).toEqual([]);
+      expect(h.exchangeCount()).toBe(0);
+    }
+    if (completion.status === 'fulfilled')
+      expect(completion.value.status).toBe(final.status);
   });
 
   test('a reserved id cannot change destination and public HTTP is refused before contacting it', async () => {

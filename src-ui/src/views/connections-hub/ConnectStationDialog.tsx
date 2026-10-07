@@ -54,7 +54,9 @@ export function ConnectStationDialog({
   const scope = useRef(currentScope).current;
   const controller = useRef({
     apiBase: connections.apiBase,
-    name: connections.activeConnection?.name || connections.apiBase,
+    name: scope
+      ? connections.activeConnection?.name || connections.apiBase
+      : 'No controlling Station',
   }).current;
   const [address, setAddress] = useState('');
   const [code, setCode] = useState('');
@@ -71,10 +73,12 @@ export function ConnectStationDialog({
   const [reservation, setReservation] = useState<string>();
   const [enrollment, setEnrollment] = useState<PeerEnrollment>();
   const [error, setError] = useState<string>();
-  const stale =
-    !scope ||
-    scope.isCurrent() === false ||
-    connections.apiBase !== controller.apiBase;
+  const stale = Boolean(
+    scope &&
+      (scope.isCurrent() === false ||
+        connections.apiBase !== controller.apiBase),
+  );
+  const peerAvailable = Boolean(scope) && !stale;
 
   const reservationKey = (target: Destination) =>
     `station-peer-enrollment:${controller.apiBase}:${scope?.authorityKey ?? 'unscoped'}:${target.apiBase}:${target.environmentId}`;
@@ -169,8 +173,9 @@ export function ConnectStationDialog({
     },
     onSuccess: (result, input) => {
       if (
-        scope?.isCurrent() === false ||
-        connections.apiBase !== controller.apiBase
+        scope &&
+        (scope.isCurrent() === false ||
+          connections.apiBase !== controller.apiBase)
       )
         return;
       setDestination(result);
@@ -219,7 +224,7 @@ export function ConnectStationDialog({
     reservation,
     scope,
     {
-      enabled: Boolean(reservation) && !stale,
+      enabled: Boolean(reservation) && peerAvailable,
       refetchInterval:
         enrollment?.status === 'connected' || enrollment?.status === 'cancelled'
           ? false
@@ -232,7 +237,7 @@ export function ConnectStationDialog({
   const complete = useCompletePeerEnrollmentMutation(controller.apiBase, scope);
   const cancel = useCancelPeerEnrollmentMutation(controller.apiBase, scope);
   const requestPeer = () => {
-    if (!destination || stale) {
+    if (!destination || !peerAvailable) {
       setError(
         'Station access changed. Reopen setup from the original Station.',
       );
@@ -262,7 +267,7 @@ export function ConnectStationDialog({
     );
   };
   const cancelPeer = () => {
-    if (!reservation) return;
+    if (!reservation || !peerAvailable) return;
     cancel.mutate(reservation, {
       onSuccess: (result) => {
         setEnrollment(result);
@@ -456,10 +461,18 @@ export function ConnectStationDialog({
                   <input
                     type="checkbox"
                     checked={peerSelected}
+                    disabled={!peerAvailable}
                     onChange={(event) => setPeerSelected(event.target.checked)}
                   />{' '}
                   Let {controller.name} send work to {destination.label}
                 </label>
+                {!scope ? (
+                  <p>
+                    Device pairing is available. Sending work requires access to
+                    a controlling Station; no peer request can be submitted from
+                    this device yet.
+                  </p>
+                ) : null}
                 {peerInvitation ? (
                   <p>
                     This code offers peer access. Device access needs its own
@@ -475,10 +488,10 @@ export function ConnectStationDialog({
                   disabled={
                     stale ||
                     Boolean(error) ||
-                    (!deviceSelected && !peerSelected)
+                    (!deviceSelected && !(peerSelected && peerAvailable))
                   }
                   onClick={() => {
-                    if (peerSelected) requestPeer();
+                    if (peerSelected && peerAvailable) requestPeer();
                     if (deviceSelected) setDeviceStarted(true);
                   }}
                 >
@@ -522,15 +535,26 @@ export function ConnectStationDialog({
                     ? new Date(observed.expiresAt).toLocaleString()
                     : 'Not yet reported'}
                 </p>
-                {start.error ? (
-                  <Button disabled={peerBusy || stale} onClick={requestPeer}>
-                    Retry this same request
-                  </Button>
+                {start.error || peerStatus.isError || !observed ? (
+                  <>
+                    <p>
+                      The sending Station has not confirmed this request. Retry
+                      retains the same request reference and destination. If its
+                      record was removed, an earlier receiver request may still
+                      exist; review requests on the destination first.
+                    </p>
+                    <Button
+                      disabled={peerBusy || !peerAvailable}
+                      onClick={requestPeer}
+                    >
+                      Retry this same request
+                    </Button>
+                  </>
                 ) : null}
                 {status !== 'connected' && status !== 'cancelled' ? (
                   <>
                     <Button
-                      disabled={peerBusy || stale}
+                      disabled={peerBusy || !peerAvailable}
                       onClick={() =>
                         complete.mutate(reservation, {
                           onSuccess: setEnrollment,
@@ -539,7 +563,10 @@ export function ConnectStationDialog({
                     >
                       Check approval
                     </Button>
-                    <Button disabled={peerBusy || stale} onClick={cancelPeer}>
+                    <Button
+                      disabled={peerBusy || !peerAvailable}
+                      onClick={cancelPeer}
+                    >
                       Cancel peer request
                     </Button>
                   </>
@@ -565,10 +592,7 @@ export function ConnectStationDialog({
                   onCancel={() => setDeviceStarted(false)}
                   onApprovalPending={(pending) => {
                     const existing = connections.connections.find(
-                      (connection) =>
-                        connection.environmentId ===
-                          destination.environmentId ||
-                        connection.url === destination.apiBase,
+                      (connection) => connection.url === destination.apiBase,
                     );
                     const target =
                       existing ??
@@ -590,8 +614,9 @@ export function ConnectStationDialog({
                   }}
                   onPaired={async (result) => {
                     if (
-                      scope?.isCurrent() === false ||
-                      connections.apiBase !== controller.apiBase
+                      scope &&
+                      (scope.isCurrent() === false ||
+                        connections.apiBase !== controller.apiBase)
                     )
                       throw new Error(
                         'Station access changed. Nothing was saved.',
@@ -609,17 +634,15 @@ export function ConnectStationDialog({
                     if (compatibility.blocking)
                       throw new Error(compatibility.reason);
                     if (
-                      scope?.isCurrent() === false ||
-                      connections.apiBase !== controller.apiBase
+                      scope &&
+                      (scope.isCurrent() === false ||
+                        connections.apiBase !== controller.apiBase)
                     )
                       throw new Error(
                         'Station access changed. Nothing was saved.',
                       );
                     const existing = connections.connections.find(
-                      (connection) =>
-                        connection.environmentId ===
-                          destination.environmentId ||
-                        connection.url === destination.apiBase,
+                      (connection) => connection.url === destination.apiBase,
                     );
                     const target =
                       existing ??
@@ -627,23 +650,25 @@ export function ConnectStationDialog({
                         destination.label,
                         destination.apiBase,
                       );
-                    await completeVerifiedPairing(
+                    const committedId = await completeVerifiedPairing(
                       connections,
                       {
                         connectionId: target.id,
                         name: target.name,
                         endpoint: destination.apiBase,
                         activate: false,
+                        bindApprovedEndpoint: true,
                       },
                       result,
                     );
-                    connections.reconcileHandshake(target.id, {
+                    connections.reconcileHandshake(committedId, {
                       environmentId: result.environmentId,
                       authentication: { scheme: 'bearer', protocolVersion: 1 },
                     });
                     if (
-                      scope?.isCurrent() === false ||
-                      connections.apiBase !== controller.apiBase
+                      scope &&
+                      (scope.isCurrent() === false ||
+                        connections.apiBase !== controller.apiBase)
                     )
                       throw new Error(
                         'Device access was saved, but Station access changed. Return to the original Station to review it.',
@@ -661,8 +686,9 @@ export function ConnectStationDialog({
             ) : null}
             {deviceSaved ? (
               <p role="status">
-                Device access saved. Your current Station stays selected; choose
-                the destination from Stations when you want to use it.
+                {scope
+                  ? 'Device access saved. Your current Station stays selected; choose the destination from Stations when you want to use it.'
+                  : 'Device access saved. This Station is available in Stations.'}
               </p>
             ) : null}
           </>

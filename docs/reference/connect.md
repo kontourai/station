@@ -440,12 +440,28 @@ through completion. Both paths preserve an existing selected Station and keep
 native credential custody with the host. Hosts that omit the option retain
 the existing activation behavior.
 
+The new journey uses `bindApprovedEndpoint: true` to bind a browser grant to its
+exact approved address before saving the credential. It refuses an alternate
+address that would replace the controlling Station's route; select that route
+explicitly before pairing there. First-device identification does not require
+an existing controller, while peer management still does.
+
+Connect's root exports `savePendingExchange` alongside `loadPendingExchange`
+and `clearPendingExchange`. A host can retain the verified destination, target
+connection and activation policy before transferring the request into persistent
+approval chrome. These are Device-flow records, not the server-held peer journal.
+
 Pairing offers and pending requests can disclose `kind: 'device' | 'delegation'`;
 absence in an older response means Device. A server's requested delegation kind
 does not grant it approval authority. The public access-request route accepts
 the delegation intent only with the fixed delegation preset and without account
 binding or client-instance inputs. The receiving trusted approver sees **Station
 peer** separately from Device access.
+
+Ordinary Device invitations keep their existing encoded payload shape: default
+Device kind is omitted so older strict invitation parsers remain usable.
+Delegation invitations remain distinguishable and cannot be saved as interactive
+Device access.
 
 The server-held peer ceremony is composed by
 [PeerEnrollmentService](../../src-server/services/peers/peer-enrollment-service.ts)
@@ -455,6 +471,11 @@ environment identity. Proofs and exchanged bearers stay in private server
 records; only enrollment metadata crosses the API. A reported environment ID is
 not signing-key verification. Redirects are refused, and public addresses require
 HTTPS; private/loopback HTTP remains supported for personal setup.
+
+Enrollment mutations use a shared durable lock and refresh their records before
+reservation, exchange, cancellation and pruning. Concurrent runtimes cannot
+consume the same proof or overbook the retained-record limit. Receiver fields
+and serialized private records are bounded before writing.
 
 An explicit completion checks the same receiver and exchanges once after
 approval, then publishes to the existing peer store under current authority.

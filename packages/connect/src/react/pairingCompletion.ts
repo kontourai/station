@@ -1,5 +1,5 @@
 import type { StationProfileCredentialRef } from '@kontourai/station-contracts';
-import type { StationHandshakeIdentity } from '../core/types';
+import type { SavedConnection, StationHandshakeIdentity } from '../core/types';
 import type { PairingResult } from './DevicePairingPanel';
 
 /**
@@ -10,6 +10,7 @@ import type { PairingResult } from './DevicePairingPanel';
  * through without adapting them.
  */
 export interface PairingCompletionDeps {
+  activeConnection?: SavedConnection | null;
   commitVerifiedPairing?: (input: {
     connectionId: string;
     name: string;
@@ -20,6 +21,11 @@ export interface PairingCompletionDeps {
     credentialHandle?: string;
     nextCredentialRef?: StationProfileCredentialRef;
   }) => Promise<string | undefined>;
+  reconcileHandshake?: (
+    id: string,
+    handshake: StationHandshakeIdentity,
+  ) => SavedConnection | null;
+  commitEndpointCandidate?: (id: string) => SavedConnection | null;
   setActiveConnection: (id: string) => Promise<void>;
   setCredential: (id: string, credential: string) => void;
   markDeviceSession: (id: string) => void;
@@ -37,6 +43,8 @@ export interface PairingCompletionTarget {
   endpoint: string;
   /** Save Device access while retaining the caller's selected Station. */
   activate?: boolean;
+  /** A verified exchange approves its exact endpoint, including an identity merge. */
+  bindApprovedEndpoint?: boolean;
 }
 
 /**
@@ -64,6 +72,19 @@ export async function completeVerifiedPairing(
       'Peer Station access cannot be saved as this device’s interactive access. Connect it as a peer instead.',
     );
   }
+  if (
+    target.bindApprovedEndpoint &&
+    target.activate === false &&
+    deps.activeConnection?.environmentId === result.environmentId &&
+    new URL(deps.activeConnection.url).origin !==
+      new URL(target.endpoint).origin
+  ) {
+    const conflict = new Error(
+      'Access was approved, but saving this address would replace your currently selected Station’s route. Your current route and credential are kept. Select the new route explicitly in Stations, then pair it there.',
+    );
+    conflict.name = 'PairingControllerEndpointConflict';
+    throw conflict;
+  }
   const handshake: StationHandshakeIdentity = {
     environmentId: result.environmentId,
     authentication: { scheme: 'bearer', protocolVersion: 1 },
@@ -82,7 +103,22 @@ export async function completeVerifiedPairing(
       ? { nextCredentialRef: result.credentialRef }
       : {}),
   });
-  const connectionId = persistedConnectionId ?? target.connectionId;
+  let connectionId = persistedConnectionId ?? target.connectionId;
+  if (target.bindApprovedEndpoint && !deps.commitVerifiedPairing) {
+    const approved = deps.reconcileHandshake?.(connectionId, handshake);
+    if (!approved || approved.environmentId !== result.environmentId) {
+      throw new Error('The approved Station identity could not be saved.');
+    }
+    const bound =
+      approved.endpointCandidate?.url === target.endpoint &&
+      approved.endpointCandidate.state === 'confirmation-required'
+        ? deps.commitEndpointCandidate?.(approved.id)
+        : approved;
+    if (!bound || bound.url !== target.endpoint) {
+      throw new Error('The approved Station address could not be saved.');
+    }
+    connectionId = bound.id;
+  }
   if (result.browserSession) {
     deps.markDeviceSession(connectionId);
   } else if (result.credential) {

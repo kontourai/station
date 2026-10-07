@@ -87,7 +87,9 @@ describe('peer enrollment caller authority', () => {
           isCurrent: () => true,
         },
       }));
-      const fetch = vi.fn<typeof globalThis.fetch>();
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json({ success: true, data: enrollment }));
       vi.stubGlobal('fetch', fetch);
 
       await expect(

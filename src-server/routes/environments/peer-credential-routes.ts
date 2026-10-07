@@ -163,7 +163,7 @@ export function createPeerCredentialRoutes(
       );
     }
   });
-  app.delete('/enrollments/:id', (c) => {
+  app.delete('/enrollments/:id', async (c) => {
     const request = c.req.raw;
     if (!mutationAuthorized(request))
       return c.json({ success: false, error: 'Forbidden' }, 403);
@@ -172,7 +172,7 @@ export function createPeerCredentialRoutes(
     try {
       return c.json({
         success: true,
-        data: enrollments.cancel(param(c, 'id'), () =>
+        data: await enrollments.cancel(param(c, 'id'), () =>
           mutationAuthorized(request),
         ),
       });
