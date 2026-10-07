@@ -20,6 +20,7 @@ import {
 } from '@kontourai/station-contracts/authority-observation';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
+import type { StarterWorkStatus } from '@kontourai/station-contracts/starter-work';
 import type { ACPConnectionInfo } from '@kontourai/station-sdk';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { pairedDevicePrincipal } from '../src-server/runtime/bootstrap/orchestration-request-principal';
@@ -155,6 +156,7 @@ async function receiverFixture(
     structureModel: '',
     firstRun: { status: 'completed' },
   };
+  const starterTaskStatus: StarterWorkStatus = { state: 'unbound' };
   let exchangedDeviceId: string | undefined;
   await page.route(`${origin}/**`, async (route) => {
     const request = route.request();
@@ -213,6 +215,12 @@ async function receiverFixture(
     }
     if (request.method() === 'GET' && path === '/config/app') {
       return route.fulfill({ json: { success: true, data: config } });
+    }
+    if (request.method() === 'GET' && path === '/api/starter-work/start-task') {
+      // No Starter Task was bound or launched on this receiver.
+      return route.fulfill({
+        json: { success: true, data: starterTaskStatus },
+      });
     }
     if (request.method() === 'GET' && path === '/events') {
       // This fixture owns no EventBus; it proves no live SSE delivery.
