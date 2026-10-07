@@ -379,7 +379,9 @@ describe('phone transcript: one work row per settled turn', () => {
     expect(within(row).queryByText(/BETWEEN:/)).toBeNull();
     // Nothing follows the last call, so its narration is the turn's last word.
     expect(within(row).getByText(/LAST:/)).toBeTruthy();
-    const pending = row.querySelector('.tool-call-batch__pending-grant');
+    const pending = row.querySelector<HTMLElement>(
+      '.tool-call-batch__pending-grant',
+    );
     expect(pending?.textContent).toContain('ls plugins');
     if (!pending) throw new Error('no pending grant outside the fold');
     const approval = pending.querySelector('.tool-call');
