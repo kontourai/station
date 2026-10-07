@@ -76,6 +76,12 @@ Station; newly typed text stays. Remote task submission and Escape do not
 submit or dismiss the underlying foreground composer. Prepared visual skills
 and coding-context drafts keep their existing chat-only path.
 
+The Project header leads with its name, description and observed Git branch.
+The local working-directory path and editor live in Project Settings, alongside
+resource bindings. A branch badge does not claim a GitHub integration or whole
+Project synchronization: portable Project identity and per-Station resource
+bindings remain separate from Git content synchronization.
+
 A Project page start hands the dock its fixed Project without changing the
 ambient dock binding. An unavailable fixed Project blocks starting and keeps
 the message. Returned drafts are scoped to that Project and Station authority.

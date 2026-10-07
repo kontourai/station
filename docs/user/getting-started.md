@@ -146,7 +146,9 @@ Station; choosing a remote task destination does not move that chat.
 An operator's Project page has the same composer in a compact form above its
 activity. Its Project is fixed, so starting there uses that Project even when
 the chat dock is bound elsewhere. A missing Project blocks starting and keeps
-the message. This does not change Home's remembered Project.
+the message. This does not change Home's remembered Project. To inspect or
+change this Station's local folder, open **Settings** on the Project page;
+the folder is workspace configuration rather than the Project's identity.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
 remembered for each project and for **No project** on this browser and
