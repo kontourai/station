@@ -11,6 +11,21 @@
 > canonical orchestration chat. The proposed `/ui-state` endpoint and the older
 > per-Agent route named below are not current instructions for form re-entry.
 
+Current chat-native forms retain edited values and submission status in the
+[chat form draft store](../../src-ui/src/contexts/chat-form-drafts-store.ts),
+scoped to the Station connection, open chat and conversation. Draft identity
+uses the originating result event and block ordinal, with tool-call and message
+identity fallbacks for older parts; supplied form IDs remain in the outgoing
+payload. Streaming settlement, row virtualization and chat switching do not
+reset an edited form. This state lives in memory: closing the chat clears it,
+and reloading the client starts fresh. A pending send shows **Sending…** and
+locks the controls; the normal sender's acceptance changes it to **Submitted**.
+Acceptance can include local queue admission; it does not prove the agent
+processed it. When the sender does not confirm acceptance, the form retains its
+values and stays locked with **Check send status**. Use the conversation’s
+existing send-status and recovery controls: an unconfirmed result can also mean
+the message was queued or its network outcome is uncertain.
+
 *Drafted 2026-06-17. Scopes the roadmap backlog item "AI↔UI bridge expansion (UIBlock form/chart/code, `render_component`, UI-state capture)" (Phase S2 follow-on). This is a **plan**, not an implementation — it names the seams, the design decisions, the phasing, and the calls that are yours.*
 
 ---

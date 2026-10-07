@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
+import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
@@ -253,8 +254,10 @@ function ChatMessageListComponent({
       ? readerRestoreRequest
       : null;
   const [streamingContentRevision, setStreamingContentRevision] = useState(0);
-  const [submittedBlockIds, setSubmittedBlockIds] = useState<Set<string>>(
-    () => new Set(),
+  const formScope = chatFormDraftsStore.scope(
+    apiBase,
+    activeSession.id,
+    activeSession.conversationId,
   );
   const loadingOlderRef = useRef(false);
   const olderCommitPendingRef = useRef(false);
@@ -301,34 +304,46 @@ function ChatMessageListComponent({
   }, [layoutHeight, noteProgrammaticScroll, writeProgrammaticScroll]);
 
   const submitForm = useCallback(
-    (submission: UIBlockFormSubmission) => {
-      if (activeSession.replay || submittedBlockIds.has(submission.blockId))
-        return;
-      setSubmittedBlockIds((prev) => new Set(prev).add(submission.blockId));
+    (submission: UIBlockFormSubmission, formKey: string) => {
+      if (activeSession.replay) return;
+      const pending = chatFormDraftsStore.beginSubmit(
+        formScope,
+        formKey,
+        Object.fromEntries(
+          submission.values.map((field) => [field.name, field.value]),
+        ),
+      );
+      if (!pending) return;
       void sendMessage(
         activeSession.id,
         activeSession.agentSlug,
         activeSession.conversationId,
         formatFormSubmission(submission),
+      ).then(
+        (accepted) =>
+          chatFormDraftsStore.finishSubmit(
+            formScope,
+            formKey,
+            pending,
+            accepted === true,
+          ),
+        () =>
+          chatFormDraftsStore.finishSubmit(formScope, formKey, pending, false),
       );
     },
     [
       sendMessage,
+      formScope,
       activeSession.id,
       activeSession.agentSlug,
       activeSession.conversationId,
-      submittedBlockIds,
       activeSession.replay,
     ],
   );
 
   const uiBlockActions = useMemo(
-    () => ({
-      submitForm,
-      submittedBlockIds,
-      readOnly: Boolean(activeSession.replay),
-    }),
-    [submitForm, submittedBlockIds, activeSession.replay],
+    () => ({ submitForm, formScope, readOnly: Boolean(activeSession.replay) }),
+    [submitForm, formScope, activeSession.replay],
   );
 
   const messages = activeSession.messages || EMPTY_MESSAGES;
