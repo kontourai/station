@@ -458,7 +458,7 @@ describe('ownedOutputs trace to the literal rebuild script', () => {
     // test script and the mobile compiler use src-desktop as that directory,
     // so their shared durable output is src-desktop/target/.
     expect(packageJson.scripts['verify:desktop-rust']).toBe(
-      'mkdir -p dist-server dist-desktop-runtime/node_modules && cd src-desktop && cargo test',
+      'mkdir -p dist-server dist-desktop-runtime/node_modules dist-desktop-runtime/examples && cd src-desktop && cargo test',
     );
     const mobileCompileSource = readFileSync(
       'scripts/check-mobile-compile.mjs',
