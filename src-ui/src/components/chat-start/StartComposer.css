@@ -10,6 +10,69 @@
   width: 100%;
   min-width: 0;
 }
+.start-composer__destination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-1);
+  padding-block: var(--k-space-5);
+  text-align: center;
+}
+.start-composer__destination h2 {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-xl);
+}
+.start-composer__project,
+.start-composer__station {
+  min-height: 44px;
+  max-width: 100%;
+  border-color: transparent;
+  background: transparent;
+  color: var(--k-text-muted);
+}
+.start-composer__project span,
+.start-composer__station span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.start-composer__project:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.start-composer__box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.start-composer__box .start-composer__input {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.start-composer__box:focus-within {
+  border-color: var(--k-focus);
+}
+.start-composer__box .start-composer__input:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.start-composer--compact .start-composer__destination {
+  justify-content: flex-start;
+  padding-block: 0;
+  text-align: left;
+}
+.start-composer--compact .start-composer__destination h2 {
+  flex-basis: auto;
+  font-size: var(--k-text-md);
+}
 .start-composer__input {
   width: 100%;
   box-sizing: border-box;
@@ -35,7 +98,7 @@
 }
 .start-composer__chips {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--k-space-2);
   min-width: 0;
@@ -153,6 +216,7 @@
 }
 .start-menu__search {
   margin: var(--k-space-2) var(--k-space-3);
+  min-height: 44px;
 }
 .start-menu__list {
   overflow-y: auto;
@@ -236,6 +300,9 @@
   flex-wrap: nowrap;
   padding: 6px 12px 6px 4px;
 }
+.start-menu__list .new-chat-modal__agent-side .button--link {
+  min-height: 44px;
+}
 .start-menu__list .new-chat-modal__model-trigger {
   max-width: min(40vw, 200px);
 }
@@ -269,4 +336,23 @@
   background: var(--k-panel-raised);
   color: var(--k-text-muted);
   opacity: 1;
+}
+
+.start-menu__list .new-chat-modal__model-trigger {
+  min-height: 44px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--k-text-muted);
+}
+.start-menu__list .new-chat-modal__agent {
+  padding: var(--k-space-3);
+}
+.new-chat-modal__agent-purpose {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin-top: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }

@@ -150,7 +150,15 @@
 
     "scripts/__tests__/run-vitest-corpus.test.ts",
 
-    "scripts/__tests__/windows-resource-staging.test.ts"
+    "scripts/__tests__/windows-resource-staging.test.ts",
+
+    "scripts/__tests__/veritas-readiness-evidence.test.ts",
+
+    "scripts/evidence-check-execution-gate.mjs",
+
+    "scripts/proof-repo-guardrails.mjs",
+
+    "scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts"
   ],
 
   "checks": [

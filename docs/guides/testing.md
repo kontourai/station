@@ -6,6 +6,13 @@ Normative requirements below describe what a contribution owes; command wiring
 and retained benchmarks describe different facts. A listed test, a generated
 schedule or a prior measurement is not proof that the current revision passed.
 
+Fast CI requests Veritas readiness as JSON so its existing bounded, redacted
+output artifacts retain nested evidence-check commands, exit statuses, stdout
+and stderr. Inspect those artifacts for the causal failure rather than
+rerunning a failed gate to recover its output. Capture limits still apply;
+truncated diagnostics do not establish a complete failure inventory. The JSON
+format does not change readiness requirements or promotion evidence.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
@@ -919,6 +926,11 @@ the change moved any pixels, without paying for the full current screen inventor
 committing a new baseline until the change is intentional.
 
 #### Where the gate runs, and which renderer the baseline is bound to
+
+The gallery-wide system-status handler preserves the live status response and
+replaces only the displayed hostname with `Gallery host`. This keeps a Docker
+container's random name out of exact-pixel references without changing readiness
+or device locality. Screen-specific status fixtures retain their declared scenarios.
 
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is

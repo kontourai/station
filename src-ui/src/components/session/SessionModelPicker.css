@@ -8,11 +8,11 @@
   width: min(380px, calc(100vw - 24px));
   max-height: min(520px, calc(100dvh - 32px));
   overflow: hidden;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-lg);
-  background: var(--bg-primary);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-bg);
   box-shadow: var(--shadow-lg);
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 
 /* The shared title/close-button header lives in `index.css` as
@@ -21,8 +21,8 @@
    stylesheet does. */
 .session-model-picker__models small,
 .session-model-picker__providers small {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
 }
 
 .session-model-picker__reset,
@@ -30,78 +30,78 @@
 .session-model-picker__favorite,
 .session-model-picker__providers button {
   flex: none;
-  border-radius: var(--radius-md) !important;
+  border-radius: var(--k-radius-md) !important;
   transform: none !important;
   box-shadow: none !important;
 }
 
 .session-model-picker__search {
   min-height: 44px;
-  margin: var(--space-3);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  margin: var(--k-space-3);
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
   font: inherit;
 }
 
 .session-model-picker__providers {
   display: flex;
   flex: none;
-  gap: var(--space-1);
+  gap: var(--k-space-1);
   min-width: 0;
   max-width: 100%;
   margin: 0;
   border: 0;
   overflow-x: auto;
-  padding: 0 var(--space-3) var(--space-2);
+  padding: 0 var(--k-space-3) var(--k-space-2);
 }
 
 .session-model-picker__filters {
   display: flex;
   flex: none;
-  gap: var(--space-1);
+  gap: var(--k-space-1);
   overflow-x: auto;
   margin: 0;
   border: 0;
-  padding: 0 var(--space-3) var(--space-2);
+  padding: 0 var(--k-space-3) var(--k-space-2);
 }
 
 .session-model-picker__filters button {
   flex: none;
-  padding: 0 var(--space-2);
-  min-height: 32px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+  padding: 0 var(--k-space-2);
+  min-height: 44px;
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   white-space: nowrap;
 }
 
 .session-model-picker__filters button[aria-pressed="true"] {
-  border-color: var(--accent-primary);
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  border-color: var(--k-action);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
 }
 
 .session-model-picker__providers button {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 36px;
-  padding: 0 var(--space-2);
-  border: 1px solid var(--border-primary);
+  min-height: 44px;
+  padding: 0 var(--k-space-2);
+  border: 1px solid var(--k-line-strong);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   white-space: nowrap;
   cursor: pointer;
 }
 
 .session-model-picker__providers button[aria-pressed="true"] {
-  border-color: var(--accent-primary);
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  border-color: var(--k-action);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
 }
 
 .session-model-picker__providers button:disabled {
@@ -113,10 +113,10 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--k-space-1);
   min-height: 0;
   overflow-y: auto;
-  padding: 0 var(--space-3) var(--space-3);
+  padding: 0 var(--k-space-3) var(--k-space-3);
 }
 
 .session-model-picker__model-group {
@@ -125,7 +125,7 @@
      the native chrome reset keeps the group announced (#1208 delta review). */
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--k-space-1);
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -133,9 +133,9 @@
 }
 
 .session-model-picker__model-group-name {
-  padding: var(--space-2) var(--space-3) 0;
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
+  padding: var(--k-space-2) var(--k-space-3) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -144,19 +144,19 @@
 .session-model-picker__model-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
-  gap: var(--space-1);
+  gap: var(--k-space-1);
 }
 
 .session-model-picker__models [role="option"] {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   justify-items: start;
-  gap: 2px var(--space-2);
+  gap: 2px var(--k-space-2);
   min-height: 52px;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--k-space-2) var(--k-space-3);
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--k-text);
   text-align: left;
   cursor: pointer;
 }
@@ -188,8 +188,8 @@
 .session-model-picker__models [role="option"]:hover,
 .session-model-picker__models [role="option"]:focus-visible,
 .session-model-picker__models .session-model-picker__model--active {
-  border-color: var(--accent-primary);
-  background: var(--bg-hover) !important;
+  border-color: var(--k-action);
+  background: var(--k-panel-raised) !important;
 }
 
 .session-model-picker__models [role="option"]:disabled {
@@ -201,46 +201,46 @@
   min-width: 44px;
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   cursor: pointer;
 }
 
 .session-model-picker__favorite:hover,
 .session-model-picker__favorite:focus-visible,
 .session-model-picker__favorite[aria-pressed="true"] {
-  color: var(--accent-primary);
-  background: var(--bg-hover);
+  color: var(--k-action);
+  background: var(--k-panel-raised);
 }
 
 .session-model-picker__effort {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--k-space-3);
   min-height: 52px;
-  padding: var(--space-3);
-  border-top: 1px solid var(--border-primary);
+  padding: var(--k-space-3);
+  border-top: 1px solid var(--k-line-strong);
 }
 
 .session-model-picker__effort select {
-  min-height: 40px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  min-height: 44px;
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
 }
 
 .session-model-picker__state {
-  padding: var(--space-4);
-  color: var(--text-muted);
+  padding: var(--k-space-4);
+  color: var(--k-text-muted);
 }
 
 .session-model-picker__reset {
   min-height: 44px;
-  margin: 0 var(--space-3) var(--space-3);
-  border: 1px solid var(--border-primary);
+  margin: 0 var(--k-space-3) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   cursor: pointer;
 }
 
@@ -255,11 +255,28 @@
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-radius: var(--k-radius-md) var(--k-radius-md) 0 0;
     padding-bottom: var(--safe-bottom, 0px);
   }
 
   .session-model-picker__providers button {
     min-height: 44px;
   }
+}
+
+.session-model-picker__options-toggle {
+  flex: none;
+  min-height: 44px;
+  margin: 0 var(--k-space-3) var(--k-space-2);
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: transparent;
+  color: var(--k-text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+.session-model-picker__options-toggle:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
 }

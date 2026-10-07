@@ -37,6 +37,11 @@ const experienceRead = vi.hoisted(() => ({
   inventory: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
   refetch: vi.fn(),
 }));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
     namespace: 'authority-1',
