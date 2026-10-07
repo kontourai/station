@@ -96,7 +96,11 @@
 
     "src-ui/src/components/chat/tool-call-groups.ts",
 
-    "src-ui/src/components/chat/tool-call-labels.ts"
+    "src-ui/src/components/chat/tool-call-labels.ts",
+
+    "src-ui/src/components/chat-start/StartComposer.tsx",
+
+    "src-ui/src/__tests__/StartComposerParity.test.tsx"
   ],
 
   "checks": [
