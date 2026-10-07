@@ -62,7 +62,9 @@
 
     "src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx",
 
-    "tests/orchestration-chat-flow.spec.ts"
+    "tests/orchestration-chat-flow.spec.ts",
+
+    "tests/mobile-request-sheet.spec.ts"
   ],
 
   "checks": [
