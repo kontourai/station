@@ -628,7 +628,7 @@ const usageAggregatorState = readRequiredSource(
 );
 for (const requiredHelper of [
   'export function createEmptyUsageStats',
-  'function updateDailyUsage',
+  'export function applyOrchestrationUsageToUsageStats',
   'export function computeStreakStats',
   'export function applyMessageToUsageStats',
   'export function mergeRescannedUsageStats',

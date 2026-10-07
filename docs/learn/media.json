@@ -115,6 +115,58 @@
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
       ]
+    },
+    {
+      "path": "docs/learn/media/new-chat-start-before.png",
+      "kind": "image",
+      "digest": "ca6433882c8c4d19cc008068c7d45f0ff27f25132ac24af448bfa907a7303aec",
+      "alt": "new-chat start controls before the composer redesign at phone width.",
+      "caption": "New-Chat start controls, before the redesign.",
+      "scenario": "Compare shared chat and Project start controls",
+      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification.",
+      "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
+      "documents": [
+        "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/new-chat-start-after.png",
+      "kind": "image",
+      "digest": "a1b54b7a701fa0ba86c54a1cdce5f34c62c0b00aeb5aaba19f66d0b7cf33e7d5",
+      "alt": "new-chat start controls after the composer redesign at phone width.",
+      "caption": "New-Chat start controls, after the redesign.",
+      "scenario": "Compare shared chat and Project start controls",
+      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification.",
+      "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
+      "documents": [
+        "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/project-start-before.png",
+      "kind": "image",
+      "digest": "7184cdff9558420cb706b7aec79d6efc2166a363d697c0747a5481b98553bb2e",
+      "alt": "project start controls before the composer redesign at phone width.",
+      "caption": "Project start controls, before the redesign.",
+      "scenario": "Compare shared chat and Project start controls",
+      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification.",
+      "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
+      "documents": [
+        "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/project-start-after.png",
+      "kind": "image",
+      "digest": "9189c65ad2389f014d2c28a662b70ff638805ab9b8373163d7e48f6ec72e6a49",
+      "alt": "project start controls after the composer redesign at phone width.",
+      "caption": "Project start controls, after the redesign.",
+      "scenario": "Compare shared chat and Project start controls",
+      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification.",
+      "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
+      "documents": [
+        "docs/design/chat-composer.md"
+      ]
     }
   ]
 }

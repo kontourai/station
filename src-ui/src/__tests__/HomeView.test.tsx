@@ -53,6 +53,9 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
   useHostRequestAuthorityScope: () => authorityRef.current,
 }));
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => ({ deviceClass: 'host', hostName: 'Kontour' }),
+}));
 
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
