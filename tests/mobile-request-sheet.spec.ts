@@ -658,7 +658,7 @@ test.describe('Mobile request sheet (#3331)', () => {
       }),
     ).toEqual([true, true, true, true]);
 
-    const dialog = page.getByRole('dialog', { name: 'Approval needed' });
+    const dialog = page.getByRole('dialog', { name: 'Needs approval' });
     const open = async () => {
       await answer.click();
       await expect(dialog).toBeVisible();
@@ -713,7 +713,7 @@ test.describe('Mobile request sheet (#3331)', () => {
     const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE);
     const row = page.locator('.tool-call[data-approval-id="approval-1"]');
     await row.getByRole('button', { name: 'Answer', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Approval needed' });
+    const dialog = page.getByRole('dialog', { name: 'Needs approval' });
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Deny' }).click();
     const denying = dialog.getByRole('button', { name: 'Denying…' });
@@ -800,7 +800,7 @@ test.describe('Mobile request sheet (#3331)', () => {
     const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE);
     const row = page.locator('.tool-call', { hasText: 'rm -rf build' });
     await row.getByRole('button', { name: 'Answer', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Approval needed' });
+    const dialog = page.getByRole('dialog', { name: 'Needs approval' });
     await expect(dialog).toBeVisible();
     await emitMockOrchestrationEvent(
       page,
