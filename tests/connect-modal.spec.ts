@@ -18,7 +18,9 @@ import {
   AUTHORITY_OBSERVATION_SCHEMA_VERSION,
   type AuthorityObservation,
 } from '@kontourai/station-contracts/authority-observation';
+import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
+import type { ACPConnectionInfo } from '@kontourai/station-sdk';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { pairedDevicePrincipal } from '../src-server/runtime/bootstrap/orchestration-request-principal';
 import {
@@ -145,6 +147,14 @@ async function receiverFixture(
       capabilities: { remoteAuth: 1, devicePairing: 1, environmentProof: 1 },
     },
   };
+  // Pairing-only receiver: no installed ACP providers or model selection.
+  const connections: ACPConnectionInfo[] = [];
+  const config: AppConfig = {
+    defaultModel: '',
+    invokeModel: '',
+    structureModel: '',
+    firstRun: { status: 'completed' },
+  };
   let exchangedDeviceId: string | undefined;
   await page.route(`${origin}/**`, async (route) => {
     const request = route.request();
@@ -197,6 +207,16 @@ async function receiverFixture(
         status: 401,
         json: { error: 'authentication_required' },
       });
+    }
+    if (request.method() === 'GET' && path === '/acp/connections') {
+      return route.fulfill({ json: { success: true, data: connections } });
+    }
+    if (request.method() === 'GET' && path === '/config/app') {
+      return route.fulfill({ json: { success: true, data: config } });
+    }
+    if (request.method() === 'GET' && path === '/events') {
+      // This fixture owns no EventBus; it proves no live SSE delivery.
+      return route.abort();
     }
     if (request.method() === 'GET' && path === '/api/auth/authority') {
       const device = pairing.identifyDevice(authorization.slice(7));

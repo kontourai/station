@@ -641,14 +641,6 @@ for (const fixture of [
     });
     await expect(connectionSave).toBeEnabled();
     await connectionSave.click();
-    await expect(
-      page.getByText('Credential required', { exact: true }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByText("This device isn't authorised on this Station", {
-        exact: true,
-      }),
-    ).toHaveCount(0);
     await expect
       .poll(() =>
         page.evaluate(
@@ -669,16 +661,20 @@ for (const fixture of [
         ),
       )
       .toBe(true);
+    await (await openConnectionActionsMenu(connectionsCard, 'Phone Station'))
+      .getByRole('menuitem', { name: 'Check reachability', exact: true })
+      .click();
     await expect
-      .poll(async () => {
-        await (
-          await openConnectionActionsMenu(connectionsCard, 'Phone Station')
-        )
-          .getByRole('menuitem', { name: 'Check reachability', exact: true })
-          .click();
-        return remoteStatusAuthorizations.includes(`Bearer ${CREDENTIAL}`);
-      })
+      .poll(() => remoteStatusAuthorizations.includes(`Bearer ${CREDENTIAL}`))
       .toBe(true);
+    await expect(
+      page.getByText('Credential required', { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("This device isn't authorised on this Station", {
+        exact: true,
+      }),
+    ).toHaveCount(0);
     await connectionsCard
       .getByRole('button', {
         name: 'View details for Phone Station',
