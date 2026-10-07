@@ -172,6 +172,18 @@ for local automation credentials and the repository instructions for arm/confirm
 
 ## Release procedure
 
+The package workflow selects version-PR authentication from the installed
+Changesets readers, including their prerelease filtering. Pending releases
+use the existing repository-scoped automation App installation token for
+GitHub PR creation and updates, so protected-base PR workflows receive those
+events. A missing installation token stops before the action. This also covers
+a manual publish-intent run that must version pending changesets first.
+
+An App-authenticated operation has no publish script. Deliberate package
+publication retains the workflow credential for GitHub operations and npm's
+existing OIDC authentication. Checkout credentials remain non-persistent;
+trigger admission is not check success or publication proof.
+
 1. Choose a release-train base version from repository/provider state and freeze
    a reviewed current-main SHA. Use the version authority in
    [release rings](release-rings.md), not an arbitrary calendar bump.

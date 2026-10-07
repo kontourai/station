@@ -211,6 +211,40 @@ and supervisor unit tests use injected boundaries. Neither their passing result
 nor the existence of the shell lane establishes a completed native run here.
 Mobile background renewal and packaged-platform acceptance remain separate.
 
+### Relay-management source integration
+
+The Connections [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
+is mounted in desktop and selected native relay views. It supports setup-link
+copy, exact installation approval/revocation, single-use invitation issuance,
+and pending account-bound Device approval/denial. Native Project access controls
+are visible only with `manage-members`; writes also require management or
+operate scope. `relay:manage` is explicitly operator-promoted, not a default or
+preset grant, and never substitutes for Project IAM.
+
+The [native account owner](../../src-desktop/src/native_account_operations.rs)
+and [SDK continuation](../../packages/sdk/src/client/application-session-native.ts)
+prepare management POSTs through a dedicated bounded host operation. The generic
+read operation remains GET/HEAD only. The server route and authority owners
+recheck the actual actor, provider currentness and target approval after awaits.
+Full Project invitation links are accepted as token input without changing the
+selected Station.
+
+This records inspected source integration, not a completed native delivery.
+The mounted server/account/native-proof composition suite at `07a7d02ff0`
+has an executed 35/35 receipt and maintained fault/restoration controls. It uses
+controlled peer transport and an external broker stub, with real account/proof
+checks and surface-registry effects. Device approve/deny coverage is admission
+only (`503 enrollment_unavailable`), not an enrollment-decision result. It does
+not exercise Rust IPC, a native shell or physical delivery.
+The account-bound gate now admits exact native relay-management leaves with
+current Device/account proof and separate management scope; credential-only
+account-bound Devices remain refused. This inspected source change does not
+turn a composition keeper into native runtime qualification. Existing simulator
+records for #3114, #3190 and #3199 remain evidence of their own earlier journeys;
+they do not qualify these new operator controls. Released Nightly, physical
+iOS/Android, process-lifecycle and two-human operator/recipient verification
+remain **NOT_VERIFIED** for this delta.
+
 ### Native protected Project pilot
 
 The explicit macOS development lane is:

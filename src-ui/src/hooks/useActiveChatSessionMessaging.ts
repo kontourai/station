@@ -202,6 +202,27 @@ function cachedSummaryAwaitsFirstTurn(
   );
 }
 
+type SendAdmission = 'accepted' | 'not-invoked' | 'indeterminate';
+
+async function observeSendAdmission<T>(
+  invoke: (report: (status: SendAdmission) => void) => Promise<T>,
+  observer: ((status: SendAdmission) => void) | undefined,
+): Promise<T> {
+  let reported = false;
+  const report = (status: SendAdmission) => {
+    reported = true;
+    observer?.(status);
+  };
+  try {
+    const result = await invoke(report);
+    if (!reported) report(result === true ? 'accepted' : 'indeterminate');
+    return result;
+  } catch (error) {
+    if (!reported) report('indeterminate');
+    throw error;
+  }
+}
+
 export function useSendMessage(
   apiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
@@ -261,6 +282,10 @@ export function useSendMessage(
          * default send-while-busy path.
          */
         queueOnBusy?: boolean;
+        /** Form ownership observes admission without inferring delivery from the legacy return value. */
+        onAdmission?: (status: SendAdmission) => void;
+        /** Retire recovery actions whose originating submission was superseded. */
+        claimRetry?: () => boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -325,6 +350,7 @@ export function useSendMessage(
                       )[0];
         if (refusal) {
           addEphemeralMessage(sessionId, { role: 'system', content: refusal });
+          options?.onAdmission?.('not-invoked');
           return false;
         }
       }
@@ -387,6 +413,7 @@ export function useSendMessage(
               },
             ],
           });
+          options?.onAdmission?.('accepted');
           return;
         }
         steerOpenTurn = true;
@@ -682,6 +709,7 @@ export function useSendMessage(
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
         }
+        options?.onAdmission?.('accepted');
         onActiveSessionChange?.(sessionId);
         return options?.dispatch
           ? ({
@@ -758,6 +786,7 @@ export function useSendMessage(
                         : 'Default'
                     })`,
                     handler: () => {
+                      if (options?.claimRetry && !options.claimRetry()) return;
                       const now = activeChatsStore.getSnapshot()[sessionId];
                       // The draft the rollback restored is this message:
                       // sending it empties the composer as a send would.
@@ -771,19 +800,29 @@ export function useSendMessage(
                           attachments: [],
                           attachmentStages: [],
                         });
-                      void sendMessage(
-                        sessionId,
-                        agentSlug,
-                        now?.conversationId ?? conversationId,
-                        content,
-                        attachments,
-                        ambientContext,
-                        resolvedTurnId,
+                      return observeSendAdmission(
+                        (onAdmission) =>
+                          sendMessage(
+                            sessionId,
+                            agentSlug,
+                            now?.conversationId ?? conversationId,
+                            content,
+                            attachments,
+                            ambientContext,
+                            resolvedTurnId,
+                            {
+                              queueOnBusy: options?.queueOnBusy,
+                              onAdmission,
+                              claimRetry: options?.claimRetry,
+                            },
+                          ),
+                        options?.onAdmission,
                       );
                     },
                   },
                 }),
           });
+          options?.onAdmission?.('not-invoked');
           return false;
         }
         // Stop deliberately releases the browser's foreground observer after
@@ -905,6 +944,7 @@ export function useSendMessage(
               },
             },
           });
+          options?.onAdmission?.('accepted');
           return false;
         }
 
@@ -939,6 +979,7 @@ export function useSendMessage(
           ) {
             drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
           }
+          options?.onAdmission?.('accepted');
           return false;
         }
 
@@ -1055,16 +1096,27 @@ export function useSendMessage(
                 ? undefined
                 : {
                     label: 'Retry',
-                    handler: () =>
-                      sendMessage(
-                        sessionId,
-                        agentSlug,
-                        latestState?.conversationId ?? conversationId,
-                        content,
-                        attachments,
-                        ambientContext,
-                        resolvedTurnId,
-                      ),
+                    handler: () => {
+                      if (options?.claimRetry && !options.claimRetry()) return;
+                      return observeSendAdmission(
+                        (onAdmission) =>
+                          sendMessage(
+                            sessionId,
+                            agentSlug,
+                            latestState?.conversationId ?? conversationId,
+                            content,
+                            attachments,
+                            ambientContext,
+                            resolvedTurnId,
+                            {
+                              queueOnBusy: options?.queueOnBusy,
+                              onAdmission,
+                              claimRetry: options?.claimRetry,
+                            },
+                          ),
+                        options?.onAdmission,
+                      );
+                    },
                   },
         });
         // The engine just answered the image question for itself; the
@@ -1094,6 +1146,9 @@ export function useSendMessage(
             reason: translated.title,
           } satisfies OutboundDispatchTransportResult;
         }
+        options?.onAdmission?.(
+          isProvablyNotSent(err) ? 'not-invoked' : 'indeterminate',
+        );
         return false;
       }
     },

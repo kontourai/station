@@ -395,9 +395,10 @@ Owner-directed revision (clarified 2026-09-05): project switching and
 conversation switching are primary phone-header actions. Both stay directly
 reachable with readable current context and 44px touch targets at 320px,
 390px, and 412px widths. Neither requires opening Chat actions first.
-The **Chats and tasks** picker keeps a circular **+** action at the lower
+The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
-**New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
+**New chat**; the mobile header uses its icon-only chat-bubble-plus form.
+It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
 title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
 name. The status line is the ladder's own words (`Needs answer`, `Needs

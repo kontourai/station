@@ -167,7 +167,7 @@ started. If you close the dock's draft instead, the message comes back to Home
 as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
-In the chat dock, the **New chat** button (the pencil on the collapsed bar),
+In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
 **⌘T**, and **New chat** in **Chats and tasks** open the same composer.
 **Explore agents** remains available for deliberate customization.
 

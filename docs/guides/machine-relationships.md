@@ -192,8 +192,9 @@ delivery. A collaborator does not need to contribute a computer, checkout, or
 provider credentials to read that shared work.
 
 The guest entry also mounts Project access controls. Administration requires
-the appropriate current membership plus a separately approved Device operate
-scope; the UI does not confer either. Base Project views remain metadata-only
+the appropriate current membership plus a separately approved Device
+`orchestration:operate` or `relay:manage` scope; the UI does not confer either.
+Base Project views remain metadata-only
 and omit local paths, provider/model configuration, knowledge settings, and
 layouts. See [deployment authentication](deployment-authentication.md#browser-invitation-entry)
 and its linked source owners for the current guest boundaries.

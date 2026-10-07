@@ -132,6 +132,30 @@ selected native route now composes these owners for separate account sign-in,
 invitation acceptance and bounded member reads. This source integration does not
 establish physical iOS or released Nightly qualification.
 
+The [relay management routes](../../src-server/routes/system/relay-management-routes.ts)
+compose the runtime-owned [connector invitation issuer](../../src-server/services/connections/relay-invitation-owner.ts)
+with exact native-surface approval/revocation and pending Device decisions. The
+[actor currency owner](../../src-server/security/relay-management-actor.ts)
+retains the canonical human actor, account state and Device binding;
+[management authority](../../src-server/security/relay-management-authority.ts)
+rechecks explicit Device scope and provider currentness after asynchronous work.
+Target approval/revision is rechecked before issuance or revocation. Public SDK
+projections expose route/trust facts, never issuer credentials.
+
+The [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
+serves desktop and selected native relay views. `relay:manage` (**Manage remote
+access**) requires explicit operator promotion and is excluded from default
+and preset scopes. Only closed relay and Project access management leaves are
+admitted; Project `manage-members` remains independently necessary. A dedicated
+native account host operation prepares the management POSTs without widening
+the generic GET/HEAD signer. Agent, terminal and Task share/unshare authority
+are excluded. The [account-bound gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
+uses the same exact relay-leaf classifier and admits account-bound management
+only with current native proof/account binding and separate `relay:manage`.
+Credential-only account-bound Devices remain gated; capabilities are neutral
+false without management authority. This source composition has no released Nightly,
+physical-device or two-human qualification receipt.
+
 The native [account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
 is a separate foundation. It stores a software P-256 key through the existing
 OS keyring adapter, under an account-proof namespace distinct from broker
@@ -944,6 +968,12 @@ Rust tests and mounted frontend/server composition pass; fresh packaged iOS,
 actual process recovery and two-person public delivery remain unqualified.
 
 ## Native relay link intake
+
+The public [link codec](../../packages/shared/src/native-relay-link.ts) belongs
+to `@kontourai/station-shared/native-relay-link`. SDK and server consumers use
+that published leaf; Connect retains a compatibility re-export of the same
+implementation. Moving its package owner preserves parsing, wire format and
+refusal rules; it does not grant trust or move native secret custody.
 
 The [host intake](../../src-desktop/src/native_relay_link_intake.rs) owns bounded
 invitation custody, public pending handles, cancellation and expiry. The

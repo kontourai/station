@@ -268,8 +268,12 @@ private-tailnet qualification to an Internet relay or a shipped native journey.
 
 The runtime admits the exact native bootstrap POST leaves only through private,
 current Pion provenance and an approved native installation surface. After
-`begin`, candidate proof fences each ceremony operation. Operator surface approval and pending Device enrollment approval require
-a current real operator credential; a routing grant is transport authority only.
+`begin`, candidate proof fences each ceremony operation. The original pairing
+operator routes require a current real operator credential. Separate closed
+relay-management routes also admit a Device explicitly promoted with
+`relay:manage`; they bind each decision to the actual human actor and recheck
+account/provider currentness and exact target approval after asynchronous work.
+A routing grant is transport authority only.
 The server completes enrollment recovery before admission. Credential delivery
 is sealed to the host's enrollment key, with Device binding and activation kept
 separate from account verification.
@@ -280,9 +284,21 @@ shared-work reads still require current account and Project authority. The
 native invitation-acceptance operation verifies both Device and account
 provenance, without a browser cookie or Origin. The fixed native logout retires
 its account continuation and actual provider session; it leaves Device custody
-independent. Ordinary resource writes, operator work and compute are unsupported.
+independent. The closed native relay-management and Project access
+administration leaves use a dedicated account host operation. Project IAM
+remains independent; terminal, Agent and Task share/unshare authority are
+excluded. Account-bound relay management now admits only exact native-proof
+leaves with current Device/account binding and separate `relay:manage`. Ordinary
+credential-only account-bound Devices remain refused; capabilities are a neutral
+read with `canManage: false` without management authority.
+Other resource writes and compute remain unsupported.
 Desktop and mobile host command registration is source evidence; fresh native
 application enrollment and physical-device acceptance remain separate evidence.
+
+`relay:manage` is labelled **Manage remote access** in the Device access editor.
+Only the operator can promote it, and presets/default grants exclude it. This
+source integration has no released Nightly, physical-device or two-human
+qualification receipt. See [the connection controls](../guides/connections.md#invite-a-device-to-a-relay-station).
 
 ## Credentialed consumers (station#2051)
 

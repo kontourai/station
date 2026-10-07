@@ -1,0 +1,7 @@
+{
+  "revision": "d7615f74563acd3103dbb1618d5411d6e9a72149",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed exact04c2cff106 generated payload delta: DeploymentAuthentication replaces obsolete pending-account-gate language with the committed native-proof-only exact relay classifier, current Device/account binding and explicit relay:manage, neutralfalse capabilities and unchanged credential-only refusal/IAM. Canonical owning implementation was source-reviewed; the paragraph still denies inferring native/operator/physical/release proof. Only static body/digest changed; Docs tooling still lists/retrieves/searches static108 topics without acquiring live state/filesystem/network/credential authority. This is a bounded static payload review, not a fresh all-topic/runtime audit.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
