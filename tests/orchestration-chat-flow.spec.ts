@@ -14,6 +14,7 @@ import {
   seedOrchestrationRoutes,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { openChooserFromToggle } from './helpers/region-placement';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 const answerBasisProjection = {
@@ -869,11 +870,14 @@ test.describe('Orchestration Chat Flow', () => {
     // than overflow it with buttons squeezed into vertical letters.
     answer = 'refuse';
     await page.setViewportSize({ width: 1280, height: 800 });
-    // Use a route with ambient regions. Restoring the active conversation on
-    // Home can open its full-screen workspace pane rather than the dock.
-    await page.goto(
-      '/developer/logs?chat=conv-1&dock=open&dockSlotPlacement=right',
-    );
+    // Navigate through the app and place Chat through its public region
+    // owner. A browser reload can retain the Coding pane instead of landing
+    // the ambient shell under the hosted smoke fixture.
+    await page.getByRole('button', { name: 'Home', exact: true }).click();
+    await expect(page).toHaveURL(/\/(?:\?.*)?$/);
+    const rightChooser = await openChooserFromToggle(page, 'Right');
+    await rightChooser.getByRole('menuitem', { name: /^Chat( |$)/ }).click();
+    await expect(rightChooser).toBeHidden();
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
     await page.addStyleTag({
       content:
