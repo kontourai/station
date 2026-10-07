@@ -582,12 +582,14 @@ describe('fast-checks shard execution verdicts', () => {
 });
 
 describe('sharding a real selection', () => {
+  // Repository discovery prepares the fixture; this test checks plan parity.
+  const manifest = buildTestImpactManifest({ root });
+
   test('the shards together run exactly the unsharded plan, with no duplicates', async () => {
     // Every tracked scripts test, as a real diff that touched them all: real
     // manifest routing, the real resource partition (ordinary, process-heavy
     // and the serial groups), no stubbed file list. Changed test files are
     // explicit targets, so no discovery child is needed.
-    const manifest = buildTestImpactManifest({ root });
     const paths = execFileSync(
       'git',
       ['ls-files', 'scripts/__tests__/*.test.ts'],
