@@ -1,0 +1,7 @@
+{
+  "revision": "ce4c3059be6ccf87452ae7f394a6f71eebee86d6",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Re-reviewed the fixed PR smoke contract and referenced approval-layout product fixture after its shell-route correction. The desktop narrow-column leg now reaches ambient DockShell on the Developer route, rather than Home continuation selecting a fullscreen Chat workspace; it still asserts actual dock width, label layout, action containment and disabled width stability. Mobile pending labels use canonical Needs approval. Restored three-spec browser run passed16; removing the accessible label and changing disabled border each caused its intended assertion failure. Fixed PR smoke spec membership is unchanged; no native keyboard/touch or provider proof.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}
