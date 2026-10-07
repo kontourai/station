@@ -2625,7 +2625,7 @@ function primaryCiRouterFindings(file, document) {
 // (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  'a9cb24d77278a4f6838a6640d058a82ff5cfddc6e0bff341126174fd5266d1c5';
+  'cc0241a3b1655e3dc5ededeb69de44109656ef287171c49073b1509cabbf59e9';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')

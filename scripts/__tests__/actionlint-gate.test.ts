@@ -4475,3 +4475,59 @@ describe('Intel macOS pnpm provisioning (#2675)', () => {
     },
   );
 });
+
+describe('landing policy revision and credential binding', () => {
+  function fixture() {
+    const entry = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/landing-automation.yml',
+    );
+    if (!entry) throw new Error('Expected the checked-in landing workflow');
+    return {
+      file: entry.file,
+      document: structuredClone(entry.document) as {
+        jobs: Record<string, { steps: ParsedWorkflowStep[] }>;
+      },
+    };
+  }
+
+  test('admits the reviewed workflow-revision checkout topology', () => {
+    expect(persistentRunnerPolicyFindings([fixture()])).toEqual([]);
+  });
+
+  test.each([
+    ['arm', '${{ github.event.pull_request.base.sha || github.sha }}'],
+    ['dequeue', '${{ github.event.pull_request.base.sha }}'],
+    ['arm', '${{ github.event.pull_request.head.sha }}'],
+    ['dequeue', '${{ github.event.pull_request.head.sha }}'],
+    ['arm', 'main'],
+    ['dequeue', 'main'],
+  ])('rejects %s helper checkout at %s', (job, ref) => {
+    const entry = fixture();
+    const checkout = entry.document.jobs[job].steps.find((step) =>
+      String(step.uses).startsWith('actions/checkout@'),
+    );
+    if (!checkout?.with) throw new Error('Expected reviewed checkout');
+    checkout.with.ref = ref;
+    expect(persistentRunnerPolicyFindings([entry])).toContainEqual({
+      file: entry.file,
+      jobId: 'arm',
+      message:
+        'landing automation must retain its exact reviewed trusted-base credential topology',
+    });
+  });
+
+  test('rejects persisted credentials in the trusted checkout', () => {
+    const entry = fixture();
+    const checkout = entry.document.jobs.dequeue.steps.find((step) =>
+      String(step.uses).startsWith('actions/checkout@'),
+    );
+    if (!checkout?.with) throw new Error('Expected reviewed checkout');
+    checkout.with['persist-credentials'] = true;
+    expect(persistentRunnerPolicyFindings([entry])).toContainEqual({
+      file: entry.file,
+      jobId: 'arm',
+      message:
+        'landing automation must retain its exact reviewed trusted-base credential topology',
+    });
+  });
+});
