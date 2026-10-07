@@ -116,7 +116,11 @@
 
     "src-ui/src/views/home/HomeSurface.tsx",
 
-    "src-ui/src/views/home/__tests__/HomeSurface.test.tsx"
+    "src-ui/src/views/home/__tests__/HomeSurface.test.tsx",
+
+    "src-ui/src/views/project-page/ProjectPageHeader.tsx",
+
+    "src-ui/src/__tests__/ProjectPageHeader.test.tsx"
   ],
 
   "checks": [
