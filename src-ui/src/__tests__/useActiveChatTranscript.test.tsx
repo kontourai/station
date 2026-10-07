@@ -789,13 +789,13 @@ describe('useActiveChatTranscript', () => {
    * #1582 E3/B6. The reader's `settled` is what lets a consumer tell "this
    * conversation is empty" from "nobody has looked yet"; `loading` cannot,
    * because it is false on both sides of the request. The chat dock reads it
-   * to decide whether "Start a conversation" is a claim it is entitled to
+   * to decide whether "Start a chat" is a claim it is entitled to
    * make, so the PRODUCER needs its own coverage — a consumer test given
    * `settled: false` proves the fold, never that anything ever sets it.
    */
   test('does not settle while the read is in flight', async () => {
     // Never resolves: the reader has asked and has no answer, which is the
-    // exact state the empty "Start a conversation" placeholder used to render
+    // exact state the empty "Start a chat" placeholder used to render
     // over.
     fetchWindow.mockImplementation(() => new Promise(() => {}));
 
@@ -1079,6 +1079,77 @@ describe('useActiveChatTranscript', () => {
     });
     // No bytes came down this path; the reference is the only way back to them.
     expect(filePart?.url).toBeUndefined();
+  });
+
+  test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 5,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'go' }),
+        event('e2', 'content.text-delta', { turnId: 'turn-1', delta: 'one' }),
+        event('e3', 'extension.notification', {
+          turnId: 'turn-1',
+          namespace: 'codex-rollout',
+          type: 'context-compacted',
+          payload: { source: 'provider-event' },
+        }),
+        event('e4', 'content.text-delta', { turnId: 'turn-1', delta: 'two' }),
+        event('e5', 'turn.completed', { turnId: 'turn-1' }),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(3));
+    expect(
+      result.current.messages.map((message) => [
+        message.id,
+        message.role,
+        message.contentParts?.map((part) => `${part.type}:${part.content}`),
+      ]),
+    ).toEqual([
+      ['e1:user', 'user', ['text:go']],
+      ['e1:assistant', 'assistant', ['text:onetwo']],
+      [
+        'e3:transcript-marker',
+        'system',
+        ['transcript-marker:Context compacted during this turn'],
+      ],
+    ]);
+  });
+
+  test('station#3415: a marker inside the open turn renders nothing above the streaming turn', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'go' }),
+        event('e2', 'content.text-delta', { turnId: 'turn-1', delta: 'one' }),
+        event('e3', 'extension.notification', {
+          turnId: 'turn-1',
+          namespace: 'codex-rollout',
+          type: 'context-compacted',
+          payload: { source: 'provider-event' },
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', {
+        ...baseSession,
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-1',
+      } as ChatSession),
+    );
+    await waitFor(() =>
+      expect(result.current.messages[0]?.contentParts?.[0]?.content).toBe('go'),
+    );
+    expect(
+      result.current.messages.filter((message) => message.role === 'system'),
+    ).toEqual([]);
   });
 
   test('preserves durable tool-result event identity through replay mapping', async () => {

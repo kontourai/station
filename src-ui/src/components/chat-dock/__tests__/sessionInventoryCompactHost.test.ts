@@ -280,7 +280,7 @@ describe.skipIf(!chromiumAvailable)(
             await page.getByRole('group', { name: 'Inventory groups' }).count(),
           ).toBe(0);
           const close = heading.getByRole('button', {
-            name: 'Close Session inventory',
+            name: 'Close Chat inventory',
           });
           const firstHighlight = highlights.getByRole('button').first();
           const full = page.getByRole('button', { name: 'Open full Basis' });

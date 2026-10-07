@@ -187,6 +187,11 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // so no single pin could stand for it. test-impact-manifest.mjs routes it
   // for any src-ui source change.
   'src-ui/src/__tests__/station-vocabulary.test.ts',
+  // The status-vocabulary scan of the work surfaces: it walks those
+  // directories under src-ui/src and reads every file it finds, so no single
+  // pin could stand for it. test-impact-manifest.mjs routes it for a change
+  // under any root it walks.
+  'src-ui/src/__tests__/session-state-word-consistency.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
   'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
   'src-ui/src/views/project-settings/__tests__/ResourcesSection.test.tsx',
@@ -532,6 +537,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
     'walks its own fixture root',
+  'scripts/__tests__/review-ledger-guards.test.ts':
+    'git ls-files through a helper that runs with cwd set to its temporary fixture repository, never the real tree',
+  'scripts/__tests__/install-ps1-full.test.ts':
+    'lists only the versions directory of the temporary install roots it creates',
   'scripts/__tests__/install-ps1.test.ts':
     'lists only the versions directory of the temporary install roots it creates',
   'scripts/__tests__/install-script.test.ts':
@@ -603,6 +612,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'a Playwright spec; Vitest cannot schedule it (#1817)',
   'src-ui/src/__tests__/station-vocabulary.test.ts':
     'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
+  'src-ui/src/__tests__/session-state-word-consistency.test.ts':
+    'walks the work-surface directories under src-ui/src only; an edge per walked root selects it on every change there',
   'tests/builder-delivery-viewer.spec.ts':
     'a Playwright spec (examples/builder-delivery-viewer); Vitest cannot schedule it (#1817)',
 });

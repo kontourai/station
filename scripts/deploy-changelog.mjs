@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Deploy-ledger changelog slices (station#4572).
  *
@@ -25,9 +26,9 @@
  *   commit — noise with no reader.
  */
 
-import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const CHANGELOG_GROUP_ORDER = Object.freeze([
@@ -177,7 +178,7 @@ export function deriveChangelogSlice({
   sha,
   githubRepo,
   execGit = (args) =>
-    execFileSync('git', args, {
+    execFileSyncBounded('git', args, {
       cwd: repoRoot,
       encoding: 'utf8',
       windowsHide: true,

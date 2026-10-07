@@ -873,6 +873,7 @@ export function useSendMessage(
           // the completion-notice comment above for why that matters.
           addEphemeralMessage(sessionId, {
             role: 'system',
+            queuedRetry: true,
             // archive#3686. Neither line asserts a network condition or a
             // moment of recovery, because this device observes neither.
             //

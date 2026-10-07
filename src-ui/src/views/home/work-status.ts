@@ -1,4 +1,5 @@
-import { relativeTime, relativeTimeAgo } from '../../utils/relativeTime';
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
+import { formatDuration } from '../../utils/relativeTime';
 import type { HomeWorkItem } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
 
@@ -25,14 +26,22 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *
  * Rungs, in the order a reader should expect them down an inbox:
  *
- *  needs approval, needs your answer, waiting on you, queued to send,
+ *  needs approval, needs answer, waiting on you, queued to send,
  *  blocked, interrupted                          (Needs you)
  *  failed, stopped                               (finished)
- *  can't answer here                             (Idle)
- *  sub-agents running, no progress, running      (Running)
+ *  elsewhere                                     (Idle)
+ *  N sub-agents, no progress, running            (Running)
  *  draft                                         (Drafts)
  *  done                                          (finished)
  *  idle                                          (Idle)
+ *
+ * THE ONLY SOURCE OF STATUS WORDS. Every list, card, sheet, pane, banner and
+ * strip that names a conversation's state renders `word` (or `line`) from
+ * here; `session-state-word-consistency.test.ts` fails on a synonym written
+ * anywhere else. The words are short on purpose: the row corner already
+ * carries the time, so an idle row says "Idle" and nothing about when; a
+ * reason (why it failed, why nothing here can answer it) is `reason`, read
+ * by the hover card and the Details sheet, never printed on the row.
  *
  * NOT ON THE LADDER, because nothing computes it: "a sub-agent needs
  * approval". Child work reports only running/settled per child
@@ -80,9 +89,18 @@ export interface WorkStatus {
   tone: WorkStatusTone;
   /** The status word. Always present: status is never colour-only. */
   word: string;
-  /** What the word is about (a tool, a recorded reason, a recency). */
+  /** What the word is about (the running tool, a failure's cause). */
   detail?: string;
-  /** Epoch ms a ticking duration counts from; only while a turn is open. */
+  /**
+   * The longer form behind the word, for the hover card and the Details
+   * sheet: why nothing here can answer, why a run was stopped, where an
+   * attached transcript was started. Never on the row itself.
+   */
+  reason?: string;
+  /**
+   * Epoch ms the line's ticking duration counts from, only while a turn is
+   * open: the turn's start, or for a quiet run the instant it went quiet.
+   */
   since?: number;
   /** The whole line as text at `now`. */
   line: string;
@@ -94,39 +112,27 @@ function epochMs(value: string | undefined): number | undefined {
   return Number.isFinite(ms) ? ms : undefined;
 }
 
-/** "42s", "1m 12s", "1h 04m": a duration that reads the same while ticking. */
-export function formatElapsed(elapsedMs: number): string {
-  const total = Math.max(0, Math.floor(elapsedMs / 1000));
-  const seconds = total % 60;
-  const minutes = Math.floor(total / 60) % 60;
-  const hours = Math.floor(total / 3600);
-  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`;
-  if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
-  return `${seconds}s`;
-}
-
 type Rung = Omit<WorkStatus, 'line'>;
 
-const ATTENTION_WORDS: Record<WorkAttentionKind, string> = {
-  approval: 'Needs approval',
-  answer: 'Needs your answer',
-  waiting: 'Waiting on you',
-  queued: 'Queued to send',
-  blocked: 'Blocked',
-  interrupted: 'Interrupted',
-};
+/**
+ * The ladder's word for one kind of owed decision, for a surface that marks
+ * that decision without a whole row to classify: the transcript's approval
+ * marker says the pill's "Needs approval" from here, not from a copy.
+ */
+export function attentionWord(kind: WorkAttentionKind): string {
+  return SESSION_STATUS_WORDS[kind];
+}
 
-function rungFor(
-  item: HomeWorkItem,
-  facts: WorkFacts | undefined,
-  now: number,
-): Rung {
+function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   if (item.controlMode === 'read-only-attached') {
+    // The row's meta line already names the app; the word says only that
+    // this Station cannot answer in it.
     return {
       rung: 'external',
       lane: 'external',
       tone: 'neutral',
-      word: `Started in ${item.agentLabel}`,
+      word: SESSION_STATUS_WORDS.elsewhere,
+      reason: `Started in ${item.agentLabel}`,
     };
   }
   switch (item.lifecycleLabel) {
@@ -138,25 +144,34 @@ function rungFor(
         rung: kind,
         lane: 'needsYou',
         tone: 'attention',
-        word: ATTENTION_WORDS[kind],
+        word: SESSION_STATUS_WORDS[kind],
       };
     }
     case 'Failed':
+      // The one reason that stays on the row: why it broke is what the user
+      // needs before anything else.
+      return {
+        rung: 'failed',
+        lane: 'finished',
+        tone: 'broken',
+        word: SESSION_STATUS_WORDS.failed,
+        detail: item.failureNotice,
+      };
     case 'Stopped':
       return {
-        rung: item.lifecycleLabel === 'Failed' ? 'failed' : 'stopped',
+        rung: 'stopped',
         lane: 'finished',
-        tone: item.lifecycleLabel === 'Failed' ? 'broken' : 'neutral',
-        word: item.lifecycleLabel,
-        detail: item.failureNotice,
+        tone: 'neutral',
+        word: SESSION_STATUS_WORDS.stopped,
+        reason: item.failureNotice,
       };
     case 'Unanswerable':
       return {
         rung: 'unanswerable',
         lane: 'idle',
         tone: 'neutral',
-        word: "Can't answer here",
-        detail: item.unanswerableNotice,
+        word: SESSION_STATUS_WORDS.elsewhere,
+        reason: item.unanswerableNotice,
       };
     case 'Running': {
       const activity = facts?.activity;
@@ -167,7 +182,7 @@ function rungFor(
           rung: 'childWork',
           lane: 'running',
           tone: 'active',
-          word: `${children} sub-agent${children === 1 ? '' : 's'} running`,
+          word: `${children} sub-agent${children === 1 ? '' : 's'}`,
           since,
         };
       }
@@ -184,24 +199,27 @@ function rungFor(
       const silentSince = epochMs(
         item.turnProgress?.progressSilence?.silentSinceEventAt,
       );
+      //
+      // The duration is how long it has been quiet, not how long the turn
+      // has run: it is the line's one ticking number ("No progress · 4m",
+      // "No progress · Bash · 4m"), the same `since` slot a running row
+      // ticks in, so every surface counts it off the one shared clock
+      // instead of baking a minute count into the word at its own `now`.
       if (silentSince !== undefined) {
         return {
           rung: 'quiet',
           lane: 'running',
           tone: 'caution',
-          word: `No progress for ${relativeTime(silentSince, now)}`,
+          word: 'No progress',
           detail: activity?.toolName,
-          since,
+          since: silentSince,
         };
       }
       return {
         rung: 'running',
         lane: 'running',
         tone: 'active',
-        word:
-          item.activeReason === 'background'
-            ? 'Background work running'
-            : 'Running',
+        word: SESSION_STATUS_WORDS.running,
         detail: activity?.toolName,
         since,
       };
@@ -211,13 +229,22 @@ function rungFor(
         rung: 'draft',
         lane: 'drafts',
         tone: 'neutral',
-        word: 'Draft',
-        detail: 'nothing sent yet',
+        word: SESSION_STATUS_WORDS.draft,
       };
     case 'Completed':
-      return { rung: 'done', lane: 'finished', tone: 'neutral', word: 'Done' };
+      return {
+        rung: 'done',
+        lane: 'finished',
+        tone: 'neutral',
+        word: SESSION_STATUS_WORDS.done,
+      };
     default:
-      return { rung: 'idle', lane: 'idle', tone: 'neutral', word: 'Idle' };
+      return {
+        rung: 'idle',
+        lane: 'idle',
+        tone: 'neutral',
+        word: SESSION_STATUS_WORDS.idle,
+      };
   }
 }
 
@@ -230,17 +257,22 @@ export function workStatus(
   now: number,
   facts?: WorkFacts,
 ): WorkStatus {
-  const rung = rungFor(item, facts, now);
-  const detail =
-    rung.rung === 'idle' && item.updatedAt > 0
-      ? `last activity ${relativeTimeAgo(item.updatedAt, now)}`
-      : rung.detail;
+  const rung = rungFor(item, facts);
   const line = [
     rung.word,
-    detail,
-    rung.since !== undefined ? formatElapsed(now - rung.since) : undefined,
+    rung.detail,
+    rung.since !== undefined ? formatDuration(now - rung.since) : undefined,
   ]
     .filter(Boolean)
     .join(' · ');
-  return { ...rung, detail, line };
+  return { ...rung, line };
+}
+
+/**
+ * The line without its duration: the word and what it is about. For text
+ * that does not tick (a tooltip, a title): a duration frozen at a list's
+ * coarse `now` would disagree with the ticking number beside it.
+ */
+export function workStatusText(status: Pick<WorkStatus, 'word' | 'detail'>) {
+  return [status.word, status.detail].filter(Boolean).join(' · ');
 }

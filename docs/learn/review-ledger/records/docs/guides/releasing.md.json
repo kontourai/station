@@ -40,7 +40,19 @@
 
     "scripts/__tests__/qualification-evidence.test.ts",
 
-    "scripts/__tests__/qualification-repair.test.ts"
+    "scripts/__tests__/qualification-repair.test.ts",
+
+    "scripts/merge-queue-dequeue.mjs",
+
+    ".github/workflows/qualification-health.yml",
+
+    "scripts/qualification-health.mjs",
+
+    "scripts/actionlint-gate.mjs",
+
+    "scripts/__tests__/actionlint-gate.test.ts",
+
+    "scripts/__tests__/merge-queue-dequeue.test.ts"
   ],
 
   "checks": [

@@ -26,6 +26,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
+| [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
+| [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -108,6 +110,16 @@ admission. `account-response-guard.ts` rechecks delivery with zero prefetch. The
 application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
+
+Operator passkeys are a separate, enrollment-only owner so far (#3257). The
+[enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
+owns the confirm-by-code request and the single-use WebAuthn ceremony, and the
+[registry](../../src-server/services/identity/operator-passkey-registry.ts) owns the
+private SQLite file of public keys. The browser half is mounted on the consent
+listener ([routes](../../src-server/runtime/consent/operator-passkey-enrollment-routes.ts));
+the host half is the [operator-only route set](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts)
+behind `station environment operator passkeys`. Nothing authenticates with an
+enrolled passkey yet.
 
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
@@ -1111,6 +1123,13 @@ there is no separately verified remote path. Source tests include the
 [mounted route composition](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts)
 and [target resolver](../../src-server/services/execution-target/__tests__/execution-target-resolver.test.ts).
 
+**Not only dispatch.** `rename_session`'s
+[route](../../src-server/routes/chat/agent-conversation-title.ts) holds a
+caller to the same rule for a stored conversation, which has no Session record
+to read: it asks `target` for the Project named in the conversation's own
+metadata (global when it names none) and passes that to the shared rule, after
+the owner check (which a bound operator caller skips). A named Project Station cannot read refuses.
+
 **Start-time repeat.** The resolved directory is still a string when the engine
 starts. For a new Session and any caller except a bound operator, the route
 helper also returns its decision as a
@@ -1128,7 +1147,12 @@ such as a worktree, is not substituted. The admitted canonical path is written
 to the Session's start metadata as `dispatchCanonicalCwd`; a caller-supplied
 value is removed first. Recovery and the credential-profile restart compare
 the re-resolved folder with that record before starting an engine, and a
-continuation child in the same folder inherits it. The refusal reaches the
+continuation child in the same folder inherits it. An adopted attached-session
+child (Continue in Station, #3386) records its resolved folder the same way,
+so its recovery gets the same comparison. The same record binds a
+conversation's follow-up: a `/chat` request whose workspace names only the
+conversation's Project continues it in the recorded folder rather than the
+Project folder ([continuation check](../../src-server/services/execution-target/execution-target-execution.ts), #3429). The refusal reaches the
 dispatch route as an error with a station-control code and becomes a 403.
 The repeat does not hold a directory handle: the adapter resolves the path
 once more when it spawns the process. Conversation forks and non-engine uses
@@ -1144,6 +1168,95 @@ covers the connection reader; the credential-profile restart has no test.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
+
+## SessionMessageDelivery
+
+An agent that messages another Session must not deliver twice when it retries,
+and must not start a second turn on a Session that is already running one.
+[SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
+is the one place that decides which of those a message becomes, for Station
+Control's `send_to_session` and later for delegation result delivery.
+
+**Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
+decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
+`no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
+pure rule: `auto` steers a running Session and starts an idle one, `start`
+refuses a running one, and `steer` refuses an idle one. The module performs
+nothing itself: the caller supplies the ports for the busy check, a turn start,
+and a receipted steer, each already authorized.
+
+**Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
+`clientInputId` of a steer, so the durable turn claim and the steer receipt
+deduplicate a re-driven delivery. `decided` pins the branch a first attempt took
+(recorded through `recordDecision` before its effect), so a re-drive never turns a
+steer into a start because the turn ended in between. An engine without mid-turn
+input answers the steer as `session_busy`, never as a start.
+
+**Composition and evidence.** The
+[route](../../src-server/routes/orchestration/session-agent-control.ts) checks
+the caller's scope and keys each request in the durable
+[request-key table](../../src-server/services/orchestration/session-control-request-keys.ts)
+(owned by `EventStore`) before it reaches this module. `wait_session` observes
+the same lifecycle fold the steer path reads through
+[SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
+which never acts on the Session. Source tests are the
+[delivery decision table](../../src-server/services/orchestration/__tests__/session-message-delivery.test.ts),
+the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
+and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
+Their presence is not an executed receipt against a real engine. See
+[agent configuration](../guides/self-configuring-agent.md#session-control) for the
+tool-level behavior.
+
+## SessionDigest
+
+An agent deciding whether a peer Session is worth a full transcript read needs
+a cheap account of it, and that account must be what Station recorded, not a
+model's summary. [SessionDigest](../../src-server/services/orchestration/session-digest.ts)
+folds the recorded facts of a conversation's turns into that account for Station
+Control's `get_session_digest`, and the
+[route](../../src-server/routes/orchestration/session-project-activity.ts) that
+serves it also serves `list_project_activity`.
+
+**Interface.** `EventStore.readTurnDigestFacts(threadIds, { beforeGlobalSequence,
+turnLimit })` selects and aggregates in SQLite the facts of a window of turns,
+newest first: the turn's `turn.started` (a steer is not a turn) with a bounded
+prompt prefix, its last terminal event, a count of `tool.started` by tool name,
+the path argument of a successful call whose own `tool.completed` reported an
+`edit`, `delete` or `move` kind (and whether any call of the turn reported a
+kind at all), and the `pull-request` rows the turn declared.
+`EventStore.listThreadIdsStartedIn(projectId)` selects the threads that could
+be in one Project's scope from their start records (`session.started` and `session.configured`, as the scope owner reads them), so the list narrows before
+it folds; it is a candidate list, never the check.
+`digestTurn(facts, children)` bounds each field and `fitDigestPage(turns)` takes
+the longest prefix under 8 KiB, refusing (`DigestTurnTooLargeError`) rather
+than serving a turn that alone exceeds it; a lineage past 500 Sessions is
+refused the same way (`TurnDigestLineageTooLongError`). `encodeDigestCursor` and `decodeDigestCursor` carry the paging
+position, the oldest returned turn's `turn.started` global sequence.
+
+**Invariants.** Nothing is summarized and nothing is named that nothing
+computes: a fact that was not recorded is absent, and a turn whose engine
+reports no tool kinds says `filesReported: false` instead of implying no files;
+and a turn with no terminal event is `open`, not
+guessed. Each field is bounded and says when it was collapsed, so a page ends
+for the byte cap, never by cutting a turn, and paging covers each turn once.
+Delegated children are the Sessions Station derived as launched from the
+conversation (`listSessionsNamingParents`, `stationDerived`) that started within
+a turn's window (the parent is recorded per conversation, not per turn), and a child the caller may not see is not counted.
+
+**Composition and evidence.** The route decides authority per Session before
+reading anything: the owner-scoped read model, the shared scope rule
+(`stationControlScopeRefusal` with the owner's Project `view` action), and no
+remote host. A Session out of scope reads as not found. The status word is
+`sessionLadderWord` in the
+[session-attention contract](../../packages/contracts/src/session-attention.ts),
+the derivation the UI's status ladder also reads. The
+[mounted matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts)
+drives every caller kind against same-Project, other-Project, global, other-owner
+and remote targets over real events, and the
+[fold tests](../../src-server/services/orchestration/__tests__/session-digest.test.ts)
+pin the bounds. Their presence is not an executed receipt against a real engine.
+See [agent configuration](../guides/self-configuring-agent.md#project-activity)
+for the tool-level behavior.
 
 ## ConversationSessionLineage
 
@@ -1189,11 +1302,19 @@ room effect fires.
 `isSessionLifecycleStateAtRest` answers "is this session doing anything";
 `sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.
 
+A model change on a Session that never ran a turn also names it for retirement.
+The stop is `OrchestrationService.retireNeverRanSession`, decided under that
+Session's lifecycle lock: it refuses a Session with turn facts, a dispatched or
+active turn, or one that is the conversation's current Session again. A send that
+has resolved the predecessor but not yet called `dispatch` is not visible to it.
+
 A child reservation is not an engine start and carries no caller-controlled workspace,
 owner, tenant, cursor, or transcript fact. Those remain composed by the
 foreground/orchestration seam from the immutable predecessor binding.
 Conversation closure and multi-session event/history aggregation remain outside
-this Module.
+this Module. Readers aggregate through the lineage order it records: the
+conversation event window and the conversation message read
+(`conversationSessionIds`) both cover every Session, oldest first.
 
 **Code and evidence.** `EventStore` composes the
 private SQLite persistence Adapter at startup and while it first persists a
@@ -1289,9 +1410,9 @@ Adopting a discovered read-only engine session may fork a provider child before 
 
 Recovery must distinguish a requested retry, an observed provider turn, and an adopted credential profile. The [recovery ledger](../../src-server/services/orchestration/recovery-ledger.ts) owns dispatch state; the [credential application protocol](../../src-server/services/orchestration/credential-application-ledger.ts) owns the separate profile mutation and its acknowledgement.
 
-**Interface.** `RecoveryLedger` owns recovery arm, immutable projection, due/profile claim, observed provider correlation, terminal/cancel, compensation, and startup reconciliation. A `RecoveryClaim` closes over one dispatch attempt and can replay with correlation, release only before invocation, accept provider evidence, become indeterminate, and prepare a credential application. `prepareCredential` passes the claim-local opaque application key to private `CredentialProfileRecoveryAdapter.stage`; its `ConnectionService` Implementation calls `CredentialApplicationFactory.start` and returns a state-bound `CredentialApplicationHandle` for reserve/stage/settle/ack. This is deliberate dual composition: RecoveryLedger owns dispatch truth while Factory/Handle owns exact credential evidence. The correlation key crosses only the server-owned recovery/connection composition; it is removed from snapshots, route projections, and configuration output.
+**Interface.** `RecoveryLedger` owns recovery arm, immutable projection, due/profile claim (plus the user's immediate claim of a waiting usage-limit stop), observed provider correlation, terminal/cancel, compensation, and startup reconciliation. A `RecoveryClaim` closes over one dispatch attempt and can replay with correlation, release only before invocation, accept provider evidence, become indeterminate, and prepare a credential application. `prepareCredential` passes the claim-local opaque application key to private `CredentialProfileRecoveryAdapter.stage`; its `ConnectionService` Implementation calls `CredentialApplicationFactory.start` and returns a state-bound `CredentialApplicationHandle` for reserve/stage/settle/ack. This is deliberate dual composition: RecoveryLedger owns dispatch truth while Factory/Handle owns exact credential evidence. The correlation key crosses only the server-owned recovery/connection composition; it is removed from snapshots, route projections, and configuration output.
 
-**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns the records it successfully observed or changed. Its current scan wrappers return an empty list on a coordinator exception as well; an empty sweep is therefore not proof that storage has no remaining obligations. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback.
+**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns the records it successfully observed or changed. Its current scan wrappers return an empty list on a coordinator exception as well; an empty sweep is therefore not proof that storage has no remaining obligations. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback. A still-waiting intent (armed, never claimed) can be retired without a dispatch as `manual` or `canceled`, with an `outcomeReason` the projection carries (#3157). Shutdown fences every pending intent except a usage-limit one that only waits for its reset or was left to the user because automatic resume was off; those hold no dispatch, and a restart rebuilds the waiting timer. Only usage-limit intents are gated: when one is due, `SessionRecoveryCoordinator` reads the `usageLimitAutoResume` setting and retires the intent if a newer turn started in the conversation, a request is open, or the Session closed; a newer turn also retires one left to the user. Ordinary timed recovery is unchanged.
 
 **Code and evidence.** `EventStore` composes the private RecoveryLedger and CredentialApplicationFactory/Handle Implementations over SQLite at runtime startup. `SessionRecoveryCoordinator` uses ordinary recovery claims; `CredentialRecoveryModule` receives opaque startup/claim capabilities and the concrete credential Adapter. Real SQLite proof is in `recovery-ledger.test.ts`, `credential-application-ledger.test.ts`, `credential-recovery-module.test.ts`, and `session-recovery-coordinator.test.ts` under `src-server/services/orchestration/__tests__/`. **Do not reintroduce:** `RecoveryDispatchSettlement`, process-local correlation maps, raw attempt IDs, public storage reopen operations, or automatic retry of indeterminate work.
 
@@ -1333,6 +1454,12 @@ Adapters, app/ACP configuration readers, public identity mapping, and clock, the
 `ConnectionInspector` private to its inventory publication path. A non-`inspected`
 outcome rejects publication with an explicit retry-before-publish error; routes receive
 the resulting projection rather than classify inspection facts themselves.
+Engine attribution does not depend on that publication: the inspection is total, so one
+failing Adapter or a timed-out read would erase every connection's engine.
+`listEngineConnectionIdentities` derives each registered connection's `engineId` from the
+Adapter (`engineIdForAdapter`, `'acp'` for ACP connections) through the same public-identity
+resolver, per Adapter, with no probe; the Agent catalog and `/:slug/binding` read it, while
+readiness keeps the live read (#3355).
 `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
 abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
 reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims
@@ -1362,12 +1489,42 @@ Datum only; they never materialize. Resolution requires one current, non-revoked
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
 
+**Ownership (#3279).** A binding has an owner: `instance` (absent on records written
+before #3279, which keep their behavior), `principal`, or `principal-project`. The
+owner id is an existing human `PrincipalRef.id` from request resolution; a paired
+device without a person, a non-human principal, or a hosted request owns none
+([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
+`create` currently refuses any owner but `instance` (`owner: "self"` on
+`POST /api/secret-bindings` returns a typed 400, "Person-owned secret bindings are not
+available yet."), because no consumer can use one; the rules below govern person-owned
+records that already exist and the future single-principal consumer. List, get, replace, revoke, and integration bind/unbind (including the grant and
+ungrant inside them) take the request principal as viewer. One typed not-found refusal
+covers a missing binding and another person's, and `/api/secret-bindings` returns it as
+the same 404 body on get, replace, revoke, bind, and unbind; request validation that
+runs before the lookup still returns 400 for both. An instance-owned `create` with
+an id already in use is refused, so it reveals that the id exists, including one held
+by an existing person-owned record; that follows from the single global id namespace
+and is accepted for now. A person-owned `create` is refused before the id check, so it
+reveals nothing. A caller without a viewer, including
+stored-env migration, sees and grants only instance bindings. Resolution refuses a
+person-owned binding with `owner_mismatch` unless the invocation names that principal
+(and Project). Stdio MCP children and ACP providers are shared and name none, so
+`grant` refuses a person-owned binding for either consumer (a typed 400, checked after
+the not-found lookup) until a child can serve a single principal; integration bind
+always goes through `grant` for such a binding, even when a grant is already on
+record. New integration env
+references therefore name only instance bindings, and the integration binding
+projection lists every reference, unfiltered, for every caller.
+
 **Seam, Implementation, callers, and tests.** Runtime bootstrap constructs
 `FileSecretBindingAdministration`, retains administration for `/api/secret-bindings`,
 and injects the narrow resolver into MCP establishment. `establishMcpSecretChild()`
 resolves fresh child-only environment values and records success only after
 connection/handshake succeeds; unsupported transports and the built-in station-control
-child refuse authored injection. Changing grants does not erase values already delivered
+child refuse authored injection. Attaching a binding to a command-launching
+server (bind, migrate-stored-env, or replacing a binding already bound to one) takes
+the operator or a device holding `coding:exec` at the route (`routes/secret-bindings.ts`),
+because the value becomes that command's environment. Changing grants does not erase values already delivered
 to a running child. The same store separately implements `resolveForAcpProvider()` for
 exact connection/provider/header grants, consumed by the ACP provider-configuration
 route; that is not generic MCP header injection. The Datum adapter is the contracts
@@ -1424,7 +1581,15 @@ same-turn error context for `acp.turn-error-cause`. It still publishes the
 opaque event. The [UI handler](../../src-ui/src/hooks/orchestration/extensionHandlers.ts)
 handles Kiro authentication/compaction, Claude activity and retained task
 history, and engine MCP progress. `acp.host-chrome` entries are intentional
-transcript no-ops, not visible UI implementations. Claude task registry/settled
+transcript no-ops, not visible UI implementations. `transcript.marker` entries
+are derived from the [marker table](../../packages/shared/src/extension-transcript-markers.ts)
+that the [transcript projection](../../packages/shared/src/runtime-event-projection.ts)
+reads: an attached-session source's context compaction or rewind becomes a
+system row with a fixed label, drawn as a quiet line, and the UI handler
+leaves it to the projection. A marker never splits a turn: one that arrives
+during a turn is held until the turn closes and follows its single answer row,
+so the turn keeps its canonical id and answer eligibility. One table entry binds and renders a tuple; the
+label never comes from the engine payload. Claude task registry/settled
 bindings remain for older replay; current child work uses its canonical event.
 Unknown tuples have no application semantics, though bounded diagnostics and
 the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)
@@ -3059,6 +3224,8 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 
 **Code and evidence.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.
 
+**Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
+
 The Task dispatcher additionally composes a server-owned room execution
 binding and the existing `SessionTurnBoundaryAuthority`. One durable
 `task-dispatch` record spans external claims, provider creation, graph
@@ -3656,3 +3823,16 @@ separate platform evidence. Do not revive the deleted `notification_watch.rs`
 as a second reader: it would bypass the delivery router's envelope and privacy decisions.
 See [desktop alerts](../guides/desktop-tray.md#desktop-alerts-while-the-window-is-hidden)
 for the user-facing lifecycle.
+
+## Project tool defaults
+
+[Project tool composition](../../src-server/services/projects/project-tools.ts)
+adds configured MCP IDs and detects registered Project Knowledge stores.
+The external [session resolver](../../src-server/services/orchestration/session-agent-resolution.ts)
+captures those defaults at session start. Native chats use
+[Project tool context](../../src-server/routes/chat/project-tool-context.ts) and an
+[Agent-owned tool view](../../src-server/runtime/tools/agent-tool-view.ts), retaining
+prompt, memory, hooks and configuration-generation guards. Hookless temporary
+model recovery refuses positive additions. Agent restrictions and store ACLs
+remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)
+explains the UI and opt-out behavior.

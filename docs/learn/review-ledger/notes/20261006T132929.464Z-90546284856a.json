@@ -1,0 +1,13 @@
+{
+  "revision": "f3a53447ff86e0a2124774ed5e1b58c73c1129f6",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Added the ordering and no-exemption statements against secret-bindings.ts bindingMayAttach and the service (secret-binding-administration.ts: person-owned bindings cannot be created or granted; SECRET_BINDING_PERSON_GRANT). Checked the claim about env declarations in packages/contracts/src/tool.ts: credentialOwnership is a flag with no env name, and stdio env keys are instance-level. Pinned by command-choice-authority.routes.test.ts and connected-accounts.e2e.test.ts.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/reference/api.md","note":"Added the 404 and 400 ordering sentence for secret-binding binds against secret-bindings.ts and the tests; no env name is exempt.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-read the secret-binding module note: its route-level command grant sentence still holds, and the hidden or person-owned bind ordering is a route detail documented in the threat model.","inputs":["docs/architecture/module-map.md","src-server/routes/secret-bindings.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Cites api.md; the added secret-binding ordering sentence does not change the integration steps.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

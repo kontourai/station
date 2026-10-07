@@ -19,6 +19,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stageBundledRegistry } from './bundled-registry.mjs';
 import { createPackagedReleaseManifest } from './container-release-metadata.mjs';
 import {
   NON_RUNTIME_ARTIFACT,
@@ -459,6 +460,7 @@ async function stagePortableServerTree({
   cpSync(join(projectRoot, 'schemas'), join(stageRoot, 'schemas'), {
     recursive: true,
   });
+  stageBundledRegistry({ projectRoot, outputRoot: stageRoot });
   stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);
   // As in a source release (whose tarball is the repository), the archive

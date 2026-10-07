@@ -10,19 +10,19 @@
   "limits": "No exhaustive semantic or compatibility audit of all contract exports, external runtime matrix or npm publication proof. Existing pure helpers are described, not authorization to move new general-purpose services into contracts. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"packages/contracts/src/live-surface.ts\",\"ours\":{\"digest\":\"9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626\",\"revision\":\"57980be1afd64ff365472c005a13fce3d5c76ced\"},\"main\":{\"digest\":\"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546\",\"revision\":\"b2a69152a03d8221d5a04283d645f9e36bd0fdef\"}},{\"path\":\"packages/contracts/package.json\",\"ours\":{\"digest\":\"43543da11ee56e6978d3f13131846cd118a4390639c84528a840eb54880f60b4\",\"revision\":\"7dc84da36281cace63d55fbd59fac3f64fcb3721\"},\"main\":{\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"}}].\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/contracts/package.json ours={\"digest\":\"2b52cd05c0425c00020227cb2bcd14ad0ae4efedcc3c02d63ec62655b33ffbef\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"4207a40b79f1ca84ab14d89cbfa7dd56b3f1c95ff20d9b37abd90216969325ca\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
 
   "sources": [
+    "packages/contracts/package.json",
+
+    "packages/contracts/package.json#/exports",
+
+    "packages/contracts/package.json#/files",
+
     "packages/contracts/src/child-work.ts",
 
     "packages/contracts/src/index.ts",
 
     "packages/contracts/src/live-surface.ts",
 
-    "packages/contracts/src/task-basis-mcp.ts",
-
-    "packages/contracts/package.json#/exports",
-
-    "packages/contracts/package.json#/files",
-
-    "packages/contracts/package.json"
+    "packages/contracts/src/task-basis-mcp.ts"
   ],
 
   "checks": [

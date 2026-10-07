@@ -1,0 +1,21 @@
+{
+  "revision": "4fdb52af2f8a9b5ac0c38ebaed4c0ad56d1fdb89",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Re-reviewed the transfer-gate line against the second fix round: the gate now surfaces scenario refusal text and names STATION_TRANSFER_CAPTURE_TIMEOUT_MS for any 'barrier timed out' message. The AGENTS.md sentence about the variable stays accurate; no prose change.","inputs":["AGENTS.md","scripts/orchestration-transfer-gate.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-reviewed against the testing-guide addition about gate FAIL-line text and failure diagnostics. Hook order, readiness selection and completion evidence claims are unaffected.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-reviewed the transfer-gate section. Added: any 'barrier timed out' message names the setting on the gate FAIL line (checked in runTransferCapture and executed through it by the integration tests); a missing trailing activity frame reports the activity frames seen and is flagged as a possible route regression, not load; a live phase that is not one heavy turn fails with frame count, activityFrames and identities in .failure.json (checked in the scenario). Fault-injected each. Rest of the guide not re-read.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-reviewed against the testing-guide edit and gate change: no bound widened, no guard bypassed; the new FAIL-line extraction only surfaces existing text. Instruction text unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Re-reviewed against the scenario and gate changes. Fixed clock, 44/42 frames and ceilings are unchanged; the changes only add diagnostics for refusals and name the timeout setting on barrier failures.","inputs":["scripts/fixtures/orchestration-transfer/README.md","scripts/orchestration-transfer-gate.mjs","src-server/__test-utils__/orchestration-transfer-scenario.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-reviewed unchanged server instructions against the testing-guide edit; test-utility diagnostics only, no route or service behavior changed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-reviewed unchanged UI instructions against the testing-guide edit; nothing UI-facing changed in this round.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-reviewed unchanged test instructions against the testing-guide edit. The new tests drive the real scenario failures through the real runTransferCapture FAIL-line path and were each fault-injected.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -1146,6 +1146,14 @@
     min-height: 44px;
   }
 
+  /* Every "type to narrow this list" field (index.css's
+     `.list-filter-input`): the split-pane list header and the provider
+     picker's modal, which borrows the class outside a split pane (#3061,
+     #3102). The base rule and the phone rule (40px) are single-class too. */
+  .list-filter-input.list-filter-input {
+    min-height: 44px;
+  }
+
   /* Moved here from index.css, unchanged. It was added to the entry sheet on
      this lane's base branch, where `useIsMobile.test.tsx` forbids any `@media`
      condition that is not `MOBILE_MEDIA_QUERY` byte-for-byte — so the base
@@ -1231,6 +1239,33 @@
   display: block;
 }
 
+/* A send queued to retry by itself is not a failure, but its notice carries the
+   one way to discard it, and that sits in the transcript this same state
+   shrinks to nothing. The composer repeats just the action, in the controls row
+   (already a 44px touch row, so the draft's floor is untouched); the notice's
+   words are its accessible description. The shared `-actions` row rule
+   (index.css) gives the button its 44px floor. */
+.chat-input__queued-retry-actions {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.chat-dock__body[data-composer-priority] .chat-input__queued-retry-actions {
+  display: inline-flex;
+}
+
+.chat-input__queued-retry-actions > button {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* The banner steps aside (the composer's own line repeats what failed). The
    transcript only gives up its padding and shrinks to nothing: it is never
    taken out of the layout, so a stale reading cannot remove the conversation. */
@@ -1240,6 +1275,17 @@
 
 .chat-dock__body[data-composer-priority] > .chat-messages {
   padding-block: 0;
+}
+
+/* With no room for the transcript there is nothing to scroll back to, so the
+   transcript's Scroll to bottom control (portaled into the composer's activity
+   row) is not shown, and an activity row left with no status pill takes no
+   height. Under load the transcript can report a scroll while it is still
+   collapsing, and that phantom row pushed the composer below the viewport. */
+.chat-dock__body[data-composer-priority]
+  .chat-input__activity
+  .chat-scroll-to-bottom {
+  display: none;
 }
 
 /* Composer validation and attach-time notes sit in the fieldset's normal
@@ -2073,9 +2119,75 @@
   align-self: stretch;
   max-width: none;
 }
-.message-row--compact:not(.message-row--user) > .message-details__trigger {
-  align-self: flex-end;
+.message-row--compact:not(.message-row--user) > .message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
   margin-top: -10px;
+}
+.message-meta__time {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+/* A failure a later identical call recovered: history, not a verdict. */
+.tool-call-batch__retried {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+/* Narration a folded turn moved into its sheet, between the calls it was
+   written between: the transcript's own prose, quieter than the answer. */
+.tool-call-batch-sheet__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.tool-call-batch-sheet__note > :first-child {
+  margin-top: 0;
+}
+.tool-call-batch-sheet__note > :last-child {
+  margin-bottom: 0;
+}
+
+/* A long chat title leaves the phone header's project control 40px of content
+   width (measured at 320, 390 and 412px), where it only ever read "New ch… /
+   No …"; there it collapses to its folder glyph, and the button's aria-label
+   still names the project. The shortest title ("Chat") leaves 56px at 320px,
+   where "No pr…" still reads, so the cut sits between the two at 48px. The
+   base header rules live in index.css; these are parent-qualified so source
+   order cannot decide. */
+.chat-dock__mobile-header .chat-dock__mobile-project {
+  container: chat-dock-mobile-project / inline-size;
+}
+.chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+  display: none;
+  color: var(--text-secondary);
+}
+@container chat-dock-mobile-project (max-width: 48px) {
+  .chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+    display: inline-flex;
+  }
+  .chat-dock__mobile-project .chat-dock__mobile-project-lines {
+    display: none;
+  }
+}
+
+/* Phone density: the transcript's own 16px gap separates rows; the base 16px
+   margin on top of it doubled every step. A virtualized transcript positions
+   rows absolutely, where the container gap does not apply, so the margin
+   stays its only spacing there. */
+.message-row--compact {
+  margin-bottom: 0;
+}
+[data-transcript-row] .message-row--compact {
+  margin-bottom: var(--k-space-4);
+}
+/* A thin rule opens each exchange after the first (MessageBubble sets the
+   class on every phone user row but the transcript's first). */
+.message-row--compact.message-row--exchange-start {
+  border-top: var(--k-border-thin) solid var(--k-line);
+  padding-top: var(--k-space-4);
 }
 .message-row--compact .message {
   padding: 10px 14px;
@@ -2580,9 +2692,7 @@
   }
   .mobile-task-switcher__list .chat-dock-inbox__group-label,
   .mobile-task-switcher__list .chat-dock-inbox__section-toggle {
-    font-size: var(--k-text-md);
-    text-transform: none;
-    letter-spacing: normal;
+    --work-group-label-size: var(--k-text-md);
   }
   /* Composer two-row stack: at phone width the desktop layout (textarea +
      a right-hand controls column) squeezes the textarea and pushes the
@@ -2764,6 +2874,13 @@
   }
 
   .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+    display: none;
+  }
+
+  /* In a dock too short for the transcript the Scroll to bottom button is not
+     shown (see data-composer-priority), so it cannot hold this row open. */
+  .chat-dock__body[data-composer-priority]
+  .chat-input__activity:not(:has(.chat-status-pill)) {
     display: none;
   }
 

@@ -1,4 +1,4 @@
-name: Desktop Rust tests
+name: "PR: Desktop Rust"
 
 # The bundled-server supervisor state machine (src-desktop) is a pure,
 # exhaustively unit-tested Rust module. It runs on its own paths-filtered lane
@@ -110,7 +110,7 @@ jobs:
       # target, so no frontend build is needed to type-check Rust.
       - name: Type-check the Android-only code paths
         run: |
-          mkdir -p dist-server dist-desktop-runtime/node_modules
+          mkdir -p dist-server dist-desktop-runtime/node_modules dist-desktop-runtime/examples
           cd src-desktop
           cargo check --target aarch64-linux-android --lib
 

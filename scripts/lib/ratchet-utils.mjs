@@ -8,7 +8,7 @@
  * `git ls-files` + encoding/windowsHide + trim/split/filter boilerplate even though it scans a glob
  * rather than verifying an explicit list) — this is the threshold where extraction pays for itself.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 
 /**
  * Runs `git ls-files` with the given argv (a glob, or `['--', ...explicitPaths]`) and returns the
@@ -17,7 +17,7 @@ import { execFileSync } from 'node:child_process';
  * before this extraction.
  */
 export function gitLsFiles(args) {
-  const out = execFileSync('git', ['ls-files', ...args], {
+  const out = execFileSyncBounded('git', ['ls-files', ...args], {
     encoding: 'utf8',
     windowsHide: true,
   });

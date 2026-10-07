@@ -455,14 +455,22 @@ export const DEFAULT_CONVERSATION_LOOKUPS = {
 
 type StoredChat = {
   sessionId: string;
-  conversationId: string;
+  /** Absent for a client-only draft chat that has not been sent to. */
+  conversationId?: string;
   agentSlug: string;
   title?: string;
   model?: string;
+  modelSource?: string;
   requestedModel?: string;
+  requestedModelSource?: string;
+  defaultModel?: string;
+  defaultModelSource?: string;
   requestedProviderOptions?: Record<string, unknown>;
   agentConnectionId?: string;
   executionMode?: 'external' | 'station';
+  executionScope?: 'project' | 'global';
+  providerId?: string;
+  defaultProviderId?: string;
   provider?: string;
   providerOptions?: Record<string, unknown>;
   projectSlug?: string;

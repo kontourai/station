@@ -357,28 +357,6 @@ export function resolveDockProjectContextDirectory(input: {
   return input.dockProjectWorkingDirectory ?? null;
 }
 
-/**
- * station#4525 review HIGH-3 (blocking): what project a DIRECTLY-created
- * new chat (the pinned single-ready-agent New icon, `openNewChatDirect`)
- * should target. An immutably project-scoped placement (a project's own
- * Coding layout, `hasImmutableProjectScope`) must NEVER receive the dock's
- * ambient, device-global binding — passing it there trips
- * `shouldRouteScopedChatProject` into navigating away to the bound project
- * instead of creating a chat, silently eating the click (the exact HIGH-3
- * repro: New Chat inside `/projects/alpha/layouts/chat` navigated to the
- * globally-bound project and created nothing). Only the AMBIENT dock (no
- * immutable scope) inherits the binding; an immutable scope always targets
- * its OWN project, exactly as it did before this fix.
- */
-export function resolveDirectNewChatProjectSlug(input: {
-  hasImmutableProjectScope: boolean;
-  immutableProjectSlug: string | undefined;
-  dockChromeProjectSlug: string | null;
-}): string | undefined {
-  if (input.hasImmutableProjectScope) return input.immutableProjectSlug;
-  return input.dockChromeProjectSlug ?? undefined;
-}
-
 /** New chat follows the project shown in its dock; an explicit fork wins. */
 export function resolveNewChatModalDefaultProjectSlug(input: {
   forkProjectSlug: string | undefined;

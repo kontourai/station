@@ -49,6 +49,7 @@ import {
   FAST_CHECKS_SLICE_RUN,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
 } from './ci-workflow-governance.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -2080,7 +2081,7 @@ function hasExactPullRequestSecretScanWorkflow(file, document) {
       'concurrency',
       'jobs',
     ]) &&
-    document.name === 'Secret Scan' &&
+    document.name === 'PR: Secret scan' &&
     hasExactKeys(document.on, ['push', 'pull_request', 'workflow_dispatch']) &&
     hasExactMainBranchTrigger(document.on.push) &&
     hasExactMainBranchTrigger(document.on.pull_request) &&
@@ -2109,7 +2110,7 @@ function hasExactSecurityAnalysisWorkflow(document) {
       'concurrency',
       'jobs',
     ]) &&
-    document?.name === 'Security analysis' &&
+    document?.name === 'PR: Security analysis' &&
     hasExactKeys(document?.on, [
       'push',
       PULL_REQUEST_TARGET,
@@ -2620,10 +2621,11 @@ function primaryCiRouterFindings(file, document) {
   return findings;
 }
 
-// This credentialed ingress executes only trusted base policy, never PR code.
+// This credentialed ingress executes only trusted base policy, never PR code
+// (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  '94dd1a86e579bd4d1ab948ce86064c841d83d9d43cbd018555cf344f1817f3f7';
+  'cc0241a3b1655e3dc5ededeb69de44109656ef287171c49073b1509cabbf59e9';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')
@@ -3124,14 +3126,16 @@ function main() {
   let stdout = '';
   let status = 0;
   try {
-    stdout = execFileSync(binary, [], {
+    stdout = execFileSyncBounded(binary, [], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
     status = typeof error.status === 'number' ? error.status : -1;
-    stdout = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    // A capture overflow or spawn failure carries no child output; its
+    // message is the only diagnostic, so never print an empty detail.
+    stdout = `${error.stdout ?? ''}${error.stderr ?? ''}` || error.message;
   }
 
   if (status !== 0 && status !== 1) {

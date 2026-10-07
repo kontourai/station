@@ -2,9 +2,11 @@ import { expect, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import {
   codingNavigation,
+  codingRailMode,
   codingViewItem,
   codingViewRail,
   openCodingView,
+  selectCodingPane,
 } from './helpers/coding-stack';
 import { test } from './helpers/fixture-audit';
 import {
@@ -80,13 +82,18 @@ async function seed(page: Page) {
       },
     },
   });
-  await page.route('**/api/coding/diff**', (route) =>
+  // The Diff pane reads `/api/coding/git/diff` (`fetchCodingDiff`); the
+  // shared seed answers it with an empty patch, so this one change is
+  // registered after it and wins.
+  await page.route('**/api/coding/git/diff?**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         success: true,
-        data: '@@ -1 +1 @@\n-console.log("old")\n+console.log("new")\n',
+        data: {
+          diff: 'diff --git a/app.ts b/app.ts\n--- a/app.ts\n+++ b/app.ts\n@@ -1 +1 @@\n-console.log("old")\n+console.log("new")\n',
+        },
       }),
     }),
   );
@@ -110,6 +117,12 @@ async function landOnChat(page: Page) {
 async function drillIntoDiff(page: Page) {
   await openCodingView(page, 'Diff');
   await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
+  // On its own (no panel head) the Diff draws its own quiet row.
+  await expect(
+    drillInPage(page).locator('.diff-panel__bar').getByRole('button', {
+      name: 'Wrap lines',
+    }),
+  ).toBeVisible();
   await expect(crumbs(page).getByRole('listitem')).toHaveText([
     'Inbox',
     'Dev Agent Chat',
@@ -142,7 +155,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
   }) => {
     const diffReads: string[] = [];
     page.on('request', (request) => {
-      if (/\/api\/coding\/diff/.test(request.url()))
+      if (/\/api\/coding\/git\/diff/.test(request.url()))
         diffReads.push(request.url());
     });
     await landOnChat(page);
@@ -270,7 +283,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
     // The conversation has resolved (its title reaches the breadcrumb), so
     // the header's menu is not rebuilt under the click.
     await expect(crumbs(page)).toContainText('Dev Agent Chat');
-    await page.getByRole('button', { name: 'Collapse chat list' }).click();
+    await page.getByRole('button', { name: 'Hide inbox' }).click();
     await expect(inbox(page)).toHaveCount(0);
 
     await page.reload();
@@ -278,7 +291,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
     await expect(crumbs(page)).toContainText('Dev Agent Chat');
     await expect(inbox(page)).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await page.getByRole('button', { name: /^Show inbox/ }).click();
     await expect(inbox(page)).toBeVisible();
   });
 
@@ -496,6 +509,44 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
       sidePanel(page).getByRole('heading', { name: 'Diff' }),
     ).toBeVisible();
     await expect(centreChat(page)).toBeVisible();
+    // One head: the Diff's counts and its four icon tools sit in the
+    // panel's head row, and the pane draws no bar of its own beneath it.
+    const head = sidePanel(page).locator('.coding-workbench__panel-head');
+    await expect(head.locator('.diff-stat')).toHaveText(/^1 file\+1−1$/);
+    for (const name of [
+      'Collapse all files',
+      'Expand all files',
+      'Split view',
+      'Wrap lines',
+    ])
+      await expect(head.getByRole('button', { name })).toBeVisible();
+    await expect(
+      head.getByRole('button', { name: 'Split view' }),
+    ).toHaveAttribute('aria-pressed', 'false');
+    await expect(sidePanel(page).locator('.diff-panel__bar')).toHaveCount(0);
+    // A file row says its counts once: Station's `+N −N` in the header's
+    // metadata slot, not also the library's own `-N +N` beside it.
+    const fileHeader = sidePanel(page).locator('[data-diffs-header]').first();
+    await expect(fileHeader).toBeVisible();
+    const shownCounts = await fileHeader.evaluate((header) => {
+      const shown: string[] = [];
+      const visit = (el: Element) => {
+        if (el instanceof HTMLSlotElement) {
+          for (const node of el.assignedElements({ flatten: true }))
+            visit(node);
+          return;
+        }
+        if (el.getClientRects().length === 0) return;
+        if (el.children.length === 0 || el.shadowRoot) {
+          const text = (el.textContent ?? '').trim();
+          if (/^[+−-]\d+$/.test(text)) shown.push(text);
+        }
+        for (const child of Array.from(el.children)) visit(child);
+      };
+      visit(header);
+      return shown;
+    });
+    expect(shownCounts).toEqual(['+1', '−1']);
     await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
     await expect(page).toHaveURL(/[?&]pane=/);
     expect(await historyLength(page)).toBe(length);
@@ -620,7 +671,7 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     // The Diff folded the inbox (the transcript's floor); unfold it by hand
     // to pick another conversation — the reader's choice for this session.
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await page.getByRole('button', { name: /^Show inbox/ }).click();
     await expect(inbox(page)).toBeVisible();
 
     await inbox(page)
@@ -636,7 +687,7 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     // This conversation has no choice of its own yet, so Files folded the
     // inbox; unfold it to go back.
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await page.getByRole('button', { name: /^Show inbox/ }).click();
 
     // The first conversation's row carries the seeded title until the
     // conversation list's own title arrives; either names conv-1.
@@ -700,7 +751,7 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     await seed(page);
   });
 
-  test('one bar above the transcript: the title once, Chat’s verbs as named icons beside the breadcrumb', async ({
+  test('one bar above the transcript: the title once, Chat’s one verb (New) as a named icon beside the breadcrumb', async ({
     page,
   }) => {
     await landOnChat(page);
@@ -711,13 +762,15 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
       centreChat(page).locator('.chat-dock__header-identity'),
     ).toHaveCount(0);
     await expect(bar(page).getByText('Dev Agent Chat')).toHaveCount(1);
-    const open = bar(page).getByRole('button', { name: 'Open conversation' });
     const create = bar(page).getByRole('button', { name: 'New chat' });
-    await expect(open).toBeVisible();
     await expect(create).toBeVisible();
-    // No words: the Open icon may carry its session-count badge, nothing else.
-    await expect(open).toHaveText(/^\d*$/);
+    // No words, and no Open beside it: the inbox sits beside Chat. No
+    // session count either; the inbox enumerates the chats.
     await expect(create).toHaveText('');
+    await expect(
+      bar(page).getByRole('button', { name: /^Open conversation/ }),
+    ).toHaveCount(0);
+    await expect(bar(page)).not.toContainText(/\bsessions?\b/i);
     await expect(
       bar(page).getByRole('button', { name: 'More dock actions' }),
     ).toBeVisible();
@@ -746,7 +799,7 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     // The reader expands it by hand while the tool is open: their choice.
     await openCodingView(page, 'Files');
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await page.getByRole('button', { name: /^Show inbox/ }).click();
     await expect(inbox(page)).toBeVisible();
     await openCodingView(page, 'Diff');
     await expect(inbox(page)).toBeVisible();
@@ -899,14 +952,18 @@ test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () =>
 
   const sidePanel = (page: Page) =>
     page.locator('.coding-workbench__page--drill-in');
-  const edge = (page: Page) =>
+  // Pointer-only (aria-hidden, out of the tab order): located by its test
+  // id, not by a role a screen reader never meets.
+  const edge = (page: Page) => page.getByTestId('coding-inbox-edge');
+  // The ONE control a keyboard or screen reader meets for the folded inbox.
+  const showInbox = (page: Page) =>
     page.getByRole('button', { name: /^Show inbox/ });
 
   test.beforeEach(async ({ page }) => {
     await seed(page);
   });
 
-  test('a folded inbox leaves a strip that widens on hover and focus, and a click brings the inbox back as the reader’s choice', async ({
+  test('a folded inbox leaves a pointer-only strip that widens on hover, one accessible Show inbox control, and a click brings the inbox back as the reader’s choice', async ({
     page,
   }) => {
     await landOnChat(page);
@@ -919,9 +976,18 @@ test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () =>
     expect(rest.height).toBeGreaterThanOrEqual(44);
     const chat = (await chatPage(page).boundingBox())!;
     expect(Math.abs(rest.x - chat.x)).toBeLessThan(2);
+    // One control, one name: the bar's toggle is the only "Show inbox" a
+    // keyboard or screen reader meets; the strip is hidden from both.
+    await expect(showInbox(page)).toHaveCount(1);
+    await expect(
+      page
+        .locator('.coding-workbench__bar')
+        .getByRole('button', { name: 'Show inbox' }),
+    ).toHaveCount(1);
+    await expect(edge(page)).toHaveAttribute('aria-hidden', 'true');
+    await expect(edge(page)).toHaveAttribute('tabindex', '-1');
     // Nothing needs the reader here, so the strip's rule is the neutral
     // border at rest and the accent only under the pointer.
-    await expect(edge(page)).toHaveAccessibleName('Show inbox');
     const ruleColours = () =>
       page.evaluate(() => {
         const strip = document.querySelector<HTMLElement>(
@@ -964,27 +1030,8 @@ test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () =>
         return `${Math.round(box.width)} hover=${hovered}`;
       })
       .toMatch(/^(2\d|3\d) hover=true$/);
-    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
-    // Keyboard focus — a key before the focus is what makes it visible
-    // (`:focus-visible`), as a Tab would.
-    await page.keyboard.press('Shift');
-    await edge(page).focus();
-    await expect
-      .poll(async () =>
-        page.evaluate(
-          () =>
-            `${document.activeElement?.getAttribute('aria-label') ?? ''} visible=${
-              document.querySelector(
-                '.coding-workbench__inbox-edge:focus-visible',
-              ) !== null
-            }`,
-        ),
-      )
-      .toMatch(/^Show inbox.* visible=true$/);
-    await expect
-      .poll(async () => (await edge(page).boundingBox())!.width)
-      .toBeGreaterThanOrEqual(20);
-    await page.keyboard.press('Enter');
+    // The pointer's shortcut: a click on the strip brings the inbox back.
+    await edge(page).click();
     await expect(inbox(page)).toBeVisible();
     await expect(edge(page)).toHaveCount(0);
     // The reader's choice: the tool closing and reopening leaves it.
@@ -1177,5 +1224,44 @@ test.describe('Coding stack — wide (1440px): links, reloads and the Terminal a
     await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
     await expect(crumbs(page)).toContainText('Terminal');
     await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
+  });
+});
+
+/**
+ * #3465 review F1: panels mode needs Chat in the centre as well as the wide
+ * fold, and a coarse pointer folds the dock to one region at any width. A
+ * touch screen past 1280px therefore keeps the drill-in stack: the rail item
+ * is the current page, not a pressed toggle.
+ */
+test.describe('Coding stack — wide touch screen (1440px, coarse pointer)', () => {
+  test.use({ viewport: { width: 1440, height: 900 }, hasTouch: true });
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('a rail pick drills in as a page, not a panel toggle', async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?chat=conv-1`);
+    await dismissSetupLauncher(page);
+    expect(
+      await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches),
+    ).toBe(true);
+    await expect(codingViewItem(page, 'Diff')).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(await codingRailMode(page)).toBe('stack');
+
+    await selectCodingPane(page, 'Diff');
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(codingViewItem(page, 'Diff')).not.toHaveAttribute(
+      'aria-pressed',
+      /.*/,
+    );
+    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
   });
 });

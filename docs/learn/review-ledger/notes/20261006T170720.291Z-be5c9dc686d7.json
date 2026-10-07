@@ -1,0 +1,7 @@
+{
+  "revision": "070b8d80ee12845dd724b8f97d64a0873af5654c",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"ChatMessageList now derives the live turn id from conversationActivity.openTurn before openTurnId and passes continuesTurn to MessageBubble; form submission and UIBlock rendering unchanged, ui-block parts still never folded.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

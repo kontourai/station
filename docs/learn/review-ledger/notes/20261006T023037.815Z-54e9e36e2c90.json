@@ -1,0 +1,7 @@
+{
+  "revision": "a2e220c76a956f03eefcfb34fad26409c668e3d0",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3406: traced AttachedSessionFollowService.poll -> AttachedPathProbe.forPoll (prepare/canonical/repository) and prepareSessionFolders; added the helper-process, 1.5 s no-progress deadline, unresolved-as-missing and 60 s back-off paragraph against attached-session-path-probe.ts defaults. Executed attached-session-path-probe.test.ts (hung FIFO stand-in, correction after back-off) plus follow/attribution suites. Attribution steps, unattributed-never-replaces rule and adoption claims unchanged; adoption still matches synchronously. Limit: no real hung NFS/SMB mount exercised.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/attached-session-repository.ts"]}
+  ]
+}

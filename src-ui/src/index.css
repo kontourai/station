@@ -773,6 +773,15 @@ button:hover {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
+}
+
+/* Nested content owns scrolling; section focus must not pan the shell frame.
+   Keep clipping on older WebViews that do not support the non-scrollable form. */
+@supports (overflow: clip) {
+  .app__main {
+    overflow: clip;
+  }
 }
 
 .app-toolbar {
@@ -1593,16 +1602,20 @@ button:hover {
     pointer-events: auto;
   }
 
-  /* The send-blocked line's one fix, "Remove attachments". Its 44px floor
+  /* The send-blocked line's one fix, "Remove attachments", the queued-retry
+     "Discard" the composer repeats in a short dock, and the transcript notice
+     action ("Discard", "Retry"…). Their 44px floor
      comes from the width-gated mobile block's shared action-row rule, which a
      touch tablet wider than 768px and taller than 540px never reaches. The
      floor is a property of the pointer, not the width, and a pointer that
-     cannot hover is the touch one. This is deliberately ONE control, not the
+     cannot hover is the touch one. This is deliberately THESE controls, not the
      whole action-row vocabulary: that rule's selectors also match header,
      footer and toolbar rows (the 38px dock header's actions, live-work rows,
      the inbox footer, tool-call actions) that have no wrap rule or coverage at
      this width. */
-  .chat-input__blocked-actions > button {
+  .chat-input__blocked-actions > button,
+  .chat-input__queued-retry-actions > button,
+  .ephemeral-message__action {
     min-height: 44px;
     min-width: 44px;
   }
@@ -2193,24 +2206,24 @@ button:hover {
   font-weight: 600;
 }
 
+/* Quiet chrome (design round 2026-10, B1/B2): the bar's buttons draw no
+   border at rest. Hover and focus are a wash, not an outline; the one
+   labelled action ("New") is the same family at the same weight. */
 .chat-dock__header-actions button {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border-secondary);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
-/* archive#800: the collapsed dock's "Start a chat" label is a real action, not text
-   inheriting the header's pointer cursor. 2026-08-26 audit F6: it used to
-   render as an underlined link (a `chat-dock__counter-action` override on
-   the generic button rule above) — one more control family in a bar that
-   otherwise reads as icon buttons + status text. That override is gone: it
-   is now the same bordered compact button as its siblings (the activity
-   button, Maximize), keeping only its accessible name and click behavior. */
-.chat-dock__header-actions button:hover {
-  border-color: var(--accent-primary);
+/* archive#800: the collapsed dock's New chat action is a real action, not
+   text inheriting the header's pointer cursor; it shares this family. */
+.chat-dock__header-actions button:hover,
+.chat-dock__header-actions button:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* archive#3309 retired the tab strip and clustered its panel toggles (inbox,
@@ -2363,7 +2376,7 @@ button:hover {
    row. It was the widest thing in the dock header and it left the conversation
    title beside it about one character on a 110-character worktree path. The
    path is the project badge's `title` and the More menu's "Copy project path";
-   the coding-layout link the leaf carried is that menu's "Open code layout".
+   the coding-layout link the leaf carried is that menu's "Open in Coding".
    `.new-chat-modal__context-dir--fallback` still names the retired
    `--fallback` rule in a comment: that surface keeps its own visible path. */
 .chat-dock__project-context > .git-tooltip-anchor {
@@ -3258,12 +3271,12 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-secondary);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
   background: transparent;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   cursor: pointer;
   min-height: 32px;
   font-size: var(--text-sm);
@@ -3307,8 +3320,10 @@ button:hover {
   cursor: not-allowed;
 }
 
-.chat-dock__new:hover:not(:disabled) {
-  border-color: var(--accent-primary);
+.chat-dock__new:hover:not(:disabled),
+.chat-dock__new:focus-visible {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .chat-dock__body {
@@ -3425,12 +3440,13 @@ button:hover {
 .chat-dock__activity-btn {
   background: transparent;
   border: none;
-  color: var(--accent-primary);
+  color: var(--success-text);
   cursor: pointer;
   padding: 4px 8px;
   display: flex;
   align-items: center;
   gap: 4px;
+  font-size: var(--text-sm);
 }
 
 .chat-dock__activity-dropdown {
@@ -5200,11 +5216,13 @@ button.tool-call__line:hover {
    dialog overlay as a sibling of its trigger inside this row, and without the
    exclusion this (0,4,0) selector silently overrode the overlay's own
    `align-items`/`background` — the popover floated mid-screen with no scrim
-   on every viewport (#999). */
+   on every viewport (#999). The queued-retry Discard is excluded the same way:
+   its wrapper is shown only when the composer has priority, and this rule's
+   `display: flex` would keep it on screen in every dock. */
 .chat-controls-row
 > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
   .responsive-surface-overlay
-) {
+):not(.chat-input__queued-retry-actions) {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -5227,7 +5245,7 @@ button.tool-call__line:hover {
 .chat-controls-row
   > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
     .responsive-surface-overlay
-  ):hover:not(:disabled) {
+  ):not(.chat-input__queued-retry-actions):hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -6442,7 +6460,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   /* The collapsed chat dock renders as a bottom bar on mobile. At the desktop
-     38px the "Chat Dock" label + gear / "Start a chat" / send / chevron
+     38px the "Chat Dock" label + gear / New chat / send / chevron
      controls are cramped, so give the bar comfortable room on small screens.
      The chat-dock snap math reads this same variable (collapsedHeight), so the
      Collapsed snap/drag-release continues to land on the actual bar height.
@@ -6558,6 +6576,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     max-width: 100%;
     flex-wrap: wrap;
     padding-bottom: max(0px, var(--safe-bottom, 0px));
+  }
+
+  /* The transcript's own notice action (Retry, Discard, New chat…): its look is
+     inline, its touch floor is here. */
+  .ephemeral-message__action {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .responsive-surface-actions > :is(button, a, .button, [role="button"]) {

@@ -40,19 +40,22 @@ describe('chat dock header keycap hints (station audit F6)', () => {
   });
 });
 
-describe('chat dock "Start a chat" action (station audit F6)', () => {
-  test('it is no longer styled as an underlined link — it shares the bordered compact button its siblings use', () => {
+describe('chat dock header buttons are quiet (design round 2026-10, B1)', () => {
+  test('the collapsed bar’s New chat has no override and the bar’s buttons draw no border at rest', () => {
     const overrides = ruleBodiesFor(
       indexCss,
-      '.chat-dock__header-actions button.chat-dock__counter-action',
+      '.chat-dock__header-actions button.chat-dock__collapsed-new',
     );
-    // Positive power: post-fix this selector has NO rules
-    // at all, so the loop above is vacuous by design — pin that emptiness
-    // explicitly, and pin the shared sibling rule the button now inherits.
     expect(overrides).toHaveLength(0);
-    expect(
-      ruleBodiesFor(indexCss, '.chat-dock__header-actions button').join('\n'),
-    ).toContain('border: 1px solid');
+    const shared = ruleBodiesFor(
+      indexCss,
+      '.chat-dock__header-actions button',
+    ).join('\n');
+    expect(shared).toContain('border: 1px solid transparent');
+    expect(shared).not.toMatch(/border:\s*1px solid var\(/);
+    expect(firstRuleFor('.chat-dock__new')).toContain(
+      'border: 1px solid transparent',
+    );
   });
 });
 

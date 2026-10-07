@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Peels generated deploy-ledger commit-backs from a nightly candidate SHA.
  *
@@ -9,11 +10,11 @@
  * a mixed change, or a merge remains a new candidate and builds normally.
  */
 
-import { spawnSync } from 'node:child_process';
 import {
   DEPLOY_LEDGER_JSON_PATH,
   DEPLOY_LEDGER_MD_PATH,
 } from './deploy-ledger.mjs';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
@@ -90,7 +91,7 @@ export function normalizeDeployLedgerHead(
 }
 
 function runGit(repoRoot, args) {
-  const result = spawnSync('git', args, {
+  const result = spawnSyncBounded('git', args, {
     cwd: repoRoot,
     encoding: 'utf8',
     windowsHide: true,

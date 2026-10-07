@@ -34,6 +34,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { findFreePort } from '../lib/free-ports.mjs';
 import { invokedDirectly } from '../lib/module-entry.mjs';
 import { executeOwnedProcess } from '../lib/owned-process.mjs';
@@ -85,7 +86,7 @@ export function descendantProcesses(psOutput, rootPid) {
 
 function processTree(rootPid) {
   return descendantProcesses(
-    execFileSync('ps', ['-A', '-o', 'pid=,ppid=,rss=,command='], {
+    execFileSyncBounded('ps', ['-A', '-o', 'pid=,ppid=,rss=,command='], {
       encoding: 'utf8',
       windowsHide: true,
     }),

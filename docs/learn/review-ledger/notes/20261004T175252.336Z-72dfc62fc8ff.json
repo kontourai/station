@@ -1,0 +1,7 @@
+{
+  "revision": "4fd7361dd75692638daceec6af8aab2bc97ab42b",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"AttentionCard change only relabels the peer link 'Open in Activity'; the Inbox sentence (no reply, says to answer on the paired Station, opens the Activity detail) remains accurate.","inputs":["docs/guides/agents.md","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

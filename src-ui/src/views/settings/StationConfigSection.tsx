@@ -50,6 +50,7 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'terminalShell',
     'mcpUiHost',
     'surfaceTrustFromVeritasEvidence',
+    'attachedSessionsOutsideProjects',
     'mobileDeviceHubUrl',
   ],
   // Where this Station gets agents, skills, plugins and layouts.
@@ -70,6 +71,7 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'defaultMaxOutputTokens',
     'defaultWorkspaceIsolation',
     'workspaceCheckpoints',
+    'usageLimitAutoResume',
   ],
   // The Station default this device's chat-font-size slider falls back to.
   chat: ['defaultChatFontSize'],

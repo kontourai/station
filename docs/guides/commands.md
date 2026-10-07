@@ -159,17 +159,23 @@ transaction here.
 ## Implementation and evidence
 
 The [catalog](../../src-ui/src/hooks/useSlashCommands.ts) composes sources and
-availability; the [handler](../../src-ui/src/hooks/useSlashCommandHandler.ts)
-owns dispatch order and authored expansion. The
-[skill helpers](../../src-ui/src/utils/skill-commands.ts) own parsing, offered
-skills, and skill variable assignment. The
+availability; the [hook](../../src-ui/src/hooks/useSlashCommandHandler.ts)
+loads the [dispatcher](../../src-ui/src/slashCommands/dispatch.ts) when a
+command is submitted. ACP commands pass through without loading it. A failed
+dispatcher load reports that nothing was sent. The dispatcher owns command
+precedence and authored expansion. The
+[catalog helpers](../../src-ui/src/utils/skill-command-catalog.ts) select
+offered skills; the [input helpers](../../src-ui/src/utils/skill-commands.ts)
+own parsing and skill variable assignment. The
 [chat sender](../../src-ui/src/hooks/useActiveChatSessionMessaging.ts) consumes
 expanded text or a handled result before its normal turn submission. The
 [Agent projection](../../src-server/routes/agents/enriched-agents.ts) exposes
 persisted commands; [ConfigLoader](../../src-server/domain/config-loader.ts)
 owns file loading/watching. MCP prompts are listed and run by the
 [prompt routes](../../src-server/routes/agents/mcp-prompts.ts) over the
-[prompt service](../../src-server/services/plugins/mcp-prompts.ts).
+[prompt service](../../src-server/services/plugins/mcp-prompts.ts). The
+[MCP prompt runner](../../src-ui/src/slashCommands/mcpPrompt.ts) loads when
+the dispatcher matches an offered prompt.
 
 Existing [catalog tests](../../src-ui/src/__tests__/useSlashCommands.test.ts) and
 [skill-handler tests](../../src-ui/src/__tests__/useSlashCommandHandler.skills.test.tsx)

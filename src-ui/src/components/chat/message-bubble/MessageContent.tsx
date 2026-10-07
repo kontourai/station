@@ -15,7 +15,7 @@ import {
   usePreloadToolCallBatch,
 } from '../ToolCallBatchBoundary';
 import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
-import { splitToolCallRuns } from '../tool-call-runs';
+import { foldTurnWork, splitToolCallRuns } from '../tool-call-runs';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
@@ -37,6 +37,14 @@ interface MessageContentProps {
   showReasoning: boolean;
   showToolDetails: boolean;
   isStreamingMessage: boolean;
+  /**
+   * Phone transcript, settled turn: all of the turn's tool work — and the
+   * narration between calls — collapses to one summary row where the first
+   * call was (`foldTurnWork`); the outcome after the last call stays. The
+   * caller decides settledness; a live turn keeps the per-run shape it
+   * streamed with so it does not change shape until it settles.
+   */
+  foldWork?: boolean;
   onToolApproval?: (
     part: MessageContentPart,
     action: 'once' | 'trust' | 'deny',
@@ -50,6 +58,7 @@ function MessageContentComponent({
   showReasoning,
   showToolDetails,
   isStreamingMessage,
+  foldWork = false,
   onToolApproval,
 }: MessageContentProps) {
   // Consecutive tool-call parts collapse into one batch (`LazyToolCallBatch`);
@@ -57,7 +66,11 @@ function MessageContentComponent({
   // breaks the run, so the agent's words between tool calls are never
   // buried inside a collapsed summary. Only the structural split runs
   // eagerly here; classification/summary happens inside the lazy chunk.
-  const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
+  const blocks = useMemo(
+    () =>
+      foldWork ? foldTurnWork(contentParts) : splitToolCallRuns(contentParts),
+    [contentParts, foldWork],
+  );
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -92,6 +105,10 @@ function MessageContentComponent({
     />
   );
 
+  const renderInterlude = (part: MessageContentPart, index: number) => (
+    <LazyMarkdown key={`interlude:${index}`}>{part.content ?? ''}</LazyMarkdown>
+  );
+
   if (contentParts && contentParts.length > 0) {
     return (
       <>
@@ -106,14 +123,27 @@ function MessageContentComponent({
                 renderToolCall(part, index),
               );
             }
-            const inlineRows = block.calls.map(({ part, index }) =>
-              renderToolCall(part, index),
-            );
+            // Until (or unless) the batch chunk loads, a folded run falls
+            // back to its parts in original order — narration included — so
+            // a load failure never drops the prose the fold moved.
+            const inlineRows = [
+              ...block.calls.map(({ part, index }) => ({
+                index,
+                node: renderToolCall(part, index),
+              })),
+              ...(block.interludes ?? []).map(({ part, index }) => ({
+                index,
+                node: renderInterlude(part, index),
+              })),
+            ]
+              .sort((a, b) => a.index - b.index)
+              .map((row) => row.node);
             return (
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
+                renderInterlude={renderInterlude}
                 pending={inlineRows}
               />
             );
@@ -221,6 +251,7 @@ function areMessageContentPropsEqual(
     previous.showReasoning === next.showReasoning &&
     previous.showToolDetails === next.showToolDetails &&
     previous.isStreamingMessage === next.isStreamingMessage &&
+    previous.foldWork === next.foldWork &&
     previous.onToolApproval === next.onToolApproval
   );
 }

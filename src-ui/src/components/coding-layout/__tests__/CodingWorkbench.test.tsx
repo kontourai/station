@@ -1181,7 +1181,9 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
 });
 
 describe('CodingWorkbench — the folded inbox’s edge, and the fold judged again on resize', () => {
-  const edge = () => screen.queryByRole('button', { name: /^Show inbox/ });
+  // Pointer-only (the bar's inbox toggle is the one accessible control), so
+  // it is found by its test id, not by a role.
+  const edge = () => screen.queryByTestId('coding-inbox-edge');
   const withViewportWidth = (width: number) =>
     Object.defineProperty(window, 'innerWidth', {
       value: width,
@@ -1196,7 +1198,9 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
     await drillInto('Diff');
     expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
     const strip = edge()!;
-    expect(strip.getAttribute('aria-label')).toBe('Show inbox, 2 need you');
+    // The count is in its tooltip; the name a screen reader hears is the
+    // bar toggle's, so the strip itself is hidden from it.
+    expect(strip.getAttribute('aria-hidden')).toBe('true');
     expect(chatPage().contains(strip)).toBe(true);
     expect(
       strip.querySelector('.coding-workbench__inbox-edge-count')?.textContent,
@@ -1215,25 +1219,27 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
     renderStack({ wide: true });
     await drillInto('Diff');
     const strip = edge()!;
-    expect(strip.getAttribute('aria-label')).toBe('Show inbox');
+    expect(
+      strip.parentElement?.querySelector('[role="tooltip"]')?.textContent,
+    ).toBe('Show inbox');
     expect(strip.classList.contains('coding-workbench__inbox-edge')).toBe(true);
     expect(
       strip.classList.contains('coding-workbench__inbox-edge--needs-you'),
     ).toBe(false);
   });
 
-  test('the edge is a keyboard-reachable button whose activation is the reader’s own choice', async () => {
+  test('the edge is a pointer-only shortcut, out of the tab order, whose click is the reader’s own choice', async () => {
     navigationStore.navigate(ROUTE, { chat: 'conv-edge' });
     renderStack({ wide: true });
     await drillInto('Diff');
     const strip = edge()!;
     expect(strip.tagName).toBe('BUTTON');
-    expect(strip.tabIndex).toBe(0);
-    strip.focus();
-    expect(window.document.activeElement).toBe(strip);
-    // A key's activation (detail 0) opens the inbox and is remembered as
-    // the reader's choice: closing the tool does not fold it back.
-    fireEvent.click(strip, { detail: 0 });
+    // Not a second stop for a keyboard: the bar's toggle is that control.
+    expect(strip.tabIndex).toBe(-1);
+    expect(strip.getAttribute('aria-hidden')).toBe('true');
+    // A click opens the inbox and is remembered as the reader's choice:
+    // closing the tool does not fold it back.
+    fireEvent.click(strip);
     await act(async () => undefined);
     expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
     expect(edge()).toBeNull();
@@ -1744,7 +1750,7 @@ describe('CodingWorkbench — delta review: one ⋯ per head, Escape’s reach, 
   const pressEscape = () =>
     harness.shortcuts.get('codingStack.escape')!.handler();
 
-  /** A pane with an overflow of its own, as File Preview and Diff have. */
+  /** A pane with an overflow of its own, as File Preview has. */
   function PaneWithOverflow() {
     const slots = usePaneHeadSlots();
     const take = slots?.takeHostActions;

@@ -46,7 +46,7 @@ import { SchedulerService } from '../../services/scheduling/scheduler-service.js
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
-import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
+import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import {
   createStationEngineAvailabilityReader,
@@ -92,7 +92,7 @@ export function createScheduledTurnAdapter(
         };
       }
       try {
-        const result = await runWithScheduledPrincipal(
+        const result = await runWithUnattendedPrincipal(
           { kind: 'scheduled-job', jobId: principal.jobId },
           principal.runId,
           () => agent.generateText(prompt, { signal }),
@@ -451,7 +451,7 @@ export function configureRuntimeSupportServices(
           'external-monitor',
           `${input.jobId}:${input.fingerprint}`,
         );
-        const dispatched = await runWithScheduledPrincipal(
+        const dispatched = await runWithUnattendedPrincipal(
           input.principal,
           input.principal.runId,
           () =>

@@ -19,10 +19,21 @@ import {
 } from 'react';
 import { ActionOperationsSection } from '../components/action-operations/ActionOperationsSection';
 import { Button } from '../components/Button';
+import {
+  endConversationReferenceDrag,
+  startConversationReferenceDrag,
+  useReferenceableConversations,
+} from '../components/chat/conversationReferenceDrag';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
+import { ElapsedDuration } from '../components/ElapsedDuration';
 import { AgentIcon } from '../components/icons/AgentIcon';
-import { LazyBoundary } from '../components/LazyBoundary';
+import {
+  InboxRowStatusGlyph,
+  WorkStatusLineText,
+} from '../components/inbox-row/InboxRowStatus';
+import { WorkGroupLabel } from '../components/inbox-row/WorkGroupLabel';
+import { workGroupLabelText } from '../components/inbox-row/work-group-label';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { useIsPageFramed } from '../components/page-frame';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -30,18 +41,13 @@ import { SessionPullRequestConflictChip } from '../components/session/SessionPul
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
-import { StatusGlyph } from '../components/status/StatusGlyph';
 import { useAgents } from '../contexts/AgentsContext';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { copyToClipboard } from '../lib/clipboard';
-import { relativeTime, relativeTimeAgo } from '../utils/relativeTime';
-import {
-  activeTurnProgress,
-  orchestrationLifecycleLabel,
-  sessionStatusWord,
-} from '../utils/session-state';
+import { relativeTime } from '../utils/relativeTime';
+import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
   humanizeId,
   isStreamingSession,
@@ -62,11 +68,9 @@ import {
   activityOriginOptions,
   activityOriginShortLabel,
   activityProjectOptions,
-  activityRunningDetail,
-  DATED_STREAM_ORDER,
-  datedStreamBucket,
   matchesActivityKind,
   matchesActivityOrigin,
+  matchesActivityProject,
   NO_ACTIVITY_FILTERS,
 } from './activity/activity-list-model';
 import { olderDraftsLabel } from './home/draft-lane';
@@ -79,12 +83,12 @@ import { foldConversationTurns } from './sessions/conversation-groups';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
 import {
-  matchesProjectFilter,
   partitionSessionLanes,
   SESSION_LANE_LABELS,
   SESSION_LANE_ORDER,
   type SessionLaneId,
   sessionProjectFilterKey,
+  sessionWorkStatus,
 } from './sessions/sessions-lane-model';
 import './SessionsView.css';
 import './page-layout.css';
@@ -92,24 +96,8 @@ import './page-layout.css';
 /** Live-refresh cadence for the all-sessions list (the SSE feed is per-session). */
 const SESSION_LIST_REFRESH_MS = 5000;
 
-/** How often relative times, lanes and dated buckets re-derive. */
+/** How often relative times and lanes re-derive. */
 const ACTIVITY_CLOCK_MS = 30_000;
-
-/**
- * The terminal history lane that reads as a dated stream ("what happened
- * while I was away", docs/design/shell-ownership-and-boards.md). Typed as a
- * lane id on purpose: if the lane model renames or drops it, this line stops
- * compiling instead of silently rendering an undated lane. Every OTHER lane
- * heading is rendered generically from `SESSION_LANE_ORDER` /
- * `SESSION_LANE_LABELS`.
- */
-const DATED_STREAM_LANE: SessionLaneId = 'earlier';
-
-// Keep the archive#4072 observation on the same lazy-boundary rail as Home. The
-// renderer, its relative-time wording, and the watchdog-owned silence
-// derivation remain in ProgressSilenceObservation.
-const loadProgressSilenceObservation = () =>
-  import('../components/home/ProgressSilenceObservation');
 
 function isReadOnlyAttachedSession(
   session: OrchestrationSessionSummary,
@@ -155,12 +143,10 @@ function searchableSessionFields(
  * The row's second line: state first, then who, where and from what.
  * Ordered loudest to quietest, and every segment is omitted rather than
  * defaulted when its fact is missing:
- * - the state in words from `sessionStatusWord` — the same fold the lane
- *   heading is built from, so the finer word can never contradict the
- *   coarser one (archive#3227 A1) — with the kit status glyph beside it, so
- *   tone never carries the state alone; a Running row adds how long and
- *   which tool (`activityRunningDetail`), a Failed/Stopped row the server's
- *   own `terminalAttribution.detail`;
+ * - the status ladder's line (`sessionWorkStatus`: the same words and the
+ *   same lane fold the inbox rows print, so this list and the dock cannot
+ *   name one session two ways), with the ladder's own glyph beside it so
+ *   tone never carries the state alone;
  * - the kind, only for a delegated session;
  * - the agent, the project as plain text, and the short origin;
  * - how many turn-sessions the conversation fold collapsed (`foldConversationTurns`).
@@ -181,36 +167,36 @@ function ActivityRowMeta({
   now: number;
   foldedTurnCount?: number;
 }) {
-  const state = orchestrationLifecycleLabel(session);
-  const stateWord = sessionStatusWord(session);
-  const running =
-    state === 'Running' ? activityRunningDetail(session, now) : null;
-  const stateText = [
-    running?.duration ? `${stateWord} for ${running.duration}` : stateWord,
-    running?.activity,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const turnProgress = activeTurnProgress(session);
+  const status = sessionWorkStatus(session, agents, now);
   // The server attaches `terminalAttribution` only once a failed session has
   // closed; while it is still loaded the reason lives in the same two fields
   // the detail's failure text folds (`sessionFailureText`), so a fresh
   // failure reads the same in the row and in the detail.
-  const terminalDetail =
-    state === 'Failed' || state === 'Stopped'
-      ? (session.terminalAttribution?.detail ??
-        (state === 'Failed'
-          ? (session.lastRuntimeErrorMessage ?? session.blockedReason)
-          : undefined))
+  const freshFailure =
+    status.rung === 'failed' && !status.detail
+      ? (session.lastRuntimeErrorMessage ?? session.blockedReason)
       : undefined;
+  // The server's own account of how a run ended, in the row's accessible
+  // text: a failure's cause is already on the line, a stop's is the
+  // ladder's reason.
+  // Only a run that ENDED has one: a running row's detail is its current
+  // tool, never an attribution of how it ended.
+  const ended = status.rung === 'failed' || status.rung === 'stopped';
+  const terminalAttribution = ended
+    ? (status.detail ??
+      freshFailure ??
+      (status.rung === 'stopped' ? status.reason : undefined))
+    : undefined;
+  // When the cause IS the line's detail it is attributed in place: a second
+  // sr-only copy read the failure twice.
+  const attributedInLine =
+    terminalAttribution !== undefined && terminalAttribution === status.detail;
   const attached = isReadOnlyAttachedSession(session);
   const agentName = attached ? null : sessionIconAgent(session, agents).name;
   const project = sessionProjectLabel(session);
-  const originShort = activityOriginShortLabel(session);
-  // An attached row's state word already names its engine ("Started in
-  // Claude Code"); repeating it as the origin says nothing new.
-  const origin =
-    originShort && !stateWord.includes(originShort) ? originShort : null;
+  // An attached row's origin is the app it was started in, which is also its
+  // agent name; the "Elsewhere" word beside it says the rest.
+  const origin = activityOriginShortLabel(session);
   const originText = session.turnOrigin?.hasOtherOrigins
     ? `${origin ?? 'Several origins'} (also another origin)`
     : origin;
@@ -231,30 +217,50 @@ function ActivityRowMeta({
       data-session-id={session.threadId}
       data-testid="activity-row-meta"
     >
-      <span className="activity-row-meta__state">
-        {!attached && <StatusGlyph state={state} />}{' '}
-        <span data-testid="activity-row-state">{stateText}</span>
+      <span
+        className="activity-row-meta__state"
+        data-tone={status.tone}
+        title={status.reason}
+      >
+        <InboxRowStatusGlyph rung={status.rung} />{' '}
+        <span data-testid="activity-row-state">
+          {attributedInLine ? (
+            <>
+              {status.word}
+              {' · '}
+              <span data-testid="session-member-terminal-attribution">
+                {status.detail}
+              </span>
+              {status.since !== undefined && (
+                <>
+                  {' · '}
+                  <ElapsedDuration since={status.since} />
+                </>
+              )}
+            </>
+          ) : (
+            <WorkStatusLineText status={status} />
+          )}
+        </span>
+        {status.reason && status.rung !== 'stopped' && (
+          <span className="sr-only">{` · ${status.reason}`}</span>
+        )}
       </span>
-      {turnProgress?.progressSilence && (
+      {terminalAttribution && !attributedInLine && (
         <>
-          {' · '}
-          <LazyBoundary
-            load={loadProgressSilenceObservation}
-            pending={null}
-            componentProps={{ observation: turnProgress.progressSilence }}
-            unavailable={() => null}
-          />
-        </>
-      )}
-      {terminalDetail && (
-        <>
-          {' · '}
+          <span className="sr-only">{' · '}</span>
           <span
-            className="activity-row-meta__detail"
+            className="sr-only"
             data-testid="session-member-terminal-attribution"
           >
-            {terminalDetail}
+            {terminalAttribution}
           </span>
+        </>
+      )}
+      {freshFailure && (
+        <>
+          {' · '}
+          <span className="activity-row-meta__detail">{freshFailure}</span>
         </>
       )}
       {segments.map((segment) => (
@@ -266,7 +272,7 @@ function ActivityRowMeta({
       {recency > 0 && (
         // The visible time sits on the row's first line, outside the row
         // button (`trailing`); this copy keeps it in the row's description.
-        <span className="sr-only">{`, ${relativeTimeAgo(recency, now)}`}</span>
+        <span className="sr-only">{`, ${relativeTime(recency, now)}`}</span>
       )}
     </span>
   );
@@ -335,6 +341,8 @@ export function SessionsView({
     [inventory, exactSession],
   );
   const agents = useAgents();
+  // #3159: rows a message may reference are drag sources onto a composer.
+  const referenceable = useReferenceableConversations();
   const framed = useIsPageFramed();
   const openChats = useOpenChats(agents, sessions);
   const openConversationIds = useMemo(
@@ -361,8 +369,7 @@ export function SessionsView({
     useState<SessionEvidenceReveal | null>(null);
   const [search, setSearch] = useState('');
   // One clock for everything time-based on this surface — lane membership
-  // (the recently-finished window), the dated history buckets and the row
-  // times — so they age together instead of freezing at the last data change.
+  // (the recently-finished window) and the row times — so they age together instead of freezing at the last data change.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), ACTIVITY_CLOCK_MS);
@@ -538,7 +545,7 @@ export function SessionsView({
       sessions.filter(
         (s) =>
           matchesActivityKind(s, filters.kind) &&
-          matchesProjectFilter(s, filters.project) &&
+          matchesActivityProject(s, filters.project) &&
           matchesActivityOrigin(s, filters.origin),
       ),
     [sessions, filters],
@@ -582,7 +589,7 @@ export function SessionsView({
         sessions.filter(
           (s) =>
             matchesActivityKind(s, filters.kind) &&
-            matchesProjectFilter(s, filters.project) &&
+            matchesActivityProject(s, filters.project) &&
             matchesSearch(s),
         ),
         selectedId,
@@ -642,8 +649,7 @@ export function SessionsView({
     const order = Math.min(
       ...members.map((member) => orderByThreadId.get(member.threadId)!),
     );
-    const recency = Math.max(...members.map(activityRecency));
-    return { presentation, members, laneId, order, recency };
+    return { presentation, members, laneId, order };
   });
   // #2312: Drafts untouched for a day fold under "N older drafts", collapsed
   // until opened. They are the Drafts lane's trailing rows (the lane is
@@ -690,8 +696,8 @@ export function SessionsView({
    * or attached), and Activity already IS that fallback.
    */
   const chatOpenDetail = (session: OrchestrationSessionSummary) => {
-    // A paired Station's record: its transcript is not local (#847).
-    if (session.delegation?.environmentKind === 'peer') return null;
+    // A paired Station's record (#847) resolves to `navigate` in the policy
+    // via `delegationEnvironmentKind`: its transcript is not local.
     const action = resolveConversationOpenAction({
       threadId: session.threadId,
       conversationId: session.conversationId,
@@ -699,6 +705,7 @@ export function SessionsView({
       controlMode: session.controlMode,
       projectSlug: session.projectSlug,
       model: session.model,
+      delegationEnvironmentKind: session.delegation?.environmentKind,
     });
     return action.kind === 'rehydrate'
       ? focusChatEventDetailForAction(action)
@@ -803,20 +810,6 @@ export function SessionsView({
               row.presentation.kind !== 'run' && isOlderDraft(row.members),
           ).length
         : 0;
-    // The dated stream: the terminal history lane splits into "Earlier
-    // today" / "Yesterday" / "This week" / "Older" by the same recency fold
-    // the lane sorts by. Sorting by bucket first keeps each sub-section
-    // contiguous even when a run's position and recency disagree.
-    const dated = laneId === DATED_STREAM_LANE;
-    const bucketOf = (row: (typeof lanePresentations)[number]) =>
-      datedStreamBucket(row.recency, now);
-    if (dated)
-      lanePresentations.sort(
-        (left, right) =>
-          DATED_STREAM_ORDER.indexOf(bucketOf(left)) -
-            DATED_STREAM_ORDER.indexOf(bucketOf(right)) ||
-          left.order - right.order,
-      );
     // A section's count means members CLASSIFIED into this lane. A mixed-state
     // run RENDERS in its highest-priority member lane, but its members still
     // count where their own state belongs: one waiting child in an
@@ -826,27 +819,24 @@ export function SessionsView({
     // folded conversation is the unit this list shows, the same population
     // Home and Project Live Work count.
     //
-    // A dated sub-section counts the rows PLACED in it: a run goes where its
-    // newest member is, and every member of it classified into this lane is
-    // counted there, so each heading's count is what sits under it.
+    // The history lane is "Earlier", as on Home and in the dock (design round
+    // 2026-10, C2): it used to split into "Earlier today" / "Yesterday" /
+    // "This week" / "Older", a second set of names for one lane. Each row's
+    // own time ("3h", "2d", "Sep 12") already says when.
     const classifiedIn = (row: (typeof lanePresentations)[number]) =>
       row.members.filter(
         (member) => lanesByThreadId.get(member.threadId) === laneId,
       ).length;
-    const countBySection = new Map<string, number>();
-    const sectionKeyOf = (row: (typeof lanePresentations)[number]) =>
-      dated ? bucketOf(row) : SESSION_LANE_LABELS[laneId];
-    for (const row of lanePresentations) {
-      const key = sectionKeyOf(row);
-      countBySection.set(
-        key,
-        (countBySection.get(key) ?? 0) + classifiedIn(row),
-      );
-    }
+    const laneCount = lanePresentations.reduce(
+      (total, row) => total + classifiedIn(row),
+      0,
+    );
+    const section = workGroupLabelText(SESSION_LANE_LABELS[laneId], laneCount);
+    const sectionLabel = (
+      <WorkGroupLabel label={SESSION_LANE_LABELS[laneId]} count={laneCount} />
+    );
     return lanePresentations.flatMap((row) => {
       const { presentation, members } = row;
-      const sectionKey = sectionKeyOf(row);
-      const section = `${sectionKey} · ${countBySection.get(sectionKey)}`;
       const subtaskCount = members.length - 1;
       // A run renders in its highest-priority member's lane — the point is
       // that a waiting subtask surfaces the run. When that pulls the run
@@ -916,9 +906,23 @@ export function SessionsView({
           // EVERY row carries its section — the layout emits a heading only
           // when section CHANGES between neighbours.
           section,
+          sectionLabel,
           icon: <AgentIcon agent={sessionIconAgent(s, agents)} size="small" />,
           openChat: openConversationIds.has(s.threadId),
           badge: <SessionPullRequestConflictChip session={s} />,
+          ...(referenceable?.apiBase === apiBase &&
+          referenceable.ids.has(s.conversationId ?? s.threadId)
+            ? {
+                onDragStart: (event: React.DragEvent<HTMLElement>) =>
+                  startConversationReferenceDrag(event, {
+                    id: s.conversationId ?? s.threadId,
+                    title: sessionTitle(s),
+                    ...(s.projectSlug ? { projectSlug: s.projectSlug } : {}),
+                    apiBase,
+                  }),
+                onDragEnd: endConversationReferenceDrag,
+              }
+            : {}),
           ...(group ? { group } : {}),
           // Interactive controls live in `trailing`, a sibling of the row
           // button, because a button may not contain interactive content.
@@ -1136,7 +1140,6 @@ export function SessionsView({
            ones). */
         label="Activity"
         title="Activity"
-        subtitle="What's running, what needs you, and what happened."
         emptyDescription="Select an item to read what happened and review its evidence."
         firstRunAnchor="activity"
       >

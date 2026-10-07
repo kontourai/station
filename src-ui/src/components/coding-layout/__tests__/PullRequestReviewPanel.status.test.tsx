@@ -92,6 +92,7 @@ vi.mock('../../../hooks/useUnsavedGuard', () => ({
   }),
 }));
 
+import { PaneHeadSlotsContext } from '../../../workspace-panes/PaneHeadSlots';
 import { PullRequestReviewPanel } from '../PullRequestReviewPanel';
 
 const PATCH = `diff --git a/src/app.ts b/src/app.ts
@@ -272,10 +273,10 @@ describe('pull request status', () => {
     });
     mount();
     const state = await screen.findByText('Open');
-    expect(state.className).toContain('pull-request-review__chip');
+    expect(state.className).toContain('pull-request-chip');
     expect(state.getAttribute('data-tone')).toBe('success');
     const decision = screen.getByText('Changes requested');
-    expect(decision.className).toContain('pull-request-review__chip');
+    expect(decision.className).toContain('pull-request-chip');
     expect(decision.getAttribute('data-tone')).toBe('failure');
     // Never the raw enum.
     expect(screen.queryByText(/CHANGES_REQUESTED/)).toBeNull();
@@ -284,7 +285,7 @@ describe('pull request status', () => {
     expect(short.tagName).toBe('CODE');
     expect(short.getAttribute('title')).toBe(`Head ${'a'.repeat(40)}`);
     expect(screen.queryByText('a'.repeat(40))).toBeNull();
-    const observed = screen.getByText('observed 5m ago');
+    const observed = screen.getByText('5m');
     expect(observed.tagName).toBe('TIME');
     expect(observed.getAttribute('title')).toBeTruthy();
     expect(screen.getByText('2 commits')).toBeTruthy();
@@ -319,7 +320,7 @@ describe('pull request status', () => {
       });
       mount();
       const chip = await screen.findByText(label);
-      expect(chip.className).toContain('pull-request-review__chip');
+      expect(chip.className).toContain('pull-request-chip');
       expect(chip.getAttribute('data-tone')).toBe(tone);
       expect(screen.queryByText(reviewStatus)).toBeNull();
     },
@@ -333,14 +334,12 @@ describe('pull request status', () => {
       });
       mount();
       await screen.findByText('Open');
-      expect(
-        document.querySelectorAll('.pull-request-review__chip'),
-      ).toHaveLength(1);
+      expect(document.querySelectorAll('.pull-request-chip')).toHaveLength(1);
       expect(screen.queryByText(/mergeable|checking|unchecked/i)).toBeNull();
     },
   );
 
-  test('"observed" keeps up with the clock every 30 s and stops on unmount', async () => {
+  test('the relative time keeps up with the clock every 30 s and stops on unmount', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
     try {
       const start = Date.parse('2026-10-01T12:00:00Z');
@@ -349,14 +348,14 @@ describe('pull request status', () => {
         observedAt: new Date(start - 5 * 60_000).toISOString(),
       });
       mount();
-      expect(await screen.findByText('observed 5m ago')).toBeTruthy();
+      expect(await screen.findByText('5m')).toBeTruthy();
       vi.setSystemTime(start + 61_000);
       // Nothing moves until the tick.
-      expect(screen.getByText('observed 5m ago')).toBeTruthy();
+      expect(screen.getByText('5m')).toBeTruthy();
       act(() => {
         vi.advanceTimersByTime(30_000);
       });
-      expect(screen.getByText('observed 6m ago')).toBeTruthy();
+      expect(screen.getByText('6m')).toBeTruthy();
       expect(vi.getTimerCount()).toBeGreaterThan(0);
       cleanup();
       expect(vi.getTimerCount()).toBe(0);
@@ -389,15 +388,12 @@ describe('pull request status', () => {
   });
 
   test.each([
-    [undefined, 'This Station did not report checks for this pull request.'],
+    [undefined, 'Checks not reported'],
     [
       { state: 'unavailable', reason: 'The provider did not report checks.' },
       'The provider did not report checks.',
     ],
-    [
-      { state: 'available', checks: [], partial: false },
-      'The provider reports no checks for this head.',
-    ],
+    [{ state: 'available', checks: [], partial: false }, 'No checks'],
   ] as const)(
     'says what an absent or empty rollup means (%o)',
     async (checks, text) => {
@@ -408,10 +404,49 @@ describe('pull request status', () => {
       mount();
       expect(await screen.findByText(text)).toBeTruthy();
       expect(
-        screen.getByText(/has not yet reported whether it merges cleanly/),
+        screen.getByText(/Mergeability not yet reported for/),
       ).toBeTruthy();
     },
   );
+
+  test('inside a host head the changed-files diff keeps its own row: the head is left to the Diff pane', async () => {
+    snapshot.current = base();
+    const leading = document.createElement('div');
+    const trailing = document.createElement('div');
+    document.body.append(leading, trailing);
+    try {
+      const view = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <PaneHeadSlotsContext.Provider value={{ leading, trailing }}>
+            <PullRequestReviewPanel
+              target={{
+                provider: 'github',
+                host: 'github.com',
+                owner: 'kontourai',
+                repository: 'station',
+                ref: '2049',
+                project: 'station',
+              }}
+            />
+          </PaneHeadSlotsContext.Provider>
+        </QueryClientProvider>,
+      );
+      const wrap = await screen.findByRole('button', { name: 'Wrap lines' });
+      const bar = view.container.querySelector(
+        '.pull-request-review__diff .diff-panel__bar',
+      );
+      expect(bar?.contains(wrap)).toBe(true);
+      expect(bar?.querySelector('.diff-stat')?.textContent).toMatch(
+        /^1 file\+1−1$/,
+      );
+      expect(leading.childNodes.length).toBe(0);
+      expect(trailing.childNodes.length).toBe(0);
+    } finally {
+      cleanup();
+      leading.remove();
+      trailing.remove();
+    }
+  });
 
   test('places an inline comment on its diff line and lists the outdated one', async () => {
     snapshot.current = base({
@@ -475,19 +510,19 @@ describe('pull request status', () => {
     const list = unplaced.closest('details') as HTMLElement;
     // Each forge comment is a named article, apart from a local comment.
     const outdated = within(list).getByRole('article', {
-      name: 'Forge comment by reviewer on an outdated line of src/gone.ts',
+      name: 'Comment by reviewer on an outdated line of src/gone.ts',
     });
     expect(outdated.textContent).toContain('This moved.');
     expect(outdated.textContent).toContain('on an outdated line of');
     // A file-level comment is on the file; it is not "outdated".
     const onFile = within(list).getByRole('article', {
-      name: 'Forge comment by reviewer on the file of README.md',
+      name: 'Comment by reviewer on the file of README.md',
     });
     expect(onFile.textContent).toContain('on the file of');
     expect(onFile.textContent).not.toContain('outdated');
     fireEvent.click(
       within(onFile).getByRole('button', {
-        name: 'Open this comment on the forge',
+        name: 'Open on GitHub',
       }),
     );
     expect(openExternalLink).toHaveBeenCalledWith(
@@ -641,7 +676,7 @@ diff --git a/src/inc.ts b/src/inc.ts
     });
     mount();
     const caveat = await screen.findByText(
-      /Only part of the checks could be read; open the forge for the rest\./,
+      /Some checks not shown — see GitHub/,
     );
     // The count and the caveat share one static line; a partial read is
     // never "all passed".
@@ -703,6 +738,16 @@ diff --git a/src/inc.ts b/src/inc.ts
     expect(list?.textContent).not.toContain('outdated');
   });
 
+  test('says when merging is not permitted instead of hiding the control', async () => {
+    snapshot.current = base({
+      pullRequest: { ...base().pullRequest, mergeability: 'mergeable' },
+    });
+    mount();
+    await screen.findByRole('button', { name: 'Approve' });
+    expect(screen.queryByRole('button', { name: 'Merge options' })).toBeNull();
+    expect(screen.getByText('Merging is not permitted here.')).toBeTruthy();
+  });
+
   test('one quiet row: icon back, the title, icon refresh and forge link', async () => {
     snapshot.current = base();
     const onBack = vi.fn();
@@ -721,15 +766,12 @@ diff --git a/src/inc.ts b/src/inc.ts
       'Refresh',
       'Open on GitHub',
     ]);
-    // The pane's one labelled action sits on the bar, acting on the whole
-    // review; it is disabled without an open chat to add to.
+    // Add to chat acts on the whole review and is disabled without an open
+    // chat to add to; each check row carries its own, so the bar's is an
+    // icon like its neighbours and the bar stays one row at any width.
     const handoff = controls[1];
-    expect(handoff.textContent).toBe('Add to chat');
-    expect(handoff.getAttribute('title')).toBeTruthy();
     expect((handoff as HTMLButtonElement).disabled).toBe(true);
-    // Ghost, so it sits with the icon controls rather than shouting over them.
-    expect(handoff.className).toContain('button--ghost');
-    for (const control of [controls[0], controls[2], controls[3]]) {
+    for (const control of controls) {
       // Icon-only, named and tooltipped: no visible words on the bar.
       expect(control.textContent).toBe('');
       expect(control.getAttribute('title')).toBeTruthy();

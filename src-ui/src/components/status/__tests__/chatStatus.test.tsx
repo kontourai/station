@@ -72,11 +72,38 @@ describe('deriveChatStatus — one status, by priority', () => {
         },
       },
     });
-    expect(waiting?.label).toBe('Still waiting');
+    expect(waiting?.label).toBe('No progress');
     expect(waiting?.details).toContainEqual({
-      text: 'No response from the engine for',
+      text: 'No progress',
       since: Date.parse('2026-09-29T00:00:00Z'),
     });
+  });
+
+  test('the expanded silence detail reads like the row: "No progress · 4m"', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2026-09-29T00:04:10Z'));
+    const waiting = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      activity: {
+        ...openTurn,
+        progressSilence: {
+          detectedAt: '2026-09-29T00:03:00Z',
+          silentSinceEventAt: '2026-09-29T00:00:00Z',
+          windowMs: 180000,
+          provider: 'acp',
+        },
+      },
+    });
+    render(<ChatStatusPill status={waiting} />);
+    act(() => {
+      screen.getAllByRole('button')[0].click();
+    });
+    const lines = Array.from(
+      document.querySelectorAll('.chat-status-pill__details p'),
+    ).map((line) => line.textContent);
+    expect(lines).toContain('No progress · 4m');
+    expect(lines.join('|')).not.toMatch(/No progress for/);
   });
 
   test('approval outranks the connection, which outranks the turn', () => {
@@ -215,10 +242,10 @@ describe('ChatStatusPill', () => {
     );
     expect(
       document.querySelector('.chat-status-pill__label')?.textContent,
-    ).toBe('Approval needed');
-    expect(screen.getByRole('status').textContent).toBe('3 approvals needed');
+    ).toBe('Needs approval');
+    expect(screen.getByRole('status').textContent).toBe('Needs approval (3)');
     expect(
-      screen.getByRole('button', { name: /3 approvals needed/ }),
+      screen.getByRole('button', { name: /Needs approval \(3\)/ }),
     ).toBeTruthy();
     view.rerender(
       <ChatStatusPill
@@ -226,9 +253,9 @@ describe('ChatStatusPill', () => {
         onRevealApproval={() => {}}
       />,
     );
-    expect(screen.getByRole('status').textContent).toBe('4 approvals needed');
+    expect(screen.getByRole('status').textContent).toBe('Needs approval (4)');
     expect(
-      screen.getByRole('button', { name: /4 approvals needed/ }),
+      screen.getByRole('button', { name: /Needs approval \(4\)/ }),
     ).toBeTruthy();
   });
 

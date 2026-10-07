@@ -1,0 +1,7 @@
+{
+  "revision": "a2076d4b6d5d027a47dae61b30cca0ea27fb5526",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Merged main's PR1 (#3369) D1 wording with this branch's: kept 'the icon-only New chat action, the one way into the start composer', which extends main's sentence; ChatDockHeader renders NewChatAction (icon) on the collapsed bar and it opens the start composer.","inputs":["docs/design/placement.md"]}
+  ]
+}

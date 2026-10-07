@@ -42,8 +42,12 @@ import {
 } from './core-api.js';
 import {
   type DeviceAccessOperatorChannel,
+  parseDeviceRemovalArgs,
   parseDeviceScopeArgs,
   renderGrantableScopes,
+  requireDeviceRemovalApproval,
+  runDeviceRemoveCommand,
+  runDeviceRevokeCommand,
   runDeviceScopeCommand,
   runDevicesCommand,
 } from './device-access.js';
@@ -236,7 +240,13 @@ const USAGE = `Usage:
   station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
   station environment access scopes [--json]
+  station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+  station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
+  station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
+  station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
+  station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
+  station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
   station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
   station environment hosts [--api-base=<url>]
   station environment list [--api-base=<url>]
@@ -355,6 +365,7 @@ export async function runEnvironmentCommand(
   if (await runAccessRequestCommand(args, dependencies)) return;
   if (await runEnvironmentOfferCommand(args, dependencies)) return;
   if (await runLocalAccessCommand(args, dependencies)) return;
+  if (await runOperatorPasskeysCommand(args, dependencies)) return;
   if (await runPeerCredentialCommand(args, dependencies)) return;
   if (await runSshEnvironmentCommand(args)) return;
 
@@ -1067,6 +1078,8 @@ function suggestDirectAccessInvocation(
 ): string {
   const base = `station environment access ${action} --api-base=${apiBase}`;
   if (action === 'list') return `${base}.`;
+  if (action === 'revoke' || action === 'remove')
+    return `${base} <device>. Interactively this prompts for confirmation; pass --force only for non-interactive/scripted use.`;
   return (
     `${base} <request-id>. Interactively this prompts for confirmation; ` +
     'pass --force only for non-interactive/scripted use.'
@@ -1482,11 +1495,11 @@ async function openLocalOperatorChannel(
     throw new Error(
       targetProfile
         ? `Station "${targetProfile.name}" targets ${apiBase}, which is not a loopback address. ` +
-            'Environment-security commands (access list/approve/deny/devices/scope) operate only on a Station ' +
+            'Environment-security commands (access list/approve/deny/devices/scope/revoke/remove) operate only on a Station ' +
             'running on this same machine, so a script can never approve device access on a Station ' +
             "it merely has network reach to. Run this command directly on that Station's host, " +
             `or pass a Station saved with a loopback (127.0.0.1 or [::1]) endpoint.`
-        : `Operator access commands (access list/approve/deny/devices/scope) require a loopback --api-base, but this resolved to ${apiBase}. ` +
+        : `Operator access commands (access list/approve/deny/devices/scope/revoke/remove) require a loopback --api-base, but this resolved to ${apiBase}. ` +
             'Run this command on the Station host or over SSH, and pass an explicit ' +
             `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );
@@ -1608,6 +1621,227 @@ async function openLocalOperatorChannel(
   return { requestOperatorJson, resolved, apiBase };
 }
 
+/**
+ * `station environment operator passkeys …` (#3257, S2b): the host half of
+ * operator passkey enrollment. Same trust as the access verbs: it runs only
+ * against a Station on this machine and only after that Station proves it owns
+ * this home, then sends the home's operator credential.
+ *
+ * `approve <code>` takes the code the BROWSER displays. The listing
+ * deliberately never prints codes: confirming is comparing, not copying.
+ */
+const PASSKEY_ERROR_TEXT: Record<string, string> = {
+  invalid_code:
+    'No pending enrollment request has that code. Check the code shown in the browser; it expires after 5 minutes and works once.',
+  rate_limited: 'Too many wrong codes. Wait a few minutes before trying again.',
+  enrollment_unavailable:
+    'Operator passkey enrollment needs STATION_TRUSTED_CONSENT_ORIGIN (an HTTPS origin on a DNS name) on the Station. A Station reachable only by IP has no remote operator sign-in.',
+  passkey_not_found: 'No active operator passkey has that id.',
+  store_unavailable:
+    'The operator passkey store could not be opened privately, so passkeys are unavailable.',
+  device_gone:
+    'The device that opened this request is no longer paired. Nothing was confirmed.',
+  device_mismatch:
+    'The request with that code was not opened by the device you named. Nothing was confirmed; run `station environment operator passkeys` to see who asked.',
+  authentication_required:
+    "The Station did not accept this home's operator credential.",
+};
+
+interface PasskeyRequestDetails {
+  deviceLabel?: unknown;
+  rpId?: unknown;
+  expiresAt?: unknown;
+  requester?: {
+    kind?: unknown;
+    deviceId?: unknown;
+    pairedAt?: unknown;
+    scope?: unknown;
+    active?: unknown;
+  };
+}
+
+/** The label is the device's own claim; the id, pairing date and scope are Station's. */
+function describePasskeyRequest(request: PasskeyRequestDetails): string {
+  const who = request.requester ?? {};
+  const paired =
+    typeof who.pairedAt === 'number'
+      ? new Date(who.pairedAt).toISOString()
+      : 'n/a';
+  return [
+    `Device name (chosen by the device): ${terminalSafeText(String(request.deviceLabel))}`,
+    `Device id: ${terminalSafeText(String(who.deviceId ?? 'unknown'))} (${who.kind === 'operator-credential' ? 'the operator credential' : 'paired device'})`,
+    `Paired: ${paired}${who.active === false ? ' (NO LONGER PAIRED)' : ''}`,
+    `Scopes: ${terminalSafeText(String(who.scope || 'n/a'))}`,
+    `For: ${terminalSafeText(String(request.rpId))}, expires ${new Date(Number(request.expiresAt)).toISOString()}`,
+  ].join('\n');
+}
+
+function passkeyCommandFailure(error: unknown): Error {
+  const code = (error as { code?: unknown }).code;
+  const text = typeof code === 'string' ? PASSKEY_ERROR_TEXT[code] : undefined;
+  return text ? new Error(text) : (error as Error);
+}
+
+async function runOperatorPasskeysCommand(
+  args: string[],
+  dependencies: EnvironmentCommandDependencies,
+): Promise<boolean> {
+  const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
+  if (parsed.positionals[0] !== 'operator') return false;
+  if (parsed.positionals[1] !== 'passkeys') throw usageError();
+  const action = parsed.positionals[2] ?? 'list';
+  if (!['list', 'approve', 'deny', 'revoke'].includes(action)) {
+    throw usageError();
+  }
+  const json = parsed.flags.json === true;
+  if (
+    !allowedFlags(parsed.flags, [
+      'api-base',
+      'station',
+      ...(action === 'list' ? ['json'] : []),
+      ...(action === 'approve' ? ['device'] : []),
+    ]) ||
+    (parsed.flags.json !== undefined && parsed.flags.json !== true)
+  ) {
+    throw usageError();
+  }
+  // The browser shows the code as "482 913"; accept it split or joined.
+  const operand = parsed.positionals.slice(3).join('');
+  if (action === 'list' && operand !== '') throw usageError();
+  if (
+    (action === 'approve' || action === 'deny') &&
+    !/^[0-9]{6}$/.test(operand)
+  ) {
+    throw new Error(
+      `Usage: station environment operator passkeys ${action} <6-digit code shown in the browser>`,
+    );
+  }
+  if (action === 'revoke' && !/^[A-Za-z0-9_-]{1,32}$/.test(operand)) {
+    throw new Error(
+      'Usage: station environment operator passkeys revoke <passkey-id> (see `station environment operator passkeys`)',
+    );
+  }
+  const { requestOperatorJson } = await openLocalOperatorChannel(
+    parsed,
+    'passkeys',
+    dependencies,
+  );
+  const write = dependencies.stdout ?? console.log;
+  const base = '/api/pairing/operator-passkeys';
+  try {
+    if (action === 'approve' || action === 'deny') {
+      let device: string | undefined;
+      if (action === 'approve') {
+        device =
+          typeof parsed.flags.device === 'string'
+            ? parsed.flags.device
+            : undefined;
+        if (parsed.flags.device !== undefined && device === undefined) {
+          throw new Error('--device needs a device id prefix.');
+        }
+        if (device === undefined) {
+          // Show who asked, then require a human to commit.
+          if (!dependencies.isInteractive || !dependencies.confirm) {
+            throw new Error(
+              'Approving needs to know WHICH device asked. Run `station environment operator passkeys` to see the requests, then pass --device <id-prefix> of the device you expect (or run this on a terminal and confirm).',
+            );
+          }
+          const details = (await requestOperatorJson(
+            `${base}/requests/inspect`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: operand }),
+            },
+          )) as PasskeyRequestDetails;
+          write(describePasskeyRequest(details));
+          if (
+            !(await dependencies.confirm(
+              'Enroll an operator passkey for this device?',
+            ))
+          ) {
+            write('Cancelled. Nothing was confirmed.');
+            return true;
+          }
+          device = String(details.requester?.deviceId ?? '');
+        }
+      }
+      const result = (await requestOperatorJson(`${base}/requests/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: operand,
+          ...(device !== undefined ? { device } : {}),
+        }),
+      })) as { deviceLabel?: unknown; rpId?: unknown };
+      const label = terminalSafeText(
+        String(result.deviceLabel ?? 'the browser'),
+      );
+      write(
+        action === 'approve'
+          ? `Confirmed. Finish creating the passkey in ${label}.`
+          : `Denied the enrollment request from ${label}.`,
+      );
+      return true;
+    }
+    if (action === 'revoke') {
+      const result = (await requestOperatorJson(
+        `${base}/${encodeURIComponent(operand)}`,
+        { method: 'DELETE' },
+      )) as { label?: unknown };
+      write(
+        `Revoked passkey "${terminalSafeText(String(result.label ?? operand))}".`,
+      );
+      return true;
+    }
+    const listing = (await requestOperatorJson(base)) as {
+      enrollment?: { available?: boolean; reason?: string; rpId?: string };
+      passkeys?: Array<Record<string, unknown>>;
+      pending?: Array<Record<string, unknown>>;
+    };
+    if (json) {
+      write(terminalSafeJson(listing));
+      return true;
+    }
+    const passkeys = listing.passkeys ?? [];
+    const pending = listing.pending ?? [];
+    write(
+      listing.enrollment?.available
+        ? `Enrollment is available for ${terminalSafeText(String(listing.enrollment.rpId ?? ''))}.`
+        : `Enrollment is unavailable: ${terminalSafeText(String(listing.enrollment?.reason ?? 'unknown'))}`,
+    );
+    write(
+      passkeys.length === 0 ? 'No operator passkeys.' : 'Operator passkeys:',
+    );
+    for (const passkey of passkeys) {
+      write(
+        `  ${terminalSafeText(String(passkey.id))}  ${terminalSafeText(String(passkey.label))}  created ${new Date(Number(passkey.createdAt)).toISOString()}  last used ${passkey.lastUsedAt ? new Date(Number(passkey.lastUsedAt)).toISOString() : 'never'}`,
+      );
+    }
+    if (passkeys.length === 1) {
+      write(
+        'Enroll a second passkey (a backup) so losing one does not lock you out.',
+      );
+    }
+    if (pending.length > 0) {
+      write(
+        'Pending enrollment requests (compare with the code in the browser):',
+      );
+      for (const request of pending) {
+        write(
+          `  ${describePasskeyRequest(request as PasskeyRequestDetails).replace(/\n/g, '\n  ')}`,
+        );
+      }
+      write(
+        'Confirm one with: station environment operator passkeys approve <code> --device <id-prefix>',
+      );
+    }
+    return true;
+  } catch (error) {
+    throw passkeyCommandFailure(error);
+  }
+}
+
 async function runLocalAccessCommand(
   args: string[],
   dependencies: EnvironmentCommandDependencies,
@@ -1617,9 +1851,16 @@ async function runLocalAccessCommand(
 
   const action = parsed.positionals[1];
   if (
-    !['list', 'approve', 'deny', 'devices', 'scope', 'scopes'].includes(
-      action ?? '',
-    )
+    ![
+      'list',
+      'approve',
+      'deny',
+      'devices',
+      'scope',
+      'scopes',
+      'revoke',
+      'remove',
+    ].includes(action ?? '')
   ) {
     throw usageError();
   }
@@ -1634,6 +1875,34 @@ async function runLocalAccessCommand(
     // Needs no Station: the vocabulary is this build's own.
     (dependencies.stdout ?? console.log)(
       renderGrantableScopes({ json: parsed.flags.json === true }),
+    );
+    return true;
+  }
+  if (action === 'revoke' || action === 'remove') {
+    const removalArgs = parseDeviceRemovalArgs(parsed, usageError);
+    // A person at a terminal confirms after the device is resolved (so the
+    // question names it); with no terminal and no --force, refuse now.
+    const confirm =
+      dependencies.isInteractive && dependencies.confirm
+        ? dependencies.confirm
+        : null;
+    requireDeviceRemovalApproval(removalArgs, action, confirm);
+    const { requestOperatorJson, resolved } = await openLocalOperatorChannel(
+      parsed,
+      action,
+      dependencies,
+    );
+    const channel: DeviceAccessOperatorChannel = {
+      request: requestOperatorJson,
+      target: describeResolvedTargetForHuman(resolved),
+    };
+    await (action === 'revoke'
+      ? runDeviceRevokeCommand
+      : runDeviceRemoveCommand)(
+      channel,
+      removalArgs,
+      confirm,
+      dependencies.stdout ?? console.log,
     );
     return true;
   }
@@ -1969,6 +2238,8 @@ export function normalizeEnvironmentArgsForParsing(args: string[]): string[] {
     '--remove',
     '--set',
     '--tailscale-serve-port',
+    // `operator passkeys approve --device <id-prefix>`.
+    '--device',
   ]);
   const normalized: string[] = [];
   for (let index = 0; index < args.length; index += 1) {

@@ -355,7 +355,7 @@ owns daily NDJSON files. This is separate from orchestration EventStore replay
 and its execution receipts.
 
 `UsageAggregator` reads retained observations; missing data and provider usage
-semantics remain explicit in [usage telemetry](reference/usage-telemetry.md).
+semantics remain explicit in [Profile usage and measurement coverage](guides/monitoring.md#profile-usage-and-paired-people).
 Optional OTel export and the collector/dashboard stack are described in
 [monitoring](guides/monitoring.md). Neither a dashboard nor an empty metric is
 an authoritative account of whether product work happened.
@@ -436,9 +436,10 @@ package READMEs for supported entry points.
 
 #### Attached external session follow
 
-Station discovers supported Claude and Codex transcripts through its Session
-sources. A `read-only-attached` record imports observed history without taking
-over the external process. Missing files or stale observations do not prove that
+Station discovers supported Claude Code and Codex transcripts, Grok Build
+sessions and OpenCode's session database through its Session sources. A
+`read-only-attached` record imports observed history without taking over the
+external process. Missing files or stale observations do not prove that
 the external engine is live or controllable.
 
 Command ownership checks refuse mutations of the original attached execution.

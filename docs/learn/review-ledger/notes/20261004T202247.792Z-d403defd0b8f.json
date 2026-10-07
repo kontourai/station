@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added the host-pressure liveness scale section (factor table, entry points, CI pin, raise-only override capped at 8, bound inventory). Checked every row against vitest.config.ts, product-laws.mjs, run-fallow-audit.mjs, orchestration-transfer-gate.mjs and orchestration-transfer-capture.ts; the Veritas 600 s claim against node_modules/@kontourai/veritas evidence-check-runner.mjs and .veritas/repo-map.json. Existing transfer-gate timeout prose still holds: the 60 000 ms default is now multiplied by the factor only when the explicit env override is unset.","inputs":["docs/guides/testing.md",".githooks/pre-push","package.json","scripts/__tests__/prepush-orchestration-transfer.test.ts","scripts/check-prepush-orchestration-transfer.mjs","scripts/orchestration-transfer-capture.ts","scripts/run-focused-tests.mjs","scripts/test-impact-manifest.mjs","vitest.setup.ts"]}
+  ]
+}

@@ -181,7 +181,7 @@ successor preparation does not prove that a native grant was absent or retired.
    with the unconsumed person invitation and new username/password. The
    maintained provider creates the real issuer-qualified person. `pending
    plan.json` displays actual pending enrollment candidates.
-4. Brian verifies Zach's exact candidate and actual account identity.
+4. Casey verifies Zach's exact candidate and actual account identity.
    `approve plan.json approval.json` sends the exact `{enrollmentId,candidate}`
    through the operator endpoint. Use the pending item's opaque `enrollmentId`,
    not its UUID `requestId`. Synthetic automation may perform this same

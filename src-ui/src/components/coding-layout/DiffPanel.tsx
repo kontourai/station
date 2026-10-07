@@ -35,18 +35,32 @@ import {
 } from '../../contexts/DeviceSettingsContext';
 import { DiffCommentThread } from './DiffCommentThread';
 import './DiffPanel.css';
-import { Tooltip } from '@kontourai/ui/react';
 import { createPortal } from 'react-dom';
 import {
   browserEpochMs,
   emitDiffCommitPerformanceMark,
 } from '../../performance/interactive-workspace-performance-hooks';
 import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
-import { ActionOverflowMenu } from '../ActionOverflowMenu';
-import { ArrowDownGlyph, ArrowUpGlyph } from '../icons/Glyph';
 import { SkeletonBlock } from '../state';
+import {
+  CollapseAllGlyph,
+  ColumnsGlyph,
+  ExpandAllGlyph,
+  WrapGlyph,
+} from './diffGlyphs';
 
 type DiffCommentSide = DiffComment['side'];
+
+/**
+ * @pierre/diffs draws its own `-N +N` before the header's metadata slot, and
+ * has no option to leave it out short of replacing the whole header. Station
+ * draws the file's counts in that slot itself (`renderHeaderMetadata`,
+ * additions first like the pane's total, and a kind for a hunkless file), so
+ * the library's pair is hidden through its own stylesheet hook, which reaches
+ * into the diff's shadow root where a page rule cannot.
+ */
+const LIBRARY_FILE_COUNTS_HIDDEN =
+  '[data-metadata] > [data-additions-count], [data-metadata] > [data-deletions-count] { display: none; }';
 
 /** Metadata carried on each annotated diff line: its comments + composer flag. */
 interface DiffCommentAnnotation {
@@ -285,12 +299,14 @@ export function DiffPanel({
     data: diff = '',
     isLoading: loading,
     error: queryError,
+    refetch,
   } = useCodingDiffQuery({ projectSlug, workingDir }, apiBase);
   return (
     <ObservedDiffPanel
       diff={diff}
       loading={loading}
       error={queryError?.message || null}
+      onRetry={() => void refetch()}
       observationKey={workingDir}
       projectSlug={projectSlug}
     />
@@ -302,6 +318,7 @@ export function ObservedDiffPanel({
   diff,
   loading = false,
   error = null,
+  onRetry,
   observationKey,
   projectSlug,
   providerComments,
@@ -309,6 +326,8 @@ export function ObservedDiffPanel({
   diff: string;
   loading?: boolean;
   error?: string | null;
+  /** Re-read after an error; the error line offers it when given. */
+  onRetry?: () => void;
   observationKey: string;
   projectSlug?: string;
   /**
@@ -711,15 +730,19 @@ export function ObservedDiffPanel({
         diffStyle,
         lineDiffType: 'none',
         overflow: wrap ? 'wrap' : 'scroll',
+        unsafeCSS: LIBRARY_FILE_COUNTS_HIDDEN,
       }}
     />
   );
 
-  // Inside a host that draws the pane's head itself (the Coding layout's
-  // side panel), the title is the host's: the stats join the head after the
-  // name, and the controls — collapse and expand as named icons, the view
-  // and wrap choices behind one overflow — join it before the host's close.
-  // Nothing of the pane's own title row renders then (#3046 round).
+  // The counts and the four icon tools, drawn in one of two places. Inside a
+  // host that draws the pane's head itself (the Coding layout's side panel,
+  // #3046 round), the head names the pane: the counts join it after the
+  // name and the tools before the host's close, and the pane draws no row of
+  // its own. On its own, the pane draws them as one quiet row. Either way
+  // the tools are icon-only, named and tipped; the two toggles say which way
+  // they are set (`aria-pressed`). The host keeps its own ⋯ (pop out,
+  // remove): the pane has no overflow to merge it into.
   const headSlots = usePaneHeadSlots();
   const stats = (
     <span className="diff-stat">
@@ -730,63 +753,58 @@ export function ObservedDiffPanel({
       <span className="diff-stat__deletions">−{totalCounts.deletions}</span>
     </span>
   );
-  const headControls = (
-    <div className="diff-head-controls">
-      <Tooltip label="Collapse all files" placement="bottom">
-        <button
-          type="button"
-          onClick={collapseAllFiles}
-          aria-label="Collapse all files"
-          className="diff-head-control"
-        >
-          <ArrowUpGlyph />
-        </button>
-      </Tooltip>
-      <Tooltip label="Expand all files" placement="bottom">
-        <button
-          type="button"
-          onClick={expandAllFiles}
-          aria-label="Expand all files"
-          className="diff-head-control"
-        >
-          <ArrowDownGlyph />
-        </button>
-      </Tooltip>
-      <ActionOverflowMenu
-        label="Diff view options"
-        triggerClassName="coding-workbench__rail-item diff-head-control"
-        actions={[
-          {
-            key: 'style',
-            label: diffStyle === 'unified' ? 'Split view' : 'Unified view',
-            onSelect: () =>
-              setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified'),
-          },
-          {
-            key: 'wrap',
-            label: 'Wrap lines',
-            checked: wrap,
-            onSelect: () => setWrap(!wrap),
-          },
-          // The host's own rows for this pane (pop out, remove), merged so
-          // the head has one ⋯; `takeHostActions` below tells it so.
-          ...(headSlots?.hostActions ?? []),
-        ]}
-      />
+  const renderTools = (placement: 'head' | 'bar') => (
+    <div
+      className={`diff-panel__tools${placement === 'head' ? ' diff-panel__tools--head' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={collapseAllFiles}
+        title="Collapse all files"
+        aria-label="Collapse all files"
+        className="diff-tool"
+      >
+        <CollapseAllGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={expandAllFiles}
+        title="Expand all files"
+        aria-label="Expand all files"
+        className="diff-tool"
+      >
+        <ExpandAllGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
+        }
+        title="Split view"
+        aria-label="Split view"
+        aria-pressed={diffStyle === 'split'}
+        className="diff-tool"
+      >
+        <ColumnsGlyph />
+      </button>
+      <button
+        type="button"
+        onClick={() => setWrap(!wrap)}
+        title="Wrap lines"
+        aria-label="Wrap lines"
+        aria-pressed={wrap}
+        className="diff-tool"
+      >
+        <WrapGlyph />
+      </button>
     </div>
   );
-  const takeHostActions = headSlots?.takeHostActions;
-  useEffect(() => {
-    if (!takeHostActions) return;
-    takeHostActions(true);
-    return () => takeHostActions(false);
-  }, [takeHostActions]);
 
   return (
     <div
       ref={performanceSurfaceRef}
+      className="diff-panel"
       data-station-performance-surface="worktree-diff"
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
       {headSlots ? (
         <>
@@ -794,97 +812,41 @@ export function ObservedDiffPanel({
             ? createPortal(stats, headSlots.leading)
             : null}
           {headSlots.trailing && hasDiff
-            ? createPortal(headControls, headSlots.trailing)
+            ? createPortal(renderTools('head'), headSlots.trailing)
             : null}
         </>
       ) : (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px',
-            padding: '6px 12px 4px',
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-            }}
-          >
-            Git Diff
-          </span>
-          {hasDiff && stats}
-          {hasDiff && (
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button
-                type="button"
-                onClick={collapseAllFiles}
-                title="Collapse all files"
-                aria-label="Collapse all files"
-                className="diff-toggle"
-              >
-                Collapse all
-              </button>
-              <button
-                type="button"
-                onClick={expandAllFiles}
-                title="Expand all files"
-                aria-label="Expand all files"
-                className="diff-toggle"
-              >
-                Expand all
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
-                }
-                title={`Switch to ${diffStyle === 'unified' ? 'split' : 'unified'} view`}
-                aria-label={`Diff view: ${diffStyle} (click to switch)`}
-                className="diff-toggle"
-              >
-                {diffStyle === 'unified' ? 'Unified' : 'Split'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setWrap(!wrap)}
-                title={wrap ? 'Disable line wrap' : 'Enable line wrap'}
-                aria-pressed={wrap}
-                aria-label="Toggle line wrap"
-                className={
-                  wrap ? 'diff-toggle diff-toggle--active' : 'diff-toggle'
-                }
-              >
-                Wrap
-              </button>
-            </div>
-          )}
-        </div>
+        hasDiff && (
+          <div className="diff-panel__bar">
+            {stats}
+            {renderTools('bar')}
+          </div>
+        )
       )}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 12px' }}>
+      <div className="diff-panel__body">
         {loading && <SkeletonBlock count={2} label="Loading diff" />}
         {error && (
-          <div style={{ fontSize: '12px', color: 'var(--error-text)' }}>
+          <p className="diff-panel__note diff-panel__note--error" role="alert">
             {error}
-          </div>
+            {onRetry && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="button button--link"
+                  onClick={onRetry}
+                >
+                  Retry
+                </button>
+              </>
+            )}
+          </p>
         )}
         {hasDiff && codeView}
         {!loading && !error && !hasDiff && (
-          <div
-            style={{
-              padding: '12px',
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-            }}
-          >
+          <p className="diff-panel__note">
             {hasPatchText ? 'Unable to parse diff.' : 'No changes'}
-          </div>
+          </p>
         )}
       </div>
     </div>

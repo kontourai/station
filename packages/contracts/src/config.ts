@@ -130,6 +130,15 @@ export interface AppConfig {
    */
   surfaceTrustFromVeritasEvidence?: boolean;
   /**
+   * #3386: whether Activity follows Claude Code and Codex conversations found
+   * on this machine whose folder belongs to no project (listed under No
+   * project). **Default on** — `false` stops following them; conversations
+   * already read stay in Activity. Conversations inside a project are
+   * followed either way, and a hosted Station never follows these.
+   * Read every poll by `AttachedSessionFollowService`.
+   */
+  attachedSessionsOutsideProjects?: boolean;
+  /**
    * Create the read-only `root:conversations` projection at personal startup
    * when absent. Default off. Disabling does not remove an existing root;
    * hosted mode skips this projection. Other Knowledge routes are independent.
@@ -163,6 +172,15 @@ export interface AppConfig {
    * boot wiring time — a flip applies on the next Station start.
    */
   workspaceCheckpoints?: boolean;
+  /**
+   * #3157: after Claude Code or Codex stops on a usage limit whose reset the
+   * provider reported, send the stopped turn again once the limit resets.
+   * **Default off** — absent/undefined/false all mean off: a resume spends
+   * quota while nobody is watching. Applied when a resume is due, so turning
+   * it on or off while a stop waits decides that stop. Off at the reset, the
+   * stop is left to the user with its reset time still shown.
+   */
+  usageLimitAutoResume?: boolean;
   /** Distribution defaults for starter layouts and registry sources. */
   distributionProfile?: DistributionProfileSelection;
   /**

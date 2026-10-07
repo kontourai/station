@@ -1,0 +1,7 @@
+{
+  "revision": "d7677e9e459c20ca98ea65cf6d49f52bcb4efb89",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Rechecked after the #3166 native transport test edit: getting-started makes no claim about native response headers or refusal attribution; the edit adds a test assertion only and changes no user-visible setup step.","inputs":["docs/user/getting-started.md","src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts"]}
+  ]
+}

@@ -32,10 +32,10 @@
  * is visible instead of being confused with "passing".
  */
 
-import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 
@@ -349,7 +349,7 @@ function buildExample(dir, name) {
   if (!scripts.build) return { name, status: 'no-build-script' };
 
   const npm = npmInvocation(['run', 'build']);
-  const result = spawnSync(npm.command, npm.args, {
+  const result = spawnSyncBounded(npm.command, npm.args, {
     cwd: dir,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

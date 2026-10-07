@@ -1,28 +1,13 @@
-import type { Skill } from '@kontourai/station-contracts/catalog';
-import type { AgentMcpPromptListing } from '@kontourai/station-contracts/mcp-prompts';
-import {
-  agentMcpPromptsQueryKey,
-  runAgentMcpPrompt,
-  useRunSkill,
-  useSkillDetailReader,
-} from '@kontourai/station-sdk';
+import { useRunSkill, useSkillDetailReader } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import {
   activeChatsStore,
   useActiveChatActions,
 } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
-import { loadSlashCommands } from '../slashCommands/load';
-import { getAllCommands, getCommand } from '../slashCommands/registry';
-import type { BindingStatus } from '../utils/execution';
-import {
-  assignSkillVariableArgs,
-  findMatchingSkillCommand,
-  parseShellWords,
-  substituteSkillVariables,
-} from '../utils/skill-commands';
+import type { SlashCommandContext } from '../slashCommands/dispatch';
 
 export function useSlashCommandHandler() {
   const { apiBase } = useApiBase();
@@ -32,258 +17,43 @@ export function useSlashCommandHandler() {
   const runSkillMutation = useRunSkill();
   const readSkillDetail = useSkillDetailReader();
 
-  // Warm the built-in commands once a chat input exists, so the first typed
-  // `/command` does not wait on the chunk. Dispatch still awaits the load.
-  useEffect(() => {
-    loadSlashCommands().catch(() => undefined);
-  }, []);
-
   return useCallback(
     async (
       sessionId: string,
       command: string,
-      context: {
-        onInputCleared?: () => void;
-        availableModels?: Array<{
-          id: string;
-          name: string;
-          originalId?: string;
-        }>;
-        bindingStatus?: BindingStatus;
-        autocomplete: {
-          openModel: () => void;
-          openNewChat: () => void;
-          closeCommand: () => void;
-          closeAll: () => void;
-        };
-      },
+      context: SlashCommandContext,
     ) => {
       const chatState = activeChatsStore.getSnapshot()[sessionId];
       if (!chatState) return false;
-
-      // ONE shell-style parse of the whole line (a whitespace
-      // split broke quoted values). The command word is readable even when a
-      // later quote never closes, so the ACP passthrough and the parse-error
-      // bail can both name the command the user typed.
-      const parsed = parseShellWords(command.slice(1).trim());
-      const words = parsed.ok ? parsed.words : [];
-      const cmd = (
-        words[0] ??
-        command.slice(1).trim().split(/\s+/)[0] ??
-        ''
-      ).toLowerCase();
-      const args = words.slice(1);
-
-      const agent = agents.find((a) => a.slug === chatState.agentSlug);
-
-      // Default cleanup: clear input and close autocomplete
-      const cleanup = () => {
+      const agent = agents.find((item) => item.slug === chatState.agentSlug);
+      if (agent?.engineConnectionType === 'acp') {
         updateChat(sessionId, { input: '' });
         context.autocomplete.closeAll();
-      };
-
-      // ACP agents: pass all slash commands through as prompt text to kiro-cli
-      if (agent?.engineConnectionType === 'acp') {
-        cleanup();
-        return command; // Return the command text to be sent as a message
+        return command;
       }
-
-      // A line the parser cannot read is never dispatched anywhere — not to
-      // a skill, a builtin, or the model — the user reads why instead.
-      if (!parsed.ok) {
-        addEphemeralMessage(sessionId, {
-          role: 'system',
-          content: `Could not read ${command}: ${parsed.error}`,
-        });
-        cleanup();
-        return true;
-      }
-
-      // 1. Check custom commands (send as message)
-      if (agent?.commands?.[cmd]) {
-        let expandedPrompt = agent.commands[cmd].prompt;
-        const params = agent.commands[cmd].params || [];
-
-        params.forEach((param: any, idx: number) => {
-          const value = args[idx] || param.default || '';
-          const escaped = param.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          expandedPrompt = expandedPrompt.replace(
-            new RegExp(`{{${escaped}}}`, 'g'),
-            value,
-          );
-        });
-
-        cleanup();
-        return expandedPrompt;
-      }
-
-      // 2. Check command skills
-      const cached = queryClient.getQueryData<Skill[]>(['skills', 'local']);
-      const match = findMatchingSkillCommand(cached, cmd, agent);
-      if (match) {
-        // The listing carries no bodies, so the text is read here — through
-        // the same cache entry the editor fills, so a second `/command` in
-        // the session costs nothing. A failed read must not send the raw
-        // `/command` to the model as if it were a message.
-        let skill: Skill;
-        try {
-          skill = await readSkillDetail(match.name);
-        } catch (error) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `Could not read /${cmd}: ${error instanceof Error ? error.message : 'unknown error'}`,
-          });
-          cleanup();
-          return true;
-        }
-        // Variable substitution is the SAME derivation the Test modal runs
-        // (`substituteSkillVariables`), fed by the ONE arg parser
-        // (`assignSkillVariableArgs`): `name=value` words assign
-        // by name — so an earlier variable can keep its default while a later
-        // required one is supplied — and the remaining words fill the
-        // unnamed variables in declaration order. A variable left with
-        // neither a value nor a usable default is REJECTED — named in an
-        // error the user reads, never silently substituted with an empty
-        // string.
-        const argAssignment = assignSkillVariableArgs(
-          skill.variables ?? [],
-          args,
-        );
-        if (!argAssignment.ok) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `/${cmd}: ${argAssignment.error} — nothing was sent`,
-          });
-          cleanup();
-          return true;
-        }
-        const substitution = substituteSkillVariables(
-          skill.body ?? '',
-          skill.variables ?? [],
-          argAssignment.provided,
-        );
-        if (!substitution.ok) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `/${cmd} needs a value for ${substitution.missing.map((name) => `{{${name}}}`).join(', ')} — nothing was sent`,
-          });
-          cleanup();
-          return true;
-        }
-        void runSkillMutation.mutateAsync(match.name).catch(() => undefined);
-        cleanup();
-        return substitution.content;
-      }
-
-      // 2b. #3284: an MCP server prompt (`/<server>:<prompt>`). Arguments
-      // use the same `name=value` / positional parser as skill variables,
-      // the server reads the prompt, and its text is sent as this turn. A
-      // missing required argument or a refused read sends nothing.
-      const promptListing = chatState.agentSlug
-        ? queryClient.getQueryData<AgentMcpPromptListing>(
-            agentMcpPromptsQueryKey(chatState.agentSlug),
-          )
-        : undefined;
-      const prompt = promptListing?.prompts.find(
-        (candidate) => candidate.command.toLowerCase() === cmd,
-      );
-      if (prompt && chatState.agentSlug) {
-        const assignment = assignSkillVariableArgs(
-          prompt.arguments.map((argument) => ({ name: argument.name })),
-          args,
-        );
-        if (!assignment.ok) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `/${prompt.command}: ${assignment.error} — nothing was sent`,
-          });
-          cleanup();
-          return true;
-        }
-        const provided = Object.fromEntries(
-          Object.entries(assignment.provided).filter(
-            (entry): entry is [string, string] =>
-              typeof entry[1] === 'string' && entry[1].trim() !== '',
-          ),
-        );
-        const missing = prompt.arguments
-          .filter(
-            (argument) => argument.required && !(argument.name in provided),
-          )
-          .map((argument) => `<${argument.name}>`);
-        if (missing.length) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `/${prompt.command} needs a value for ${missing.join(', ')} — nothing was sent`,
-          });
-          cleanup();
-          return true;
-        }
-        try {
-          const run = await runAgentMcpPrompt(chatState.agentSlug, {
-            serverId: prompt.serverId,
-            name: prompt.name,
-            arguments: provided,
-          });
-          cleanup();
-          return run.text;
-        } catch (error) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `Could not run /${prompt.command}: ${error instanceof Error ? error.message : 'unknown error'}`,
-          });
-          cleanup();
-          return true;
-        }
-      }
-
-      // 3. Check registered commands
       try {
-        await loadSlashCommands();
-      } catch (error) {
-        addEphemeralMessage(sessionId, {
-          role: 'system',
-          content: `Could not load Station's built-in commands, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
-        });
-        cleanup();
-        return true;
-      }
-      const handler = getCommand(cmd);
-      if (handler) {
-        cleanup();
-
-        await handler({
-          sessionId,
-          chatState,
-          agent,
-          args,
+        const { dispatchSlashCommand } = await import(
+          '../slashCommands/dispatch'
+        );
+        return dispatchSlashCommand(sessionId, command, context, {
           apiBase,
-          availableModels: context.availableModels,
-          bindingStatus: context.bindingStatus,
+          chatState,
+          agents,
           updateChat,
           addEphemeralMessage,
           queryClient,
-          sendMessage: async () => {},
-          autocomplete: context.autocomplete,
+          runSkillMutation,
+          readSkillDetail,
         });
-
+      } catch (error) {
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content: `Could not load Station's commands, so ${command} was not sent. Try again. (${error instanceof Error ? error.message : 'unknown error'})`,
+        });
+        updateChat(sessionId, { input: '' });
+        context.autocomplete.closeAll();
         return true;
       }
-
-      // 4. CLI runtime passthrough — forward unrecognized commands to the SDK
-      if (chatState.provider === 'claude' || chatState.provider === 'codex') {
-        cleanup();
-        return command; // Raw text forwarded to sendOrchestrationTurn
-      }
-
-      // 5. Unknown command
-      const availableCommands = getAllCommands();
-      addEphemeralMessage(sessionId, {
-        role: 'system',
-        content: `Unknown command: ${command}\n\nAvailable:\n${availableCommands.map((c) => `• /${c}`).join('\n')}`,
-      });
-      cleanup();
-      return true;
     },
     [
       apiBase,

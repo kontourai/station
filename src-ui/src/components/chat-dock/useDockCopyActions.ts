@@ -48,7 +48,7 @@ export function useDockCopyActions(input: {
       ? [
           {
             key: 'copy-thread-id',
-            label: 'Copy thread ID',
+            label: 'Copy chat ID',
             onSelect: () => {
               void copy(input.conversationId as string);
             },

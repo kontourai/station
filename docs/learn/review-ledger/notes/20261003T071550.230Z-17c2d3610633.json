@@ -1,0 +1,7 @@
+{
+  "revision": "78cae83646c51c21b8d21e3eca6704912fc594a6",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"SplitPaneLayout.css lost its (pointer: coarse) rule for the split-pane search field, which moved to chat.css's shared touch-target block with the same 44px floor (now also covering phones and the provider picker modal). This document makes no claim about the search field's height; the split pane's other rules are unchanged.","inputs":["src-ui/src/components/SplitPaneLayout.css","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

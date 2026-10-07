@@ -1,3 +1,7 @@
+import {
+  type EngineId,
+  parseEngineId,
+} from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   isSupportedTurnProvenanceEnvelope,
@@ -85,6 +89,22 @@ export function resolveTurnEngine(
   if (envelope?.engine.state !== 'observed') return null;
   const { provider } = envelope.engine.value;
   return { name: engineDisplayLabel(provider) ?? provider };
+}
+
+/**
+ * The engine id that executed THIS turn, from the same envelope slot
+ * `resolveTurnEngine` reads, for the row's avatar mark (#3355). Same rules:
+ * never the agent's live binding (archive#1424 — a rebound agent would
+ * relabel history), never a guess from a model id. `undefined` when the
+ * envelope is absent, unreadable, or did not observe an engine; the caller
+ * then renders exactly what it did before.
+ */
+export function resolveTurnEngineId(
+  msg: TurnIdentitySource,
+): EngineId | undefined {
+  const envelope = readEnvelope(msg);
+  if (envelope?.engine.state !== 'observed') return undefined;
+  return parseEngineId(envelope.engine.value.provider);
 }
 
 /** Which model slot a rendered claim came from. */

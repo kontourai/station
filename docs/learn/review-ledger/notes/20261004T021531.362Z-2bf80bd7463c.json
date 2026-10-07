@@ -1,0 +1,7 @@
+{
+  "revision": "0341ddb564a105ebed51ca810d7e9a1d75a06eb9",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"This branch's only change to its watched source is the action-surface inventory (Diff pane, review bar, merge menu rows and two de-duplicated lines); no theming token, colour or theme-switching claim changed.","inputs":["docs/ui/responsive-action-surfaces.txt","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

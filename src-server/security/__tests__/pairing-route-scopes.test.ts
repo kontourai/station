@@ -303,6 +303,31 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
         '/api/projects',
         true,
       ],
+      // #3157: the usage-limit banner's read, and its two person-owned actions.
+      [
+        'GET',
+        '/api/orchestration/sessions/:threadId/usage-limit',
+        'orchestration:read',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/usage-limit/resume',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/usage-limit/cancel',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
     ] as const) {
       expect(requiredPairingScope(method, path)).toBe(scope);
       expect(matchPairingScopeRule(method, path)).toMatchObject({

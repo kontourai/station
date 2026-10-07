@@ -7,8 +7,8 @@ import {
   getConversationContextBoundaryStatus,
   getConversationHandoffStatus,
   handoffExecutionMessage,
-  sendExecutionMessage,
 } from '../client/execution';
+import { sendExecutionMessage } from '../client/send-execution-message';
 import { ChatHttpError } from '../query-domains/chatRuntimeStream';
 
 describe('client execution', () => {

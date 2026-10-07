@@ -446,9 +446,13 @@ describe('CLI core commands over HTTP', () => {
         const slug = decodeURIComponent(conversationsMatch[1]);
         sendJson(200, {
           success: true,
-          data: state.conversations.filter(
-            (conversation) => conversation.resourceId === slug,
-          ),
+          // The real route's page envelope, not a bare array.
+          data: {
+            items: state.conversations.filter(
+              (conversation) => conversation.resourceId === slug,
+            ),
+            hasMore: false,
+          },
         });
         return;
       }
@@ -1253,6 +1257,30 @@ describe('CLI core commands over HTTP', () => {
     });
   });
 
+  test("does not send this machine's shell directory to another Environment by default", async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'chat',
+      'codex',
+      'use the remote workspace',
+      '--on=remote-env',
+      `--api-base=${apiBase}`,
+    ]);
+
+    expect(orchestrationCommands[0]).toEqual({
+      type: 'executeTarget',
+      input: {
+        conversationId: expect.any(String),
+        message: 'use the remote workspace',
+        target: {
+          environment: { kind: 'saved', id: 'remote-env' },
+          agent: 'codex',
+        },
+      },
+    });
+  });
+
   test('rejects --cwd combined with --project as a usage error before any request (review r1 HIGH fix 2)', async () => {
     const { runCli } = await import('../cli.js');
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -1673,9 +1701,21 @@ describe('CLI core commands over HTTP', () => {
       `--api-base=${apiBase}`,
     ]);
 
-    expect(_consoleLog).toHaveBeenCalledWith(
-      expect.stringContaining('"kind": "managed"'),
-    );
+    // #3304: the route answers `{ items, hasMore }`; the listing must map
+    // the items rather than crash on `conversations.map`.
+    const listed = _consoleLog.mock.calls
+      .map(([line]) => String(line))
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return undefined;
+        }
+      })
+      .find((value) => Array.isArray(value));
+    expect(listed).toEqual([
+      expect.objectContaining({ id: 'conv-http-test', kind: 'managed' }),
+    ]);
     expect(_consoleLog).toHaveBeenCalledWith(
       expect.stringContaining('"id": "conv-http-test"'),
     );

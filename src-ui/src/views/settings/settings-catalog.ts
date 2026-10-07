@@ -255,6 +255,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['surfaceTrustFromVeritasEvidence'],
   },
   {
+    id: 'attached-sessions-outside-projects',
+    title: 'Conversations outside projects',
+    section: 'host-runtime',
+    keywords: ['activity claude code codex transcripts no project attached'],
+    configKeys: ['attachedSessionsOutsideProjects'],
+  },
+  {
     id: 'device-helper-url',
     title: 'Device helper URL',
     section: 'host-runtime',
@@ -380,6 +387,12 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Workspace checkpoints',
     section: 'agent-runs',
     configKeys: ['workspaceCheckpoints'],
+  },
+  {
+    id: 'usage-limit-auto-resume',
+    title: 'Resume after usage limits',
+    section: 'agent-runs',
+    configKeys: ['usageLimitAutoResume'],
   },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
   // These two MOVED here from 'appearance'. Their ids are unchanged, so every

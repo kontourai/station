@@ -10,19 +10,43 @@
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/reference/session-api.md\",\"ours\":{\"digest\":\"7221e506f4609db018591285bc8e58321e6e1cde85f439008b80bb61e2a8df1d\",\"revision\":\"7685ef951b69eb1abc033e851f46b86bacc92418\"},\"theirs\":{\"digest\":\"7221e506f4609db018591285bc8e58321e6e1cde85f439008b80bb61e2a8df1d\",\"revision\":\"37f0ed25455007f32bdf69468451bf9dd85f9fde\"},\"active\":{\"digest\":\"7221e506f4609db018591285bc8e58321e6e1cde85f439008b80bb61e2a8df1d\",\"revision\":\"7685ef951b69eb1abc033e851f46b86bacc92418\"}},{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"ours\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"bcaf191b5d4124ca5de2c26654fa2a70c8897a729ba82cb24a347133a84eb155\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718\",\"revision\":\"4f3acdc5478e27a733c06e91a202a325817c2f53\"},\"active\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"bcaf191b5d4124ca5de2c26654fa2a70c8897a729ba82cb24a347133a84eb155\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}},{\"path\":\"src-server/providers/adapters/claude-adapter.ts\",\"ours\":{\"path\":\"src-server/providers/adapters/claude-adapter.ts\",\"digest\":\"bcf16464bbac4cba260f60ea8c01d7148ba52d33b575c45d16a8a97cdd4ebc12\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"src-server/providers/adapters/claude-adapter.ts\",\"digest\":\"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4\",\"revision\":\"4f3acdc5478e27a733c06e91a202a325817c2f53\"},\"active\":{\"path\":\"src-server/providers/adapters/claude-adapter.ts\",\"digest\":\"bcf16464bbac4cba260f60ea8c01d7148ba52d33b575c45d16a8a97cdd4ebc12\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}},{\"path\":\"src-server/providers/adapters/codex-adapter.ts\",\"ours\":{\"path\":\"src-server/providers/adapters/codex-adapter.ts\",\"digest\":\"e8a373d9eb0ca3f6a12b9bf6e5f78d31b38b92147582abb81397b13d31c1cb82\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"src-server/providers/adapters/codex-adapter.ts\",\"digest\":\"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20\",\"revision\":\"423cbe55b9e35e4cd8954fd441cb9f3c69740d66\"},\"active\":{\"path\":\"src-server/providers/adapters/codex-adapter.ts\",\"digest\":\"e8a373d9eb0ca3f6a12b9bf6e5f78d31b38b92147582abb81397b13d31c1cb82\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}},{\"path\":\"src-server/tools/station-control-policy.ts\",\"ours\":{\"path\":\"src-server/tools/station-control-policy.ts\",\"digest\":\"de380bd9c2a1c9a2d9eab00c78cf00c3f0a852189b3dd5e3dc6c80da896cf44f\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"},\"theirs\":{\"path\":\"src-server/tools/station-control-policy.ts\",\"digest\":\"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"},\"active\":{\"path\":\"src-server/tools/station-control-policy.ts\",\"digest\":\"de380bd9c2a1c9a2d9eab00c78cf00c3f0a852189b3dd5e3dc6c80da896cf44f\",\"revision\":\"e2637079bd55a47964f12faedfb5c43abc7f1e95\"}}]",
 
   "sources": [
+    "packages/sdk/src/client/chatHttpError.ts",
+
     "scripts/session-api-roundtrip.mjs",
+
+    "src-server/providers/__tests__/codex-adapter-rpc-id.test.ts",
+
+    "src-server/providers/adapters/acp-adapter-events.ts",
 
     "src-server/providers/adapters/acp-adapter.ts",
 
     "src-server/providers/adapters/claude-adapter.ts",
 
+    "src-server/providers/adapters/codex-adapter-transport.ts",
+
+    "src-server/providers/adapters/codex-adapter-types.ts",
+
     "src-server/providers/adapters/codex-adapter.ts",
+
+    "src-server/providers/adapters/harness-questions.ts",
 
     "src-server/providers/sessions/claude-transcript-session-source.ts",
 
     "src-server/providers/sessions/codex-rollout-session-source.ts",
 
+    "src-server/routes/orchestration/dispatch-scope.ts",
+
     "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
+
+    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
+
+    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
+
+    "src-server/services/execution-target/execution-target-resolver.ts",
 
     "src-server/services/flow/survey-flow-review-service.ts",
 
@@ -34,41 +58,27 @@
 
     "src-server/services/projects/attention-projection.ts",
 
-    "src-ui/src/components/attention/AttentionCard.tsx",
-
-    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
-
-    "src-server/routes/orchestration/dispatch-scope.ts",
-
     "src-server/tools/station-control-policy.ts",
-
-    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
-
-    "src-server/services/execution-target/execution-target-resolver.ts",
-
-    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
 
     "src-server/utils/path-containment.ts",
 
-    "src-server/providers/adapters/codex-adapter-transport.ts",
+    "src-ui/src/components/attention/AttentionCard.tsx",
 
-    "src-server/providers/adapters/codex-adapter-types.ts",
-
-    "src-server/providers/__tests__/codex-adapter-rpc-id.test.ts",
+    "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx",
 
     "src-ui/src/hooks/orchestration/queueDrain.ts",
 
     "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx",
+    "src-server/services/orchestration/attached-session-repository.ts",
 
-    "packages/sdk/src/client/chatHttpError.ts",
+    "src-server/providers/sessions/grok-session-source.ts",
 
-    "src-server/providers/adapters/harness-questions.ts",
+    "src-server/services/orchestration/attached-session-poll-snapshot.ts",
 
-    "src-server/providers/adapters/acp-adapter-events.ts"
+    "src-server/providers/sessions/grok-session-index.ts",
+
+    "src-server/services/acp/managed-acp-workspace.ts"
   ],
 
   "checks": [

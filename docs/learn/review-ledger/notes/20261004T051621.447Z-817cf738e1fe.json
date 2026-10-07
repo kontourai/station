@@ -1,0 +1,7 @@
+{
+  "revision": "c3a739eaea3953c518468940cf1271cb6b398360",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-reviewed the delta to the Session control route since the last record: a refused request's error text moved from a .message field to .detail (repo-governance outward-serialization rule); no behavior or documented claim changes."}
+  ]
+}

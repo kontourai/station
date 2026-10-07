@@ -24,9 +24,9 @@
  * The aggregate ceiling is kept as a second, weaker assertion so the total
  * cannot creep up through per-file edits alone.
  */
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 // These are layout/state primitives, not page homes. Keep the allowlist at
@@ -145,7 +145,7 @@ export function main() {
   const baseline = JSON.parse(
     readFileSync(`${scriptDir}mobile-css-baseline.json`, 'utf8'),
   );
-  const files = execFileSync(
+  const files = execFileSyncBounded(
     'git',
     [
       'ls-files',

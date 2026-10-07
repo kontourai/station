@@ -4,6 +4,7 @@ import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harnes
 import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   InterruptTurnResult,
   OrchestrationConversationEventWindow,
   OrchestrationSessionEventWindow,
@@ -13,7 +14,7 @@ import {
   withNormalizedAnswerability,
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError } from '../client/chatHttpError';
@@ -41,6 +42,8 @@ import {
   isApiRequestScope,
 } from '../client/http';
 import {
+  getChildWorkTranscript,
+  getConversationUsageTree,
   getOrchestrationConversationEventWindow,
   getOrchestrationSessionEventWindow,
   getSessionBuilderRun,
@@ -112,6 +115,11 @@ export class AdoptSessionError extends Error {
   readonly retryable: boolean;
   readonly status?: number;
   readonly cause?: unknown;
+  /**
+   * #3386: Station's own reason for a refusal it says will not change on
+   * retry (a folder Station will not continue in), for showing as written.
+   */
+  readonly refusal?: string;
 
   constructor(input: {
     failureClass: AdoptSessionFailureClass;
@@ -119,6 +127,7 @@ export class AdoptSessionError extends Error {
     retryable: boolean;
     status?: number;
     cause?: unknown;
+    refusal?: string;
   }) {
     super(input.message);
     this.name = 'AdoptSessionError';
@@ -126,6 +135,7 @@ export class AdoptSessionError extends Error {
     this.retryable = input.retryable;
     this.status = input.status;
     this.cause = input.cause;
+    if (input.refusal) this.refusal = input.refusal;
   }
 }
 
@@ -165,6 +175,46 @@ export async function fetchOrchestrationConversationEventWindow(
     throw new Error('Conversation history requires a server upgrade');
   }
   return page;
+}
+
+/**
+ * A conversation's usage tree (`getConversationUsageTree`). Enabled by
+ * default, and off for an empty id or `config.enabled: false`. It polls only
+ * when `config.refetchInterval` is set, and stops polling after a 404 (no
+ * orchestration record for this conversation) or a 422 (tree past its
+ * bound): neither changes by asking again. Neither is retried.
+ */
+export function useConversationUsageTreeQuery(
+  conversationId: string,
+  apiBase?: string,
+  config?: { enabled?: boolean; refetchInterval?: number | false },
+) {
+  return useQuery({
+    queryKey: [
+      'orchestration-conversation-usage-tree',
+      apiBase ?? 'default',
+      conversationId,
+    ],
+    enabled: Boolean(conversationId) && (config?.enabled ?? true),
+    queryFn: async ({ signal }) =>
+      getConversationUsageTree(await resolveApiBase(apiBase), conversationId, {
+        signal,
+      }),
+    retry: false,
+    staleTime: 2_000,
+    refetchInterval: (query) =>
+      isSettledUsageTreeRefusal(query.state.error)
+        ? false
+        : (config?.refetchInterval ?? false),
+  });
+}
+
+/** A usage-tree answer that asking again cannot change. */
+function isSettledUsageTreeRefusal(error: unknown): boolean {
+  return (
+    error instanceof StationHttpError &&
+    (error.status === 404 || error.status === 422)
+  );
 }
 
 /** Reconciles one persisted context-boundary intent after reload or reconnect. */
@@ -459,6 +509,45 @@ export function useStopProviderTaskMutation(apiBase?: string) {
   });
 }
 
+/** #3163: one page of transcript messages per fetch. */
+const CHILD_WORK_TRANSCRIPT_PAGE_SIZE = 30;
+
+/**
+ * #3163: an engine subagent's own read-only transcript, paged by message.
+ * `fetchNextPage` continues where the last page ended. Off until `enabled`,
+ * so a closed row reads nothing; a transcript is history, so it is fetched
+ * once and not polled.
+ */
+export function useChildWorkTranscriptQuery(
+  input: { threadId: string; childId: string; enabled?: boolean },
+  apiBase?: string,
+) {
+  return useInfiniteQuery({
+    queryKey: [
+      'orchestration-child-work-transcript',
+      apiBase ?? 'default',
+      input.threadId,
+      input.childId,
+    ],
+    enabled:
+      (input.enabled ?? true) &&
+      input.threadId.length > 0 &&
+      input.childId.length > 0,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) =>
+      getChildWorkTranscript(
+        await resolveApiBase(apiBase),
+        input.threadId,
+        input.childId,
+        { offset: pageParam, limit: CHILD_WORK_TRANSCRIPT_PAGE_SIZE },
+        { signal },
+      ),
+    getNextPageParam: (page) => page.nextOffset,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
 export function useInterruptDelegatedTaskMutation(apiBase?: string) {
   return useMutation({
     mutationFn: (input: InterruptOrchestrationDelegatedTaskInput) =>
@@ -593,16 +682,24 @@ export function createAdoptOrchestrationSessionIntent(): AdoptOrchestrationSessi
 function rejectedContinuation(
   status: number,
   detail?: string,
+  retryable?: unknown,
 ): AdoptSessionError {
   const statusMessage =
     status === 401 || status === 403
       ? `Permission denied by Station (HTTP ${status}).`
       : `Station rejected the continuation request (HTTP ${status}).`;
+  // #3386: a refusal Station itself marks `retryable: false` (a coded,
+  // permanent refusal, such as a folder it will not continue in) is final:
+  // the same request is refused again, so no retry is offered. Any other
+  // refusal keeps the retryable default.
+  const permanent =
+    status >= 400 && status < 500 && retryable === false && Boolean(detail);
   return new AdoptSessionError({
     failureClass: 'certain-response',
     message: detail ? `${statusMessage} ${detail}` : statusMessage,
-    retryable: true,
+    retryable: !permanent,
     status,
+    ...(permanent && detail ? { refusal: detail } : {}),
   });
 }
 
@@ -610,6 +707,8 @@ export async function adoptOrchestrationSession(input: {
   sourceThreadId: string;
   apiBase?: string;
   intent?: AdoptOrchestrationSessionIntent;
+  /** #3386: where a conversation no project claims continues. */
+  target?: AdoptSessionTarget;
 }): Promise<AdoptedSessionResult> {
   const resolvedApiBase = await resolveApiBase(input.apiBase);
   const intent = input.intent ?? createAdoptOrchestrationSessionIntent();
@@ -624,6 +723,7 @@ export async function adoptOrchestrationSession(input: {
           type: 'adoptSession',
           sourceThreadId: input.sourceThreadId,
           idempotencyKey: intent.idempotencyKey,
+          ...(input.target ? { target: input.target } : {}),
         }),
       },
     );
@@ -653,6 +753,7 @@ export async function adoptOrchestrationSession(input: {
     success?: boolean;
     data?: AdoptedSessionResult;
     error?: string;
+    retryable?: unknown;
   };
   try {
     result = (await response.json()) as typeof result;
@@ -685,7 +786,11 @@ export async function adoptOrchestrationSession(input: {
     result = {};
   }
   if (!response.ok || !result.success)
-    throw rejectedContinuation(response.status, result.error?.trim());
+    throw rejectedContinuation(
+      response.status,
+      result.error?.trim(),
+      result.retryable,
+    );
   return result.data as AdoptedSessionResult;
 }
 

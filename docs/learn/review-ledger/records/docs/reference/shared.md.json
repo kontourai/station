@@ -78,6 +78,8 @@
 
     "packages/shared/src/parsers.ts",
 
+    "packages/shared/src/skill-experience-author.ts",
+
     "packages/shared/src/types.ts",
 
     "pnpm-lock.yaml",
@@ -110,7 +112,11 @@
 
     "src-ui/src/core/pluginSharedRuntime.ts",
 
-    "packages/shared/src/skill-experience-author.ts"
+    "packages/shared/src/usage-semantics.ts",
+
+    "packages/shared/src/usage-fold.ts",
+
+    "packages/shared/src/mcp-elicitation-form.ts"
   ],
 
   "checks": [

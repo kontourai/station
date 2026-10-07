@@ -24,8 +24,12 @@ import {
 import { expandTilde } from '../../utils/paths.js';
 import type { StationControlCallerRecordResolver } from './station-control-caller.js';
 
-/** The Project action a scoped call needs from the session's owner. */
-export type StationControlProjectAction = 'execute' | 'approve';
+/**
+ * The Project action a scoped call needs from the session's owner: `view` to
+ * read a conversation (`read_conversation`, #3159), `execute` to dispatch,
+ * `approve` to answer a worker's request.
+ */
+export type StationControlProjectAction = 'view' | 'execute' | 'approve';
 
 export interface StationControlDispatchScopeSources {
   /** Owner and Project records of a session (the caller resolver's reader). */

@@ -1,3 +1,4 @@
+export { runAgentMcpPrompt } from './query-domains/mcpPromptRun';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery
@@ -40,7 +41,6 @@ export {
   type ModelCapabilitiesEnvelope,
   materializeEngineAgent,
   recordFirstRunDecision,
-  runAgentMcpPrompt,
   submitToolApproval,
   type UpdateAppConfigResult,
   type UpdateAppLogLevelResult,
@@ -98,7 +98,6 @@ export {
   useResetUsageStatsMutation,
   useSaveFeedbackRatingMutation,
   useUsageQuery,
-  useUsageRollupQuery,
 } from './query-domains/analytics';
 export {
   AnswerShareAuthRequiredError,
@@ -249,12 +248,14 @@ export {
   unregisterNativePush,
   unsubscribePushNotifications,
   useAcknowledgeConversationMutation,
+  useChildWorkTranscriptQuery,
   useCodingDiffQuery,
   useCodingFileContentQuery,
   useCodingFilesQuery,
   useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useConversationsQuery,
+  useConversationUsageTreeQuery,
   useCreateCodingFileMutation,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,
@@ -604,6 +605,7 @@ export {
   useRemoveSshEnvironmentMutation,
   useSshEnvironmentsQuery,
 } from './query-domains/sshEnvironments';
+export { useStationUsageQuery } from './query-domains/stationUsage';
 export {
   type AuthStatusData,
   applyCoreUpdate,
@@ -717,6 +719,7 @@ export {
   useTrustBundlesQuery,
   useTrustReportQuery,
 } from './query-domains/trustBundles';
+export { useUsageRollupQuery } from './query-domains/usageRollup';
 export {
   type ReadinessInitResultVM,
   type ReadinessRequirementVM,

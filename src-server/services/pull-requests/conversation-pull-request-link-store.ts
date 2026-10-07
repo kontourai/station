@@ -34,7 +34,8 @@ const identityKey = (value: PullRequestLinkIdentity) =>
     value.ref,
   ]);
 
-function validateIdentity(value: PullRequestLinkIdentity) {
+/** The link store's own identity check; a declaration uses it unchanged. */
+export function assertPullRequestLinkIdentity(value: PullRequestLinkIdentity) {
   const values = [
     value.provider,
     value.host,
@@ -71,7 +72,7 @@ function validateDocument(value: Document): Document {
       );
     const keys = new Set<string>();
     for (const link of links) {
-      validateIdentity(link);
+      assertPullRequestLinkIdentity(link);
       if (
         link.source !== 'explicit' ||
         typeof link.linkedAt !== 'string' ||
@@ -120,7 +121,7 @@ export class ConversationPullRequestLinkStore {
     actor: string,
     isCurrent: () => boolean,
   ): Promise<ConversationPullRequestLink[]> {
-    validateIdentity(identity);
+    assertPullRequestLinkIdentity(identity);
     if (!TEXT.test(conversationId) || !validActor(actor) || !isCurrent())
       throw new ConversationPullRequestLinkStoreError(
         'Conversation link authorization changed.',
@@ -150,7 +151,7 @@ export class ConversationPullRequestLinkStore {
     identity: PullRequestLinkIdentity,
     isCurrent: () => boolean,
   ): Promise<ConversationPullRequestLink[]> {
-    validateIdentity(identity);
+    assertPullRequestLinkIdentity(identity);
     return this.mutate(conversationId, isCurrent, (links) =>
       links.filter((link) => identityKey(link) !== identityKey(identity)),
     );

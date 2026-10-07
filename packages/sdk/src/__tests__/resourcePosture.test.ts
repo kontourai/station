@@ -41,9 +41,12 @@ describe('resourcePosture SDK domain', () => {
     mockJsonResponse({ success: true, data: posture });
 
     await expect(fetchResourcePosture()).resolves.toEqual(posture);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/system/resource-posture',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces a server-reported error', async () => {

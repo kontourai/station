@@ -1,0 +1,7 @@
+{
+  "revision": "7d5192d91e527376779544bf3247f5dc7ed7e066",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Re-checked against #3157: orchestration-service.ts gained readUsageLimitRecovery and actOnUsageLimitRecovery for the usage-limit banner routes; the exact attention-request inspection this capture shows (request read, response route, guard) is not touched, so the capture still matches.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

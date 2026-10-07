@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Re-read against the changed gates. Instructions on deterministic fail-closed gates, owned processes, code-health review and read-only lint still hold; the new resolver adds no spawn, and the liveness scale scales only liveness bounds, never a budget, consistent with the note on not raising product deadlines to compensate for a saturated host (which concerns browser latency budgets, not these dead-child guards).","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md","scripts/code-health-gate.mjs","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

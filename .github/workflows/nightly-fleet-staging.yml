@@ -1,4 +1,4 @@
-name: Nightly fleet staging
+name: "Nightly: Fleet staging"
 
 # Portable-only, evidence-only: this lane does not publish releases, feeds,
 # registries, stores, or ledger entries and is independent of native promotion.

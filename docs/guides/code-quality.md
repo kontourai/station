@@ -45,6 +45,11 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | `node scripts/check-prepush-typecheck.mjs` | ~50-90s (51s wall measured end to end, preconditions included; station#4273 recorded 82s for the aggregate alone), and only when the push changes a `.ts`/`.tsx`/`.mts`/`.cts` source, any `tsconfig`, a manifest, or a patch | any of the `typecheck:*` lanes. `ci:fast` already runs the same aggregate pre-merge, so this moves the finding to the author rather than a CI cycle later |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
+Before the first check the hook resolves the bounded host-pressure liveness
+scale once and exports it to every step (see the
+[testing guide](testing.md#host-pressure-liveness-scale-3302)); it never changes
+a budget or assertion.
+
 The transfer check has a finite capture **liveness timeout**, which only bounds
 a hung subprocess; it is not a performance score or a product budget. It
 measures against a baseline at the merge base of `origin/main` and the

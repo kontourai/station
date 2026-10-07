@@ -17,21 +17,21 @@ export const STATUS_GLYPH_BY_STATE = {
   'Needs attention': {
     glyph: '!',
     color: 'attention',
-    ariaLabel: 'Needs attention',
+    ariaLabel: 'Needs you',
   },
   Failed: { glyph: '×', color: 'danger', ariaLabel: 'Failed' },
   Stopped: { glyph: '■', color: 'muted', ariaLabel: 'Stopped' },
   Running: { glyph: '●', color: 'active', ariaLabel: 'Running' },
-  Ready: { glyph: '○', color: 'muted', ariaLabel: 'Ready' },
+  Ready: { glyph: '○', color: 'muted', ariaLabel: 'Idle' },
   Draft: { glyph: '◇', color: 'muted', ariaLabel: 'Draft' },
   // archive#1783 vocabulary rule: 'Unanswerable' is the system's internal
-  // term, never the user's word — same translation lifecycleLabelText applies.
+  // term, never the user's word — the status ladder's word applies.
   Unanswerable: {
     glyph: '?',
     color: 'warning',
-    ariaLabel: "Can't answer here",
+    ariaLabel: 'Elsewhere',
   },
-  Completed: { glyph: '✓', color: 'success', ariaLabel: 'Completed' },
+  Completed: { glyph: '✓', color: 'success', ariaLabel: 'Done' },
 } as const satisfies Record<SessionStateLabel, StatusGlyphPresentation>;
 
 type StatusGlyphExhaustive =
