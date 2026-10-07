@@ -927,6 +927,11 @@ committing a new baseline until the change is intentional.
 
 #### Where the gate runs, and which renderer the baseline is bound to
 
+The gallery-wide system-status handler preserves the live status response and
+replaces only the displayed hostname with `Gallery host`. This keeps a Docker
+container's random name out of exact-pixel references without changing readiness
+or device locality. Screen-specific status fixtures retain their declared scenarios.
+
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is
 not an implementation detail: the comparator hashes a decoded RGBA buffer with

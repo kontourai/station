@@ -90,6 +90,7 @@ describe('StartModelPicker', () => {
       />,
     );
     // An effort change is not a finished choice: the picker stays.
+    fireEvent.click(await screen.findByRole('button', { name: 'Options' }));
     fireEvent.change(
       await screen.findByRole('combobox', { name: 'Thinking effort' }),
       { target: { value: 'low' } },

@@ -859,7 +859,9 @@ one. See [Agent configuration](agents.md#agent-configuration).
 
 The chat model picker shows the resolved connection and model. Open it to
 search across ready Model connections and Engines, filter by connection or
-Favorites, and choose the exact model for this chat. Connections that still
+Favorites or Recent, and choose the exact model for this chat. Open Options
+for capability filters and the selected model's supported runtime controls.
+Connections that still
 need setup remain visible with their status, but cannot create an invalid
 selection.
 

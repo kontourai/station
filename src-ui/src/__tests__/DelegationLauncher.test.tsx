@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
+import { StartComposer } from '../components/chat-start/StartComposer';
 
 const mutateAsync = vi.fn();
 const reset = vi.fn();
@@ -332,20 +333,42 @@ describe('DelegationLauncher', () => {
 
   test('shows Agent-only targets and delegates to a saved SSH environment without a Project', async () => {
     const onDelegated = vi.fn();
+    const localStart = vi.fn();
+    const onDraftChange = vi.fn();
     render(
-      <DelegationLauncher
-        isOpen
-        apiBase="http://station.test"
-        currentAgentId="codex"
-        currentModel="gpt-5.6-sol"
-        parentTaskId="codex:1721355900000"
-        parentTaskLabel="Fix delegation controls"
-        initialPrompt="Fix the mobile task controls"
-        onClose={vi.fn()}
-        onDelegated={onDelegated}
-      />,
+      <StartComposer
+        prompt="Local draft"
+        onPromptChange={vi.fn()}
+        agent={{ status: 'ready', needsSetup: false }}
+        project={{ status: 'ready', label: 'No workspace', isGlobal: true }}
+        onOpenAgents={vi.fn()}
+        onOpenProject={vi.fn()}
+        canStart
+        pending={false}
+        onStart={localStart}
+      >
+        <DelegationLauncher
+          isOpen
+          apiBase="http://station.test"
+          currentAgentId="codex"
+          currentModel="gpt-5.6-sol"
+          parentTaskId="codex:1721355900000"
+          parentTaskLabel="Fix delegation controls"
+          initialPrompt="Fix the mobile task controls"
+          onClose={vi.fn()}
+          onDraftChange={onDraftChange}
+          onDelegated={onDelegated}
+        />
+      </StartComposer>,
     );
 
+    fireEvent.change(screen.getByLabelText('Task'), {
+      target: { value: 'Revised remote draft' },
+    });
+    expect(onDraftChange).toHaveBeenLastCalledWith('Revised remote draft');
+    fireEvent.change(screen.getByLabelText('Task'), {
+      target: { value: 'Fix the mobile task controls' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
     expect(screen.getByRole('option', { name: 'Codex — Agent' })).toBeTruthy();
     expect(
@@ -381,6 +404,8 @@ describe('DelegationLauncher', () => {
     expect(screen.getAllByText(/GPT-5.6 Sol/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
 
+    expect(localStart).not.toHaveBeenCalled();
+
     // No-Project SSH delegation keeps its explicit semantics: no workspace,
     // no Project substitution — and no SSH repair notice either.
     expect(
@@ -404,6 +429,7 @@ describe('DelegationLauncher', () => {
     expect(onDelegated).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'task:1' }),
       'Remote Codex',
+      { stationName: 'Home Media', prompt: 'Fix the mobile task controls' },
     );
   });
 

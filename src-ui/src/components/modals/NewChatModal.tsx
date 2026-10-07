@@ -63,6 +63,7 @@ import {
   StartComposer,
   type StartProjectChip,
 } from '../chat-start/StartComposer';
+import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
   buildCodingChatInitialMessage,
@@ -257,6 +258,7 @@ export function NewChatModal({
     string | undefined
   >();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const reportDraft = useEffectEvent((text: string) => onDraftChange?.(text));
   useEffect(() => {
     reportDraft(prompt);
@@ -1648,6 +1650,44 @@ export function NewChatModal({
             onPromptChange={setPrompt}
             textareaRef={promptRef}
             agent={agentChip}
+            onOpenModel={(trigger) =>
+              setChipMenu({
+                kind: 'model',
+                trigger,
+                agentSlug: draftAgent?.slug,
+              })
+            }
+            stationControl={
+              <StartStationControl
+                prompt={prompt}
+                projectSlug={viewModel.selectedProject?.slug}
+                projectName={viewModel.selectedProject?.name}
+                defaultEnvironment={
+                  viewModel.selectedProject?.defaultEnvironment
+                }
+                agentSlug={draftAgent?.slug}
+                model={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.modelId
+                    : undefined
+                }
+                disabled={
+                  submitting ||
+                  Boolean(experience) ||
+                  Boolean(draftContext) ||
+                  !selectedContextResolved
+                }
+                onPromptChange={setPrompt}
+                onStarted={(_task, station, sentPrompt) => {
+                  setPrompt((current) =>
+                    current === sentPrompt ? '' : current,
+                  );
+                  setTaskNotice(
+                    `Task started on ${station}. Open Activity to follow its progress.`,
+                  );
+                }}
+              />
+            }
             onOpenAgents={(trigger) => {
               setAgentSearch('');
               setChipMenu({ kind: 'agents', trigger });
@@ -1696,6 +1736,7 @@ export function NewChatModal({
                 : undefined
             }
           >
+            {taskNotice && <p role="status">{taskNotice}</p>}
             {(skillsOpen || experience) && (
               <SkillExperiencePicker
                 query={experienceInventory}
