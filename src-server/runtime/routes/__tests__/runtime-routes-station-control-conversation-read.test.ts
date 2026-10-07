@@ -586,7 +586,7 @@ describe('read_conversation through the real MCP route, from a separate engine p
       base,
       'history-root',
       {
-        cursor: sdkPage.nextCursor,
+        cursor: sdkPage.nextCursor ?? undefined,
         limit: 2,
       },
       sdkOptions,
