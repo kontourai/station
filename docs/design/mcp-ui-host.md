@@ -157,7 +157,7 @@ not a legacy signal.
 
 This is the compatibility record for Station as an MCP client (#3284, part of
 #3274). Station targets MCP core `2026-07-28` through
-`@modelcontextprotocol/client` 2.0.0 and falls back to the 2025-era
+`@modelcontextprotocol/client` 2.2.0 and falls back to the 2025-era
 `initialize` handshake for deployed legacy servers.
 
 | Feature | Supported subset | Not supported |
