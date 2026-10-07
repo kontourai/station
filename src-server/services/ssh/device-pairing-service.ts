@@ -50,6 +50,7 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
+import { RelayManagementApproval } from '../../security/relay-management-authority.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import {
   isValidNativePushRequest,
@@ -375,7 +376,8 @@ export type PairingApproval =
   | { readonly kind: 'local-grant' }
   /** Single-use launcher capability exchanged by the Station UI. */
   | { readonly kind: 'ui-bootstrap' }
-  | { readonly kind: 'unauthenticated' };
+  | { readonly kind: 'unauthenticated' }
+  | RelayManagementApproval;
 
 type DeviceRevocationActor = 'operator-credential';
 
@@ -1547,14 +1549,20 @@ export class DevicePairingService {
     } else if (relayVerification) {
       throw new DevicePairingError('invalid_request');
     }
-    // Anything that is not a verified presented credential or an equally
-    // strong local-grant secret is treated as the unauthenticated floor, so a
+    const managedRelayApproval =
+      approval instanceof RelayManagementApproval &&
+      relayVerification?.enrollmentId === approval.subjectId &&
+      offer.relayEnrollmentId === approval.subjectId &&
+      approval.isCurrent();
+    // A scoped relay decision is valid only for its exact verified native attempt.
+    // Other unrecognized approval sources use the unauthenticated floor, so a
     // future new approval kind fails closed here rather than inheriting the
     // floor's permission by omission.
     if (
       approval.kind !== 'presented-credential' &&
       approval.kind !== 'local-grant' &&
       approval.kind !== 'ui-bootstrap' &&
+      !managedRelayApproval &&
       !unauthenticatedApprovalAllowed(offer)
     ) {
       throw new DevicePairingError('approval_requires_operator');
@@ -1568,7 +1576,7 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     if (personBindingApproval) {
       if (
-        approval.kind !== 'presented-credential' ||
+        (approval.kind !== 'presented-credential' && !managedRelayApproval) ||
         offer.kind !== 'device' ||
         !isPrincipalRef({
           id: personBindingApproval.principalId,
@@ -1955,7 +1963,7 @@ export class DevicePairingService {
       device.revokedAt !== null ||
       device.relayEnrollmentId !== enrollmentId ||
       device.pendingEnrollmentId !== undefined ||
-      device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !pairingScopeIncludes(device.scope, PAIRING_SCOPE_ORCHESTRATION_READ) ||
       !binding ||
       !('kind' in binding) ||
       binding.kind !== 'account'

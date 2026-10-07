@@ -52,7 +52,11 @@
 
     "scripts/__tests__/actionlint-gate.test.ts",
 
-    "scripts/__tests__/merge-queue-dequeue.test.ts"
+    "scripts/__tests__/merge-queue-dequeue.test.ts",
+
+    "scripts/version-pr-operation.mjs",
+
+    "scripts/__tests__/version-pr-operation.test.ts"
   ],
 
   "checks": [

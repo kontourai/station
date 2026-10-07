@@ -236,6 +236,8 @@ export interface ChatMessage {
     runtimeErrorCode?: string;
     uiBlock?: UIBlock;
     toolCallId?: string;
+    /** Durable terminal result event, shared with streaming parts. */
+    sourceEventId?: string;
     flowRunAttached?: FlowRunBinding;
     flowGateVerdict?: FlowGateVerdictInfo;
     conversationHandoff?: import('@kontourai/station-contracts/orchestration').ConversationHandoffProjection;

@@ -881,6 +881,7 @@ function MessageBubbleComponent({
         >
           <MessageContent
             contentParts={msg.contentParts}
+            messageKey={anchorKey}
             textContent={textContent}
             chatFontSize={chatFontSize}
             showReasoning={showReasoning}

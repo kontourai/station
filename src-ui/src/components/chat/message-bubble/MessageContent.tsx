@@ -16,6 +16,7 @@ import {
 import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
 import { foldTurnWork, splitToolCallRuns } from '../tool-call-runs';
 import { UIBlockRenderer } from '../UIBlockRenderer';
+import { uiBlockIdentity } from '../ui-block-identity';
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 
@@ -31,6 +32,7 @@ export const INLINE_RUN_LIMIT = 1;
 
 interface MessageContentProps {
   contentParts?: MessageContentPart[];
+  messageKey?: string;
   textContent: string;
   chatFontSize: number;
   showReasoning: boolean;
@@ -52,6 +54,7 @@ interface MessageContentProps {
 
 function MessageContentComponent({
   contentParts,
+  messageKey = 'message',
   textContent,
   chatFontSize,
   showReasoning,
@@ -207,7 +210,14 @@ function MessageContentComponent({
             );
           }
           if (part.type === 'ui-block' && part.uiBlock) {
-            return <UIBlockRenderer key={index} block={part.uiBlock} />;
+            const identity = uiBlockIdentity(contentParts, index, messageKey);
+            return (
+              <UIBlockRenderer
+                key={identity}
+                instanceKey={identity}
+                block={part.uiBlock}
+              />
+            );
           }
           return null;
         })}

@@ -156,6 +156,11 @@ export const PAIRING_SCOPE_INFERENCE_INVOKE = 'inference:invoke' as const;
  */
 export const PAIRING_SCOPE_ACCESS_APPROVE = 'access:approve' as const;
 
+/** Manage this Station's relay invitations and pending native enrollment.
+ * Granted explicitly by the operator to an already-paired device; never a
+ * preset, default grant, Project role, or permission to share Project work. */
+export const PAIRING_SCOPE_RELAY_MANAGE = 'relay:manage' as const;
+
 /**
  * Decide (approve or deny) a pending {@link ConsentTransaction} on the
  * distinct-origin consent surface (archive#3677). The decision endpoint lives
@@ -283,6 +288,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_RELAY_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -449,6 +455,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // already-paired device. In no preset (elevation at pairing time grants the
   // most to the least-known device) and never in the default grant.
   [PAIRING_SCOPE_ACCESS_APPROVE]: ['operator-promotion'],
+  [PAIRING_SCOPE_RELAY_MANAGE]: ['operator-promotion'],
   // archive#3677: same posture as access:approve — operator promotion only.
   // The operator itself decides consent by credential identity, not via this
   // token (see the PAIRING_SCOPE_CONSENT_DECIDE doc block).
@@ -503,6 +510,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
   [PAIRING_SCOPE_INFERENCE_INVOKE]: {
     label: 'Fleet inference',
     summary: 'Can request model completions from this Station.',
+  },
+  [PAIRING_SCOPE_RELAY_MANAGE]: {
+    label: 'Manage remote access',
+    summary:
+      'Can invite and approve relay devices, and manage Project access where their IAM role allows.',
   },
   [PAIRING_SCOPE_ACCESS_APPROVE]: {
     label: 'Approve pairing requests',
