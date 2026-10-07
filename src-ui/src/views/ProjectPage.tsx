@@ -17,6 +17,7 @@ import {
 import { useMemo, useReducer, useState } from 'react';
 import { selectChatReadyAgents } from '../components/agent-selection-policy';
 import { Button } from '../components/Button';
+import { HomeStartComposer } from '../components/home/HomeStartComposer';
 import { BranchGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { PageCallout, PageCalloutStack } from '../components/PageCallout';
@@ -374,6 +375,13 @@ function ProjectOperatorPage({
           }
           navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
         />
+
+        <section
+          aria-label="Start work in this project"
+          className="project-page__start"
+        >
+          <HomeStartComposer key={project.id} compact projectSlug={slug} />
+        </section>
 
         {/* archive#3202: what is live in this project leads the page, because
             that is what the sidebar badge sent you here for. Renders nothing

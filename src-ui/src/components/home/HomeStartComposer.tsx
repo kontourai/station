@@ -1,10 +1,13 @@
 import React, {
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
@@ -28,6 +31,7 @@ import {
   StartComposer,
   type StartProjectChip,
 } from '../chat-start/StartComposer';
+import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
   GLOBAL_CONTEXT,
@@ -85,9 +89,9 @@ function HomeChatSetupHelper(
  * a browser with storage blocked, then a reload) still drops them.
  */
 const HELD_HOME_DRAFTS_KEY = 'station-home-held-drafts-v1';
-function readStoredHeldDrafts(): readonly string[] {
+function readStoredHeldDrafts(key = HELD_HOME_DRAFTS_KEY): readonly string[] {
   try {
-    const raw = window.sessionStorage.getItem(HELD_HOME_DRAFTS_KEY);
+    const raw = window.sessionStorage.getItem(key);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     // Anything but a list of strings is not ours to restore.
@@ -99,50 +103,63 @@ function readStoredHeldDrafts(): readonly string[] {
     return [];
   }
 }
-function writeStoredHeldDrafts(next: readonly string[]) {
+function writeStoredHeldDrafts(
+  next: readonly string[],
+  key = HELD_HOME_DRAFTS_KEY,
+) {
   try {
-    if (next.length === 0)
-      window.sessionStorage.removeItem(HELD_HOME_DRAFTS_KEY);
-    else
-      window.sessionStorage.setItem(HELD_HOME_DRAFTS_KEY, JSON.stringify(next));
+    if (next.length === 0) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, JSON.stringify(next));
   } catch {
     // The write failed (quota, blocked storage): an older list left behind
     // would bring back a discarded draft and miss a newer one on reload, so
     // leave nothing. The drafts still live for this page's life.
     try {
-      window.sessionStorage.removeItem(HELD_HOME_DRAFTS_KEY);
+      window.sessionStorage.removeItem(key);
     } catch {
       // Storage is unreachable altogether; nothing stale can be read back.
     }
   }
 }
-let heldHomeDrafts: readonly string[] = readStoredHeldDrafts();
-const heldHomeDraftListeners = new Set<() => void>();
-function setHeldHomeDrafts(next: readonly string[]) {
-  heldHomeDrafts = next;
-  writeStoredHeldDrafts(next);
-  for (const listener of heldHomeDraftListeners) listener();
-}
-function holdHomeDraft(text: string) {
-  if (!text.trim() || heldHomeDrafts.includes(text)) return;
-  setHeldHomeDrafts([...heldHomeDrafts, text]);
-}
-function subscribeHeldHomeDrafts(listener: () => void) {
-  heldHomeDraftListeners.add(listener);
-  return () => {
-    heldHomeDraftListeners.delete(listener);
+function createHeldDraftStore(key: string) {
+  let drafts = readStoredHeldDrafts(key);
+  const listeners = new Set<() => void>();
+  const set = (next: readonly string[]) => {
+    drafts = next;
+    writeStoredHeldDrafts(next, key);
+    for (const listener of listeners) listener();
+  };
+  return {
+    snapshot: () => drafts,
+    set,
+    hold: (text: string) => {
+      if (text.trim() && !drafts.includes(text)) set([...drafts, text]);
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    reload: () => {
+      drafts = readStoredHeldDrafts(key);
+    },
   };
 }
-const heldHomeDraftsSnapshot = () => heldHomeDrafts;
+const homeDraftStore = createHeldDraftStore(HELD_HOME_DRAFTS_KEY);
+const projectDraftStores = new Map<
+  string,
+  ReturnType<typeof createHeldDraftStore>
+>();
 
 /** Test seam: a fresh tab. */
 export function resetHeldHomeDraftsForTests() {
-  setHeldHomeDrafts([]);
+  homeDraftStore.set([]);
 }
 
 /** Test seam: what a reload does, reading the drafts back from storage. */
 export function reloadHeldHomeDraftsForTests() {
-  heldHomeDrafts = readStoredHeldDrafts();
+  homeDraftStore.reload();
 }
 
 type ChipMenu = {
@@ -166,7 +183,26 @@ type ChipMenu = {
  * With no Agent to offer at all (a fresh install), Start still goes: the
  * dock's automatic start prepares an engine, as Home's Start always did.
  */
-export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
+export function HomeStartComposer({
+  compact = false,
+  projectSlug,
+}: {
+  compact?: boolean;
+  /** A Project page fixes its context without rebinding Home or the dock. */
+  projectSlug?: string;
+}) {
+  const { namespace } = useAuthorityPersistence();
+  const { setDockState } = useNavigation();
+  const draftStore = useMemo(() => {
+    if (!projectSlug) return homeDraftStore;
+    const key = JSON.stringify([namespace, projectSlug]);
+    let store = projectDraftStores.get(key);
+    if (!store) {
+      store = createHeldDraftStore(`station-project-held-drafts:${key}`);
+      projectDraftStores.set(key, store);
+    }
+    return store;
+  }, [namespace, projectSlug]);
   const agents = useAgents();
   const projectsQuery = useScopedProjectsQuery();
   const projects = projectsQuery.data ?? [];
@@ -180,9 +216,19 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
     projectsQuery.data !== undefined;
   // The chip IS the dock's binding (the project chip writes it), so Home and
   // the dock read one value; a folderless project runs in the home folder.
-  const startContext = useNewChatStartContext(projects, projectsLoaded);
+  const homeContext = useNewChatStartContext(projects, projectsLoaded);
+  const startContext = projectSlug
+    ? projectsLoaded
+      ? projectSlug
+      : undefined
+    : homeContext;
   const context = startContext ?? GLOBAL_CONTEXT;
   const contextPending = !startContext;
+  const fixedProjectMissing = Boolean(
+    projectSlug &&
+      projectsLoaded &&
+      !projects.some((project) => project.slug === projectSlug),
+  );
   const [agentSearch, setAgentSearch] = useState('');
   const selection = useNewChatSelectionModel({
     agents,
@@ -225,9 +271,9 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
     });
   };
   const held = useSyncExternalStore(
-    subscribeHeldHomeDrafts,
-    heldHomeDraftsSnapshot,
-    heldHomeDraftsSnapshot,
+    draftStore.subscribe,
+    draftStore.snapshot,
+    draftStore.snapshot,
   );
   const [heldAnnouncement, setHeldAnnouncement] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -242,11 +288,11 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
   // setup left the page) an empty field takes the oldest one back.
   // biome-ignore lint/correctness/useExhaustiveDependencies: setPrompt only writes a stable state setter and a ref; the subscription is for the component's life.
   useEffect(() => {
-    let heldCount = heldHomeDrafts.length;
+    let heldCount = draftStore.snapshot().length;
     const restoreIfEmpty = () => {
-      const grew = heldHomeDrafts.length > heldCount;
-      heldCount = heldHomeDrafts.length;
-      const [first, ...rest] = heldHomeDrafts;
+      const grew = draftStore.snapshot().length > heldCount;
+      heldCount = draftStore.snapshot().length;
+      const [first, ...rest] = draftStore.snapshot();
       if (first === undefined) {
         setHeldAnnouncement('');
         return;
@@ -259,7 +305,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
           );
         return;
       }
-      setHeldHomeDrafts(rest);
+      draftStore.set(rest);
       setPrompt(first);
       setNotice({
         text: 'Your draft is back from the chat dock.',
@@ -267,8 +313,8 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
       });
     };
     restoreIfEmpty();
-    return subscribeHeldHomeDrafts(restoreIfEmpty);
-  }, []);
+    return draftStore.subscribe(restoreIfEmpty);
+  }, [draftStore]);
   const [pending, setPending] = useState(false);
   const [menu, setMenu] = useState<ChipMenu | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -301,12 +347,12 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
    */
   const clearSent = (sent: string) => {
     if (promptRef.current !== sent) return;
-    const [first, ...rest] = heldHomeDrafts;
+    const [first, ...rest] = draftStore.snapshot();
     if (first === undefined) {
       setPrompt('');
       return;
     }
-    setHeldHomeDrafts(rest);
+    draftStore.set(rest);
     setPrompt(first);
     setNotice({
       text: 'Your draft is back from the chat dock.',
@@ -330,6 +376,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
       ? viewModel.flatList.find((candidate) => candidate.slug === agentSlug)
       : undefined;
     setMenu(null);
+    if (projectSlug) setDockState(true);
     const text = prompt;
     const accepted = dispatchNewChatIntent({
       initialPrompt: text,
@@ -338,7 +385,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
       // Dismissed: the dock's draft as it last read (edits included) comes
       // back; started: it lives in its chat now.
       onClosed: (outcome, dockDraft) => {
-        if (outcome === 'dismissed') holdHomeDraft(dockDraft ?? text);
+        if (outcome === 'dismissed') draftStore.hold(dockDraft ?? text);
       },
     });
     if (!accepted) {
@@ -401,6 +448,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
   const canStart =
     Boolean(prompt.trim()) &&
     !loading &&
+    !fixedProjectMissing &&
     !setupError &&
     !setupFetching &&
     !runtimeFetching &&
@@ -424,6 +472,34 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
           if (notice) setNotice(null);
         }}
         agent={agentChip}
+        onOpenModel={(trigger) =>
+          setMenu({ kind: 'model', trigger, agentSlug: agent?.slug })
+        }
+        stationControl={
+          <StartStationControl
+            prompt={prompt}
+            projectSlug={viewModel.selectedProject?.slug}
+            projectName={viewModel.selectedProject?.name}
+            defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
+            agentSlug={agent?.slug}
+            model={agent ? start.modelChoiceFor(agent)?.modelId : undefined}
+            disabled={
+              pending ||
+              contextPending ||
+              fixedProjectMissing ||
+              !selectedContextResolved
+            }
+            onPromptChange={setPrompt}
+            onStarted={(_task, station, sentPrompt) => {
+              clearSent(sentPrompt);
+              setNotice({
+                text: `Task started on ${station}. Open Activity to follow its progress.`,
+                tone: 'status',
+              });
+            }}
+          />
+        }
+        projectFixed={Boolean(projectSlug)}
         onOpenAgents={(trigger) => {
           setAgentSearch('');
           setMenu({ kind: 'agents', trigger });
@@ -442,6 +518,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
         pending={pending}
         onStart={() => {
           if (inFlight.current) return;
+          if (projectSlug) setDockState(true);
           const sentText = prompt;
           const accepted = dispatchNewChatIntent({
             startWithDefault: true,
@@ -457,7 +534,7 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
                 // The field moved on (or Home is gone): the dock's draft
                 // waits behind Restore rather than being dropped.
                 if (!mounted.current || promptRef.current !== sentText)
-                  holdHomeDraft(returned);
+                  draftStore.hold(returned);
                 // Untouched here: the dock's edits replace what was sent.
                 else if (returned.trim() && returned !== sentText)
                   setPrompt(returned);
@@ -478,6 +555,12 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
           setNotice(null);
         }}
       >
+        {fixedProjectMissing && (
+          <p role="alert">
+            This Project is unavailable. Your message is kept; reconnect or
+            reopen the Project before starting.
+          </p>
+        )}
         {defaultSelection?.missingPreferredAgentSlug && !agent && (
           <p role="alert">
             Your previous Agent is no longer available in this workspace. Choose
@@ -499,11 +582,11 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
                 variant="secondary"
                 onClick={() => {
                   // A swap, never a loss: the field's text waits in its place.
-                  const [first, ...rest] = heldHomeDrafts;
+                  const [first, ...rest] = draftStore.snapshot();
                   if (first === undefined) return;
                   const current = promptRef.current;
                   const next = current.trim() ? [current, ...rest] : rest;
-                  setHeldHomeDrafts(next);
+                  draftStore.set(next);
                   setPrompt(first);
                   // The group (and this button) goes away: keep focus.
                   if (next.length === 0) textareaRef.current?.focus();
@@ -514,8 +597,8 @@ export function HomeStartComposer({ compact = false }: { compact?: boolean }) {
               <Button
                 variant="link"
                 onClick={() => {
-                  const next = heldHomeDrafts.slice(1);
-                  setHeldHomeDrafts(next);
+                  const next = draftStore.snapshot().slice(1);
+                  draftStore.set(next);
                   if (next.length === 0) textareaRef.current?.focus();
                 }}
               >

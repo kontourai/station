@@ -150,7 +150,11 @@ vi.mock('../components/session/SessionModelPicker', () => ({
   ),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ selectedProject: null, selectedProjectLayout: null }),
+  useNavigation: () => ({
+    selectedProject: null,
+    selectedProjectLayout: null,
+    setDockState: vi.fn(),
+  }),
 }));
 vi.mock('../contexts/ActiveChatsContext', () => ({
   activeChatsStore: { getSnapshot: () => ({}) },
@@ -224,7 +228,7 @@ afterEach(() => {
     window.removeEventListener('station:open-new-chat', listener);
 });
 
-function renderBoth() {
+function renderBoth(projectSlug?: string) {
   const dockSelect = vi.fn();
   const starts: CustomEvent[] = [];
   // A dock that takes the intent, as ChatDock does.
@@ -238,7 +242,7 @@ function renderBoth() {
       value={{ status: 'verified', namespace: 'ns-1', observation: null }}
     >
       <div data-testid="home">
-        <HomeStartComposer />
+        <HomeStartComposer projectSlug={projectSlug} />
       </div>
       <div data-testid="dock">
         <NewChatModal
@@ -272,6 +276,57 @@ const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
 
 describe('Home and the dock start the same way', () => {
+  test('a Project page fixes its start context independently of the ambient dock', () => {
+    const ui = renderBoth('station');
+    const home = screen.getByTestId('home');
+    expect((projectChip(home) as HTMLButtonElement).disabled).toBe(true);
+    expect(projectChip(home).textContent).toContain('Station');
+    expect(projectChip(ui.dock()).getAttribute('aria-label')).toBe(
+      'Project: No project',
+    );
+    expect(
+      within(formOf(home)).getByRole('button', { name: 'Model: Opus' }),
+    ).toBeTruthy();
+    fireEvent.change(
+      within(formOf(home)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      {
+        target: { value: 'Work in this Project' },
+      },
+    );
+    fireEvent.click(
+      within(formOf(home)).getByRole('button', { name: 'Start' }),
+    );
+    expect(ui.starts.at(-1)?.detail.selection).toMatchObject({
+      context: 'station',
+      agentSlug: 'claude',
+    });
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBeNull();
+    ui.cleanupListener();
+  });
+
+  test('a missing fixed Project refuses a start instead of switching to No workspace', () => {
+    const ui = renderBoth('missing-project');
+    const form = formOf(screen.getByTestId('home'));
+    fireEvent.change(
+      within(form).getByRole('textbox', { name: 'What would you like done?' }),
+      {
+        target: { value: 'Keep this Project' },
+      },
+    );
+    expect(
+      (within(form).getByRole('button', { name: 'Start' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.submit(form);
+    expect(ui.starts).toHaveLength(0);
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: missing-project');
+    ui.cleanupListener();
+  });
+
   test('both render the shared composer and open on the same selection', () => {
     const ui = renderBoth();
     const home = screen.getByTestId('home');
