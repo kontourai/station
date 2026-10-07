@@ -1488,6 +1488,78 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
+  test.each(['native-original', 'native-other'])(
+    'exact native resume checks the provider response %s and closes a mismatched process',
+    async (observedId) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const events: Array<{
+        method: string;
+        metadata?: Record<string, unknown>;
+      }> = [];
+      const controller = new AbortController();
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents({
+          signal: controller.signal,
+        }))
+          events.push(event);
+      })();
+      const started = adapter.startSession({
+        provider: 'codex',
+        threadId: 'strict-resume',
+        resumeCursor: { codexThreadId: 'native-original' },
+        requireNativeResumeIdentity: true,
+      });
+      const result = started.then(
+        (session) => ({ session }),
+        (error) => ({ error }),
+      );
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '1', result: {} })}\n`,
+      );
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '2', result: { thread: { id: observedId } } })}\n`,
+      );
+      try {
+        const outcome = await withTimeout(result, 'strict resume');
+        if (observedId === 'native-original') {
+          expect(outcome).toHaveProperty(
+            'session.resumeCursor.codexThreadId',
+            'native-original',
+          );
+          await vi.waitFor(() =>
+            expect(events).toContainEqual(
+              expect.objectContaining({
+                method: 'session.configured',
+                metadata: expect.objectContaining({
+                  nativeResumeIdentity: 'matched',
+                }),
+              }),
+            ),
+          );
+        } else {
+          expect(outcome).toHaveProperty(
+            'error.message',
+            'The engine opened a different native conversation; the requested resume was refused.',
+          );
+          expect(processHandle.killed).toBe(true);
+          expect(
+            events.some((event) => event.method === 'session.configured'),
+          ).toBe(false);
+          expect(await adapter.hasSession('strict-resume')).toBe(false);
+        }
+      } finally {
+        await adapter.stopAll();
+        controller.abort();
+        await drain;
+      }
+    },
+  );
+
   test('starts a Codex session, sends turns, and maps notifications to canonical events', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({

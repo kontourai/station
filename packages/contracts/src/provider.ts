@@ -27,7 +27,12 @@ export interface ProviderContinuityCapabilities {
   fork: 'native' | 'replay-seed' | 'none';
   /** Move an existing execution Session back to a prior turn. */
   rewind: 'in-place' | 'none';
+  /** Opt-in enforcement of an exact native identity at the provider open seam. */
+  resumeIdentity?: 'require-match';
 }
+
+export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
+export type NativeResumeIdentityStatus = 'matched' | 'mismatch';
 
 export const NO_PROVIDER_CONTINUITY: ProviderContinuityCapabilities = {
   resume: 'none',
@@ -276,6 +281,7 @@ export const SKILL_EXPERIENCE_METADATA_KEY = 'stationSkillExperience' as const;
 
 export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   'usageAccountKey',
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
   SKILL_EXPERIENCE_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
@@ -1060,6 +1066,12 @@ export interface ProviderSessionStartInput {
   modelOptions?: Record<string, unknown>;
   resumeCursor?: unknown;
   workspaceIsolation?: WorkspaceIsolationConfig;
+  /**
+   * Refuse a different native thread instead of silently starting fresh.
+   * Requires an adapter declaring continuity.resumeIdentity; a queued prompt
+   * or locally retained cursor is not proof that the provider matched it.
+   */
+  requireNativeResumeIdentity?: true;
   /**
    * Server-owned independent-review policy. Public orchestration commands
    * omit this field. Supporting Adapters must enforce it at their native

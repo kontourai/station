@@ -21,6 +21,7 @@ import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
@@ -712,7 +713,12 @@ export class CodexAdapter implements ProviderAdapterShape {
       'external-process',
       'image-input',
     ],
-    continuity: { resume: 'same-session', fork: 'none', rewind: 'none' },
+    continuity: {
+      resume: 'same-session',
+      fork: 'none',
+      rewind: 'none',
+      resumeIdentity: 'require-match',
+    },
     connectionId: engineConnectionId('codex'),
     builtin: true,
     engineId: engineId('codex'),
@@ -1358,6 +1364,12 @@ export class CodexAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    if (
+      input.requireNativeResumeIdentity &&
+      !isResumeCursor(input.resumeCursor)
+    ) {
+      throw new Error('An exact native resume requires a valid Codex cursor.');
+    }
     return this.startWithReservation(input);
   }
 
@@ -1878,6 +1890,14 @@ export class CodexAdapter implements ProviderAdapterShape {
       }
 
       const codexThread = extractThread(result);
+      if (
+        input.requireNativeResumeIdentity &&
+        codexThread.id !== resumeCursor?.codexThreadId
+      ) {
+        throw new Error(
+          'The engine opened a different native conversation; the requested resume was refused.',
+        );
+      }
       this.transport.setCodexThreadId(record, codexThread.id);
       const nativeResumeCursor = {
         codexThreadId: codexThread.id,
@@ -1956,6 +1976,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       });
       const baseConfiguredMetadata: Record<string, unknown> = {
         ...input.metadata,
+        [NATIVE_RESUME_IDENTITY_METADATA_KEY]:
+          resumeCursor?.codexThreadId === codexThread.id
+            ? 'matched'
+            : undefined,
         usageAccountKey: resolvedHome
           ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
           : undefined,

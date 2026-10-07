@@ -267,6 +267,80 @@ describe('ClaudeAdapter', () => {
     mockAugmentedSpawnEnv.mockReset();
   });
 
+  test.each(['native-original', 'native-other'])(
+    'exact native resume observes Claude init %s before reporting matched continuity',
+    async (observedId) => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const events: Array<{
+        method: string;
+        code?: string;
+        metadata?: Record<string, unknown>;
+      }> = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      try {
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'strict-resume',
+          resumeCursor: 'native-original',
+          requireNativeResumeIdentity: true,
+          metadata: { nativeResumeIdentity: 'matched' },
+        });
+        expect(
+          events.some(
+            (event) => event.metadata?.nativeResumeIdentity === 'matched',
+          ),
+        ).toBe(false);
+        controlled.push({
+          type: 'system',
+          subtype: 'init',
+          session_id: observedId,
+          cwd: '/tmp/project',
+          model: 'claude-sonnet',
+          tools: [],
+          mcp_servers: [],
+        });
+        if (observedId === 'native-original') {
+          await vi.waitFor(() =>
+            expect(events).toContainEqual(
+              expect.objectContaining({
+                method: 'session.configured',
+                metadata: expect.objectContaining({
+                  nativeResumeIdentity: 'matched',
+                }),
+              }),
+            ),
+          );
+        } else {
+          await vi.waitFor(() =>
+            expect(events).toContainEqual(
+              expect.objectContaining({
+                method: 'runtime.error',
+                code: 'engine-session-binding-dead',
+                metadata: { nativeResumeIdentity: 'mismatch' },
+              }),
+            ),
+          );
+          expect(controlled.interrupt).toHaveBeenCalledOnce();
+          expect(
+            events.some(
+              (event) => event.metadata?.nativeResumeIdentity === 'matched',
+            ),
+          ).toBe(false);
+          expect(
+            events.some((event) => event.method === 'turn.completed'),
+          ).toBe(false);
+        }
+      } finally {
+        await adapter.stopAll();
+        await drain;
+      }
+    },
+  );
+
   test('adopts an external session by forking it and persists only the distinct child cursor', async () => {
     mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
     mockQuery.mockReturnValue(createMockQuery([]));

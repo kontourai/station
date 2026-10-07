@@ -808,7 +808,13 @@ export async function executeForegroundMessage(
           : {}),
         ...(startModelId ? { modelId: startModelId } : {}),
         ...(continuation?.resumeCursor !== undefined
-          ? { resumeCursor: continuation.resumeCursor }
+          ? {
+              resumeCursor: continuation.resumeCursor,
+              ...(deps.getProviderAdapter(resolved.provider)?.metadata
+                .continuity?.resumeIdentity === 'require-match'
+                ? { requireNativeResumeIdentity: true as const }
+                : {}),
+            }
           : {}),
         // #765 A1: a durable conversation's Sessions must keep their native
         // engine transcript. `resolveConversationContinuation` reserves a

@@ -76,6 +76,22 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+`ProviderContinuityCapabilities.resumeIdentity` is an additive adapter opt-in
+to `require-match`. Foreground native-cursor continuations set
+`ProviderSessionStartInput.requireNativeResumeIdentity` only for that declaration.
+An older adapter that omits it retains its existing resume behavior.
+Claude compares its SDK `init.session_id`; Codex compares the `thread/resume`
+response identity. A match emits server-owned `nativeResumeIdentity: matched`
+metadata. A queued prompt, requested cursor, or process start does not establish
+a match. An exact-resume identity mismatch stops that activation; it does not
+silently claim a fresh thread has continued the original one.
+This contract verifies native identity, not transcript delivery, context catch-up,
+successful completion, or cross-machine migration. Those require separate evidence.
+See the [provider contract](../../packages/contracts/src/provider.ts),
+[foreground caller](../../src-server/services/execution-target/execution-target-execution.ts),
+[Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts), and
+[Codex adapter](../../src-server/providers/adapters/codex-adapter.ts).
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager

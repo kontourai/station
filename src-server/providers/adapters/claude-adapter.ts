@@ -32,6 +32,7 @@ import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -715,6 +716,7 @@ type ClaudeSessionRecord = {
    */
   terminalResultObserved?: 'failed' | 'binding-dead';
   attemptedResumeCursor?: string;
+  requireNativeResumeIdentity?: true;
 };
 
 function adoptionTitle(threadId: string): string {
@@ -1184,7 +1186,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       'image-input',
       'file-input',
     ],
-    continuity: { resume: 'same-session', fork: 'none', rewind: 'none' },
+    continuity: {
+      resume: 'same-session',
+      fork: 'none',
+      rewind: 'none',
+      resumeIdentity: 'require-match',
+    },
     connectionId: engineConnectionId('claude'),
     builtin: true,
     engineId: engineId('claude'),
@@ -1249,6 +1256,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    if (
+      input.requireNativeResumeIdentity &&
+      !claudeResumeSessionId(input.resumeCursor)
+    ) {
+      throw new Error('An exact native resume requires a valid Claude cursor.');
+    }
     const sourceCursor = claudeSourceResumeCursor(input.resumeCursor);
     if (sourceCursor) {
       this.requireSourceHome(sourceCursor.sourceAffinity);
@@ -1544,6 +1557,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const record: ClaudeSessionRecord = {
       session,
       attemptedResumeCursor: claudeResumeSessionId(input.resumeCursor),
+      requireNativeResumeIdentity: input.requireNativeResumeIdentity,
       promptQueue,
       query: sdkQuery,
       pendingRequests: new Map(),
@@ -1584,6 +1598,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       initialState: 'created',
       metadata: {
         ...input.metadata,
+        [NATIVE_RESUME_IDENTITY_METADATA_KEY]: undefined,
         cwd: input.cwd,
         usageAccountKey,
         // station#3320: a resumed query() continues the cost total its
@@ -1599,6 +1614,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     });
     const baseConfiguredMetadata: Record<string, unknown> = {
       ...input.metadata,
+      [NATIVE_RESUME_IDENTITY_METADATA_KEY]: undefined,
       modelRoute,
       usageAccountKey,
       ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
@@ -3565,6 +3581,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         record.terminalResultObserved = undefined;
         this.mapMessage(record, message);
         if (record.terminalResultObserved) record.promptQueue.close();
+        if (
+          record.requireNativeResumeIdentity &&
+          record.terminalResultObserved === 'binding-dead'
+        ) {
+          record.query.close();
+          return;
+        }
       }
       record.interruptedResultObserved = false;
     } catch (error) {

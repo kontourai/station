@@ -978,39 +978,57 @@ describe('executeForegroundMessage', () => {
     },
   );
 
-  test('uses a server-owned predecessor cursor for same-engine continuation', async () => {
-    const deps = dependencies();
-    deps.readSessionBinding = vi.fn(async () => ({
-      environmentId: 'environment-kontour',
-      agentId: 'station',
-    }));
-    deps.resolveConversationSession = vi.fn(async () => ({
-      sessionId: 'conversation:cursor:session:1',
-      startRequired: true,
-      resumeCursor: { nativeSession: 'carry-turn-one' },
-    }));
-
-    await executeForegroundMessage(
-      {
-        userId: 'test-user',
-        target: { environment: { kind: 'current' }, agent: agentId('station') },
-        message: 'What was the token?',
-        conversationId: 'conversation:cursor',
-      },
-      deps,
-    );
-
-    expect(deps.startSession).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        threadId: 'conversation:cursor:session:1',
+  test.each([undefined, 'require-match'] as const)(
+    'uses a server-owned predecessor cursor with declared identity enforcement %s',
+    async (resumeIdentity) => {
+      const deps = dependencies();
+      const adapter = deps.getProviderAdapter('station')!;
+      adapter.metadata.continuity = {
+        resume: 'same-session',
+        fork: 'none',
+        rewind: 'none',
+        ...(resumeIdentity ? { resumeIdentity } : {}),
+      };
+      deps.getProviderAdapter = () => adapter;
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+      }));
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:cursor:session:1',
+        startRequired: true,
         resumeCursor: { nativeSession: 'carry-turn-one' },
-      }),
-    );
-    expect(vi.mocked(deps.sendTurn).mock.calls[0]?.[1]).not.toHaveProperty(
-      'ambientContext',
-    );
-  });
+      }));
+
+      await executeForegroundMessage(
+        {
+          userId: 'test-user',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          message: 'What was the token?',
+          conversationId: 'conversation:cursor',
+        },
+        deps,
+      );
+
+      expect(deps.startSession).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          threadId: 'conversation:cursor:session:1',
+          resumeCursor: { nativeSession: 'carry-turn-one' },
+        }),
+      );
+      expect(vi.mocked(deps.sendTurn).mock.calls[0]?.[1]).not.toHaveProperty(
+        'ambientContext',
+      );
+      expect(
+        vi.mocked(deps.startSession).mock.calls[0]?.[1]
+          .requireNativeResumeIdentity,
+      ).toBe(resumeIdentity ? true : undefined);
+    },
+  );
 
   test('seeds the next child turn deterministically when no native cursor exists', async () => {
     const deps = dependencies();
