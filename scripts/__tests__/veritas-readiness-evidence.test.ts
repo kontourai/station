@@ -3,6 +3,10 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
+import { npmInvocation } from '../lib/npm-cli.mjs';
+import { persistVerificationOutput } from '../lib/verification-reporter.mjs';
+import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
   classifyReadinessEvidence,
   resolveEvidenceCheckFailure,
@@ -174,6 +178,57 @@ describe('Station Veritas readiness evidence boundary', () => {
     fixtureRoot = makeTempDir('station-readiness-fixture-');
     buildReadinessFixture(fixtureRoot);
   });
+
+  test(
+    'ci:fast retains nested readiness failures in its redacted output artifact',
+    () => {
+      const root = makeTempDir('station-readiness-diagnostic-');
+      buildReadinessFixture(root);
+      writeFileSync(
+        join(root, 'nested-check.mjs'),
+        "console.log('nested stdout cause'); console.error('nested stderr cause'); console.error('Authorization: Bearer fixture-readiness-secret'); process.exitCode = 1;\n",
+      );
+      const mapPath = join(root, '.veritas/repo-map.json');
+      const map = JSON.parse(readFileSync(mapPath, 'utf8'));
+      map.evidence.evidenceChecks[0].command = `${JSON.stringify(process.execPath)} nested-check.mjs`;
+      writeJson(mapPath, map);
+      const cli = resolve('node_modules/@kontourai/veritas/bin/veritas.mjs');
+      writeJson(join(root, 'package.json'), {
+        scripts: {
+          'veritas:readiness': `${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} readiness --working-tree`,
+        },
+      });
+      const readiness = FAST_STATIC_COMMANDS.find(
+        ([, args]) => args[1] === 'veritas:readiness',
+      );
+      expect(readiness).toBeDefined();
+      const invocation = npmInvocation(readiness![1]);
+      const result = spawnSyncBounded(invocation.command, invocation.args, {
+        cwd: root,
+        env: fixtureEnv(),
+        encoding: 'utf8',
+        timeout: WRAPPER_TIMEOUT_MS,
+        windowsHide: true,
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      const persisted = persistVerificationOutput({
+        root,
+        requestKey: 'a'.repeat(64),
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+      const retained = persisted.artifacts
+        .map((artifact) => readFileSync(join(root, artifact.path), 'utf8'))
+        .join('\n');
+      expect(retained).toContain('nested stdout cause');
+      expect(retained).toContain('nested stderr cause');
+      expect(retained).toContain('nested-check.mjs');
+      expect(retained).toMatch(/"exitCode":\s*1/);
+      expect(retained).not.toContain('fixture-readiness-secret');
+    },
+    WRAPPER_TIMEOUT_MS,
+  );
 
   test('keeps a required report failure red ahead of NOT_VERIFIED evidence', () => {
     expect(
