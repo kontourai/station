@@ -60,7 +60,9 @@
 
     "src-ui/src/hooks/orchestration/pendingRequestRows.ts",
 
-    "src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx"
+    "src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx",
+
+    "tests/orchestration-chat-flow.spec.ts"
   ],
 
   "checks": [
