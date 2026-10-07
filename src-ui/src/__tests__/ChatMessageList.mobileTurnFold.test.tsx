@@ -10,6 +10,7 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { _setApiBase } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import {
@@ -319,7 +320,26 @@ describe('phone transcript: one work row per settled turn', () => {
     expect(within(answerRow()).getByText(/BETWEEN:/)).toBeTruthy();
   });
 
-  test('a call still waiting on a grant stays outside the fold and opens its approval controls', async () => {
+  test('a call still waiting on a grant stays visible and answers its request through the sheet outside the fold', async () => {
+    const answers: Array<{ url: string; method: string; body: unknown }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString();
+        if (url.includes('/checkpoints')) {
+          return Response.json({ success: true, data: [] });
+        }
+        if (url === `${API_BASE}/api/orchestration/commands`) {
+          answers.push({
+            url,
+            method: init?.method ?? 'GET',
+            body: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
+          });
+          return Response.json({ success: true });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    );
     windowEvents.current = [
       runtimeEvent({ method: 'turn.started', turnId: 't1', prompt: 'List' }),
       say('t1', 'INTENT: checking the plugins.'),
@@ -359,19 +379,32 @@ describe('phone transcript: one work row per settled turn', () => {
     expect(within(row).queryByText(/BETWEEN:/)).toBeNull();
     // Nothing follows the last call, so its narration is the turn's last word.
     expect(within(row).getByText(/LAST:/)).toBeTruthy();
-    const pending = row.querySelector('.tool-call-batch__pending-grant');
-    expect(pending?.textContent).toContain('ls plugins');
-    fireEvent.click(
-      within(pending as HTMLElement).getByRole('button', { name: 'Answer' }),
+    const pending = row.querySelector<HTMLElement>(
+      '.tool-call-batch__pending-grant',
     );
-    const approval = await screen.findByRole('dialog', {
-      name: 'Needs approval',
-    });
-    expect(
-      within(approval).getByRole('button', {
-        name: 'Allow Once',
-      }),
-    ).toBeTruthy();
+    expect(pending?.textContent).toContain('ls plugins');
+    if (!pending) throw new Error('no pending grant outside the fold');
+    const approval = pending.querySelector('.tool-call');
+    expect(approval?.getAttribute('data-approval-thread')).toBe(THREAD);
+    expect(approval?.getAttribute('data-approval-id')).toBe('req-1');
+    fireEvent.click(within(pending).getByRole('button', { name: 'Answer' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Needs approval' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow Once' }));
+    await waitFor(() =>
+      expect(answers).toEqual([
+        {
+          url: `${API_BASE}/api/orchestration/commands`,
+          method: 'POST',
+          body: {
+            type: 'respondToRequest',
+            threadId: THREAD,
+            requestId: 'req-1',
+            expectedRequestEventId: 'evt-10',
+            decision: 'accept',
+          } satisfies OrchestrationCommand,
+        },
+      ]),
+    );
   });
 });
 

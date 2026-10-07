@@ -6,6 +6,13 @@ Normative requirements below describe what a contribution owes; command wiring
 and retained benchmarks describe different facts. A listed test, a generated
 schedule or a prior measurement is not proof that the current revision passed.
 
+Fast CI requests Veritas readiness as JSON so its existing bounded, redacted
+output artifacts retain nested evidence-check commands, exit statuses, stdout
+and stderr. Inspect those artifacts for the causal failure rather than
+rerunning a failed gate to recover its output. Capture limits still apply;
+truncated diagnostics do not establish a complete failure inventory. The JSON
+format does not change readiness requirements or promotion evidence.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
