@@ -961,6 +961,12 @@ path. Suites, components, signing keys, and mirror priorities remain intact. APT
 index retrieval must succeed before installing the required compiler or zsh
 package; an unavailable index stops the bootstrap. The Gallery renderer image
 remains pinned by digest.
+Each caller stages that helper from the immutable workflow-definition commit
+into `RUNNER_TEMP`, independently of the application checkout. Older PR heads
+therefore receive base-workflow bootstrap fixes without needing the new helper
+in their tree. Full regression uses local reusable workflow references; those
+resolve at the caller's workflow commit, while `inputs.source_sha` continues to
+select only the application source being qualified.
 
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
 on pull requests and synthesized merge-queue candidates, in the same container

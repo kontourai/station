@@ -127,6 +127,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/shared/src/__tests__/skill-experience-author.test.ts',
   // Exercises the health CLI refusal before any GitHub request.
   'scripts/__tests__/ci-health.test.ts',
+  // Three short Bash children execute the trusted-source bootstrap with isolated transport fixtures.
+  'scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts',
   // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
   'scripts/__tests__/qualification-evidence.test.ts',
   // Runs the advisory review gate as a real child against a loopback GitHub API.

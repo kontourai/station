@@ -122,7 +122,18 @@ jobs:
       # through `node-pty-prebuilds.yml` (whose matrix already has that
       # target), which removes this step; tracked separately.
       - name: Install the native build toolchain node-pty needs
-        run: bash scripts/install-ci-ubuntu-packages.sh build-essential
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+            "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+            --output "$bootstrap"
+          printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+          sha256sum "$bootstrap"
+          bash "$bootstrap" build-essential
 
       # `actions/checkout` adds the workspace to `safe.directory` in a
       # TEMPORARY global git config (it overrides HOME, writes, then reverts),
