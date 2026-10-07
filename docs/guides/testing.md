@@ -956,7 +956,8 @@ Gallery and Ubuntu zsh preflight callers use
 [`install-ci-ubuntu-packages.sh`](../../scripts/install-ci-ubuntu-packages.sh).
 It replaces the known Azure Ubuntu archive URI with the canonical HTTPS
 archive in legacy lists, DEB822 sources, and the hosted runner mirror list.
-Suites, components, signing keys, and mirror priorities remain intact. APT
+The official Ubuntu security archive also uses HTTPS with the same host and
+path. Suites, components, signing keys, and mirror priorities remain intact. APT
 index retrieval must succeed before installing the required compiler or zsh
 package; an unavailable index stops the bootstrap. The Gallery renderer image
 remains pinned by digest.

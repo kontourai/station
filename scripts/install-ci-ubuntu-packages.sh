@@ -9,7 +9,9 @@ fi
 # Playwright's image and hosted Ubuntu runners inherit this Azure mirror.
 # Keep repository suites, components, signing keys, and mirror priorities.
 find /etc/apt -type f \( -name '*.list' -o -name '*.sources' -o -name 'apt-mirrors.txt' \) \
-  -exec sed -i 's|https\?://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' {} +
+  -exec sed -E -i \
+    -e 's#https?://azure[.]archive[.]ubuntu[.]com/ubuntu(/?)([[:space:]]|$)#https://archive.ubuntu.com/ubuntu\1\2#g' \
+    -e 's#http://security[.]ubuntu[.]com/ubuntu(/?)([[:space:]]|$)#https://security.ubuntu.com/ubuntu\1\2#g' {} +
 
 apt-get -o APT::Update::Error-Mode=any update
 apt-get install --yes --no-install-recommends -- "$@"
