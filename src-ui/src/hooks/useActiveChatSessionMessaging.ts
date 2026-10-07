@@ -202,6 +202,27 @@ function cachedSummaryAwaitsFirstTurn(
   );
 }
 
+type SendAdmission = 'accepted' | 'not-invoked' | 'indeterminate';
+
+async function observeSendAdmission<T>(
+  invoke: (report: (status: SendAdmission) => void) => Promise<T>,
+  observer: ((status: SendAdmission) => void) | undefined,
+): Promise<T> {
+  let reported = false;
+  const report = (status: SendAdmission) => {
+    reported = true;
+    observer?.(status);
+  };
+  try {
+    const result = await invoke(report);
+    if (!reported) report(result === true ? 'accepted' : 'indeterminate');
+    return result;
+  } catch (error) {
+    if (!reported) report('indeterminate');
+    throw error;
+  }
+}
+
 export function useSendMessage(
   apiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
@@ -262,9 +283,7 @@ export function useSendMessage(
          */
         queueOnBusy?: boolean;
         /** Form ownership observes admission without inferring delivery from the legacy return value. */
-        onAdmission?: (
-          status: 'accepted' | 'not-invoked' | 'indeterminate',
-        ) => void;
+        onAdmission?: (status: SendAdmission) => void;
         /** Retire recovery actions whose originating submission was superseded. */
         claimRetry?: () => boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
@@ -781,19 +800,23 @@ export function useSendMessage(
                           attachments: [],
                           attachmentStages: [],
                         });
-                      void sendMessage(
-                        sessionId,
-                        agentSlug,
-                        now?.conversationId ?? conversationId,
-                        content,
-                        attachments,
-                        ambientContext,
-                        resolvedTurnId,
-                        {
-                          queueOnBusy: options?.queueOnBusy,
-                          onAdmission: options?.onAdmission,
-                          claimRetry: options?.claimRetry,
-                        },
+                      return observeSendAdmission(
+                        (onAdmission) =>
+                          sendMessage(
+                            sessionId,
+                            agentSlug,
+                            now?.conversationId ?? conversationId,
+                            content,
+                            attachments,
+                            ambientContext,
+                            resolvedTurnId,
+                            {
+                              queueOnBusy: options?.queueOnBusy,
+                              onAdmission,
+                              claimRetry: options?.claimRetry,
+                            },
+                          ),
+                        options?.onAdmission,
                       );
                     },
                   },
@@ -1075,19 +1098,23 @@ export function useSendMessage(
                     label: 'Retry',
                     handler: () => {
                       if (options?.claimRetry && !options.claimRetry()) return;
-                      return sendMessage(
-                        sessionId,
-                        agentSlug,
-                        latestState?.conversationId ?? conversationId,
-                        content,
-                        attachments,
-                        ambientContext,
-                        resolvedTurnId,
-                        {
-                          queueOnBusy: options?.queueOnBusy,
-                          onAdmission: options?.onAdmission,
-                          claimRetry: options?.claimRetry,
-                        },
+                      return observeSendAdmission(
+                        (onAdmission) =>
+                          sendMessage(
+                            sessionId,
+                            agentSlug,
+                            latestState?.conversationId ?? conversationId,
+                            content,
+                            attachments,
+                            ambientContext,
+                            resolvedTurnId,
+                            {
+                              queueOnBusy: options?.queueOnBusy,
+                              onAdmission,
+                              claimRetry: options?.claimRetry,
+                            },
+                          ),
+                        options?.onAdmission,
                       );
                     },
                   },

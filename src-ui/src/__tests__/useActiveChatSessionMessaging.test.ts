@@ -970,6 +970,75 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(onAdmission.mock.calls).toEqual([['indeterminate'], ['accepted']]);
   });
 
+  it.each(['stopped', 'foreground-indeterminate'])(
+    'completes form Retry observation when its attempt is %s',
+    async (outcome) => {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new Error('temporary refusal'),
+      );
+      if (outcome === 'stopped') {
+        sendExecutionMessageMock.mockImplementationOnce(
+          (
+            _base: string,
+            _input: unknown,
+            { signal }: { signal: AbortSignal },
+          ) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              });
+            }),
+        );
+      } else {
+        sendExecutionMessageMock.mockRejectedValueOnce(
+          Object.assign(new Error('Receipt unavailable'), {
+            code: 'foreground_message_indeterminate',
+            outcome: 'indeterminate',
+          }),
+        );
+      }
+      const onAdmission = vi.fn();
+      const { result } = renderHook(() => ({
+        send: useSendMessage('http://api.test'),
+        cancel: useCancelMessage('http://api.test'),
+      }));
+      await act(async () => {
+        await result.current.send(
+          sessionId,
+          'codex',
+          undefined,
+          'Submitted form',
+          undefined,
+          undefined,
+          undefined,
+          { onAdmission, claimRetry: () => true },
+        );
+      });
+      const retry = activeChatsStore
+        .getSnapshot()
+        [sessionId]?.ephemeralMessages?.at(-1)?.action?.handler;
+      expect(retry).toBeTypeOf('function');
+      await act(async () => {
+        const retryAttempt = retry?.();
+        if (outcome === 'stopped') {
+          await vi.waitFor(() =>
+            expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2),
+          );
+          await result.current.cancel(sessionId);
+          await retryAttempt;
+        } else {
+          await expect(retryAttempt).rejects.toMatchObject({
+            code: 'foreground_message_indeterminate',
+          });
+        }
+      });
+      expect(onAdmission.mock.calls).toEqual([
+        ['indeterminate'],
+        ['indeterminate'],
+      ]);
+    },
+  );
+
   it('marks a failed send as a send-failure notice, which the composer repeats', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new Error('temporarily unavailable'),
