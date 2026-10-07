@@ -1,0 +1,7 @@
+{
+  "revision": "24fb28ef2ac570f8551c121d05902b6faf92630c",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Follow-up scoped review of 24fb28ef2a status correction after independent reviewer identified the dated only-S1/no-passkeys claim. Read merged station-runtime getOperatorPasskeys, runtime-routes host administration mount, and canonical operator-passkeys guide. Status now acknowledges S2b consent-origin enrollment and host administration while excluding sign-in, operator sessions, per-action step-up and unverified UI delivery. Original dated design body remains historical, not a complete current-state inventory. Independent delta source review cleared this correction. No passkey/device runtime or hosted release proof was produced.","inputs":["docs/design/operator-device-access.md"]}
+  ]
+}

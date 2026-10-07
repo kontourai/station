@@ -4,7 +4,10 @@ import {
   nativeSessionIdentityMatchesSource,
   providerNativeSessionIdentity,
 } from '../../providers/provider-session-identity.js';
-import type { AttachedSessionDescriptor } from '../../providers/sessions/attached-session-source.js';
+import type {
+  AttachedSessionDescriptor,
+  AttachedSessionSource,
+} from '../../providers/sessions/attached-session-source.js';
 
 type NativeIdentity = NonNullable<
   ReturnType<typeof providerNativeSessionIdentity>
@@ -37,6 +40,10 @@ export class PollSessionSnapshot {
   private readonly ownedIdentities = new Map<
     string,
     Map<string, NativeIdentity[]>
+  >();
+  private readonly sourceOwnedIds = new Map<
+    AttachedSessionSource,
+    Set<string>
   >();
 
   constructor(sessions: readonly ProviderSession[]) {
@@ -73,6 +80,33 @@ export class PollSessionSnapshot {
         ),
       ) ?? false
     );
+  }
+
+  /**
+   * Whether a Station-owned session of ANOTHER provider owns the descriptor's
+   * native session, as the source itself declares (see
+   * `AttachedSessionSource.ownedNativeSessionId`).
+   */
+  ownedThroughSource(
+    source: AttachedSessionSource,
+    descriptor: AttachedSessionDescriptor,
+  ): boolean {
+    if (!source.ownedNativeSessionId) return false;
+    let owned = this.sourceOwnedIds.get(source);
+    if (!owned) {
+      owned = new Set();
+      for (const session of this.byThreadId.values()) {
+        if (session.controlMode === 'read-only-attached') continue;
+        try {
+          const id = source.ownedNativeSessionId(session);
+          if (typeof id === 'string' && id) owned.add(id);
+        } catch {
+          // A source that cannot read a row proves no ownership for it.
+        }
+      }
+      this.sourceOwnedIds.set(source, owned);
+    }
+    return owned.has(descriptor.sessionId);
   }
 
   private identitiesFor(

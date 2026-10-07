@@ -36,7 +36,12 @@ describe('attention SDK domain', () => {
     } as Response);
 
     await expect(fetchAttention()).resolves.toEqual(projection);
-    expect(fetch).toHaveBeenCalledWith('http://example.test/api/attention');
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      'http://example.test/api/attention',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces a safe API error instead of returning a malformed projection', async () => {

@@ -1,0 +1,9 @@
+{
+  "revision": "b1967afde297e77f36435c2adbf2d15f052ae258",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"#3412: workspace-surfaces CONTEXT.md gained a File Preview sentence (Session must belong to the Project its start recorded; attached Sessions refused). The map's one-line scope entry for Workspace Surfaces is unaffected.","inputs":["CONTEXT-MAP.md","docs/contexts/workspace-surfaces/CONTEXT.md"]},
+
+    {"path":"CONTEXT.md","note":"#3412: workspace-surfaces CONTEXT.md gained a File Preview sentence (Session must belong to the Project its start recorded; attached Sessions refused). The root context's link to the workspace context and its summary are unaffected.","inputs":["CONTEXT.md","docs/contexts/workspace-surfaces/CONTEXT.md"]}
+  ]
+}

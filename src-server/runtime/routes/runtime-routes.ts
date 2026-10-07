@@ -229,6 +229,7 @@ import {
   runtimeConnectionSummary,
 } from '../../routes/agents/enriched-agents.js';
 import { createInvokeRoutes } from '../../routes/agents/invoke.js';
+import { createAgentMcpPromptRoutes } from '../../routes/agents/mcp-prompts.js';
 import { resolveRuntimeAgent } from '../../routes/agents/runtime-agent-resolver.js';
 import { createSkillRoutes } from '../../routes/agents/skills.js';
 import { createTemplateRoutes } from '../../routes/agents/templates.js';
@@ -314,6 +315,7 @@ import { createOrchestrationRoutes } from '../../routes/orchestration/orchestrat
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
+import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
   createTaskRoutes,
@@ -375,6 +377,7 @@ import { createSettingsRegistryRoutes } from '../../routes/system/settings-regis
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
+import { launchesCommand } from '../../routes/working-directory-authority.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
 import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
@@ -409,6 +412,7 @@ import { resolveStationBrowserOrigins } from '../../security/station-browser-ori
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import {
   principalKey,
@@ -549,7 +553,7 @@ import { ProjectResourceResolver } from '../../services/projects/project-resourc
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
-import { sessionWorkspaceDirectoryFor } from '../../services/projects/session-workspace-directory.js';
+import { orchestrationSessionWorkspaceDirectory } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
@@ -2616,6 +2620,10 @@ export function configureRuntimeRoutes(
           .map((peer) => peerCredentialStore.get(peer.environmentId))
           .filter((peer): peer is NonNullable<typeof peer> => peer !== null),
       context.environmentSecurityService.devicePairing.environmentId(),
+      (request) =>
+        !hostedTenantRegistry &&
+        !isHostedTenantExecutionRequired() &&
+        isBoundRuntimeLocalOperator(request),
     ),
   );
   context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));
@@ -2675,6 +2683,8 @@ export function configureRuntimeRoutes(
       context.secretBindingAdministration,
       context.secretBindingIntegrationAdministration,
       context.mcpService,
+      async (integrationId) =>
+        launchesCommand(await context.mcpService.getIntegration(integrationId)),
       { resolveViewerPrincipalId: resolveConnectedAccountPrincipalId },
     ),
   );
@@ -4499,6 +4509,23 @@ export function configureRuntimeRoutes(
     );
   }
 
+  // station#3413: Station Control's Project activity reads (the Sessions in
+  // the caller's Project, and one Session's digest). Agent-only leaves with
+  // their own per-Session scope check; their own prefix so nothing above
+  // changes.
+  if (context.orchestrationEventStore) {
+    context.app.route(
+      '/api/orchestration/session-activity',
+      createSessionProjectActivityRoutes({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        hostedTenantRegistry,
+      }),
+    );
+  }
+
   const runtimeContext = context.buildRuntimeContext();
 
   context.app.route(
@@ -4574,6 +4601,15 @@ export function configureRuntimeRoutes(
 
   context.app.route('/acp', createACPRoutes(runtimeContext));
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
+  context.app.route(
+    '/agents',
+    createAgentMcpPromptRoutes({
+      resolveAgentSpec: (slug) =>
+        runtimeContext.agentSpecs.get(runtimeAgentKey(slug)),
+      prompts: context.mcpService,
+      logger: context.logger,
+    }),
+  );
   context.app.route(
     '/',
     createInvokeRoutes(runtimeContext, {
@@ -5210,6 +5246,11 @@ export function configureRuntimeRoutes(
       );
     },
   } satisfies Parameters<typeof createProjectCatalogueReader>[1];
+  const sessionWorkspaceDirectory = orchestrationSessionWorkspaceDirectory({
+    sessions: context.orchestrationService,
+    authorityFor: conversationReadAuthorityForRequest,
+    projects: context.projectService,
+  });
   const projectCatalogue = createProjectCatalogueReader(
     context.projectService,
     projectCatalogueDeps,
@@ -5225,32 +5266,7 @@ export function configureRuntimeRoutes(
         kitObservabilityRegistry,
         terminalService: context.terminalService,
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
-          sessionWorkspaceDirectoryFor(
-            {
-              canRead: (id) =>
-                context.orchestrationService.canUserReadSession(
-                  id,
-                  conversationReadAuthorityForRequest(routeContext.req.raw),
-                ),
-              listSessions: () =>
-                context.orchestrationService.listSessions(
-                  INTERNAL_SESSION_READ_SCOPE,
-                ),
-              projectDirectory: async (slug) => {
-                try {
-                  const configured =
-                    context.projectService.getProject(slug).workingDirectory;
-                  return configured
-                    ? resolve(expandTilde(configured))
-                    : undefined;
-                } catch {
-                  return undefined;
-                }
-              },
-            },
-            projectSlug,
-            thread,
-          ),
+          sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
         // station#3778: the SAME service instance the Board's availability
         // route answers from, so the Pane catalogue, the nav entry and the
         // route guard cannot drift into three answers.
@@ -6546,6 +6562,7 @@ export function configureRuntimeRoutes(
               ).id,
               c.req.raw,
             ),
+          projectFolder: resolveWorkspacePath,
         },
       ),
     );

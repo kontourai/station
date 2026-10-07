@@ -13,6 +13,7 @@ import type { StagedAttachmentReference } from '@kontourai/station-contracts/att
 import type { BoardReference } from '@kontourai/station-contracts/board';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
+import type { McpElicitationForm } from '@kontourai/station-contracts/mcp-elicitation';
 import type {
   ApprovalMode,
   EngineId,
@@ -217,6 +218,8 @@ export interface ChatMessage {
     /** #2915: see `MessagePart.approvalSessionGrant`. */
     approvalSessionGrant?: ToolRequestSessionGrant;
     questionnaire?: HarnessQuestionnaire;
+    /** #3284: a tool server's form, answered on the pending-requests card. */
+    mcpElicitation?: McpElicitationForm;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'

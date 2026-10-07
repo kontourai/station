@@ -394,7 +394,19 @@
 
     "src-ui/src/views/layout-workspace-shape.ts",
 
-    "src-server/runtime/bootstrap/agent-audience-gate.ts"
+    "packages/contracts/src/usage-stats.ts",
+
+    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
+
+    "src-server/adapters/file/memory-adapter-messages.ts",
+
+    "src-server/runtime/bootstrap/agent-audience-gate.ts",
+
+    "packages/shared/src/client-protocol.ts",
+
+    "src-server/security/client-protocol-admission.ts",
+
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts"
   ],
 
   "checks": [

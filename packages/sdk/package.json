@@ -12,6 +12,8 @@
     "./agent": "./src/agent/index.ts",
     "./mobile-device": "./src/mobile-device.ts",
     "./mobile-devices-query": "./src/query-domains/mobileDevices.ts",
+    "./station-usage-query": "./src/query-domains/stationUsage.ts",
+    "./usage-rollup-query": "./src/query-domains/usageRollup.ts",
     ".": "./src/index.ts",
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",

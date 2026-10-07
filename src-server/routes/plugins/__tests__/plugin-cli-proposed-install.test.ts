@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { ParsedCoreArgs } from '../../../../packages/cli/src/commands/core-api.js';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import { execGitSync } from '../../../utils/git-exec.js';
@@ -107,7 +108,7 @@ test('station install <path> of a proposed folder echoes the preview’s gitMeta
     projectHomeDir: home,
     proposals,
   });
-  transport.app = app;
+  transport.app = withOperatorPrincipal(app);
 
   const { install } = await import(
     '../../../../packages/cli/src/commands/install.js'

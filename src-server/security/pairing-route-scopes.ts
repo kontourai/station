@@ -993,6 +993,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/analytics/station-usage:operator-read',
+    method: 'GET',
+    prefix: '/api/analytics/station-usage',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // archive#3385: the attachment blob route is a single GET leaf, declared
   // explicitly rather than by adding an `/api/attachments` domain prefix. A
   // prefix would classify any future sibling — including a mutating one — at
@@ -2392,6 +2399,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/session-control/:sessionId/wait',
     },
+    // #3413 Station Control's Project activity reads: agent-only at the route
+    // (each answers 403 `station_control_caller_required` to a request with no
+    // verified station-control caller), so a paired credential at the family's
+    // tier reaches nothing. Both only read.
+    { method: 'GET', path: '/api/orchestration/session-activity' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-activity/:sessionId/digest',
+    },
     // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
     // request the runtime boundary did not accept as Station's own internal
     // principal gets a 404 whatever its scope, and the session it records on
@@ -2622,6 +2638,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/agents/:slug/conversations/:conversationId/stats',
     },
     { method: 'GET', path: '/agents/:slug/health' },
+    // #3284: an agent's MCP prompts. Listing reads the same tool servers the
+    // agent's tools already use; running one reads a prompt's text back to
+    // the caller, who then sends it as an ordinary turn. Neither crosses an
+    // Environment or Station boundary, so both inherit the agent family.
+    { method: 'GET', path: '/agents/:slug/mcp-prompts' },
+    { method: 'POST', path: '/agents/:slug/mcp-prompts/run' },
     { method: 'POST', path: '/agents/:slug/invoke' },
     { method: 'POST', path: '/agents/:slug/invoke/stream' },
     { method: 'GET', path: '/agents/:slug/tools' },

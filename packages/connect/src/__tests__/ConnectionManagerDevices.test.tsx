@@ -181,7 +181,7 @@ describe('Connection Manager paired devices', () => {
 
     expect(
       await screen.findByText(
-        /Station Desktop manages the operator credential for device changes/,
+        /Station Desktop can list devices but does not hold the operator credential/,
       ),
     ).toBeTruthy();
     expect(

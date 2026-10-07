@@ -371,6 +371,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-provider-picker.spec.ts',
     'tests/project-layout-render-storm.spec.ts',
     'tests/orchestration-chat-flow.spec.ts',
+    'tests/mcp-elicitation-form.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
     'tests/veritas-readiness-panel.spec.ts',
@@ -1439,6 +1440,15 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Isolated Claude and Codex JSONL follow: discover after startup, open read-only activity, observe appends, reject unsupported continuation or direct mutation, and retain controls at 320px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/mcp-elicitation-form.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
     exceptions: [],
   },
   {

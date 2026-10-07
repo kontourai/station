@@ -61,8 +61,10 @@
     "./source-watch": "./src/source-watch.ts",
     "./conversation-message": "./src/conversation-message.ts",
     "./runtime-event-projection": "./src/runtime-event-projection.ts",
+    "./extension-transcript-markers": "./src/extension-transcript-markers.ts",
     "./request-settlement": "./src/request-settlement.ts",
     "./usage-fold": "./src/usage-fold.ts",
+    "./usage-semantics": "./src/usage-semantics.ts",
     "./usage-measurement": "./src/usage-measurement.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
     "./thread-usage-tree": "./src/thread-usage-tree.ts",
@@ -78,6 +80,7 @@
     "./instance-registry": "./src/instance-registry.ts",
     "./notification-priority": "./src/notification-priority.ts",
     "./notification-envelope": "./src/notification-envelope.ts",
+    "./client-protocol": "./src/client-protocol.ts",
     "./native-shell-origin": "./src/native-shell-origin.ts",
     "./answer-share-projection": "./src/answer-share-projection.ts",
     "./thread-projection": "./src/thread-projection.ts",
@@ -105,6 +108,8 @@
     "./prebuilt-archive": "./src/prebuilt-archive.ts",
     "./service-launcher-protocol": "./src/service-launcher-protocol.ts",
     "./harness-questions": "./src/harness-questions.ts",
+    "./mcp-elicitation": "./src/mcp-elicitation.ts",
+    "./mcp-elicitation-form": "./src/mcp-elicitation-form.ts",
     "./skill-experience-workflow": "./src/skill-experience-workflow.ts"
   },
   "publishConfig": {
@@ -113,7 +118,7 @@
   "dependencies": {
     "@kontourai/station-contracts": "^0.8.0",
     "@kontourai/thread": "0.5.0",
-    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/client": "2.2.0",
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
     "jose": "6.2.12"

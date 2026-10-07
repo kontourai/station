@@ -2079,9 +2079,17 @@ describe.skipIf(process.platform === 'win32')(
       writeFileSync(join(entry, 'HEAD'), 'ref: refs/heads/main\n');
       writeFileSync(join(entry, 'commondir'), '../..\n');
       execFileSync('mkfifo', [join(project, 'w', '.git')]);
-      expect(git(project, ['worktree', 'list', '--porcelain'])).toContain(
-        `worktree ${join(project, 'w')}`,
-      );
+      // Git 2.50 on macOS lists this registration, so the reader reaches the
+      // FIFO; the Linux runners' git omits it, so the hazard cannot reach this
+      // path there. Either way listing must settle and exclude it, and the
+      // FIFO read itself is pinned by the readSmallRegularFile test above.
+      const reachesFifo = git(project, [
+        'worktree',
+        'list',
+        '--porcelain',
+      ]).includes(`worktree ${join(project, 'w')}`);
+      if (!reachesFifo)
+        console.info('git omits the FIFO worktree; checking settle only');
       // A read that waited on the FIFO would block the event loop, so the
       // race below would never settle and this test would time out.
       const listed = await Promise.race([

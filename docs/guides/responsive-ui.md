@@ -101,7 +101,12 @@ singleton: do not add redundant subscriptions in every nested panel.
 
 Use flex/grid with `min-width: 0` and `min-height: 0` where content must shrink.
 Keep one bounded scroll owner per region; use overscroll containment where a
-sheet should not scroll the page behind it. Apply safe-area values at the owning
+sheet should not scroll the page behind it. The outer `.app__main` frame uses
+`overflow: clip` where supported so section focus cannot pan the toolbar away;
+its explicit minimum sizes keep phone flex layouts shrinkable. Nested
+`.content-view` and region bodies retain their own scrolling. Older WebViews
+keep `overflow: hidden`; preventing their programmatic frame scroll is not
+established by the Chromium checks. Apply safe-area values at the owning
 boundary, accounting for nested surfaces rather than adding the same inset to
 every child. Terminal/editor phone controls should stay in one horizontally
 scrollable row; their input font must avoid mobile browser zoom. Test the real
