@@ -1,13 +1,21 @@
 #!/usr/bin/env node
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, platform as hostPlatform } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import { exactProcessIdentity } from '../packages/shared/src/process-identity.mjs';
+import { CAPTURE_MAX_BYTES } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from './lib/owned-process.mjs';
 import { readPnpmLock } from './lib/pnpm-lockfile.mjs';
 
 const GUIDES_URL = 'https://v2.tauri.app/_llms-txt/guides.txt';
@@ -121,7 +129,7 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function checkCommand(id, command, args, options = {}) {
+async function checkCommand(id, command, args, options = {}) {
   const started = performance.now();
   if (options.traceProbes) {
     process.stderr.write(
@@ -136,13 +144,69 @@ function checkCommand(id, command, args, options = {}) {
     }
     return check;
   };
-  const result = spawnSyncBounded(command, args, {
+  const execution = executeOwnedCommand(command, args, spawn, id, {
     cwd: options.cwd,
-    encoding: 'utf8',
-    timeout: options.timeout ?? 10_000,
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
+    ...(options.resolveParentIdentity
+      ? { resolveParentIdentity: options.resolveParentIdentity }
+      : {}),
   });
-  if (result.error?.code === 'ENOENT') {
+  let rejectBoundary;
+  const boundary = new Promise((_, reject) => {
+    rejectBoundary = reject;
+  });
+  const capture = captureOwnedProcessOutput(execution, {
+    maxBytes: CAPTURE_MAX_BYTES,
+    onOverflow: () =>
+      rejectBoundary(new Error(`${id} output exceeded its bound`)),
+  });
+  const timeout = options.timeout ?? 10_000;
+  const timer = setTimeout(
+    () => rejectBoundary(new Error(`${id} timed out after ${timeout}ms`)),
+    timeout,
+  );
+  let result;
+  let failure;
+  try {
+    result = await Promise.race([execution.completion, boundary]);
+  } catch (error) {
+    failure = error;
+  } finally {
+    clearTimeout(timer);
+  }
+  const cleanup = await terminateSuiteExecution(execution, {
+    waitForSuiteSettlement,
+    terminationGraceMs: 1_000,
+    terminationForceMs: 2_000,
+    processLabel: id,
+  });
+  const output = capture.finish();
+  if (!cleanup.settled || cleanup.errors.length) {
+    return finish({
+      id,
+      status: 'failed',
+      reason: `${id} process cleanup did not settle`,
+      command,
+    });
+  }
+  if (output.truncated || output.invalidUtf8) {
+    return finish({
+      id,
+      status: 'failed',
+      reason: `${id} output exceeded its capture contract`,
+      command,
+    });
+  }
+  if (failure) {
+    return finish({ id, status: 'failed', reason: failure.message, command });
+  }
+  const windowsMissingCommand =
+    process.platform === 'win32' &&
+    result.error &&
+    execution.settlementEvidence?.().identities.target === null &&
+    output.stderr.text.trim() === 'station-owned-guard: create-process win32=2';
+  if (result.error?.code === 'ENOENT' || windowsMissingCommand) {
     return finish({
       id,
       status: 'skipped',
@@ -158,7 +222,7 @@ function checkCommand(id, command, args, options = {}) {
       command,
     });
   }
-  const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
+  const combined = `${output.stdout.text}\n${output.stderr.text}`.trim();
   if (result.status !== 0 && !options.acceptNonzero) {
     return finish({
       id,
@@ -259,12 +323,12 @@ function capabilityReport(desktopRoot, selected) {
     });
 }
 
-function gitGeneratedState(root, relativePath, traceProbes) {
-  const check = checkCommand(
+async function gitGeneratedState(root, relativePath, options) {
+  const check = await checkCommand(
     `git-${relativePath}`,
     'git',
     ['status', '--short', '--', relativePath],
-    { cwd: root, parse: (output) => output, traceProbes },
+    { ...options, cwd: root, parse: (output) => output },
   );
   return {
     path: relativePath,
@@ -281,9 +345,9 @@ function gitGeneratedState(root, relativePath, traceProbes) {
   };
 }
 
-function collectChecks(root, traceProbes) {
+async function collectChecks(root, probeOptions) {
   const probe = (id, command, args, options = {}) =>
-    checkCommand(id, command, args, { ...options, traceProbes });
+    checkCommand(id, command, args, { ...probeOptions, ...options });
   let npm;
   let npmResolutionError;
   try {
@@ -376,7 +440,11 @@ function collectChecks(root, traceProbes) {
       reason: 'host-is-not-macos',
     };
   }
-  return checks;
+  return Object.fromEntries(
+    await Promise.all(
+      Object.entries(checks).map(async ([key, value]) => [key, await value]),
+    ),
+  );
 }
 
 function normalizedVersion(value) {
@@ -449,7 +517,7 @@ export function collectFindings({ versions, checks, generated }) {
   return findings;
 }
 
-export function buildContextReport(
+export async function buildContextReport(
   root,
   selectedPlatform = 'all',
   { traceProbes = false } = {},
@@ -497,10 +565,24 @@ export function buildContextReport(
       },
     ]),
   );
-  const checks = collectChecks(root, traceProbes);
+  const parentIdentity =
+    process.platform === 'win32'
+      ? exactProcessIdentity(process.pid)
+      : undefined;
+  const probeOptions = {
+    traceProbes,
+    ...(process.platform === 'win32'
+      ? { resolveParentIdentity: () => parentIdentity }
+      : {}),
+  };
+  const [checks, androidGenerated, iosGenerated] = await Promise.all([
+    collectChecks(root, probeOptions),
+    gitGeneratedState(root, 'src-desktop/gen/android', probeOptions),
+    gitGeneratedState(root, 'src-desktop/gen/apple', probeOptions),
+  ]);
   const generated = {
     android: {
-      ...gitGeneratedState(root, 'src-desktop/gen/android', traceProbes),
+      ...androidGenerated,
       owners: [
         'src-desktop/tauri.android.conf.json',
         'scripts/apply-android-native-bootstrap.mjs',
@@ -508,7 +590,7 @@ export function buildContextReport(
       ].filter((path) => existsSync(join(root, path))),
     },
     ios: {
-      ...gitGeneratedState(root, 'src-desktop/gen/apple', traceProbes),
+      ...iosGenerated,
       owners: [
         'src-desktop/tauri.ios.conf.json',
         'src-desktop/gen/apple/project.yml',
@@ -665,7 +747,7 @@ async function main() {
     await printDocumentation(options.topic, options.maxChars);
     return;
   }
-  const report = buildContextReport(options.root, options.platform, {
+  const report = await buildContextReport(options.root, options.platform, {
     traceProbes: options.traceProbes,
   });
   process.stdout.write(

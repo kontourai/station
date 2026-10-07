@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -52,6 +52,74 @@ describe('tauri context', () => {
     mkdirSync(join(directory, 'src-desktop/capabilities'), { recursive: true });
     return directory;
   }
+
+  function stalledToolEnvironment(): NodeJS.ProcessEnv {
+    const directory = makeTempDir('station-tauri-stalled-tools-');
+    const tools = ['rustc', 'cargo', 'rustup'];
+    if (process.platform === 'win32') {
+      const source = join(directory, 'stalled.cs');
+      writeFileSync(
+        source,
+        'class Stalled { static void Main() { System.Threading.Thread.Sleep(11000); } }',
+      );
+      const binary = join(directory, 'stalled.exe');
+      const windows = process.env.WINDIR ?? process.env.SystemRoot;
+      if (!windows) throw new Error('Windows compiler root unavailable');
+      const compiled = spawnSyncBounded(
+        join(windows, 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'),
+        ['/nologo', '/target:exe', `/out:${binary}`, source],
+        { encoding: 'utf8', timeout: 10_000, windowsHide: true },
+      );
+      expect(compiled.error, compiled.stderr).toBeUndefined();
+      expect(compiled.status, compiled.stderr).toBe(0);
+      for (const tool of tools) {
+        copyFileSync(binary, join(directory, `${tool}.exe`));
+      }
+    } else {
+      for (const tool of tools) {
+        writeFileSync(
+          join(directory, tool),
+          `#!${process.execPath}\nsetTimeout(() => {}, 11000);\n`,
+          { mode: 0o755 },
+        );
+      }
+    }
+    const env = { ...process.env };
+    const pathKey = Object.keys(env).find(
+      (key) => key.toLowerCase() === 'path',
+    );
+    const existingPath = pathKey ? env[pathKey] : '';
+    for (const key of Object.keys(env)) {
+      if (key.toLowerCase() === 'path') delete env[key];
+    }
+    env.PATH = `${directory}${delimiter}${existingPath ?? ''}`;
+    return env;
+  }
+
+  test('a report retains real npm and Tauri versions and honest failures when three independent tools stall', () => {
+    const report = reportFor(root, stalledToolEnvironment());
+    const tauri = JSON.parse(
+      readFileSync(
+        join(root, 'node_modules/@tauri-apps/cli/package.json'),
+        'utf8',
+      ),
+    );
+    expect(report.checks.npm.status).toBe('checked');
+    expect(report.checks.npm.value).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(report.checks.tauriCli.status).toBe('checked');
+    expect(report.checks.tauriCli.value).toBe(`tauri-cli ${tauri.version}`);
+    for (const [key, id] of [
+      ['rustc', 'rustc'],
+      ['cargo', 'cargo'],
+      ['rustTargets', 'rust-targets'],
+    ] as const) {
+      expect(report.checks[key].status).toBe('failed');
+      expect(report.checks[key].value).toBeUndefined();
+      expect(report.findings).toContainEqual(
+        expect.objectContaining({ code: `check-failed-${id}` }),
+      );
+    }
+  });
 
   test.skipIf(process.platform !== 'win32')(
     'reports versions from the real installed npm and local Tauri CLIs on Windows',
