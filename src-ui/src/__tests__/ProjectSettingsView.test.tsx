@@ -142,6 +142,10 @@ vi.mock('../views/project-settings/LayoutsSection', () => ({
   LayoutsSection: () => <section>Layouts section</section>,
 }));
 
+vi.mock('../views/project-settings/ToolsSection', () => ({
+  ToolsSection: () => <section>Tools section</section>,
+}));
+
 vi.mock('../views/project-settings/KnowledgeSection', () => ({
   KnowledgeSection: () => <section>Knowledge section</section>,
 }));

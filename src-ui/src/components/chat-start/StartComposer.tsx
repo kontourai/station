@@ -3,7 +3,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
-import { ArrowDownGlyph, CloseGlyph, GlobeGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { Skeleton } from '../state';
 import './StartComposer.css';
 
@@ -110,8 +110,11 @@ export function StartComposer({
   compact = false,
   agent,
   onOpenAgents,
+  onOpenModel,
   project,
   onOpenProject,
+  projectFixed = false,
+  stationControl,
   overflowActions,
   skill,
   contextItems,
@@ -129,8 +132,11 @@ export function StartComposer({
   compact?: boolean;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
+  onOpenModel?: (trigger: HTMLElement) => void;
   project: StartProjectChip;
   onOpenProject: (trigger: HTMLElement) => void;
+  projectFixed?: boolean;
+  stationControl?: ReactNode;
   overflowActions?: readonly OverflowAction[];
   /** A chosen visual skill, removable. */
   skill?: { title: string; onRemove: () => void };
@@ -157,7 +163,10 @@ export function StartComposer({
     // goes; the full composer sizes from CSS, so drop what compact set.
     else clearFittedSize(field);
   }, [compact, prompt]);
-  const agentText = startAgentChipText(agent);
+  const agentText =
+    onOpenModel && agent.status === 'ready'
+      ? (agent.agent?.name ?? 'Choose an agent')
+      : startAgentChipText(agent);
   return (
     <form
       className={`start-composer${compact ? ' start-composer--compact' : ''}`}
@@ -167,131 +176,144 @@ export function StartComposer({
         if (canStart && !pending) onStart();
       }}
     >
-      {contextItems && contextItems.length > 0 && (
-        <fieldset
-          className="start-composer__context"
-          aria-label="Context for this chat"
-        >
-          {contextItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="start-composer__context-chip"
-              aria-pressed={item.selected}
-              aria-label={`${item.label}: ${item.detail}`}
-              title={item.detail}
-              onClick={() => onToggleContextItem?.(item.id)}
-            >
-              <span className="start-composer__context-label">
-                {item.label}
-              </span>
-              <span className="start-composer__context-detail">
-                {item.detail}
-              </span>
-            </button>
-          ))}
-        </fieldset>
-      )}
-      <textarea
-        ref={fieldRef}
-        className="editor-textarea start-composer__input"
-        aria-label="What would you like done?"
-        placeholder="Tell Station what you want done…"
-        rows={compact ? 1 : 3}
-        value={prompt}
-        onChange={(event) => onPromptChange(event.target.value)}
-      />
-      <div className="start-composer__bar">
-        <fieldset className="start-composer__chips" aria-label="Chat setup">
-          {agent.status === 'loading' ? (
-            <span
-              className="start-composer__chip start-composer__chip--loading"
-              role="status"
-              aria-label="Checking which Agent will start"
-            >
-              <Skeleton variant="line" width="9rem" />
+      <div className="start-composer__destination">
+        <h2>{compact ? 'Start work' : 'What would you like to do?'}</h2>
+        {project.status === 'ready' && (
+          <button
+            type="button"
+            className="choice-trigger start-composer__project"
+            aria-haspopup={projectFixed ? undefined : 'dialog'}
+            aria-label={`Project: ${project.label}`}
+            title={project.folder}
+            disabled={projectFixed}
+            onClick={(event) => onOpenProject(event.currentTarget)}
+          >
+            <span>
+              {project.isGlobal ? 'Without a project' : `in ${project.label}`}
             </span>
-          ) : (
-            <button
-              type="button"
-              className={`choice-trigger start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
-              aria-haspopup="dialog"
-              aria-label={`Agent: ${agentText}${agent.needsSetup ? ', needs setup' : ''}`}
-              onClick={(event) => onOpenAgents(event.currentTarget)}
-            >
-              {agent.agent && <AgentIcon agent={agent.agent} size="small" />}
-              <span className="start-composer__chip-text">{agentText}</span>
-              <ArrowDownGlyph className="choice-caret" />
-            </button>
-          )}
-          {project.status === 'loading' ? (
-            <span
-              className="start-composer__chip start-composer__chip--loading"
-              role="status"
-              aria-label="Checking which project the chat starts in"
-            >
-              <Skeleton variant="line" width="6rem" />
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="choice-trigger start-composer__chip start-composer__chip--project"
-              aria-haspopup="dialog"
-              aria-label={`Project: ${project.label}`}
-              title={project.folder}
-              onClick={(event) => onOpenProject(event.currentTarget)}
-            >
-              {/* TODO(project-icons): adopt `ProjectIcon` (with its accent
-                  fallback) once feat/project-icons lands. Until then the
-                  sidebar's accent swatch, never a raw `project.icon`:
-                  LayoutIcon would hotlink a remote or path icon. */}
-              {project.isGlobal ? (
-                <GlobeGlyph />
-              ) : (
-                <span
-                  className="start-composer__swatch"
-                  aria-hidden="true"
-                  style={{ backgroundColor: project.accent }}
-                />
-              )}
-              <span className="start-composer__chip-text">{project.label}</span>
-              <ArrowDownGlyph className="choice-caret" />
-            </button>
-          )}
-          {skill && (
-            <span className="start-composer__chip start-composer__chip--skill">
-              <span className="start-composer__chip-text">{skill.title}</span>
+            {!projectFixed && <ArrowDownGlyph className="choice-caret" />}
+          </button>
+        )}
+        {project.status === 'loading' && (
+          <span
+            role="status"
+            aria-label="Checking which project the chat starts in"
+          >
+            <Skeleton variant="line" width="6rem" />
+          </span>
+        )}
+        {stationControl}
+      </div>
+      <div className="start-composer__box">
+        {contextItems && contextItems.length > 0 && (
+          <fieldset
+            className="start-composer__context"
+            aria-label="Context for this chat"
+          >
+            {contextItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="start-composer__context-chip"
+                aria-pressed={item.selected}
+                aria-label={`${item.label}: ${item.detail}`}
+                title={item.detail}
+                onClick={() => onToggleContextItem?.(item.id)}
+              >
+                <span className="start-composer__context-label">
+                  {item.label}
+                </span>
+                <span className="start-composer__context-detail">
+                  {item.detail}
+                </span>
+              </button>
+            ))}
+          </fieldset>
+        )}
+        <textarea
+          ref={fieldRef}
+          className="editor-textarea start-composer__input"
+          aria-label="What would you like done?"
+          placeholder="Tell Station what you want done…"
+          rows={compact ? 1 : 3}
+          value={prompt}
+          onChange={(event) => onPromptChange(event.target.value)}
+        />
+        <div className="start-composer__bar">
+          <fieldset className="start-composer__chips" aria-label="Chat setup">
+            {agent.status === 'loading' ? (
+              <span
+                className="start-composer__chip start-composer__chip--loading"
+                role="status"
+                aria-label="Checking which Agent will start"
+              >
+                <Skeleton variant="line" width="9rem" />
+              </span>
+            ) : (
               <button
                 type="button"
-                className="start-composer__chip-remove"
-                aria-label={`Remove visual skill ${skill.title}`}
-                onClick={skill.onRemove}
+                className={`choice-trigger start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
+                aria-haspopup="dialog"
+                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}`}
+                onClick={(event) => onOpenAgents(event.currentTarget)}
               >
-                <CloseGlyph />
+                {agent.agent && <AgentIcon agent={agent.agent} size="small" />}
+                <span className="start-composer__chip-text">{agentText}</span>
+                <ArrowDownGlyph className="choice-caret" />
               </button>
-            </span>
-          )}
-        </fieldset>
-        {/* The rarer options sit with Start, apart from the chips: on a
+            )}
+            {onOpenModel && agent.status === 'ready' && (
+              <button
+                type="button"
+                className="choice-trigger start-composer__chip start-composer__chip--model"
+                aria-haspopup="dialog"
+                aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}`}
+                disabled={!agent.agent}
+                onClick={(event) => onOpenModel(event.currentTarget)}
+              >
+                <span className="start-composer__chip-text">
+                  {agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
+                    ? agent.modelLabel
+                    : 'Model'}
+                </span>
+                <ArrowDownGlyph className="choice-caret" />
+              </button>
+            )}
+            {skill && (
+              <span className="start-composer__chip start-composer__chip--skill">
+                <span className="start-composer__chip-text">{skill.title}</span>
+                <button
+                  type="button"
+                  className="start-composer__chip-remove"
+                  aria-label={`Remove visual skill ${skill.title}`}
+                  onClick={skill.onRemove}
+                >
+                  <CloseGlyph />
+                </button>
+              </span>
+            )}
+          </fieldset>
+          {/* The rarer options sit with Start, apart from the chips: on a
             phone the chips keep row one and this pair takes row two. */}
-        <div className="start-composer__actions">
-          {overflowActions && overflowActions.length > 0 && (
-            <ActionOverflowMenu
-              label="More start options"
-              actions={overflowActions}
-              triggerClassName="action-overflow__trigger start-composer__more"
-            />
-          )}
-          <Button
-            type="submit"
-            variant="primary"
-            className="start-composer__start"
-            disabled={!canStart}
-            pending={pending}
-            pendingLabel="Starting…"
-          >
-            Start
-          </Button>
+          <div className="start-composer__actions">
+            {overflowActions && overflowActions.length > 0 && (
+              <ActionOverflowMenu
+                label="More start options"
+                actions={overflowActions}
+                triggerClassName="action-overflow__trigger start-composer__more"
+              />
+            )}
+            <Button
+              type="submit"
+              variant="primary"
+              className="start-composer__start"
+              disabled={!canStart}
+              pending={pending}
+              pendingLabel="Starting…"
+            >
+              Start
+            </Button>
+          </div>
         </div>
       </div>
       {note && <p className="start-composer__note">{note}</p>}

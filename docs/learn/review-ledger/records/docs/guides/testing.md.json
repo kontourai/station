@@ -166,7 +166,11 @@
 
     "scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts",
 
-    "scripts/vitest-resource-manifest.mjs"
+    "scripts/vitest-resource-manifest.mjs",
+
+    "scripts/proof-repo-guardrails.mjs",
+
+    "scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts"
   ],
 
   "checks": [
