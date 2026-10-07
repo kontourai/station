@@ -6336,6 +6336,7 @@ export async function executeExecutionTargetMessage(
         readAuthority,
         {
           agentId: handoff.agentId,
+          provider: handoff.provider,
           environmentId: access.environmentId,
           ...(handoff.connectionId
             ? { connectionId: handoff.connectionId }
@@ -6347,6 +6348,12 @@ export async function executeExecutionTargetMessage(
       );
       return {
         marker: prepared.marker,
+        ...(prepared.resumeCursor !== undefined
+          ? { resumeCursor: prepared.resumeCursor }
+          : {}),
+        ...(prepared.nativeResumeBindingKey
+          ? { nativeResumeBindingKey: prepared.nativeResumeBindingKey }
+          : {}),
         ...(prepared.transcriptSeed
           ? { transcriptSeed: prepared.transcriptSeed }
           : {}),
@@ -6364,6 +6371,19 @@ export async function executeExecutionTargetMessage(
         handoff.idempotencyKey,
         readAuthority,
       ),
+    retireNativeReturnSource: async (_access, handoffSessionId) =>
+      orchestrationService.retireNativeReturnSource(
+        handoffSessionId,
+        readAuthority,
+      ),
+    retireNativeContinuationSource: async (_access, sourceId, targetId) =>
+      orchestrationService.retireNativeContinuationSource(
+        sourceId,
+        targetId,
+        readAuthority,
+      ),
+    retireHandoffPredecessor: async (_access, targetId) =>
+      orchestrationService.retireHandoffPredecessor(targetId, readAuthority),
     claimConversationContextBoundaryColdStart: (
       _access,
       boundaryId,

@@ -210,7 +210,6 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
-  attemptedResumeCursor?: string;
   requireNativeResumeIdentity?: true;
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;

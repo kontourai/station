@@ -53,7 +53,11 @@ export interface OrchestrationSendTurnInput
  */
 export type OrchestrationStartSessionInput = Omit<
   ProviderSessionStartInput,
-  'credentialProfileRef' | 'reviewIsolation' | 'confinement'
+  | 'credentialProfileRef'
+  | 'reviewIsolation'
+  | 'confinement'
+  | 'requireNativeResumeIdentity'
+  | 'nativeResumeBindingKey'
 >;
 
 /** Public wire discriminant guarantees old servers refuse before any provider effect. */
@@ -1329,6 +1333,7 @@ export interface OrchestrationConversationEventWindow
    */
   sessionLineage?: Array<{
     sessionId: string;
+    provider?: EngineId;
     agentSlug?: AgentId;
     /** Immutable presentation snapshot captured with the execution Session. */
     agentDisplayName?: string;
@@ -1358,7 +1363,8 @@ export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
 ] as const);
 
 export type ConversationHandoffCarriedField =
-  (typeof CONVERSATION_HANDOFF_CARRIED_FIELDS)[number];
+  | (typeof CONVERSATION_HANDOFF_CARRIED_FIELDS)[number]
+  | 'nativeSession';
 export type ConversationHandoffResetField =
   (typeof CONVERSATION_HANDOFF_RESET_FIELDS)[number];
 
@@ -1373,6 +1379,7 @@ export const CONVERSATION_HANDOFF_DISCLOSURE_LABELS: Readonly<
   authorizedTranscript: 'Recent conversation messages, up to a size limit',
   ownerTenantWorkspace: 'Workspace and identity',
   targetAgentModel: 'Selected Agent and model',
+  nativeSession: 'Earlier native engine conversation',
   providerNativeCursor: 'Provider-native cursor',
   toolState: 'Tool state',
   sessionApprovals: 'Session approvals',
@@ -1395,6 +1402,8 @@ export interface ConversationHandoffProjection {
   createdAt: string;
   carried: readonly ConversationHandoffCarriedField[];
   reset: readonly ConversationHandoffResetField[];
+  /** A requested native return; provider acceptance remains a separate fact. */
+  nativeReturn?: { sourceSessionId: string };
 }
 
 export type ConversationHandoffEffectStatus =
@@ -1411,6 +1420,51 @@ export interface ConversationHandoffStatusProjection {
   status: ConversationHandoffEffectStatus;
   marker: ConversationHandoffProjection;
   providerTurnId?: string;
+  nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
+}
+
+/** Bounded agent-facing transcript rows; missing attribution stays unknown. */
+export interface ConversationReadMessage {
+  index: number;
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  text: string;
+  sessionId?: string;
+  model?: { id: string; source: 'provider-reported' | 'selected' };
+  textTruncated?: { originalBytes: number };
+  tools?: string[];
+  createdAt?: string;
+}
+
+export type ConversationReadProvenance =
+  | { protocolVersion: 1; status: 'unavailable' }
+  | {
+      protocolVersion: 1;
+      status: 'available';
+      currentSessionId: string;
+      sessions: NonNullable<
+        OrchestrationConversationEventWindow['sessionLineage']
+      >;
+      handoffs: ConversationHandoffProjection[];
+      /** A parent reference is provenance, not permission to read the parent. */
+      forkedFrom?: {
+        sourceConversationId: string;
+        sourceSessionId?: string;
+        branchPointTurnId?: string;
+        continuation?: 'native' | 'replay-seed';
+      };
+    };
+
+export interface ConversationReadPage {
+  conversationId: string;
+  access: 'own' | 'scope' | 'reference' | 'person';
+  notice: string;
+  messageCount: number;
+  messages: ConversationReadMessage[];
+  prevCursor: string | null;
+  nextCursor: string | null;
+  /** Older servers omit this; absence does not mean there were no handoffs. */
+  provenance?: ConversationReadProvenance;
 }
 
 export type AgentRunStatus = RunStatus;

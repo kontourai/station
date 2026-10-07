@@ -25,6 +25,7 @@ import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
+  ProviderContinuityCapabilities,
   ProviderSessionSourceAffinity,
   ResolvedAgentDefinition,
 } from '@kontourai/station-contracts/provider';
@@ -32,6 +33,7 @@ import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
+  NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
@@ -64,6 +66,7 @@ import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js
 import type { InvocationContext } from '../../runtime/types.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
+import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import {
   agentCapabilityUndelivered,
   agentSystemPromptSessions,
@@ -193,6 +196,10 @@ import {
 } from './claude-skills-overlay.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { claudeQuestionnaire } from './harness-questions.js';
+import {
+  nativeResumeBindingKey,
+  nativeSessionIdentityKey,
+} from './native-resume-binding.js';
 
 type PendingRequest = {
   resolve: (result: PermissionResult) => void;
@@ -717,6 +724,9 @@ type ClaudeSessionRecord = {
   terminalResultObserved?: 'failed' | 'binding-dead';
   attemptedResumeCursor?: string;
   requireNativeResumeIdentity?: true;
+  engineProcess?: ClaudeEngineProcess;
+  nativeOwnershipBindingKey?: string;
+  nativeOwnershipClaimed?: true;
 };
 
 function adoptionTitle(threadId: string): string {
@@ -853,6 +863,7 @@ export interface ClaudeAdapterOptions {
   getAppHomeEnv?: (
     credentialProfileRef?: string,
   ) => Promise<ResolvedAppHome | undefined>;
+  nativeSessionOwnership?: NativeSessionOwnership;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -1170,6 +1181,12 @@ async function evaluateClaudePreToolPolicy(
 export class ClaudeAdapter implements ProviderAdapterShape {
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
+  private readonly continuity: ProviderContinuityCapabilities = {
+    resume: 'same-session',
+    fork: 'none',
+    rewind: 'none',
+    resumeIdentity: 'require-match',
+  };
   readonly metadata = {
     // #2880: the protocol has no acknowledgement of a decision; delivery is
     // not reported.
@@ -1186,12 +1203,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       'image-input',
       'file-input',
     ],
-    continuity: {
-      resume: 'same-session',
-      fork: 'none',
-      rewind: 'none',
-      resumeIdentity: 'require-match',
-    },
+    continuity: this.continuity,
     connectionId: engineConnectionId('claude'),
     builtin: true,
     engineId: engineId('claude'),
@@ -1251,7 +1263,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     timeoutMessage: 'Claude model discovery timed out.',
   });
 
-  constructor(private readonly options: ClaudeAdapterOptions = {}) {}
+  constructor(private readonly options: ClaudeAdapterOptions = {}) {
+    if (options.nativeSessionOwnership)
+      this.continuity.nativeReturn = 'same-binding';
+  }
 
   async startSession(
     input: ProviderSessionStartInput,
@@ -1425,6 +1440,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     threadId: string,
     recovery?: ProviderDiscardSessionRecovery,
   ): Promise<void> {
+    this.options.nativeSessionOwnership?.assertMutable(threadId);
     const record = this.sessions.get(threadId);
     if (recovery?.adoptionKey && this.options.resolveSourceHome)
       this.requireSourceHome(recovery.sourceAffinity);
@@ -1511,6 +1527,39 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const permissionMode = this.resolvePermissionMode(input.modelOptions);
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input);
+    this.options.nativeSessionOwnership?.assertMutable(input.threadId);
+    const configHome = claudeSpawnConfigHome(
+      appHomeEnv,
+      connectionEnv,
+      augmentedEnv,
+    );
+    const ownershipBindingKey = nativeResumeBindingKey(
+      this.provider,
+      configHome,
+      null,
+    );
+    const resumeBindingKey = claudeSourceResumeCursor(input.resumeCursor)
+      ? undefined
+      : nativeResumeBindingKey(
+          this.provider,
+          configHome,
+          usageAccountKey ?? null,
+        );
+    if (
+      input.nativeResumeBindingKey &&
+      input.nativeResumeBindingKey !== resumeBindingKey
+    ) {
+      throw new Error(
+        'The native conversation belongs to a different engine home or credential profile.',
+      );
+    }
+    const nativeId = claudeResumeSessionId(input.resumeCursor);
+    if (nativeId)
+      this.options.nativeSessionOwnership?.claim(
+        nativeSessionIdentityKey(this.provider, ownershipBindingKey, nativeId),
+        input.threadId,
+        Boolean(input.credentialProfileRef) && !input.nativeResumeBindingKey,
+      );
     // #2932: Station owns the engine spawn so it can read the permission
     // asks on the engine's stdout (see claude-code-spawn.ts).
     const engineProcess = createClaudeEngineProcess();
@@ -1557,7 +1606,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const record: ClaudeSessionRecord = {
       session,
       attemptedResumeCursor: claudeResumeSessionId(input.resumeCursor),
-      requireNativeResumeIdentity: input.requireNativeResumeIdentity,
+      requireNativeResumeIdentity:
+        input.requireNativeResumeIdentity ||
+        (nativeId && this.options.nativeSessionOwnership ? true : undefined),
       promptQueue,
       query: sdkQuery,
       pendingRequests: new Map(),
@@ -1577,6 +1628,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         augmentedEnv,
       ),
       engineStderrTail: engineProcess.stderrTail,
+      engineProcess,
+      nativeOwnershipBindingKey: ownershipBindingKey,
+      ...(nativeId && this.options.nativeSessionOwnership
+        ? { nativeOwnershipClaimed: true as const }
+        : {}),
     };
     // #2316/#2348: a subagent that ended can no longer be waiting on the
     // permission requests it raised; withdraw exactly those. Its siblings'
@@ -1599,6 +1655,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       metadata: {
         ...input.metadata,
         [NATIVE_RESUME_IDENTITY_METADATA_KEY]: undefined,
+        [NATIVE_RESUME_BINDING_METADATA_KEY]: resumeBindingKey,
         cwd: input.cwd,
         usageAccountKey,
         // station#3320: a resumed query() continues the cost total its
@@ -1615,6 +1672,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const baseConfiguredMetadata: Record<string, unknown> = {
       ...input.metadata,
       [NATIVE_RESUME_IDENTITY_METADATA_KEY]: undefined,
+      [NATIVE_RESUME_BINDING_METADATA_KEY]: resumeBindingKey,
       modelRoute,
       usageAccountKey,
       ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
@@ -1711,6 +1769,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.requireSession(input.threadId);
     if (record.session.status === 'error' || record.session.status === 'dead') {
       throw new ProviderTurnEndedError();
@@ -2350,12 +2409,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     this.options.revokeStationControlCallerToken?.(threadId);
     const record = this.sessions.get(threadId);
     if (!record) return;
-    this.sessions.delete(threadId);
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
     record.promptQueue.close();
     record.query.close();
+    await record.engineProcess?.terminate();
+    this.options.nativeSessionOwnership?.retired(threadId);
+    if (this.sessions.get(threadId) === record) this.sessions.delete(threadId);
     // station#1558: the session is ending, so any `tool_use` still open can
     // never receive a result — but "still open" can only be read AFTER the
     // consumer has stopped. Closing the query does not discard messages the
@@ -2469,6 +2530,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           `Claude skills materialization cleanup failed for '${record.session.cwd}': ${errorMessage(error)}`,
         );
       });
+    }
+  }
+
+  async retireSession(threadId: string) {
+    try {
+      await this.stopSession(threadId);
+      return { status: 'retired' as const };
+    } catch {
+      return { status: 'indeterminate' as const };
     }
   }
 
@@ -3640,6 +3710,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   private mapMessage(record: ClaudeSessionRecord, message: SDKMessage): void {
+    if (
+      message.type === 'system' &&
+      message.subtype === 'init' &&
+      !record.nativeOwnershipClaimed &&
+      record.nativeOwnershipBindingKey &&
+      (!record.requireNativeResumeIdentity ||
+        message.session_id === record.attemptedResumeCursor)
+    ) {
+      this.options.nativeSessionOwnership?.claim(
+        nativeSessionIdentityKey(
+          this.provider,
+          record.nativeOwnershipBindingKey,
+          message.session_id,
+        ),
+        record.session.threadId,
+      );
+      record.nativeOwnershipClaimed = true;
+    }
     mapClaudeSdkMessage({
       provider: this.provider,
       record: record as ClaudeMessageState,

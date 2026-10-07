@@ -15,6 +15,20 @@ Environment, workspace and current Agent/engine binding. Supported per-turn mode
 overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
 
+Provider handoffs retain the Conversation ID and append linked execution
+Sessions. Returning to a compatible built-in engine can resume its earlier
+native thread with a bounded seed of the intervening conversation, after the
+previous engine confirms retirement. Unsupported or unbound history uses
+bounded replay. An explicit fork creates a separate Conversation.
+
+The compact conversation reader used by `read_conversation` and the SDK's
+`readConversation` preserves message Session attribution. Versioned `provenance`
+reports the ordered Sessions, providers, handoffs, requested native returns and
+explicit fork ancestry. A requested native return is separate from observed
+native identity and turn completion. Missing or unavailable provenance means
+unknown; history access remains scoped to the caller, including every linked
+Session. Pagination and truncation still apply.
+
 Independent [Task room agent requests](../design/task-room-agent-requests.md)
 use the existing delegation route with a separate durable request journal.
 They do not replace foreground chat or the Task's current-session association.

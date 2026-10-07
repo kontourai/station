@@ -1488,6 +1488,64 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
+  test.each(['home', 'profile'] as const)(
+    'a native return refuses a changed %s before starting another Codex process',
+    async (changed) => {
+      let home = '/profiles/original';
+      let profileRef = 'original';
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(() => processHandle!);
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => ({ env: { CODEX_HOME: home }, profileRef }),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      try {
+        const source = adapter.startSession({
+          provider: 'codex',
+          threadId: 'binding-source',
+        });
+        await flushIo();
+        processHandle.stdout.write(
+          `${JSON.stringify({ id: '1', result: {} })}\n`,
+        );
+        await flushIo();
+        processHandle.stdout.write(
+          `${JSON.stringify({ id: '2', result: { thread: { id: 'native-source' } } })}\n`,
+        );
+        await source;
+        let bindingKey: string | undefined;
+        for (let count = 0; count < 4; count++) {
+          const event = (await iterator.next()).value;
+          if (
+            event?.method === 'session.configured' &&
+            typeof event.metadata?.nativeResumeBindingKey === 'string'
+          ) {
+            bindingKey = event.metadata.nativeResumeBindingKey;
+            break;
+          }
+        }
+        if (!bindingKey) throw new Error('No observed source binding');
+        await adapter.stopSession('binding-source');
+        if (changed === 'home') home = '/profiles/replacement';
+        else profileRef = 'replacement';
+        const invocations = processFactory.mock.calls.length;
+        await expect(
+          adapter.startSession({
+            provider: 'codex',
+            threadId: 'binding-return',
+            resumeCursor: { codexThreadId: 'native-source' },
+            requireNativeResumeIdentity: true,
+            nativeResumeBindingKey: bindingKey,
+          }),
+        ).rejects.toThrow('different engine home or credential profile');
+        expect(processFactory).toHaveBeenCalledTimes(invocations);
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
   test.each(['native-original', 'native-other'])(
     'exact native resume checks the provider response %s and closes a mismatched process',
     async (observedId) => {

@@ -169,6 +169,9 @@ type ConversationHandoffLaunchCapability = Readonly<{
   targetEnvironmentId: string;
   targetConnectionId?: string;
   transcriptSeed: string;
+  nativeReturnSourceSessionId?: string;
+  resumeCursor?: unknown;
+  nativeResumeBindingKey?: string;
   [conversationHandoffLaunchCapabilityBrand]: true;
 }>;
 
@@ -384,6 +387,8 @@ export interface ExecutionTargetExecutionDependencies
     startRequired: boolean;
     /** Server-owned cursor copied only from the predecessor Session. */
     resumeCursor?: unknown;
+    nativeResumeBindingKey?: string;
+    nativeSourceSessionId?: string;
     /** Concrete model observed on the same-engine predecessor. */
     resumeModel?: string;
     /** Bounded provider-neutral transcript fallback when no cursor exists. */
@@ -397,6 +402,20 @@ export interface ExecutionTargetExecutionDependencies
   retireSession?: (
     access: EnvironmentAccess,
     sessionId: string,
+  ) => Promise<void>;
+  /** Confirm source-engine retirement before another process resumes its identity. */
+  retireNativeReturnSource?: (
+    access: EnvironmentAccess,
+    handoffSessionId: string,
+  ) => Promise<void>;
+  retireNativeContinuationSource?: (
+    access: EnvironmentAccess,
+    sourceSessionId: string,
+    targetSessionId: string,
+  ) => Promise<void>;
+  retireHandoffPredecessor?: (
+    access: EnvironmentAccess,
+    handoffSessionId: string,
   ) => Promise<void>;
   claimConversationContextBoundaryColdStart?: (
     access: EnvironmentAccess,
@@ -419,6 +438,7 @@ export interface ExecutionTargetExecutionDependencies
     input: {
       conversationId: string;
       agentId: AgentId;
+      provider?: EngineId;
       connectionId?: string;
       modelId?: string;
       idempotencyKey: string;
@@ -431,8 +451,11 @@ export interface ExecutionTargetExecutionDependencies
       targetAgentId: string;
       targetEnvironmentId: string;
       targetConnectionId?: string;
+      nativeReturnSourceSessionId?: string;
     };
     transcriptSeed?: string;
+    resumeCursor?: unknown;
+    nativeResumeBindingKey?: string;
     outcome: 'created' | 'existing';
     carried: readonly string[];
     reset: readonly string[];
@@ -583,6 +606,7 @@ export async function executeForegroundMessage(
     ? await deps.prepareConversationHandoff?.(resolved.access, {
         conversationId,
         agentId: resolved.agentId,
+        provider: resolved.provider,
         ...(resolved.engine.kind === 'connection'
           ? { connectionId: resolved.engine.connectionId }
           : {}),
@@ -605,6 +629,18 @@ export async function executeForegroundMessage(
           ? { targetConnectionId: preparedHandoff.marker.targetConnectionId }
           : {}),
         transcriptSeed: preparedHandoff.transcriptSeed ?? '',
+        ...(preparedHandoff.resumeCursor !== undefined
+          ? { resumeCursor: preparedHandoff.resumeCursor }
+          : {}),
+        ...(preparedHandoff.nativeResumeBindingKey
+          ? { nativeResumeBindingKey: preparedHandoff.nativeResumeBindingKey }
+          : {}),
+        ...(preparedHandoff.marker.nativeReturnSourceSessionId
+          ? {
+              nativeReturnSourceSessionId:
+                preparedHandoff.marker.nativeReturnSourceSessionId,
+            }
+          : {}),
       })
     : input.handoffCapability;
   const validHandoff =
@@ -668,6 +704,12 @@ export async function executeForegroundMessage(
           preparedHandoff.contextBoundary?.status === 'consumed'
         ),
         transcriptSeed: handoff.transcriptSeed,
+        ...(handoff.resumeCursor !== undefined
+          ? { resumeCursor: handoff.resumeCursor }
+          : {}),
+        ...(handoff.nativeResumeBindingKey
+          ? { nativeResumeBindingKey: handoff.nativeResumeBindingKey }
+          : {}),
         ...(preparedHandoff?.contextBoundary
           ? { contextBoundary: preparedHandoff.contextBoundary }
           : {}),
@@ -751,6 +793,31 @@ export async function executeForegroundMessage(
       ? resolved.workspace.workspaceIsolation
       : undefined);
   if (!binding || continuation?.startRequired) {
+    if (validHandoff && deps.retireHandoffPredecessor)
+      await deps.retireHandoffPredecessor(resolved.access, sessionId);
+    if (handoff?.nativeReturnSourceSessionId) {
+      if (!deps.retireNativeReturnSource)
+        throw new Error(
+          'Native return requires confirmed source-engine retirement.',
+        );
+      await deps.retireNativeReturnSource(resolved.access, sessionId);
+    } else if (
+      continuation &&
+      'nativeSourceSessionId' in continuation &&
+      continuation.nativeSourceSessionId &&
+      deps.getProviderAdapter(resolved.provider)?.metadata.continuity
+        ?.nativeReturn === 'same-binding'
+    ) {
+      if (!deps.retireNativeContinuationSource)
+        throw new Error(
+          'Native continuation requires confirmed source-engine retirement.',
+        );
+      await deps.retireNativeContinuationSource(
+        resolved.access,
+        continuation.nativeSourceSessionId,
+        sessionId,
+      );
+    }
     // A boundary is claimed at the real cold-start seam, never by a warm turn
     // or ordinary recovery.  Empty policy intentionally has no transcript seed.
     const contextBoundaryStartCommandId = continuation?.contextBoundary
@@ -810,6 +877,12 @@ export async function executeForegroundMessage(
         ...(continuation?.resumeCursor !== undefined
           ? {
               resumeCursor: continuation.resumeCursor,
+              ...('nativeResumeBindingKey' in continuation &&
+              continuation.nativeResumeBindingKey
+                ? {
+                    nativeResumeBindingKey: continuation.nativeResumeBindingKey,
+                  }
+                : {}),
               ...(deps.getProviderAdapter(resolved.provider)?.metadata
                 .continuity?.resumeIdentity === 'require-match'
                 ? { requireNativeResumeIdentity: true as const }

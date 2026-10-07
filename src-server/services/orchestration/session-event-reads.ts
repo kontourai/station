@@ -424,6 +424,9 @@ export class SessionEventReads {
         );
         return {
           sessionId: lineage.sessionId,
+          ...(detail?.session.provider
+            ? { provider: detail.session.provider }
+            : {}),
           ...(detail?.session.assignedAgentSlug
             ? { agentSlug: detail.session.assignedAgentSlug }
             : {}),
@@ -451,6 +454,13 @@ export class SessionEventReads {
             createdAt: marker.createdAt,
             carried: disclosure.carried,
             reset: disclosure.reset,
+            ...(marker.nativeReturnSourceSessionId
+              ? {
+                  nativeReturn: {
+                    sourceSessionId: marker.nativeReturnSourceSessionId,
+                  },
+                }
+              : {}),
           };
         }),
       contextBoundaries,

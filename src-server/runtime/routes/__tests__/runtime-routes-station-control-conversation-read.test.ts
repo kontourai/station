@@ -27,6 +27,7 @@ import type { AddressInfo } from 'node:net';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { serve } from '@hono/node-server';
+import { readConversation } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
@@ -44,6 +45,7 @@ import { ProjectService } from '../../../services/projects/project-service.js';
 import {
   __resetStationControlStdioEntryForTests,
   api,
+  controlRequestOptions,
   withStationControlCallerContext,
 } from '../../../tools/station-control-shared.js';
 import {
@@ -136,7 +138,7 @@ describe('read_conversation through the real MCP route, from a separate engine p
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  async function setup(withProviderHistory = false) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-conversation-read-');
     const storage = new FileStorageAdapter(home);
@@ -242,6 +244,75 @@ describe('read_conversation through the real MCP route, from a separate engine p
       'other-owner',
     ])
       turn(threadId, 1, `${threadId.toUpperCase()}-SECRET`, 'reply');
+
+    if (withProviderHistory) {
+      const ids = ['history-root', 'history-codex', 'history-return'];
+      for (let index = 0; index < ids.length; index++) {
+        const id = ids[index]!;
+        const provider = index === 1 ? 'codex' : 'claude';
+        if (index > 0)
+          store.reserveConversationHandoff({
+            conversationId: ids[0]!,
+            predecessorSessionId: ids[index - 1]!,
+            sessionId: id,
+            idempotencyKey: `history-switch-${index}`,
+            messageDigest: `history-digest-${index}`,
+            targetAgentId: `agent-${provider}`,
+            targetEnvironmentId: 'history-station',
+            ...(index === 2
+              ? {
+                  nativeReturnSourceSessionId: ids[0],
+                  nativeReturnSourceEventId: `${ids[0]}:completed`,
+                }
+              : {}),
+            createdAt: at(),
+          });
+        store.appendEvent({
+          eventId: `${id}:start`,
+          threadId: id,
+          sessionId: id,
+          provider,
+          method: 'session.started',
+          createdAt: at(),
+          metadata: {
+            userId: A,
+            agentSlug: `agent-${provider}`,
+            [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: p1.id,
+          },
+        });
+        store.upsertSession({
+          provider,
+          threadId: id,
+          status: 'closed',
+          createdAt: at(),
+          updatedAt: at(),
+        });
+        store.appendEvent({
+          eventId: `${id}:prompt`,
+          threadId: id,
+          provider,
+          turnId: `${id}:turn`,
+          method: 'turn.started',
+          createdAt: at(),
+          prompt: `QUESTION-${index}`,
+        });
+        store.appendEvent({
+          eventId: `${id}:completed`,
+          threadId: id,
+          provider,
+          turnId: `${id}:turn`,
+          method: 'turn.completed',
+          createdAt: at(),
+          outputText: `ANSWER-${index}`,
+        });
+        if (index < 2)
+          store.claimNativeSessionIdentity(`history-native-${provider}`, id);
+        else {
+          store.recordNativeSessionRetired(ids[0]!);
+          store.completeNativeReturnRetirement(id);
+        }
+      }
+    }
 
     const orchestration = new OrchestrationService({
       eventStore: store,
@@ -436,6 +507,95 @@ describe('read_conversation through the real MCP route, from a separate engine p
       body: { success: false, code: 'conversation_not_found' },
     });
   }, 90_000);
+
+  test('the agent history tool retains one Conversation and reports recorded provider handoffs and native returns', async () => {
+    const { base } = await setup(true);
+    const [answer] = await engine(base, [
+      { conversationId: 'history-root', limit: 50 },
+    ]);
+    expect(answer?.isError).toBe(false);
+    const data = answer!.body.data;
+    expect(data.conversationId).toBe('history-root');
+    expect(
+      data.messages.map((message: { text: string }) => message.text),
+    ).toEqual([
+      'QUESTION-0',
+      'ANSWER-0',
+      'QUESTION-1',
+      'ANSWER-1',
+      'QUESTION-2',
+      'ANSWER-2',
+    ]);
+    expect(
+      data.messages.map((message: { sessionId: string }) => message.sessionId),
+    ).toEqual([
+      'history-root',
+      'history-root',
+      'history-codex',
+      'history-codex',
+      'history-return',
+      'history-return',
+    ]);
+    expect(data.provenance).toMatchObject({
+      protocolVersion: 1,
+      status: 'available',
+      currentSessionId: 'history-return',
+      sessions: [
+        {
+          sessionId: 'history-root',
+          provider: 'claude',
+          agentSlug: 'agent-claude',
+        },
+        {
+          sessionId: 'history-codex',
+          provider: 'codex',
+          agentSlug: 'agent-codex',
+        },
+        {
+          sessionId: 'history-return',
+          provider: 'claude',
+          agentSlug: 'agent-claude',
+        },
+      ],
+      handoffs: [
+        { predecessorSessionId: 'history-root', sessionId: 'history-codex' },
+        {
+          predecessorSessionId: 'history-codex',
+          sessionId: 'history-return',
+          nativeReturn: { sourceSessionId: 'history-root' },
+        },
+      ],
+    });
+    expect(data.provenance).not.toHaveProperty('forkedFrom');
+    const { token } = mintStationControlMcpToken('caller', 'url-token');
+    const sdkOptions = withStationControlCallerContext(
+      { token, resolve: () => null },
+      () => controlRequestOptions(),
+    );
+    const sdkPage = await readConversation(
+      base,
+      'history-root',
+      { limit: 2 },
+      sdkOptions,
+    );
+    expect(sdkPage.conversationId).toBe('history-root');
+    expect(sdkPage.messages).toHaveLength(2);
+    expect(sdkPage.provenance).toEqual(data.provenance);
+    expect(sdkPage.nextCursor).toEqual(expect.any(String));
+    const nextSdkPage = await readConversation(
+      base,
+      'history-root',
+      {
+        cursor: sdkPage.nextCursor,
+        limit: 2,
+      },
+      sdkOptions,
+    );
+    expect(nextSdkPage.messages.map((message) => message.sessionId)).toEqual([
+      'history-codex',
+      'history-codex',
+    ]);
+  });
 
   test('paging covers every message exactly once, and limit 51 is refused at the tool and the route', async () => {
     const { base } = await setup();

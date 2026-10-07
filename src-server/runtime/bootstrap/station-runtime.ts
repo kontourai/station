@@ -770,6 +770,18 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    nativeSessionOwnership: {
+      assertMutable: (sessionId) =>
+        this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
+      claim: (key, sessionId, rebind) =>
+        this.orchestrationEventStore.claimNativeSessionIdentity(
+          key,
+          sessionId,
+          rebind,
+        ),
+      retired: (sessionId) =>
+        this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
+    },
     resolveSourceHome: (affinity) =>
       this.claudeTranscriptSource.resolveSourceHome(affinity),
     resolvePreToolPolicy: (input) =>
@@ -901,6 +913,18 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    nativeSessionOwnership: {
+      assertMutable: (sessionId) =>
+        this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
+      claim: (key, sessionId, rebind) =>
+        this.orchestrationEventStore.claimNativeSessionIdentity(
+          key,
+          sessionId,
+          rebind,
+        ),
+      retired: (sessionId) =>
+        this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
+    },
     resolveSourceHome: (affinity) =>
       this.codexRolloutSource.resolveSourceHome(affinity),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md

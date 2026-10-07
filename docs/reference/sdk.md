@@ -43,6 +43,16 @@ retry, credential singleton, engine loop, or new Agent definition schema.
 
 ## Setup
 
+The React-free `/client` entry exports
+`readConversation(apiBase, conversationId, query?, options?)` for compact,
+paginated conversation history. `query` accepts `cursor`, `aroundMessageId` and
+`limit`. Its `ConversationReadPage` contract preserves message Session/model
+attribution and optional versioned continuity provenance. Provider handoffs
+remain one Conversation with linked execution Sessions; explicit fork ancestry
+is separate. Missing or unavailable provenance means unknown. Parent references
+do not grant read access. See the [Session API](session-api.md) for continuity
+and authorization limits. This export requires a published version containing it.
+
 `fetchSSE` accepts `initialLastEventId` for a replacement stream. It sends that
 cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the

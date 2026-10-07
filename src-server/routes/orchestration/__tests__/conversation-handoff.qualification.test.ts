@@ -23,6 +23,7 @@ import type {
   ProviderAdapterShape,
   ProviderSession,
 } from '../../../providers/adapter-shape.js';
+import { nativeSessionIdentityKey } from '../../../providers/adapters/native-resume-binding.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import {
@@ -33,6 +34,7 @@ import {
 } from '../../../services/execution-target/execution-target-execution.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import type { NativeSessionOwnership } from '../../../services/orchestration/native-session-ownership.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
@@ -62,12 +64,30 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
   readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   readonly starts: ProviderSessionStartInput[] = [];
   readonly turns: ProviderSendTurnInput[] = [];
+  readonly stopped = new Set<string>();
+  private readonly nativeIds = new Map<string, string>();
+  private readonly sessions = new Map<string, ProviderSession>();
 
-  constructor(readonly provider: 'claude' | 'codex') {
+  constructor(
+    readonly provider: 'claude' | 'codex',
+    readonly nativeReturn = false,
+    private readonly ownership?: NativeSessionOwnership,
+  ) {
     this.metadata = {
       displayName: provider === 'claude' ? 'Claude Code' : 'Codex',
       description: 'Terminal cross-Agent qualification adapter',
       capabilities: ['agent-runtime'],
+      ...(nativeReturn
+        ? {
+            continuity: {
+              resume: 'same-session' as const,
+              fork: 'none' as const,
+              rewind: 'none' as const,
+              resumeIdentity: 'require-match' as const,
+              nativeReturn: 'same-binding' as const,
+            },
+          }
+        : {}),
       modelLaunch: {
         defaultAtStart: 'engine-selected',
         omissionAtResume: 'engine-selected',
@@ -81,6 +101,20 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
 
   async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
+    const cursor = input.resumeCursor;
+    const nativeId =
+      cursor &&
+      typeof cursor === 'object' &&
+      'nativeSessionId' in cursor &&
+      typeof cursor.nativeSessionId === 'string'
+        ? cursor.nativeSessionId
+        : `${this.provider}:native:${input.threadId}`;
+    this.nativeIds.set(input.threadId, nativeId);
+    if (this.nativeReturn)
+      this.ownership?.claim(
+        nativeSessionIdentityKey(this.provider, 'a'.repeat(64), nativeId),
+        input.threadId,
+      );
     const now = new Date().toISOString();
     this.events.push({
       eventId: `${input.threadId}:configured`,
@@ -90,16 +124,31 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
       sessionId: input.threadId,
       createdAt: now,
       ...(input.cwd ? { cwd: input.cwd } : {}),
-      metadata: input.metadata,
+      metadata: {
+        ...input.metadata,
+        ...(this.nativeReturn
+          ? {
+              nativeResumeBindingKey: 'a'.repeat(64),
+              ...(input.resumeCursor
+                ? { nativeResumeIdentity: 'matched' }
+                : {}),
+            }
+          : {}),
+      },
     } as CanonicalRuntimeEvent);
-    return {
+    const session: ProviderSession = {
       provider: this.provider,
       threadId: input.threadId,
       status: 'ready' as const,
       ...(input.cwd ? { cwd: input.cwd } : {}),
       createdAt: now,
       updatedAt: now,
+      ...(this.nativeReturn
+        ? { resumeCursor: { nativeSessionId: nativeId }, persistSession: true }
+        : {}),
     };
+    this.sessions.set(input.threadId, session);
+    return session;
   }
 
   /** A live engine session keeps its own context across turns (#2540). */
@@ -112,8 +161,13 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
     const token =
       /HANDOFF-CARRY-[0-9]+/.exec(
         `${input.ambientContext ?? ''}\n${input.input}`,
-      )?.[0] ?? this.memory.get(input.threadId);
-    if (token) this.memory.set(input.threadId, token);
+      )?.[0] ??
+      this.memory.get(this.nativeIds.get(input.threadId) ?? input.threadId);
+    if (token)
+      this.memory.set(
+        this.nativeIds.get(input.threadId) ?? input.threadId,
+        token,
+      );
     const base = {
       provider: this.provider,
       threadId: input.threadId,
@@ -124,7 +178,7 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
       ...base,
       eventId: `${turnId}:started`,
       method: 'turn.started',
-      prompt: input.input,
+      prompt: input.displayInput ?? input.input,
     });
     this.events.push({
       ...base,
@@ -141,14 +195,34 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
     return { outcome: 'no-active-turn' } as const;
   }
   async respondToRequest(): Promise<void> {}
-  async stopSession(): Promise<void> {}
+  async stopSession(threadId: string): Promise<void> {
+    this.stopped.add(threadId);
+    if (!this.sessions.delete(threadId)) return;
+    this.events.push({
+      eventId: `${threadId}:exited`,
+      provider: this.provider,
+      threadId,
+      sessionId: threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+      reason: 'stopped',
+    });
+    this.ownership?.retired(threadId);
+  }
+  async retireSession(threadId: string) {
+    await this.stopSession(threadId);
+    return { status: 'retired' as const };
+  }
   async listSessions(): Promise<ProviderSession[]> {
-    return [];
+    return [...this.sessions.values()];
   }
-  async hasSession(): Promise<boolean> {
-    return false;
+  async hasSession(threadId: string): Promise<boolean> {
+    return this.sessions.has(threadId);
   }
-  async stopAll(): Promise<void> {}
+  async stopAll(): Promise<void> {
+    for (const threadId of this.sessions.keys())
+      await this.stopSession(threadId);
+  }
   streamEvents(options?: { signal?: AbortSignal }) {
     return this.events.iterable(options);
   }
@@ -218,7 +292,7 @@ function currentBinding(
   };
 }
 
-describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () => {
+describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () => {
   const roots: string[] = [];
 
   afterEach(() => {
@@ -227,18 +301,54 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
   });
 
   test.each([
-    { label: 'Claude Code to Codex', source: CLAUDE, target: CODEX },
-    { label: 'Codex to Claude Code', source: CODEX, target: CLAUDE },
+    {
+      label: 'Claude Code to Codex',
+      source: CLAUDE,
+      target: CODEX,
+      nativeReturn: false,
+    },
+    {
+      label: 'Codex to Claude Code',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: false,
+    },
+    {
+      label: 'Claude Code to Codex and native return',
+      source: CLAUDE,
+      target: CODEX,
+      nativeReturn: true,
+    },
+    {
+      label: 'Codex to Claude Code and native return',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+    },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
-    async ({ source, target }) => {
+    async ({ source, target, nativeReturn }) => {
       const root = mkdtempSync(join(tmpdir(), 'station-dd-real-handoff-'));
       roots.push(root);
       const databasePath = join(root, 'orchestration.sqlite');
       let store = new EventStore(databasePath);
       let eventBus = new EventBus();
-      const sourceAdapter = new TerminalHandoffAdapter(source.provider);
-      const targetAdapter = new TerminalHandoffAdapter(target.provider);
+      const ownership: NativeSessionOwnership = {
+        assertMutable: (id) => store.assertNativeSessionMutable(id),
+        claim: (key, id, rebind) =>
+          store.claimNativeSessionIdentity(key, id, rebind),
+        retired: (id) => store.recordNativeSessionRetired(id),
+      };
+      const sourceAdapter = new TerminalHandoffAdapter(
+        source.provider,
+        nativeReturn,
+        ownership,
+      );
+      const targetAdapter = new TerminalHandoffAdapter(
+        target.provider,
+        nativeReturn,
+        ownership,
+      );
       let service = new OrchestrationService({
         adapterRegistry: registry([sourceAdapter, targetAdapter]),
         eventBus,
@@ -310,6 +420,7 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
             INTERNAL_SESSION_READ_SCOPE,
             {
               agentId: input.agentId,
+              provider: input.provider,
               environmentId: ENVIRONMENT,
               ...(input.connectionId
                 ? { connectionId: input.connectionId }
@@ -323,6 +434,22 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
           service.readConversationHandoffStatus(
             input.conversationId,
             input.idempotencyKey,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
+        retireNativeReturnSource: async (_access, sessionId) =>
+          service.retireNativeReturnSource(
+            sessionId,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
+        retireHandoffPredecessor: async (_access, sessionId) =>
+          service.retireHandoffPredecessor(
+            sessionId,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
+        retireNativeContinuationSource: async (_access, sourceId, targetId) =>
+          service.retireNativeContinuationSource(
+            sourceId,
+            targetId,
             INTERNAL_SESSION_READ_SCOPE,
           ),
         startSession: async (_access, input) => {
@@ -399,7 +526,7 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
               : {}),
           }),
         handoffConversation: (input) =>
-          execute(target, {
+          execute(pathFor(input.target.agent), {
             message: input.message,
             conversationId: input.conversationId,
             idempotencyKey: input.idempotencyKey,
@@ -542,6 +669,74 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
       expect(lineage.map((entry) => entry.ordinal)).toEqual([0, 1]);
       expect(currentBinding(store, conversationId)?.agentId).toBe(target.agent);
 
+      let returnedSessionId: string | undefined;
+      if (nativeReturn) {
+        await eventually(async () => {
+          expect(
+            (
+              await service.readCurrentConversationSession(
+                conversationId,
+                INTERNAL_SESSION_READ_SCOPE,
+              )
+            )?.session.hasActiveTurn,
+          ).toBe(false);
+        });
+        const returned = await post(
+          `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
+          {
+            message: 'Recall the token after returning to your earlier engine.',
+            idempotencyKey: 'return-to-earlier-engine',
+            target: { environment: { kind: 'current' }, agent: source.agent },
+          },
+        );
+        expect(returned.status, await returned.clone().text()).toBe(200);
+        const returnedBody = (await returned.json()) as {
+          data: { sessionId: string };
+        };
+        returnedSessionId = returnedBody.data.sessionId;
+        await eventually(() => expect(sourceAdapter.turns).toHaveLength(2));
+        expect(sourceAdapter.starts.at(-1)).toMatchObject({
+          resumeCursor: {
+            nativeSessionId: `${source.provider}:native:${conversationId}`,
+          },
+          requireNativeResumeIdentity: true,
+          nativeResumeBindingKey: 'a'.repeat(64),
+        });
+        expect(sourceAdapter.stopped.has(conversationId)).toBe(true);
+        expect(sourceAdapter.turns.at(-1)?.ambientContext).toContain(
+          'Conversation while this engine was away',
+        );
+        expect(sourceAdapter.turns.at(-1)?.ambientContext).toContain(
+          'Third turn stays on the target Agent.',
+        );
+        expect(sourceAdapter.turns.at(-1)?.ambientContext).not.toContain(
+          `Remember ${CONTEXT_TOKEN}.`,
+        );
+        const marker = store.conversationHandoffForSession(returnedSessionId!);
+        expect(marker?.nativeReturnSourceSessionId).toBe(conversationId);
+        expect(marker?.nativeReturnSourceEventId).toBe(
+          `${source.provider}-handoff-turn-1:completed`,
+        );
+        const status = await service.readConversationHandoffStatus(
+          conversationId,
+          'return-to-earlier-engine',
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        expect(status?.marker.carried).toContain('nativeSession');
+        expect(status?.marker.reset).not.toContain('providerNativeCursor');
+        expect(status?.nativeResumeIdentity).toBe('matched');
+        await eventually(async () =>
+          expect(
+            (
+              await service.readCurrentConversationSession(
+                conversationId,
+                INTERNAL_SESSION_READ_SCOPE,
+              )
+            )?.session.lifecycleState,
+          ).toBe('idle'),
+        );
+      }
+
       await service.shutdown();
       store.close();
       store = new EventStore(databasePath);
@@ -559,7 +754,9 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
         conversationId,
         { authority: INTERNAL_SESSION_READ_SCOPE, turnLimit: 10 },
       );
-      expect(restored?.currentSessionId).toBe(lineage[1]?.sessionId);
+      expect(restored?.currentSessionId).toBe(
+        returnedSessionId ?? lineage[1]?.sessionId,
+      );
       expect(restored?.handoffs).toEqual([
         expect.objectContaining({
           predecessorSessionId: conversationId,
@@ -570,19 +767,29 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
           carried: [...CONVERSATION_HANDOFF_CARRIED_FIELDS],
           reset: [...CONVERSATION_HANDOFF_RESET_FIELDS],
         }),
+        ...(nativeReturn
+          ? [
+              expect.objectContaining({
+                sessionId: returnedSessionId,
+                targetAgentId: source.agent,
+                carried: expect.arrayContaining(['nativeSession']),
+                reset: expect.not.arrayContaining(['providerNativeCursor']),
+              }),
+            ]
+          : []),
       ]);
       expect(
         restored?.events.filter(
           (entry) => entry.event.method === 'turn.completed',
         ),
-      ).toHaveLength(3);
+      ).toHaveLength(nativeReturn ? 4 : 3);
       expect(
         restored?.events.filter(
           (entry) =>
             entry.event.method === 'turn.completed' &&
             entry.event.outputText?.includes(CONTEXT_TOKEN),
         ),
-      ).toHaveLength(3);
+      ).toHaveLength(nativeReturn ? 4 : 3);
 
       await service.shutdown();
       store.close();
