@@ -14,7 +14,8 @@ export function ProjectPageHeader({
     description?: string;
   };
   gitStatus:
-    | (Parameters<typeof GitBadge>[0]['git'] & { isRepo: boolean })
+    | (Parameters<typeof GitBadge>[0]['git'] & { isRepo: true })
+    | { isRepo: false }
     | null
     | undefined;
   navigateToSettings: () => void;
