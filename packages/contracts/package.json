@@ -25,6 +25,8 @@
     "LICENSE"
   ],
   "exports": {
+    "./relay-management": "./src/relay-management.ts",
+    "./usage-stats": "./src/usage-stats.ts",
     "./native-relay-link": "./src/native-relay-link.ts",
     "./relay-ice": "./src/relay-ice.ts",
     "./self-hosted-broker": "./src/self-hosted-broker.ts",
@@ -53,6 +55,7 @@
     "./action-operation": "./src/action-operation.ts",
     "./auth": "./src/auth.ts",
     "./authority-observation": "./src/authority-observation.ts",
+    "./automation": "./src/automation.ts",
     "./deployment-authentication": "./src/deployment-authentication.ts",
     "./board": "./src/board.ts",
     "./catalog": "./src/catalog.ts",

@@ -4,10 +4,17 @@ import type {
   McpElicitationForm,
 } from '@kontourai/station-contracts/mcp-elicitation';
 import { validateMcpElicitationContent } from '@kontourai/station-shared/mcp-elicitation';
-import { useId, useState } from 'react';
+import { type FormEvent, useId, useState } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
+import {
+  RequestCard,
+  type RequestCardState,
+  RequestSheet,
+  useRequestSheet,
+} from './RequestSheet';
 import './HarnessQuestionCard.css';
 import './McpElicitationCard.css';
 
@@ -15,6 +22,12 @@ import './McpElicitationCard.css';
 type Draft = Record<string, string | boolean | string[] | undefined>;
 
 export type McpElicitationAction = 'accept' | 'decline' | 'cancel';
+
+const CARD_STATE: Record<McpElicitationAction, RequestCardState> = {
+  accept: 'answered',
+  decline: 'declined',
+  cancel: 'cancelled',
+};
 
 function initialDraft(form: McpElicitationForm): Draft {
   const draft: Draft = {};
@@ -69,6 +82,10 @@ function inputType(field: McpElicitationField): string {
  * #3284: a tool server's structured question, answered as the person this
  * turn runs for. Send, Decline and Cancel each return exactly that action to
  * the server; nothing is sent until one is pressed.
+ *
+ * #3331: on a phone the transcript keeps a compact card and the form opens
+ * in the shared request sheet. Dismissing that sheet only hides it; the
+ * draft and the request both survive until one of the three actions.
  */
 export function McpElicitationCard({
   form,
@@ -85,6 +102,8 @@ export function McpElicitationCard({
   const [pending, setPending] = useState<McpElicitationAction>();
   const [done, setDone] = useState<McpElicitationAction>();
   const [error, setError] = useState<string>();
+  const isMobile = useIsMobile();
+  const sheet = useRequestSheet(!done);
 
   const update = (name: string, value: Draft[string]) => {
     setError(undefined);
@@ -114,7 +133,7 @@ export function McpElicitationCard({
     }
   };
 
-  if (done)
+  if (done && !isMobile)
     return (
       <section className="harness-question-card" role="status">
         {done === 'accept'
@@ -146,20 +165,16 @@ export function McpElicitationCard({
       </span>
     ) : null;
 
-  return (
-    <form
-      className="harness-question-card mcp-elicitation-card"
-      aria-label={`Answer ${form.serverId}`}
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault();
-        void respond('accept');
-      }}
-    >
-      <div className="harness-question-card__heading">
-        <strong>{form.serverId} needs your input</strong>
-        <span>Tool server request</span>
-      </div>
+  // On a phone the Send button sits in the sheet's pinned footer, outside the
+  // form element; `form=` keeps it this form's submit button, so Enter in a
+  // field still submits and the same validation runs.
+  const formId = `${id}:form`;
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void respond('accept');
+  };
+  const body = (
+    <>
       <p className="mcp-elicitation-card__message">{form.message}</p>
       <p className="mcp-elicitation-card__provenance">
         Your answer goes to the {form.serverId} tool server. Share only what you
@@ -278,42 +293,98 @@ export function McpElicitationCard({
         })}
       </fieldset>
       {error && <p role="alert">{error}</p>}
+    </>
+  );
+  const actions = (
+    <ActionRow
+      className="harness-question-card__actions"
+      overflowLabel="More answer options"
+      secondary={
+        <Button
+          variant="secondary"
+          disabled={!!pending}
+          pending={pending === 'decline'}
+          pendingLabel="Declining…"
+          onClick={() => void respond('decline')}
+        >
+          Decline
+        </Button>
+      }
+      primary={
+        <Button
+          type="submit"
+          form={isMobile ? formId : undefined}
+          variant="primary"
+          disabled={!!pending && pending !== 'accept'}
+          pending={pending === 'accept'}
+          pendingLabel="Sending…"
+        >
+          Send
+        </Button>
+      }
+      overflow={[
+        {
+          key: 'cancel',
+          label: 'Cancel without answering',
+          disabled: !!pending,
+          onSelect: () => void respond('cancel'),
+        },
+      ]}
+    />
+  );
+
+  if (isMobile)
+    return (
+      <>
+        <RequestCard
+          asker={`${form.serverId} needs your input`}
+          question={form.message}
+          state={done ? CARD_STATE[done] : 'pending'}
+          onAnswer={sheet.show}
+          triggerRef={sheet.triggerRef}
+          notice={
+            // A Send that fails after the sheet was dismissed would
+            // otherwise report only inside a sheet nobody can see.
+            !sheet.open && error ? <p role="alert">{error}</p> : null
+          }
+        />
+        {sheet.open && (
+          <RequestSheet
+            title={`${form.serverId} needs your input`}
+            subtitle="Tool server request"
+            onDismiss={sheet.dismiss}
+            returnFocusTarget={sheet.triggerRef.current}
+            actions={actions}
+          >
+            <form
+              id={formId}
+              className="harness-question-card mcp-elicitation-card"
+              aria-label={`Answer ${form.serverId}`}
+              noValidate
+              onSubmit={submit}
+            >
+              {body}
+            </form>
+          </RequestSheet>
+        )}
+      </>
+    );
+
+  return (
+    <form
+      className="harness-question-card mcp-elicitation-card"
+      aria-label={`Answer ${form.serverId}`}
+      noValidate
+      onSubmit={submit}
+    >
+      <div className="harness-question-card__heading">
+        <strong>{form.serverId} needs your input</strong>
+        <span>Tool server request</span>
+      </div>
+      {body}
       {/* #3045: two labelled actions; Cancel (dismiss without choosing) is
           in the overflow menu, and still returns `cancel`, not `decline`. */}
-      <ActionRow
-        className="harness-question-card__actions"
-        overflowLabel="More answer options"
-        secondary={
-          <Button
-            variant="secondary"
-            disabled={!!pending}
-            pending={pending === 'decline'}
-            pendingLabel="Declining…"
-            onClick={() => void respond('decline')}
-          >
-            Decline
-          </Button>
-        }
-        primary={
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={!!pending && pending !== 'accept'}
-            pending={pending === 'accept'}
-            pendingLabel="Sending…"
-          >
-            Send
-          </Button>
-        }
-        overflow={[
-          {
-            key: 'cancel',
-            label: 'Cancel without answering',
-            disabled: !!pending,
-            onSelect: () => void respond('cancel'),
-          },
-        ]}
-      />
+      {actions}
     </form>
   );
 }

@@ -18,8 +18,11 @@ where — see
 
 ## Native relay link publication
 
-The `/native-relay-link` source entry exports `nativeRelayLinkScheme`,
-`encodeNativeRelayLink` and `parseNativeRelayLink`. It publishes or inspects the
+The `/native-relay-link` source entry re-exports `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink` from the published
+[`@kontourai/station-shared/native-relay-link`](shared.md#native-relay-link-codec)
+leaf. Connect retains this entry for compatibility; Shared owns the single
+canonical codec used by SDK and server consumers. It publishes or inspects the
 closed `station-native-relay-link/v1` envelope: public first-contact route
 intent, or an untrusted application-origin hint wrapping an unchanged native
 v2 installation-bound invitation. The distinct URI association carries the
@@ -145,8 +148,13 @@ The library does not enroll or activate a Device, authenticate an account or
 grant Project access. Station's native saved-route owner now composes this
 transport for a configured host-owned Device binding, obtaining fresh ICE for
 each peer. Its separate account bridge supplies continuation proof for bounded
-Project and authority reads. Unsupported resources and writes fail before
-peer creation; this is not a general operator Workspace transport. The CLI
+Project and authority reads, plus a dedicated fixed native account operation
+for the closed relay-management and Project access administration leaves.
+Unsupported resources and writes fail before peer creation; this is not a
+general operator Workspace transport. Management does not replace Project IAM
+or grant terminal, Agent or Task publication authority. Account-bound relay
+management requires current native Device/account proof and explicit
+`relay:manage`; a credential-only account-bound Device remains gated. The CLI
 continues to exclude these routes from default selection. Focused source tests do not establish executed
 Tauri IPC, packaged-client, physical-device or complete authenticated
 Project-journey evidence.

@@ -175,6 +175,36 @@ async function openNewChat(page: Page) {
   return modal;
 }
 
+/**
+ * Wait for the sheet's entrance to finish. `.responsive-surface-panel` enters
+ * with `responsive-surface-panel-enter` (translateY 4px to 0), so a rectangle
+ * read while it runs sits up to 4px low and can cross the viewport's bottom
+ * edge (#3465). The panel may be the dialog or an ancestor of it, so this
+ * settles the dialog's subtree and every ancestor's own animations, then
+ * proves nothing finite is still running there.
+ */
+async function settleSheetEntrance(sheet: Locator) {
+  const stillRunning = await sheet.evaluate(async (dialog) => {
+    const running = () => {
+      const animations = dialog.getAnimations({ subtree: true });
+      for (let el = dialog.parentElement; el; el = el.parentElement)
+        animations.push(...el.getAnimations());
+      return animations.filter(
+        (animation) =>
+          animation.playState === 'running' &&
+          animation.effect?.getTiming().iterations !== Infinity,
+      );
+    };
+    await Promise.all(
+      running().map((animation) => animation.finished.catch(() => {})),
+    );
+    return running().map(
+      (animation) => (animation as CSSAnimation).animationName ?? 'unnamed',
+    );
+  });
+  expect(stillRunning).toEqual([]);
+}
+
 /** The dock composer's project chip, which opens the project list. */
 function projectChip(modal: Locator) {
   return modal.getByRole('button', { name: /^Project: / });
@@ -201,6 +231,7 @@ test.describe('New Chat mobile project picker (390x844)', () => {
     await expect(modal.locator('.new-chat-modal__dropdown')).toHaveCount(0);
     const sheet = page.getByRole('dialog', { name: 'Choose project' });
     await expect(sheet).toBeVisible();
+    await settleSheetEntrance(sheet);
 
     // The sheet sits fixed above the whole modal, inside the viewport.
     const sheetBox = await sheet.boundingBox();

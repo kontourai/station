@@ -153,7 +153,16 @@ copies only when the caller sets `includeCredentials: true` (a separate, explici
 in the UI) — on macOS, Claude Code's OAuth credentials actually live in the system
 Keychain. Current saved-profile launches and enrolment bind its secure-store
 namespace to the profile config directory; file absence alone does not establish
-authentication. The engine-account page asks the CLI for status. Connection readiness does too (#3303): with no API-key env and no `.credentials.json`, and only when the config dir exists, it runs the installed CLI's `auth status --json` (only on an installed Claude CLI of 2.1.41 or newer, where the command exists) under the connection env; a failed, timed-out or unparseable probe is `unknown` (the login prerequisite then reports an error, which still blocks), never authenticated. Always refused, never on any allowlist: `projects/`, `todos/`,
+authentication. The engine-account page asks the CLI for status. Connection
+readiness first checks explicit token environment overrides and, on macOS, the
+selected Keychain namespace before its credential file. Unreadable or malformed
+secure-store state remains `unknown`; another namespace's login cannot supply
+readiness. When the selected entry and file are absent, an installed Claude CLI
+of 2.1.41 or newer can answer `auth status --json` under the connection env
+(#3303). Both the selected storage directory and the CLI config directory must
+already exist: a readiness check must not create them. A failed, timed-out or
+unparseable probe is `unknown` (the login prerequisite then reports an error,
+which still blocks), never authenticated. Always refused, never on any allowlist: `projects/`, `todos/`,
 `statsig/`, `shell-snapshots/`, anything not listed above, any symlink anywhere in a
 copied tree (refuse, never follow — same posture as the skills-materialization module
 below), and a file whose opened descriptor reports more than 5 MiB before reading.

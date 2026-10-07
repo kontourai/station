@@ -46,7 +46,19 @@
 
     ".github/workflows/qualification-health.yml",
 
-    "scripts/qualification-health.mjs"
+    "scripts/qualification-health.mjs",
+
+    "scripts/actionlint-gate.mjs",
+
+    "scripts/__tests__/actionlint-gate.test.ts",
+
+    "scripts/__tests__/merge-queue-dequeue.test.ts",
+
+    "scripts/version-pr-operation.mjs",
+
+    "scripts/__tests__/version-pr-operation.test.ts",
+
+    "scripts/nightly-qualification-decide.mjs"
   ],
 
   "checks": [

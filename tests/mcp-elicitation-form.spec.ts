@@ -175,12 +175,14 @@ test.describe('MCP elicitation form (#3284)', () => {
     const name = form.getByRole('textbox', { name: /Name/ });
     await expect(name).toBeVisible();
 
-    const check = async (context: string) => {
+    // On a phone the actions sit in the request sheet's pinned footer, a
+    // sibling of the form (#3331); on desktop they are inside it.
+    const check = async (context: string, actions: typeof form = form) => {
       for (const theme of ['light', 'dark'] as const) {
         await page.evaluate((value) => {
           document.documentElement.setAttribute('data-theme', value);
         }, theme);
-        for (const button of await form.getByRole('button').all()) {
+        for (const button of await actions.getByRole('button').all()) {
           const label = `${context} ${theme} ${await button.textContent()}`;
           expect(await contrastRatio(button), label).toBeGreaterThanOrEqual(
             4.5,
@@ -220,18 +222,30 @@ test.describe('MCP elicitation form (#3284)', () => {
     await form.scrollIntoViewIfNeeded();
     await check('desktop');
     await page.setViewportSize({ width: 390, height: 844 });
+    // #3331: a phone shows the compact card; Answer opens the form in the
+    // shared request sheet.
+    await page
+      .locator('.request-card')
+      .getByRole('button', { name: 'Answer', exact: true })
+      .click();
+    const sheet = page.getByRole('dialog', {
+      name: 'fixture needs your input',
+    });
     await expect(name).toBeVisible();
-    await form.scrollIntoViewIfNeeded();
-    await check('mobile-390');
+    await check('mobile-390', sheet);
 
-    await form.getByRole('button', { name: 'Send' }).click();
+    const send = sheet.getByRole('button', { name: 'Send' });
+    await send.click();
     await expect(form.getByRole('alert')).toHaveText('Name is required.');
     expect(posted).toEqual([]);
     await name.fill('Ada');
     await form.getByRole('spinbutton', { name: /Age/ }).fill('36');
     await form.getByRole('radio', { name: 'Blue' }).check();
-    await form.getByRole('button', { name: 'Send' }).click();
-    await expect(page.getByText('Sent to fixture')).toBeVisible();
+    await send.click();
+    await expect(sheet).toBeHidden();
+    await expect(page.locator('.request-card').getByRole('status')).toHaveText(
+      'Answered',
+    );
     expect(posted).toEqual([
       {
         type: 'respondToRequest',

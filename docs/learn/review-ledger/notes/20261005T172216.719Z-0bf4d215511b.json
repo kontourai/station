@@ -1,0 +1,7 @@
+{
+  "revision": "7b0c7f2dc324aaf1a0aeafb6b7a1bf8bf71aaa87",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3331 round 1: ToolCallDisplay's phone sheet adds Allowing…/Denying… pending labels and a compact Answer trigger. The session-grant label is still toolRequestGrantLabel in the sheet's overflow item; the grant computation and adapter behavior are unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

@@ -98,7 +98,15 @@
 
     "src-ui/src/hooks/voiceWsUrl.ts",
 
-    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"
+    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+
+    "src-server/analytics/usage-aggregator.ts",
+
+    "src-server/analytics/usage-aggregator-state.ts",
+
+    "packages/shared/src/usage-fold.ts",
+
+    "packages/shared/src/usage-semantics.ts"
   ],
 
   "checks": [

@@ -5,6 +5,7 @@ import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollou
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
   type LoadedDeploymentAuthentication,
@@ -514,6 +515,7 @@ export interface StationRuntimeOptions {
     ready: (application: VirtualApplication) => void;
   };
   /** Explicit self-hosted routing composition; requires virtualApplication. */
+  relayInvitationOwner?: RelayInvitationOwner;
   selfHostedBrokerConnector?: {
     /** Validated native application lane actually selected by the trusted connector factory. */
     nativeApplication?: NativeApplicationConnectorConfiguration;
@@ -547,6 +549,7 @@ export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
   private virtualApplication?: VirtualApplicationIngress;
+  private readonly relayInvitationOwner?: RelayInvitationOwner;
   private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
   private selfHostedBroker?: {
     start(): Promise<void>;
@@ -1175,6 +1178,7 @@ export class StationRuntime {
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
+    this.relayInvitationOwner = options.relayInvitationOwner;
     this.selfHostedBrokerConfiguration = options.selfHostedBrokerConnector;
     if (
       this.selfHostedBrokerConfiguration &&
@@ -4278,6 +4282,7 @@ export class StationRuntime {
       agentActivityPublisher,
       notificationDeliveryRouter,
     } = configureRuntimeRoutes({
+      relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
       ...(this.nativeDeviceProofPilot

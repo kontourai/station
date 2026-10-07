@@ -64,6 +64,7 @@ import {
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
+  PAIRING_SCOPE_RELAY_MANAGE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
@@ -149,15 +150,57 @@ function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
   );
 }
 
-/** Scope satisfaction only; credential authority must be checked first. */
+/** Exact relay HTTP leaves; this classification grants no authority. */
+export function isRelayManagementHttpLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  if (request.method === 'GET' || request.method === 'HEAD')
+    return (
+      request.path === '/api/relay-management' ||
+      request.path === '/api/relay-management/capabilities'
+    );
+  return (
+    request.method === 'POST' &&
+    ([
+      '/api/relay-management/approvals',
+      '/api/relay-management/approvals/revoke',
+      '/api/relay-management/invitations',
+    ].includes(request.path) ||
+      /^\/api\/relay-management\/devices\/[A-Za-z0-9_-]{43}\/(?:approve|deny)$/u.test(
+        request.path,
+      ))
+  );
+}
+
+function isProjectAccessManagementLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  return (
+    request.method === 'POST' &&
+    /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access\/(?:invitations(?:\/[A-Za-z0-9_-]{1,128}\/revoke)?|members|transfer)$/u.test(
+      request.path,
+    )
+  );
+}
+
 export function pairingScopeSatisfiesHttpRoute(
   grantedScope: string,
   requiredScope: PairingScope,
   request: { method: string; path: string },
   verifiedOperator = false,
+  verifiedHomeOperator = false,
 ): boolean {
   return (
     pairingScopeIncludes(grantedScope, requiredScope) ||
+    (requiredScope === PAIRING_SCOPE_ORCHESTRATION_OPERATE &&
+      isProjectAccessManagementLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_RELAY_MANAGE)) ||
+    ((verifiedOperator || verifiedHomeOperator) &&
+      requiredScope === PAIRING_SCOPE_RELAY_MANAGE &&
+      request.path !== '/api/relay-management/capabilities' &&
+      isRelayManagementHttpLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
       request.method === 'GET' &&
       /^\/api\/connections\/agent\/[^/]+\/accounts$/.test(
@@ -873,6 +916,36 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  ...(['GET', 'HEAD'] as const).map((method) => ({
+    id: `/api/relay-management/capabilities:${method}:read`,
+    method,
+    prefix: '/api/relay-management/capabilities',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit' as const,
+  })),
+  ...(['GET', 'HEAD'] as const).map((method) => ({
+    id: `/api/relay-management:${method}:manage`,
+    method,
+    prefix: '/api/relay-management',
+    exact: true,
+    scope: PAIRING_SCOPE_RELAY_MANAGE,
+    origin: 'explicit' as const,
+  })),
+  ...[
+    '/api/relay-management/approvals',
+    '/api/relay-management/approvals/revoke',
+    '/api/relay-management/invitations',
+    '/api/relay-management/devices/:enrollmentId/approve',
+    '/api/relay-management/devices/:enrollmentId/deny',
+  ].map((prefix) => ({
+    id: `${prefix}:POST:manage`,
+    method: 'POST' as const,
+    prefix,
+    exact: true,
+    scope: PAIRING_SCOPE_RELAY_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // Pairing/device management (archive#1098's access:manage) — every method,
   // one tier. Registered by `configureDevicePairingHostRoutes`, not via
   // `context.app.route`, so it is not in the prefix list above.
@@ -991,6 +1064,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'GET',
     prefix: '/api/analytics/usage-rollup',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/station-usage:operator-read',
+    method: 'GET',
+    prefix: '/api/analytics/station-usage',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
   // archive#3385: the attachment blob route is a single GET leaf, declared

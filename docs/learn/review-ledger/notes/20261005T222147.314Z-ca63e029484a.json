@@ -1,0 +1,7 @@
+{
+  "revision": "86aae301dafb97e4ed71cb726a1baf3007bbbe6d",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed relay delta at 86aae301da against AF493: lib.rs only registers host-bound native account management headers, whose implementation uses reconciled Device and account proof keys, not raw operator credentials. runtime-routes adds the separate /api/relay-management surface with current actor, management authority and audit decisions; it leaves the four /api/pairing/devices administration gates and S1 observe-only behavior unchanged. runtime-request-security passes the authenticated home-possession fact to the same route scope decision for delayed publication. Inspected relay-management-authority, pairing-route-scopes, native_account_operations and the currentOperator device-admin gates. The operator passkey/session/step-up proposal remains unimplemented; relay management does not establish its authority. Focused run retained: 44 suites and 750 tests passed; this missing scoped review was its sole failure. Native host behavior remains source inspection, not fresh device acceptance.","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs","src-server/runtime/routes/runtime-routes.ts","src-server/security/runtime-request-security.ts"]}
+  ]
+}
