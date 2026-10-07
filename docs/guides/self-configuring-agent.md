@@ -310,10 +310,9 @@ Session by its `sessionId`, without creating a task.
   text cannot imitate the header or end the quote. The turn is recorded with
   `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
   title, Agent and engine as Station recorded them, and the call's `requestKey`)
-  beside the unchanged `internal` actor. The transcript, Activity and
-  `read_conversation` and Session digest carry the sender provenance; transcript
-  reads show the sender's own words as that agent's message, with
-  a link to the sending Session; the sender's transcript shows the call as
+  beside the unchanged `internal` actor. `read_conversation` and the Session
+  digest carry that provenance. Chat and Activity show the sender's own words
+  as that agent's message, with a link to the sending Session; the sender's transcript shows the call as
   "Sent to <Session>" with its outcome. Links open the exact sending call or
   received input in Activity by its recorded request key. The transcript may
   read up to 20 older pages to establish a unique match, then focuses and

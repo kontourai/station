@@ -1,8 +1,8 @@
 /**
  * #3419: the accent an incoming agent message wears, derived from who sent it.
  *
- * The same agent always gets the same accent (the key is its Agent, else its
- * engine, else its Session id), so a reader learns "the teal one is the
+ * The same sending Session always gets the same accent from its canonical
+ * Session id, so a reader learns "the teal one is the
  * reviewer" across a transcript. The palette is fixed and small, so two
  * different agents can share a hue: colour only ever backs up the header's
  * words and icon, it never carries the sender alone.
