@@ -993,6 +993,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/analytics/station-usage:operator-read',
+    method: 'GET',
+    prefix: '/api/analytics/station-usage',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // archive#3385: the attachment blob route is a single GET leaf, declared
   // explicitly rather than by adding an `/api/attachments` domain prefix. A
   // prefix would classify any future sibling — including a mutating one — at

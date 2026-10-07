@@ -63,6 +63,7 @@
     "./extension-transcript-markers": "./src/extension-transcript-markers.ts",
     "./request-settlement": "./src/request-settlement.ts",
     "./usage-fold": "./src/usage-fold.ts",
+    "./usage-semantics": "./src/usage-semantics.ts",
     "./usage-measurement": "./src/usage-measurement.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
     "./thread-usage-tree": "./src/thread-usage-tree.ts",

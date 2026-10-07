@@ -554,6 +554,16 @@
 
     "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx",
 
+    "packages/sdk/src/query-domains/stationUsage.ts",
+
+    "packages/sdk/src/query-domains/usageRollup.ts",
+
+    "packages/sdk/src/client/station-usage.ts",
+
+    "packages/shared/src/usage-semantics.ts",
+
+    "packages/shared/src/usage-fold.ts",
+
     "packages/sdk/src/query-domains/mcpPromptRun.ts"
   ],
 

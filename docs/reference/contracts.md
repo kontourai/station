@@ -669,6 +669,23 @@ means account attribution is unknown; consumers must not infer the current
 active account. These fields are observations, never billing or routing authority.
 
 
+### Retained usage statistics
+
+`@kontourai/station-contracts/usage-stats` owns `UsageStats`, `DailyStats`,
+`ModelUsageStats`, `UnallocatedUsage`, `TokenReports` and `EngineUsageCoverage`.
+These are read-only projection shapes, not storage or authorization APIs.
+Current sums reflect retained source facts and can decrease after correction or
+deletion. `legacySummary` is separate unverified evidence. `unallocated` keeps
+unknown date, model, principal and provider attribution visible; recorded identity
+never grants access. `tokenReports` distinguishes a contributing measured zero
+from an unmeasured compatibility sum. Optional reported and estimated USD amounts
+retain their separate evidence scopes. See the
+[Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people)
+and [analytics rescan](api.md#rescan-analytics).
+
+Recorded principal buckets are returned only by the authorized instance-operator
+route. Ordinary analytics and rescan responses omit `byPrincipal`.
+
 ### Usage observation provenance
 
 `@kontourai/station-contracts/usage-rollup` owns `UsageReceipt`, `UsageCoverage`,

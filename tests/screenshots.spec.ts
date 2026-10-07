@@ -244,7 +244,7 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    gallery ever renders a toast for
  *    (`motion-reduced-notification`).
  *  - The Profile's completed rebuild timestamp. The unavailable-time
- *    fallback stays visible; only a live "Snapshot rebuilt ..." line is hidden.
+ *    fallback stays visible; only a live "Updated ..." timestamp is hidden.
  *  - `.chat-dock__mobile-conn` (ChatDockMobileHeader.tsx via
  *    `ChatDockMobileConnection.tsx`): the mobile chat dock's OWN
  *    connected/connecting/error/needs-credential indicator — the same
@@ -271,8 +271,8 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  */
 async function hideVolatileChrome(page: Page) {
   await page
-    .locator('.profile-usage-status p')
-    .filter({ hasText: /^Snapshot rebuilt / })
+    .locator('.profile-usage-status span')
+    .filter({ hasText: /^Updated / })
     .evaluateAll((elements) => {
       for (const element of elements) element.style.visibility = 'hidden';
     });
