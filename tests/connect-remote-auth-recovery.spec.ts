@@ -4,8 +4,8 @@ import type {
   DevicePairingAccessRequestResponse,
   PublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
-import { expect, type Locator, type Page, test } from '@playwright/test';
-import { rejectUnexpectedFixtureRequest } from './helpers/fixture-audit';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 

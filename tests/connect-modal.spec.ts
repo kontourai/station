@@ -148,7 +148,8 @@ async function receiverFixture(
   let exchangedDeviceId: string | undefined;
   await page.route(`${origin}/**`, async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname;
+    const requestUrl = new URL(request.url());
+    const path = requestUrl.pathname;
     if (request.method() === 'GET' && path === '/.well-known/station/v1') {
       await discovery;
       return route.fulfill({ json: handshake });
@@ -229,6 +230,13 @@ async function receiverFixture(
           sha: '2222222222222222222222222222222222222222',
         },
       });
+    if (
+      request.method() === 'GET' &&
+      (path === '/api/browser/projects/default/access' ||
+        (path === '/api/browser/sessions' &&
+          requestUrl.searchParams.get('projectSlug') === 'default'))
+    )
+      return rejectUnexpectedFixtureRequest(route);
     if (
       await fulfillStationShellRead(route, {
         environmentId,
@@ -575,7 +583,7 @@ test.describe('Connection Manager Modal', () => {
   });
 
   test('can switch between approved Device connections', async ({ page }) => {
-    const origin = 'http://203.0.113.5:3141';
+    const origin = 'http://10.0.0.6:3141';
     const receiver = await receiverFixture(page, origin);
     await identifyReceiver(page, origin);
     const dialog = await approveReceiverDevice(
