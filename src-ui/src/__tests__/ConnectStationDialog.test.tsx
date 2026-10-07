@@ -23,6 +23,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { PendingPairingReconciler } from '../components/PendingPairingReconciler';
@@ -325,7 +326,10 @@ describe('Connect Station grant composition', () => {
     expect(wire.select).not.toHaveBeenCalled();
   });
 
-  test('a lost start response retains one request reference across reopening and never issues another start automatically', async () => {
+  test('without randomUUID, a lost start response retains one request reference across reopening and never issues another start automatically', async () => {
+    vi.stubGlobal('crypto', {
+      getRandomValues: crypto.getRandomValues.bind(crypto),
+    });
     wire.start.mockRejectedValue(
       new Error('Connection lost before reservation was acknowledged'),
     );
@@ -339,6 +343,9 @@ describe('Connect Station grant composition', () => {
       'Connection lost before reservation was acknowledged',
     );
     const reservation = wire.start.mock.calls[0][1].id;
+    expect(reservation).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
     first.unmount();
     mount();
     await identify();
@@ -354,6 +361,13 @@ describe('Connect Station grant composition', () => {
       screen.queryByRole('button', { name: 'Request selected access' }),
     ).toBeNull();
     await screen.findByRole('button', { name: 'Retry this same request' });
+    const actions = within(
+      screen.getByRole('group', { name: 'Peer request actions' }),
+    );
+    expect(actions.getAllByRole('button')).toHaveLength(2);
+    expect(
+      actions.queryByRole('button', { name: 'Check approval' }),
+    ).toBeNull();
     wire.start.mockImplementation(
       async (
         _base: string,
@@ -365,6 +379,11 @@ describe('Connect Station grant composition', () => {
     );
     await waitFor(() => expect(wire.start).toHaveBeenCalledTimes(2));
     expect(wire.start.mock.calls[1][1].id).toBe(reservation);
+    await screen.findByRole('button', { name: 'Check approval' });
+    expect(
+      actions.queryByRole('button', { name: 'Retry this same request' }),
+    ).toBeNull();
+    expect(actions.getAllByRole('button')).toHaveLength(2);
   });
 
   test('an authority change blocks new grants while keeping the reviewed destination visible', async () => {
@@ -783,7 +802,7 @@ describe('Connect Station grant composition', () => {
       target: { value: 'https://destination.test' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    await screen.findByRole('region', { name: 'Browser connection guidance' });
+    await screen.findByRole('region', { name: 'Browser connection help' });
     expect(screen.getByRole('alert').textContent).toContain(
       'This browser could not verify',
     );

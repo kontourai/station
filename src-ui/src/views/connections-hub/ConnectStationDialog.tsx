@@ -16,8 +16,10 @@ import {
   usePeerEnrollmentQuery,
   useStartPeerEnrollmentMutation,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -265,7 +267,7 @@ export function ConnectStationDialog({
       );
       return;
     }
-    const id = reservation ?? crypto.randomUUID();
+    const id = reservation ?? randomCorrelationId();
     try {
       sessionStorage.setItem(
         reservationKey(destination),
@@ -321,6 +323,7 @@ export function ConnectStationDialog({
   };
   const close = () => onClose();
   const status = observed?.status;
+  const peerNeedsRetry = !observed;
   const peerBusy = start.isPending || complete.isPending || cancel.isPending;
   const failure =
     error ||
@@ -585,41 +588,48 @@ export function ConnectStationDialog({
                     ? new Date(observed.expiresAt).toLocaleString()
                     : 'Not yet reported'}
                 </p>
-                {start.error || peerStatus.isError || !observed ? (
-                  <>
-                    <p>
-                      The sending Station has not confirmed this request. Retry
-                      retains the same request reference and destination. If its
-                      record was removed, an earlier receiver request may still
-                      exist; review requests on the destination first.
-                    </p>
-                    <Button
-                      disabled={peerBusy || !peerAvailable}
-                      onClick={requestPeer}
-                    >
-                      Retry this same request
-                    </Button>
-                  </>
+                {peerNeedsRetry ? (
+                  <p>
+                    The sending Station has not confirmed this request. Retry
+                    retains the same request reference and destination. If its
+                    record was removed, an earlier receiver request may still
+                    exist; review requests on the destination first.
+                  </p>
                 ) : null}
                 {status !== 'connected' && status !== 'cancelled' ? (
-                  <>
-                    <Button
-                      disabled={peerBusy || !peerAvailable}
-                      onClick={() =>
-                        complete.mutate(reservation, {
-                          onSuccess: setEnrollment,
-                        })
-                      }
-                    >
-                      Check approval
-                    </Button>
-                    <Button
-                      disabled={peerBusy || !peerAvailable}
-                      onClick={cancelPeer}
-                    >
-                      Cancel peer request
-                    </Button>
-                  </>
+                  <ActionRow
+                    label="Peer request actions"
+                    overflowLabel="More peer request actions"
+                    primary={
+                      peerNeedsRetry ? (
+                        <Button
+                          disabled={peerBusy || !peerAvailable}
+                          onClick={requestPeer}
+                        >
+                          Retry this same request
+                        </Button>
+                      ) : (
+                        <Button
+                          disabled={peerBusy || !peerAvailable}
+                          onClick={() =>
+                            complete.mutate(reservation, {
+                              onSuccess: setEnrollment,
+                            })
+                          }
+                        >
+                          Check approval
+                        </Button>
+                      )
+                    }
+                    secondary={
+                      <Button
+                        disabled={peerBusy || !peerAvailable}
+                        onClick={cancelPeer}
+                      >
+                        Cancel peer request
+                      </Button>
+                    }
+                  />
                 ) : null}
               </section>
             ) : null}
@@ -764,7 +774,7 @@ export function ConnectStationDialog({
         )}
         {failure ? <p role="alert">{failure}</p> : null}
         {failedBrowserOrigin ? (
-          <section aria-label="Browser connection guidance">
+          <section aria-label="Browser connection help">
             <p>
               A Station can be reachable while this browser cannot read it. The
               destination must permit this page’s exact origin:{' '}

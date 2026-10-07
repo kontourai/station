@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 
 const mutateAsync = vi.fn();
@@ -253,6 +253,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
 });
 
 describe('DelegationLauncher', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     mutateAsync.mockReset();
     reset.mockReset();
@@ -1709,7 +1710,10 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
   });
-  test('connection setup returns to the same task draft and explicit Station without dispatching', async () => {
+  test('without randomUUID, connection setup returns to the same task draft and explicit Station without dispatching', async () => {
+    vi.stubGlobal('crypto', {
+      getRandomValues: crypto.getRandomValues.bind(crypto),
+    });
     const { consumePendingConnectionsModal, CONNECTION_SETUP_RETURN_EVENT } =
       await import('../lib/connectionModalEvents');
     projectIdentity = singleRepoIdentity();
@@ -1762,6 +1766,9 @@ describe('DelegationLauncher', () => {
         peerOnly: true,
         projectName: 'Station',
       }),
+    );
+    expect(request?.setupRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
     fireEvent(
       window,

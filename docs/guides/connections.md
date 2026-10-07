@@ -266,8 +266,10 @@ Project execution: the receiver must offer the exact resource, and its Agent
 must be available. Foreground peer threads remain unsupported in the Project
 default picker.
 
-For a peer request, **Check approval** completes the existing enrollment rather
-than starting another request. If an exchange outcome is unknown, inspect or
+Once the sending Station confirms a peer request, **Check approval** completes
+that existing enrollment. Before confirmation, **Retry this same request** keeps
+its retained identity and destination. Each state offers cancellation separately;
+retry does not create a replacement automatically. If an exchange outcome is unknown, inspect or
 revoke the receiver's grant before starting again. Cancelling a local pending
 request does not revoke an already approved receiver grant. A saved peer
 credential establishes permission, not observed reachability or Project readiness.

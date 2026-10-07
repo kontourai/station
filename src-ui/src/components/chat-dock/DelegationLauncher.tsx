@@ -10,6 +10,7 @@ import {
   usePeerCredentialsQuery,
   useSshEnvironmentsQuery,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -678,7 +679,7 @@ export function DelegationLauncher({
 
           <Button
             onClick={() => {
-              const id = crypto.randomUUID();
+              const id = randomCorrelationId();
               setSetupRequestId(id);
               openConnectionsModal({
                 mode: 'connect-station',
