@@ -277,6 +277,10 @@ completion remains `NOT_VERIFIED`.
 is a separate build/smoke matrix for platform-specific server archives. The
 [builder](../../scripts/lib/portable-server-archive.mjs) stages the selected
 Node runtime, native dependencies, compiled server/UI/CLI, and platform launcher.
+It also stages the bundled Station catalog and its declared local packages,
+including the curated engineering Skills, from tracked source files. The archive
+smoke starts a fresh server and checks that the catalog resolves the collection
+inside that extracted archive. Listing it does not install it or grant tools.
 It refuses a target that differs from the build host's platform and architecture,
 because native dependencies come from that host's install.
 It marks the tree as prebuilt so the CLI does not try to rebuild it at startup.

@@ -160,7 +160,7 @@
     "dev:server:poll": "tsx scripts/dev-server-watch.mts",
     "dev:ui": "vite dev",
     "dev:desktop": "tsx scripts/dev-desktop.mts",
-    "verify:desktop-rust": "mkdir -p dist-server dist-desktop-runtime/node_modules && cd src-desktop && cargo test",
+    "verify:desktop-rust": "mkdir -p dist-server dist-desktop-runtime/node_modules dist-desktop-runtime/examples && cd src-desktop && cargo test",
     "verify:desktop-clean-checkout": "npm run channel-ports:check && node scripts/verify-desktop-clean-checkout.mjs",
     "build:server": "node esbuild.config.mjs",
     "build:ui": "vite build && node scripts/ui-bundle-budget.mjs",
