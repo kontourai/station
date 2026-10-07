@@ -4,7 +4,7 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph, GlobeGlyph } from '../icons/Glyph';
-import { ProjectIcon } from '../icons/ProjectIcon';
+import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { Skeleton } from '../state';
 import './StartComposer.css';
 
@@ -249,7 +249,7 @@ export function StartComposer({
               ) : (
                 <ProjectIcon
                   project={{ name: project.label, icon: project.icon }}
-                  size={18}
+                  size={displayableProjectIcon(project.icon) ? 18 : 24}
                   accent={project.accent}
                 />
               )}

@@ -1410,6 +1410,9 @@ describe('project icons in the start composer', () => {
     const ui = renderBoth();
     for (const root of [screen.getByTestId('home'), ui.dock()]) {
       await waitFor(() => expect(markOf(projectChip(root))).toEqual(expected));
+      const mark = projectChip(root).querySelector('.project-icon');
+      expect(mark).toHaveProperty('style.width', expected.dot ? '12px' : '18px');
+      expect(mark).toHaveProperty('style.height', expected.dot ? '12px' : '18px');
     }
     ui.cleanupListener();
   });
