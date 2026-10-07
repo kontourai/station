@@ -1679,7 +1679,9 @@ export function NewChatModal({
                 }
                 onPromptChange={setPrompt}
                 onStarted={(_task, station, sentPrompt) => {
-                  if (prompt === sentPrompt) setPrompt('');
+                  setPrompt((current) =>
+                    current === sentPrompt ? '' : current,
+                  );
                   setTaskNotice(
                     `Task started on ${station}. Open Activity to follow its progress.`,
                   );

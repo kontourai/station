@@ -312,3 +312,12 @@
 .start-menu__list .new-chat-modal__agent {
   padding: var(--k-space-3);
 }
+.new-chat-modal__agent-purpose {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin-top: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
