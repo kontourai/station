@@ -255,6 +255,42 @@ describe('stored harness questions from before #3390', () => {
     );
   });
 
+  test('a stored pre-unification MCP form remains a validated form, not an approval', () => {
+    const legacyForm = {
+      serverId: 'fixture',
+      message: 'Who should receive it?',
+      fields: [
+        { name: 'recipient', kind: 'string', required: true, maxLength: 5 },
+      ],
+    };
+    const event = {
+      provider: 'station',
+      payload: { mcpElicitation: legacyForm },
+    };
+    const form = inputRequestFromRequestEvent(event);
+    expect(form).toMatchObject({
+      source: 'mcp:fixture',
+      requester: 'fixture',
+      message: legacyForm.message,
+    });
+    expect(validateInputRequestContent(form!, { recipient: 'Ada' })).toEqual({
+      recipient: 'Ada',
+    });
+    expect(() =>
+      validateInputRequestContent(form!, { recipient: 'Adelaide' }),
+    ).toThrow('at most 5');
+    expect(
+      inputRequestFromRequestEvent({
+        payload: {
+          mcpElicitation: {
+            ...legacyForm,
+            fields: [{ name: '__proto__', kind: 'string', required: false }],
+          },
+        },
+      }),
+    ).toBeNull();
+  });
+
   test('the stored Codex event reads as a form, with its secret free-text question', () => {
     const form = inputRequestFromRequestEvent(legacy.codex as any);
     expect(form?.source).toBe('harness:codex');

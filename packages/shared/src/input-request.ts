@@ -546,6 +546,22 @@ export function inputRequestFromRequestEvent(
   if (!payload || !event) return null;
   if (payload.inputRequest !== undefined)
     return readInputRequestForm(payload.inputRequest);
+  if (payload.mcpElicitation !== undefined) {
+    const legacyForm = own(payload.mcpElicitation);
+    if (
+      !legacyForm ||
+      !onlyKeys(legacyForm, ['serverId', 'message', 'fields']) ||
+      typeof legacyForm.serverId !== 'string'
+    )
+      return null;
+    return readInputRequestForm({
+      schema: INPUT_REQUEST_SCHEMA,
+      source: `mcp:${legacyForm.serverId}`,
+      requester: legacyForm.serverId,
+      message: legacyForm.message,
+      body: { kind: 'form', fields: legacyForm.fields },
+    });
+  }
   const legacy = readLegacyHarnessQuestions(payload.questionnaire);
   if (!legacy) return null;
   const provider = event.provider ?? 'agent';
