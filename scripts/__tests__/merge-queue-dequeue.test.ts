@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 
 const exec = promisify(execFile);
 const script = resolve(import.meta.dirname, '../merge-queue-dequeue.mjs');
@@ -216,14 +217,19 @@ function repositories(prContent: string) {
 
 async function run(
   api: { url: string },
-  { cwd, reason, bin }: { cwd: string; reason?: string; bin?: string },
+  {
+    cwd,
+    reason,
+    bin,
+    policyScript = script,
+  }: { cwd: string; reason?: string; bin?: string; policyScript?: string },
 ) {
   const event = join(cwd, '..', `event-${Math.random()}.json`);
   writeFileSync(
     event,
     JSON.stringify({ action: 'dequeued', pull_request: { number: 7 }, reason }),
   );
-  return exec(process.execPath, [script], {
+  return exec(process.execPath, [policyScript], {
     cwd,
     env: {
       ...process.env,
@@ -425,6 +431,101 @@ describe.runIf(process.platform !== 'win32')(
       expect(evaluate(workflow.jobs.dequeue.if, sameRepo('reopened'))).toBe(
         false,
       );
+    });
+
+    it('loads the trusted workflow helper when a PR event base predates that helper', async () => {
+      const directory = makeTempDir('station-dequeue-policy-revision-');
+      const cwd = join(directory, 'repository');
+      mkdirSync(cwd);
+      const git = (...args: string[]) =>
+        execFileSyncBounded('git', args, {
+          cwd,
+          encoding: 'utf8',
+          windowsHide: true,
+          maxBuffer: 1024 * 1024,
+        }).trim();
+      git('init', '-q', '-b', 'main');
+      git('config', 'user.name', 'Fixture');
+      git('config', 'user.email', 'fixture@example.test');
+      writeFileSync(join(cwd, 'base.txt'), 'event base\n');
+      git('add', '.');
+      git('commit', '-qm', 'event base');
+      const eventBase = git('rev-parse', 'HEAD');
+      mkdirSync(join(cwd, 'scripts', 'lib'), { recursive: true });
+      for (const path of [
+        'merge-queue-dequeue.mjs',
+        'qualification-evidence.mjs',
+        'lib/module-entry.mjs',
+      ]) {
+        writeFileSync(
+          join(cwd, 'scripts', path),
+          readFileSync(resolve(import.meta.dirname, '..', path)),
+        );
+      }
+      git('add', '.');
+      git('commit', '-qm', 'trusted policy helper');
+      const workflowSha = git('rev-parse', 'HEAD');
+      git('checkout', '-q', '-b', 'candidate', eventBase);
+      mkdirSync(join(cwd, 'scripts'), { recursive: true });
+      writeFileSync(
+        join(cwd, 'scripts', 'merge-queue-dequeue.mjs'),
+        "throw new Error('candidate code executed');\n",
+      );
+      git('add', '.');
+      git('commit', '-qm', 'untrusted candidate helper');
+      const candidateSha = git('rev-parse', 'HEAD');
+      const workflow = load(
+        readFileSync(
+          resolve(
+            import.meta.dirname,
+            '../../.github/workflows/landing-automation.yml',
+          ),
+          'utf8',
+        ),
+      ) as {
+        jobs: Record<
+          string,
+          { steps: Array<{ uses?: string; with?: { ref?: string } }> }
+        >;
+      };
+      const api = await fakeGitHub({
+        removals: [{ createdAt: recent(), reason: 'merged' }],
+      });
+      try {
+        for (const baseSha of [eventBase, workflowSha]) {
+          const context = {
+            workflow_sha: workflowSha,
+            sha: workflowSha,
+            event: {
+              pull_request: {
+                base: { sha: baseSha },
+                head: { sha: candidateSha },
+              },
+            },
+          };
+          for (const job of ['arm', 'dequeue']) {
+            const checkout = workflow.jobs[job].steps.find((step) =>
+              step.uses?.startsWith('actions/checkout@'),
+            );
+            expect(checkout?.with?.ref).toBeTruthy();
+            const ref = String(evaluate(checkout?.with?.ref ?? '', context));
+            expect(ref).toBe(workflowSha);
+            git('checkout', '-q', '--detach', ref);
+          }
+          const result = await run(api, {
+            cwd,
+            policyScript: join(cwd, 'scripts', 'merge-queue-dequeue.mjs'),
+          });
+          expect(result.stdout).toContain('dequeue: ignored');
+          expect(git('rev-parse', 'HEAD')).toBe(workflowSha);
+        }
+        expect(api.calls.map((call) => call.path)).toEqual([
+          '/graphql',
+          '/graphql',
+        ]);
+      } finally {
+        await api.close();
+      }
     });
 
     it('lists the files that really conflict with main and does not re-arm', async () => {
