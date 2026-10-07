@@ -56,9 +56,16 @@ For a slow or stalled context report, run
 `node scripts/tauri-context.mjs --platform windows --json --trace-probes`.
 The report stays JSON on stdout; stderr records each spawned probe's stable
 id, start/end phase, elapsed milliseconds and running/checked/failed/skipped
-status. If an outer timeout interrupts the report, the last start without an
-end identifies its active probe. Probe command limits and report exit status
+status. If an outer timeout interrupts the report, starts without matching
+ends identify its active probes. Probe command limits and report exit status
 remain unchanged.
+
+Independent command and generated-tree probes run concurrently through the
+owned-process helper. Each retains its command deadline (normally 10 seconds;
+Apple device discovery retains 15 seconds), bounded output and process cleanup.
+A stalled tool stays failed in the report and findings; it does not prevent
+unrelated version probes from returning. The exported `buildContextReport`
+builder returns a promise; its CLI caller awaits the completed report.
 
 ```sh
 npm run dependencies:ci

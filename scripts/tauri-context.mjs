@@ -144,6 +144,15 @@ async function checkCommand(id, command, args, options = {}) {
     }
     return check;
   };
+  let rejectBoundary;
+  const boundary = new Promise((_, reject) => {
+    rejectBoundary = reject;
+  });
+  const timeout = options.timeout ?? 10_000;
+  const timer = setTimeout(
+    () => rejectBoundary(new Error(`${id} timed out after ${timeout}ms`)),
+    timeout,
+  );
   const execution = executeOwnedCommand(command, args, spawn, id, {
     cwd: options.cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -152,20 +161,11 @@ async function checkCommand(id, command, args, options = {}) {
       ? { resolveParentIdentity: options.resolveParentIdentity }
       : {}),
   });
-  let rejectBoundary;
-  const boundary = new Promise((_, reject) => {
-    rejectBoundary = reject;
-  });
   const capture = captureOwnedProcessOutput(execution, {
     maxBytes: CAPTURE_MAX_BYTES,
     onOverflow: () =>
       rejectBoundary(new Error(`${id} output exceeded its bound`)),
   });
-  const timeout = options.timeout ?? 10_000;
-  const timer = setTimeout(
-    () => rejectBoundary(new Error(`${id} timed out after ${timeout}ms`)),
-    timeout,
-  );
   let result;
   let failure;
   try {

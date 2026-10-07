@@ -207,6 +207,9 @@ describe('tauri context', () => {
       expect(result.error, result.stderr).toBeUndefined();
       expect(result.status).toBe(2);
       const report = JSON.parse(result.stdout);
+      expect(report.checks.rustTargets.status).toBe('skipped');
+      expect(report.checks.rustTargets.reason).toBe('command-not-found');
+      expect(report.checks.rustTargets.value).toBeUndefined();
       expect(report.checks.tauriCli.status).toBe('failed');
       expect(report.checks.tauriCli.reason).toBe('fixture refusal');
       expect(report.findings).toContainEqual(
