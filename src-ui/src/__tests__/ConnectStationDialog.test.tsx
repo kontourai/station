@@ -5,7 +5,11 @@ import type {
   PendingPairingExchange,
   StorageAdapter,
 } from '@kontourai/station-connect';
-import { ConnectionsProvider } from '@kontourai/station-connect';
+import {
+  ConnectionsProvider,
+  completeVerifiedPairing,
+  useConnections,
+} from '@kontourai/station-connect';
 import type {
   PeerEnrollment,
   PeerEnrollmentInput,
@@ -172,9 +176,9 @@ function mount(peerOnly = true, store?: ConnectionStore) {
     client,
   };
 }
-async function identify() {
+async function identify(address = 'https://destination.test') {
   fireEvent.change(screen.getByLabelText('Station address'), {
-    target: { value: 'https://destination.test' },
+    target: { value: address },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
   await screen.findByText('remote-station');
@@ -186,10 +190,33 @@ describe('Connect Station grant composition', () => {
     wire.stale = false;
     wire.unbound = false;
     wire.useConnections.mockReset();
+    const fixtureValues = new Map<string, string>();
+    const fixtureStorage: StorageAdapter = {
+      get: (key) => fixtureValues.get(key) ?? null,
+      set: (key, value) => {
+        fixtureValues.set(key, value);
+      },
+      remove: (key) => {
+        fixtureValues.delete(key);
+      },
+    };
+    const fixtureStore = new ConnectionStore({
+      storage: fixtureStorage,
+      credentialStorage: fixtureStorage,
+    });
+    const addedController = fixtureStore.add(
+      'Kontour',
+      'https://controller.test',
+    );
+    fixtureStore.reconcileHandshake(addedController.id, {
+      environmentId: 'controller-station',
+      authentication: { scheme: 'bearer', protocolVersion: 1 },
+    });
+    const controller = fixtureStore.getActive()!;
     wire.useConnections.mockImplementation(() => ({
       apiBase: 'https://controller.test',
-      activeConnection: { id: 'controller', name: 'Kontour' },
-      connections: [],
+      activeConnection: controller,
+      connections: [controller],
       addConnection: wire.add,
       commitVerifiedPairing: wire.commit,
       setActiveConnection: wire.select,
@@ -223,7 +250,9 @@ describe('Connect Station grant composition', () => {
       id,
       status: 'connected',
     }));
-    wire.add.mockReturnValue({ id: 'saved-remote', name: 'Remote' });
+    wire.add.mockReturnValue(
+      fixtureStore.add('Remote', 'https://destination.test'),
+    );
     wire.commit.mockResolvedValue('saved-remote');
     vi.stubGlobal(
       'fetch',
@@ -521,9 +550,9 @@ describe('Connect Station grant composition', () => {
     },
   );
 
-  test.each(['immediate', 'pending'] as const)(
-    'a grant at an alternate address cannot rebind the controlling Station (%s)',
-    async (mode) => {
+  test.each(['https://controller.test', 'https://destination.test'])(
+    'selected Station preflight keeps Device access and never starts a replacement at %s',
+    async (address) => {
       const values = new Map<string, string>();
       const storage: StorageAdapter = {
         get: (key) => values.get(key) ?? null,
@@ -544,44 +573,124 @@ describe('Connect Station grant composition', () => {
         authentication: { scheme: 'bearer', protocolVersion: 1 },
       });
       store.setCredential(controlling.id, 'controlling-origin-grant');
-      const view = mount(false, store);
-      await identify();
+      mount(false, store);
+      await identify(address);
+      expect(
+        screen.getByLabelText(`Use ${address} from this device`),
+      ).toHaveProperty('disabled', true);
+      expect(
+        screen.getByRole('button', { name: 'Request selected access' }),
+      ).toHaveProperty('disabled', true);
       fireEvent.click(
         screen.getByRole('button', { name: 'Request selected access' }),
       );
+      expect(
+        screen.queryByRole('button', { name: 'Approve device transport' }),
+      ).toBeNull();
+      expect(wire.start).not.toHaveBeenCalled();
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.every(([url]) =>
+            String(url).includes('/.well-known/station/v1'),
+          ),
+      ).toBe(true);
+      expect(store.getActive()?.url).toBe('https://controller.test');
+      expect(store.getCredential(controlling.id)).toBe(
+        'controlling-origin-grant',
+      );
+    },
+  );
+
+  test.each([
+    ['immediate', 'https://controller.test'],
+    ['pending', 'https://controller.test'],
+    ['immediate', 'https://destination.test'],
+    ['pending', 'https://destination.test'],
+  ] as const)(
+    'approved Device access cannot replace the selected controller (%s at %s)',
+    async (mode, address) => {
+      const values = new Map<string, string>();
+      const storage: StorageAdapter = {
+        get: (key) => values.get(key) ?? null,
+        set: (key, value) => {
+          values.set(key, value);
+        },
+        remove: (key) => {
+          values.delete(key);
+        },
+      };
+      const store = new ConnectionStore({
+        storage,
+        credentialStorage: storage,
+      });
+      const controlling = store.add('Kontour', 'https://controller.test');
+      store.reconcileHandshake(controlling.id, {
+        environmentId: 'remote-station',
+        authentication: { scheme: 'bearer', protocolVersion: 1 },
+      });
+      store.setCredential(controlling.id, 'controlling-origin-grant');
+      const target =
+        address === 'https://controller.test'
+          ? controlling
+          : store.add('Approved address', address);
+      wire.useConnections.mockImplementation(wire.actualUseConnections!);
+      const result: PairingResult = {
+        endpoint: address,
+        environmentId: 'remote-station',
+        clientInstanceId: '14f53f4b-156e-4c9d-a810-f161d519631d',
+        browserSession: false,
+        credential: 'replacement-device-grant',
+        device: {
+          id: 'replacement-device',
+          name: 'Browser',
+          kind: 'device',
+          scope: 'orchestration:read',
+          createdAt: 1,
+          activityTracking: 'tracked-since-issued',
+          lastSeenFrom: null,
+          usageCount: 0,
+          lastActiveDay: null,
+          revokedAt: null,
+          revocation: { state: 'not-revoked' },
+        },
+      };
       if (mode === 'immediate') {
-        fireEvent.click(
-          screen.getByRole('button', { name: 'Approve device transport' }),
+        let context: ReturnType<typeof useConnections> | undefined;
+        function CapturePairingOwner() {
+          context = useConnections();
+          return null;
+        }
+        render(
+          <ConnectionsProvider store={store}>
+            <CapturePairingOwner />
+          </ConnectionsProvider>,
         );
-        await waitFor(() => expect(wire.pairingFailure).toHaveBeenCalledOnce());
-        expect(wire.pairingFailure.mock.calls[0][0]).toMatchObject({
-          name: 'PairingControllerEndpointConflict',
-        });
+        await expect(
+          completeVerifiedPairing(
+            context!,
+            {
+              connectionId: target.id,
+              name: target.name,
+              endpoint: address,
+              activate: false,
+              bindApprovedEndpoint: true,
+            },
+            result,
+          ),
+        ).rejects.toMatchObject({ name: 'PairingControllerEndpointConflict' });
       } else {
-        fireEvent.click(
-          screen.getByRole('button', { name: 'Submit device request' }),
-        );
-        const pendingExchange: PendingPairingExchange =
-          view.props.onApprovalPending.mock.calls[0][0];
-        const result: PairingResult = {
-          endpoint: pendingExchange.endpoint,
-          environmentId: 'remote-station',
-          clientInstanceId: '14f53f4b-156e-4c9d-a810-f161d519631d',
+        const pendingExchange: PendingPairingExchange = {
+          endpoint: address,
+          expectedEnvironmentId: 'remote-station',
+          offerId: 'offer',
+          proof: 'request-proof',
+          requestId: 'approved-request',
+          expiresAt: Date.now() + 60_000,
           browserSession: false,
-          credential: 'device-grant',
-          device: {
-            id: 'device',
-            name: 'Browser',
-            kind: 'device',
-            scope: 'orchestration:read',
-            createdAt: 1,
-            activityTracking: 'tracked-since-issued',
-            lastSeenFrom: null,
-            usageCount: 0,
-            lastActiveDay: null,
-            revokedAt: null,
-            revocation: { state: 'not-revoked' },
-          },
+          requestKind: 'direct',
+          targetConnectionId: target.id,
+          activateConnection: false,
         };
         wire.completePending.mockImplementation(
           async (_pending, options: { completePaired: CompletePaired }) => {
@@ -611,18 +720,20 @@ describe('Connect Station grant composition', () => {
         );
         await waitFor(() => expect(failure).toHaveBeenCalledOnce());
         expect(failure.mock.calls[0][1]).toContain(
-          'Select the new route explicitly',
+          'Use Reconnect or Request access',
         );
       }
       expect(store.getActive()?.url).toBe('https://controller.test');
       expect(store.getCredential(controlling.id)).toBe(
         'controlling-origin-grant',
       );
-      const alternate = store
-        .getAll()
-        .find((connection) => connection.url === 'https://destination.test');
-      expect(alternate?.environmentId).toBeNull();
-      expect(store.getCredential(alternate!.id)).toBeNull();
+      if (target.id !== controlling.id) {
+        expect(
+          store.getAll().find((connection) => connection.id === target.id)
+            ?.environmentId,
+        ).toBeNull();
+        expect(store.getCredential(target.id)).toBeNull();
+      }
       setClientCredentialResolver(() => ({
         origin: store.getActive()!.url,
         credential: store.getCredential(store.getActive()!.id) ?? undefined,

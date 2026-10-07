@@ -120,7 +120,7 @@ export function createPeerCredentialRoutes(
       );
     }
   });
-  app.get('/enrollments/:id', (c) => {
+  app.get('/enrollments/:id', async (c) => {
     const request = c.req.raw;
     if (!mutationAuthorized(request))
       return c.json({ success: false, error: 'Forbidden' }, 403);
@@ -129,7 +129,7 @@ export function createPeerCredentialRoutes(
     try {
       return c.json({
         success: true,
-        data: enrollments.get(param(c, 'id'), () =>
+        data: await enrollments.get(param(c, 'id'), () =>
           mutationAuthorized(request),
         ),
       });

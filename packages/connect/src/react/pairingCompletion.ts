@@ -45,6 +45,8 @@ export interface PairingCompletionTarget {
   activate?: boolean;
   /** A verified exchange approves its exact endpoint, including an identity merge. */
   bindApprovedEndpoint?: boolean;
+  /** First-device setup may adopt its own still-unverified candidate. */
+  preserveSelectedStation?: boolean;
 }
 
 /**
@@ -72,15 +74,23 @@ export async function completeVerifiedPairing(
       'Peer Station access cannot be saved as this device’s interactive access. Connect it as a peer instead.',
     );
   }
+  const active = deps.activeConnection;
+  const firstDeviceCandidate =
+    target.preserveSelectedStation === false &&
+    active?.id === target.connectionId &&
+    !active.environmentId &&
+    active.credentialState === 'required';
   if (
     target.bindApprovedEndpoint &&
     target.activate === false &&
-    deps.activeConnection?.environmentId === result.environmentId &&
-    new URL(deps.activeConnection.url).origin !==
-      new URL(target.endpoint).origin
+    active &&
+    !firstDeviceCandidate &&
+    (active.id === target.connectionId ||
+      active.environmentId === result.environmentId ||
+      new URL(active.url).origin === new URL(target.endpoint).origin)
   ) {
     const conflict = new Error(
-      'Access was approved, but saving this address would replace your currently selected Station’s route. Your current route and credential are kept. Select the new route explicitly in Stations, then pair it there.',
+      'Access was approved, but saving it would replace your currently selected Station’s access or route. Your current route and credential are kept. Use Reconnect or Request access in Stations to explicitly replace that access.',
     );
     conflict.name = 'PairingControllerEndpointConflict';
     throw conflict;

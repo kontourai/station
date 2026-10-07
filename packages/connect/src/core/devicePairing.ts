@@ -521,6 +521,8 @@ export interface PendingPairingExchange {
   targetConnectionLabel?: string;
   /** Project setup saves access without switching its controlling Station. */
   activateConnection?: boolean;
+  /** False only when setup began without a selected Station. */
+  preserveSelectedStation?: boolean;
   /**
    * When the request was created (station#1876). Optional because records
    * written by an earlier build do not carry it, and rejecting those would
@@ -651,6 +653,8 @@ export function loadPendingExchange(
         typeof parsed.expectedEnvironmentId !== 'string') ||
       (parsed.targetConnectionId !== undefined &&
         typeof parsed.targetConnectionId !== 'string') ||
+      (parsed.preserveSelectedStation !== undefined &&
+        typeof parsed.preserveSelectedStation !== 'boolean') ||
       (parsed.activateConnection !== undefined &&
         typeof parsed.activateConnection !== 'boolean') ||
       (parsed.targetConnectionLabel !== undefined &&
@@ -747,6 +751,8 @@ function readPendingExchangeWithoutExpiry(
       parsed.requestKind !== requestKind ||
       (parsed.targetConnectionId !== undefined &&
         typeof parsed.targetConnectionId !== 'string') ||
+      (parsed.preserveSelectedStation !== undefined &&
+        typeof parsed.preserveSelectedStation !== 'boolean') ||
       (parsed.activateConnection !== undefined &&
         typeof parsed.activateConnection !== 'boolean') ||
       (parsed.targetConnectionLabel !== undefined &&

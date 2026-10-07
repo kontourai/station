@@ -54,6 +54,8 @@ export function ConnectStationDialog({
   const scope = useRef(currentScope).current;
   const controller = useRef({
     apiBase: connections.apiBase,
+    id: connections.activeConnection?.id,
+    environmentId: connections.activeConnection?.environmentId,
     name: scope
       ? connections.activeConnection?.name || connections.apiBase
       : 'No controlling Station',
@@ -79,6 +81,12 @@ export function ConnectStationDialog({
         connections.apiBase !== controller.apiBase),
   );
   const peerAvailable = Boolean(scope) && !stale;
+  const selectedControllerTarget = Boolean(
+    controller.id &&
+      destination &&
+      (controller.environmentId === destination.environmentId ||
+        new URL(controller.apiBase).origin === destination.apiBase),
+  );
 
   const reservationKey = (target: Destination) =>
     `station-peer-enrollment:${controller.apiBase}:${scope?.authorityKey ?? 'unscoped'}:${target.apiBase}:${target.environmentId}`;
@@ -179,6 +187,12 @@ export function ConnectStationDialog({
       )
         return;
       setDestination(result);
+      if (
+        controller.id &&
+        (controller.environmentId === result.environmentId ||
+          new URL(controller.apiBase).origin === result.apiBase)
+      )
+        setDeviceSelected(false);
       const invitation = input.payload
         ? decodeDevicePairingPayload(input.payload)
         : null;
@@ -450,7 +464,7 @@ export function ConnectStationDialog({
                   <input
                     type="checkbox"
                     checked={deviceSelected}
-                    disabled={peerInvitation}
+                    disabled={peerInvitation || selectedControllerTarget}
                     onChange={(event) =>
                       setDeviceSelected(event.target.checked)
                     }
@@ -466,6 +480,13 @@ export function ConnectStationDialog({
                   />{' '}
                   Let {controller.name} send work to {destination.label}
                 </label>
+                {selectedControllerTarget ? (
+                  <p>
+                    This is your currently selected Station. Its Device access
+                    is kept. Use Reconnect or Request access in Stations to
+                    explicitly replace or repair that access.
+                  </p>
+                ) : null}
                 {!scope ? (
                   <p>
                     Device pairing is available. Sending work requires access to
@@ -492,7 +513,8 @@ export function ConnectStationDialog({
                   }
                   onClick={() => {
                     if (peerSelected && peerAvailable) requestPeer();
-                    if (deviceSelected) setDeviceStarted(true);
+                    if (deviceSelected && !selectedControllerTarget)
+                      setDeviceStarted(true);
                   }}
                 >
                   Request selected access
@@ -606,6 +628,7 @@ export function ConnectStationDialog({
                       targetConnectionId: target.id,
                       targetConnectionLabel: destination.label,
                       activateConnection: false,
+                      preserveSelectedStation: Boolean(controller.id),
                     };
                     savePendingExchange(persisted);
                     onApprovalPending(persisted);
@@ -658,6 +681,7 @@ export function ConnectStationDialog({
                         endpoint: destination.apiBase,
                         activate: false,
                         bindApprovedEndpoint: true,
+                        preserveSelectedStation: Boolean(controller.id),
                       },
                       result,
                     );

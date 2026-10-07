@@ -441,9 +441,10 @@ native credential custody with the host. Hosts that omit the option retain
 the existing activation behavior.
 
 The new journey uses `bindApprovedEndpoint: true` to bind a browser grant to its
-exact approved address before saving the credential. It refuses an alternate
-address that would replace the controlling Station's route; select that route
-explicitly before pairing there. First-device identification does not require
+exact approved address before saving the credential. Setup keeps an existing
+controller's Device access, including at the same address. Use the explicit
+Stations reconnect/repair flow to replace that access. An alternate address
+cannot replace the controller's route during setup. First-device identification does not require
 an existing controller, while peer management still does.
 
 Connect's root exports `savePendingExchange` alongside `loadPendingExchange`
@@ -486,6 +487,12 @@ retained privately, completion can retry publication without exchanging again.
 Local cancellation does not revoke a receiver grant. This enrollment neither
 offers a Project resource nor implements operator elevation, reciprocal access,
 provider-process migration or foreground peer execution.
+
+After an interrupted operation, a status read can report an unknown outcome
+without replaying it. Local cancellation remains available after reacquiring the
+durable lock. If the peer was already installed before its journal acknowledgement
+failed, status reconciles to connected and cancellation directs the operator to
+remove the saved peer instead of claiming the pending request was cancelled.
 
 For a browser already open at the Station URL, choose **Connections → Request
 access to this Station**. Station creates a rate-limited, five-minute request

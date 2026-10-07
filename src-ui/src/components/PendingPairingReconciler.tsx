@@ -128,6 +128,7 @@ export function PendingPairingReconciler({
                 endpoint: pending.endpoint,
                 activate: pending.activateConnection,
                 bindApprovedEndpoint: pending.activateConnection === false,
+                preserveSelectedStation: pending.preserveSelectedStation,
               },
               { ...result, endpoint: pending.endpoint },
             );

@@ -277,12 +277,40 @@ export class PeerEnrollmentService {
     }
   }
 
-  get(id: string, authorize: () => boolean): PeerEnrollment {
+  #isSaved(state: EnrollmentState): boolean {
+    if (!state.credential) return false;
+    const saved = this.store.get(state.view.environmentId);
+    return (
+      saved?.credential === state.credential &&
+      saved.apiBase === state.view.apiBase &&
+      saved.scope === DELEGATION_SCOPE
+    );
+  }
+
+  async get(id: string, authorize: () => boolean): Promise<PeerEnrollment> {
     if (!authorize()) throw new PeerCredentialMutationAuthorizationError();
     if (!UUID.test(id)) throw new Error('Invalid enrollment id');
-    const path = join(this.#directory, `${id}.json`);
-    if (!existsSync(path)) throw new Error('Enrollment unavailable');
-    return { ...this.#readState(id).view };
+    const release = await acquireFileMutationLockAsync(
+      `${this.#directory}.mutation`,
+    );
+    try {
+      if (!authorize()) throw new PeerCredentialMutationAuthorizationError();
+      const path = join(this.#directory, `${id}.json`);
+      if (!existsSync(path)) throw new Error('Enrollment unavailable');
+      const state = this.#readState(id);
+      if (this.#isSaved(state))
+        return { ...state.view, status: 'connected', error: undefined };
+      if (state.phase)
+        return {
+          ...state.view,
+          status: 'outcome-unknown',
+          error:
+            'A previous remote operation has no receipt; cancel locally and reconcile the receiver grant before starting again',
+        };
+      return { ...state.view };
+    } finally {
+      await release();
+    }
   }
 
   async #request(
@@ -491,10 +519,9 @@ export class PeerEnrollmentService {
       throw new Error(
         'Enrollment unavailable; this Station may have restarted',
       );
+    if (this.#isSaved(state)) this.#finish(state, 'connected');
     if (state.view.status === 'connected')
       throw new Error('Remove the saved peer connection to disconnect it');
-    if (state.flight || state.phase)
-      throw new Error('Enrollment exchange is in progress');
     return this.#finish(
       state,
       'cancelled',
@@ -512,6 +539,7 @@ export class PeerEnrollmentService {
         throw new Error(
           'Enrollment unavailable; this Station may have restarted',
         );
+      if (this.#isSaved(state)) return this.#finish(state, 'connected');
       if (state.phase)
         return this.#finish(
           state,
@@ -612,6 +640,7 @@ export class PeerEnrollmentService {
         );
       }
     }
+    const issuedCredential = state.credential;
     try {
       await this.store.upsert(
         {
@@ -625,6 +654,7 @@ export class PeerEnrollmentService {
       );
       return this.#finish(state, 'connected');
     } catch (error) {
+      state.credential = issuedCredential;
       state.view.status = 'persistence-failed';
       state.view.error =
         'Grant issued but not saved locally; retry saving before expiry or revoke it on the receiver';

@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type HttpBindings, serve } from '@hono/node-server';
@@ -56,6 +63,7 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
     'normal';
   let redirectHandshake = false;
   let oversizedProof = false;
+  let afterHandshake: (() => void) | undefined;
   let redirectFollowed = false;
   let exchangeCount = 0;
   const observedProtocols: Array<{
@@ -79,6 +87,7 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
     const exchange = c.req.path === '/.well-known/station/v1/pairing/exchange';
     if (exchange) exchangeCount += 1;
     await next();
+    if (c.req.path === '/.well-known/station/v1') afterHandshake?.();
     if (accessRequest && oversizedProof && c.res.status === 202) {
       const body = await c.res.json();
       body.proof = '';
@@ -171,6 +180,9 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
     expireReceiver: () => {
       receiverNow += 20 * 60_000;
     },
+    afterHandshake: (callback: () => void) => {
+      afterHandshake = callback;
+    },
     returnOversizedProof: () => {
       oversizedProof = true;
     },
@@ -239,7 +251,9 @@ describe('server-owned peer enrollment through Station routes', () => {
     );
     expect(cancelledConnected.status).toBe(400);
     expect(h.store.list()).toHaveLength(1);
-    expect(h.service.get(h.input.id, () => true).status).toBe('connected');
+    expect((await h.service.get(h.input.id, () => true)).status).toBe(
+      'connected',
+    );
     const read = await h.local.request(`/enrollments/${h.input.id}`);
     const text = await read.text();
     expect(text).not.toContain(credential!);
@@ -250,7 +264,9 @@ describe('server-owned peer enrollment through Station routes', () => {
       'Kontour',
       h.localHome,
     );
-    expect(restarted.get(h.input.id, () => true).status).toBe('connected');
+    expect((await restarted.get(h.input.id, () => true)).status).toBe(
+      'connected',
+    );
     expect(
       readFileSync(
         join(h.localHome, 'security', 'peer-enrollments', `${h.input.id}.json`),
@@ -311,7 +327,7 @@ describe('server-owned peer enrollment through Station routes', () => {
       'Kontour',
       h.localHome,
     );
-    expect(restarted.get(h.input.id, () => true).status).toBe(
+    expect((await restarted.get(h.input.id, () => true)).status).toBe(
       'persistence-failed',
     );
     expect((await restarted.complete(h.input.id, () => true)).status).toBe(
@@ -408,7 +424,7 @@ describe('server-owned peer enrollment through Station routes', () => {
       'Kontour',
       h.localHome,
     );
-    expect(restarted.get(h.input.id, () => true).status).toBe('failed');
+    expect((await restarted.get(h.input.id, () => true)).status).toBe('failed');
     expect((await restarted.complete(h.input.id, () => true)).status).toBe(
       'failed',
     );
@@ -438,7 +454,9 @@ describe('server-owned peer enrollment through Station routes', () => {
     await expect(other.cancel(h.input.id, () => true)).rejects.toThrow(
       'Remove the saved peer connection',
     );
-    expect(h.service.get(h.input.id, () => true).status).toBe('connected');
+    expect((await h.service.get(h.input.id, () => true)).status).toBe(
+      'connected',
+    );
     expect(h.store.list()).toHaveLength(1);
   });
 
@@ -482,7 +500,9 @@ describe('server-owned peer enrollment through Station routes', () => {
     const accepted = reserved.find((result) => result.status === 'fulfilled');
     if (accepted?.status !== 'fulfilled')
       throw new Error('Missing successful reservation');
-    expect(restarted.get(accepted.value.id, () => true).status).toBe('pending');
+    expect((await restarted.get(accepted.value.id, () => true)).status).toBe(
+      'pending',
+    );
   });
 
   test('completion and cancellation from independent owners preserve one durable outcome', async () => {
@@ -499,7 +519,7 @@ describe('server-owned peer enrollment through Station routes', () => {
       other.cancel(h.input.id, () => true),
     ]);
     expect(completion.status).toBe('fulfilled');
-    const final = h.service.get(h.input.id, () => true);
+    const final = await h.service.get(h.input.id, () => true);
     if (final.status === 'connected') {
       expect(cancellation.status).toBe('rejected');
       expect(h.store.list()).toHaveLength(1);
@@ -513,6 +533,68 @@ describe('server-owned peer enrollment through Station routes', () => {
     if (completion.status === 'fulfilled')
       expect(completion.value.status).toBe(final.status);
   });
+
+  test('an orphaned request phase is truthful after restart and can cancel locally without replay', async () => {
+    const h = await stations();
+    h.afterHandshake(h.revokeLocal);
+    expect((await h.start()).status).toBe(403);
+    expect(h.pairing.listRequests()).toEqual([]);
+    h.restoreLocal();
+    const restarted = new PeerEnrollmentService(
+      h.store,
+      'Kontour',
+      h.localHome,
+    );
+    expect((await restarted.get(h.input.id, () => true)).status).toBe(
+      'outcome-unknown',
+    );
+    const cancelled = await restarted.cancel(h.input.id, () => true);
+    expect(cancelled.status).toBe('cancelled');
+    expect(cancelled.error).toContain('revoke');
+    expect(h.pairing.listRequests()).toEqual([]);
+    expect(h.exchangeCount()).toBe(0);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'a committed peer survives a failed journal finish and cannot be cancelled as pending',
+    async () => {
+      let enrollmentDirectory = '';
+      const h = await stations({
+        writeOperations: {
+          renameSync: (source, target) => {
+            renameSync(source, target);
+            chmodSync(enrollmentDirectory, 0o755);
+          },
+        },
+      });
+      enrollmentDirectory = join(h.localHome, 'security', 'peer-enrollments');
+      await h.start();
+      await h.approve();
+      try {
+        expect((await h.complete()).status).toBe(400);
+        expect(h.store.list()).toHaveLength(1);
+      } finally {
+        chmodSync(enrollmentDirectory, 0o700);
+      }
+      const restarted = new PeerEnrollmentService(
+        new PeerCredentialStore(h.localHome),
+        'Kontour',
+        h.localHome,
+      );
+      expect((await restarted.get(h.input.id, () => true)).status).toBe(
+        'connected',
+      );
+      await expect(restarted.cancel(h.input.id, () => true)).rejects.toThrow(
+        'Remove the saved peer connection',
+      );
+      expect((await restarted.get(h.input.id, () => true)).status).toBe(
+        'connected',
+      );
+      expect(h.store.list()).toHaveLength(1);
+      expect(h.pairing.listDevices()).toHaveLength(1);
+      expect(h.exchangeCount()).toBe(1);
+    },
+  );
 
   test('a reserved id cannot change destination and public HTTP is refused before contacting it', async () => {
     const h = await stations();
