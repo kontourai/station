@@ -314,21 +314,30 @@ function ChatMessageListComponent({
         ),
       );
       if (!pending) return;
+      let admissionReported = false;
+      const onAdmission = (
+        status: 'accepted' | 'not-invoked' | 'indeterminate',
+      ) => {
+        admissionReported = true;
+        chatFormDraftsStore.finishSubmit(formScope, formKey, pending, status);
+      };
       void sendMessage(
         activeSession.id,
         activeSession.agentSlug,
         activeSession.conversationId,
         formatFormSubmission(submission),
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true, onAdmission },
       ).then(
-        (accepted) =>
-          chatFormDraftsStore.finishSubmit(
-            formScope,
-            formKey,
-            pending,
-            accepted === true,
-          ),
-        () =>
-          chatFormDraftsStore.finishSubmit(formScope, formKey, pending, false),
+        (accepted) => {
+          if (!admissionReported)
+            onAdmission(accepted === true ? 'accepted' : 'indeterminate');
+        },
+        () => {
+          if (!admissionReported) onAdmission('indeterminate');
+        },
       );
     },
     [

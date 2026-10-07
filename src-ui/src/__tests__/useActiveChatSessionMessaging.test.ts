@@ -864,24 +864,100 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(followUp.target).not.toHaveProperty('workspace');
   });
 
+  it('reports a definite visual-skill refusal, then admission after the selection is removed', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      skillExperienceDraftInvalid: true,
+    });
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Submitted form',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true, onAdmission },
+      );
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(onAdmission.mock.calls).toEqual([['not-invoked']]);
+    activeChatsStore.updateChat(sessionId, {
+      skillExperienceDraftInvalid: false,
+    });
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Submitted form',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true, onAdmission },
+      );
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(onAdmission.mock.calls).toEqual([['not-invoked'], ['accepted']]);
+  });
+
+  it('reports busy form follow-up queue admission even though the legacy return value is undefined', async () => {
+    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'Submitted form',
+          undefined,
+          undefined,
+          undefined,
+          { queueOnBusy: true, onAdmission },
+        ),
+      ).toBeUndefined();
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toContain(
+      'Submitted form',
+    );
+    expect(onAdmission.mock.calls).toEqual([['accepted']]);
+  });
+
   it('reuses the same client turn id from the Retry affordance', async () => {
     sendExecutionMessageMock
       .mockRejectedValueOnce(new Error('temporarily unavailable'))
       .mockResolvedValueOnce(successReceipt());
+    const onAdmission = vi.fn();
     const { result } = renderHook(() => useSendMessage('http://api.test'));
 
     await act(async () => {
-      await result.current(sessionId, 'codex', undefined, 'retry me');
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'retry me',
+        undefined,
+        undefined,
+        undefined,
+        { onAdmission },
+      );
     });
     const firstId = sendExecutionMessageMock.mock.calls[0][1].clientTurnId;
     const retry = activeChatsStore
       .getSnapshot()
       [sessionId]?.ephemeralMessages?.at(-1)?.action?.handler;
     expect(retry).toBeTypeOf('function');
+    expect(onAdmission.mock.calls).toEqual([['indeterminate']]);
 
     await act(async () => {
       await retry?.();
     });
+    expect(onAdmission.mock.calls).toEqual([['indeterminate'], ['accepted']]);
     expect(sendExecutionMessageMock.mock.calls[1][1].clientTurnId).toBe(
       firstId,
     );

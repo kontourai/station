@@ -261,6 +261,10 @@ export function useSendMessage(
          * default send-while-busy path.
          */
         queueOnBusy?: boolean;
+        /** Form ownership observes admission without inferring delivery from the legacy return value. */
+        onAdmission?: (
+          status: 'accepted' | 'not-invoked' | 'indeterminate',
+        ) => void;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -325,6 +329,7 @@ export function useSendMessage(
                       )[0];
         if (refusal) {
           addEphemeralMessage(sessionId, { role: 'system', content: refusal });
+          options?.onAdmission?.('not-invoked');
           return false;
         }
       }
@@ -387,6 +392,7 @@ export function useSendMessage(
               },
             ],
           });
+          options?.onAdmission?.('accepted');
           return;
         }
         steerOpenTurn = true;
@@ -682,6 +688,7 @@ export function useSendMessage(
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
         }
+        options?.onAdmission?.('accepted');
         onActiveSessionChange?.(sessionId);
         return options?.dispatch
           ? ({
@@ -779,11 +786,16 @@ export function useSendMessage(
                         attachments,
                         ambientContext,
                         resolvedTurnId,
+                        {
+                          queueOnBusy: options?.queueOnBusy,
+                          onAdmission: options?.onAdmission,
+                        },
                       );
                     },
                   },
                 }),
           });
+          options?.onAdmission?.('not-invoked');
           return false;
         }
         // Stop deliberately releases the browser's foreground observer after
@@ -905,6 +917,7 @@ export function useSendMessage(
               },
             },
           });
+          options?.onAdmission?.('accepted');
           return false;
         }
 
@@ -939,6 +952,7 @@ export function useSendMessage(
           ) {
             drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
           }
+          options?.onAdmission?.('accepted');
           return false;
         }
 
@@ -1064,6 +1078,10 @@ export function useSendMessage(
                         attachments,
                         ambientContext,
                         resolvedTurnId,
+                        {
+                          queueOnBusy: options?.queueOnBusy,
+                          onAdmission: options?.onAdmission,
+                        },
                       ),
                   },
         });
@@ -1094,6 +1112,9 @@ export function useSendMessage(
             reason: translated.title,
           } satisfies OutboundDispatchTransportResult;
         }
+        options?.onAdmission?.(
+          isProvablyNotSent(err) ? 'not-invoked' : 'indeterminate',
+        );
         return false;
       }
     },

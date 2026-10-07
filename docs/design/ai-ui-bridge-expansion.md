@@ -21,7 +21,9 @@ reset an edited form. This state lives in memory: closing the chat clears it,
 and reloading the client starts fresh. A pending send shows **Sending…** and
 locks the controls; the normal sender's acceptance changes it to **Submitted**.
 Acceptance can include local queue admission; it does not prove the agent
-processed it. When the sender does not confirm acceptance, the form retains its
+processed it. A definite local refusal restores the editable form with its
+values intact. Sender Retry acknowledgements update the same form submission.
+When the sender does not confirm acceptance, the form retains its
 values and stays locked with **Check send status**. Use the conversation’s
 existing send-status and recovery controls: an unconfirmed result can also mean
 the message was queued or its network outcome is uncertain.

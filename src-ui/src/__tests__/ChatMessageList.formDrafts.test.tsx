@@ -13,6 +13,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ChatContentPart } from '../contexts/active-chats-state';
+import type { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
 import type { ChatSession } from '../types';
 
 const { send, stream, connection } = vi.hoisted(() => ({
@@ -341,4 +342,82 @@ test('isolates Station connections, and closing a chat retires drafts without a 
     (controls().getByRole('button', { name: 'Submit' }) as HTMLButtonElement)
       .disabled,
   ).toBe(false);
+});
+
+test('restores an editable form on definite refusal, then locks acknowledged queue admission', async () => {
+  send.mockImplementationOnce(
+    (...args: Parameters<ReturnType<typeof useSendMessage>>) => {
+      args[7]?.onAdmission?.('not-invoked');
+      return Promise.resolve(false);
+    },
+  );
+  const rendered = render(
+    view(session('admission', [part('result-admission')])),
+  );
+  fill();
+  fireEvent.click(controls().getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
+    expect(
+      (controls().getByRole('button', { name: 'Submit' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+  expect(
+    (controls().getByRole('textbox', { name: /Reviewer/ }) as HTMLInputElement)
+      .value,
+  ).toBe('casey');
+  send.mockImplementationOnce(
+    (...args: Parameters<ReturnType<typeof useSendMessage>>) => {
+      args[7]?.onAdmission?.('accepted');
+      return Promise.resolve(undefined);
+    },
+  );
+  fireEvent.click(controls().getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
+    expect(controls().getByRole('button', { name: 'Submitted' })).toBeTruthy(),
+  );
+  rendered.rerender(
+    view(session('admission', [part('result-admission')]), 'queue-remount'),
+  );
+  expect(
+    (controls().getByRole('button', { name: 'Submitted' }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(send).toHaveBeenCalledTimes(2);
+});
+
+test('a later sender Retry acknowledgement settles the same unconfirmed form after remount', async () => {
+  let acknowledge:
+    | NonNullable<
+        NonNullable<
+          Parameters<ReturnType<typeof useSendMessage>>[7]
+        >['onAdmission']
+      >
+    | undefined;
+  send.mockImplementationOnce(
+    (...args: Parameters<ReturnType<typeof useSendMessage>>) => {
+      acknowledge = args[7]?.onAdmission;
+      acknowledge?.('indeterminate');
+      return Promise.resolve(false);
+    },
+  );
+  const chat = session('retry-ack', [part('result-retry-ack')]);
+  const rendered = render(view(chat));
+  fill();
+  fireEvent.click(controls().getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
+    expect(
+      controls().getByRole('button', { name: 'Check send status' }),
+    ).toBeTruthy(),
+  );
+  rendered.rerender(view(chat, 'retry-remount'));
+  act(() => acknowledge?.('accepted'));
+  expect(
+    (controls().getByRole('button', { name: 'Submitted' }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(
+    (controls().getByRole('textbox', { name: /Reviewer/ }) as HTMLInputElement)
+      .value,
+  ).toBe('casey');
 });

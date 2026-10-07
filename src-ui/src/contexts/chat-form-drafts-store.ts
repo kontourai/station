@@ -4,6 +4,7 @@ interface FormDraft {
   values: Record<string, string | boolean>;
   status: 'editing' | 'sending' | 'submitted' | 'unconfirmed';
   error?: string;
+  submissionToken?: object;
 }
 
 const drafts = new Map<string, Map<string, FormDraft>>();
@@ -54,7 +55,11 @@ export const chatFormDraftsStore = {
   beginSubmit(scope: string, key: string, values: FormDraft['values']) {
     const current = this.get(scope, key);
     if (current && current.status !== 'editing') return null;
-    const pending: FormDraft = { values, status: 'sending' };
+    const pending: FormDraft = {
+      values,
+      status: 'sending',
+      submissionToken: {},
+    };
     this.set(scope, key, pending);
     return pending;
   },
@@ -62,18 +67,26 @@ export const chatFormDraftsStore = {
     scope: string,
     key: string,
     pending: FormDraft,
-    accepted: boolean,
+    admission: 'accepted' | 'not-invoked' | 'indeterminate',
   ) {
-    // A late response must not resurrect a closed chat's draft.
-    if (this.get(scope, key) !== pending) return;
+    // Late acknowledgements, including Retry, belong only to this submission.
+    if (this.get(scope, key)?.submissionToken !== pending.submissionToken)
+      return;
     this.set(scope, key, {
-      values: pending.values,
-      status: accepted ? 'submitted' : 'unconfirmed',
-      ...(accepted
+      ...pending,
+      status:
+        admission === 'accepted'
+          ? 'submitted'
+          : admission === 'not-invoked'
+            ? 'editing'
+            : 'unconfirmed',
+      ...(admission === 'accepted'
         ? {}
         : {
             error:
-              'Submission could not be confirmed. Your input has been kept; check the conversation’s send status before retrying.',
+              admission === 'not-invoked'
+                ? 'The form was not sent. Your input has been kept.'
+                : 'Submission could not be confirmed. Your input has been kept; check the conversation’s send status before retrying.',
           }),
     });
   },
