@@ -2621,10 +2621,11 @@ function primaryCiRouterFindings(file, document) {
   return findings;
 }
 
-// This credentialed ingress executes only trusted base policy, never PR code.
+// This credentialed ingress executes only trusted base policy, never PR code
+// (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  'a51d13ef28d6e0419ac6e7a699b7b513c2011392550dcb93a4e65b0fe2e59ea7';
+  'cc0241a3b1655e3dc5ededeb69de44109656ef287171c49073b1509cabbf59e9';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')

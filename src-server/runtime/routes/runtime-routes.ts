@@ -236,6 +236,7 @@ import {
   runtimeConnectionSummary,
 } from '../../routes/agents/enriched-agents.js';
 import { createInvokeRoutes } from '../../routes/agents/invoke.js';
+import { createAgentMcpPromptRoutes } from '../../routes/agents/mcp-prompts.js';
 import { resolveRuntimeAgent } from '../../routes/agents/runtime-agent-resolver.js';
 import { createSkillRoutes } from '../../routes/agents/skills.js';
 import { createTemplateRoutes } from '../../routes/agents/templates.js';
@@ -419,6 +420,7 @@ import { resolveStationBrowserOrigins } from '../../security/station-browser-ori
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import {
   principalKey,
@@ -2686,6 +2688,10 @@ export function configureRuntimeRoutes(
           .map((peer) => peerCredentialStore.get(peer.environmentId))
           .filter((peer): peer is NonNullable<typeof peer> => peer !== null),
       context.environmentSecurityService.devicePairing.environmentId(),
+      (request) =>
+        !hostedTenantRegistry &&
+        !isHostedTenantExecutionRequired() &&
+        isBoundRuntimeLocalOperator(request),
     ),
   );
   context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));
@@ -4663,6 +4669,15 @@ export function configureRuntimeRoutes(
 
   context.app.route('/acp', createACPRoutes(runtimeContext));
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
+  context.app.route(
+    '/agents',
+    createAgentMcpPromptRoutes({
+      resolveAgentSpec: (slug) =>
+        runtimeContext.agentSpecs.get(runtimeAgentKey(slug)),
+      prompts: context.mcpService,
+      logger: context.logger,
+    }),
+  );
   context.app.route(
     '/',
     createInvokeRoutes(runtimeContext, {

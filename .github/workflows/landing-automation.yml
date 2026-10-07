@@ -3,7 +3,7 @@ name: "Repo: Landing automation"
 on:
   pull_request_target:
     branches: [main]
-    types: [labeled, ready_for_review, reopened]
+    types: [labeled, ready_for_review, reopened, dequeued]
   workflow_run:
     workflows: ["PR: CI"]
     types: [completed]
@@ -21,6 +21,7 @@ jobs:
     if: >-
       ${{ (github.event_name == 'pull_request_target' &&
            github.event.pull_request.head.repo.full_name == github.repository &&
+           github.event.action != 'dequeued' &&
            (github.event.action != 'labeled' || github.event.label.name == 'station-autoland')) ||
           (github.event_name == 'workflow_run' &&
            github.event.workflow_run.conclusion == 'success' &&
@@ -31,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: token
@@ -48,3 +49,45 @@ jobs:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           ACTIONS_TOKEN: ${{ github.token }}
         run: node scripts/landing-automation.mjs
+
+  # #3101 C/E: explain a merge-queue removal on the PR and re-arm an opted-in
+  # PR once when it merges cleanly with main. Trusted base policy only: the
+  # candidate head is fetched as Git objects for `git merge-tree`, never
+  # checked out or executed. The checkout matches this trusted workflow revision.
+  dequeue:
+    if: ${{ github.event_name == 'pull_request_target' && github.event.action == 'dequeued' }}
+    # One report at a time per PR. GitHub keeps only the newest pending run
+    # in a group, so a burst can drop a middle run. Each run reports the
+    # PR's latest timeline removal, not its own event's.
+    concurrency:
+      group: landing-dequeue-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: token
+        with:
+          app-id: ${{ vars.STATION_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.STATION_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: station
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+      - name: Explain the removal once
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          ACTIONS_TOKEN: ${{ github.token }}
+          COMMENT_AUTHOR: ${{ steps.token.outputs.app-slug }}[bot]
+        run: node scripts/merge-queue-dequeue.mjs

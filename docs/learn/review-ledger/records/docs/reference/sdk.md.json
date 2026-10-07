@@ -562,7 +562,19 @@
 
     "src-server/runtime/bootstrap/account-bound-device-gate.ts",
 
-    "src-server/security/relay-management-authority.ts"
+    "src-server/security/relay-management-authority.ts",
+
+    "packages/sdk/src/query-domains/stationUsage.ts",
+
+    "packages/sdk/src/query-domains/usageRollup.ts",
+
+    "packages/sdk/src/client/station-usage.ts",
+
+    "packages/shared/src/usage-semantics.ts",
+
+    "packages/shared/src/usage-fold.ts",
+
+    "packages/sdk/src/query-domains/mcpPromptRun.ts"
   ],
 
   "checks": [

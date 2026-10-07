@@ -17,6 +17,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
+- `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
@@ -71,6 +72,20 @@ proposal, preview, evaluation and revision review.
 complete answer batch and translate selected IDs to display labels/custom
 text. They do not authorize a reply or prove engine delivery. Stable types
 come from `@kontourai/station-contracts/harness-questions`.
+
+## MCP elicitation helpers
+
+`@kontourai/station-shared/mcp-elicitation` owns the browser-safe
+`mcpElicitationFormFromRequest`, `readMcpElicitationForm`,
+`validateMcpElicitationContent` and `readMcpElicitationResult` helpers. They
+normalize a form-mode `elicitation/create` request into the field subset
+Station renders, refuse anything outside it or over a bound, and validate
+accepted content against the form with a reason, never coercing or
+truncating. The server's answer path and the browser card run the same
+validator. Eager event and pending-card readers use the form-only
+`@kontourai/station-shared/mcp-elicitation-form` subpath; answer validation
+loads with the form renderer. The public facade retains the same helpers.
+Stable types come from `@kontourai/station-contracts/mcp-elicitation`.
 
 ## Request settlement
 

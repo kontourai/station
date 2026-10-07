@@ -1,0 +1,17 @@
+{
+  "revision": "5a35b0bc5fe6a6e4f012c1e9bc08374c184b53b8",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Delta since the previous note only removes export keywords from the new shard annotation helper and the dequeue report helpers (module-private, no caller change) and reformats; behavior and the claims reviewed in the previous note are unchanged.","inputs":[".veritas/README.md","scripts/fast-checks-shard.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Delta since the previous note only removes export keywords from the new shard annotation helper and the dequeue report helpers (module-private, no caller change) and reformats; behavior and the claims reviewed in the previous note are unchanged.","inputs":["docs/guides/code-quality.md","scripts/fast-checks-shard.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Delta since the previous note only removes export keywords from the new shard annotation helper and the dequeue report helpers (module-private, no caller change) and reformats; behavior and the claims reviewed in the previous note are unchanged.","inputs":["docs/guides/development.md","scripts/fast-checks-shard.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Delta since the previous note only removes export keywords from the new shard annotation helper and the dequeue report helpers (module-private, no caller change) and reformats; behavior and the claims reviewed in the previous note are unchanged.","inputs":["docs/guides/releasing.md","scripts/merge-queue-dequeue.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Delta since the previous note only removes export keywords from the new shard annotation helper and the dequeue report helpers (module-private, no caller change) and reformats; behavior and the claims reviewed in the previous note are unchanged.","inputs":["docs/guides/testing.md","scripts/fast-checks-shard.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Delta since the previous note only removes export keywords from the new shard annotation helper and the dequeue report helpers (module-private, no caller change) and reformats; behavior and the claims reviewed in the previous note are unchanged.","inputs":["docs/testing/browser-smoke.md","scripts/fast-checks-shard.mjs"]}
+  ]
+}

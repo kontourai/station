@@ -176,7 +176,7 @@ every possible tool outcome:
 4. The client renders a confirmation UI and `POST /tool-approval/:approvalId` with `{ approved: true/false }`
 5. `ApprovalRegistry.resolve()` unblocks the hook; the tool executes or is skipped
 
-The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
+The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning. An injected event is emitted as soon as it is injected rather than waiting for the model's next chunk, so a request raised while a tool call blocks (an MCP server's form elicitation, #3284) still reaches the person; see the [MCP host design](../design/mcp-ui-host.md#elicitation-path).
 
 ### Questions from agent harnesses
 

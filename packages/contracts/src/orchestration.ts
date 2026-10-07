@@ -4,6 +4,7 @@ import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
+import type { McpElicitationContent } from './mcp-elicitation.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -133,6 +134,8 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
       answers?: HarnessQuestionAnswers;
+      /** #3284: accepted content for a tool server's form elicitation. */
+      elicitationContent?: McpElicitationContent;
     }
   | { type: 'stopSession'; threadId: string }
   | {

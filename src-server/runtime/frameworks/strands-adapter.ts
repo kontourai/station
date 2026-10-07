@@ -31,9 +31,9 @@ import type { StorageAdapter } from '@voltagent/core';
 import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { createLogger } from '../../utils/logger.js';
 import {
-  currentScheduledPrincipal,
-  currentScheduledRunId,
-} from '../agents/scheduled-principal-context.js';
+  currentUnattendedPrincipal,
+  currentUnattendedRunId,
+} from '../agents/unattended-principal-context.js';
 import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
@@ -192,9 +192,9 @@ class StrandsAgentWrapper implements IAgent {
           }
         : {}),
       userId: options?.userId,
-      traceId: currentScheduledRunId() ?? this._invocationCtx.traceId,
+      traceId: currentUnattendedRunId() ?? this._invocationCtx.traceId,
       delegation: options?.delegation,
-      unattendedPrincipal: currentScheduledPrincipal(),
+      unattendedPrincipal: currentUnattendedPrincipal(),
     };
     // The bag itself stays EMPTY of trusted data: invocationState is the
     // SDK's tool-writable scratch space, so the context is bound out-of-band

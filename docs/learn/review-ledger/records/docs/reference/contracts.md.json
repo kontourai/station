@@ -158,7 +158,11 @@
 
     "src-server/security/pairing-route-scopes.ts",
 
-    "src-server/security/relay-management-authority.ts"
+    "src-server/security/relay-management-authority.ts",
+
+    "packages/contracts/src/usage-stats.ts",
+
+    "src-server/analytics/__tests__/usage-observation-projection.test.ts"
   ],
 
   "checks": [

@@ -23,6 +23,12 @@ import {
 } from '../sessions/transcript-file-io.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 
+// Adapter wiring fixtures must not borrow this Mac's real secure-store account.
+vi.mock('node:os', async (original) => ({
+  ...(await original<typeof import('node:os')>()),
+  platform: () => 'linux',
+}));
+
 // The genuine built-in station-control server as it appears in a resolved
 // agent's toolServers — required for `station-control_*` auto-approval to be
 // honored (the reserved-name identity guard rejects a same-id impostor).

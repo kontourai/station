@@ -731,8 +731,13 @@ discovery lists what the proxy serves.
 The Engine's login readiness is checked under the same `env` and `configHome`:
 a proxy token such as `ANTHROPIC_AUTH_TOKEN` counts as signed in, an
 empty-string value masks the inherited key, and Codex's login probe reads the
-configured `CODEX_HOME`. Readiness does not apply the app-home opt-in or a
-selected credential profile.
+configured `CODEX_HOME`. On macOS, Claude readiness reads its selected
+Keychain namespace first, using `CLAUDE_SECURESTORAGE_CONFIG_DIR` before
+`CLAUDE_CONFIG_DIR`. It consults the selected credential file only when the
+Keychain entry is absent. An unreadable or malformed secure-store result stays
+unknown; it cannot borrow another namespace's login. These checks establish
+credential presence, rather than token validity. Readiness does not apply the
+app-home opt-in or a selected credential profile.
 
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home
