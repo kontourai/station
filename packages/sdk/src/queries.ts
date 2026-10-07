@@ -41,7 +41,6 @@ export {
   type ModelCapabilitiesEnvelope,
   materializeEngineAgent,
   recordFirstRunDecision,
-  runAgentMcpPrompt,
   submitToolApproval,
   type UpdateAppConfigResult,
   type UpdateAppLogLevelResult,
