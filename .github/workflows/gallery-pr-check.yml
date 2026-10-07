@@ -126,10 +126,18 @@ jobs:
         with: { install: false }
 
       - name: Install the native build toolchain node-pty needs
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential
+          bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+            "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+            --output "$bootstrap"
+          printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+          sha256sum "$bootstrap"
+          bash "$bootstrap" build-essential
 
       - name: Trust the workspace checkout inside the container
         run: |

@@ -156,6 +156,18 @@
 
     "scripts/evidence-check-execution-gate.mjs",
 
+    "scripts/install-ci-ubuntu-packages.sh",
+
+    ".github/workflows/gallery-pr-check.yml",
+
+    ".github/workflows/nightly-gallery.yml",
+
+    "scripts/actionlint-gate.mjs",
+
+    "scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts",
+
+    "scripts/vitest-resource-manifest.mjs",
+
     "scripts/proof-repo-guardrails.mjs",
 
     "scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts"
