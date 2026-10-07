@@ -73,7 +73,6 @@ function hydratePage(
     const placeholderToastId = placeholders.get(event.requestId);
     if (!placeholderToastId || event.blocking === false) continue;
     unresolved.delete(event.requestId);
-    if (inputRequestFromRequestEvent(event)) continue;
     const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
     // The placeholder is still this request's toast: an answer, a newer
     // snapshot or a live `request.opened` since the read all replace it.
@@ -98,10 +97,7 @@ function hydratePage(
       : {};
     // A questionnaire or an MCP form is answered on its own card, not by the
     // approval toast, so the placeholder stays; only the turn is bound.
-    if (
-      readHarnessQuestionnaire(event.payload?.questionnaire) ||
-      carriesMcpElicitationForm(event.payload)
-    ) {
+    if (inputRequestFromRequestEvent(event)) {
       if (learnedTurnId) activeChatsStore.updateChat(event.threadId, bindTurn);
       continue;
     }
