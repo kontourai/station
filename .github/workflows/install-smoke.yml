@@ -1,4 +1,4 @@
-name: Portable Install Smoke
+name: "PR: Install smoke"
 
 on:
   pull_request_target:
@@ -6,11 +6,17 @@ on:
       - 'install.sh'
       - 'install.ps1'
       - 'packages/shared/src/installer/**'
+      # Bundled into install.ps1's installer core (#2675 W2).
+      - 'packages/shared/src/windows-path-trust.ts'
+      - 'packages/shared/src/windows-system-utility.mjs'
+      # Which installer packaged `station upgrade` runs.
+      - 'packages/shared/src/prebuilt-archive.ts'
       - 'scripts/smoke-install-ps1.mjs'
       - 'scripts/install-script-generated.mjs'
       - '.gitattributes'
       - 'scripts/package-portable-release.sh'
       - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
       - 'scripts/smoke-install-prebuilt-archive.sh'
       - 'packaging/portable-server/**'
@@ -430,7 +436,7 @@ jobs:
   # (#2484), and refuses tampered bytes and a foreign signature. Stage-only
   # is all install.ps1 does so far; the full install joins in slice W2.
   install-ps1-windows:
-    name: install.ps1 stage-only (win32-x64)
+    name: install.ps1 (win32-x64)
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
@@ -467,7 +473,7 @@ jobs:
             commit --quiet --allow-empty -m 'test(install-smoke): second archive generation'
           npm run build:portable-server -- --ref v0.0.0-preview.2 \
             --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-2"
-      - name: Stage both archives with install.ps1, no Node.js on PATH
+      - name: Stage, install, upgrade and uninstall with install.ps1, no Node.js on PATH
         run: |
           node scripts/smoke-install-ps1.mjs \
             --archive1 "$RUNNER_TEMP/archive-1/station-server-win32-x64.zip" \

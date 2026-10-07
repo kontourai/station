@@ -9,10 +9,19 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import type React from 'react';
 import { createRef, useState } from 'react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
-import { mentionToken } from '../components/chat/composer-mentions';
+import {
+  mentionToken,
+  parseComposerSessionReferences,
+} from '../components/chat/composer-mentions';
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  endConversationReferenceDrag,
+  startConversationReferenceDrag,
+} from '../components/chat/conversationReferenceDrag';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const fetchConversationInventory = vi.hoisted(() => vi.fn());
@@ -337,6 +346,69 @@ describe('ChatInputArea', () => {
     fireEvent.drop(screen.getByRole('textbox'), { dataTransfer });
 
     expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  test('#3159: a conversation row dragged from this Station becomes a reference; a forged or foreign drag does not', () => {
+    const onInputChange = vi.fn();
+    const scope = {
+      apiBase: 'http://station.test',
+      authorityKey: 'owner-a',
+      isCurrent: () => true,
+    };
+    render(
+      <ChatInputArea
+        {...renderProps({
+          sessionId: 'session-a',
+          input: '',
+          onInputChange,
+          mentionAuthority: 'authority-a',
+          activeConversationId: 'current-conversation',
+          mentionRequestScope: scope,
+        })}
+      />,
+    );
+    const textbox = screen.getByRole('textbox');
+    const transfer = () => {
+      const values = new Map<string, string>();
+      return {
+        types: [CONVERSATION_REFERENCE_DRAG_TYPE],
+        setData: (type: string, value: string) => values.set(type, value),
+        getData: (type: string) => values.get(type) ?? '',
+        effectAllowed: 'all',
+      };
+    };
+    const rowDrag = (reference: { apiBase: string }) => {
+      const dataTransfer = transfer();
+      startConversationReferenceDrag(
+        { dataTransfer } as unknown as React.DragEvent<HTMLElement>,
+        { id: 'row-conversation', title: 'Row conversation', ...reference },
+      );
+      return dataTransfer;
+    };
+
+    // Another Station's row (same id) is not this composer's to accept.
+    fireEvent.drop(textbox, {
+      dataTransfer: rowDrag({ apiBase: 'http://other.test' }),
+    });
+    endConversationReferenceDrag();
+    // A payload no row of this window started (another app, another tab).
+    const forged = transfer();
+    forged.setData(CONVERSATION_REFERENCE_DRAG_TYPE, 'row-conversation');
+    fireEvent.drop(textbox, { dataTransfer: forged });
+    expect(onInputChange).not.toHaveBeenCalled();
+
+    fireEvent.drop(textbox, {
+      dataTransfer: rowDrag({ apiBase: scope.apiBase }),
+    });
+    expect(onInputChange).toHaveBeenCalledTimes(1);
+    const [next] = onInputChange.mock.calls[0]!;
+    expect(parseComposerSessionReferences(next)).toEqual([
+      expect.objectContaining({
+        conversationId: 'row-conversation',
+        label: 'Row conversation',
+        authority: 'authority-a',
+      }),
+    ]);
   });
 
   test('closes the picker and returns focus after a conversation reference drop', async () => {

@@ -28,6 +28,10 @@ import {
   type CodexSessionRecord,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import {
+  codexUsageLimitDetails,
+  observeCodexRateLimits,
+} from './codex-usage-limit.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
@@ -243,6 +247,8 @@ export function handleCodexNotification(
       return;
     }
     case 'account/rateLimits/updated': {
+      // #3157: the reset a usage-limit failure resumes at.
+      observeCodexRateLimits(record, notification.params);
       onQuotaUpdate?.(record, notification.params);
       return;
     }
@@ -353,6 +359,7 @@ export function handleCodexNotification(
       if (turn.status === 'failed') {
         const turnError = isRecord(turn.error) ? turn.error : undefined;
         const codexErrorInfo = extractString(turnError?.codexErrorInfo);
+        const usageLimit = codexUsageLimitDetails(record, codexErrorInfo);
         publish({
           eventId: crypto.randomUUID(),
           provider: 'codex',
@@ -374,6 +381,7 @@ export function handleCodexNotification(
           details: {
             additionalDetails: extractString(turnError?.additionalDetails),
             codexErrorInfo: turnError?.codexErrorInfo,
+            ...usageLimit,
           },
         });
         providerOps.add(1, {
@@ -422,6 +430,14 @@ export function handleCodexNotification(
       if (errorTurnId && !willRetry) {
         markCodexTurnTerminal(record, errorTurnId);
       }
+      // #3157: the same usage-limit facts the turn's failed `turn/completed`
+      // carries, so both terminals arm one recovery and hold the queue.
+      const usageLimit = willRetry
+        ? undefined
+        : codexUsageLimitDetails(
+            record,
+            extractString(notification.params.error.codexErrorInfo),
+          );
       publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -438,6 +454,7 @@ export function handleCodexNotification(
           additionalDetails: extractString(
             notification.params.error.additionalDetails,
           ),
+          ...usageLimit,
         },
       });
       return;

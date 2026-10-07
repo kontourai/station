@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { _setApiBase } from '../api-core';
 import {
   createAgentDetailed,
   createAgentRaw,
@@ -18,7 +19,6 @@ import {
   getConversationHandoffStatus,
   handoffExecutionMessage,
   reserveConversationContextBoundary,
-  sendExecutionMessage,
 } from '../client/execution';
 import { StationHttpError, setClientCredentialResolver } from '../client/http';
 import { getInputReplyContext } from '../client/input-reply';
@@ -27,6 +27,7 @@ import {
   discoverProjectTaskRoom,
   ProjectTaskRoomProtocolError,
 } from '../client/project-task-rooms';
+import { sendExecutionMessage } from '../client/send-execution-message';
 import {
   getSessionInventory,
   SessionInventoryRequestError,
@@ -52,6 +53,7 @@ import {
   getTaskUserInputReferences,
   TaskUserInputReferenceRequestError,
 } from '../client/task-user-input-references';
+import { runAgentMcpPrompt } from '../query-domains/mcpPromptRun';
 
 /**
  * #2708 A-3a: the execution, agents, task and session fetchers moved onto
@@ -98,6 +100,18 @@ const message = {
 const readableFetchers: ReadonlyArray<
   readonly [string, () => Promise<unknown>, ErrorClass]
 > = [
+  [
+    'mcp: runAgentMcpPrompt',
+    () => {
+      _setApiBase(API);
+      return runAgentMcpPrompt('writer', {
+        serverId: 'fixture',
+        name: 'prompt',
+        arguments: {},
+      });
+    },
+    StationHttpError,
+  ],
   ['agents: fetchAgentCatalog', () => fetchAgentCatalog(API), StationHttpError],
   ['agents: getAgent', () => getAgent(API, 'writer'), StationHttpError],
   [

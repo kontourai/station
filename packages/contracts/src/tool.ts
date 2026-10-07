@@ -110,6 +110,21 @@ export interface ToolDef {
     intervalMs?: number;
   };
   exposedTools?: string[];
+  /**
+   * #3279 connected accounts. Absent means the integration uses the shared
+   * `instance` credential exactly as before. `principal` means each person
+   * connects their own account: a turn uses only the credential owned by the
+   * principal it runs as (a Project-narrowed credential for the Agent's
+   * Project first, then the person's own), and a person with no credential
+   * gets a "connect your account" refusal. The shared instance credential is
+   * used for such a turn only when `allowInstanceFallback` is true.
+   */
+  credentialOwnership?: ToolCredentialOwnership;
+}
+
+export interface ToolCredentialOwnership {
+  owner: 'principal';
+  allowInstanceFallback?: boolean;
 }
 
 export interface ToolServerProbeResult {
@@ -488,6 +503,37 @@ export interface ConnectionConfig {
   readinessEvidence?: ConnectionReadinessEvidence;
 }
 
+/**
+ * Names what blocks a connection that is not ready: each missing or errored
+ * required prerequisite with its first fix step and command. Only the
+ * prerequisite's name, id and catalog install guide are used. Readiness
+ * evidence text (a failed smoke's reason) can carry remote error text, so it
+ * is deliberately not surfaced to a delegating agent. Empty when no
+ * prerequisite is recorded, so a caller appends it only when present.
+ */
+export function describeConnectionBlockers(
+  connection: Pick<ConnectionConfig, 'prerequisites'>,
+): string {
+  const blocked = (connection.prerequisites ?? []).filter(
+    (p) => p.category === 'required' && p.status !== 'installed',
+  );
+  if (blocked.length > 0) {
+    return blocked
+      .map((p) => {
+        const guide = p.installGuide;
+        const fix = [
+          guide?.steps?.[0],
+          guide?.commands?.[0] ? `run \`${guide.commands[0]}\`` : undefined,
+        ].filter(Boolean);
+        return `${p.name} (${p.id}) is ${p.status === 'error' ? 'failing' : 'missing'}${
+          fix.length > 0 ? `: ${fix.join('; ')}` : ''
+        }`;
+      })
+      .join('. ');
+  }
+  return '';
+}
+
 export interface ModelConnectionConfig extends ConnectionConfig {
   kind: 'model';
 }
@@ -535,9 +581,13 @@ export interface AgentConnectionSettings {
   enabled?: boolean;
   /**
    * Engine-connection runtime config. Claude and Codex connections accept
-   * two additional keys (station#2072, for routing a connection through a
+   * additional keys (station#2072, for routing a connection through a
    * local model proxy):
    *
+   * - `proxyConnectionId`: an explicitly selected saved OpenAI-compatible model
+   *   connection. Its current address/key are resolved at launch; credentials
+   *   are not copied into this engine configuration. Missing or disabled proxies
+   *   refuse launch. Native Codex provider arguments preserve the config home.
    * - `env`: map of environment-variable name → string value, merged into
    *   every engine subprocess the connection spawns (sessions, model
    *   discovery, quota probes, source-home maintenance; adoption/login

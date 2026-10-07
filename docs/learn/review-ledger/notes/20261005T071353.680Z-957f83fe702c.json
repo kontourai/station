@@ -1,0 +1,7 @@
+{
+  "revision": "b63069da541ff5da86c393a8445454cab66dca40",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"src-ui/src/index.css changed only in two comments (the collapsed dock action is now named New chat, not \"Start a chat\"); no rule changed. Nothing this page or capture shows depends on that text; no prose change or recapture needed.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]}
+  ]
+}

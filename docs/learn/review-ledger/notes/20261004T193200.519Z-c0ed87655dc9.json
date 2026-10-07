@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the attention and orchestration contract paragraphs against packages/contracts/src/attention.ts and orchestration.ts: peerRequestReference, viewerCanRespond and peerPendingRequest are optional, additive, and sourced from the paired Station status read.","inputs":["docs/reference/contracts.md","packages/contracts/src/attention.ts","packages/contracts/src/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

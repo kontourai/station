@@ -1,5 +1,8 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   buildSnapshot,
   capacityMetrics,
@@ -8,6 +11,7 @@ import {
   concurrencyTimeline,
   distribution,
   groupRuns,
+  LEDGER_LOG_FORMAT,
   ledgerMetrics,
   mergeMetrics,
   parseOptions,
@@ -22,6 +26,8 @@ import {
   summarizeGroups,
   windowDecision,
 } from '../ci-health.mjs';
+
+const makeTempDir = trackTempDirs();
 
 const at = (minutes: number) =>
   new Date(Date.UTC(2026, 9, 1, 0, minutes)).toISOString();
@@ -41,7 +47,7 @@ const job = (id = 1, overrides = {}) => ({
 const run = (id = 1, overrides = {}) => ({
   id,
   run_attempt: 1,
-  name: 'CI',
+  name: 'PR: CI',
   event: 'pull_request',
   status: 'completed',
   conclusion: 'success',
@@ -332,7 +338,7 @@ describe('CI health metrics', () => {
   it('reports qualification recovery and actual agent attempts separately from queue churn', () => {
     const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
       run(i, {
-        name: 'Main qualification',
+        name: i === 0 ? 'Main qualification' : 'Main: Qualification',
         head_branch: 'main',
         event: 'schedule',
         conclusion,
@@ -370,7 +376,7 @@ describe('CI health metrics', () => {
       mergeMetrics(
         [
           run(9, {
-            name: 'Merge integration',
+            name: 'PR: Merge integration',
             event: 'merge_group',
             conclusion: 'success',
             run_started_at: at(0),
@@ -424,12 +430,66 @@ describe('CI health metrics', () => {
   });
   it('counts only PR merges touching review-ledger files from git log', () => {
     const log =
-      '\x1efix: one (#3102)\n\ndocs/learn/review-ledger/a.json\ndocs/learn/review-ledger/b.json\n\x1efix: two (#3103)\ndocs/learn/review-ledger/c.json\n\x1eautomation\ndocs/learn/review-ledger/d.json\n\x1eother (#3104)\nscripts/foo.mjs\n';
+      '\x1efix: one (#3102)\n\nA\tdocs/learn/review-ledger/a.json\nM\tdocs/learn/review-ledger/b.json\n\x1efix: two (#3103)\n\nA\tdocs/learn/review-ledger/c.json\n\x1eautomation\n\nA\tdocs/learn/review-ledger/d.json\n\x1eother (#3104)\n\nM\tscripts/foo.mjs\n';
     expect(ledgerMetrics(log)).toEqual({
       mergesTouchingLedger: 2,
       medianFiles: 2,
       maxFiles: 2,
     });
+    // Compaction merges (#3394), read from a real repository with the exact
+    // log format collection uses: the archive and the notes it moved do not
+    // count; the index and any note the same merge adds do.
+    const root = makeTempDir('station-ci-health-ledger-');
+    const run = (...args: string[]) =>
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.invalid',
+          '-c',
+          'core.hooksPath=/dev/null',
+          ...args,
+        ],
+        { cwd: root, encoding: 'utf8', windowsHide: true },
+      );
+    const write = (path: string, text: string) => {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), text);
+    };
+    const note = (n: number) =>
+      `docs/learn/review-ledger/notes/20261001T000000.000Z-${String(n).padStart(12, '0')}.json`;
+    const land = (subject: string) => {
+      run('add', '-A');
+      run('commit', '-qm', subject);
+    };
+    run('init', '-q', '-b', 'main');
+    write('docs/learn/review-ledger/ledger.json', '1\n');
+    for (const n of [1, 2, 3, 4, 5]) write(note(n), `note ${n}\n`);
+    land('fix: five reviews (#3401)');
+    const advance = (archive: string) => {
+      write('docs/learn/review-ledger/ledger.json', `${archive}\n`);
+      write(
+        `docs/learn/review-ledger/notes/archive/${archive.repeat(40)}.json`,
+        '{}\n',
+      );
+    };
+    advance('a');
+    for (const n of [1, 2, 3]) rmSync(join(root, note(n)));
+    land('docs(docs): advance the baseline (#3402)');
+    advance('b');
+    for (const n of [4, 5]) rmSync(join(root, note(n)));
+    for (const n of [6, 7]) write(note(n), `note ${n}\n`);
+    land('feat(docs): advance and review in one squash (#3403)');
+    const metricsOf = (commit: string) =>
+      ledgerMetrics(run('log', '-1', ...LEDGER_LOG_FORMAT, commit));
+    // Ordinary review merge: the index and five added notes.
+    expect(metricsOf('HEAD~2').maxFiles).toBe(6);
+    // Pure compaction: the index alone.
+    expect(metricsOf('HEAD~1').maxFiles).toBe(1);
+    // Compaction plus two new notes: the index and the two added notes.
+    expect(metricsOf('HEAD').maxFiles).toBe(3);
     expect(ledgerMetrics('')).toEqual({
       mergesTouchingLedger: 0,
       medianFiles: null,

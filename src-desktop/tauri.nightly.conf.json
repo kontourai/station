@@ -26,7 +26,8 @@
     "resources": {
       "../dist-server": "dist-server",
       "../dist-desktop-runtime/node_modules": "node_modules",
-      "../schemas": "schemas"
+      "../schemas": "schemas",
+      "../dist-desktop-runtime/examples": "examples"
     },
     "icon": [
       "icons/nightly/32x32.png",
@@ -38,8 +39,15 @@
   },
   "plugins": {
     "deep-link": {
-      "mobile": [{ "scheme": ["station-nightly"], "appLink": false }],
-      "desktop": { "schemes": ["station-nightly"] }
+      "mobile": [
+        {
+          "scheme": ["station-nightly"],
+          "appLink": false
+        }
+      ],
+      "desktop": {
+        "schemes": ["station-nightly"]
+      }
     }
   }
 }

@@ -79,6 +79,7 @@ export type {
 } from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   TurnProgressSilence,
 } from '@kontourai/station-contracts/orchestration';
 export type {
@@ -805,6 +806,7 @@ export {
   useBrandingQuery,
   useBulkApproveProposedChangesMutation,
   useBulkRejectProposedChangesMutation,
+  useChildWorkTranscriptQuery,
   useClearAppHomeProfileMutation,
   useClearFeedbackAnalysisMutation,
   useClearNotificationActivityMutation,
@@ -823,6 +825,7 @@ export {
   useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useConversationsQuery,
+  useConversationUsageTreeQuery,
   useCoreUpdateStatusQuery,
   useCreateACPConnectionMutation,
   useCreateAgentDetailedMutation,
@@ -1043,6 +1046,7 @@ export {
   useSmokeAgentConnectionMutation,
   useSmokeModelConnectionMutation,
   useSshEnvironmentsQuery,
+  useStationUsageQuery,
   useStatsQuery,
   useStopProviderTaskMutation,
   useSurveyFlowReviewsQuery,

@@ -35,6 +35,8 @@ interface SessionModelPickerProps {
     value: string | number | boolean | undefined,
   ) => void;
   onClose: () => void;
+  /** See `ModelPickerDialogFrame`'s `returnFocusTarget`. */
+  returnFocusTarget?: HTMLElement | null;
 }
 
 export function formatContextWindow(tokens: number): string {
@@ -57,6 +59,7 @@ export function SessionModelPicker({
   onReset,
   onRuntimeOptionChange,
   onClose,
+  returnFocusTarget,
 }: SessionModelPickerProps) {
   const [query, setQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState(
@@ -336,7 +339,10 @@ export function SessionModelPicker({
   };
 
   return (
-    <ModelPickerDialogFrame onClose={onClose}>
+    <ModelPickerDialogFrame
+      onClose={onClose}
+      returnFocusTarget={returnFocusTarget}
+    >
       {loading ? (
         <SkeletonList count={3} label="Loading models" />
       ) : (

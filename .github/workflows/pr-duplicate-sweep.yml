@@ -1,4 +1,4 @@
-name: PR duplicate sweep
+name: "Repo: Duplicate sweep"
 
 on:
   schedule:

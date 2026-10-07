@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
+import type { OverlappingUsageMeasurements } from '@kontourai/station-contracts/usage-stats';
 import { createLogger } from '../utils/logger.js';
 import {
   ACHIEVEMENTS,
   type Achievement,
-  applyEnrichmentUsageToUsageStats,
   applyMessageToUsageStats,
   applyOrchestrationUsageToUsageStats,
   checkAchievement,
@@ -43,7 +43,13 @@ interface OrchestrationUsageSource {
   listUsageReceipts?(
     authority: SessionReadAuthority,
     stationId: string,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ): {
     receipts: UsageReceipt[];
     nextCursor?: string;
@@ -95,8 +101,6 @@ export class UsageAggregator {
       const stats = JSON.parse(content);
       // Older resets wrote an empty object instead of a usable accumulator.
       if (Object.keys(stats).length === 0) return createEmptyUsageStats();
-      // Clean up legacy "unknown" model bucket
-      delete stats.byModel?.unknown;
       return stats;
     }
     return createEmptyUsageStats();
@@ -129,33 +133,28 @@ export class UsageAggregator {
   }
 
   async incrementalUpdate(
-    message: any,
-    agentSlug: string,
+    _message: unknown,
+    _agentSlug: string,
     _conversationId: string,
   ): Promise<void> {
-    return this.serialize(() =>
-      this.incrementalUpdateInner(message, agentSlug),
-    );
+    return this.invalidateSnapshot();
   }
 
   async applyEnrichmentUsage(
-    message: any,
-    agentSlug: string,
+    _message: unknown,
+    _agentSlug: string,
     _conversationId: string,
-    previousModelId = '',
+    _previousModelId = '',
   ): Promise<void> {
+    return this.invalidateSnapshot();
+  }
+
+  private invalidateSnapshot(): Promise<void> {
     return this.serialize(async () => {
+      this.lastRescanAt = undefined;
       const stats = await this.loadStats();
-      applyEnrichmentUsageToUsageStats(
-        stats,
-        message,
-        agentSlug,
-        '',
-        previousModelId,
-      );
       if (stats.snapshot) stats.snapshot.costCoverageChecked = false;
       await this.saveStats(stats);
-      await this.updateAchievements(stats);
     });
   }
 
@@ -169,20 +168,8 @@ export class UsageAggregator {
     }
   }
 
-  private async incrementalUpdateInner(
-    message: any,
-    agentSlug: string,
-  ): Promise<void> {
-    const stats = await this.loadStats();
-    applyMessageToUsageStats(stats, message, agentSlug);
-    if (stats.snapshot) stats.snapshot.costCoverageChecked = false;
-    await this.saveStats(stats);
-    await this.updateAchievements(stats);
-  }
-
   private async fullRescanInner(): Promise<UsageStats> {
-    // Load existing stats instead of starting from zero
-    const stats = await this.loadStats();
+    const previousStats = await this.loadStats();
     const agentsDir = join(this.projectHomeDir, 'agents');
 
     // Track what we've seen in current files
@@ -195,47 +182,16 @@ export class UsageAggregator {
       : [];
     const sessionCounts = new Map<string, Set<string>>();
 
-    // Load app config to get default model
-    const appConfigPath = join(this.projectHomeDir, 'config', 'app.json');
-    let defaultModel = '';
-    try {
-      if (existsSync(appConfigPath)) {
-        const appConfig = JSON.parse(await readFile(appConfigPath, 'utf-8'));
-        defaultModel = appConfig.defaultModel || '';
-      }
-    } catch (error) {
-      logger.error('Failed to load app config', { error });
-    }
-
     for (const agent of agents) {
       if (!agent.isDirectory()) continue;
       const agentSlug = agent.name;
-
-      // Load agent spec to get model
-      const agentJsonPath = join(agentsDir, agentSlug, 'agent.json');
-      let agentModel = defaultModel;
-      try {
-        if (existsSync(agentJsonPath)) {
-          const agentSpec = JSON.parse(await readFile(agentJsonPath, 'utf-8'));
-          agentModel = agentSpec.model || defaultModel;
-        }
-      } catch (error) {
-        logger.error('Failed to load agent spec', { agentSlug, error });
-      }
 
       const sessionsDir = join(agentsDir, agentSlug, 'memory', 'sessions');
 
       if (!existsSync(sessionsDir)) continue;
 
       const sessionFiles = await readdir(sessionsDir);
-      // Filter to real transcripts before counting. The loop below already
-      // does; this Set did not, and `'c.ndjson.<pid>.<uuid>.tmp'` survives
-      // `.replace('.ndjson','')` as a DISTINCT id, so any stray inflates the
-      // conversation count. archive#2252 made destructive rewrites publish
-      // via a temp file in this directory, so a crash between the write and
-      // the rename now leaves exactly such a stray — and `mergeRescannedUsageStats`
-      // merges lifetime totals with `Math.max`, which latches the inflated
-      // number permanently.
+      // Crash-leftover temporary rewrite files are not transcripts.
       sessionCounts.set(
         agentSlug,
         new Set(
@@ -247,7 +203,6 @@ export class UsageAggregator {
 
       for (const file of sessionFiles) {
         if (!file.endsWith('.ndjson')) continue;
-        const _conversationId = file.replace('.ndjson', '');
         const filePath = join(sessionsDir, file);
 
         const stream = createReadStream(filePath, 'utf-8');
@@ -257,12 +212,7 @@ export class UsageAggregator {
           if (!line.trim()) continue;
           try {
             const message = JSON.parse(line);
-            applyMessageToUsageStats(
-              currentStats,
-              message,
-              agentSlug,
-              agentModel,
-            );
+            applyMessageToUsageStats(currentStats, message, agentSlug);
             const cost = message.metadata?.usage?.estimatedCost;
             if (
               (message.role === 'assistant' || message.metadata?.usage) &&
@@ -289,27 +239,59 @@ export class UsageAggregator {
       }
     }
 
-    // archive#3245: the orchestration substrate, folded by the SAME
-    // derivation the stats route uses. It runs after the memory walk and is
-    // handed the exact id set that walk just counted, so a session living in
-    // both substrates cannot contribute twice — see
-    // `applyOrchestrationUsageToUsageStats` for why that filter is on an
-    // observed id rather than a provider name.
+    // Relay provenance selects the primary ledger; coincidental ids do not.
     const orchestrationSessions = this.readOrchestrationSessionUsage();
-    if (orchestrationSessions) {
-      const memoryConversationIds = new Set<string>();
-      for (const ids of sessionCounts.values()) {
-        for (const id of ids) memoryConversationIds.add(id);
+    const memorySessionKeys = new Set<string>();
+    for (const [agentSlug, ids] of sessionCounts)
+      for (const id of ids) memorySessionKeys.add(`${agentSlug}\0${id}`);
+    const mirroredSessions =
+      orchestrationSessions?.filter(
+        (session) =>
+          session.memoryMirror &&
+          memorySessionKeys.has(
+            `${session.memoryMirror.agentSlug}\0${session.memoryMirror.conversationId}`,
+          ),
+      ) ?? [];
+    const mirroredSessionSet = new Set(mirroredSessions);
+    const memoryConversationIds = new Set(
+      [...sessionCounts.values()].flatMap((ids) => [...ids]),
+    );
+    const ambiguousRelaySessions =
+      orchestrationSessions?.filter(
+        (session) =>
+          session.usage.provider === 'station-agent' &&
+          !session.memoryMirror &&
+          (memoryConversationIds.has(session.threadId) ||
+            memoryConversationIds.has(session.conversationId)),
+      ) ?? [];
+    const ambiguousRelaySet = new Set(ambiguousRelaySessions);
+    const ambiguousMeasurements: OverlappingUsageMeasurements = {};
+    for (const session of ambiguousRelaySessions) {
+      for (const field of [
+        'inputTokens',
+        'outputTokens',
+        'cacheReadTokens',
+        'cacheWriteTokens',
+        'reportedCostUsd',
+      ] as const) {
+        const value = session.usage[field];
+        if (value !== undefined)
+          ambiguousMeasurements[field] =
+            (ambiguousMeasurements[field] ?? 0) + value;
       }
+    }
+    if (orchestrationSessions) {
       currentStats.lifetime.engineUsageCoverage =
         applyOrchestrationUsageToUsageStats(
           currentStats,
-          orchestrationSessions,
-          memoryConversationIds,
+          orchestrationSessions.filter(
+            (session) => !ambiguousRelaySet.has(session),
+          ),
+          memorySessionKeys,
         );
     }
 
-    mergeRescannedUsageStats(stats, currentStats);
+    const stats = mergeRescannedUsageStats(previousStats, currentStats);
 
     const rescannedAt = Date.now();
     stats.snapshot = {
@@ -322,25 +304,49 @@ export class UsageAggregator {
       skippedMessages,
       missingMessageCosts,
       costCoverageChecked: true,
-      retainedUsage:
-        stats.lifetime.totalMessages > currentStats.lifetime.totalMessages ||
-        stats.lifetime.totalInputTokens >
-          currentStats.lifetime.totalInputTokens ||
-        stats.lifetime.totalOutputTokens >
-          currentStats.lifetime.totalOutputTokens ||
-        stats.lifetime.totalCost - currentStats.lifetime.totalCost >
-          Number.EPSILON *
-            Math.max(1, stats.lifetime.totalCost) *
-            Math.max(
-              1,
-              stats.lifetime.totalMessages +
-                (stats.lifetime.engineUsageCoverage?.sessions ?? 0),
-            ) *
-            2 ||
-        (stats.lifetime.totalCacheReadTokens ?? 0) >
-          (currentStats.lifetime.totalCacheReadTokens ?? 0) ||
-        (stats.lifetime.totalCacheWriteTokens ?? 0) >
-          (currentStats.lifetime.totalCacheWriteTokens ?? 0),
+      projection: 'retained-source-v1',
+      dayScope: 'recorded-observations-utc',
+      missingEngineTurnCosts:
+        orchestrationSessions
+          ?.filter(
+            (session) =>
+              !mirroredSessionSet.has(session) &&
+              !ambiguousRelaySet.has(session),
+          )
+          .reduce(
+            (sum, session) => sum + (session.unmeasuredCostTurns ?? 0),
+            0,
+          ) ?? 0,
+      retainedUsage: false,
+      ...(ambiguousRelaySessions.length
+        ? {
+            ambiguousRelayActivity: {
+              sessions: ambiguousRelaySessions.length,
+              completedTurns: ambiguousRelaySessions.reduce(
+                (sum, session) => sum + session.usage.turns,
+                0,
+              ),
+              coverage: 'unknown' as const,
+              measurements: ambiguousMeasurements,
+              reason:
+                'Relay provenance cannot establish a saved-message join; potentially overlapping engine activity is held outside current totals.',
+            },
+          }
+        : {}),
+      ...(mirroredSessions.length
+        ? {
+            mirroredEngineActivity: {
+              sessions: mirroredSessions.length,
+              completedTurns: mirroredSessions.reduce(
+                (sum, session) => sum + session.usage.turns,
+                0,
+              ),
+              coverage: 'partial' as const,
+              reason:
+                'Relay activity overlaps saved messages; exact per-turn overlap is unavailable. Saved messages are the primary ledger.',
+            },
+          }
+        : {}),
     };
 
     await this.saveStats(stats);
@@ -377,7 +383,13 @@ export class UsageAggregator {
   readUsageReceipts(
     stationId: string,
     authority: SessionReadAuthority,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ):
     | {
         receipts: UsageReceipt[];

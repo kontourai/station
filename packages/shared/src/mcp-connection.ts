@@ -5,6 +5,7 @@
  * Used by both the core server and CLI dev server.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   Client,
   type ElicitResult,
@@ -87,11 +88,15 @@ export interface MCPConnection {
   close: () => Promise<void>;
   disconnect: () => Promise<void>;
   /**
-   * Run `operation` with `route` answering any elicitation the server sends
-   * meanwhile. Present on owned connections. A connection is shared across
-   * turns, and neither protocol era tells the client which in-flight call an
-   * elicitation belongs to, so while two routes are open an elicitation is
-   * refused rather than shown to a person who may not own it.
+   * Run `operation` with `route` answering an elicitation the server sends
+   * while one of its requests is in flight. Present on owned connections.
+   * A connection is shared across turns and callers, and the client cannot
+   * tell which in-flight request an elicitation belongs to, so the connection
+   * counts every request in flight on it that could elicit, bridged or not
+   * (see `NON_ELICITING_METHODS_2026` for the ones that cannot): an elicitation is
+   * routed only when exactly one request is in flight and that request has a
+   * route, and is refused otherwise rather than shown to a person who may not
+   * own it.
    */
   withElicitationRoute?: <T>(
     route: MCPElicitationRoute,
@@ -147,6 +152,50 @@ export interface MCPManagerOptions {
   onNegotiated?: (serverId: string, negotiation: MCPNegotiation) => void;
 }
 
+/**
+ * Requests that cannot lead to an elicitation on the 2026-07-28 revision,
+ * where only `tools/call`, `prompts/get` and `resources/read` may answer
+ * `input_required` and a server can no longer send `elicitation/create` as
+ * a request of its own. They are not counted as in flight, so a catalog
+ * read does not make a turn's form ambiguous. The 2025 era sets no such
+ * limit (a server may send a request during any client request, and stdio
+ * does not say which), so there every request counts.
+ */
+const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
+  'tools/list',
+  'prompts/list',
+  'resources/list',
+  'resources/templates/list',
+  'ping',
+  'completion/complete',
+]);
+
+/** The JSON-RPC method each client helper sends. */
+const CLIENT_HELPER_METHODS: Readonly<Record<string, string>> = {
+  callTool: 'tools/call',
+  getPrompt: 'prompts/get',
+  readResource: 'resources/read',
+  listTools: 'tools/list',
+  listPrompts: 'prompts/list',
+  listResources: 'resources/list',
+  listResourceTemplates: 'resources/templates/list',
+  ping: 'ping',
+  complete: 'completion/complete',
+};
+
+/** The JSON-RPC method a guarded client call sends, when it can be read. */
+function clientRequestMethod(
+  property: string | symbol,
+  args: readonly unknown[],
+): string | undefined {
+  if (typeof property !== 'string') return undefined;
+  if (Object.hasOwn(CLIENT_HELPER_METHODS, property))
+    return CLIENT_HELPER_METHODS[property];
+  if (property === 'request' && isRecord(args[0]))
+    return typeof args[0].method === 'string' ? args[0].method : undefined;
+  return undefined;
+}
+
 const MCP_APPS_EXTENSION_ID = 'io.modelcontextprotocol/ui';
 const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app';
 
@@ -184,7 +233,29 @@ export function prepareMCPConnection(
   const pending = new Set<Promise<void>>();
   let connecting: Promise<MCPConnection> | undefined;
   let closing: Promise<void> | undefined;
-  const elicitationRoutes = new Set<{ route: MCPElicitationRoute }>();
+  // Every client request in flight on this connection, with the route of
+  // the `withElicitationRoute` operation that issued it, if any. A request is
+  // registered by the guarded client itself, so no caller can leave one out.
+  type ElicitationScope = { route: MCPElicitationRoute; open: boolean };
+  const inFlight = new Set<{ scope: ElicitationScope | undefined }>();
+  const elicitationScope = new AsyncLocalStorage<ElicitationScope>();
+  function inFlightRequest<T>(operation: () => T): T {
+    const scope = elicitationScope.getStore();
+    const entry = { scope: scope?.open ? scope : undefined };
+    inFlight.add(entry);
+    try {
+      const value = operation();
+      if (value && typeof (value as { then?: unknown }).then === 'function')
+        return Promise.resolve(value).finally(() =>
+          inFlight.delete(entry),
+        ) as T;
+      inFlight.delete(entry);
+      return value;
+    } catch (error) {
+      inFlight.delete(entry);
+      throw error;
+    }
+  }
   const current = () => !retired && isCurrent() === true;
   const assertCurrent = () => {
     if (!current())
@@ -318,19 +389,25 @@ export function prepareMCPConnection(
             const rawClient = client;
             // Legacy servers send this as a request; on the 2026-07-28 era the
             // SDK fulfils an embedded `input_required` through this same
-            // handler. Either way, only a single open route may answer.
+            // handler. Neither tells the handler which request it belongs to
+            // (the context carries no originating request id), so it is
+            // answered only when one request is in flight and it has a route.
             rawClient.setRequestHandler(
               'elicitation/create',
               async (request, ctx) => {
-                const open = [...elicitationRoutes];
-                if (open.length !== 1)
+                const requests = [...inFlight];
+                const route =
+                  requests.length === 1 && requests[0].scope?.open
+                    ? requests[0].scope.route
+                    : undefined;
+                if (!route)
                   throw new ProtocolError(
                     ProtocolErrorCode.InvalidRequest,
-                    open.length === 0
-                      ? 'No Station turn is waiting on this server, so nobody can answer this elicitation.'
-                      : 'Station cannot tell which of several concurrent tool calls this elicitation belongs to.',
+                    requests.length > 1
+                      ? 'Station cannot tell which of several concurrent requests on this server this elicitation belongs to.'
+                      : 'No Station turn is waiting on this server, so nobody can answer this elicitation.',
                   );
-                return open[0].route({
+                return route({
                   serverId: def.id,
                   params: request.params,
                   signal: ctx.mcpReq.signal,
@@ -374,7 +451,15 @@ export function prepareMCPConnection(
                   assertCurrent();
                   if (phase !== 'connected')
                     throw new Error('MCP local connection is unavailable');
-                  return track(() => Reflect.apply(value, target, args));
+                  const run = () => Reflect.apply(value, target, args);
+                  return track(() =>
+                    negotiation.era === 'modern' &&
+                    NON_ELICITING_METHODS_2026.has(
+                      clientRequestMethod(property, args) ?? '',
+                    )
+                      ? run()
+                      : inFlightRequest(run),
+                  );
                 };
               },
               set: (target, property, value) =>
@@ -391,12 +476,13 @@ export function prepareMCPConnection(
               isUsable: () => current() && phase === 'connected',
               localState: handle.inspect,
               withElicitationRoute: async (route, operation) => {
-                const entry = { route };
-                elicitationRoutes.add(entry);
+                const scope: ElicitationScope = { route, open: true };
                 try {
-                  return await operation();
+                  return await elicitationScope.run(scope, operation);
                 } finally {
-                  elicitationRoutes.delete(entry);
+                  // Work this operation started but did not await, or that
+                  // inherits its async context later, no longer has a route.
+                  scope.open = false;
                 }
               },
             };

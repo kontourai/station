@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +7,7 @@ import {
   assertMarkdownLinks,
   findBrokenRenderedMarkdownLinks,
 } from './check-markdown-links.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   assertDocumentationFresh,
   formatFreshnessAdvisory,
@@ -36,7 +36,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const moduleMap = 'docs/architecture/module-map.md';
 
 function git(args, cwd = root) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd,
     encoding: 'utf8',
     windowsHide: true,

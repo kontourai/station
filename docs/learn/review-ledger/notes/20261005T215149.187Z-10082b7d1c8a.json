@@ -1,0 +1,13 @@
+{
+  "revision": "b6c1e11c37dc1d414d3d6d5bf0d14b1fdab5b379",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3386 Grok round 3: checked against grok-session-source.ts, grok-session-index.ts and managed-acp-workspace.ts: Station ACP workspaces (own root by containment, or the exact runtime/acp-workspaces/<session|probe>/<64-hex> layout from any home) are skipped before reading; changed groups first newest first; 131,072 entries / 16,384 stats / 1,024 inspections per poll; new folders in changed groups and folders with new activity first; over-cap sliding window gated on inspection capacity; single over-cap directory partly listed; user text without promptIndex during an open turn imported as a steer.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/grok-session-index.ts","src-server/providers/sessions/grok-session-source.ts","src-server/services/acp/managed-acp-workspace.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3386 Grok round 3: discovery now skips Station's own ACP workspaces (consistent with 'a Grok chat you started in Station' not being listed) and orders/bounds differently; mid-turn echoes become steers. The guide's claims still hold; no prose change.","inputs":["docs/user/getting-started.md","src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#3386 Grok round 3: STATION_EXTERNAL_GROK_SOURCE_ROOT, GROK_HOME, ~/.grok resolution unchanged. No prose change.","inputs":["docs/reference/env-vars.md","src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3386 Grok round 3: dependent session-api.md's Grok paragraph changed (workspace exclusion, discovery order, steers). ADR decisions unaffected; no prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

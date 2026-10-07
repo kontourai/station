@@ -53,6 +53,7 @@ import {
   toolRequestIsPlainCall,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
+import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
 import {
   delegatedApprovalDenial,
   type PreToolPolicyDecision,
@@ -60,6 +61,7 @@ import {
 } from '../../runtime/agents/pre-tool-policy.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
+import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   agentCapabilityUndelivered,
@@ -97,7 +99,11 @@ import {
   type ResolvedAppHome,
   usageCredentialAccountKey,
 } from '../app-home/app-home-profiles.js';
-import { detectClaudeAuthState } from '../auth/claude-auth.js';
+import {
+  type ClaudeAuthStatusProbe,
+  detectClaudeAuthState,
+  parseClaudeAuthStatus,
+} from '../auth/claude-auth.js';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
   augmentedSpawnEnv,
@@ -209,6 +215,28 @@ const CLAUDE_CLI_COMMAND = 'claude';
 const CLAUDE_CLI_PREREQUISITE_ID = `${CLAUDE_CLI_COMMAND}-cli`;
 /** The one probe both readiness and the launch decision share (#1551). */
 const CLAUDE_VERSION_ARGS = ['--version'];
+/**
+ * #3303: the installed CLI's own login answer, for hosts where the credentials
+ * live in the macOS Keychain and no `.credentials.json` exists. The `auth`
+ * command arrived in 2.1.41 (upstream CHANGELOG); a CLI before that parses
+ * `auth status` as a chat prompt, so it is asked only once the version probe
+ * has shown a CLI at least that new.
+ */
+const CLAUDE_AUTH_STATUS_ARGS = ['auth', 'status', '--json'];
+const CLAUDE_AUTH_STATUS_MIN_VERSION = '2.1.41';
+/**
+ * SIGKILL at the deadline: a CLI that ignores SIGTERM would otherwise outlive
+ * it. Only the direct child is killed; a grandchild of a wrapper launcher
+ * (mise/npx) can be orphaned.
+ */
+const CLAUDE_AUTH_STATUS_TIMEOUT_MS = 8_000;
+const CLAUDE_AUTH_STATUS_MAX_BUFFER = 64 * 1024;
+/**
+ * Readiness is polled: a definitive answer is reused this long, and a failed
+ * probe a shorter while so a broken or hanging CLI is not spawned on every poll.
+ */
+const CLAUDE_AUTH_STATUS_TTL_MS = 15_000;
+const CLAUDE_AUTH_STATUS_FAILURE_TTL_MS = 5_000;
 /**
  * A version at the START of a line — never mid-sentence, so prose such as
  * "a newer version 2.1.300 is available" cannot be mistaken for the version
@@ -670,6 +698,8 @@ type ClaudeSessionRecord = {
    * so `sendTurn` can reset it per-turn. See that field's docblock.
    */
   lastReportedModel?: string;
+  /** #3163: mirrors `ClaudeMessageState.claudeConfigHome`. */
+  claudeConfigHome?: string;
   /**
    * archive#1174: set only when this session's skills were materialized
    * into the Station-owned cwd-less overlay (see claude-skills-overlay.ts)
@@ -692,6 +722,25 @@ function adoptionTitle(threadId: string): string {
 }
 
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
+
+/**
+ * #3163: the config home a spawn resolves, in `buildOptions`' own env layer
+ * order (ambient, then the connection, then the app home). The global default
+ * (`~/.claude`) when none sets it.
+ */
+function claudeSpawnConfigHome(
+  appHomeEnv: Record<string, string> | undefined,
+  connectionEnv: Record<string, string> | undefined,
+  augmentedEnv: Record<string, string | undefined> | undefined,
+): string {
+  const configured =
+    appHomeEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
+    connectionEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
+    (augmentedEnv ?? process.env)[CLAUDE_CONFIG_DIR_ENV_KEY];
+  return configured?.trim()
+    ? nodePath.resolve(configured.trim())
+    : nodePath.join(homedir(), '.claude');
+}
 
 /**
  * station#2072: the connection env's config-home key applies only to
@@ -760,6 +809,18 @@ export interface ClaudeAdapterOptions {
     signal?: AbortSignal,
   ) => Promise<CliCommandResult | null>;
   /**
+   * #3303: runs the `claude auth status` login probe. Defaults to the shared
+   * `runCliCommand`, with a tighter deadline and output bound. Separate from
+   * `runCommand` because that one is the memoized `--version` probe.
+   */
+  runAuthStatusCommand?: (
+    command: string,
+    args: string[],
+    signal?: AbortSignal,
+    envOverlay?: Record<string, string>,
+    bounds?: { timeoutMs?: number; maxBuffer?: number },
+  ) => Promise<CliCommandResult | null>;
+  /**
    * #1551: the Claude Code version bundled inside the Agent SDK. Defaults to
    * reading the SDK package's own `manifest.json`. Injected so the
    * older/newer/equal and "manifest unreadable" branches are all executed by
@@ -805,6 +866,7 @@ export interface ClaudeAdapterOptions {
    * credentials, so it never blocks a session start.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Station#1157 review fix (MEDIUM): the running instance's own
    * station-control operational env (`stationControlSpawnEnv(port)`'s
@@ -1167,6 +1229,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     string,
     Promise<CliCommandResult | null>
   >();
+  /** #3303: recent definitive `claude auth status` answers, keyed by executable + env. */
+  private readonly authStatusProbes = new Map<
+    string,
+    { expiresAt: number; result: Promise<CliCommandResult | null> }
+  >();
   /** #2482: the shared, TTL-bounded model catalog probe (see `listModelCatalog`). */
   private readonly modelCatalog = new KeyedCatalogSingleFlight<{
     models: ModelOption[];
@@ -1203,8 +1270,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // is deliberately absent (adoption and source-affinity resume —
     // archive#896 decision 2's config-root orphaning concern: running the
     // child under a different config home would strand it there).
+    const connectionLaunch = await this.options.getConnectionLaunch?.();
     const connectionEnv = claudeConnectionEnvForSpawn(
-      await this.resolveConnectionEnv(),
+      connectionLaunch
+        ? connectionLaunch.env
+        : await this.resolveConnectionEnv(),
       !sourceCursor,
     );
     const augmentedEnv = await this.resolveAugmentedSpawnEnv();
@@ -1225,6 +1295,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       resolvedHome
         ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
         : undefined,
+      connectionLaunch?.route,
     );
   }
 
@@ -1286,8 +1357,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // the same line for the connection env: its routing keys apply, its
       // config-home key does not (same orphaning concern as the app-home
       // env above).
+      const connectionLaunch = await this.options.getConnectionLaunch?.();
       const connectionEnv = claudeConnectionEnvForSpawn(
-        await this.resolveConnectionEnv(),
+        connectionLaunch
+          ? connectionLaunch.env
+          : await this.resolveConnectionEnv(),
         false,
       );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
@@ -1305,6 +1379,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         augmentedEnv,
         preToolPolicy,
         claudeExecutable,
+        undefined,
+        connectionLaunch?.route,
       );
     } catch (error) {
       // With lifecycle reporting, the durable owner has the child cursor (or
@@ -1415,6 +1491,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     preToolPolicy?: StagedPreToolPolicyEvaluator,
     claudeExecutable?: string | null,
     usageAccountKey?: string,
+    modelRoute?: ReturnType<typeof engineProxyLaunch>['route'],
   ): ProviderSession {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -1451,6 +1528,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     const session: ProviderSession = {
+      modelRoute,
       provider: this.provider,
       threadId: input.threadId,
       status: 'connecting',
@@ -1477,6 +1555,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       allowsBypassPermissions: permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
+      // #3163: where this session's subagent transcripts are written, so a
+      // later read (even after a restart) opens the same config home.
+      claudeConfigHome: claudeSpawnConfigHome(
+        appHomeEnv,
+        connectionEnv,
+        augmentedEnv,
+      ),
       engineStderrTail: engineProcess.stderrTail,
     };
     // #2316/#2348: a subagent that ended can no longer be waiting on the
@@ -1501,10 +1586,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...input.metadata,
         cwd: input.cwd,
         usageAccountKey,
+        // station#3320: a resumed query() continues the cost total its
+        // transcript saved, so the usage fold must not add this process's
+        // figures to the previous one's. Set from the same cursor that
+        // `buildOptions` passes as the SDK `resume` option, and written
+        // after the caller's metadata so a copied marker cannot claim a
+        // resume this process did not make.
+        [NATIVE_SESSION_RESUMED_METADATA_KEY]: record.attemptedResumeCursor
+          ? true
+          : undefined,
       },
     });
     const baseConfiguredMetadata: Record<string, unknown> = {
       ...input.metadata,
+      modelRoute,
       usageAccountKey,
       ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
       // Explicit resolved values (not just the raw modelOptions spread
@@ -2421,14 +2516,21 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // inherited key here just as it does in the spawn. The app-home /
       // credential-profile layer is not modelled: resolving it can create
       // profile directories, which a readiness read must not do.
-      detectAuthState: async () =>
-        detectClaudeAuthState({
-          ...process.env,
-          ...claudeConnectionEnvForSpawn(
-            await this.resolveConnectionEnv(),
-            true,
-          ),
-        }),
+      //
+      // Where neither the env nor a credentials file answers (macOS keeps
+      // the login in the Keychain), the installed CLI is asked itself,
+      // under the same connection env (#3303).
+      detectAuthState: async () => {
+        const connectionEnv = claudeConnectionEnvForSpawn(
+          await this.resolveConnectionEnv(),
+          true,
+        );
+        return detectClaudeAuthState(
+          { ...process.env, ...connectionEnv },
+          undefined,
+          this.claudeAuthStatusProbe(executable, connectionEnv),
+        );
+      },
       installStep: 'Install the Claude CLI and ensure `claude` is on PATH.',
       authStep: 'Run `claude auth login` before starting Station.',
       signal: options?.signal,
@@ -3576,6 +3678,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private async resolveConnectionEnv(): Promise<
     Record<string, string> | undefined
   > {
+    if (this.options.getConnectionLaunch)
+      return (await this.options.getConnectionLaunch()).env;
     try {
       return await this.options.getConnectionEnv?.();
     } catch (error) {
@@ -3758,6 +3862,83 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return version
       ? { kind: 'version', version }
       : { kind: 'ran-without-version' };
+  }
+
+  /**
+   * The login probe for `detectClaudeAuthState`, or `undefined` when there is
+   * nothing safe to ask: no spawnable installed CLI, or one not shown to be
+   * new enough to have `auth status`. Station then keeps the file-only answer.
+   * Asks the installed CLI under the connection env, so a `CLAUDE_CONFIG_DIR`
+   * there is the dir it reports on. Answers are reused single-flight for
+   * {@link CLAUDE_AUTH_STATUS_TTL_MS}, failures for the shorter
+   * {@link CLAUDE_AUTH_STATUS_FAILURE_TTL_MS}.
+   */
+  private claudeAuthStatusProbe(
+    executable: ClaudeExecutableResolution,
+    connectionEnv: Record<string, string> | undefined,
+  ): ClaudeAuthStatusProbe | undefined {
+    const { spawnable, installedVersion } = executable;
+    if (
+      !spawnable ||
+      !installedVersion ||
+      compareClaudeCodeVersions(
+        installedVersion,
+        CLAUDE_AUTH_STATUS_MIN_VERSION,
+      ) < 0
+    ) {
+      return undefined;
+    }
+    const [command, args] = spawnable.toLowerCase().endsWith('.js')
+      ? [process.execPath, [spawnable, ...CLAUDE_AUTH_STATUS_ARGS]]
+      : [spawnable, CLAUDE_AUTH_STATUS_ARGS];
+    // Hashed: the env can carry secrets, which must not sit in a Map key.
+    const key = crypto
+      .createHash('sha256')
+      .update(
+        JSON.stringify([
+          spawnable,
+          process.env[CLAUDE_CONFIG_DIR_ENV_KEY] ?? null,
+          Object.entries(connectionEnv ?? {}).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        ]),
+      )
+      .digest('hex');
+    return () => {
+      const now = Date.now();
+      for (const [entryKey, entry] of this.authStatusProbes) {
+        if (entry.expiresAt <= now) this.authStatusProbes.delete(entryKey);
+      }
+      const cached = this.authStatusProbes.get(key);
+      if (cached) return cached.result;
+      const result = (this.options.runAuthStatusCommand ?? runCliCommand)(
+        command,
+        args,
+        undefined,
+        connectionEnv,
+        {
+          timeoutMs: CLAUDE_AUTH_STATUS_TIMEOUT_MS,
+          maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
+          killSignal: 'SIGKILL',
+        },
+      );
+      // In flight, the entry is reused for the definitive window; once the
+      // probe settles, the answer decides how much longer it lives.
+      const entry = {
+        expiresAt: now + CLAUDE_AUTH_STATUS_TTL_MS,
+        result,
+      };
+      this.authStatusProbes.set(key, entry);
+      const settle = (resolved: CliCommandResult | null) => {
+        const ttl =
+          parseClaudeAuthStatus(resolved) === 'unknown'
+            ? CLAUDE_AUTH_STATUS_FAILURE_TTL_MS
+            : CLAUDE_AUTH_STATUS_TTL_MS;
+        entry.expiresAt = Date.now() + ttl;
+      };
+      result.then(settle, () => settle(null));
+      return result;
+    };
   }
 
   /**

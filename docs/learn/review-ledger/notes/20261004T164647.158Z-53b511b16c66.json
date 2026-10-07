@@ -1,0 +1,15 @@
+{
+  "revision": "222c2cd3a0c4e359ed0b6412a331bbd7e654fc4c",
+
+  "notes": [
+    {"path":"README.md","note":"Re-reviewed after deployment.md prose change (HTTPS consent name must match the app hostname; configured origin accepted in addition to the http path; port 0 and trailing-dot refused). This document makes no consent-origin claim, so no change.","inputs":["README.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-reviewed after deployment.md prose change (HTTPS consent name must match the app hostname; configured origin accepted in addition to the http path; port 0 and trailing-dot refused). This document makes no consent-origin claim, so no change.","inputs":["docs/architecture/abstraction-review.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reworded the HTTPS consent section: the configured origin is accepted in addition to the port-pinned http path; the HTTPS name must be the app's hostname (host-only consent cookie, mismatch fails closed as unauthenticated); port 0 and trailing-dot hosts refused. Verified against consent-origin.ts and requestConsentOrigin in consent-listener.ts.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-reviewed after deployment.md prose change (HTTPS consent name must match the app hostname; configured origin accepted in addition to the http path; port 0 and trailing-dot refused). This document makes no consent-origin claim, so no change.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reworded the consent-origin paragraph the same way and noted the non-Secure consent cookie as a follow-up; checked the cookie is set without Secure in the consent session code path claim by the reviewer and that refusal list matches the parser.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

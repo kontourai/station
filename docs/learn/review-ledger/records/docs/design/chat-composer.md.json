@@ -86,7 +86,17 @@
 
     "src-ui/src/components/modals/NewChatModal.tsx",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
+
+    "src-ui/src/components/chat/MessageBubble.tsx",
+
+    "src-ui/src/components/chat/message-bubble/MessageContent.tsx",
+
+    "src-ui/src/components/chat/tool-call-runs.ts",
+
+    "src-ui/src/components/chat/tool-call-groups.ts",
+
+    "src-ui/src/components/chat/tool-call-labels.ts"
   ],
 
   "checks": [

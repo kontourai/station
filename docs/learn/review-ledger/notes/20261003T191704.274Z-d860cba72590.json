@@ -1,0 +1,11 @@
+{
+  "revision": "e3e5ec77d276dba8ceb44cefbc327a5937ebe153",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"#2787 after merging main again: the only delta in scripts/native-platform-boundary.mjs is that its `git ls-files src-ui/src` capture goes through scripts/lib/bounded-capture.mjs (64 MiB bound, named overflow error). The boundary rules the document describes are unchanged; no prose change needed.","inputs":["scripts/native-platform-boundary.mjs","src-desktop/src/lib.rs","src-desktop/src/native_relay_key_approval.rs","src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/guides/testing.md","note":"#2787 after merging main again: read each delta. portable-server-archives.yml adds scripts/lib/bounded-capture.mjs to both paths filters. run-changed-verification.mjs routes its git wrapper through the bounded helper; RELATED_DISCOVERY_LIMIT_BYTES (the 1 MiB related-discovery limit this guide states) is untouched. scripts-typecheck-coverage.mjs captures `tsc --listFiles` through the helper with a 64 MiB bound; the host typecheck slot section remains accurate (same runner, same arguments). No prose change needed.","inputs":["docs/guides/testing.md",".github/workflows/portable-server-archives.yml","package.json","scripts/run-changed-verification.mjs","scripts/scripts-typecheck-coverage.mjs","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"#2787 after merging main again: the delta is this branch's one added sentence pointing synchronous captures at scripts/lib/bounded-capture.mjs, which matches the helper; scripts/vitest-resource-manifest.mjs classifies bounded-capture.test.ts as process-heavy and captures Vitest discovery through the helper at its 64 MiB default. The resource-classification rule stated here is unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/lib/owned-process.mjs","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

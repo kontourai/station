@@ -4,6 +4,7 @@ import {
   CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDelta,
   type ChildWorkItem,
+  type ChildWorkModel,
   type ChildWorkParent,
   type ChildWorkRegistryState,
   type ChildWorkResult,
@@ -288,6 +289,8 @@ interface ChildIdentity {
   depth?: number;
   title?: string;
   kindLabel?: string;
+  /** #3163: the child's own model, from a fact about the child itself. */
+  model?: ChildWorkModel;
 }
 
 /**
@@ -323,6 +326,7 @@ function registerChild(
       ...(facts.depth !== undefined ? { depth: facts.depth } : {}),
       ...(identity.title ? { title: identity.title } : {}),
       ...(identity.kindLabel ? { kindLabel: identity.kindLabel } : {}),
+      ...(identity.model ? { model: identity.model } : {}),
       // #2486 review: `stopProviderTask` needs the child's own active turn
       // id to target a `turn/interrupt` at — a control offered before that
       // arrives is a button `stopProviderTask` can only answer
@@ -353,6 +357,7 @@ function registerChild(
     if (!existing.kindLabel && identity.kindLabel) {
       missing.kindLabel = identity.kindLabel;
     }
+    if (!existing.model && identity.model) missing.model = identity.model;
     if (Object.keys(missing).length > 0) {
       emit(context, { kind: 'upsert', item: { ...existing, ...missing } });
     }
@@ -534,7 +539,10 @@ export function observeCodexSubagentItem(
   const agentsStates = isRecord(item.agentsStates) ? item.agentsStates : {};
   switch (tool) {
     case 'spawnAgent': {
-      const model = extractString(item.model);
+      // #3163: the completed spawn names the spawned agent's own model (the
+      // started item carries an empty one). It is the child's model, not a
+      // kind of child, and is absent when the engine left it empty.
+      const model = extractString(item.model)?.trim();
       for (const childId of receivers) {
         registerChild(context, childId, {
           parent: parentFor(
@@ -545,7 +553,7 @@ export function observeCodexSubagentItem(
           ),
           depth: depthUnder(context.record, senderThreadId),
           title: titleFrom(item.prompt),
-          ...(model ? { kindLabel: model } : {}),
+          ...(model ? { model: { id: model, source: 'spawn-result' } } : {}),
         });
         // The spawn result's state is the child's CURRENT state (normally
         // `pendingInit`), unlike a close/interrupt echo.
@@ -682,6 +690,8 @@ export function observeCodexThreadStarted(
     extractString(spawn.agent_nickname) ?? extractString(spawn.agentNickname);
   const role =
     extractString(spawn.agent_role) ?? extractString(spawn.agentRole);
+  // #3163: the child thread's own model, never the session thread's.
+  const model = extractString(thread.model)?.trim();
   registerChild(context, childId, {
     ...(parentThreadId !== context.record.codexThreadId
       ? { parent: { taskId: parentThreadId } }
@@ -695,6 +705,7 @@ export function observeCodexThreadStarted(
       ? { title: nickname ?? agentPath?.split('/').at(-1) }
       : {}),
     ...(role ? { kindLabel: role } : {}),
+    ...(model ? { model: { id: model, source: 'child-thread' } } : {}),
   });
   return true;
 }

@@ -62,6 +62,35 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
   });
 
+  it('reports how many turns remain once a discard succeeded, and nothing when it fails', async () => {
+    const onDiscarded = vi.fn();
+    const onError = vi.fn();
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          { clientTurnId: 'turn-1', content: 'first', status: 'pending' },
+          { clientTurnId: 'turn-2', content: 'second', status: 'pending' },
+        ]}
+        onError={onError}
+        onDiscarded={onDiscarded}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    const [first] = screen.getAllByRole('button', { name: 'Delete message' });
+    fireEvent.click(first);
+    await waitFor(() => expect(onDiscarded).toHaveBeenCalledWith(1));
+
+    discardOutboundTurnMock.mockRejectedValueOnce(new Error('store gone'));
+    onDiscarded.mockClear();
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Delete message' })[1],
+    );
+    await waitFor(() => expect(onError).toHaveBeenCalled());
+    expect(onDiscarded).not.toHaveBeenCalled();
+  });
+
   it('edits a pending offline message in place', async () => {
     render(
       <OutboundQueuedMessages

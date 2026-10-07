@@ -1,0 +1,51 @@
+{
+  "revision": "e3e202b61962159905b3ded4098d8a925eb8b8db",
+
+  "notes": [
+    {"path":"README.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/README.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/README.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/architecture.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/architecture.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/architecture/module-map.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/design/browser-preview-host-spike.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked flow step 3 against lazy-start.ts and local-browser.ts: the opened URL host is the registry-recorded host (loopback under --watch), falling back to localhost for a wildcard or missing host. Rewrote step 3; the mint, redeem and strip-fragment steps are unchanged. The token redeems on the opened origin only.","inputs":["docs/design/local-bootstrap-token.md","packages/cli/src/commands/lazy-start.ts"]},
+
+    {"path":"docs/glossary.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/glossary.md","packages/contracts/src/tool.ts","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Viewport refusals now name the field and cap an echoed unknown key at 64 characters; bounds 100..4096 and 0.5..4 are unchanged and now pinned by tests. Codex/ACP non-delivery paragraph unchanged.","inputs":["docs/guides/browser-workspace.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the Watch bullets: cold start reworded to 'can take tens of seconds' (no measurement taken); station open link host matches local-browser.ts.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/guides/mobile-device-workspace.md","src-server/services/browser/browser-session-registry.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the launcher step (lazy-start.ts openRunningInstance) and the open section (local-browser.ts): both now build http://<host>:<ui-port> from InstanceConfig.host, localhost only for 0.0.0.0, any spelling of ::, or a missing host. Rewrote line 221 accordingly. sessions list claims: the route is a page, the CLI follows nextCursor (20-page bound) and warns on stderr when truncated.","inputs":["docs/reference/cli.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["docs/reference/shared.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Searched this document for the opener URL, localhost:<ui-port>, not-ready connection text, conversation paging and viewport error wording changed in the #3304 review round; none are claimed here, so its content stays accurate.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

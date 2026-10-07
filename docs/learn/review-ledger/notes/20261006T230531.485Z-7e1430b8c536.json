@@ -1,0 +1,7 @@
+{
+  "revision": "cb008f66b1c51ab3182539a2e335dd8341d2e38f",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Reviewed the request-adapter correction after the graph split: explicit enum labels remain strings and malformed null/undefined/sparse labels refuse rather than inheriting stored-option label fallback. Request option count bounds are checked before mapping; canonical stored-field and accepted-answer validation remain unchanged. The three new public normalization cases failed on 5e151 for actual acceptance and passed after restoration. 2988 broader request/stored comparisons and explicit edge/valid-label controls matched c300. No async validation or policy/budget waiver.","inputs":["docs/reference/shared.md"]}
+  ]
+}

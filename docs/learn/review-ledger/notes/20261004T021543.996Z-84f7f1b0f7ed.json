@@ -1,0 +1,7 @@
+{
+  "revision": "0341ddb564a105ebed51ca810d7e9a1d75a06eb9",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"This branch's change to its watched source is the action-surface inventory: the Diff pane rows, the review's one-row bar and Merge menu, and two de-duplicated lines; the frontend patterns (shared Button/IconButton, ActionOverflowMenu, ResponsiveSurfaceActions) still describe what these surfaces use.","inputs":["docs/ui/responsive-action-surfaces.txt","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

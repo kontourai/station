@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const digest = (value) =>
@@ -152,7 +152,10 @@ if (invokedDirectly(import.meta.url)) {
     if (review.sourceRevision !== artifact.source_revision)
       throw new Error('Review does not belong to this analysis');
     const git = (args) =>
-      execFileSync('git', args, { encoding: 'utf8', windowsHide: true }).trim();
+      execFileSyncBounded('git', args, {
+        encoding: 'utf8',
+        windowsHide: true,
+      }).trim();
     const result = evaluateFallowReview(
       review,
       reports,

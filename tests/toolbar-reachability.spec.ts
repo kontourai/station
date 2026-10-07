@@ -64,10 +64,10 @@ const VIEWPORT_HEIGHT = 839;
  * This spec lived in `tests/android/` first, which is the `android` project's
  * testDir and supplies this profile for free. That was a mistake, and a
  * self-defeating one: `android-test.yml` only runs on `workflow_run` of
- * `Build Android verification artifact`, and `build-android.yml` is
+ * `Main: Android build`, and `build-android.yml` is
  * path-filtered to `src-desktop/**` and six named scripts — `src-ui/**` and
  * `tests/android/**` are in neither list. A toolbar change therefore triggers
- * no Android build, so no Android Tests, so no guard. That is very likely also
+ * no Android build, so no Main: Android tests, so no guard. That is very likely also
  * why the android suite was "37/37 green" on #1384's broken commit: it never
  * ran on it at all.
  *

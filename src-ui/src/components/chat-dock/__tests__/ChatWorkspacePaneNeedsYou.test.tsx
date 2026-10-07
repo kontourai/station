@@ -8,7 +8,7 @@
  * with the dock's providers; only transport and the session list are mocked.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
@@ -19,6 +19,7 @@ import { navigationStore } from '../../../contexts/navigation-store';
 import { RegionModelProvider } from '../../../contexts/RegionModelContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
+import { clearSnooze, writeSnooze } from '../../../utils/activity-snooze-store';
 
 const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
   vi.hoisted(() => ({
@@ -266,4 +267,64 @@ test('publishes the inbox’s Needs-you count from its own lane: an approval owe
   expect(onInboxNeedsYouChange).toHaveBeenLastCalledWith(0);
   activeChatsStore.removeChat('idle-chat');
   activeChatsStore.removeChat('owed');
+});
+
+/**
+ * The bar's inbox toggle is the one keyboard and screen-reader control for a
+ * hidden inbox, so it names what the inbox holds for you — from the same
+ * live groups the inbox panel renders (`useInboxGroups`), so a snooze written
+ * while the inbox is hidden takes the row out of the count at once.
+ */
+test('a hidden inbox’s toggle says how many need you, and a snooze takes the row out of that count at once', async () => {
+  for (const [id, title] of [
+    ['idle-chat', 'Idle'],
+    ['owed', 'Waiting on you'],
+  ] as const) {
+    activeChatsStore.initChat(id, {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title,
+      conversationId: `conv-${id}`,
+      projectSlug: 'pulse',
+      projectName: 'Pulse',
+    });
+  }
+  activeChatsStore.updateChat('owed', {
+    orchestrationStatus: 'awaiting-approval',
+  });
+  dockProbe.sessions = [
+    session({ id: 'idle-chat', title: 'Idle' }),
+    session({ id: 'owed', title: 'Waiting on you' }),
+  ];
+  deviceSettingsStore.set('inboxOpen', false);
+  try {
+    renderInProviders(
+      <ChatWorkspacePane
+        placement="fullscreen"
+        projectSlug="pulse"
+        layoutSlug="coding"
+      />,
+    );
+    const toggle = await screen.findByRole(
+      'button',
+      { name: 'Show inbox, 1 needs you' },
+      { timeout: 15_000 },
+    );
+    expect(toggle.getAttribute('title')).toBe('Show inbox, 1 needs you');
+
+    // The panel's snooze writes this store; the toggle reads the same live
+    // groups, so the count drops without waiting for the item list to move.
+    act(() => {
+      writeSnooze('conv-owed', Date.now() + 60 * 60_000, Date.now());
+    });
+    expect(
+      await screen.findByRole('button', { name: 'Show inbox' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Show inbox, / })).toBeNull();
+  } finally {
+    clearSnooze('conv-owed', Date.now());
+    deviceSettingsStore.reset('inboxOpen');
+    activeChatsStore.removeChat('idle-chat');
+    activeChatsStore.removeChat('owed');
+  }
 });

@@ -1,3 +1,5 @@
+import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
+import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import type { HomeWorkItem } from './home-view-model';
 
 /**
@@ -79,10 +81,22 @@ export function resolveWorkItemOpenAction(
     // the raw slug the guard already tested is byte-identical to the old
     // behaviour and cannot pick up a caveat.
     projectName: item.projectSlug,
+    delegationEnvironmentKind: item.delegationEnvironmentKind,
     model: item.model,
     conversationId: item.conversationId,
     conversationUpdatedAt: item.conversationUpdatedAt,
   });
+}
+
+/**
+ * A delegated task placed on a PAIRED Station. This Station keeps a lifecycle
+ * record of it, but the transcript, the agent and the conversation live on the
+ * peer — the record's agent slug and conversation id are the peer's own.
+ */
+export function isPeerDelegationRecord(
+  session: Pick<OrchestrationSessionSummary, 'delegation'>,
+): boolean {
+  return session.delegation?.environmentKind === 'peer';
 }
 
 /**
@@ -93,6 +107,15 @@ export function resolveWorkItemOpenAction(
  */
 interface ConversationOpenSubject {
   threadId: string;
+  /**
+   * The session's `delegation.environmentKind`. `'peer'` marks this
+   * Station's lifecycle record of a task running on a PAIRED Station: its
+   * agent slug and conversation id are the peer's, so rehydrating would open
+   * a local chat on a conversation that lives elsewhere. Such a record is
+   * revealed in Activity, the same rule `isPeerDelegationRecord` applies to
+   * the detail's Open in chat.
+   */
+  delegationEnvironmentKind?: OrchestrationDelegationContext['environmentKind'];
   /** Durable conversation identity when a handoff child differs from its thread. */
   conversationId?: string;
   agentSlug?: string;
@@ -117,7 +140,9 @@ export function resolveConversationOpenAction(
   subject: ConversationOpenSubject,
 ): WorkItemOpenAction {
   const canRehydrate =
-    Boolean(subject.agentSlug) && subject.controlMode !== 'read-only-attached';
+    Boolean(subject.agentSlug) &&
+    subject.controlMode !== 'read-only-attached' &&
+    subject.delegationEnvironmentKind !== 'peer';
   if (!canRehydrate) {
     return { kind: 'navigate', threadId: subject.threadId };
   }

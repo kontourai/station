@@ -13,11 +13,16 @@
   color: var(--text-muted);
 }
 
+/* The inbox row's tones (InboxRow.css, C6): accent for act-now, green for
+   in-motion, amber only for a caution. */
 .status-glyph--active {
+  color: var(--success-text);
+}
+
+.status-glyph--attention {
   color: var(--accent-primary);
 }
 
-.status-glyph--attention,
 .status-glyph--warning {
   color: var(--color-warning);
 }

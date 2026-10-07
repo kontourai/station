@@ -1,0 +1,11 @@
+{
+  "revision": "6e72d4d001d075b12bb24fab33f6197d7944d647",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"#3159 fix round: page and message bounds now stated as serialized bytes; the person rule names paired devices of kind device and session-id references; the rule is described as attribution (pasted links count); 'never reaches another person's conversation' and 'reads as not found' are scoped to callers that are not bound operators, with the bound-operator reach and not-found for unrecorded ids stated. Checked against conversation-reference-read.ts and its route and boundary tests."},
+
+    {"path":"docs/reference/api.md","note":"#3159 fix round: the read route entry now says the 64 KB cap is on serialized messages, the cursor is checked after admission, the reference limit applies to callers that are not bound operators, and an unrecorded id answers conversation_not_found. Checked against conversation-reference-read.ts."},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3159 fix round: the API reference's read route entry was refined; this guide only routes readers to the API reference, and that claim is unchanged."}
+  ]
+}

@@ -17,6 +17,7 @@ import {
   validateChatAttachment,
   validateChatAttachments,
 } from '@kontourai/station-contracts/chat-attachment';
+import { CHILD_WORK_TRANSCRIPT_PAGE_MAX } from '@kontourai/station-contracts/child-work';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   ConversationContextBoundaryProjection,
@@ -45,6 +46,7 @@ import {
   APPROVAL_MODES,
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  type DelegationProvenance,
 } from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
@@ -104,6 +106,7 @@ import {
   beginActionOperationTracking,
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
+import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -117,6 +120,7 @@ import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
   OrchestrationCommandDispatchError,
 } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -157,6 +161,8 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
+import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
@@ -169,6 +175,7 @@ import {
   foregroundDispatchTarget,
   namesAnotherStation,
   newSessionFacts,
+  refuseCarriedPosture,
   refuseOutOfScopeDispatch,
   refuseRemoteForStationControlCaller,
   scopeDispatch,
@@ -252,6 +259,18 @@ const sessionOutputsQuerySchema = z
     limit: z.coerce.number().int().min(1).max(50).optional(),
   })
   .strict();
+/** #3163: a child transcript page, by message offset. */
+const childWorkTranscriptQuerySchema = z
+  .object({
+    offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(CHILD_WORK_TRANSCRIPT_PAGE_MAX)
+      .default(30),
+  })
+  .strict();
 const sessionInventoryQueryBaseSchema = z
   .object({
     scope: z.enum(['whole-session', 'current-answer']),
@@ -287,7 +306,7 @@ const sessionOutputInspectSchema = z.object({}).strict();
  * The route's own `deps.executeForegroundMessage` is typed `Promise<unknown>`
  * (a generic Hono DI boundary), so this is a real type GUARD, not a cast —
  * a caller-injected value missing `conversationId` is simply not bound. */
-function isForegroundDispatchHandle(value: unknown): value is {
+export function isForegroundDispatchHandle(value: unknown): value is {
   conversationId: string;
   providerTurnId: string;
   target?: { id?: unknown };
@@ -321,7 +340,7 @@ function delegationRefusal(c: Context, error: unknown): Response | undefined {
   return c.json({ success: false, error: errorMessage(error), code }, 403);
 }
 
-function isForegroundIndeterminateShape(error: unknown): boolean {
+export function isForegroundIndeterminateShape(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
@@ -352,6 +371,7 @@ const adoptSessionCommandSchema = z.object({
   type: z.literal('adoptSession'),
   sourceThreadId: z.string().min(1).max(512),
   idempotencyKey: z.string().uuid().max(64).optional(),
+  target: adoptSessionTargetSchema.optional(),
 });
 
 const interruptTurnCommandSchema = z.object({
@@ -541,6 +561,24 @@ const workspaceTargetSchema = z.discriminatedUnion('kind', [
     kind: z.literal('project-portable'),
     portableProjectId: z.string().min(1).max(512),
     resourceId: z.string().min(1).max(512),
+  }),
+  // #2875 slice 1: the portable intent plus a version requirement. Mode,
+  // scheme and guarantees are bounded open strings HERE on purpose: the
+  // receiver refuses an unsupported value with a typed code naming the
+  // dimension (execution-preparation.ts), never a generic 400.
+  z.object({
+    kind: z.literal('project-portable-prepared'),
+    portableProjectId: z.string().min(1).max(512),
+    resourceId: z.string().min(1).max(512),
+    preparation: z.object({
+      protocol: z.string().min(1).max(128),
+      mode: z.string().min(1).max(64),
+      version: z.object({
+        scheme: z.string().min(1).max(64),
+        value: z.string().min(1).max(256),
+      }),
+      guarantees: z.array(z.string().min(1).max(64)).min(1).max(8),
+    }),
   }),
 ]);
 
@@ -868,11 +906,39 @@ const delegatedTaskEventsQuerySchema = z.object({
 
 export const continueDelegatedTaskBodySchema = z.object({
   message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+  // `delegatedInputAnswers`: deliver `message` only as the answer to this
+  // exact open input request on the task's current Session.
+  expectedInputRequest: inputRequestReferenceSchema.optional(),
   environmentId: z.string().min(1).max(512).optional(),
   model: z.string().min(1).max(512).optional(),
   // archive#978: per-invocation settings passthrough on a follow-up turn.
   modelOptions: z.record(z.unknown()).optional(),
 });
+
+/** Decorate a delegated-task snapshot's open request for the reading caller. */
+function withCallerCanRespond(
+  data: unknown,
+  mayAnswer: (taskId: string, requestType: string | undefined) => boolean,
+): unknown {
+  if (!data || typeof data !== 'object') return data;
+  const snapshot = data as {
+    taskId?: unknown;
+    pendingRequest?: { type?: unknown } & Record<string, unknown>;
+  };
+  if (typeof snapshot.taskId !== 'string' || !snapshot.pendingRequest)
+    return data;
+  const requestType =
+    typeof snapshot.pendingRequest.type === 'string'
+      ? snapshot.pendingRequest.type
+      : undefined;
+  return {
+    ...snapshot,
+    pendingRequest: {
+      ...snapshot.pendingRequest,
+      callerCanRespond: mayAnswer(snapshot.taskId, requestType),
+    },
+  };
+}
 
 const respondToDelegatedTaskBodySchema = z.object({
   requestId: z.string().min(1).max(512),
@@ -904,6 +970,8 @@ interface DelegateTaskRequest {
   taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
   delegation?: AgentDelegationContext;
+  /** #3323: how the route came by `delegation`; never body JSON. */
+  delegationProvenance?: DelegationProvenance;
   userId: string;
   principal?: PrincipalRef;
   /**
@@ -991,6 +1059,8 @@ interface ForegroundMessageRequest {
   /** #2873: `scopeDispatch`'s decision, run again at the engine spawn. */
   dispatchCwdAdmission?: DispatchCwdAdmission;
   clientOrigin?: ClientOrigin;
+  /** #3323: how the route came by the stamped delegation; never body JSON. */
+  delegationProvenance?: DelegationProvenance;
 }
 
 interface ContinueForegroundMessageRequest {
@@ -1226,7 +1296,7 @@ function describeOrchestrationStreamClient(request: Request): {
  * `env`/`req.raw`/`req.header` and more, which is fine — a wider object
  * satisfies a narrower structural type).
  */
-interface PrincipalResolutionContext {
+export interface PrincipalResolutionContext {
   env: unknown;
   req: {
     raw: Request;
@@ -1261,7 +1331,7 @@ interface PrincipalResolutionContext {
  * - Neither present — throws {@link PrincipalUnresolvedError}. There is no
  *   third branch that fabricates an "unknown-user" value.
  */
-function resolveActorPrincipal(
+export function resolveActorPrincipal(
   deps: {
     resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
     getUserId?: () => string;
@@ -1334,7 +1404,7 @@ export type AgentDispatchActor =
   | { readonly kind: 'verified'; readonly principalId: string }
   | { readonly kind: 'unattributed' };
 
-function resolveDispatchActor(
+export function resolveDispatchActor(
   deps: {
     resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
     getUserId?: () => string;
@@ -1548,6 +1618,19 @@ export function createOrchestrationRoutes(
     observeDelegatedTask?: (
       input: DelegatedTaskReferenceRequest,
     ) => Promise<unknown>;
+    /**
+     * `delegatedInputAnswers`: whether THIS request's caller passes this
+     * Station's gates on the route that answers a task's open request —
+     * `respond` (approve scope) for an approval, permission or
+     * confirmation, `continue` (execute scope) for an input question. Used
+     * to set `pendingRequest.callerCanRespond` on a task this Station serves
+     * itself; a model of those gates only, the handler can still refuse.
+     */
+    callerMayAnswerDelegatedRequest?: (
+      c: Context,
+      taskId: string,
+      requestType: string | undefined,
+    ) => boolean;
     refreshDelegatedTaskActivity?: (input: { userId: string }) => Promise<void>;
     observeDelegatedTaskEvents?: (
       input: DelegatedTaskEventsRequest,
@@ -1910,6 +1993,16 @@ export function createOrchestrationRoutes(
         delegationAttestation?: string;
         automaticBackground?: true;
       };
+      // #2377 slice C3b: an agent sends without an approval posture.
+      const postureRefused = refuseCarriedPosture(c, [
+        { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
+        {
+          path: 'target.model.options',
+          value: body.target.model?.options,
+          kind: 'options',
+        },
+      ]);
+      if (postureRefused) return postureRefused;
       // #2436: full access needs the operator in person or a granted device,
       // whether the send carries it as a pick or asks for it on the options.
       const fullAccessRefused = refuseUngrantedFullAccess(c, [
@@ -1917,6 +2010,11 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       if (
         body.skillExperience &&
         (body.automaticBackground || !body.clientTurnId)
@@ -2015,18 +2113,26 @@ export function createOrchestrationRoutes(
         throw new Error('Attachment staging is unavailable for this Station.');
       }
       // #2601: the body's context is a claim; this is what gets stamped.
-      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
-        ...(claimedDelegation
-          ? { delegation: claimedDelegation as AgentDelegationContext }
-          : {}),
-        ...(delegationAttestation
-          ? { attestation: delegationAttestation }
-          : {}),
-      });
+      const resolvedDelegation = await deps.resolveRequestDelegation?.(
+        c.req.raw,
+        {
+          ...(claimedDelegation
+            ? { delegation: claimedDelegation as AgentDelegationContext }
+            : {}),
+          ...(delegationAttestation
+            ? { attestation: delegationAttestation }
+            : {}),
+        },
+      );
+      const delegation = resolvedDelegation?.context;
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
       const foregroundRequest = {
         ...body,
         ...(delegation ? { delegation } : {}),
+        // #3323: how the route came by `delegation`, stamped beside it by the
+        // start. Set here only, after the body spread, so a body can never
+        // supply it.
+        delegationProvenance: resolvedDelegation?.provenance,
         ...(stagedAttachments?.length
           ? {
               resolveAttachments: (binding) =>
@@ -2207,11 +2313,31 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        // #2377 slice C3b: no station-control tool reaches this route today;
+        // if one ever does, it hands off without an approval posture.
+        const postureRefused = refuseCarriedPosture(c, [
+          {
+            path: 'setApprovalMode',
+            value: (body as { setApprovalMode?: unknown }).setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'target.model.options',
+            value: body.target.model?.options,
+            kind: 'options',
+          },
+        ]);
+        if (postureRefused) return postureRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           (body as { setApprovalMode?: unknown }).setApprovalMode,
           requestedApprovalMode(body.target.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        const directoryRefused = refuseUngrantedDirectoryWorkspace(
+          c,
+          body.target,
+        );
+        if (directoryRefused) return directoryRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         const data = await deps.handoffConversation({
@@ -2397,6 +2523,20 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        // #2377 slice C3b: an agent continues without an approval posture.
+        const postureRefused = refuseCarriedPosture(c, [
+          {
+            path: 'setApprovalMode',
+            value: body.setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'model.options',
+            value: body.model?.options,
+            kind: 'options',
+          },
+        ]);
+        if (postureRefused) return postureRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           body.setApprovalMode,
           requestedApprovalMode(body.model?.options),
@@ -2517,6 +2657,16 @@ export function createOrchestrationRoutes(
     }
     try {
       const body = getBody(c);
+      // #2377 slice C3b: an agent delegates without an approval posture.
+      const postureRefused = refuseCarriedPosture(c, [
+        {
+          path: 'target.model.options',
+          value: (body as { target?: { model?: { options?: unknown } } }).target
+            ?.model?.options,
+          kind: 'options',
+        },
+      ]);
+      if (postureRefused) return postureRefused;
       const fullAccessRefused = refuseUngrantedFullAccess(c, [
         requestedApprovalMode(
           (body as { target?: { model?: { options?: unknown } } }).target?.model
@@ -2524,6 +2674,11 @@ export function createOrchestrationRoutes(
         ),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       // #2377 slice C2a: a new task starts in the Project the body names.
       const scoped = scopeDispatch(
         c,
@@ -2555,7 +2710,26 @@ export function createOrchestrationRoutes(
               () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
             )
         : undefined;
-      const portableIntent = body.target.workspace?.kind === 'project-portable';
+      const portableIntent =
+        body.target.workspace?.kind === 'project-portable' ||
+        body.target.workspace?.kind === 'project-portable-prepared';
+      // #2875: preparation is a phase of one #485 attempt — the claim is
+      // where its outcome is recorded — so a prepared intent without an
+      // attempt id refuses here, before anything is forwarded or claimed.
+      if (
+        body.target.workspace?.kind === 'project-portable-prepared' &&
+        body.attemptId === undefined
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              RECEIVER_EXECUTION_REFUSAL_COPY.execution_preparation_attempt_required,
+            code: 'execution_preparation_attempt_required',
+          },
+          403,
+        );
+      }
       // #485 receiver request-claim slice: validate the opt-in correlation
       // at the route seam. The attempt id is admitted ONLY on a portable
       // intent (any other topology is an explicit refusal, never a silent
@@ -2583,14 +2757,18 @@ export function createOrchestrationRoutes(
         delegationAttestation,
         ...request
       } = body;
-      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
-        ...(claimedDelegation
-          ? { delegation: claimedDelegation as AgentDelegationContext }
-          : {}),
-        ...(delegationAttestation
-          ? { attestation: delegationAttestation }
-          : {}),
-      });
+      const resolvedDelegation = await deps.resolveRequestDelegation?.(
+        c.req.raw,
+        {
+          ...(claimedDelegation
+            ? { delegation: claimedDelegation as AgentDelegationContext }
+            : {}),
+          ...(delegationAttestation
+            ? { attestation: delegationAttestation }
+            : {}),
+        },
+      );
+      const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
       const dispatch = (
@@ -2607,6 +2785,8 @@ export function createOrchestrationRoutes(
               }
             : {}),
           ...(delegation ? { delegation } : {}),
+          // #3323: how the route came by `delegation`; set only here.
+          delegationProvenance: resolvedDelegation?.provenance,
           target: normalizeExecutionTarget(
             withCanonicalCwd(body.target, scoped.canonicalCwd),
           ),
@@ -2998,7 +3178,18 @@ export function createOrchestrationRoutes(
         taskId: param(c, 'taskId'),
         userId: resolveActorPrincipal(deps, c).userId,
       });
-      return c.json({ success: true, data });
+      // Only for a task this Station serves: a forwarded read carries the
+      // serving Station's own answer about this Station's credential.
+      return c.json({
+        success: true,
+        data:
+          parsed.data.environmentId === undefined &&
+          deps.callerMayAnswerDelegatedRequest
+            ? withCallerCanRespond(data, (taskId, requestType) =>
+                deps.callerMayAnswerDelegatedRequest!(c, taskId, requestType),
+              )
+            : data,
+      });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -3059,6 +3250,15 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        // #2377 slice C3b: an agent's follow-up carries no approval posture.
+        const postureRefused = refuseCarriedPosture(c, [
+          {
+            path: 'modelOptions',
+            value: (getBody(c) as { modelOptions?: unknown }).modelOptions,
+            kind: 'options',
+          },
+        ]);
+        if (postureRefused) return postureRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           requestedApprovalMode(
             (getBody(c) as { modelOptions?: unknown }).modelOptions,
@@ -3139,6 +3339,30 @@ export function createOrchestrationRoutes(
               code: portableRefusal,
             },
             403,
+          );
+        // `delegatedInputAnswers`: a bound answer whose request is gone or
+        // replaced, or a Station that cannot bind one. Closed codes only.
+        const bindingCode = errorCode(error);
+        if (bindingCode === 'input_binding_model_change')
+          return c.json(
+            { success: false, error: errorMessage(error), code: bindingCode },
+            400,
+          );
+        if (
+          bindingCode === 'input_request_changed' ||
+          bindingCode === 'request_event_changed' ||
+          bindingCode === 'input_binding_unsupported'
+        )
+          return c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code:
+                bindingCode === 'request_event_changed'
+                  ? 'input_request_changed'
+                  : bindingCode,
+            },
+            409,
           );
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
@@ -3549,6 +3773,48 @@ export function createOrchestrationRoutes(
     });
   });
 
+  // #3157: the chat banner for a Session that stopped on a provider usage
+  // limit. The read answers with the recovery projection alone (never the
+  // Session's event list). Resume now and Cancel auto-resume are the person's
+  // own act on their own Session: the request principal must be current and
+  // own the Session, as for a checkpoint restore. No station-control tool maps
+  // these routes, so the central guard refuses an agent's internal token.
+  app.get('/sessions/:threadId/usage-limit', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (!orchestrationService.canUserReadSession(threadId, readAuthorityFor(c)))
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({
+      success: true,
+      data: {
+        recovery: await orchestrationService.readUsageLimitRecovery(threadId),
+      },
+    });
+  });
+
+  for (const action of ['resume', 'cancel'] as const) {
+    app.post(`/sessions/:threadId/usage-limit/${action}`, async (c) => {
+      const threadId = param(c, 'threadId');
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      return c.json({
+        success: true,
+        data: await orchestrationService.actOnUsageLimitRecovery(
+          threadId,
+          action,
+        ),
+      });
+    });
+  }
+
   // Session -> Builder run join (archive#189 S4). A separate route from
   // `/flow-run` on purpose: the two runs have independent lifecycles, and a
   // session commonly has one and not the other. 404 means "no Builder run
@@ -3641,6 +3907,35 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data });
   });
 
+  /**
+   * A conversation's usage tree: its own turns, each child (engine subagent
+   * or delegated task) with how its usage relates to the parent, and a
+   * roll-up total marked partial where it leaves something out. Authorized
+   * like the conversation's other session reads; a tree past its bound is
+   * refused (422), never cut.
+   */
+  app.get('/conversations/:conversationId/usage-tree', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const unavailable = () =>
+      c.json({ success: false, error: 'Conversation usage unavailable' }, 404);
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return unavailable();
+    const outcome = orchestrationService.readThreadUsageTree(
+      param(c, 'conversationId'),
+      readAuthorityFor(c),
+    );
+    if (outcome.status === 'not-found') return unavailable();
+    if (outcome.status === 'too-large')
+      return c.json(
+        {
+          success: false,
+          error: `This conversation's usage tree is past its ${outcome.limit} limit (${outcome.max}).`,
+        },
+        422,
+      );
+    return c.json({ success: true, data: outcome.tree });
+  });
+
   // Native-SDK chat refresh: the persisted events projected into conversation
   // messages (same shape ACP/internal return), via the shared projection.
   const sessionOutputsUnavailable = (c: Context, status: 404 | 503 = 404) => {
@@ -3710,6 +4005,44 @@ export function createOrchestrationRoutes(
       return c.json({ success: true, data: outcome.inspection });
     },
   );
+  /**
+   * #3163: one engine subagent's own transcript, read-only and paged. The
+   * client names the reporting session and the child; the server resolves
+   * the transcript from that session's persisted child-work facts, so no
+   * path crosses this route. Authorized exactly as the session's outputs.
+   */
+  app.get('/sessions/:threadId/child-work/:childId/transcript', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const unavailable = (status: 404 | 503 = 404) =>
+      c.json({ success: false, error: 'Child transcript unavailable' }, status);
+    const parsed = childWorkTranscriptQuerySchema.safeParse({
+      offset: c.req.query('offset'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success)
+      return c.json({ success: false, error: 'Invalid transcript page' }, 400);
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return unavailable();
+    const threadId = param(c, 'threadId');
+    const authority = readAuthorityFor(c);
+    if (!orchestrationService.canUserReadSession(threadId, authority))
+      return unavailable();
+    const outcome = await orchestrationService.childWorkTranscripts.read({
+      threadId,
+      childId: param(c, 'childId'),
+      ...parsed.data,
+      authority,
+    });
+    if (outcome.status === 'unavailable') return unavailable(503);
+    if (outcome.status !== 'found') return unavailable();
+    // Authority can change while the engine's transcript is read.
+    if (
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.canUserReadSession(threadId, authority)
+    )
+      return unavailable();
+    return c.json({ success: true, data: outcome.page });
+  });
   const sessionInventoryUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
     return c.json(
@@ -4598,6 +4931,16 @@ export function createOrchestrationRoutes(
                 }
               : {}),
             ...(error instanceof AdoptionContinuationInProgressError
+              ? { code: error.code, retryable: error.retryable }
+              : {}),
+            // #3386: a folder Station will not continue in; the same
+            // request is refused again, so clients offer no retry.
+            ...(error instanceof ContinuationPlaceRefusedError
+              ? { code: error.code, retryable: false }
+              : {}),
+            // #3429: the engine was not ready and nothing was created; the
+            // reason is shown and the same request may be retried.
+            ...(error instanceof AdoptionEngineNotReadyError
               ? { code: error.code, retryable: error.retryable }
               : {}),
             ...(error instanceof OrchestrationCommandDispatchError

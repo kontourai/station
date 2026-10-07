@@ -28,7 +28,7 @@ This source addition requires a published version that exports `/agent`.
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
 | Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
-| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
 | Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
 | Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
 
@@ -891,6 +891,15 @@ Fetches app configuration.
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
 Fetches conversation stats. Disabled when either param is undefined.
+
+### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
+
+Fetches the conversation's usage with its children (`getConversationUsageTree`,
+[`GET /api/orchestration/conversations/:conversationId/usage-tree`](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree)).
+Enabled by default; disabled for an empty id or `config.enabled: false`. It
+polls only when `config.refetchInterval` is set. A 404 (no conversation you
+can read) and a 422 (a tree past its bound) reject with `StationHttpError`,
+are not retried, and stop the poll.
 
 ### `useUsageQuery(config?)`
 
@@ -2315,8 +2324,9 @@ manifest's field name (`skills`).
 `fetchSkillExperienceSession(apiBase, threadId, cursor?, options?)` are available
 from `@kontourai/station-sdk/client`. Both validate the returned inventory or
 session projection before exposing it and preserve HTTP failure details. The
-canonical reader loads after a successful feature response; a reader failure
-remains an error.
+canonical reader is a static import of the client entry, so it adds the shared
+validator to that bundle, and it runs only after a successful feature response;
+a reader failure remains an error.
 `useSkillExperienceInventoryQuery(config?)` and
 `useSkillExperienceSessionQuery(threadId, config?, cursor?)` are React Query hooks from
 the SDK root. The session hook remains disabled until a canonical thread exists.
@@ -2327,6 +2337,11 @@ An inventory entry is a preview. Starting requires `executionContract: '1.0'`
 and an exact current source identity. `sendExecutionMessage` accepts the optional
 `skillExperience: { identity, inputs, expectedPreviousInvocationEventId?, attachmentInputs? }`
 field and refetches the installed inventory before its foreground POST.
+`sendExecutionMessageWithInventory(apiBase, input, readInventory, options?)`
+performs the same preflight with a caller-supplied inventory reader;
+`sendExecutionMessage` passes `fetchSkillExperienceInventory`. The two live in
+separate modules, so a bundle that imports only the rest of the execution
+client does not also carry the validator.
 `inputs` holds scalar text/choice values; attachment role arrays contain indices
 into the canonical chat attachments, after supervised staging. Native role choices use
 composer client IDs until the sender maps them against the actual outgoing
@@ -3982,6 +3997,9 @@ unsupported, or unavailable state. Clients should mark an old cached
 observation stale and require refresh before review or other actions. Explicit
 unlink changes only the Conversation association; it never changes the pull
 request or deletes Task-kept provenance.
+A refresh that observes a pull request merged also lets Station reconcile the
+Tasks a person opted in to closing on merge when the caller holds the operate tier;
+it changes nothing in what the read returns (see the [API reference](api.md#keep-a-declared-output)).
 
 The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
 and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
@@ -4000,6 +4018,15 @@ the orchestration owner checks the same open event again before adapter input.
 Opaque `attachmentRefs` use the existing current-host staging path; retries
 retain the same `clientTurnId` and payload after an uncertain response. Pass the
 captured host `requestScope` to each read, staging operation and send.
+
+For a delegated task's open input request, `continueDelegatedTask(apiBase,
+taskId, { message, environmentId, expectedInputRequest })` binds the answer to
+`{ threadId, requestId, requestEventId }` on the Station serving the task. The
+snapshot's `pendingRequest` carries `eventId`, and its `currentSessionId` is the
+`threadId`. The serving Station refuses a changed request with
+`input_request_changed`. A forwarding Station sends the binding only to a
+Station advertising `delegatedInputAnswers` (`hasCapability`). Text-only: no
+attachments travel this way.
 
 The [SDK parser](../../packages/sdk/src/client/input-reply.ts),
 [request route](../../src-server/routes/orchestration/orchestration.ts),
@@ -4073,8 +4100,10 @@ elicitation (#3284), with the same exact-event rule; the server validates it
 against the opened form. `useAgentMcpPromptsQuery(agentSlug)` reads
 `GET /agents/:slug/mcp-prompts` (cache key `agentMcpPromptsQueryKey`) and
 `runAgentMcpPrompt(agentSlug, { serverId, name, arguments })` reads one prompt
-and returns the text to send; a refusal throws the server's reason. See the
-[commands guide](../guides/commands.md) for scope and limits.
+and returns the text to send; a refusal throws the server's reason as a
+`StationHttpError`, retaining HTTP status, machine code, details and
+`Retry-After` when present. See the [commands guide](../guides/commands.md)
+for scope and limits.
 
 
 ## Engine account queries
@@ -4108,3 +4137,57 @@ With required scope absent, the observer is disabled under an isolated key.
 The default poll pauses after HTTP 401/403; explicit retry or Profile-page remount can reauthorize the read. `QueryConfig.refetchIntervalForError` can return `false` to pause polling or a number for an error-specific interval; `undefined` preserves the numeric interval. The Profile page uses this mode for approved person bindings and current
 connection projections. This list requires the pairing route's existing access
 and does not share another person's usage statistics.
+
+
+### Station operator usage queries
+
+Usage and provenance consumers can import provider scope, context validation,
+and cache-inclusive token helpers from
+`@kontourai/station-shared/usage-semantics`. The
+[shared leaf](../../packages/shared/src/usage-semantics.ts) owns these bindings;
+`usage-fold` re-exports them for existing consumers and retains event accounting
+and observation allocation.
+
+For a lazy view, import `useStationUsageQuery` from
+`@kontourai/station-sdk/station-usage-query`. The
+[owning module](../../packages/sdk/src/query-domains/stationUsage.ts) keeps the
+operator query separate from analytics used at startup. The SDK root retains
+its existing hook export.
+
+`useStationUsageQuery(scope, config?)` reads the current local instance overview
+through `GET /api/analytics/station-usage`. Supply a captured `ApiRequestScope`;
+without it, the query stays disabled under an isolated key. Its cache includes
+API base and authority key, never credentials. The React-free client export
+`fetchStationUsage(apiBase, options?)` is available from
+`@kontourai/station-sdk/client` and accepts the same captured request scope.
+The returned `StationUsageOverview` contains `stationId` and canonical
+`UsageStats` from `@kontourai/station-contracts/usage-stats`.
+
+The hook polls every 30 seconds while enabled and refreshes stale data on mount/focus.
+HTTP 401/403 stops polling; explicit retry can reauthorize the read. A consumer
+must hide cached data on an error or lost authority, as the Profile operator
+panel does. A query key is not an operator grant. The server requires the bound
+home-possession local operator on a personal host; hosted deployments and tenant
+workers are refused. Ordinary usage/rescan responses omit the person breakdown.
+
+The [monitoring guide](../guides/monitoring.md#operator-view-of-this-instance)
+owns measurement and attribution limits. Source exports require a release
+containing this change; source presence is not evidence of npm publication.
+
+
+### Authorized receipt observers
+
+Lazy receipt views can import `useUsageRollupQuery` from
+`@kontourai/station-sdk/usage-rollup-query`, backed by the
+[receipt query module](../../packages/sdk/src/query-domains/usageRollup.ts).
+The SDK root retains the same hook and fetcher exports.
+
+`useUsageRollupQuery(query, config?)` accepts `requestScope` and
+`requireRequestScope`, with the same captured-authority rules as the operator
+query. Scoped keys include Station, authority, and the explicit credential-profile
+filter; all accounts, the default profile, and a named profile remain distinct.
+The Profile receipt panel requires a scope and clears its page position when
+authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
+on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
+request options, while the React-free client fetcher preserves HTTP refusal
+status as `StationHttpError`. These client controls confer no access.

@@ -1,0 +1,9 @@
+{
+  "revision": "c0ed801f2553dc939a3606d3bce0a2e52e88ad23",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"#3429: orchestration-service.ts only gains an optional adopted-child execution-binding resolver passed to adoption; the inspect-request flow shown in this capture (request inspection UI and its reads) is unaffected, so the capture stays representative.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"#3429: orchestration-service.ts only gains an optional adopted-child execution-binding resolver passed to adoption; the inspect-request flow shown in this capture is unaffected, so the capture stays representative.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "432f7a38c0afc183b040e8c98ba7b5e022ca136c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Merge of main into the #3312 follow-ups: task-first-home now also pins that Start names the Agent and Model it runs (including the dock-bound project default) and that Continue opens the chat in the Coding layout; #3317 removed the spec's own skill-experience stub. The Home row's owners and 'what to inspect' (continuation, first steps, deep links, loading/retry, mobile geometry; many Home responses mocked) still hold, so the row is unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

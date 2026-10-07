@@ -330,6 +330,18 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: true,
   }),
   defineSetting({
+    key: 'attachedSessionsOutsideProjects',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Conversations outside projects',
+    help: 'Activity lists Claude Code and Codex conversations on this machine whose folder is in no project, under No project.',
+    description:
+      'List Claude Code and Codex conversations on this machine whose folder belongs to no project, under No project in Activity. Station copies what it reads into its own history and search. Turn off to stop reading them; conversations already read stay listed.',
+    // Confirmed against attached-session-follow-service.ts:
+    // `attachedSessionsOutsideProjectsEnabled` reads `!== false`.
+    defaultValue: true,
+  }),
+  defineSetting({
     key: 'knowledgeStores',
     scope: 'station',
     descriptor: { kind: 'boolean' },
@@ -355,6 +367,19 @@ export const APP_SETTINGS_REGISTRY = [
     // git calls, no index writes, no .git growth.
     description:
       'Snapshot the session project’s working directory in git at the start and end of every turn, so later turns can be compared or recovered. Off by default: each snapshot is pinned in the project’s .git for 90 days, so turning this on spends disk in every project you chat in. Applies after a restart. Inspect and reclaim with `station checkpoints status` / `station checkpoints prune`.',
+    defaultValue: false,
+  }),
+  defineSetting({
+    key: 'usageLimitAutoResume',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Resume after usage limits',
+    help: 'When Claude Code or Codex stops on a usage limit with a known reset time, Station sends the stopped turn again after the limit resets.',
+    // #3157: read by SessionRecoveryCoordinator when a resume is due
+    // (`autoResume`, wired in runtime-initialize.ts), so a flip applies to
+    // stops already waiting. Credential-profile failover has its own policy.
+    description:
+      'Send a Claude Code or Codex turn that stopped on a usage limit again once the limit resets, in the same session. Off by default: each resume spends quota while you are away. With it off, the conversation still shows when the limit resets. Resets more than a day away, or unknown, always wait for you.',
     defaultValue: false,
   }),
   defineSetting({

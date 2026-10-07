@@ -1,0 +1,7 @@
+{
+  "revision": "7f5e329d9fb56e59fbbce6391fe9125e7a9708ff",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed against the #3303 change (Claude readiness asks the installed CLI via auth status when env and credentials file do not establish auth). No claim in this document covers that path; prose unchanged.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/auth/claude-auth.ts"]}
+  ]
+}

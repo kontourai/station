@@ -1,15 +1,21 @@
 import type React from 'react';
 import { createPortal } from 'react-dom';
+import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { toastStore } from '../../contexts/ToastContext';
-import { useShortcutDisplayLookup } from '../../hooks/useKeyboardShortcut';
+import {
+  useShortcutDisplay,
+  useShortcutDisplayLookup,
+} from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionWorkActive } from '../../utils/execution';
 import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
 import { LazyBoundary } from '../LazyBoundary';
+import { NewChatAction } from '../NewChatAction';
 import {
   ChatDockHeaderMoreMenu,
   type DockMoreAction,
 } from './ChatDockHeaderMoreMenu';
+import { inboxToggleLabel } from './inbox-toggle-label';
 import {
   toggleSessionInventoryOccurrence,
   useSessionInventoryHostRegistered,
@@ -35,7 +41,7 @@ interface Session {
 /**
  * Session/identity content only Chat has. `undefined` for every non-Chat
  * occupant (Home, Activity) — those simply don't render this cluster
- * (gear, session counter/"Start a chat", activity dropdown, unread badge),
+ * (gear, the collapsed New chat action, activity dropdown, unread badge),
  * rather than a second component carrying a curated subset of it.
  */
 export interface ChatDockHeaderChatControls {
@@ -59,6 +65,8 @@ export interface ChatDockWorkspaceControls {
   /** False in right-dock mode, where the inbox panel does not render. */
   showInboxToggle: boolean;
   isInboxOpen: boolean;
+  /** The inbox's "Needs you" count, named on the toggle while it is hidden. */
+  inboxNeedsYouCount?: number;
   onToggleInbox: () => void;
   /** station#1301 slice 1: the Background tasks sheet's desktop anchor. */
   backgroundTasksTriggerRef: React.RefObject<HTMLButtonElement | null>;
@@ -89,13 +97,13 @@ export interface ChatDockWorkspaceControls {
     fullscreen: boolean;
   };
   onOpenConversation: () => void;
-  /** New-chat with the single-ready-agent shortcut (opens directly). */
+  /** Opens the New Chat picker, where installed Skills appear too (#3170). */
   onNewChat: () => void;
 }
 
 /**
  * Chat's OWN toolbar (#2046 2b): the identity, context meter, project
- * context, session counter, unread badge and More menu of the Chat pane.
+ * context, unread badge and More menu of the Chat pane.
  * Inside a region host it renders into the region bar's two slots
  * (`RegionChromeSlots`) so the dock keeps one chrome bar; the region's own
  * controls — placement grab, tab strip, maximize, visibility, the click
@@ -124,14 +132,14 @@ interface ChatDockHeaderProps {
   /** The active session's compact context meter, rendered beside identity. */
   contextMeter?: React.ReactNode;
   /**
-   * Whether the region is showing: a collapsed bar offers "Start a chat" in
-   * place of the open pane's own CTA (#800).
+   * Whether the region is showing: a collapsed bar offers the icon-only New
+   * chat action in place of the open pane's own CTA (#800).
    */
   regionVisible: boolean;
   /**
    * Extra rows for the More menu, supplied by the caller because their subject
    * is the active conversation rather than the dock's chrome — Copy thread ID,
-   * Copy project path, Open code layout (#1536 F). Appended after the header's
+   * Copy project path, Open in Coding (#1536 F). Appended after the header's
    * own rows.
    */
   moreActions?: readonly DockMoreAction[];
@@ -152,6 +160,7 @@ export function ChatDockHeader({
   // One hook for a variable number of per-session rows: `useShortcutDisplay`
   // is a hook and cannot be called inside the activity map.
   const shortcutDisplay = useShortcutDisplayLookup();
+  const openShortcut = useShortcutDisplay('dock.openConversation');
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
     isSessionWorkActive(s),
   );
@@ -172,6 +181,22 @@ export function ChatDockHeader({
    * them holding width the title needs.
    */
   const dockMoreActions: DockMoreAction[] = [
+    // B1: "Open" was the bar's second labelled button for the same noun as
+    // "New". It is the menu's first row, with its chord where the tooltip
+    // used to carry it.
+    ...(workspaceControls
+      ? [
+          {
+            key: 'open-chat',
+            label: withShortcutHint(
+              'Open chat…',
+              'dock.openConversation',
+              () => openShortcut,
+            ),
+            onSelect: () => workspaceControls.onOpenConversation(),
+          },
+        ]
+      : []),
     ...(chatControls
       ? [
           {
@@ -205,8 +230,8 @@ export function ChatDockHeader({
           {
             key: 'session-inventory',
             label: inventoryReady
-              ? 'Session inventory'
-              : 'Session inventory — loading',
+              ? 'Chat inventory'
+              : 'Chat inventory — loading',
             haspopup: 'dialog' as const,
             expanded: Boolean(inventoryOccurrence),
             disabled: !inventoryReady,
@@ -228,7 +253,7 @@ export function ChatDockHeader({
                 })
               )
                 toastStore.show(
-                  'Session inventory is not ready for this chat yet.',
+                  'Chat inventory is not ready for this chat yet.',
                 );
             },
           },
@@ -277,16 +302,14 @@ export function ChatDockHeader({
         <button
           type="button"
           className="chat-dock__icon-btn"
-          aria-label={
-            workspaceControls.isInboxOpen
-              ? 'Collapse chat list'
-              : 'Expand chat list'
-          }
-          title={
-            workspaceControls.isInboxOpen
-              ? 'Collapse chat list'
-              : 'Expand chat list'
-          }
+          aria-label={inboxToggleLabel(
+            workspaceControls.isInboxOpen,
+            workspaceControls.inboxNeedsYouCount,
+          )}
+          title={inboxToggleLabel(
+            workspaceControls.isInboxOpen,
+            workspaceControls.inboxNeedsYouCount,
+          )}
           aria-pressed={workspaceControls.isInboxOpen}
           onClick={workspaceControls.onToggleInbox}
         >
@@ -322,11 +345,6 @@ export function ChatDockHeader({
           componentProps={{
             ...workspaceControls,
             iconOnly: Boolean(slots?.namesPane),
-            // Under a naming bar the session count rides the Open icon
-            // (its badge and tooltip) rather than sitting as loose text.
-            sessionCount: slots?.namesPane
-              ? (chatControls?.sessions.length ?? 0)
-              : 0,
           }}
         />
       ) : null}
@@ -375,38 +393,27 @@ export function ChatDockHeader({
           </div>
         </div>
       )}
+      {/* #800: the COLLAPSED bar's one affordance, a real action: the same
+          New chat action every other chrome uses, icon-only and named, so
+          the bar no longer offers a second worded way to start ("Start a
+          chat" beside "New chat"). It opens the dock's start composer. */}
       {chatControls &&
         !slots?.namesPane &&
-        (!chatIdentity || chatControls.sessions.length > 0) &&
-        (chatControls.sessions.length === 0 ? (
-          !isDockOpen ? (
-            // #800: this read "Start a chat" and carried a pointer cursor,
-            // but was inert text — clicking it only toggled the dock open
-            // (the header's own handler) and left the user hunting for
-            // "New". It does what it says now.
-            <button
-              type="button"
-              className="chat-dock__counter chat-dock__counter-action"
-              onClick={(event) => {
-                event.stopPropagation();
-                chatControls.onNewChat();
-              }}
-            >
-              Start a chat
-            </button>
-          ) : (
-            <span className="chat-dock__counter">Start a chat</span>
-          )
-        ) : chatControls.sessions.length > 1 ? (
-          // #1536 F: "1 session" is not a count anyone reads — it is the
-          // state you are always in with one chat open, priced in a bar that
-          // could not fit the conversation's own title. A real count (more
-          // than one) still earns its words; the chat list rail is what
-          // enumerates them either way.
-          <span className="chat-dock__counter">
-            {`${chatControls.sessions.length} sessions`}
-          </span>
-        ) : null)}
+        !isDockOpen &&
+        !chatIdentity &&
+        chatControls.sessions.length === 0 && (
+          <NewChatAction
+            iconOnly
+            className="chat-dock__collapsed-new"
+            title={withShortcutHint('New chat', 'dock.newChat', () =>
+              shortcutDisplay('dock.newChat'),
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              chatControls.onNewChat();
+            }}
+          />
+        )}
       {chatControls && chatControls.unreadCount > 0 && (
         <span className="chat-dock__badge">{chatControls.unreadCount}</span>
       )}

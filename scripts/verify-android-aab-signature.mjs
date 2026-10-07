@@ -1,5 +1,5 @@
-import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const VERIFIED_OUTPUT = 'jar verified.';
@@ -84,7 +84,7 @@ export function verifyAndroidAabSignature(
   }
   const expected = normalizeSha256Fingerprint(expectedFingerprint);
 
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     jarsigner,
     ['-verify', '-strict', ...verificationArgs, aabPath],
     { encoding: 'utf8', windowsHide: true },
@@ -101,10 +101,14 @@ export function verifyAndroidAabSignature(
     throw new AabSignatureVerificationError(result.status);
   }
 
-  const certificate = spawnSync(keytool, ['-printcert', '-jarfile', aabPath], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
+  const certificate = spawnSyncBounded(
+    keytool,
+    ['-printcert', '-jarfile', aabPath],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  );
   if (certificate.error || certificate.status !== 0) {
     throw new AabSignatureVerificationError(null);
   }

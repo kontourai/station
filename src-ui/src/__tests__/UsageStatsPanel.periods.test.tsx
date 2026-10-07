@@ -131,6 +131,36 @@ function selectPeriod(label: string) {
 }
 
 describe('UsageStatsPanel period selector', () => {
+  test.each([undefined, 0])(
+    'current cost cards distinguish an absent estimate from reported %s',
+    (estimatedCostUsd) => {
+      const lifetime = buildLifetimeStats();
+      analyticsState.usageStats = {
+        ...lifetime,
+        snapshot: { projection: 'retained-source-v1' },
+        lifetime: { ...lifetime.lifetime, totalCost: 0, estimatedCostUsd },
+      };
+      sdkState.ranged.data = buildRangedData({
+        snapshot: { projection: 'retained-source-v1' },
+        byDate: { '2026-08-17': { messages: 1, cost: 0, estimatedCostUsd } },
+        rangeSummary: {
+          totalDays: 30,
+          activeDays: 1,
+          totalMessages: 1,
+          totalCost: 0,
+          avgPerDay: 1,
+        },
+      });
+      render(<UsageStatsPanel />);
+      if (estimatedCostUsd === undefined)
+        expect(screen.getAllByText('Not reported')).toHaveLength(2);
+      else expect(screen.getByText('$0.00')).toBeTruthy();
+      selectPeriod('30 days');
+      if (estimatedCostUsd === undefined)
+        expect(screen.getAllByText('Not reported')).toHaveLength(2);
+      else expect(screen.getByText('$0.00')).toBeTruthy();
+    },
+  );
   test('defaults to All time, reading the lifetime fields', () => {
     render(<UsageStatsPanel />);
     expect(
@@ -205,6 +235,30 @@ describe('UsageStatsPanel period selector', () => {
     expect(screen.queryByText(/engine session/)).toBeNull();
   });
 
+  test.each([0, 100])(
+    'current projections disclose only the actual undated input subtotal (%s)',
+    (inputTokens) => {
+      sdkState.ranged.data = buildRangedData({
+        snapshot: { projection: 'retained-source-v1' },
+        unallocated: {
+          date: { messages: 0, inputTokens, outputTokens: 0, cost: 0 },
+        },
+      });
+      render(<UsageStatsPanel />);
+      selectPeriod('30 days');
+      expect(
+        screen.queryByText(
+          /engine sessions are counted in lifetime totals but not in daily history/,
+        ),
+      ).toBeNull();
+      expect(
+        !!screen.queryByText(
+          'Some retained usage has no reliable date and is excluded from daily totals.',
+        ),
+      ).toBe(inputTokens > 0);
+    },
+  );
+
   test('the lifetime breakdowns do not change with the period, and say so', () => {
     sdkState.ranged.data = buildRangedData();
     render(<UsageStatsPanel />);
@@ -220,9 +274,7 @@ describe('UsageStatsPanel period selector', () => {
       screen.getByRole('heading', { level: 4, name: 'All time' }),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        'Lifetime figures — the period above does not filter them.',
-      ),
+      screen.getByText('Model and agent breakdowns · all time'),
     ).toBeTruthy();
     // Back to All time: divider gone, breakdown unchanged.
     selectPeriod('All time');

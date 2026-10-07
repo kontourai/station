@@ -61,6 +61,24 @@ describe('mcpElicitationFormFromRequest', () => {
     expect(readMcpElicitationForm(form())).toEqual(form());
   });
 
+  test.each([
+    { label: 'undefined', enumNames: [undefined, undefined] },
+    { label: 'null', enumNames: [null, null] },
+    { label: 'holes', enumNames: new Array(2) },
+  ])('refuses explicit enum labels containing $label', ({ enumNames }) => {
+    expect(
+      mcpElicitationFormFromRequest('fixture', {
+        message: 'Choose a color',
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            color: { type: 'string', enum: ['red', 'blue'], enumNames },
+          },
+        },
+      }),
+    ).toBeNull();
+  });
+
   test('refuses what it cannot render faithfully', () => {
     const nested = structuredClone(REQUEST);
     (nested.requestedSchema.properties as Record<string, unknown>).address = {
@@ -80,6 +98,32 @@ describe('mcpElicitationFormFromRequest', () => {
       ]),
     ) as typeof wide.requestedSchema.properties;
     expect(mcpElicitationFormFromRequest('fixture', wide)).toBeNull();
+  });
+});
+
+describe('readMcpElicitationForm', () => {
+  test.each([
+    { kind: 'string', format: 'password' },
+    { kind: 'string', minLength: -1 },
+    { kind: 'string', default: 42 },
+    { kind: 'integer', minimum: Number.POSITIVE_INFINITY },
+    { kind: 'number', default: '42' },
+    { kind: 'boolean', default: 'yes' },
+    { kind: 'choice', options: [] },
+    { kind: 'choice', options: [{ value: 'a', label: 42 }] },
+    { kind: 'choice', options: [{ value: 'a' }, { value: 'a' }] },
+    { kind: 'choice', options: [{ value: 'a' }], default: 'b' },
+    { kind: 'multi-choice', options: [{ value: 'a' }], minItems: 1.5 },
+    { kind: 'multi-choice', options: [{ value: 'a' }], default: ['b'] },
+    { kind: 'object' },
+  ])('refuses malformed stored field %j', (field) => {
+    expect(
+      readMcpElicitationForm({
+        serverId: 'fixture',
+        message: 'Question',
+        fields: [{ name: 'answer', required: false, ...field }],
+      }),
+    ).toBeNull();
   });
 });
 

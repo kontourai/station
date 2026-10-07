@@ -1,0 +1,7 @@
+{
+  "revision": "2256e32585d2fe891cad3587938b60e5a6e5d129",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Re-read the changed paragraph (snapshot open requests) against src-ui/src/hooks/orchestration/hydrateOpenApprovalToasts.ts: the client reads the newest turn (turnLimit 1), then follows the conversation event window's nextCursor for at most OLDER_PAGE_LIMIT=3 further pages of OLDER_PAGE_TURNS=5 turns, stopping once every placeholder is found; unresolved ones keep the placeholder. The cursor/direction contract is the one useSessionEventWindow already uses. The rest of the document was not re-reviewed.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

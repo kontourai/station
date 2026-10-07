@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added that a passing main qualification may start a Nightly for that commit, linking the release procedure. Outside the generated verification-policy block. Checked against main-qualification.yml.","inputs":["docs/guides/testing.md"]}
+  ]
+}

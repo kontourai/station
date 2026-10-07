@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
@@ -85,31 +85,27 @@ describe('UsageAggregator', () => {
     expect(stats.lifetime.totalConversations).toBe(1);
   });
 
-  test('serializes concurrent incremental updates without dropping usage', async () => {
+  test('concurrent repeated notifications rebuild each retained message once', async () => {
     const home = await mkdtemp(join(tmpdir(), 'station-usage-'));
     homes.push(home);
     const aggregator = new UsageAggregator(home);
     const count = 12;
+    for (let index = 0; index < count; index++)
+      await writeMemorySession(home, 'codex', `conversation-${index}`, {
+        inputTokens: index + 1,
+        outputTokens: 2,
+        estimatedCost: 0,
+      });
     await Promise.all(
-      Array.from({ length: count }, (_, index) =>
+      Array.from({ length: count * 2 }, (_, index) =>
         aggregator.incrementalUpdate(
-          {
-            role: 'assistant',
-            metadata: {
-              timestamp: Date.now(),
-              model: 'gpt-5',
-              usage: { inputTokens: index + 1, outputTokens: 2 },
-            },
-          },
+          {},
           'codex',
-          `conversation-${index}`,
+          `conversation-${index % count}`,
         ),
       ),
     );
-    const stats = JSON.parse(
-      await readFile(join(home, 'analytics', 'stats.json'), 'utf8'),
-    );
-    expect(stats.lifetime).toMatchObject({
+    expect((await aggregator.readStats()).lifetime).toMatchObject({
       totalMessages: count,
       totalInputTokens: (count * (count + 1)) / 2,
       totalOutputTokens: count * 2,
@@ -166,7 +162,7 @@ describe('UsageAggregator orchestration substrate (station#3245)', () => {
       messages: 3,
       cost: 0.25,
     });
-    expect(stats.byModel['claude-sonnet-4']).toMatchObject({
+    expect(stats.unallocated?.model).toMatchObject({
       messages: 3,
       inputTokens: 1200,
       outputTokens: 340,
@@ -239,52 +235,6 @@ describe('UsageAggregator orchestration substrate (station#3245)', () => {
       totalCost: 0.5,
     });
     expect(stats.lifetime.uniqueAgents.sort()).toEqual(['codex', 'station']);
-  });
-
-  test('a session present in BOTH substrates is counted exactly once', async () => {
-    // A Station-engine chat: the `station-agent` relay writes the FileMemory
-    // transcript AND the orchestration event store records the same session
-    // under the same conversation id. Counting both would double every
-    // Station-engine figure on the Profile.
-    const home = await newHome();
-    await writeMemorySession(home, 'station', 'conv-shared', {
-      inputTokens: 10,
-      outputTokens: 20,
-      estimatedCost: 0.5,
-    });
-    const stats = await new UsageAggregator(
-      home,
-      orchestrationRef([
-        session(
-          'conv-shared',
-          {
-            turns: 1,
-            inputTokens: 10,
-            outputTokens: 20,
-            reportedCostUsd: 0.5,
-          },
-          'station',
-        ),
-      ]),
-    ).fullRescan();
-
-    expect(stats.lifetime).toMatchObject({
-      totalConversations: 1,
-      totalMessages: 1,
-      totalInputTokens: 10,
-      totalOutputTokens: 20,
-      totalCost: 0.5,
-    });
-    expect(stats.byAgent.station).toMatchObject({
-      conversations: 1,
-      messages: 1,
-      cost: 0.5,
-    });
-    expect(stats.lifetime.engineUsageCoverage).toEqual({
-      sessions: 0,
-      sessionsReportingTokens: 0,
-      sessionsReportingCost: 0,
-    });
   });
 
   test('an unreported measurement contributes nothing, and the total says so', async () => {

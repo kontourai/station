@@ -26,7 +26,7 @@ export class LocalUsageReceiptSource implements UsageReceiptSource {
     const aggregate = this.usageAggregator.readUsageReceipts(
       this.stationId,
       authority,
-      { from: request.from, to: request.to, pageSize: 500 },
+      { from: request.from, to: request.to, pageSize: 500, aggregate: true },
     );
     const receipts = page?.receipts;
     const fallbackCoverage: UsageCoverage =
@@ -63,14 +63,16 @@ export class LocalUsageReceiptSource implements UsageReceiptSource {
     // Source coverage is authoritative whenever the EventStore projection
     // supplies it. Never let a truthy coverage object enter a boolean
     // ternary and erase complete/partial state or provider details.
-    const baseCoverage: UsageCoverage = page?.coverage ?? fallbackCoverage;
+    const baseCoverage: UsageCoverage =
+      aggregate?.coverage ?? page?.coverage ?? fallbackCoverage;
     const coverage: UsageCoverage =
-      page?.nextCursor && baseCoverage.state === 'complete'
+      (!aggregate || aggregate.nextCursor) && baseCoverage.state === 'complete'
         ? {
             ...baseCoverage,
             state: 'partial',
-            reason:
-              'receipt drilldown is paged; aggregate remains bounded-window complete',
+            reason: aggregate
+              ? 'aggregate observation limit reached (500); additional window material is missing'
+              : 'canonical aggregate usage unavailable',
           }
         : baseCoverage;
     return {

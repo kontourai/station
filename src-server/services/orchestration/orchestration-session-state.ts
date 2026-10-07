@@ -14,6 +14,7 @@ import type {
   AgentRunSummary,
   ConversationTurnActivity,
   OrchestrationDelegationContext,
+  OrchestrationPeerPendingRequest,
   OrchestrationSessionSummary,
   TerminalAttribution,
   TurnProgressObservation,
@@ -386,6 +387,7 @@ export function projectOrchestrationEventToReadModel(options: {
     case 'session.configured':
       nextSession = {
         ...baseSession,
+        modelRoute: readModelRoute(event.metadata?.modelRoute),
         // A session already marked terminal keeps that status: 'closed' is
         // preserved today, and a `dead` binding (archive#1827) must not be
         // resurrected to 'ready' by a stray/late configured event either —
@@ -515,7 +517,10 @@ export function buildOrchestrationSessionSummary(options: {
   const events = options.events ?? [];
   const lastEvent = events.at(-1);
   const foldedLifecycle = projectSessionLifecycle({ session: base, events });
-  const delegation = extractDelegationContext(events);
+  const delegation = withPeerPendingRequest(
+    extractDelegationContext(events),
+    events,
+  );
   const inputOrigin = delegation
     ? {
         kind: 'delegation' as const,
@@ -523,6 +528,15 @@ export function buildOrchestrationSessionSummary(options: {
         ...(delegation.title ? { title: delegation.title } : {}),
       }
     : undefined;
+  const configuredRouteEvent = [...events]
+    .reverse()
+    .find((event) => event.method === 'session.configured');
+  const modelRoute =
+    options.loaded && Object.hasOwn(options.loaded, 'modelRoute')
+      ? readModelRoute(options.loaded.modelRoute)
+      : configuredRouteEvent
+        ? readModelRoute(configuredRouteEvent.metadata?.modelRoute)
+        : readModelRoute(base.modelRoute);
   const effectiveSelection = extractEffectiveModelSelection(events);
   const selectionReceipt = extractModelSelectionReceipt(events);
   const modelLaunchPlan = extractModelLaunchPlan(events);
@@ -601,6 +615,7 @@ export function buildOrchestrationSessionSummary(options: {
       observedBy: options.answerability.observedBy,
       observedAt: options.answerability.observedAt,
     }),
+    ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
     ...(base.resumeCursor !== undefined
@@ -638,6 +653,10 @@ export function buildOrchestrationSessionSummary(options: {
       : {}),
     ...(lastRuntimeError
       ? { lastRuntimeErrorMessage: lastRuntimeError.message }
+      : {}),
+    ...((lastRuntimeError?.details as { usageLimit?: unknown } | undefined)
+      ?.usageLimit === true
+      ? { lastRuntimeErrorUsageLimit: true as const }
       : {}),
     ...(lastEvent?.method === 'turn.aborted' &&
     lastEvent.recoveryTerminal !== true
@@ -998,7 +1017,12 @@ function extractAttachedSessionAttribution(
     ) {
       return { state: 'attributed', slug: projectSlug };
     }
-    if (stringMeta(metadata, 'projectAttribution') !== 'ambiguous') continue;
+    const marker = stringMeta(metadata, 'projectAttribution');
+    // #3386: the follow service found no project for this session and said
+    // so. It is the newest statement, so nothing older is read past it — the
+    // same precedence the writer's stored fingerprint uses.
+    if (marker === 'unattributed') return undefined;
+    if (marker !== 'ambiguous') continue;
     const raw = metadata?.projectCandidates;
     if (!Array.isArray(raw)) continue;
     const named = raw.filter(
@@ -1077,6 +1101,88 @@ function extractDelegationContext(
 }
 
 /**
+ * Metadata key on a delegator-side peer record's `session.configured` event
+ * that carries the paired Station's last-reported open request (an object)
+ * or its absence (`null`). Written only by
+ * `OrchestrationService.recordPeerDelegationPendingRequest`; the event
+ * carries no `taskId`, so it never restates the delegation binding.
+ */
+export const PEER_PENDING_REQUEST_METADATA_KEY = 'peerPendingRequest';
+
+const PEER_REQUEST_TYPES = new Set([
+  'approval',
+  'permission',
+  'confirmation',
+  'input',
+]);
+
+/**
+ * The latest peer pending-request observation in `events`: the request, or
+ * `null` when the latest observation reported none, or `undefined` when no
+ * observation is present. Malformed shapes read as `undefined` (no fact), so
+ * a partial write can never name a request.
+ */
+export function extractPeerPendingRequestObservation(
+  events: readonly CanonicalRuntimeEvent[],
+): OrchestrationPeerPendingRequest | null | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.method !== 'session.configured') continue;
+    const metadata =
+      event.metadata && typeof event.metadata === 'object'
+        ? event.metadata
+        : undefined;
+    if (!metadata || !(PEER_PENDING_REQUEST_METADATA_KEY in metadata)) continue;
+    const value = metadata[PEER_PENDING_REQUEST_METADATA_KEY];
+    if (value === null) return null;
+    if (!value || typeof value !== 'object') return undefined;
+    const record = value as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    const observedAt =
+      typeof record.observedAt === 'string' ? record.observedAt : '';
+    if (!id || !observedAt) return undefined;
+    return {
+      id,
+      ...(typeof record.type === 'string' && PEER_REQUEST_TYPES.has(record.type)
+        ? {
+            type: record.type as OrchestrationPeerPendingRequest['type'],
+          }
+        : {}),
+      ...(typeof record.title === 'string' && record.title.trim()
+        ? { title: record.title }
+        : {}),
+      // The binding pair is read only whole.
+      ...(typeof record.eventId === 'string' &&
+      record.eventId &&
+      typeof record.threadId === 'string' &&
+      record.threadId
+        ? { eventId: record.eventId, threadId: record.threadId }
+        : {}),
+      ...(typeof record.body === 'string' && record.body.trim()
+        ? { body: record.body }
+        : {}),
+      ...(typeof record.callerCanRespond === 'boolean'
+        ? { callerCanRespond: record.callerCanRespond }
+        : {}),
+      observedAt,
+    };
+  }
+  return undefined;
+}
+
+/** Only a peer record carries the paired Station's request. */
+function withPeerPendingRequest(
+  delegation: OrchestrationDelegationContext | undefined,
+  events: readonly CanonicalRuntimeEvent[],
+): OrchestrationDelegationContext | undefined {
+  if (delegation?.environmentKind !== 'peer') return delegation;
+  const observed = extractPeerPendingRequestObservation(events);
+  return observed
+    ? { ...delegation, peerPendingRequest: observed }
+    : delegation;
+}
+
+/**
  * The durable event-store fact projection uses these exact one-event reducer
  * predicates. Keeping them beside the session reducer prevents a bounded
  * read from turning a malformed or partial metadata shape into an invented
@@ -1097,6 +1203,9 @@ export function projectionFactKeysForEvent(
   }
   if (extractDelegationContext([event])) {
     facts.push({ key: 'delegation' });
+  }
+  if (extractPeerPendingRequestObservation([event]) !== undefined) {
+    facts.push({ key: 'peer-pending-request' });
   }
   if (extractAttachedSessionAttribution([event])) {
     facts.push({ key: 'attribution' });
@@ -2150,4 +2259,31 @@ function findTerminalFailureEvent(
     turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
   }
   return lastFailure;
+}
+
+function readModelRoute(value: unknown): ProviderSession['modelRoute'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const route = value as Record<string, unknown>;
+  if (
+    typeof route.connectionId !== 'string' ||
+    typeof route.label !== 'string' ||
+    typeof route.endpoint !== 'string'
+  )
+    return undefined;
+  try {
+    const url = new URL(route.endpoint);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return undefined;
+    return {
+      connectionId: route.connectionId,
+      label: route.label.slice(0, 200),
+      endpoint: url.origin,
+    };
+  } catch {
+    return undefined;
+  }
 }

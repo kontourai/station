@@ -39,7 +39,7 @@
  * the `blocked` label, or a HOLD_MARKER line in the PR body naming the reason.
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const REPORT_MARKER = '<!-- starved-pr-report -->';
@@ -147,7 +147,7 @@ const QUERY = `query($owner:String!, $name:String!) {
 }`;
 
 function gh(args, options = {}) {
-  return execFileSync('gh', args, {
+  return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     ...options,

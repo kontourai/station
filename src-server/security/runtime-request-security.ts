@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
+import type { ClientProtocolPolicy } from './client-protocol-admission.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
 export type PairedDeviceLastSeenFrom = 'loopback' | 'lan' | 'tailnet';
@@ -430,6 +431,12 @@ export interface RuntimeHttpSecurityOptions {
     credential: string,
   ) => string | undefined | Promise<string | undefined>;
   allowedOrigins?: readonly string[];
+  /**
+   * Test seam for the client-protocol range this host enforces. Production
+   * omits it and enforces the same block the public handshake advertises
+   * (`HOST_STATION_COMPATIBILITY`), so the two cannot disagree.
+   */
+  clientCompatibility?: ClientProtocolPolicy;
   audit?: (record: RuntimeSecurityAuditRecord) => void;
   now?: () => number;
   maxFailures?: number;
@@ -1313,28 +1320,38 @@ export function isRuntimeRequestPrincipalCurrent(
   request: Request,
   security: CurrentRuntimeRequestPrincipalSecurity,
 ): boolean {
+  return runtimeRequestPrincipalMayAccessHttpRoute(request, security, {
+    method: request.method,
+    path: new URL(request.url).pathname,
+  });
+}
+
+/**
+ * Whether THIS request's authenticated principal would pass the HTTP
+ * boundary for another route — the same credential authorization and
+ * pairing-scope gates ingress applies, evaluated for `route` instead of the
+ * request's own path. Used to decide whether a read may offer an affordance
+ * that posts to `route`. `route.path` must be a concrete path.
+ */
+export function runtimeRequestPrincipalMayAccessHttpRoute(
+  request: Request,
+  security: CurrentRuntimeRequestPrincipalSecurity,
+  route: { method: string; path: string },
+): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
   if (principal.kind === 'internal')
     return isTrustedInternalApiToken(
       request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,
     );
-  const path = new URL(request.url).pathname;
-  if (
-    !security.authorizeCredential(principal.credential, {
-      method: request.method,
-      path,
-    })
-  ) {
+  const { path } = route;
+  const method = route.method;
+  if (!security.authorizeCredential(principal.credential, { method, path })) {
     return false;
   }
   // Match ingress exactly: an unmapped capability or a no-longer-granted
   // pairing scope both fail closed at the delayed publication boundary.
-  const capability = requiredExternalSurfaceCapability(
-    'http',
-    request.method,
-    path,
-  );
+  const capability = requiredExternalSurfaceCapability('http', method, path);
   if (capability?.capability !== 'pairing-scope' || !capability.scope)
     return false;
   const grantedScope = security.resolveGrantedScope(principal.credential);
@@ -1343,10 +1360,7 @@ export function isRuntimeRequestPrincipalCurrent(
     pairingScopeSatisfiesHttpRoute(
       grantedScope,
       capability.scope,
-      {
-        method: request.method,
-        path,
-      },
+      { method, path },
       security.verifyOperatorCredential?.(principal.credential) === true,
     )
   );

@@ -253,21 +253,38 @@ test.describe('Structured UI blocks', () => {
     });
 
     await expect(
-      page.getByRole('heading', { name: 'Approve gate' }),
+      page.getByRole('heading', { name: 'Approve gate', exact: true }),
     ).toBeVisible();
+    // Scope controls to the rendered form block: the composer's approval-mode
+    // chip also has an accessible name starting "Approv…", so a page-wide
+    // button lookup is ambiguous and breaks whenever composer labels move.
+    const gateForm = page.locator('form').filter({
+      has: page.getByRole('heading', { name: 'Approve gate', exact: true }),
+    });
+    const approveButton = gateForm.getByRole('button', {
+      name: 'Approve',
+      exact: true,
+    });
 
     // Required-field guard fires before any send.
-    await page.getByRole('button', { name: 'Approve', exact: true }).click();
-    await expect(page.getByText('"Reviewer" is required.')).toBeVisible();
+    await approveButton.click();
+    await expect(gateForm.getByText('"Reviewer" is required.')).toBeVisible();
     expect(sentBody).toBeNull();
 
     // Fill and submit.
-    await page.getByLabel('Reviewer').fill('casey');
-    await page.getByText('Sign off').click();
-    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    await gateForm.getByLabel('Reviewer').fill('casey');
+    await gateForm.getByText('Sign off').click();
+    // Name lost input where it is lost. Under heavy load the block can
+    // re-mount after the fill and come back empty; a re-mount after these
+    // checks still shows up below as a missing "Submitted" button.
+    await expect(gateForm.getByLabel('Reviewer')).toHaveValue('casey');
+    await expect(gateForm.getByLabel('Sign off')).toBeChecked();
+    await approveButton.click();
 
     // Form locks after submit, and the tagged structured turn was sent.
-    await expect(page.getByRole('button', { name: 'Submitted' })).toBeVisible();
+    await expect(
+      gateForm.getByRole('button', { name: 'Submitted' }),
+    ).toBeVisible();
     await expect.poll(() => sentBody).not.toBeNull();
     const turn = JSON.parse(sentBody as unknown as string).message as string;
     expect(turn).toContain('Submitted form "Approve gate":');

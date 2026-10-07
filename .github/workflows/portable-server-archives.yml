@@ -1,4 +1,4 @@
-name: Portable server archives
+name: "PR: Portable archives"
 
 # Builds station-server-<os>-<arch> on each target's native runner and proves
 # it runs with no Node.js on PATH (#2675). An archive carries the build host's
@@ -71,6 +71,7 @@ on:
       - 'install.sh'
       - 'install.ps1'
       - 'schemas/**'
+      - 'examples/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
       - 'config/channel-ports.json'
@@ -85,8 +86,10 @@ on:
       - 'scripts/station-cli.ts'
       - 'scripts/station-cli-implementation.ts'
       - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/container-release-metadata.mjs'
       - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/bundled-registry.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
       - 'scripts/lib/documentation-model.mjs'
       - 'scripts/lib/elf-symbol-floor.mjs'
@@ -113,6 +116,7 @@ on:
       - 'install.sh'
       - 'install.ps1'
       - 'schemas/**'
+      - 'examples/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
       - 'config/channel-ports.json'
@@ -127,8 +131,10 @@ on:
       - 'scripts/station-cli.ts'
       - 'scripts/station-cli-implementation.ts'
       - 'scripts/source-bootstrap.ts'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/container-release-metadata.mjs'
       - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/bundled-registry.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
       - 'scripts/lib/documentation-model.mjs'
       - 'scripts/lib/elf-symbol-floor.mjs'

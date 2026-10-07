@@ -1,4 +1,5 @@
 import {
+  CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE,
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
   DEVICE_PAIRING_PROTOCOL_VERSION,
   type DeviceAccountBindingCandidate,
@@ -13,6 +14,7 @@ import {
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
 import type { StationProfileCredentialRef } from '@kontourai/station-contracts/station-profile';
+import { clientProtocolHeaders } from '@kontourai/station-shared/client-protocol';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 
 const PAYLOAD_PREFIX = 'station-pairing:v1:';
@@ -245,9 +247,16 @@ async function pairingFetch<T>(
   if (signal?.aborted) abortFromCaller();
   else signal?.addEventListener('abort', abortFromCaller, { once: true });
   try {
-    response = await fetch(new URL(path, endpoint), {
+    const url = new URL(path, endpoint);
+    response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(extraHeaders ?? {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(extraHeaders ?? {}),
+        // After the caller's headers: this build's protocol is not theirs to
+        // restate (#2962).
+        ...clientProtocolHeaders(url),
+      },
       body: JSON.stringify(body),
       signal: abort.signal,
       ...(credentials ? { credentials } : {}),
@@ -266,11 +275,21 @@ async function pairingFetch<T>(
     signal?.removeEventListener('abort', abortFromCaller);
   }
   if (!response.ok) {
-    const error = (await response
+    const body = (await response
       .json()
-      .catch(() => ({ error: 'request_failed' }))) as { error?: string };
-    throw Object.assign(new Error(error.error ?? 'request_failed'), {
-      code: error.error,
+      .catch(() => ({ error: 'request_failed' }))) as {
+      error?: string | { code?: unknown };
+    };
+    // Pairing handlers answer `{ error: '<code>' }`; the runtime boundary in
+    // front of them (client protocol, origin) answers `{ error: { code } }`.
+    const code =
+      typeof body.error === 'string'
+        ? body.error
+        : typeof body.error?.code === 'string'
+          ? body.error.code
+          : undefined;
+    throw Object.assign(new Error(code ?? 'request_failed'), {
+      code,
       status: response.status,
     });
   }
@@ -338,6 +357,8 @@ const PAIRING_REQUEST_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
     'This Station has already granted you as many devices as it allows. Revoke one under Paired Devices on the Station, then try again.',
   unattributed_credential_quota_reached:
     'This Station has already granted as many devices as it allows. Revoke one under Paired Devices on the Station, then try again.',
+  [CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE]:
+    'This Station no longer supports this version of the app. Install the latest Station app on this device, then pair again.',
 };
 
 /**

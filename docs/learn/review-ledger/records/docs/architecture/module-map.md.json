@@ -950,7 +950,9 @@
 
     "tests/helpers/fixture-audit.ts",
 
-    "tests/helpers/journey-profile.ts"
+    "tests/helpers/journey-profile.ts",
+
+    "packages/shared/src/extension-transcript-markers.ts"
   ],
 
   "checks": [

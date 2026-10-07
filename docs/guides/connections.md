@@ -322,8 +322,10 @@ stay hidden while publication is being rechecked, after it is unshared, or when
 the current request scope is unavailable. The member detail view does not load
 operator layouts, Git status, knowledge, or workspace panes; an operator
 Project response does not mount those Project detail panels. Member Project
-icons that point to URLs are omitted so the native relay view does not issue
-raw image requests outside the broker.
+icons follow the same icon rule as every other surface: one that points to a
+URL or a path is omitted, so the native relay view does not issue raw image
+requests outside the broker, while an uploaded image icon is inline data and
+is shown.
 
 The UI owners are [saved relay routes](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx),
 [Project detail](../../src-ui/src/views/ProjectPage.tsx), and the
@@ -601,6 +603,25 @@ was able to read.
 
 ## Route an engine through a model proxy
 
+In **Models**, save an OpenAI-compatible connection with the proxy address and key.
+Then open **Engines → Claude Code** or **Engines → Codex**, select that connection
+under **Connect through**, and save. Choose a **Default model** from the discovered
+list and save it. **Check connection** sends one short message and reports whether
+the engine answered. A failed check is shown as **Check failed**; a model catalog
+alone does not override that result. **Refresh models** refreshes the catalog.
+
+Model requests use the proxy; the engine and its tools still run on this Station.
+
+The engine stores `config.proxyConnectionId`, referring to the saved Model
+connection. Its current key is resolved on each launch and never copied into
+engine settings. Codex uses provider arguments while keeping its config home.
+Changing settings alone does not rewrite a session's recorded route; a relaunch
+records the route it actually uses. Chat and work lists show **via <proxy name>**.
+
+The following environment/config-home options remain available for custom setups.
+Choosing **Your account** or a saved proxy in the UI explicitly replaces those
+custom connection settings.
+
 A Claude Code or Codex Engine connection can be configured to use a local
 model proxy. The proxy must support the chosen engine's requests; an
 Anthropic/OpenAI-compatible endpoint label alone does not establish that.
@@ -634,15 +655,20 @@ For example, if your local proxy expects a placeholder token:
 }
 ```
 
-For Codex, prefer `configHome` pointing at a dedicated home whose
+For custom Codex configurations, `configHome` can point at a dedicated home whose
 `config.toml` sets `model_provider` to the proxy's provider entry, so model
 discovery lists what the proxy serves.
 
 The Engine's login readiness is checked under the same `env` and `configHome`:
 a proxy token such as `ANTHROPIC_AUTH_TOKEN` counts as signed in, an
 empty-string value masks the inherited key, and Codex's login probe reads the
-configured `CODEX_HOME`. Readiness does not apply the app-home opt-in or a
-selected credential profile.
+configured `CODEX_HOME`. On macOS, Claude readiness reads its selected
+Keychain namespace first, using `CLAUDE_SECURESTORAGE_CONFIG_DIR` before
+`CLAUDE_CONFIG_DIR`. It consults the selected credential file only when the
+Keychain entry is absent. An unreadable or malformed secure-store result stays
+unknown; it cannot borrow another namespace's login. These checks establish
+credential presence, rather than token validity. Readiness does not apply the
+app-home opt-in or a selected credential profile.
 
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home

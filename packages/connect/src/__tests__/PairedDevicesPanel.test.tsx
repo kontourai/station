@@ -41,6 +41,7 @@ interface RecordedCall {
 function stubHost(options: {
   devices: PairedDevice[];
   revokeStatus?: number;
+  scopeStatus?: number;
   revokeBody?: unknown;
 }) {
   const calls: RecordedCall[] = [];
@@ -52,6 +53,9 @@ function stubHost(options: {
         method,
         auth: new Headers(init?.headers).get('Authorization'),
       });
+      if (method === 'POST' && String(input).endsWith('/scope')) {
+        return new Response(null, { status: options.scopeStatus ?? 204 });
+      }
       if (method === 'DELETE') {
         return options.revokeBody === undefined
           ? new Response(null, { status: options.revokeStatus ?? 204 })
@@ -525,7 +529,7 @@ describe('PairedDevicesPanel', () => {
 
     expect(
       await screen.findByText(
-        /Station Desktop manages the operator credential for device changes/,
+        /Station Desktop can list devices but does not hold the operator credential/,
       ),
     ).toBeTruthy();
     expect(
@@ -542,6 +546,79 @@ describe('PairedDevicesPanel', () => {
         auth: null,
       });
     });
+  });
+
+  test('points a native host at the CLI when the host credential is refused for a scope change', async () => {
+    stubHost({
+      devices: [
+        device({
+          id: 'abc',
+          name: 'Pixel 9',
+          scope: 'orchestration:read orchestration:operate',
+        }),
+      ],
+      scopeStatus: 401,
+    });
+    renderPanel({
+      allowManualCredentials: false,
+      hostAppName: 'Station Desktop',
+    });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Change access for Pixel 9' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      'Station Desktop can’t change a device’s access. Run `station environment access scope <device> --add|--remove|--set` on the host, then reopen this list.',
+    );
+    expect(alert.textContent).not.toContain('managed by');
+  });
+
+  test('points a native host at the CLI when the host credential is refused for a revoke', async () => {
+    stubHost({
+      devices: [device({ id: 'abc', name: 'Pixel 9' })],
+      revokeStatus: 401,
+    });
+    renderPanel({
+      allowManualCredentials: false,
+      hostAppName: 'Station Desktop',
+    });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Revoke Pixel 9' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      'Station Desktop can’t revoke a device. Run `station environment access revoke <device>` on the host, then reopen this list.',
+    );
+    expect(alert.textContent).not.toContain('managed by');
+  });
+
+  test('points a native host at the CLI when the host credential is refused for a record removal', async () => {
+    stubHost({
+      devices: [device({ name: 'Turned off', revokedAt: Date.now() - HOUR })],
+      revokeStatus: 401,
+    });
+    renderPanel({
+      allowManualCredentials: false,
+      hostAppName: 'Station Desktop',
+    });
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Remove revoked record for Turned off',
+      }),
+    );
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      'Station Desktop can’t remove a device record. Run `station environment access remove <device>` on the host, then reopen this list.',
+    );
+    expect(alert.textContent).not.toContain('managed by');
   });
 
   test('explains that an unauthorized device needs review and reconnection', async () => {

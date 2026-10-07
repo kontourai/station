@@ -1,0 +1,23 @@
+{
+  "revision": "79b31eb4fc159b42526456f283c1a54ed2a6e153",
+
+  "notes": [
+    {"path":"README.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"This document cites docs/architecture/module-map.md, which gained one paragraph on the conditional retirement of a replaced never-used Session. Checked that this document makes no claim about predecessor retirement or session stopping that the paragraph affects. Search-based review, not a full re-read.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

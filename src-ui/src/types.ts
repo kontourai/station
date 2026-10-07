@@ -326,6 +326,8 @@ export interface ChatSession {
   streamingMessage?: import('./contexts/active-chats-state').StreamingMessage;
   /** See ChatUIState.queuedMessageFailure (active-chats-state.ts) — persisted. */
   queuedMessageFailure?: { message: string; code?: string; at: number };
+  /** See ChatUIState.usageLimitStopped (#3157) — session-scoped. */
+  usageLimitStopped?: boolean;
   /** See ChatUIState.unsentMessages (archive#3706) — persisted, not a queue. */
   unsentMessages?: UnsentMessageRecord[];
   outboundQueuedTurns?: Array<{

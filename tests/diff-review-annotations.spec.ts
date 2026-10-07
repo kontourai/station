@@ -125,8 +125,11 @@ test.describe('Diff review annotations', () => {
     await page.goto('/projects/dev/layouts/code');
     await selectCodingPane(page, 'Diff');
 
-    // The panel header is always present.
-    await expect(page.getByText('Git Diff')).toBeVisible();
+    // The pane head names the pane; the toolbar is counts and icon tools.
+    await expect(page.getByText('Git Diff')).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Wrap lines' }),
+    ).toBeVisible();
 
     // The wiring fired: DiffPanel fetched the project's comments.
     await commentsRequest;

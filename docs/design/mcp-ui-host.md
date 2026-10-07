@@ -86,6 +86,15 @@ state removal before SDK `finishAuth`. A closed SDK handle is not sufficient
 to prune a pending credential operation. Cleanup runs outside the owned scope
 to avoid waiting on itself; local inspection counts these retained operations.
 
+Connected accounts (#3279) keep these custody rules and add one binding. For an
+integration with `credentialOwnership: {owner: "principal"}`, a consent flow is
+keyed by the principal who started it, and its provider writes only that
+person's credential bucket in a separate principal credential document. A
+callback from another principal finds only its own flow, so it cannot complete
+or write tokens for someone else's. Such a flow never changes the integration's
+shared `probe.authorization`. MCP Apps requests carry no turn principal, so they
+are refused for these integrations rather than borrowing a shared credential.
+
 This local custody layer originated as the first tranche of #1409. SDK close fulfillment does **not**
 prove that a stdio process, SDK-internal negotiation child, descendant process,
 or remote effect has drained. This owner is neither a shared-home lease nor a
@@ -156,7 +165,7 @@ This is the compatibility record for Station as an MCP client (#3284, part of
 | Tools | Listing, calls, structured results; MCP Apps metadata | — |
 | MCP Apps extension `2026-01-26` | Declared; see the sections below | — |
 | Prompts | `prompts/list` and `prompts/get` for servers in an agent's tool view, offered as `/<server>:<prompt>` slash commands with named string arguments ([commands guide](../guides/commands.md)). Inserted content: text, and embedded resources that carry text | Image, audio, blob and resource-link prompt content is refused, not dropped; `prompts/list_changed` is not followed (the list is re-read when the command menu refreshes) |
-| Elicitation | Capability `elicitation: { form: {} }`. Form mode only, on both eras: a 2025-era server's `elicitation/create` request and a 2026-07-28 `input_required` result reach the same handler. Rendered for the person the Station-agent turn runs for; accept with content validated against the requested schema, decline, or cancel | URL mode (not declared, so the SDK refuses it); an elicitation outside a Station-agent tool call, or while two tool calls on the same pooled connection are in flight, is refused with an error rather than shown to someone who may not own it; Strands-engine turns |
+| Elicitation | Capability `elicitation: { form: {} }`. Form mode only, on both eras: a 2025-era server's `elicitation/create` request and a 2026-07-28 `input_required` result reach the same handler. Rendered for the person the Station-agent turn runs for; accept with content validated against the requested schema, decline, or cancel | URL mode (not declared, so the SDK refuses it); an elicitation is answered only when exactly one request that could elicit is in flight on the connection and it is a Station-agent turn's tool call; with no such call, or with any other such request in flight on the same pooled connection (another tool call, an MCP Apps call, a prompt get or resource read), it is refused with an error rather than shown to someone who may not own it. On the 2026-07-28 era only `tools/call`, `prompts/get` and `resources/read` can elicit, so listings, `ping` and completion do not count; a 2025-era server may elicit during any request, so there every request counts; Strands-engine turns |
 | Resources | `ui://` App resource reads only | General listing, reading and subscription (#3284, later slice) |
 | Sampling | — | Not declared; a server's sampling request is refused (#3284, later slice) |
 | Roots | — | Not declared |
@@ -175,13 +184,23 @@ pinned to the exact opened event; the service validates accepted content
 against that form and refuses invalid content with a reason, and the bridge
 re-checks it before the server sees it. Nothing is coerced or truncated.
 
+Live and rehydrated approval toasts suppress one-click answers for payloads
+with a string `serverId` and an array of `fields`. This small shape check
+keeps the full form reader out of the toast path; the event projection and
+pending-request cards still validate stored forms with the shared reader.
+A payload with that shape that fails the full reader follows ordinary request
+presentation without a one-click toast. Answer validation remains on the
+server and bridge paths described above.
+
 Truthfulness rules: `accept` only with content the person entered; `decline`
 only when they declined; a timeout (10 minutes, or the server's own request
 timeout), a stopped turn, a server cancellation or a stopped session all
 return `cancel`. A form that cannot be rendered, or a hosted turn with no
 bound session, is an error to the server, never a fabricated answer. The
-agent audience rule for member-facing turns named in #3284 has no runtime
-concept to bind to yet and is not implemented.
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+now refuses Project member callers' Agent turns and pending-approval answers
+until the intersected-scope turn path in #3277 is implemented. See
+[Project membership](project-membership.md) for its covered routes and limits.
 
 ## App metadata
 

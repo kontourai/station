@@ -70,6 +70,13 @@ interface TrackedWorkflow {
   background: boolean;
   /** childId → the latest revision's entry. */
   children: Map<string, MuseServeWorkflowChild>;
+  /**
+   * childId → usage accumulated over every revision. A revision restates
+   * only what it carries (`completed` and `terminal` have a duration, not
+   * the tokens `usage` reported), and revisions after a Station stop still
+   * count, so the terminal settle can report the whole figure (#3337).
+   */
+  usage: Map<string, ChildWorkUsage>;
   completed: boolean;
 }
 
@@ -381,6 +388,7 @@ export function observeMuseWorkflowItem(
       ...(toolCallId ? { toolCallId } : {}),
       background: item.background === true,
       children: new Map(),
+      usage: new Map(),
       completed: false,
     };
     state.workflows.set(itemId, workflow);
@@ -392,7 +400,16 @@ export function observeMuseWorkflowItem(
         return child ? [child] : [];
       })
     : [];
-  for (const child of listed) workflow.children.set(child.childId, child);
+  for (const child of listed) {
+    workflow.children.set(child.childId, child);
+    const reported = usageOf(child);
+    if (reported) {
+      workflow.usage.set(child.childId, {
+        ...workflow.usage.get(child.childId),
+        ...reported,
+      });
+    }
+  }
 
   const newlyRunning: ChildWorkItem[] = [];
   const usageUpdates: ChildWorkItem[] = [];
@@ -404,13 +421,7 @@ export function observeMuseWorkflowItem(
       continue;
     }
     if (existing && existing.status !== 'running') continue;
-    // A revision restates only what it carries (`completed` has a duration,
-    // not the tokens `usage` reported), so usage accumulates.
-    const reported = usageOf(child);
-    const usage =
-      reported || existing?.usage
-        ? { ...existing?.usage, ...reported }
-        : undefined;
+    const usage = workflow.usage.get(child.childId);
     const next: ChildWorkItem = {
       ...baseItem(context, workflow, child),
       ...(existing?.startedAt
@@ -450,7 +461,12 @@ export function observeMuseWorkflowItem(
       });
     }
     state.stopRequested.delete(child.childId);
-    settle(context, child.childId, status, { usage: usageOf(child) });
+    // The accumulated figure, not the terminal revision's duration alone: a
+    // settle reports usage, so a partial one would leave the running token
+    // count provisional for good (#3337).
+    settle(context, child.childId, status, {
+      usage: workflow.usage.get(child.childId),
+    });
   }
 
   const itemStatus = readString(item.status);

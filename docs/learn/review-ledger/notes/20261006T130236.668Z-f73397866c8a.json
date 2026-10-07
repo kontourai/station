@@ -1,0 +1,7 @@
+{
+  "revision": "d40baf1321750d11c8e3ad23f0e5e60bea01b46b",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3406 review round: session-api.md changed only in the attached-session discovery paragraph (unread folders, stuck-helper bound, adoption sync disclosure); the ADR's status pointer to session-api for today's contract stays accurate. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

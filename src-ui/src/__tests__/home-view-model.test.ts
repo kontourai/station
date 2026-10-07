@@ -85,6 +85,9 @@ describe('buildHomeWorkItems', () => {
         expect(after).toHaveLength(1);
         expect(after[0]).toMatchObject({
           agentSlug: 'claude',
+          // #3355: the provider travels with the slug's side, never the
+          // predecessor's engine.
+          provider: 'claude',
           agentLabel: 'Claude Code',
           model: 'claude-opus-5',
           title: before[0].title,
@@ -885,7 +888,7 @@ describe('buildHomeWorkItems', () => {
 });
 
 describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
-  // Shape copied from a live read-model row on the brian-media dogfood
+  // Shape copied from a live read-model row on the media-server dogfood
   // instance, where 13 of 24 sessions rendered "Running" indefinitely.
   const attachedButIdle = {
     threadId: 'codex:1784515865925',
@@ -1383,7 +1386,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       remoteEnvironments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
       ],
@@ -1396,7 +1399,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       kind: 'remote-session',
       kindLabel: 'Remote session',
       environmentId: 'env-a',
-      environmentLabel: 'Brian media',
+      environmentLabel: 'Home media',
     });
     // The local item is untouched by the merge — no provenance fields leak
     // onto it.
@@ -1413,7 +1416,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       remoteEnvironments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           // Deliberately the SAME threadId as LOCAL_SESSION.
           sessions: [{ ...LOCAL_SESSION }] as any,
         },
@@ -2541,5 +2544,96 @@ describe('buildActiveChatTaskItems: approvals waiting on the user', () => {
         orchestrationStatus: 'awaiting-approval',
       }),
     ).toBe('Needs attention');
+  });
+});
+
+/**
+ * #3355: a row carries the engine its execution recorded (`provider`) beside
+ * its `agentSlug`, so the inbox can draw an engine-bound agent's mark when
+ * the catalog could not report the agent's engine. The pairing must hold
+ * through the chat/session merge.
+ */
+describe('HomeWorkItem.provider pairs with agentSlug (#3355)', () => {
+  function session(overrides: Record<string, unknown>) {
+    return {
+      threadId: 'thread-1',
+      conversationId: 'conversation',
+      assignedAgentSlug: 'reviewer',
+      provider: 'codex',
+      title: 'Review',
+      createdAt: '2026-08-25T12:00:00Z',
+      updatedAt: '2026-08-25T12:00:00Z',
+      status: 'closed',
+      lifecycleState: 'completed',
+      isLoaded: true,
+      isPersisted: true,
+      answerability: { answerable: true },
+      eventCount: 1,
+      ...overrides,
+    };
+  }
+
+  function chat(overrides: Record<string, unknown>) {
+    return {
+      conversationId: 'conversation',
+      currentSessionId: 'thread-1',
+      agentSlug: 'reviewer',
+      agentName: 'Reviewer',
+      provider: 'codex',
+      title: 'Review',
+      createdAt: Date.parse('2026-08-25T13:00:00Z'),
+      messages: [],
+      ...overrides,
+    };
+  }
+
+  test('session and chat items each carry their own recorded provider', () => {
+    expect(
+      buildOrchestrationItems([session({})] as any, [] as any)[0],
+    ).toMatchObject({ agentSlug: 'reviewer', provider: 'codex' });
+    expect(
+      buildActiveChatTaskItems({
+        chats: { local: chat({ provider: 'claude' }) } as any,
+        agents: [] as any,
+      })[0],
+    ).toMatchObject({ agentSlug: 'reviewer', provider: 'claude' });
+  });
+
+  test('an unparseable provider is carried as nothing', () => {
+    expect(
+      buildOrchestrationItems(
+        [session({ provider: 'not an engine' })] as any,
+        [] as any,
+      )[0].provider,
+    ).toBeUndefined();
+  });
+
+  test('a merged row keeps the provider both sides agree on', () => {
+    const [row] = buildHomeWorkItems({
+      chats: { local: chat({}) } as any,
+      agents: [] as any,
+      sessions: [session({})] as any,
+    });
+    expect(row).toMatchObject({ agentSlug: 'reviewer', provider: 'codex' });
+  });
+
+  test('a merged row whose sides name different engines carries none', () => {
+    const [row] = buildHomeWorkItems({
+      chats: { local: chat({ provider: 'claude' }) } as any,
+      agents: [] as any,
+      sessions: [session({})] as any,
+    });
+    expect(row.agentSlug).toBe('reviewer');
+    expect(row.provider).toBeUndefined();
+  });
+
+  test('a merged row with conflicting agents carries neither slug nor provider', () => {
+    const [row] = buildHomeWorkItems({
+      chats: { local: chat({ agentSlug: 'writer' }) } as any,
+      agents: [] as any,
+      sessions: [session({})] as any,
+    });
+    expect(row.agentSlug).toBeUndefined();
+    expect(row.provider).toBeUndefined();
   });
 });

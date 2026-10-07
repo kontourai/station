@@ -1,0 +1,7 @@
+{
+  "revision": "ad30dbea5f0eb5bc07431d5d233cf05b62725e6a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Edited the project icon paragraph: a legacy link icon is named in settings with a prompt to choose a new one (ProjectSettingsView legacyIcon notice), and a row for work on another Station shows neither icon nor colour (rowProjectMarks on environmentId). Rest of the paragraph re-checked against ProjectIconPicker (upload types incl. ICO, emoji, No icon, artwork suggested not applied) and ProjectService's new-icon check, which changes no user-visible step.","inputs":["docs/user/getting-started.md","packages/contracts/src/project.ts","src-server/services/projects/project-service.ts","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

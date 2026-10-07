@@ -1,6 +1,7 @@
 import type { ProjectIconCandidate } from '@kontourai/station-contracts/project';
-import { LayoutIcon } from '../icons/LayoutIcon';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import { PathAutocomplete } from '../PathAutocomplete';
+import { ProjectIconPicker } from '../project-icon/ProjectIconPicker';
 
 export { EnvironmentPicker as NewProjectEnvironmentPicker } from '../EnvironmentPicker';
 
@@ -58,91 +59,6 @@ export function NewProjectDirectoryField({
   );
 }
 
-interface ProjectArtworkChoicesProps {
-  candidates: ProjectIconCandidate[];
-  icon: string;
-  onSelect: (icon: string) => void;
-}
-
-function ProjectArtworkChoices({
-  candidates,
-  icon,
-  onSelect,
-}: ProjectArtworkChoicesProps) {
-  if (candidates.length === 0) return null;
-
-  return (
-    <fieldset
-      className="new-project-modal__artwork-list"
-      aria-label="Artwork found in this folder"
-    >
-      {candidates.map((candidate) => (
-        <button
-          type="button"
-          key={candidate.relativePath}
-          className={`new-project-modal__artwork-choice${icon === candidate.dataUrl ? ' new-project-modal__artwork-choice--selected' : ''}`}
-          aria-label={`Use ${candidate.relativePath}`}
-          title={candidate.relativePath}
-          onClick={() => onSelect(candidate.dataUrl)}
-        >
-          <img src={candidate.dataUrl} alt="" />
-        </button>
-      ))}
-    </fieldset>
-  );
-}
-
-interface ProjectIconChoicesProps extends ProjectArtworkChoicesProps {
-  fetching: boolean;
-  onUseInitials: () => void;
-}
-
-function ProjectIconChoices({
-  candidates,
-  fetching,
-  icon,
-  onSelect,
-  onUseInitials,
-}: ProjectIconChoicesProps) {
-  return (
-    <div className="new-project-modal__icon-choices">
-      <div className="new-project-modal__icon-choice-header">
-        <div>
-          <strong>Project icon</strong>
-          <span>
-            {fetching
-              ? 'Looking for local artwork…'
-              : 'Initials are used until you choose an icon.'}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="editor-btn editor-btn--small"
-          onClick={onUseInitials}
-        >
-          Use initials
-        </button>
-      </div>
-      <ProjectArtworkChoices
-        candidates={candidates}
-        icon={icon}
-        onSelect={onSelect}
-      />
-      <label className="editor-label" htmlFor="new-project-icon">
-        Emoji or image URL <span className="editor-hint">optional</span>
-      </label>
-      <input
-        id="new-project-icon"
-        className="editor-input"
-        type="text"
-        value={icon.startsWith('data:image/') ? '' : icon}
-        placeholder="Optional icon"
-        onChange={(event) => onSelect(event.target.value)}
-      />
-    </div>
-  );
-}
-
 interface IdentityFieldProps {
   candidates: ProjectIconCandidate[];
   icon: string;
@@ -188,9 +104,10 @@ export function NewProjectIdentityField({
           aria-expanded={showIconChoices}
           onClick={onToggleIconChoices}
         >
-          <LayoutIcon
-            layout={{ name: name || derivedName || 'New Project', icon }}
+          <ProjectIcon
+            project={{ name: name || derivedName || 'New Project', icon }}
             size={44}
+            fallback="initials"
           />
         </button>
         <input
@@ -226,15 +143,16 @@ export function NewProjectIdentityField({
       )}
       <p className="editor-field-hint">
         {identityHint ??
-          'Follows the working directory until you edit it. Uses initials until you choose an icon.'}
+          'Follows the working directory until you edit it. Without an icon, Station shows its initials and colour.'}
       </p>
       {showIconChoices && (
-        <ProjectIconChoices
+        <ProjectIconPicker
+          idPrefix="new-project-icon"
+          name={name || derivedName || 'New Project'}
+          value={icon}
+          onChange={onIconChange}
           candidates={candidates}
           fetching={iconCandidatesFetching}
-          icon={icon}
-          onSelect={onIconChange}
-          onUseInitials={() => onIconChange('')}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-name: Main qualification
+name: "Main: Qualification"
 
 on:
   schedule:
@@ -25,3 +25,57 @@ jobs:
     with:
       source_sha: ${{ github.sha }}
       allow_reuse: ${{ !inputs.force }}
+
+  # Nightly from the commit this run just qualified. A Nightly started on a
+  # later main HEAD cannot publish an older qualified commit: every
+  # attestation, provenance record and cohort verifier binds to the run's
+  # triggering commit. Here that commit is the qualified one by construction.
+  # Main qualification owns the delivery schedule; manual Nightly dispatch
+  # remains available for recovery with exact-source qualification.
+  # Dormant until the owner sets STATION_QUALIFIED_NIGHTLY to `enabled`, after
+  # admitting main-qualification.yml@refs/heads/main to the GCP workload
+  # identity condition (Android staging) and, for the CLI, to npm trusted
+  # publishing. Before that, an attempt would burn a version code and fail.
+  nightly-decide:
+    name: Decide qualified Nightly publication
+    needs: [qualification]
+    if: ${{ vars.STATION_QUALIFIED_NIGHTLY == 'enabled' && github.ref == 'refs/heads/main' && needs.qualification.result == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions: { contents: read }
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - id: decide
+        name: Skip when a Nightly already shipped this source or shipped in the last 20 hours
+        run: |
+          set -euo pipefail
+          # The ledger's rows land on main after a ship, so the run's own
+          # checkout cannot hold them; origin/main is the authority.
+          git fetch --no-tags origin main
+          reservations="$RUNNER_TEMP/nightly-reservations.txt"
+          git ls-remote --refs "https://github.com/$GITHUB_REPOSITORY" 'refs/tags/nightly-version-code/*' > "$reservations"
+          node scripts/nightly-qualification-decide.mjs --source-sha "$GITHUB_SHA" --reservation-refs "$reservations" --ledger-ref origin/main
+
+  nightly:
+    name: Nightly from the qualified commit
+    needs: [qualification, nightly-decide]
+    if: ${{ github.ref == 'refs/heads/main' && needs.qualification.result == 'success' && needs.nightly-decide.outputs.publish == 'true' }}
+    # Reusable workflows can only reduce the caller's token, so this grants
+    # what nightly.yml's legs need: reservation and ledger writes, attestation
+    # signing, and the run-metadata read for the CLI version.
+    permissions: { contents: write, actions: read, id-token: write, attestations: write }
+    uses: ./.github/workflows/nightly.yml
+    with:
+      source_sha: ${{ github.sha }}
+      caller_qualification: ${{ needs.qualification.result }}
+    secrets: inherit

@@ -34,6 +34,14 @@ export interface OverflowAction {
   label: string;
   /** Present for a toggle row; absent for a one-shot command. */
   checked?: boolean;
+  /**
+   * A checked row that is one of a set, where choosing it unchooses the
+   * others (a merge method): `menuitemradio` rather than `menuitemcheckbox`.
+   * Only read when `checked` is given.
+   */
+  exclusive?: boolean;
+  /** Draw a separator above this row: the commands after a set of choices. */
+  separatorBefore?: boolean;
   /** For a row that opens a surface of its own. */
   haspopup?: 'dialog';
   /**
@@ -499,11 +507,12 @@ export function ActionOverflowMenu({
                   const reasonId = `${reasonIdPrefix}${action.key}-reason`;
                   return (
                     <Fragment key={action.key}>
-                      {action.tone === 'danger' &&
+                      {((action.tone === 'danger' &&
                         index === safe.length &&
-                        safe.length > 0 && (
-                          <hr className="action-overflow__separator" />
-                        )}
+                        safe.length > 0) ||
+                        (action.separatorBefore && index > 0)) && (
+                        <hr className="action-overflow__separator" />
+                      )}
                       <button
                         type="button"
                         className={`menu-row${action.tone === 'danger' ? ' action-overflow__row--danger' : ''}${explained ? ' action-overflow__row--explained' : ''}`}
@@ -520,7 +529,9 @@ export function ActionOverflowMenu({
                         {...(action.checked === undefined
                           ? { role: 'menuitem' as const }
                           : {
-                              role: 'menuitemcheckbox' as const,
+                              role: action.exclusive
+                                ? ('menuitemradio' as const)
+                                : ('menuitemcheckbox' as const),
                               'aria-checked': action.checked,
                             })}
                         {...(action.haspopup

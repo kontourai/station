@@ -1,0 +1,7 @@
+{
+  "revision": "0ccb380f999a0dcbfd355c7039a1c376a4ee25df",
+
+  "notes": [
+    {"path":"docs/guides/release-channel-ports.md","note":"Added the measured Windows gap: a Station install.ps1 starts keeps PowerShell's inherited output handle, so a piped caller sees EOF only when Station stops; PowerShell itself exits (Windows smoke run 37218284306). Checked against installer/full-install.ts runInstalledCli.","inputs":["docs/guides/release-channel-ports.md"]}
+  ]
+}

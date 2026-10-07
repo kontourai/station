@@ -11,6 +11,8 @@ import {
   isContributionEnabled,
   resolveScopedContribution,
 } from '@kontourai/station-contracts/contribution';
+import type { ExecutionPreparationRefusalCode } from '@kontourai/station-contracts/execution-preparation';
+import type { ProjectRepoResource } from '@kontourai/station-contracts/project-identity';
 import {
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   type PortableExecutionConsentMarker,
@@ -54,7 +56,8 @@ export class ReceiverExecutionRefusal extends Error {
       | 'receiver_execution_forwarding_refused'
       | 'receiver_execution_authority_changed'
       | 'receiver_execution_consent_stale'
-      | 'delegation_attempt_unsupported',
+      | 'delegation_attempt_unsupported'
+      | ExecutionPreparationRefusalCode,
     message: string,
   ) {
     super(message);
@@ -86,6 +89,34 @@ export const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
     'The original Project identity of this portable task cannot be verified. Start a new portable execution.',
   delegation_attempt_unsupported:
     'Delegation attempt claims are not supported for this request: the receiving Station must advertise the capability and the caller must be a verified delegation peer with the orchestration operate scope.',
+  // #2875 slice 1 (docs/design/remote-execution-preparation.md). Fixed copy:
+  // never a path, a commit list or the observed version.
+  execution_preparation_unsupported:
+    'The receiving Station does not support version-matched execution for this request.',
+  execution_preparation_attempt_required:
+    'Version-matched execution must be requested with an attempt id.',
+  execution_preparation_mode_unsupported:
+    'The receiving Station does not support the requested preparation mode.',
+  execution_preparation_remote_reference_unsupported:
+    'The receiving Station does not support working against a remote reference yet; it can only check a checkout it already has.',
+  execution_preparation_scheme_unsupported:
+    'The receiving Station cannot check the requested version scheme for this resource.',
+  execution_preparation_guarantee_unsupported:
+    'The receiving Station does not support a requested preparation guarantee.',
+  execution_preparation_kind_unsupported:
+    'The receiving Station cannot check versions of this kind of resource.',
+  execution_preparation_protection_unavailable:
+    'The receiving Station cannot protect the checkout from other writers during execution; it can only check the version before execution starts.',
+  execution_preparation_isolation_unsupported:
+    'The offered Project resource runs in an isolated worktree, so its checked version would not be the one the work runs in.',
+  execution_preparation_tracked_changes:
+    'The offered Project resource has uncommitted changes to tracked files.',
+  execution_preparation_tracked_state_unverifiable:
+    'The offered Project resource marks tracked files as assume-unchanged or skip-worktree, so their changes cannot be checked.',
+  execution_preparation_version_mismatch:
+    'The offered Project resource is not at the requested version.',
+  execution_preparation_unavailable:
+    'The offered Project resource could not be read to check its version.',
 };
 
 /**
@@ -248,6 +279,14 @@ export interface ReceiverExecutionAdmission {
      * worktree-configured receiver would silently resolve shared.
      */
     readonly defaultWorkspaceIsolation?: WorkspaceIsolationMode;
+    /**
+     * #2875: the kind of the admitted manifest resource, so a version check
+     * selects its adapter by the receiver's own manifest, never by the
+     * request. The factory always sets it; an admission without it (only
+     * hand-made server-internal stubs) refuses a version check as an
+     * unsupported kind.
+     */
+    readonly resourceKind?: ProjectRepoResource['kind'];
   };
   readonly recheck: () => Promise<void>;
 }
@@ -686,12 +725,11 @@ export class ProjectContributionService {
     } catch {
       throw unavailable();
     }
-    if (
-      !association.manifest.repos.some(
-        (resource) => resource.id === requested.resourceId,
-      )
-    )
-      throw unavailable();
+    const declaredResource = association.manifest.repos.find(
+      (resource) => resource.id === requested.resourceId,
+    );
+    if (!declaredResource) throw unavailable();
+    const resourceKind = declaredResource.kind;
     // #484 receiver placement: the Project record's own workspace policy
     // lives on the full Project record (`listProjects` projects a metadata
     // view without it), read here — before any await — from the same
@@ -905,6 +943,9 @@ export class ProjectContributionService {
         ...(captured.projectIsolation === undefined
           ? {}
           : { defaultWorkspaceIsolation: captured.projectIsolation }),
+        // Covered by the recheck's manifest comparison: a resource whose
+        // kind changed is a different manifest and refuses.
+        resourceKind,
       },
       // Owned baseline for the NEXT recheck: these are this capture's own
       // clones (never a live store row, never handed out), so a later

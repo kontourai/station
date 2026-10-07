@@ -1,0 +1,7 @@
+{
+  "revision": "f114b42162757399cb32b714f860c67c95011988",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Design round: re-read the frontend pattern against the inventory edit (two entries removed, two re-described). Nothing here names those surfaces; the pattern's inventory guidance still describes the gate as run. No prose change.","inputs":["docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/AGENTS.md","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]}
+  ]
+}

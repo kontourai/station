@@ -23,6 +23,11 @@ interface OutboundQueuedMessagesProps {
     timestamp?: number;
   }[];
   onError: (message: string) => void;
+  /**
+   * After a queued turn was discarded, with how many remain. The caller drops
+   * what only that turn explained (the "queued to retry" notice).
+   */
+  onDiscarded?: (remaining: number) => void;
   onRetry: (clientTurnId: string) => Promise<void>;
   onStartNewChat: (
     message: string,
@@ -37,6 +42,7 @@ export function OutboundQueuedMessages({
   turns,
   messages = [],
   onError,
+  onDiscarded,
   onRetry,
   onStartNewChat,
 }: OutboundQueuedMessagesProps) {
@@ -332,9 +338,10 @@ export function OutboundQueuedMessages({
                     type="button"
                     onClick={() =>
                       void import('../../lib/outboundQueue')
-                        .then(({ outboundDispatch }) =>
-                          outboundDispatch.discard(turn.clientTurnId),
-                        )
+                        .then(async ({ outboundDispatch }) => {
+                          await outboundDispatch.discard(turn.clientTurnId);
+                          onDiscarded?.(turns.length - 1);
+                        })
                         .catch((error) =>
                           onError(
                             `Could not discard the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,

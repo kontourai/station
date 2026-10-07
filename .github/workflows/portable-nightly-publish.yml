@@ -1,4 +1,4 @@
-name: Portable server Nightly publication
+name: "Nightly: Portable publication"
 
 # #2675 slice E. Builds the five station-server-<os>-<arch> archives for one
 # Nightly version, assembles the schema v2 manifest from their descriptors,
@@ -9,8 +9,11 @@ name: Portable server Nightly publication
 # Publication is a separate, owner-gated job. It runs only when ALL hold:
 #   - the repository variable STATION_PORTABLE_NIGHTLY_PUBLISH is exactly
 #     `enabled` (unset today; only the owner sets it);
-#   - the run was started by nightly.yml on refs/heads/main (a direct
-#     dispatch of this workflow, on any branch, is always a dry run);
+#   - the run was started on refs/heads/main by nightly.yml, or by
+#     main-qualification.yml, which reaches this workflow only through
+#     nightly.yml's portable-nightly job (in a called workflow
+#     github.workflow_ref names the top-level caller). A direct dispatch of
+#     this workflow, on any branch, is always a dry run;
 #   - the version comes from the native Nightly's version-code reservation,
 #     re-checked here against the source SHA;
 #   - the dry-run assembly and verification succeeded.
@@ -189,7 +192,11 @@ jobs:
         run: |
           {
             echo "Portable Nightly $VERSION assembled and verified with a throwaway key."
-            if [ "$PUBLISH_GATE" = enabled ] && [ "$GITHUB_WORKFLOW_REF" = "$GITHUB_REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" ]; then
+            case "$GITHUB_WORKFLOW_REF" in
+              "$GITHUB_REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" | "$GITHUB_REPOSITORY/.github/workflows/main-qualification.yml@refs/heads/main") entry=nightly ;;
+              *) entry=other ;;
+            esac
+            if [ "$PUBLISH_GATE" = enabled ] && [ "$entry" = nightly ]; then
               echo 'Publication gate is enabled for this Nightly run: the publish job signs and uploads.'
             else
               echo 'Dry run: nothing is signed with the Nightly key and nothing is uploaded.'
@@ -213,7 +220,7 @@ jobs:
   publish:
     name: Sign and publish (owner-gated)
     needs: [plan, assemble]
-    if: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH == 'enabled' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/nightly.yml@refs/heads/main', github.repository) && needs.plan.outputs.reserved == 'true' && needs.plan.outputs.release_tag != '' && needs.assemble.result == 'success' && needs.assemble.outputs.verified == 'true' }}
+    if: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH == 'enabled' && github.ref == 'refs/heads/main' && contains(fromJSON(format('["{0}/.github/workflows/nightly.yml@refs/heads/main","{0}/.github/workflows/main-qualification.yml@refs/heads/main"]', github.repository)), github.workflow_ref) && needs.plan.outputs.reserved == 'true' && needs.plan.outputs.release_tag != '' && needs.assemble.result == 'success' && needs.assemble.outputs.verified == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     environment: portable-nightly-signing

@@ -41,6 +41,7 @@ import type {
   AgentSpec,
 } from '@kontourai/station-contracts/agent';
 import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
+import type { DelegationProvenance } from '@kontourai/station-contracts/provider';
 import { isAgentConfigNotFound } from '../../domain/config-loader-agents.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
 import { createChildDelegationContext } from './delegation.js';
@@ -88,10 +89,20 @@ export interface ClaimedRequestDelegation {
   readonly attestation?: string;
 }
 
+/**
+ * The context a dispatch stamps, and how Station came by it (#3323). The
+ * route stamps `provenance` beside the context so a reader can tell a
+ * lineage Station derived or attested from one a request merely claimed.
+ */
+export interface ResolvedRequestDelegation {
+  readonly context: AgentDelegationContext;
+  readonly provenance: DelegationProvenance;
+}
+
 export type RequestDelegationResolver = (
   request: Request,
   claimed: ClaimedRequestDelegation,
-) => Promise<AgentDelegationContext | undefined>;
+) => Promise<ResolvedRequestDelegation | undefined>;
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
@@ -260,15 +271,22 @@ export function createRequestDelegationResolver(
   sources: RequestDelegationSources,
 ): RequestDelegationResolver {
   return async (request, claimed) => {
-    if (!sources.isInternalRequest(request)) return claimed.delegation;
+    if (!sources.isInternalRequest(request))
+      return claimed.delegation
+        ? { context: claimed.delegation, provenance: 'direct-claim' }
+        : undefined;
     const caller = sources.resolveCaller(request);
-    if (caller) return deriveCallerChildDelegation(caller, sources);
+    if (caller)
+      return {
+        context: await deriveCallerChildDelegation(caller, sources),
+        provenance: 'caller-derived',
+      };
     return claimed.delegation &&
       verifyDelegationContextAttestation(
         claimed.delegation,
         claimed.attestation,
       )
-      ? claimed.delegation
+      ? { context: claimed.delegation, provenance: 'runtime-attested' }
       : undefined;
   };
 }

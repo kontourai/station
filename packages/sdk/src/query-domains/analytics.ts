@@ -1,14 +1,10 @@
 import { _getApiBase } from '../api';
-import {
-  fetchUsageRollup as fetchUsageRollupAt,
-  type UsageRollupQuery,
-  type UsageRollupResponse,
-} from '../client/analytics';
 
 export type {
   UsageRollupQuery,
   UsageRollupResponse,
 } from '../client/analytics';
+export { fetchUsageRollup } from './usageRollup';
 
 import {
   type MutationOptions,
@@ -71,38 +67,6 @@ export function useUsageQuery(config?: QueryConfig<any>) {
     ...liveAnalyticsConfig,
     ...config,
   });
-}
-
-export async function fetchUsageRollup(
-  query: UsageRollupQuery,
-): Promise<NonNullable<UsageRollupResponse['data']>> {
-  const apiBase = await _getApiBase();
-  const result = await fetchUsageRollupAt(apiBase, query);
-  if (!result.success) {
-    throw new Error('Failed to fetch usage rollup');
-  }
-  if (!result.data) throw new Error('Usage rollup returned no data');
-  return result.data;
-}
-
-export function useUsageRollupQuery(
-  query: UsageRollupQuery,
-  config?: QueryConfig<NonNullable<UsageRollupResponse['data']>>,
-) {
-  return useApiQuery(
-    [
-      'analytics',
-      'usage-rollup',
-      query.days,
-      query.provider ?? '',
-      query.localOnly ? 1 : 0,
-      query.groupBy ?? 'provider',
-      query.cursor ?? '',
-      query.pageSize ?? 50,
-    ],
-    () => fetchUsageRollup(query),
-    { ...liveAnalyticsConfig, ...config },
-  );
 }
 
 export function useActivityUsageQuery(

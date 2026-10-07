@@ -57,7 +57,10 @@ import {
   ownedDependencyInstallerUnavailable,
 } from '@kontourai/station-shared/owned-dependency-installer';
 import { STATION_RELEASE_RINGS } from '@kontourai/station-shared/ports';
-import { installerInheritedEnv } from '@kontourai/station-shared/prebuilt-archive';
+import {
+  installerInheritedEnv,
+  packagedInstallerCommand,
+} from '@kontourai/station-shared/prebuilt-archive';
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
@@ -86,6 +89,7 @@ import {
   publishActiveLocalStation,
   removeOwnedActiveLocalStation,
 } from './active-local-station.js';
+import { isLoopbackHost, planWatchChildren } from './dev-watch.js';
 import {
   CWD,
   DEFAULT_INSTANCE_ID,
@@ -133,6 +137,11 @@ import {
   IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
+import { UI_PROXY_BACKEND_PREFIXES } from './ui-proxy-prefixes.js';
+import {
+  assertWindowsPathsTrusted,
+  runWindowsTrustCommand,
+} from './windows-path-trust.js';
 
 // Moved to lifecycle-code-root.ts (#2675 B1); re-exported for existing importers.
 export {
@@ -159,38 +168,7 @@ export const UI_MIME_TYPES: Record<string, string> = {
   '.map': 'application/json',
 };
 
-/**
- * Bare top-level backend mounts the UI-server proxy forwards to when a
- * request has no matching static asset. Mirrors the non-`/api` mounts in
- * `src-server/runtime/routes/runtime-routes.ts` (`/agents`, `/acp`, `/events`,
- * `/integrations`, `/config`, `/bedrock`, `/monitoring`, `/scheduler`,
- * `/notifications`) plus bare framework routes registered directly on the
- * same Hono app by `@voltagent/server-core`/`@voltagent/server-hono` that are
- * not declared in `runtime-routes.ts` at all: `/tools` and `/observability`
- * (confirmed via their framework route registrations in
- * `node_modules/@voltagent/server-core/dist/index.js`, wired
- * unconditionally by `honoServer`'s `createApp` — no current `src-ui` call
- * site hits it yet, but it is a live mount today, not hypothetical). `/api`
- * covers every `/api/*` mount as one prefix. This list is empirically
- * derived, not a static enumeration of `runtime-routes.ts` alone — re-check
- * both `runtime-routes.ts` and the VoltAgent server packages' own route
- * wiring before assuming it is exhaustive.
- */
-export const UI_PROXY_BACKEND_PREFIXES: string[] = [
-  '/.well-known',
-  '/api',
-  '/agents',
-  '/acp',
-  '/events',
-  '/integrations',
-  '/config',
-  '/bedrock',
-  '/monitoring',
-  '/scheduler',
-  '/notifications',
-  '/tools',
-  '/observability',
-];
+export { UI_PROXY_BACKEND_PREFIXES };
 
 /**
  * Backend-owned HTML documents that must not be replaced by the SPA fallback.
@@ -342,6 +320,16 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // must name the host the browser is talking to, or the cookie that
   // authorizes it — scoped by host, not origin — is never sent.
   const INTERNAL_PROXY_FORWARDED_HOST_HEADER = 'x-station-proxy-forwarded-host';
+  // #2894: this proxy's own attestation that its client sent forwarding
+  // headers. `tailscale-*` is stripped below, so the fact must travel here.
+  const INTERNAL_PROXY_CLIENT_FORWARDED_HEADER =
+    'x-station-proxy-client-forwarded';
+  const CLIENT_FORWARDING_HEADERS = [
+    'forwarded',
+    'x-forwarded-for',
+    'x-forwarded-host',
+    'x-real-ip',
+  ];
   const INTERNAL_TENANT_HEADER = 'x-station-internal-tenant';
   // #2589: the Station-agent relay's orchestration thread. The backend
   // already ignores it from a `remote` caller; stripped here too.
@@ -585,6 +573,13 @@ export function uiRequestHandler(deps: UiServerDeps) {
     }
     const ingressIdentity = tailscaleIngress?.identity;
     const browserVisibleHost = req.headers.host;
+    // Read before anything is stripped: did the hop in front of this proxy
+    // forward the request?
+    const clientForwarded = Object.keys(req.headers).some(
+      (name) =>
+        CLIENT_FORWARDING_HEADERS.includes(name) ||
+        name.startsWith('tailscale-'),
+    );
     const headers: Record<string, string | string[] | undefined> = {
       ...req.headers,
       host: `127.0.0.1:${upstreamPort}`,
@@ -599,6 +594,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     delete headers[INTERNAL_INGRESS_IDENTITY_HEADER];
     delete headers[INTERNAL_PROXY_PEER_HEADER];
     delete headers[INTERNAL_PROXY_FORWARDED_HOST_HEADER];
+    delete headers[INTERNAL_PROXY_CLIENT_FORWARDED_HEADER];
     delete headers[INTERNAL_TENANT_HEADER];
     delete headers[INTERNAL_ORCHESTRATION_THREAD_HEADER];
     for (const name of Object.keys(headers)) {
@@ -626,6 +622,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     if (browserVisibleHost) {
       headers[INTERNAL_PROXY_FORWARDED_HOST_HEADER] = browserVisibleHost;
     }
+    if (clientForwarded) headers[INTERNAL_PROXY_CLIENT_FORWARDED_HEADER] = '1';
     if (ingressIdentity) {
       headers[INTERNAL_INGRESS_IDENTITY_HEADER] = Buffer.from(
         JSON.stringify(ingressIdentity),
@@ -1226,6 +1223,11 @@ export interface StartOptions extends InstanceSelector {
   allowedOrigins?: string[];
   build?: boolean;
   /**
+   * Development mode (`--watch`): the server runs under `tsx watch` from
+   * source and the UI is the Vite dev server proxying to it. Builds nothing.
+   */
+  watch?: boolean;
+  /**
    * Explicit consent-listener port (station#3677). Default: serverPort + 3,
    * the same derivation the runtime uses — validated and collision-checked
    * either way.
@@ -1372,15 +1374,14 @@ function getInstanceServicePorts(
   ];
 }
 
+/**
+ * A record is running only while a PID it recorded is alive. A listener on one
+ * of its ports proves nothing: the port may belong to a sibling Station whose
+ * band overlaps this record's (#3253), and counting it kept a failed start's
+ * record alive indefinitely and pointed `stop` at the sibling.
+ */
 function isInstanceRunning(record: InstanceStateRecord): boolean {
-  if (record.priorPidFile) {
-    return isProcessAlive(record.serverPid) || isProcessAlive(record.uiPid);
-  }
-  return (
-    isProcessAlive(record.serverPid) ||
-    isProcessAlive(record.uiPid) ||
-    findListeningPidsForPorts(getInstanceServicePorts(record)).length > 0
-  );
+  return isProcessAlive(record.serverPid) || isProcessAlive(record.uiPid);
 }
 
 function notifyBuildUpdated(serverPort: number): void {
@@ -1806,36 +1807,23 @@ export function findListeningPidsForPorts(ports: number[]): number[] {
 }
 
 export function isInstanceFullyStopped(record: InstanceStateRecord): boolean {
-  const pids = [record.serverPid, record.uiPid].filter(
-    (value): value is number => value != null,
-  );
-  const trackedProcessesAlive = pids.some((pid) => isProcessAlive(pid));
-  if (trackedProcessesAlive) {
-    return false;
-  }
-
-  return (
-    findListeningPidsForPorts(getInstanceServicePorts(record)).length === 0
-  );
+  // Recorded PIDs only. Whoever else listens on the instance's ports is not
+  // provably this instance, so it neither blocks nor is the target of a stop.
+  return !isInstanceRunning(record);
 }
 
 function waitForInstanceShutdown(
   record: InstanceStateRecord,
   timeoutMs = 15_000,
-  generationOnly = false,
 ): boolean {
-  const stopped = () =>
-    generationOnly
-      ? !isProcessAlive(record.serverPid) && !isProcessAlive(record.uiPid)
-      : isInstanceFullyStopped(record);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (stopped()) {
+    if (isInstanceFullyStopped(record)) {
       return true;
     }
     sleepSync(200);
   }
-  return stopped();
+  return isInstanceFullyStopped(record);
 }
 
 function stopRecord(
@@ -1973,11 +1961,26 @@ function stopRecord(
     }
   }
   for (const pid of pids) {
-    if (managed) {
-      const expected =
-        pid === record.serverPid
-          ? record.serverFingerprint
-          : record.uiFingerprint;
+    const expected =
+      pid === record.serverPid
+        ? record.serverFingerprint
+        : record.uiFingerprint;
+    if (!managed) {
+      // Unmanaged records carry the same start-time fingerprint when it could
+      // be captured. A recorded PID that is alive but no longer matches it was
+      // reused by an unrelated process (possibly a sibling Station, #3253), so
+      // it is not signalled. Only a record that never captured a fingerprint
+      // (a legacy record, or an unreadable `ps`) falls back to trusting the
+      // PID alone: an accepted residual, never extended to port ownership.
+      if (expected && isProcessAlive(pid)) {
+        const actual = inspectProcessFingerprint(pid);
+        if (!actual || !fingerprintMatchesRecorded(actual, expected)) {
+          throw new Error(
+            `Refusing to signal PID ${pid}: it no longer matches the process recorded for Station instance ${record.instanceId}. The recorded state was kept; remove ${record.statePath} to forget this instance.`,
+          );
+        }
+      }
+    } else {
       if (!isProcessAlive(pid)) continue;
       const actual = inspectProcessFingerprint(pid);
       if (!actual) {
@@ -1995,48 +1998,19 @@ function stopRecord(
     }
     killProcessTree(pid);
   }
-  // A fully loaded runtime can need several seconds to unwind providers and
-  // child processes. Give unmanaged instances a graceful 10s phase before
-  // killing untracked port owners, then retain 5s for forced convergence.
-  if (!managed && !waitForInstanceShutdown(record, 10_000)) {
-    const fallbackPids = findListeningPidsForPorts(
-      getInstanceServicePorts(record),
-    );
-    for (const pid of fallbackPids) {
-      if (!pids.has(pid)) {
-        killProcessTree(pid);
-      }
-    }
-  }
-  if (
-    !waitForInstanceShutdown(record, managed ? 15_000 : 5_000, generationOnly)
-  ) {
+  if (!waitForInstanceShutdown(record, managed ? 15_000 : 5_000)) {
     appendStopResult('failed');
-    // Report what is actually still holding the instance open, not the full
-    // configured port list — the old message named every port on every failed
-    // stop, which hid the real blocker (station#1846).
+    // Report which recorded process is still holding the instance open
+    // (station#1846). Port listeners are not reported: a port owner that is
+    // not a recorded PID is not provably this instance.
     const alivePids = [...pids].filter((pid) => isProcessAlive(pid));
-    const lingeringPorts = getInstanceServicePorts(record).filter(
-      (port) => findListeningPidsForPorts([port]).length > 0,
-    );
     throw new Error(
       [
         `Failed to stop Station instance ${record.instanceId}.`,
         alivePids.length > 0
           ? `Tracked processes still running: ${alivePids.join(', ')}`
-          : undefined,
-        lingeringPorts.length > 0
-          ? `Lingering ports: ${lingeringPorts.join(', ')}`
-          : undefined,
-        // The re-check can race a shutdown that converged just after the
-        // bounded wait expired; keep the failure explicit rather than
-        // throwing a bare first line.
-        alivePids.length === 0 && lingeringPorts.length === 0
-          ? 'Shutdown did not converge within the wait window (processes and ports re-checked clean afterward — teardown race).'
-          : undefined,
-      ]
-        .filter((line): line is string => line !== undefined)
-        .join('\n'),
+          : 'Shutdown did not converge within the wait window (processes re-checked clean afterward — teardown race).',
+      ].join('\n'),
     );
   }
   appendStopResult('completed');
@@ -2451,6 +2425,62 @@ function assertNoPortConflicts(
   );
 }
 
+/**
+ * Refuse, before anything binds, a port band another live instance published
+ * to this home's registry (station#3253). `assertNoPortConflicts` only sees
+ * the records of THIS checkout; an instance started from another checkout on
+ * the same home is visible only here. A start that lost such a port race used
+ * to leave its own record claiming the sibling's ports.
+ *
+ * A registry that cannot be read is not evidence of a collision, so it is
+ * skipped here; `collectSharedHomeInstances` already reports it.
+ */
+function assertNoRegistryPortConflicts(
+  instanceId: string,
+  projectHome: string,
+  serverPort: number,
+  uiPort: number,
+  consentPort: number,
+): void {
+  const requested = new Set(
+    getInstanceServicePorts({ serverPort, uiPort, consentPort }),
+  );
+  const conflicts: string[] = [];
+  try {
+    if (!existsSync(resolveInstanceRegistryPath(projectHome))) return;
+    for (const [id, instance] of Object.entries(
+      readInstanceRegistry(projectHome).instances,
+    )) {
+      if (id === instanceId) continue;
+      if (typeof instance.pid !== 'number' || !isProcessAlive(instance.pid))
+        continue;
+      if (birthProvesReuse(instance.birth, instance.pid)) continue;
+      const band = [
+        instance.port,
+        instance.port + 1,
+        instance.port + 2,
+        instance.consentPort ?? instance.port + 3,
+        ...(instance.uiPort === undefined ? [] : [instance.uiPort]),
+      ];
+      const shared = band.filter((port) => requested.has(port));
+      if (shared.length === 0) continue;
+      conflicts.push(
+        `  - ${describeSharedHomeInstance({ id, port: instance.port, type: instance.type, checkout: instance.checkout })} reserves ports ${[...new Set(band)].join(', ')} (overlap: ${[...new Set(shared)].join(', ')})`,
+      );
+    }
+  } catch {
+    return;
+  }
+  if (conflicts.length === 0) return;
+  throw new Error(
+    [
+      'start is blocked because the requested ports overlap another registered Station instance.',
+      `Requested: ${formatReservedPorts({ serverPort, uiPort, consentPort })}`,
+      ...conflicts,
+    ].join('\n'),
+  );
+}
+
 /** One display line for a colliding instance. */
 function describeSharedHomeInstance(entry: {
   id: string;
@@ -2545,6 +2575,7 @@ export function registerStartInHomeRegistry(
   uiPort: number,
   serverPid: number,
   consentPort?: number,
+  host?: string,
 ): void {
   try {
     // OWNERSHIP GUARDS, now inside the shared module's mutation lock
@@ -2564,6 +2595,8 @@ export function registerStartInHomeRegistry(
         port: serverPort,
         uiPort,
         consentPort: consentPort ?? serverPort + 3,
+        // The address the UI listener bound, so `station open` links to it.
+        ...(host ? { host } : {}),
         type: instanceTypeForCheckout(),
         status: 'running',
         pid: serverPid,
@@ -4133,8 +4166,22 @@ export async function waitForTcpOk(
 }
 
 export async function start(opts: StartOptions = {}): Promise<void> {
-  const { build, features, force } = opts;
-  const host = normalizeLifecycleHost(opts.host);
+  const { build, features, force, watch } = opts;
+  if (watch && build) {
+    throw new Error(
+      '--watch runs from source and builds nothing; --build does not apply.',
+    );
+  }
+  // Watch mode serves the UI from Vite, which Station documents as
+  // loopback-only (development.md), so it defaults to and requires loopback.
+  const host = normalizeLifecycleHost(
+    opts.host ?? (watch ? '127.0.0.1' : undefined),
+  );
+  if (watch && !isLoopbackHost(host)) {
+    throw new Error(
+      `--watch serves the Vite dev server, which is loopback-only; --host=${host} is not supported.`,
+    );
+  }
   const {
     serverPort,
     uiPort,
@@ -4184,9 +4231,19 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // exist and a custom --base path may have a multi-level missing ancestor
   // chain (#1570 review; supersedes the earlier pre-mkdir call from #1567).
   const buildPaths = resolveBuildPaths(instanceId);
-  const needsBuild = Boolean(build) || !isInstalled(instanceId);
+  const needsBuild = !watch && (Boolean(build) || !isInstalled(instanceId));
+  const warnStale = () => {
+    if (!watch) warnIfBuildStale(buildPaths);
+  };
 
   assertNoPortConflicts(
+    instanceId,
+    projectHome,
+    serverPort,
+    uiPort,
+    consentPort,
+  );
+  assertNoRegistryPortConflicts(
     instanceId,
     projectHome,
     serverPort,
@@ -4216,7 +4273,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     }
   } else if (runningMatch) {
     if (!force) {
-      warnIfBuildStale(buildPaths);
+      warnStale();
       console.log(
         `✓ Already running\n  UI:   http://localhost:${runningMatch.uiPort}\n  Stop: ${renderStopCommand(runningMatch.instanceId, projectHome, homeSource)}`,
       );
@@ -4232,13 +4289,14 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           runningMatch.uiPort,
           runningMatch.serverPid,
           runningMatch.consentPort,
+          runningMatch.host,
         );
       }
       warnOnSharedHome(instanceId, projectHome);
       return;
     }
     console.log('Restarting instance (reusing existing build)...');
-    warnIfBuildStale(buildPaths);
+    warnStale();
     stopRecord(runningMatch, false, opts.intent ?? 'operator_stop');
     if (opts.rotateLogOnRestart && logFile && existsSync(logFile)) {
       const previousLog = `${logFile}.previous`;
@@ -4246,7 +4304,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       renameSync(logFile, previousLog);
     }
   } else {
-    warnIfBuildStale(buildPaths);
+    warnStale();
   }
 
   announceHome(projectHome, homeSource);
@@ -4436,7 +4494,12 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         : []),
     ]),
   ].join(',');
-  const buildManifest = readBuildManifest(instanceId);
+  // Nothing is built in watch mode, so there is no manifest to read; the
+  // server's identity route refuses a start without a full git SHA, so the
+  // source HEAD at launch stands in. It does not follow later edits.
+  const buildManifest = watch
+    ? resolveSourceBuildManifest()
+    : readBuildManifest(instanceId);
   const bootId = randomUUID();
   serverEnv.STATION_BUILD_SHA = buildManifest?.sha ?? 'unknown';
   serverEnv.STATION_BUILD_BRANCH = buildManifest?.branch ?? 'unknown';
@@ -4453,17 +4516,29 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   if (features) serverEnv.STATION_FEATURES = features;
   serverEnv.STATION_LOG_FILE = logFile;
 
+  const watchPlan = watch
+    ? planWatchChildren({
+        nodeExecPath: process.execPath,
+        codeRoot: CWD,
+        serverPort,
+        uiPort,
+        host,
+        poll: process.env.STATION_DEV_WATCH_POLL === '1',
+      })
+    : undefined;
   let serverProc: ReturnType<typeof spawn>;
   try {
     serverProc = spawn(
-      process.execPath,
-      [`${buildPaths.server}/${SERVER_ENTRY_FILENAME}`],
+      watchPlan?.server.command ?? process.execPath,
+      watchPlan?.server.args ?? [
+        `${buildPaths.server}/${SERVER_ENTRY_FILENAME}`,
+      ],
       {
         cwd: CWD,
         stdio: serverStdio,
         detached: true,
         windowsHide: true,
-        env: serverEnv,
+        env: watchPlan ? { ...serverEnv, ...watchPlan.server.env } : serverEnv,
       },
     );
     if (logDescriptor !== null) {
@@ -4498,9 +4573,17 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // always passed so the UI server's reverse proxy (see `uiRequestHandler`)
     // knows where to forward backend calls regardless of the override.
     const apiBaseOverride = process.env.STATION_API_BASE || undefined;
+    const uiLogDescriptor = watchPlan
+      ? openSync(
+          logFile,
+          fsConstants.O_APPEND |
+            fsConstants.O_WRONLY |
+            (fsConstants.O_NOFOLLOW ?? 0),
+        )
+      : null;
     uiProc = spawn(
-      process.execPath,
-      [
+      watchPlan?.ui.command ?? process.execPath,
+      watchPlan?.ui.args ?? [
         '-e',
         buildUiServerScript({
           uiDir: join(CWD, buildPaths.ui),
@@ -4521,13 +4604,28 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       ],
       {
         cwd: CWD,
-        stdio: 'ignore',
+        // Vite's log (HMR updates, proxy errors) is the dev loop's feedback;
+        // the production UI listener has none and stays silent.
+        stdio:
+          uiLogDescriptor === null
+            ? 'ignore'
+            : ['ignore', uiLogDescriptor, uiLogDescriptor],
         detached: true,
         windowsHide: true,
         env: (() => {
           const uiEnv: Record<string, string> = {
             ...(process.env as Record<string, string>),
             STATION_INTERNAL_API_TOKEN: internalApiToken,
+            // Read by `vite.config.ts` in watch mode only; the production UI
+            // listener is handed these as script arguments instead.
+            ...(watchPlan
+              ? {
+                  ...watchPlan.ui.env,
+                  STATION_INSTANCE_ID: instanceId,
+                  STATION_BUILD_SHA: buildManifest?.sha ?? 'unknown',
+                  STATION_BOOT_ID: bootId,
+                }
+              : {}),
           };
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
@@ -4537,6 +4635,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         })(),
       },
     );
+    if (uiLogDescriptor !== null) closeSync(uiLogDescriptor);
     uiProc.unref();
 
     const serverFingerprint = serverProc.pid
@@ -4670,6 +4769,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         uiPort,
         serverProc.pid!,
         consentPort,
+        host,
       );
     }
     console.log(`\n  ✓ Server: http://${healthHost}:${serverPort}`);
@@ -5052,6 +5152,13 @@ interface PackagedInstallState {
   manifestUrl?: string | null;
 }
 
+/**
+ * Permission bits mean nothing on Windows (Node.js reports every writable
+ * file as 0o666): there an install root's protection is its DACL, which
+ * delegatePackagedUpgradeIfPresent verifies once for the whole root.
+ */
+const POSIX_PACKAGED_MODES = process.platform !== 'win32';
+
 function readSafePackagedFile(
   path: string,
   description: string,
@@ -5062,7 +5169,8 @@ function readSafePackagedFile(
     !info.isFile() ||
     info.isSymbolicLink() ||
     (typeof process.getuid === 'function' && info.uid !== process.getuid()) ||
-    (info.mode & (requirePrivate ? 0o077 : 0o022)) !== 0
+    (POSIX_PACKAGED_MODES &&
+      (info.mode & (requirePrivate ? 0o077 : 0o022)) !== 0)
   ) {
     throw new Error(
       `${description} must be a same-user regular file with safe permissions`,
@@ -5101,7 +5209,7 @@ function assertSafePackagedDirectory(path: string, description: string): void {
     !info.isDirectory() ||
     info.isSymbolicLink() ||
     (typeof process.getuid === 'function' && info.uid !== process.getuid()) ||
-    (info.mode & 0o022) !== 0
+    (POSIX_PACKAGED_MODES && (info.mode & 0o022) !== 0)
   ) {
     throw new Error(
       `${description} must be a same-user directory that is not group/world writable`,
@@ -5126,6 +5234,11 @@ function delegatePackagedUpgradeIfPresent(
   const releasesRoot = resolve(CWD, '..');
   const installRoot = resolve(releasesRoot, '..');
   assertSafePackagedDirectory(installRoot, 'packaged install root');
+  // install.ps1 restricts the install root to the current user (#2675 W2);
+  // a no-op off Windows.
+  assertWindowsPathsTrusted(runWindowsTrustCommand, [
+    { kind: 'directory', path: installRoot },
+  ]);
   assertSafePackagedDirectory(releasesRoot, 'packaged releases root');
   assertSafePackagedDirectory(CWD, 'packaged active release');
   const manifestPath = join(CWD, PACKAGED_RELEASE_MANIFEST_FILENAME);
@@ -5169,8 +5282,9 @@ function delegatePackagedUpgradeIfPresent(
   ) {
     throw new Error('packaged current link does not resolve to this release');
   }
-  const installer = join(CWD, 'install.sh');
-  readSafePackagedFile(installer, 'packaged release installer');
+  // install.sh on Linux and macOS, install.ps1 on Windows (#2675 W2).
+  const installer = packagedInstallerCommand(CWD);
+  readSafePackagedFile(installer.file, 'packaged release installer');
   beforeInstall(state.stationHome, installRoot);
 
   // The recorded manifest makes the upgrade follow the same signed path the
@@ -5179,7 +5293,7 @@ function delegatePackagedUpgradeIfPresent(
   const manifestUrl =
     process.env.STATION_INSTALL_PUBLIC_MANIFEST_URL ||
     (typeof state.manifestUrl === 'string' ? state.manifestUrl : undefined);
-  execFileSync('sh', ['./install.sh', 'install'], {
+  execFileSync(installer.command, installer.args, {
     cwd: CWD,
     env: {
       // Not the bootstrap's channel-default ports: install.sh would take them

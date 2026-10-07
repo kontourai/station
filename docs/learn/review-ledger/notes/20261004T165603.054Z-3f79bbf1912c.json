@@ -1,0 +1,7 @@
+{
+  "revision": "ca82efb07216fbe7c6fc963308ded70d7dcefb21",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Inbox section: needs_input on a paired-Station task now offers no reply and opens Activity (AttentionCard PeerHostedAction); remaining Inbox claims unchanged and rechecked against AttentionCard.","inputs":["docs/guides/agents.md","src-server/services/projects/attention-projection.ts","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

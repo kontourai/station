@@ -6,9 +6,11 @@ import {
 import { memo, type ReactNode, useMemo, useState } from 'react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
+import { attentionWord } from '../../views/home/work-status';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import {
+  DiscardGlyph,
   DocumentGlyph,
   EditGlyph,
   PauseGlyph,
@@ -106,6 +108,7 @@ export const KIND_GLYPH: Record<
 > = {
   read: DocumentGlyph,
   write: EditGlyph,
+  delete: DiscardGlyph,
   exec: TerminalGlyph,
   search: SearchGlyph,
   other: PlugGlyph,
@@ -177,9 +180,10 @@ function ToolCallDisplayComponent({
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
   const running = phase === 'running';
-  // Every other unresolved outcome already carries a badge below (Failed,
-  // Cancelled, User denied, Blocked by Station). This is the one that does
-  // not: dispatched, and no completion event ever arrived.
+  // Every other unresolved outcome already carries a badge below (Cancelled,
+  // User denied, Blocked by Station; a plain failure is its own `failed`
+  // phase with a Failed badge). This is the one that does not: dispatched,
+  // and no completion event ever arrived.
   const unresolvedWithoutOutcome =
     phase === 'unresolved' && !failed && !cancelled && !denied && !unresolved;
   const label = useMemo(
@@ -257,8 +261,8 @@ function ToolCallDisplayComponent({
         <span
           className="tool-call__awaiting"
           role="img"
-          aria-label="Awaiting approval"
-          title="Awaiting approval"
+          aria-label={attentionWord('approval')}
+          title={attentionWord('approval')}
         >
           <PauseGlyph />
         </span>

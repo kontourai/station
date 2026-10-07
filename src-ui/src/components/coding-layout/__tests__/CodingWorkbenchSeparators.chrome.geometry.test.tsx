@@ -29,6 +29,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../../../');
 const INDEX_CSS_PATH = resolve(HERE, '../../../index.css');
 const WORKBENCH_CSS_PATH = resolve(HERE, '../CodingWorkbench.css');
+const DIFF_CSS_PATH = resolve(HERE, '../DiffPanel.css');
 const VIEWPORT = { width: 1440, height: 900 };
 
 function separator(orientation: 'vertical' | 'horizontal', label: string) {
@@ -65,7 +66,8 @@ function inboxEdgeMarkup(needsYou: number) {
       <button
         type="button"
         className={`coding-workbench__inbox-edge${needsYou > 0 ? ' coding-workbench__inbox-edge--needs-you' : ''}`}
-        aria-label={name}
+        aria-hidden="true"
+        tabIndex={-1}
       >
         <span className="coding-workbench__inbox-edge-glyph" aria-hidden="true">
           ›
@@ -101,6 +103,30 @@ const MARKUP = `<div class="coding-workbench" data-mode="panels" style="height:$
     </div>
   </div>
 </div>`;
+
+/**
+ * The side panel's head with the Diff pane's counts and four tools portalled
+ * into its slots, and the head's ⋯ and close: `CodingWorkbench`'s head and
+ * `DiffPanel`'s `renderTools('head')` classes and names, as static markup.
+ */
+const DIFF_HEAD_TOOLS = [
+  'Collapse all files',
+  'Expand all files',
+  'Split view',
+  'Wrap lines',
+];
+const DIFF_HEAD_MARKUP = `<section class="coding-workbench__page coding-workbench__page--drill-in" data-active="true" aria-label="Diff" style="width:440px">
+  <header class="coding-workbench__panel-head">
+    <h2 class="coding-workbench__panel-title">Diff</h2>
+    <div class="coding-workbench__head-slot coding-workbench__head-slot--leading"><span class="diff-stat"><span class="diff-stat__files">2 files</span><span class="diff-stat__additions">+2</span><span class="diff-stat__deletions">−1</span></span></div>
+    <div class="coding-workbench__head-slot"><div class="diff-panel__tools diff-panel__tools--head">${DIFF_HEAD_TOOLS.map(
+      (name, index) =>
+        `<button type="button" class="diff-tool" aria-label="${name}" title="${name}"${index > 1 ? ' aria-pressed="false"' : ''}><svg width="16" height="16" aria-hidden="true"></svg></button>`,
+    ).join('')}</div></div>
+    <div class="coding-workbench__more"><button type="button" class="coding-workbench__rail-item coding-workbench__more-trigger" aria-label="More actions for Diff" aria-haspopup="menu">⋯</button></div>
+    <button type="button" class="coding-workbench__rail-item coding-workbench__panel-close" aria-label="Close Diff">×</button>
+  </header>
+</section>`;
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
@@ -191,6 +217,122 @@ describe.skipIf(!chromiumAvailable)(
       }
     });
 
+    test('the Diff tools in the side panel head are 32px on a hovering pointer and 44px boxes of their own on touch, overlapping neither each other nor the close', async () => {
+      const css =
+        resolveCssImports(INDEX_CSS_PATH) +
+        '\n' +
+        readFileSync(WORKBENCH_CSS_PATH, 'utf8') +
+        '\n' +
+        // DiffPanel.css is a lazy chunk: it lands after the entry sheet.
+        readFileSync(DIFF_CSS_PATH, 'utf8');
+      assertNoImportsSurvive(css);
+      // A 1366px window is past the wide fold, so the side panel and its head
+      // are drawn; a touch context is the tablet that cannot hover.
+      const fineContext = await browser.newContext({
+        viewport: { width: 1366, height: 1024 },
+      });
+      const touchContext = await browser.newContext({
+        viewport: { width: 1366, height: 1024 },
+        hasTouch: true,
+      });
+      const load = async (context: typeof fineContext) => {
+        const page = await context.newPage();
+        await page.setContent(`<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>${css} html,body{height:100%;margin:0}</style>
+  </head>
+  <body>${DIFF_HEAD_MARKUP}</body>
+</html>`);
+        return page;
+      };
+      try {
+        // Every target's hit box: the element, or a larger ::after/::before.
+        const measure = async (context: typeof fineContext) =>
+          (await load(context)).evaluate((names) => {
+            const hit = (el: Element) => {
+              const r = el.getBoundingClientRect();
+              let box = { l: r.left, t: r.top, r: r.right, b: r.bottom };
+              for (const pseudo of ['::before', '::after']) {
+                const s = getComputedStyle(el, pseudo);
+                if (s.content === 'none' || s.position !== 'absolute') continue;
+                const w = Number.parseFloat(s.width);
+                const h = Number.parseFloat(s.height);
+                if (!(w > r.width || h > r.height)) continue;
+                const cx = (r.left + r.right) / 2;
+                const cy = (r.top + r.bottom) / 2;
+                box = {
+                  l: cx - w / 2,
+                  t: cy - h / 2,
+                  r: cx + w / 2,
+                  b: cy + h / 2,
+                };
+              }
+              return box;
+            };
+            const tools = names.map(
+              (name) => document.querySelector(`[aria-label="${name}"]`)!,
+            );
+            const close = document.querySelector('[aria-label="Close Diff"]')!;
+            const more = document.querySelector(
+              '[aria-label="More actions for Diff"]',
+            )!;
+            const head = document
+              .querySelector('.coding-workbench__panel-head')!
+              .getBoundingClientRect();
+            return {
+              tools: tools.map((el) => {
+                const r = el.getBoundingClientRect();
+                return { w: r.width, h: r.height, hit: hit(el) };
+              }),
+              close: hit(close),
+              more: hit(more),
+              headTop: head.top,
+              headBottom: head.bottom,
+              hoverNone: matchMedia('(hover: none)').matches,
+            };
+          }, DIFF_HEAD_TOOLS);
+        const overlaps = (
+          a: { l: number; t: number; r: number; b: number },
+          b: { l: number; t: number; r: number; b: number },
+        ) =>
+          a.l < b.r - 0.5 &&
+          b.l < a.r - 0.5 &&
+          a.t < b.b - 0.5 &&
+          b.t < a.b - 0.5;
+        const assertApart = (g: Awaited<ReturnType<typeof measure>>) => {
+          const boxes = [...g.tools.map((tool) => tool.hit), g.more, g.close];
+          for (let i = 0; i < boxes.length; i += 1)
+            for (let j = i + 1; j < boxes.length; j += 1)
+              expect(overlaps(boxes[i]!, boxes[j]!), `${i} vs ${j}`).toBe(
+                false,
+              );
+          for (const tool of g.tools) {
+            expect(tool.hit.t).toBeGreaterThanOrEqual(g.headTop - 0.5);
+            expect(tool.hit.b).toBeLessThanOrEqual(g.headBottom + 0.5);
+          }
+        };
+
+        const fine = await measure(fineContext);
+        expect(fine.hoverNone).toBe(false);
+        for (const tool of fine.tools)
+          expect([tool.w, tool.h]).toEqual([32, 32]);
+        assertApart(fine);
+
+        const touch = await measure(touchContext);
+        expect(touch.hoverNone).toBe(true);
+        for (const tool of touch.tools) {
+          expect(tool.hit.r - tool.hit.l).toBeGreaterThanOrEqual(44);
+          expect(tool.hit.b - tool.hit.t).toBeGreaterThanOrEqual(44);
+        }
+        assertApart(touch);
+      } finally {
+        await fineContext.close();
+        await touchContext.close();
+      }
+    });
+
     test('the folded inbox strip is square; its rule is the neutral border at rest, a 60% accent mix for a Needs-you count, and the full accent on hover', async () => {
       const css =
         resolveCssImports(INDEX_CSS_PATH) +
@@ -250,7 +392,7 @@ describe.skipIf(!chromiumAvailable)(
         expect(asked.radius).toBe('0px 0px 0px 0px');
         expect(asked.rule).toBe(asked.needsYou);
 
-        await page.getByRole('button', { name: /^Show inbox/ }).hover();
+        await page.locator('.coding-workbench__inbox-edge').hover();
         await expect
           .poll(async () => (await measure()).rule)
           .toBe(asked.accent);

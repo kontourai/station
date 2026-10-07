@@ -17,7 +17,7 @@ import {
 import {
   agentCommandSkills,
   declaredSkillCommandWord,
-} from '../utils/skill-commands';
+} from '../utils/skill-command-catalog';
 
 export interface SlashCommand {
   cmd: string;

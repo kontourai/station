@@ -554,14 +554,6 @@ describe('the nightly workflow keeps its promises', () => {
     )
     .join('\n');
 
-  it('is scheduled every six hours rather than triggered by pushes', () => {
-    // The whole point of the channel: "nightly" is a claim about cadence.
-    expect(callerWorkflow).toMatch(
-      /schedule:\s*\n\s*(#[^\n]*\n\s*)*- cron: '0 \*\/6 \* \* \*'/,
-    );
-    expect(callerWorkflow).not.toMatch(/^\s{2}push:/m);
-  });
-
   it('runs the pr-smoke browser suite in a test-gate job on the commit it ships', () => {
     // station#4539's mechanism, pinned so the gate job cannot be silently
     // dropped: before it, this workflow shipped with zero test steps.
@@ -611,7 +603,7 @@ describe('the nightly workflow keeps its promises', () => {
     // load-bearing (gate:workflows accepts only the literal prefix ladder).
     const ifLiteral =
       'if: $' +
-      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}";
+      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && (needs['full-regression'].result == 'success' || inputs.caller_qualification == 'success') }}";
     const lines = callerWorkflow.split('\n').map((line) => line.trim());
     expect(lines).toContain(ifLiteral);
   });
@@ -704,7 +696,7 @@ describe('the nightly workflow keeps its promises', () => {
     // required string input (#1453).
     const stageSource = workflow.slice(
       0,
-      workflow.indexOf('\nname: Nightly native cohort'),
+      workflow.indexOf('\nname: "Nightly: Native cohort"'),
     );
     expect(stageSource).not.toContain('inputs.build');
     expect(workflow).toContain(

@@ -232,7 +232,7 @@ describe('ChatDockBody composer status pill', () => {
     await waitFor(() =>
       expect(pill()?.getAttribute('data-chat-status-pill')).toBe('approval'),
     );
-    expect(pill()?.textContent).toContain('Approval needed');
+    expect(pill()?.textContent).toContain('Needs approval');
     // The mounted pill owns this chat's approval, so the app-wide pill does
     // not float a duplicate over the pane.
     await waitFor(() =>

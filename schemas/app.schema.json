@@ -233,6 +233,10 @@
       "type": "boolean",
       "description": "Surface the trust bundle embedded in the latest Veritas evidence record as a project Trust bundle. Default on."
     },
+    "attachedSessionsOutsideProjects": {
+      "type": "boolean",
+      "description": "Follow Claude Code and Codex conversations found on this machine whose folder belongs to no project, listed under No project in Activity. Default on; hosted Stations never follow them."
+    },
     "knowledgeStores": {
       "type": "boolean",
       "description": "Register the K2 KnowledgeStoreProvider seam alongside the namespace-based knowledge path. Default off."
@@ -240,6 +244,10 @@
     "workspaceCheckpoints": {
       "type": "boolean",
       "description": "Capture git snapshots of the session project's working directory at turn boundaries, stored as hidden refs pinned for 90 days. Default off; applies after a restart."
+    },
+    "usageLimitAutoResume": {
+      "type": "boolean",
+      "description": "Send a Claude Code or Codex turn that stopped on a usage limit again once the provider-reported reset passes. Default off."
     },
     "agentConnections": {
       "type": "object",

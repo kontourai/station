@@ -333,6 +333,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...SELF_READ,
     routes: [get('/agents/:slug/conversations/:conversationId/messages')],
   },
+  // #3159: paged. The route admits the caller's own conversation, one its
+  // scope admits, or one a PERSON referenced in its conversation, and reads
+  // it as the session's owner (`routes/chat/conversation-reference-read.ts`).
+  read_conversation: {
+    ...SELF_READ,
+    routes: [get('/api/conversations/:id/read')],
+  },
   // Only the owner's own conversation, unless the caller is a bound
   // operator (`routes/chat/conversations.ts`).
   delete_conversation: {
@@ -341,6 +348,24 @@ export const STATION_CONTROL_TOOL_POLICY = {
     toolClass: 'mutating',
     personOnly: 'never',
     routes: [del('/agents/:slug/conversations/:conversationId')],
+  },
+
+  // #176: search reads as the session's owner (`POST /api/search` answers
+  // with that principal's transcripts and never another Station's). Renaming
+  // is its own leaf, not the person's `PATCH`: it refuses a title a person set
+  // and a runtime-managed conversation, and only the owner's own conversation
+  // is reachable (a bound operator caller is not scoped, as for
+  // `delete_conversation`).
+  search_sessions: {
+    ...SELF_READ,
+    routes: [post('/api/search')],
+  },
+  rename_session: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/conversations/:id/agent-title')],
   },
 
   // ── board ──────────────────────────────────────────────────────────────
@@ -583,6 +608,51 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   interrupt_task: { ...DISPATCH, routes: DISPATCH_ROUTES },
 
+  // ── operations: Session control (#3160) ────────────────────────────────
+  // Each owns its leaf and shares none with dispatch. The guard holds the
+  // caller to a recorded owner; the route then decides the target Session's
+  // scope itself (`refuseOutOfScopeDispatch`: the owner's own sessions in the
+  // caller's Project or global space, never `host`, never remote, with the
+  // owner's Project `execute` action) before any effect. A bound operator
+  // keeps the operator's reach, as everywhere else.
+  send_to_session: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/session-control/send')],
+  },
+  interrupt_session: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/session-control/interrupt')],
+  },
+  // An owner-scoped read (decision 2): it observes any Session the owner may
+  // read and changes none.
+  wait_session: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-control/:sessionId/wait')],
+  },
+
+  // ── operations: Project activity (#3413) ───────────────────────────────
+  // Owner-scoped reads (decision 2): each answers with what the caller's owner
+  // may read. The routes then hold every Session to the one scope rule
+  // (`stationControlScopeRefusal`, Project `view`): a caller that is not bound
+  // stays in its own Project or the global space, and another Project's
+  // Sessions read as absent. Each owns its leaf and shares none.
+  list_project_activity: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity')],
+  },
+  get_session_digest: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity/:sessionId/digest')],
+  },
+
   // ── operations: SSH environments ───────────────────────────────────────
   create_ssh_environment: {
     ...OPERATOR_MUTATION,
@@ -762,6 +832,21 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ],
   },
 
+  // ── declared outputs ───────────────────────────────────────────────────
+  // #3161: records a pull request on the caller's OWN session and the turn it
+  // is running, in the event store at that turn's completion. The route reads
+  // the session from the verified caller, never the body, and holds it to the
+  // one scope rule (`refuseOutOfScopeDispatch`). A candidate only: a person
+  // keeps it onto a Task. Not a bounded write: it reads the forge and writes
+  // a durable session record, so it keeps the mutating approval.
+  declare_pull_request: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/declare-pull-request')],
+  },
+
   // ── notify ─────────────────────────────────────────────────────────────
   notify_user: {
     assurance: 'any',
@@ -812,6 +897,11 @@ const STATION_CONTROL_REFUSAL_CODES = [
   'station_control_person_only',
   /** An internal request to a route no tool reaches: fail closed. */
   'station_control_route_unmapped',
+  /**
+   * #2377 slice C3b: a dispatch or follow-up that carries an approval posture
+   * from a caller that is not a bound operator.
+   */
+  'station_control_posture_not_allowed',
 ] as const;
 export type StationControlRefusalCode =
   (typeof STATION_CONTROL_REFUSAL_CODES)[number];
@@ -841,6 +931,8 @@ const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
     "A person must do this in Station: it runs code on this host or stores credentials. Ask the person to do it in Station's UI; no agent tool can.",
   station_control_route_unmapped:
     'No station-control tool reaches this Station route, so Station refuses it for internal callers.',
+  station_control_posture_not_allowed:
+    "An agent may not choose the approval mode of a Session it starts or continues. Send the request without one. Without an approval mode, the Session uses the conversation's recorded mode, else the Agent's saved default, else this Station's default. Ask the person to change the mode in Station if it needs to differ.",
 };
 
 export function stationControlRefusal(
@@ -902,7 +994,11 @@ export function stationControlSessionScope(
   return { kind: 'global' };
 }
 
-function sameScope(a: StationControlScope, b: StationControlScope): boolean {
+/** Whether two scopes are the same Project, or both the global space. */
+export function sameScope(
+  a: StationControlScope,
+  b: StationControlScope,
+): boolean {
   if (a.kind === 'unreadable' || b.kind === 'unreadable') return false;
   if (a.kind === 'global' || b.kind === 'global') return a.kind === b.kind;
   return a.id === b.id;
@@ -1073,6 +1169,8 @@ const REFUSAL_STAGE: Record<StationControlRefusalCode, number> = {
   station_control_caller_required: 2,
   station_control_assurance_insufficient: 3,
   station_control_role_required: 4,
+  // Decided at the dispatch routes, never by the table.
+  station_control_posture_not_allowed: 5,
 };
 
 // ── route matching ─────────────────────────────────────────────────────────

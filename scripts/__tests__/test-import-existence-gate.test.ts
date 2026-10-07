@@ -237,6 +237,41 @@ describe('the gate as a real child process', () => {
     expect(output).toContain('OK:');
   });
 
+  test('a tracked-file listing larger than 1 MiB is read whole (#2787)', () => {
+    const root = scratchRepo();
+    mkdirSync(join(root, 'node_modules/installed-fixture-pkg'), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(root, 'zz-last.test.ts'),
+      "import { thing } from 'installed-fixture-pkg';\nthing();\n",
+    );
+    execFileSync('git', ['add', '-A'], { cwd: root });
+    // Index entries only: `git ls-files` lists them without 6,000 files on
+    // disk, and none is a test file the gate would then try to read.
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: root,
+      input: '',
+      encoding: 'utf8',
+    }).trim();
+    const names = Array.from(
+      { length: 6000 },
+      (_, index) => `pad/${'p'.repeat(200)}-${index}.txt`,
+    );
+    expect(Buffer.byteLength(names.join('\n'))).toBeGreaterThan(1_048_576);
+    execFileSync('git', ['update-index', '--add', '--index-info'], {
+      cwd: root,
+      input: names.map((name) => `100644 ${blob}\t${name}\n`).join(''),
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).not.toContain('ENOBUFS');
+    expect(status).toBe(0);
+    // The one test file sorts after every padding entry, so a listing cut
+    // short would report zero.
+    expect(output).toContain('in 1 test file(s)');
+  });
+
   test('fixture source is allowed while a real require of the same missing package fails', () => {
     const root = scratchRepo();
     const file = join(root, 'fixture.test.ts');
@@ -341,6 +376,11 @@ describe('the gate as a real child process', () => {
     copyFileSync(
       join(repoRoot, 'scripts/lib/module-entry.mjs'),
       join(spaceDir, 'lib', 'module-entry.mjs'),
+    );
+    // So does the bounded capture its `git ls-files` runs through (#2787).
+    copyFileSync(
+      join(repoRoot, 'scripts/lib/bounded-capture.mjs'),
+      join(spaceDir, 'lib', 'bounded-capture.mjs'),
     );
     mkdirSync(join(spaceDir, 'node_modules'));
     symlinkSync(

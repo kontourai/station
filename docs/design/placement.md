@@ -512,7 +512,7 @@ it. The strip lives in the region's chrome bar (`RegionChromeBar`, in the
 placement grab, the strip, maximize and visibility, and the click surface
 that collapses the bar — and carries two slots the selected pane's own
 toolbar renders into: `ChatDockHeader` is Chat's toolbar now (identity,
-context meter, project context, chat-list toggle, session counter, More menu) and portals into
+context meter, project context, chat-list toggle, More menu) and portals into
 the bar, so a dock still has ONE chrome bar (#1064, #3309); `ActivityDockPane`
 has no bar of its own. The pane host's `dock` presentation mounts the
 selected pane as the strip's `tabpanel` and nothing else — a pane behind a
@@ -541,7 +541,8 @@ The five decisions of the 2a plan, as taken (each reversible on its own):
   at the unchanged `--chat-dock-header-height` (38/53px); the strip hides
   with the body (it also shows during a drag from Collapsed, as Chat's
   pane controls do), and the selected pane's toolbar keeps its
-  collapsed-state affordances ("Start a chat", #800).
+  collapsed-state affordance (#800): the icon-only New chat action, the one
+  way into the start composer.
 - **D2 — folded menu (bottom-only devices): rows per region.** Each
   occupied dock region contributes its panes in tab order: the selected
   pane's row is the region's Hide/Show, a pane behind a tab gets a Show row
@@ -1708,8 +1709,10 @@ per conversation.** Below the fold nothing above changes.
   own toolbar renders into the bar's two slots beside it through
   `RegionChromeSlots` with `namesPane` — the full-screen Chat joins a bar
   that names it and ignores a region's bar as before — omitting its identity
-  (the crumb is the title) and keeping Open/New icon-only, named and tipped
-  with their chords (`ChatDockWorkspaceActions iconOnly`). The dock's own
+  (the crumb is the title) and keeping its one verb, New, icon-only: the
+  shared `NewChatAction` with `iconOnly`, named "New chat" and tipped with
+  its chord (`ChatDockWorkspaceActions iconOnly`). There is no Open in this
+  bar: the inbox sits beside Chat and lists the chats to open. The dock's own
   Chat header elsewhere is unchanged. On a drill-in page the bar is the
   pane's again (the slots are not offered).
 - **One head per panel.** The side and lower panel heads offer
@@ -1738,22 +1741,32 @@ per conversation.** Below the fold nothing above changes.
   setters); a separator drag writes the room's custom properties directly
   and commits once on release, so a drag, a room measurement or an
   announcement renders the workbench but not Station's one Chat controller.
-- **Diff's head.** Beside Chat the Diff pane draws no "GIT DIFF" row: its
-  stats join the head after the name, Collapse all and Expand all are named
-  icons, and the view (unified or split) and line wrap are rows of one
-  overflow. On its own it keeps its row. File Preview's head is left for
-  the per-file Changes rework in flight to build on.
+- **Diff's head.** Beside Chat the Diff pane draws no row of its own: its
+  stats join the head after the name, and its four icon tools (Collapse
+  all, Expand all, and Split view and Wrap lines as pressed toggles) sit
+  before the close. They are the same tools the pane draws as its own row
+  elsewhere. The pane has no overflow, so the head keeps its own ⋯ for Pop
+  out and Remove pane. The head's tools are 32px beside the 32px close, and
+  44px boxes on a pointer that cannot hover, since the side panel opens by
+  width alone. A pull request review inside the pane fences its own
+  changed-files diff from the head, so the head always speaks for the Diff
+  pane. File Preview's head is left for the per-file Changes rework in
+  flight to build on.
 
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge
   carries a slim strip — 6px with a 3px accent bar and a small chevron at
-  rest, 24px with its glyph brought up on hover or keyboard focus, full
-  height, a real button named "Show inbox"
-  with a tooltip — whose activation opens the inbox as the reader's own
-  choice (the session remembers it). It wears the inbox's "Needs you" count,
-  published by Chat from the same partition the inbox panel renders
-  (`needsYouCount`, `onInboxNeedsYouChange`), so a fold never hides that
-  something is waiting. A coarse pointer has no hover to widen it and gets
+  rest, 24px with its glyph brought up on hover, full height, with a
+  tooltip — whose click opens the inbox as the reader's own choice (the
+  session remembers it). It is a pointer-only shortcut (`aria-hidden`, out
+  of the tab order): the bar's inbox toggle is the one keyboard and
+  screen-reader control, so the folded inbox is never two controls with one
+  name. Both carry the inbox's "Needs you" count, published by Chat from
+  the same partition the inbox panel renders (`needsYouCount`,
+  `onInboxNeedsYouChange`): the strip as its badge and tooltip, the toggle
+  in its name and tooltip ("Show inbox, 3 need you",
+  `inbox-toggle-label.ts`), so a fold never hides that something is
+  waiting. A coarse pointer has no hover to widen it and gets
   none; below the fold the inbox is not folded by the layout. Hover-peek (the
   inbox as an overlay while hovering) was not built: the inbox panel takes
   the dock's whole handler set and lazy chunk, so a second mount for a peek
@@ -1764,9 +1777,9 @@ per conversation.** Below the fold nothing above changes.
   an inbox the layout folded once the transcript would clear its floor by
   24px (hysteresis, so a width on the line does not flap). A fold or unfold
   the reader made is never revisited by a resize.
-- **Session count on the Open icon.** Under the naming bar the "N sessions"
-  text is gone: more than one open conversation badges the Open-conversation
-  icon and joins its tooltip and accessible name. The Terminal's head "+"
+- **No session count.** Under the naming bar there is no "N sessions" text
+  and no count badge: the inbox beside Chat enumerates the chats. The
+  Terminal's head "+"
   appears once a terminal exists (the empty state's own "New Terminal" says
   it first), and a file row truncates with an ellipsis and a full-name title
   rather than widening its panel.

@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Added one sentence that the pre-push hook resolves the liveness scale before its first check; confirmed against .githooks/pre-push. The eight-check table and transfer liveness prose are unchanged and still accurate: the resolver is not a ninth check.","inputs":["docs/guides/code-quality.md",".githooks/pre-push","docs/guides/testing.md","package.json","scripts/run-focused-tests.mjs"]}
+  ]
+}
