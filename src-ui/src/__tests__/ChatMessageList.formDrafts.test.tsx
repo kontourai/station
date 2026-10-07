@@ -72,6 +72,7 @@ function session(
     id,
     conversationId: `conv-${id}`,
     agentSlug: agentId('dev-agent'),
+    agentName: 'Dev Agent',
     title: 'Review chat',
     input: '',
     attachments: [],
@@ -114,7 +115,7 @@ function view(chat: ChatSession, mount = 'first') {
   );
 }
 function controls(title = 'Review') {
-  const heading = screen.getByRole('heading', { name: title, exact: true });
+  const heading = screen.getByRole('heading', { name: title });
   const formElement = heading.closest('form');
   if (!formElement) throw new Error('Expected a chat-native form');
   return within(formElement);
