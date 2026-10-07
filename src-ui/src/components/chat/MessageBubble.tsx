@@ -806,6 +806,7 @@ function MessageBubbleComponent({
       <div
         className="message-row message-row--agent message-row--compact"
         data-chat-message-key={anchorKey}
+        style={agentAccentStyle(sender)}
       >
         <IncomingAgentCause sender={sender}>
           <MessageContent

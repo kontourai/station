@@ -107,7 +107,7 @@ export function IncomingAgentCause({
         <InboxGlyph />
         <span>{label}</span>
       </summary>
-      <div className="agent-cause-disclosure__details">
+      <div className="agent-cause-disclosure__details agent-incoming">
         <IncomingAgentHeader sender={sender} />
         {sender.kind === 'provider' && (
           <p>No person or Session sent a request for this turn.</p>
