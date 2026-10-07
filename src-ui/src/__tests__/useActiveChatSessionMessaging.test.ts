@@ -933,6 +933,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       .mockRejectedValueOnce(new Error('temporarily unavailable'))
       .mockResolvedValueOnce(successReceipt());
     const onAdmission = vi.fn();
+    const claimRetry = vi.fn().mockReturnValue(true);
     const { result } = renderHook(() => useSendMessage('http://api.test'));
 
     await act(async () => {
@@ -944,7 +945,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         undefined,
         undefined,
         undefined,
-        { onAdmission },
+        { onAdmission, claimRetry },
       );
     });
     const firstId = sendExecutionMessageMock.mock.calls[0][1].clientTurnId;
@@ -961,6 +962,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(sendExecutionMessageMock.mock.calls[1][1].clientTurnId).toBe(
       firstId,
     );
+    claimRetry.mockReturnValue(false);
+    await act(async () => {
+      await retry?.();
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    expect(onAdmission.mock.calls).toEqual([['indeterminate'], ['accepted']]);
   });
 
   it('marks a failed send as a send-failure notice, which the composer repeats', async () => {

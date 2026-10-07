@@ -421,3 +421,33 @@ test('a later sender Retry acknowledgement settles the same unconfirmed form aft
       .value,
   ).toBe('casey');
 });
+
+test('retires an old recovery action before dispatch when a fresh submission succeeds or the chat closes', async () => {
+  let claimOldRetry: (() => boolean) | undefined;
+  send.mockImplementationOnce(
+    (...args: Parameters<ReturnType<typeof useSendMessage>>) => {
+      claimOldRetry = args[7]?.claimRetry;
+      args[7]?.onAdmission?.('not-invoked');
+      return Promise.resolve(false);
+    },
+  );
+  const chat = session('stale-retry', [part('result-stale-retry')]);
+  const rendered = render(view(chat));
+  fill();
+  fireEvent.click(controls().getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
+    expect(
+      (controls().getByRole('button', { name: 'Submit' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+  fireEvent.click(controls().getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
+    expect(controls().getByRole('button', { name: 'Submitted' })).toBeTruthy(),
+  );
+  act(() => expect(claimOldRetry?.()).toBe(false));
+  rendered.unmount();
+  act(() => activeChatsStore.removeChat('stale-retry'));
+  act(() => expect(claimOldRetry?.()).toBe(false));
+  expect(send).toHaveBeenCalledTimes(2);
+});

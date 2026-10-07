@@ -63,6 +63,18 @@ export const chatFormDraftsStore = {
     this.set(scope, key, pending);
     return pending;
   },
+  claimRetry(scope: string, key: string, pending: FormDraft) {
+    const current = this.get(scope, key);
+    if (
+      !current ||
+      current.submissionToken !== pending.submissionToken ||
+      current.status === 'sending' ||
+      current.status === 'submitted'
+    )
+      return false;
+    this.set(scope, key, pending);
+    return true;
+  },
   finishSubmit(
     scope: string,
     key: string,

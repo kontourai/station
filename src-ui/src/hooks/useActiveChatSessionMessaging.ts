@@ -265,6 +265,8 @@ export function useSendMessage(
         onAdmission?: (
           status: 'accepted' | 'not-invoked' | 'indeterminate',
         ) => void;
+        /** Retire recovery actions whose originating submission was superseded. */
+        claimRetry?: () => boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -765,6 +767,7 @@ export function useSendMessage(
                         : 'Default'
                     })`,
                     handler: () => {
+                      if (options?.claimRetry && !options.claimRetry()) return;
                       const now = activeChatsStore.getSnapshot()[sessionId];
                       // The draft the rollback restored is this message:
                       // sending it empties the composer as a send would.
@@ -789,6 +792,7 @@ export function useSendMessage(
                         {
                           queueOnBusy: options?.queueOnBusy,
                           onAdmission: options?.onAdmission,
+                          claimRetry: options?.claimRetry,
                         },
                       );
                     },
@@ -1069,8 +1073,9 @@ export function useSendMessage(
                 ? undefined
                 : {
                     label: 'Retry',
-                    handler: () =>
-                      sendMessage(
+                    handler: () => {
+                      if (options?.claimRetry && !options.claimRetry()) return;
+                      return sendMessage(
                         sessionId,
                         agentSlug,
                         latestState?.conversationId ?? conversationId,
@@ -1081,8 +1086,10 @@ export function useSendMessage(
                         {
                           queueOnBusy: options?.queueOnBusy,
                           onAdmission: options?.onAdmission,
+                          claimRetry: options?.claimRetry,
                         },
-                      ),
+                      );
+                    },
                   },
         });
         // The engine just answered the image question for itself; the

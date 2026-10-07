@@ -22,7 +22,8 @@ and reloading the client starts fresh. A pending send shows **Sending…** and
 locks the controls; the normal sender's acceptance changes it to **Submitted**.
 Acceptance can include local queue admission; it does not prove the agent
 processed it. A definite local refusal restores the editable form with its
-values intact. Sender Retry acknowledgements update the same form submission.
+values intact. Sender Retry acknowledgements update the same form submission; stale recovery
+actions cannot dispatch after an edit, a newer submission or chat closure.
 When the sender does not confirm acceptance, the form retains its
 values and stays locked with **Check send status**. Use the conversation’s
 existing send-status and recovery controls: an unconfirmed result can also mean

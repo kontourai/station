@@ -329,7 +329,12 @@ function ChatMessageListComponent({
         undefined,
         undefined,
         undefined,
-        { queueOnBusy: true, onAdmission },
+        {
+          queueOnBusy: true,
+          onAdmission,
+          claimRetry: () =>
+            chatFormDraftsStore.claimRetry(formScope, formKey, pending),
+        },
       ).then(
         (accepted) => {
           if (!admissionReported)
