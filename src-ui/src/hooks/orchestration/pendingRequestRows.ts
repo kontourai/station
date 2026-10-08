@@ -148,9 +148,7 @@ export function unansweredApprovalRequests(
         approvalSessionGrant: toolRequestSessionGrantFromPayload(
           request.payload,
         ),
-        approvalServerGrant: toolRequestServerGrantFromPayload(
-          request.payload,
-        ),
+        approvalServerGrant: toolRequestServerGrantFromPayload(request.payload),
       },
     ];
   });

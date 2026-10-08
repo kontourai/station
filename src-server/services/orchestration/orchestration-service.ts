@@ -8353,7 +8353,10 @@ export class OrchestrationService {
             decision === 'acceptForSession' &&
             command.sessionGrantScope === 'server';
           const requestContext =
-            questionnaire || elicitationForm || context?.clientOrigin || serverScope
+            questionnaire ||
+            elicitationForm ||
+            context?.clientOrigin ||
+            serverScope
               ? {
                   ...(serverScope
                     ? { sessionGrantScope: 'server' as const }

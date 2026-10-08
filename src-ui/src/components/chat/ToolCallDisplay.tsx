@@ -382,7 +382,9 @@ type ApprovalPhase = 'idle' | 'sending' | 'sent' | 'already-settled';
 function useApprovalDecision(onApprove: ToolApprovalHandler) {
   const [phase, setPhase] = useState<ApprovalPhase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
-  const [chosen, setChosen] = useState<'once' | 'trust' | 'trust-server' | 'deny'>();
+  const [chosen, setChosen] = useState<
+    'once' | 'trust' | 'trust-server' | 'deny'
+  >();
   const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
     if (phase !== 'idle') return;
     setChosen(action);
