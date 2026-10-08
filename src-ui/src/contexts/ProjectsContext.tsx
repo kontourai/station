@@ -1,5 +1,8 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
-import type { MemberProjectView } from '@kontourai/station-contracts/project';
+import type {
+  MemberProjectView,
+  ProjectToolDefaults,
+} from '@kontourai/station-contracts/project';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
 import type {
@@ -456,6 +459,7 @@ export interface ProjectMetadata {
 }
 
 export interface ProjectConfig extends ProjectMetadata {
+  toolDefaults?: ProjectToolDefaults;
   workingDirectory?: string;
   defaultModel?: string;
   defaultAgent?: AgentId;

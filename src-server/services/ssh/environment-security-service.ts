@@ -40,7 +40,10 @@ import {
   STATION_PROOF_PROTOCOL_VERSION,
   type StationCompatibility,
 } from '@kontourai/station-contracts';
-import { PAIRING_SCOPE_APPROVAL_FULL_ACCESS } from '@kontourai/station-contracts/environment-security';
+import {
+  CLIENT_PROTOCOL_HEADER_CAPABILITY,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+} from '@kontourai/station-contracts/environment-security';
 import {
   assertExistingSecurityDirectory,
   EnvironmentSecurityRecordError,
@@ -81,8 +84,12 @@ const BASE64URL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
  * (remote auth, device pairing, environment proof) instead of inventing a
  * parallel set: a client that only cares whether pairing changed can read one
  * entry without waiting on a whole-contract bump.
+ *
+ * The runtime's client-protocol admission (`client-protocol-admission.ts`)
+ * enforces this same object, so what a host advertises and what it refuses
+ * cannot drift apart.
  */
-const STATION_COMPATIBILITY: StationCompatibility = {
+export const HOST_STATION_COMPATIBILITY: StationCompatibility = {
   serverVersion: packageJson.version,
   protocolVersion: STATION_COMPAT_PROTOCOL_VERSION,
   minClientProtocol: STATION_COMPAT_MIN_CLIENT_PROTOCOL,
@@ -90,6 +97,9 @@ const STATION_COMPATIBILITY: StationCompatibility = {
     remoteAuth: REMOTE_AUTH_PROTOCOL_VERSION,
     devicePairing: DEVICE_PAIRING_PROTOCOL_VERSION,
     environmentProof: STATION_PROOF_PROTOCOL_VERSION,
+    // This host's CORS allow-list (runtime-http.ts) carries the header, so a
+    // browser on another origin may start sending it here (#2962).
+    [CLIENT_PROTOCOL_HEADER_CAPABILITY]: 1,
   },
 };
 
@@ -593,7 +603,7 @@ export class EnvironmentSecurityService {
       },
       // Additive: every field above is byte-identical to what pre-contract
       // clients already parse, so adding this cannot change their behavior.
-      compatibility: { ...STATION_COMPATIBILITY },
+      compatibility: { ...HOST_STATION_COMPATIBILITY },
       // Additive (archive#1095): same guarantee as `compatibility` above.
       // STATION_CAPABILITY_FLAGS is the single source of truth — add a flag
       // there, not here.

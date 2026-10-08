@@ -106,6 +106,7 @@ import {
   beginActionOperationTracking,
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
+import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -119,6 +120,7 @@ import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
   OrchestrationCommandDispatchError,
 } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -159,6 +161,8 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
+import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
@@ -367,6 +371,7 @@ const adoptSessionCommandSchema = z.object({
   type: z.literal('adoptSession'),
   sourceThreadId: z.string().min(1).max(512),
   idempotencyKey: z.string().uuid().max(64).optional(),
+  target: adoptSessionTargetSchema.optional(),
 });
 
 const interruptTurnCommandSchema = z.object({
@@ -457,6 +462,19 @@ const respondToRequestCommandSchema = z.object({
           custom: z.string().max(12000).optional(),
         })
         .strict(),
+    )
+    .optional(),
+  // #3284: shape only. Whether it fits the open form is decided by the
+  // service against the form itself; nothing here coerces or cuts values.
+  elicitationContent: z
+    .record(
+      z.string().min(1).max(128),
+      z.union([
+        z.string().max(12000),
+        z.number(),
+        z.boolean(),
+        z.array(z.string().max(512)).max(64),
+      ]),
     )
     .optional(),
 });
@@ -1992,6 +2010,11 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       if (
         body.skillExperience &&
         (body.automaticBackground || !body.clientTurnId)
@@ -2310,6 +2333,11 @@ export function createOrchestrationRoutes(
           requestedApprovalMode(body.target.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        const directoryRefused = refuseUngrantedDirectoryWorkspace(
+          c,
+          body.target,
+        );
+        if (directoryRefused) return directoryRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         const data = await deps.handoffConversation({
@@ -2646,6 +2674,11 @@ export function createOrchestrationRoutes(
         ),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       // #2377 slice C2a: a new task starts in the Project the body names.
       const scoped = scopeDispatch(
         c,
@@ -4898,6 +4931,16 @@ export function createOrchestrationRoutes(
                 }
               : {}),
             ...(error instanceof AdoptionContinuationInProgressError
+              ? { code: error.code, retryable: error.retryable }
+              : {}),
+            // #3386: a folder Station will not continue in; the same
+            // request is refused again, so clients offer no retry.
+            ...(error instanceof ContinuationPlaceRefusedError
+              ? { code: error.code, retryable: false }
+              : {}),
+            // #3429: the engine was not ready and nothing was created; the
+            // reason is shown and the same request may be retried.
+            ...(error instanceof AdoptionEngineNotReadyError
               ? { code: error.code, retryable: error.retryable }
               : {}),
             ...(error instanceof OrchestrationCommandDispatchError

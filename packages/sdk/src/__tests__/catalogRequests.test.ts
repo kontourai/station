@@ -33,10 +33,12 @@ describe('catalogRequests', () => {
 
     await expect(fetchRegistryItems('integrations', true)).resolves.toEqual([]);
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/registry/integrations/installed',
-      undefined,
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('uses the read-only Kit registry and encoded layout endpoints', async () => {
@@ -57,10 +59,12 @@ describe('catalogRequests', () => {
     });
 
     await expect(fetchKitRegistry()).resolves.toHaveLength(1);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/registry/kits',
-      undefined,
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
 
     mockJsonResponse({
       success: true,
@@ -69,10 +73,12 @@ describe('catalogRequests', () => {
     await expect(fetchKitLayout('knowledge/kit')).resolves.toEqual({
       standardViews: [],
     });
-    expect(fetch).toHaveBeenLastCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
       'http://example.test/api/registry/kits/knowledge%2Fkit/layout',
-      undefined,
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('keeps integration requests on the integrations endpoint', async () => {
@@ -85,10 +91,12 @@ describe('catalogRequests', () => {
       requestIntegration('/integration-1', { method: 'DELETE' }),
     ).resolves.toEqual({ id: 'integration-1' });
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/integrations/integration-1',
-      { method: 'DELETE' },
+      { method: 'DELETE', headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('passes a successful persisted-but-not-live integration outcome through', async () => {
@@ -195,9 +203,11 @@ describe('catalogRequests', () => {
       requestRegistryLayoutAction({ id: 'builtin:tasks', action: 'enable' }),
     ).resolves.toMatchObject({ id: 'builtin:tasks' });
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/registry/layouts/builtin%3Atasks/enable',
-      { method: 'POST' },
+      { method: 'POST', headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

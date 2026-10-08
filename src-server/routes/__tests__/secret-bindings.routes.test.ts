@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { withOperatorPrincipal } from '../../__test-utils__/operator-principal.js';
 import { SecretBindingConflictError } from '../../services/secrets/secret-binding-administration.js';
 import { createSecretBindingRoutes } from '../secret-bindings.js';
 
@@ -75,41 +76,45 @@ test('typed conflicts retain their stable public response without leaking a host
 
 test('bind/unbind are structured consumer operations and surface a non-atomic safe partial', async () => {
   let migrationInput: unknown;
-  const app = createSecretBindingRoutes(
-    {
-      list: async () => [binding],
-      get: async () => binding,
-      create: async () => binding,
-      replace: async () => binding,
-      grant: async () => binding,
-      ungrant: async () => binding,
-      revoke: async () => binding,
-    },
-    {
-      getIntegrationBindings: async ({ integrationId }) => ({
-        integrationId,
-        secretEnvBindingIds: { TOKEN: 'github-token' },
-      }),
-      bind: async () => ({
-        outcome: 'safe-partial' as const,
-        binding,
-        integrationId: 'github',
-        envName: 'TOKEN',
-        configurationError: 'retry',
-      }),
-      unbind: async () => ({
-        outcome: 'complete' as const,
-        binding,
-        integrationId: 'github',
-        envName: 'TOKEN',
-      }),
-    },
-    {
-      migrateStoredEnv: async (input) => {
-        migrationInput = input;
-        return { outcome: 'migrated' as const, migratedEnvNames: ['TOKEN'] };
+  // Attaching a value to a command's environment takes the operator in
+  // person (or coding:exec); a request no auth boundary saw is refused.
+  const app = withOperatorPrincipal(
+    createSecretBindingRoutes(
+      {
+        list: async () => [binding],
+        get: async () => binding,
+        create: async () => binding,
+        replace: async () => binding,
+        grant: async () => binding,
+        ungrant: async () => binding,
+        revoke: async () => binding,
       },
-    },
+      {
+        getIntegrationBindings: async ({ integrationId }) => ({
+          integrationId,
+          secretEnvBindingIds: { TOKEN: 'github-token' },
+        }),
+        bind: async () => ({
+          outcome: 'safe-partial' as const,
+          binding,
+          integrationId: 'github',
+          envName: 'TOKEN',
+          configurationError: 'retry',
+        }),
+        unbind: async () => ({
+          outcome: 'complete' as const,
+          binding,
+          integrationId: 'github',
+          envName: 'TOKEN',
+        }),
+      },
+      {
+        migrateStoredEnv: async (input) => {
+          migrationInput = input;
+          return { outcome: 'migrated' as const, migratedEnvNames: ['TOKEN'] };
+        },
+      },
+    ),
   );
   const response = await app.request('/github/bind', {
     method: 'POST',

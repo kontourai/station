@@ -114,24 +114,41 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-Home and the chat dock have one way to start a chat: the start composer. Write
+Home, the chat dock and operator Project pages use the same start composer. Write
 what you want done and choose **Start**. You do not need to choose anything
-first; the two chips under the text box show what **Start** will use:
+first; the controls show what **Start** will use:
 
-- The **Agent** chip shows the Agent's icon, then *Agent · Model*. Open it to
+- The **Agent** chip shows the Agent's icon and name. Open it to
   list the Agents this project offers, each with its readiness and its setup
-  action. An Agent's Model control opens the Model picker, including runtime
-  options such as reasoning effort. Choosing a Model for an Agent also chooses
+  action. The separate **Model** control opens the Model picker. Search or
+  filter by provider, **Recent**, or **Favorites**; open **Options** for
+  supported controls such as reasoning effort. Choosing a Model for an Agent also chooses
   that Agent and closes the picker; changing the effort leaves it open. Once
   you have chosen a Model, the picker's reset button names the default it
   returns to, such as **Use project default**.
-- The **project** chip shows the project's colour and name, or **No
-  project**. Open it to choose a project. The list shows each project's
+- The **project** control above the message names the selected Project, or
+  **Without a project**. Open it to choose a project. The list shows each project's
   folder, and the folder this chat will run in. A project with no folder
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
   Station makes for the chat; the chip and list say which.
 - **⋯** holds **Use a visual skill**.
+
+**on <host>** opens **Run on a Station** with your message and Project kept.
+For a saved Project execution environment, the control says **on Project default**.
+Choose a Station, worker and model there, then choose **Run task** to start a
+resumable task. Available workers come from that Station; unavailable
+destinations keep their refusal instead of falling back to this computer.
+Cancel returns to your message, including edits made in the task chooser.
+Follow a started task in Activity. A foreground chat stays on its existing
+Station; choosing a remote task destination does not move that chat.
+
+An operator's Project page has the same composer in a compact form above its
+activity. Its Project is fixed, so starting there uses that Project even when
+the chat dock is bound elsewhere. A missing Project blocks starting and keeps
+the message. This does not change Home's remembered Project. To inspect or
+change this Station's local folder, open **Settings** on the Project page;
+the folder is workspace configuration rather than the Project's identity.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
 remembered for each project and for **No project** on this browser and
@@ -167,7 +184,7 @@ started. If you close the dock's draft instead, the message comes back to Home
 as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
-In the chat dock, the **New chat** button (the pencil on the collapsed bar),
+In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
 **⌘T**, and **New chat** in **Chats and tasks** open the same composer.
 **Explore agents** remains available for deliberate customization.
 
@@ -231,6 +248,7 @@ for creating a project, including a short first-project prompt when empty.
 Selecting a project in the sidebar opens its workspace and makes it the default
 for new chats. An existing chat stays with its original project. The chat bar's
 **New chats** value lets you choose another default without leaving the workspace.
+On a phone with a long chat title, that control shows only a folder icon.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
@@ -414,20 +432,37 @@ how Station preserves the same work identity through retries and response loss.
 
 ## See Conversations Started Outside Station
 
-**Activity** also lists Claude Code and Codex conversations you ran in a
-terminal or another app on this machine. Station reads them; it never controls
-them. It looks in two places:
+**Activity** also lists Claude Code, Codex, Grok and OpenCode conversations
+you ran in a terminal or another app on this machine. Station reads them; it
+never controls them. It looks in four places:
 
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
 - Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
   not set.
+- Grok Build sessions under `sessions` in `GROK_HOME`, or `~/.grok` when that
+  is not set. A Grok session appears once it has a prompt. A subagent's own
+  session is not listed separately, and neither is a Grok chat you started in
+  Station, which is already there.
+- OpenCode's session database, `opencode.db` or `opencode-<channel>.db` (for
+  example `opencode-stable.db`), in `opencode` under `XDG_DATA_HOME`, or
+  `~/.local/share/opencode` when that is not set. Station opens it read-only
+  and lists top-level OpenCode sessions you have sent a message in; subagent
+  sessions and archived sessions are left out. A message appears once OpenCode
+  has finished writing it. Conversations Station itself runs through an
+  OpenCode connection are not listed a second time. Older OpenCode releases
+  kept sessions as JSON files under `storage`; Station does not read those,
+  and current OpenCode moves them into the database when it starts. If an
+  OpenCode update changes the database layout, Station stops reading it and
+  logs one warning instead of guessing.
 
-`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and `STATION_EXTERNAL_CODEX_SOURCE_ROOT`
-point Station at a different folder. Station checks every two seconds and reads
-the 128 most recently changed conversations from each place. Older ones stay in
-Activity once Station has read them, but new messages in them are not picked up
-until they are among the 128 again.
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
+`STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+point Station at a different folder (for OpenCode, the folder holding the
+database). Station checks every two seconds and reads the 128 most recently
+changed conversations from each place. Older ones stay in Activity once Station
+has read them, but new messages in them are not picked up until they are among
+the 128 again.
 
 Each conversation is filed under a Project by the folder it ran in:
 
@@ -445,6 +480,12 @@ A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
 of a worktree outside the Project folder also lands in **No project**: Station
 follows the submodule's own `.git`, which belongs to a different repository.
+
+If a conversation ran in a folder on a network drive that has stopped
+responding, Station can't tell which Project it belongs to. A conversation
+Station has already filed keeps its Project. A new one is listed under
+**No project**, and Station tries the folder again about once a minute. Once
+the drive responds, the conversation moves to its Project.
 
 Station copies what it reads into its own history and search index, so a
 conversation stays in Activity and in search after the original transcript is
@@ -466,17 +507,45 @@ ones inside a Project, but no account can open them there.
 
 Open an attached terminal Session in **Activity**, then choose **Continue in
 Station**. Claude and Codex create independent child Sessions; the original
-terminal Session can keep running. Codex continues from the latest completed
+terminal Session can keep running. OpenCode conversations are read only: the
+action shows why it is unavailable. Codex continues from the latest completed
 turn Station has observed, so wait for one if the action is disabled.
 
-**Continue in Station** needs the conversation's folder to be inside a Project
-folder. A conversation filed by its repository, or under **No project**, shows
-the reason instead.
+The continuation always works in the folder the conversation ran in, and the
+engine is confined to that folder. Station checks the folder again when you
+continue:
+
+- A conversation filed under a Project continues under that Project. This
+  includes one in a worktree outside the Project folder: it continues in that
+  worktree. Station refuses if the worktree was removed or replaced, or if its
+  `.git` does not lead back to the Project's repository.
+- A conversation under **No project** continues as a **No project** chat
+  confined to its own folder, after you confirm that choice. This is allowed
+  only for a folder inside your home folder. Station refuses your home folder
+  itself, every folder outside it (system folders included), any hidden
+  folder directly in your home folder and everything in it (such as `.ssh`,
+  `.aws` or `.config`), `Library` on macOS and `AppData` on Windows, the
+  system temporary folder, and Station's own data folder. It also refuses
+  when the folder shown reaches another folder through a symbolic link
+  inside your home folder. To
+  continue such a conversation, add a Project for that folder or its
+  repository. Station does not move a conversation into another Project's folder,
+  because its history refers to files in the folder it ran in.
+
+A hosted Station does not continue conversations outside your Projects.
 
 An attached Session remains read only. Continuing opens a Station-owned child.
 If Station cannot confirm the result, use the offered retry for that same
 operation. Engine and configuration problems appear with their setup reason.
 A continuation receipt confirms admission, not completion of the work.
+
+The continuation runs as the engine's own Agent on this Station, the one New
+Chat sets up for Claude Code or Codex. That is what lets it open as a chat in
+the dock and take your next messages there. Those messages keep working in
+the conversation's own folder, including a folder inside the Project or a
+worktree, never the Project folder instead. If Station has no Agent for that
+engine, the continuation is still created and you continue it from
+**Activity**; the dock says why it cannot open it.
 
 See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
 

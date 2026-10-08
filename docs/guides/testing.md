@@ -6,6 +6,13 @@ Normative requirements below describe what a contribution owes; command wiring
 and retained benchmarks describe different facts. A listed test, a generated
 schedule or a prior measurement is not proof that the current revision passed.
 
+Fast CI requests Veritas readiness as JSON so its existing bounded, redacted
+output artifacts retain nested evidence-check commands, exit statuses, stdout
+and stderr. Inspect those artifacts for the causal failure rather than
+rerunning a failed gate to recover its output. Capture limits still apply;
+truncated diagnostics do not establish a complete failure inventory. The JSON
+format does not change readiness requirements or promotion evidence.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
@@ -147,8 +154,8 @@ Use this route for weak-test cleanup, fixture repairs, and performance work. The
 ### Authoring fixtures
 
 The E2E runner confines external-session observation to temporary history roots
-using `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and
-`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`. The `smoke-live` server retains the host's
+using `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`. The `smoke-live` server retains the host's
 CLI authentication configuration so installed-CLI journeys can execute real
 turns. Other suites also isolate the CLI configuration directories. Fixture
 writers always receive temporary provider directories; never seed test history
@@ -213,14 +220,14 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | PR events (path filtered); manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `Nightly`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
-| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events. |
+| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events; merge queue. |
 | [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | PR events (path filtered); manual dispatch. |
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -664,6 +671,17 @@ classifier is taken from the base commit, and every failure to classify
 compiles. The job, and so the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
 
+The floor also runs the [Windows resource-staging keeper](../../scripts/__tests__/windows-resource-staging.test.ts) before Cargo. It
+executes the workflow's PowerShell staging body in a temporary directory and
+checks the configured resource-source directories at the Cargo boundary,
+including bundled examples. This proves directory staging, not Rust compilation
+or bundled file contents. The same focused step runs the
+[Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
+checking real installed npm/local Tauri versions and explicit missing
+prerequisites on Windows. These tooling checks do not establish native app
+startup, packaging or device behavior. A repair to this base-controlled workflow must land
+on `main` before a dependent PR's head can use it.
+
 The hosted Windows floor always uploads its existing redacted verification
 receipts and output, including failed runs. A cleanup record with one surviving
 owned child is a boolean failure to prove settlement, not an enumerated live PID.
@@ -831,6 +849,18 @@ identical across every screen, including `motion-reduced-notification`
 (previously the one hand-marked `volatile: true` exception) — its
 `volatile` marker has been removed.
 
+Before photographing, the gallery also waits up to 15 seconds for branded
+identity tiles to contain their SVG, image element or explicit glyph. An empty
+lazy-mark tile fails capture rather than becoming a reference. This checks
+artwork presence, not whether an external image has decoded. The Settings
+explanation capture records the main column's scroll metrics in `capture.json`
+so a shifted frame can be diagnosed without resetting or hiding its state.
+The Settings explanation capture also requires the application frame to stay
+at scroll position zero with its toolbar in view. Phone Settings checks at
+320px and 390px exercise real wheel scrolling in the nested content while the
+outer frame stays bounded. These are Chromium checks; the older-WebView
+fallback remains outside that execution proof.
+
 Baseline artifacts (both committed):
 
 - `tests/screenshots.baseline.json` — small, diffable manifest: per screen,
@@ -897,6 +927,11 @@ committing a new baseline until the change is intentional.
 
 #### Where the gate runs, and which renderer the baseline is bound to
 
+The gallery-wide system-status handler preserves the live status response and
+replaces only the displayed hostname with `Gallery host`. This keeps a Docker
+container's random name out of exact-pixel references without changing readiness
+or device locality. Screen-specific status fixtures retain their declared scenarios.
+
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is
 not an implementation detail: the comparator hashes a decoded RGBA buffer with
@@ -922,10 +957,28 @@ repository opens a font — only that the dependency is written down. Note that
 DM Sans is published in latin and latin-ext only, so this cannot be closed by
 re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
 
+Gallery and Ubuntu zsh preflight callers use
+[`install-ci-ubuntu-packages.sh`](../../scripts/install-ci-ubuntu-packages.sh).
+It replaces the known Azure Ubuntu archive URI with the canonical HTTPS
+archive in legacy lists, DEB822 sources, and the hosted runner mirror list.
+The official Ubuntu security archive also uses HTTPS with the same host and
+path. Suites, components, signing keys, and mirror priorities remain intact. APT
+index retrieval must succeed before installing the required compiler or zsh
+package; an unavailable index stops the bootstrap. The Gallery renderer image
+remains pinned by digest.
+Each caller stages that helper from the immutable workflow-definition commit
+into `RUNNER_TEMP`, independently of the application checkout. Older PR heads
+therefore receive base-workflow bootstrap fixes without needing the new helper
+in their tree. Full regression uses local reusable workflow references; those
+resolve at the caller's workflow commit, while `inputs.source_sha` continues to
+select only the application source being qualified.
+
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
-on pull requests, in the same container (#2428), so a PR that moves a screen
-finds out before it merges instead of reddening the next nightly. Its
-`classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
+on pull requests and synthesized merge-queue candidates, in the same container
+(#2428, #3342). PRs compare their exact head; the queue compares the combined
+candidate. A gallery-relevant change must carry reviewed reference images from
+that renderer. Irrelevant changes skip the capture job, producing GitHub's
+successful skipped check without a browser run. The `classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
 base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
@@ -939,9 +992,14 @@ diff scripts; the nightly on main, running trusted code, remains the
 authoritative check. The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
-complete is reported separately and must not be re-baselined. The check
-compares the PR head against its own baseline, so combinations of PRs are
-still only caught nightly.
+complete is reported separately and must not be re-baselined. The check compares
+each PR head against its own baseline and checks combinations again on the
+merge-queue candidate. Enable `Gallery exact-pixel diff` as a main ruleset requirement after observing
+its PR and merge-queue contexts from the installed workflow;
+a red advisory check alone cannot prevent visual drift from landing.
+`Main: Health` tracks a failed `Nightly: Gallery` run as one main incident and
+clears it only when the capture and exact-diff job passes. Skipping the optional
+API image review does not hide that completed pixel check.
 
 Two consequences worth stating plainly:
 

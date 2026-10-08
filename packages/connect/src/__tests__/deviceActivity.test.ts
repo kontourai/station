@@ -1,4 +1,4 @@
-import type { PairedDevice } from '@kontourai/station-contracts';
+import type { PairedDevice, PairingScope } from '@kontourai/station-contracts';
 import { describe, expect, it } from 'vitest';
 import {
   DEVICE_ACTIVE_WINDOW_MS,
@@ -218,7 +218,8 @@ describe('describeDeviceScope', () => {
     // PAIRING_SCOPES in #1887 slice 1 and consent:decide in #3677;
     // home:transfer brought the set to eight tokens, and home:control and
     // engine:login (#2035) to ten, coding:exec (#2412) to eleven, and
-    // approval:full-access (#2436) to twelve, so each earlier full set is now
+    // approval:full-access (#2436) to twelve, and relay:manage to thirteen.
+    // Each earlier full set is now
     // Custom.
     expect(
       describeDeviceScope(
@@ -241,16 +242,30 @@ describe('describeDeviceScope', () => {
         'coding:exec engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
       ),
     ).toBe('Custom access');
+    const fullAccessScope = [
+      'relay:manage',
+      'approval:full-access',
+      'coding:exec',
+      'engine:login',
+      'home:control',
+      'home:transfer',
+      'consent:decide',
+      'access:approve',
+      'inference:invoke',
+      'access:manage',
+      'terminal:operate',
+      'orchestration:operate',
+      'orchestration:read',
+    ] satisfies readonly PairingScope[];
     // Order-independent, like every other preset match.
-    expect(
-      describeDeviceScope(
-        'approval:full-access coding:exec engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
-      ),
-    ).toBe('Full access');
+    expect(describeDeviceScope(fullAccessScope.join(' '))).toBe('Full access');
+    expect(describeDeviceScope(fullAccessScope.slice(1).join(' '))).toBe(
+      'Custom access',
+    );
     // A scope missing any single token (here consent:decide) is not Full.
     expect(
       describeDeviceScope(
-        'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve',
+        fullAccessScope.filter((token) => token !== 'consent:decide').join(' '),
       ),
     ).toBe('Custom access');
   });

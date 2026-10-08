@@ -15,6 +15,7 @@
       "modules": [
         "ProjectFileTransactions",
         "ProjectIdentity",
+        "Project tool defaults",
         "TaskDispatcher and TaskGraph",
         "Whole Task Basis collection",
         "Project session directory",
@@ -47,6 +48,7 @@
         "SessionTurnBoundaryAuthority",
         "TurnDeduplicator",
         "SessionMessageDelivery",
+        "SessionDigest",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",
         "CredentialRecoveryModule",

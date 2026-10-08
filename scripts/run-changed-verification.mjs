@@ -11,6 +11,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import {
@@ -991,6 +992,36 @@ export function vitestExecutionsForGroups(groups, { kind, vitest }) {
   });
 }
 
+// #3101 C: a failing shard's whole Vitest JSON report, not only the bounded
+// receipt excerpts, so a merge-queue failure is diagnosable from its artifact.
+const FAILED_REPORT_LIMIT_BYTES = 16 * 1024 * 1024;
+
+/** Diagnostics only: a report that cannot be kept never changes the verdict. */
+function retainFailedReport(reportPath, directory, execution, index) {
+  const target = join(directory, `${execution.resourceGroup}-${index}.json`);
+  try {
+    mkdirSync(directory, { recursive: true });
+    if (!existsSync(reportPath)) {
+      writeFileSync(
+        target,
+        `${JSON.stringify({ omitted: 'Vitest wrote no JSON report' })}\n`,
+      );
+      return;
+    }
+    const size = statSync(reportPath).size;
+    writeFileSync(
+      target,
+      size > FAILED_REPORT_LIMIT_BYTES
+        ? `${JSON.stringify({ omitted: `report of ${size} bytes exceeds ${FAILED_REPORT_LIMIT_BYTES}` })}\n`
+        : redactVerificationOutput(readFileSync(reportPath, 'utf8')),
+    );
+  } catch (error) {
+    process.stderr.write(
+      `[fast-checks] could not retain the failing Vitest report: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+}
+
 async function runVitest(
   root,
   run,
@@ -998,6 +1029,7 @@ async function runVitest(
   {
     beforeCleanup = () => {},
     discoverRelated,
+    failedReportDir,
     partition,
     planned,
     readReport = readFileSync,
@@ -1115,8 +1147,11 @@ async function runVitest(
         execution.exitCode !== 0 ||
         execution.infrastructureError ||
         execution.error
-      )
+      ) {
+        if (failedReportDir)
+          retainFailedReport(reportPath, failedReportDir, execution, index);
         break;
+      }
     }
     beforeCleanup(executions, preparation);
     durable = true;
@@ -1997,6 +2032,7 @@ export async function planChangedVerificationShards(
  *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
  *   env?: Record<string, string | undefined>;
  *   prepareExecution?: (options: { cwd: string; env: Record<string, string | undefined> }) => { env: Record<string, string | undefined> };
+ *   failedReportDir?: string;
  * }} [options]
  */
 export async function runChangedVerificationShard(
@@ -2011,6 +2047,7 @@ export async function runChangedVerificationShard(
     assertDependencyProvenance = assertWorkspacePackageProvenance,
     env = process.env,
     prepareExecution = prepareCiFastExecution,
+    failedReportDir,
   } = {},
 ) {
   // The same preflight the unsharded lane runs before any Vitest child: a
@@ -2032,7 +2069,12 @@ export async function runChangedVerificationShard(
     root,
     run,
     { signal },
-    { planned, env: childEnv, ...(readReport ? { readReport } : {}) },
+    {
+      planned,
+      env: childEnv,
+      failedReportDir,
+      ...(readReport ? { readReport } : {}),
+    },
   );
   const counts = countsFor(outcome.executions, outcome.preparation);
   const status = changedVerificationStatus({

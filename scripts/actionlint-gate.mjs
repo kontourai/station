@@ -2252,7 +2252,24 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   // package and reads no secret or credential; the shard's selection can
   // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
   name: 'Provision and preflight zsh for process-heavy installer fixtures',
-  run: 'if [[ ! -x /bin/zsh ]]; then\n  sudo apt-get update\n  sudo apt-get install --yes zsh\nfi\ncommand -v zsh\ntest -x /bin/zsh\n/bin/zsh --version\n',
+  env: {
+    BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
+    BOOTSTRAP_SOURCE_SHA: `\${{ github.workflow_sha }}`,
+  },
+  run: `set -euo pipefail
+if [[ ! -x /bin/zsh ]]; then
+  bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \\
+    "https://raw.githubusercontent.com/\${BOOTSTRAP_SOURCE_REPOSITORY}/\${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \\
+    --output "$bootstrap"
+  printf 'Ubuntu bootstrap workflow source: %s@%s\\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+  sha256sum "$bootstrap"
+  sudo bash "$bootstrap" zsh
+fi
+command -v zsh
+test -x /bin/zsh
+/bin/zsh --version
+`,
 });
 
 /**
@@ -2648,10 +2665,11 @@ function primaryCiRouterFindings(file, document) {
   return findings;
 }
 
-// This credentialed ingress executes only trusted base policy, never PR code.
+// This credentialed ingress executes only trusted base policy, never PR code
+// (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  'a51d13ef28d6e0419ac6e7a699b7b513c2011392550dcb93a4e65b0fe2e59ea7';
+  'cc0241a3b1655e3dc5ededeb69de44109656ef287171c49073b1509cabbf59e9';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')

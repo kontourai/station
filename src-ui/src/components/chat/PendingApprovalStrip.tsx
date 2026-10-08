@@ -10,6 +10,11 @@ const loadHarnessQuestions = () =>
     default: module.HarnessQuestionRequest,
   }));
 
+const loadElicitation = () =>
+  import('./McpElicitationRequest').then((module) => ({
+    default: module.McpElicitationRequest,
+  }));
+
 const requestKey = (request: PendingApprovalRequest) =>
   `${request.approvalThreadId}\u0000${request.approvalId}`;
 
@@ -122,7 +127,16 @@ export function PendingApprovalStrip({
           aria-label="Approvals waiting on you"
         >
           {requests.map((request) =>
-            request.questionnaire ? (
+            request.mcpElicitation ? (
+              <LazyBoundary
+                key={requestKey(request)}
+                load={loadElicitation}
+                componentProps={{ request }}
+                pending={
+                  <SkeletonBlock count={1} label="Loading tool server form" />
+                }
+              />
+            ) : request.questionnaire ? (
               <LazyBoundary
                 key={requestKey(request)}
                 load={loadHarnessQuestions}

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test } from 'vitest';
 import {
   HOME_LIFECYCLE_LABELS,
@@ -243,6 +244,21 @@ describe('a row word can never contradict its lane heading', () => {
     expect(lanes.reduce((total, lane) => total + lane.sessions.length, 0)).toBe(
       MIXED_FIXTURE.length,
     );
+  });
+
+  test('the word the server tools use (contracts) is the ladder’s own, for every session in the walk', () => {
+    // `list_project_activity` words a session with `sessionLadderWord`, not a
+    // copy: the two must agree on every shape here. The UI's Running rung
+    // alone refines its word with UI facts (a sub-agent count, the no-progress
+    // marker), which the server's summary-only read leaves as "Running".
+    const refinements = /^(\d+ sub-agents?|No progress)$/;
+    for (const entry of MIXED_FIXTURE) {
+      const ui = wordOf(entry.threadId);
+      expect([entry.threadId, sessionLadderWord(entry)]).toEqual([
+        entry.threadId,
+        refinements.test(ui) ? 'Running' : ui,
+      ]);
+    }
   });
 
   test('every session in every lane prints a word that lane permits', () => {

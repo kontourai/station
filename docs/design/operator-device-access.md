@@ -3,9 +3,12 @@
 > **Status: proposal, under design and security review (2026-10-03).** The
 > owner set the direction in the #2894 issue comment of 2026-09-28 and
 > decided D1, D2 and D6 on 2026-10-03 (section 9). D3–D5 and D7–D11 are open.
-> Only slice S1 (section 8) is implemented: it observes, and does not refuse,
-> raw operator-credential use from off the host. Passkeys, operator sessions
-> and step-up do not exist yet. Successor: none.
+> S1 observes raw operator-credential use from off the host without refusing it.
+> The merged runtime also implements #3257 S2b consent-origin passkey enrollment
+> and host administration; see [Operator passkeys](../guides/operator-passkeys.md).
+> Enrollment does not implement operator sign-in, operator sessions, or per-action
+> step-up. Those remain design work. The dated body below retains the original
+> design assumptions and line citations; it is not a complete current-state inventory.
 
 The body was read at `origin/main` 1aecbf3555 (2026-10-03). The S1 sections
 and every `runtime-routes.ts` line citation were re-read after merging

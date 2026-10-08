@@ -370,7 +370,10 @@ function validate(repoRoot) {
   const readinessRouted =
     typeof readinessScript === 'string' &&
     /\bveritas\s+readiness\b/.test(readinessScript) &&
-    fastLaneSource.includes("['run', 'veritas:readiness']") &&
+    (fastLaneSource.includes("['run', 'veritas:readiness']") ||
+      fastLaneSource.includes(
+        "['run', 'veritas:readiness', '--', '--format', 'json']",
+      )) &&
     prePushSource.includes('npm run --silent veritas:readiness');
 
   for (const [id, classification] of mappingEntries) {

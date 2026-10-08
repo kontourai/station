@@ -13955,10 +13955,7 @@ describe('OrchestrationService', () => {
     expect(hosted.listSessionUsage(INTERNAL_SESSION_READ_SCOPE)).toEqual([]);
   });
 
-  test('listSessionUsage skips a session that was never configured', () => {
-    // No `session.configured` means no agent and no conversation to attribute
-    // usage to — and, critically, no join key, so counting it could not be
-    // reconciled against the memory substrate. Same rule monitoring applies.
+  test('listSessionUsage retains measured facts without inventing unconfigured attribution', () => {
     const thread = 'thread-list-usage-unconfigured';
     eventStore.upsertSession({
       provider: 'codex',
@@ -13974,11 +13971,18 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-16T00:00:00.000Z',
       method: 'token-usage.updated',
       promptTokens: 5,
-    } as unknown as CanonicalRuntimeEvent);
+    });
 
-    expect(
-      service.listSessionUsage().some((entry) => entry.threadId === thread),
-    ).toBe(false);
+    const entry = service
+      .listSessionUsage()
+      .find((row) => row.threadId === thread);
+    expect(entry).toMatchObject({
+      threadId: thread,
+      conversationId: thread,
+      usage: { inputTokens: 5 },
+    });
+    expect(entry?.agentSlug).toBeUndefined();
+    expect(entry?.usage.lastModelId).toBeUndefined();
   });
 
   test('replays persisted attachments after restart without weakening owner isolation', async () => {
@@ -18059,7 +18063,9 @@ describe('OrchestrationService', () => {
     await expect(
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
     ).rejects.toThrow(
-      `The attached session folder ${scratch} is not inside a project folder.`,
+      // #3386: a folder no project claims continues only when the caller
+      // chose a No project chat; the refusal names the folder and the choice.
+      "This conversation's folder belongs to no project. Choose to continue it as a No project chat",
     );
     expect(claude.adoptSession).not.toHaveBeenCalled();
   });

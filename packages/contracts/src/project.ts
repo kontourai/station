@@ -4,6 +4,13 @@ import type { KnowledgeNamespaceConfig } from './knowledge.js';
 import type { ProjectMemberAction } from './project-membership.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
+export interface ProjectToolDefaults {
+  /** Existing configured MCP servers added to agents in this Project. */
+  mcpServers?: string[];
+  /** Omission enables Knowledge tools when a registered Project store exists. */
+  knowledge?: boolean;
+}
+
 export interface ProjectConfig {
   id: string;
   name: string;
@@ -25,6 +32,7 @@ export interface ProjectConfig {
   topK?: number;
   agents?: AgentId[];
   knowledgeNamespaces?: KnowledgeNamespaceConfig[];
+  toolDefaults?: ProjectToolDefaults;
   /**
    * Server-owned explicit sidebar position (station#3315). Assigned by the
    * reorder operation; projects without one list after positioned ones, in

@@ -79,6 +79,7 @@ export type {
 } from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   TurnProgressSilence,
 } from '@kontourai/station-contracts/orchestration';
 export type {
@@ -394,6 +395,7 @@ export {
   acknowledgeConversation,
   actOnNotification,
   adoptOrchestrationSession,
+  agentMcpPromptsQueryKey,
   allDiffCommentsQueryKey,
   analyzeFeedback,
   answerShareQueries,
@@ -688,6 +690,7 @@ export {
   reviewEvidenceQueryKey,
   revokePluginPermissions,
   revokeWorkspaceHomeRoleGrant,
+  runAgentMcpPrompt,
   runsQueries,
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
   type ServerCapabilities,
@@ -779,6 +782,7 @@ export {
   useAgentConnectionCatalogQuery,
   useAgentConnectionQuery,
   useAgentInvokeMutation,
+  useAgentMcpPromptsQuery,
   useAgentQuery,
   useAgentsQuery,
   useAgentTemplatesQuery,
@@ -1042,6 +1046,7 @@ export {
   useSmokeAgentConnectionMutation,
   useSmokeModelConnectionMutation,
   useSshEnvironmentsQuery,
+  useStationUsageQuery,
   useStatsQuery,
   useStopProviderTaskMutation,
   useSurveyFlowReviewsQuery,

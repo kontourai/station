@@ -4,6 +4,7 @@ import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
+import type { McpElicitationContent } from './mcp-elicitation.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -64,12 +65,32 @@ export interface ReceiptProtectedSteerCommand {
   clientInputId: string;
 }
 
+/**
+ * #3386: where the continuation of a conversation that belongs to no project
+ * runs. A conversation a project claims (by folder, or by repository from a
+ * worktree) always continues in its own folder under that project, and
+ * needs no target.
+ *
+ * - `project`: continue it under this project. Station accepts it only when
+ *   the conversation's folder is inside the project's folder or in a genuine
+ *   worktree of the project's repository; it never moves a conversation to
+ *   another folder.
+ * - `own-folder`: continue it as a No project chat confined to its own
+ *   folder. Refused for a folder too broad to confine an agent to (the home
+ *   folder, the filesystem root, and the like).
+ */
+export type AdoptSessionTarget =
+  | { kind: 'project'; projectSlug: string }
+  | { kind: 'own-folder' };
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
       type: 'adoptSession';
       sourceThreadId: string;
       idempotencyKey?: string;
+      /** #3386: where a conversation no project claims continues. */
+      target?: AdoptSessionTarget;
     }
   | { type: 'sendTurn'; input: OrchestrationSendTurnInput }
   | {
@@ -113,6 +134,8 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
       answers?: HarnessQuestionAnswers;
+      /** #3284: accepted content for a tool server's form elicitation. */
+      elicitationContent?: McpElicitationContent;
     }
   | { type: 'stopSession'; threadId: string }
   | {

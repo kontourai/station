@@ -1,0 +1,7 @@
+{
+  "revision": "c2a8de9009ac14ccb36bf321f45250f9a32ebd43",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the header type correction: Git status is a discriminated union, including the valid isRepo=false result; only isRepo=true renders the existing branch badge. Runtime behavior, folder-in-Settings decision and portable resource boundaries are unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/views/project-page/ProjectPageHeader.tsx"]}
+  ]
+}

@@ -203,6 +203,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
   },
   interrupt_session: { sessionId: 'session-1', requestKey: 'key-0000002' },
   wait_session: { sessionId: 'session-1', until: 'idle' },
+  list_project_activity: {},
+  get_session_digest: { sessionId: 'session-1' },
   update_config: { updates: { theme: 'dark' } },
   reindex_knowledge: {},
   search_knowledge: { query: 'q' },

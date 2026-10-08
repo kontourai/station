@@ -1,0 +1,7 @@
+{
+  "revision": "5ca325e6fcd43dec9a5466a593c7c37826d1081b",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"Historical ACP chat proposal; re-checked after the ACP guide's id-row wording change. It makes no claim about connection id validation, error wording or repair. No prose change.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

@@ -78,7 +78,23 @@
 
     "src-ui/src/components/badges/AchievementsBadge.tsx",
 
-    "src-ui/src/components/badges/AchievementsBadge.test.tsx"
+    "src-ui/src/components/badges/AchievementsBadge.test.tsx",
+
+    "packages/contracts/src/usage-stats.ts",
+
+    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
+
+    "src-server/adapters/file/memory-adapter-messages.ts",
+
+    "src-server/services/orchestration/session-transcript-reads.ts",
+
+    "packages/sdk/src/query-domains/stationUsage.ts",
+
+    "packages/sdk/src/query-domains/usageRollup.ts",
+
+    "packages/sdk/src/client/station-usage.ts",
+
+    "packages/shared/src/usage-semantics.ts"
   ],
 
   "checks": [

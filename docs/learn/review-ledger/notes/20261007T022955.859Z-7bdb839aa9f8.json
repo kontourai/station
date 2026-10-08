@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed 22f74ffcc1 repair: form drafts now observe sender admission, preserve follow-up queue semantics, restore editing on definite local refusal, keep uncertain outcomes locked, and settle token-owned forms on the existing Retry acknowledgement. Updated current implementation note accordingly. Executed 91 focused form/sender tests; browser3 passed before this repair and will be repeated. No live provider/native qualification.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/contexts/chat-form-drafts-store.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

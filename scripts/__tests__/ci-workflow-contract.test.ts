@@ -315,6 +315,7 @@ describe('CI verification workflow contracts', () => {
       | undefined;
     const intendedTargetFiles = [
       '.github/workflows/nightly.yml',
+      '.github/workflows/nightly-gallery.yml',
       '.github/workflows/qualification-health.yml',
       '.github/workflows/container-smoke.yml',
       '.github/workflows/secret-scan.yml',
@@ -641,7 +642,7 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
-  it('closes Nightly health only after terminal deliveries, despite expected recovery skips', async () => {
+  it('closes delivery and Gallery health only after their terminal proof, despite expected skips', async () => {
     const document = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/main-health.yml',
     )?.document as {
@@ -654,50 +655,69 @@ describe('CI verification workflow contracts', () => {
       'process',
       script,
     );
-    const requiredNames = [
-      '3 · Publish native cohort / Record ledger and markers',
-      '3 · Publish CLI to npm nightly',
-      '3 · Stage portable fleet evidence / Admit portable bytes',
+    const scenarios = [
+      {
+        workflowName: 'Nightly',
+        requiredNames: [
+          '3 · Publish native cohort / Record ledger and markers',
+          '3 · Publish CLI to npm nightly',
+          '3 · Stage portable fleet evidence / Admit portable bytes',
+        ],
+        optionalName:
+          '3 · Publish native cohort / Record incomplete-cohort receipt',
+      },
+      {
+        workflowName: 'Nightly: Gallery',
+        requiredNames: ['Capture and diff screenshot gallery'],
+        optionalName: 'Review gallery usability',
+      },
     ];
-    for (const missingTerminal of [false, true]) {
-      const update = vi.fn();
-      const jobs = requiredNames.map((name, index) => ({
-        name,
-        conclusion: missingTerminal && index === 0 ? 'skipped' : 'success',
-      }));
-      // Skipped on a complete night; it runs only when a chain job did not
-      // succeed, and then only writes a receipt (#1774).
-      jobs.push({
-        name: '3 · Publish native cohort / Record incomplete-cohort receipt',
-        conclusion: 'skipped',
-      });
-      const listJobs = vi.fn();
-      const github = {
-        rest: {
-          actions: { listJobsForWorkflowRun: listJobs },
-          issues: { listForRepo: vi.fn(), createComment: vi.fn(), update },
-        },
-        paginate: vi.fn(async (method) =>
-          method === listJobs
-            ? jobs
-            : [{ number: 1, title: 'Main pipeline red: Nightly' }],
-        ),
-      };
-      await run(
-        github,
-        {
-          repo: { owner: 'kontourai', repo: 'station' },
-          payload: { workflow_run: { id: 123 } },
-        },
-        {
-          env: {
-            WORKFLOW_NAME: 'Nightly',
-            RUN_URL: 'https://example.test/run/123',
-            HEAD_SHA: 'a'.repeat(40),
+    for (const { workflowName, requiredNames, optionalName } of scenarios) {
+      for (const terminalResult of [
+        'success',
+        'skipped',
+        'failure',
+        'cancelled',
+        'absent',
+      ]) {
+        const update = vi.fn();
+        const jobs = requiredNames.flatMap((name, index) =>
+          index === 0 && terminalResult === 'absent'
+            ? []
+            : [{ name, conclusion: index === 0 ? terminalResult : 'success' }],
+        );
+        jobs.push({ name: optionalName, conclusion: 'skipped' });
+        const listJobs = vi.fn();
+        const github = {
+          rest: {
+            actions: { listJobsForWorkflowRun: listJobs },
+            issues: { listForRepo: vi.fn(), createComment: vi.fn(), update },
           },
-        },
-      );
-      expect(update).toHaveBeenCalledTimes(missingTerminal ? 0 : 1);
+          paginate: vi.fn(async (method) =>
+            method === listJobs
+              ? jobs
+              : [{ number: 1, title: `Main pipeline red: ${workflowName}` }],
+          ),
+        };
+        await run(
+          github,
+          {
+            repo: { owner: 'kontourai', repo: 'station' },
+            payload: { workflow_run: { id: 123 } },
+          },
+          {
+            env: {
+              WORKFLOW_NAME: workflowName,
+              RUN_URL: 'https://example.test/run/123',
+              HEAD_SHA: 'a'.repeat(40),
+            },
+          },
+        );
+        expect(
+          update,
+          `${workflowName}: ${terminalResult}`,
+        ).toHaveBeenCalledTimes(terminalResult === 'success' ? 1 : 0);
+      }
     }
   });
 
@@ -1408,10 +1428,16 @@ describe('CI verification workflow contracts', () => {
     const pr = documentFor('gallery-pr-check.yml');
     const nightly = documentFor('nightly-gallery.yml');
 
-    // Trigger: base-controlled pull_request_target only. Not merge_group —
-    // the queue-time combination check is #2428's option 2 — and never the
-    // candidate-controlled pull_request (actionlint-gate refuses it).
-    expect(Object.keys(pr.on ?? {})).toEqual(['pull_request_target']);
+    // The protected PR workflow and synthesized queue candidate must both
+    // produce the Gallery context before it can be required for landing.
+    expect(Object.keys(pr.on ?? {})).toEqual([
+      'pull_request_target',
+      'merge_group',
+    ]);
+    expect(pr.on?.merge_group).toEqual({
+      branches: ['main'],
+      types: ['checks_requested'],
+    });
     expect(pr.on?.pull_request_target).toEqual({
       branches: ['main'],
       types: ['opened', 'synchronize', 'reopened'],
@@ -1427,15 +1453,34 @@ describe('CI verification workflow contracts', () => {
     // candidate cannot edit the rule that decides whether its screens are
     // photographed, and the scope it asks for is the gallery one.
     expect(Object.keys(pr.jobs).sort()).toEqual(['classify', 'gallery-diff']);
-    const classifyRun =
-      pr.jobs.classify.steps.find((step) => step.id === 'relevance')?.run ?? '';
+    const classifyStep = pr.jobs.classify.steps.find(
+      (step) => step.id === 'relevance',
+    );
+    expect(classifyStep?.env?.BASE_SHA).toBe(
+      `\${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}`,
+    );
+    expect(classifyStep?.env?.HEAD_SHA).toBe(
+      `\${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}`,
+    );
+    const classifyRun = classifyStep?.run ?? '';
     expect(classifyRun).toContain(
       'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
     );
     expect(classifyRun).toContain('--scope gallery --mode candidate');
     const job = pr.jobs['gallery-diff'];
     expect(job.needs).toBe('classify');
-    expect(job.if).toBe("needs.classify.outputs.relevant == 'true'");
+    expect(job.if).toBe(
+      "always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')",
+    );
+    const classificationGuard = job.steps[0];
+    expect(classificationGuard.env).toEqual({
+      CLASSIFICATION_RESULT: `\${{ needs.classify.result }}`,
+      GALLERY_RELEVANT: `\${{ needs.classify.outputs.relevant }}`,
+    });
+    expect(classificationGuard.run).toContain(
+      '"$CLASSIFICATION_RESULT" != success || "$GALLERY_RELEVANT" != true',
+    );
+    expect(classificationGuard.run).toContain('exit 1');
 
     // Renderer parity. The comparator is exact, so a baseline is a claim about
     // one renderer; a PR check in any other container would contradict the
@@ -1472,7 +1517,7 @@ describe('CI verification workflow contracts', () => {
     );
     expect(nightlySetup.length).toBeGreaterThanOrEqual(4);
     const captureIndex = job.steps.findIndex((step) => step.id === 'capture');
-    expect(setupRuns(job.steps.slice(0, captureIndex))).toEqual(nightlySetup);
+    expect(setupRuns(job.steps.slice(1, captureIndex))).toEqual(nightlySetup);
     const nightlyUses = nightlyJob.steps
       .slice(0, nightlyCaptureIndex)
       .map((step) => step.uses)
@@ -1857,10 +1902,15 @@ describe('CI verification workflow contracts', () => {
         jobs: Record<string, Job>;
       }
     ).jobs.ordinary.steps?.find((step) => step.name === zshName);
-    expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
+    expect(fullRegressionZsh?.run).toContain('sudo bash "$bootstrap" zsh');
     const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
     expect(shardZshIndex).toBeGreaterThan(-1);
     expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
+    expect(shardSteps[shardZshIndex].env).toEqual({
+      BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
+      BOOTSTRAP_SOURCE_SHA: `\${{ github.workflow_sha }}`,
+    });
+    expect(shardSteps[shardZshIndex].env).toEqual(fullRegressionZsh?.env);
     expect(shardSteps[shardZshIndex]['timeout-minutes']).toBe(
       fullRegressionZsh?.['timeout-minutes'],
     );
@@ -2855,6 +2905,13 @@ describe('CI verification workflow contracts', () => {
       steps: Array<{ id?: string; name?: string; if?: string; run?: string }>;
     };
     expect(floorJob.if).toBeUndefined();
+    const resourceStaging = floorJob.steps.find(
+      (step) => step.name === 'Verify desktop resource staging',
+    );
+    expect(resourceStaging?.run).toBe(
+      'npm run test:focused -- scripts/__tests__/windows-resource-staging.test.ts scripts/__tests__/tauri-context.test.ts',
+    );
+    expect(resourceStaging?.if).toBeUndefined();
     const relevance = floorJob.steps.find(
       (step) => step.id === 'rust_relevance',
     );

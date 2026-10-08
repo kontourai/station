@@ -71,6 +71,7 @@ on:
       - 'install.sh'
       - 'install.ps1'
       - 'schemas/**'
+      - 'examples/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
       - 'config/channel-ports.json'
@@ -88,6 +89,7 @@ on:
       - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/container-release-metadata.mjs'
       - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/bundled-registry.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
       - 'scripts/lib/documentation-model.mjs'
       - 'scripts/lib/elf-symbol-floor.mjs'
@@ -114,6 +116,7 @@ on:
       - 'install.sh'
       - 'install.ps1'
       - 'schemas/**'
+      - 'examples/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
       - 'config/channel-ports.json'
@@ -131,6 +134,7 @@ on:
       - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/container-release-metadata.mjs'
       - 'scripts/lib/desktop-build-manifest.mjs'
+      - 'scripts/lib/bundled-registry.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
       - 'scripts/lib/documentation-model.mjs'
       - 'scripts/lib/elf-symbol-floor.mjs'
