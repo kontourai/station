@@ -89,6 +89,16 @@ export interface ChildWorkUsage {
   durationMs?: number;
 }
 
+/** One member of {@link ChildWorkUsage}. */
+export type ChildWorkUsageField = keyof ChildWorkUsage;
+
+/** Canonical order of usage fields (the order `ChildWorkUsage` declares). */
+const CHILD_WORK_USAGE_FIELDS: readonly ChildWorkUsageField[] = [
+  'totalTokens',
+  'toolUses',
+  'durationMs',
+];
+
 /**
  * #3163: where a child's model came from. Every source is the engine's own
  * report about THIS child. The parent's model is never a source, even when
@@ -293,6 +303,21 @@ export interface ChildWorkItem extends ChildWorkKey {
   /** Latest one-line status while running. */
   progress?: string;
   usage?: ChildWorkUsage;
+  /**
+   * #3308: present only on a terminal child whose `usage` is still the last
+   * figure reported while it ran, because no settle has reported usage yet
+   * (Claude's `task_updated` terminal carries none; its `task_notification`
+   * follows with the final figure). A later settle's usage replaces it, where
+   * usage a settle reported stays sticky. Set by the reducer, never a producer.
+   */
+  usageProvisional?: true;
+  /**
+   * #3337: with `usageProvisional`, the usage fields that are still running
+   * figures, when only some are (a settle reported the rest, and those stay
+   * sticky). Absent while provisional means every field is a running figure.
+   * Set by the reducer, never a producer.
+   */
+  usageRunningFields?: ChildWorkUsageField[];
   result?: ChildWorkResult;
   startedAt?: string;
   endedAt?: string;
@@ -317,9 +342,30 @@ export type ChildWorkDelta =
       status: ChildWorkTerminalStatus;
       result?: ChildWorkResult;
       usage?: ChildWorkUsage;
+      /**
+       * #3308: `usage` is a running figure, not one the engine reported at
+       * settle — set when a stored provisional item is replayed as a settle
+       * (`childWorkSettleFromItem`). Such usage only fills and stays
+       * provisional, so the engine's later final figure still replaces it.
+       */
+      usageProvisional?: true;
+      /**
+       * #3337: with `usageProvisional`, which of `usage`'s fields are running
+       * figures; the others are restated settled figures and stay sticky.
+       * Absent means every field is a running figure.
+       */
+      usageRunningFields?: ChildWorkUsageField[];
       /** Identity a settle can supply when no earlier delta did. */
       identity?: Partial<
-        Omit<ChildWorkItem, keyof ChildWorkKey | 'status' | 'result' | 'usage'>
+        Omit<
+          ChildWorkItem,
+          | keyof ChildWorkKey
+          | 'status'
+          | 'result'
+          | 'usage'
+          | 'usageProvisional'
+          | 'usageRunningFields'
+        >
       >;
     } & ChildWorkKey)
   | {
@@ -411,6 +457,27 @@ function normalizeUsage(
   };
 }
 
+/**
+ * #3337: the running fields of a provisional `usage`, in canonical form: only
+ * fields `usage` holds, in declaration order, and absent when that would be
+ * every field (or none, which is not a consistent claim — absent then reads
+ * as "all running", the safe side).
+ */
+function normalizeRunningFields(
+  usage: ChildWorkUsage,
+  fields: unknown,
+): ChildWorkUsageField[] | undefined {
+  if (!Array.isArray(fields)) return undefined;
+  const present = CHILD_WORK_USAGE_FIELDS.filter(
+    (field) => usage[field] !== undefined,
+  );
+  const running = present.filter((field) => fields.includes(field));
+  if (running.length === 0 || running.length === present.length) {
+    return undefined;
+  }
+  return running;
+}
+
 function normalizeResult(
   result: ChildWorkResult | undefined,
 ): ChildWorkResult | undefined {
@@ -466,6 +533,17 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
   if (item.backgrounded !== undefined) next.backgrounded = item.backgrounded;
   if (item.progress !== undefined) next.progress = item.progress;
   if (usage) next.usage = usage;
+  // Only the reducer's settle and snapshot paths derive this, and only a
+  // terminal child's usage can be provisional.
+  if (
+    usage &&
+    item.usageProvisional === true &&
+    isChildWorkTerminalStatus(item.status)
+  ) {
+    next.usageProvisional = true;
+    const running = normalizeRunningFields(usage, item.usageRunningFields);
+    if (running) next.usageRunningFields = running;
+  }
   if (result) next.result = result;
   if (item.startedAt !== undefined) next.startedAt = item.startedAt;
   if (item.endedAt !== undefined) next.endedAt = item.endedAt;
@@ -577,7 +655,12 @@ function applySnapshot(
   )) {
     if (listed.has(key)) continue;
     if (!changed) items = { ...items };
-    items[key] = { ...items[key], status: 'unresolved' };
+    // No settle reported this child's usage: what it has is a running figure.
+    items[key] = {
+      ...items[key],
+      status: 'unresolved',
+      ...(items[key].usage ? { usageProvisional: true as const } : {}),
+    };
     changed = true;
   }
   if (!changed) return state;
@@ -607,6 +690,89 @@ function applyUpsert(
   return { ...state, items: { ...state.items, [key]: next } };
 }
 
+/** The fields of `usage` that are running figures, as `item` records them. */
+function runningFieldsOf(
+  usage: ChildWorkUsage | undefined,
+  provisional: boolean,
+  fields: ChildWorkUsageField[] | undefined,
+): Set<ChildWorkUsageField> {
+  if (!usage || !provisional) return new Set();
+  const present = CHILD_WORK_USAGE_FIELDS.filter(
+    (field) => usage[field] !== undefined,
+  );
+  return new Set(
+    fields ? present.filter((field) => fields.includes(field)) : present,
+  );
+}
+
+/**
+ * #3308/#3337: a settled child's usage, and which of its fields are still
+ * running figures. Decided field by field:
+ *
+ * - A field a settle reported is sticky: a later settle cannot change it,
+ *   even while other fields are still running figures.
+ * - A running figure (the child's usage when this settle closes it, or a
+ *   field recorded as running) is replaced by the settle's reported figure.
+ * - A provisional settle (a stored item replayed, `childWorkSettleFromItem`)
+ *   restates running figures: those only fill, and stay running. Fields it
+ *   restates as settled count as reported.
+ *
+ * The usage is provisional while any field is a running figure, so a
+ * duration-only settle cannot pass a running token count off as final.
+ */
+function settledUsage(
+  existing: ChildWorkItem | undefined,
+  usage: ChildWorkUsage | undefined,
+  options: {
+    open: boolean;
+    provisional: boolean;
+    runningFields?: ChildWorkUsageField[];
+  },
+): Pick<ChildWorkItem, 'usage' | 'usageProvisional' | 'usageRunningFields'> {
+  const prior = existing?.usage;
+  const priorRunning = options.open
+    ? runningFieldsOf(prior, true, undefined)
+    : runningFieldsOf(
+        prior,
+        existing?.usageProvisional === true,
+        existing?.usageRunningFields,
+      );
+  const reportedRunning = runningFieldsOf(
+    usage,
+    options.provisional,
+    options.runningFields,
+  );
+  const next: ChildWorkUsage = {};
+  const running: ChildWorkUsageField[] = [];
+  for (const field of CHILD_WORK_USAGE_FIELDS) {
+    const had = prior?.[field];
+    const got = usage?.[field];
+    if (had !== undefined && !priorRunning.has(field)) {
+      next[field] = had;
+    } else if (got !== undefined && !reportedRunning.has(field)) {
+      next[field] = got;
+    } else if (had !== undefined) {
+      next[field] = had;
+      running.push(field);
+    } else if (got !== undefined) {
+      next[field] = got;
+      running.push(field);
+    }
+  }
+  if (Object.keys(next).length === 0) {
+    return {
+      usage: undefined,
+      usageProvisional: undefined,
+      usageRunningFields: undefined,
+    };
+  }
+  return {
+    usage: next,
+    usageProvisional: running.length > 0 ? true : undefined,
+    usageRunningFields: running.length > 0 ? running : undefined,
+  };
+}
+
 function applySettle(
   state: ChildWorkRegistryState,
   delta: Extract<ChildWorkDelta, { kind: 'settle' }>,
@@ -616,6 +782,13 @@ function applySettle(
   const result = normalizeResult(delta.result);
   const usage = normalizeUsage(delta.usage);
   const identity = delta.identity ?? {};
+  const provisional = delta.usageProvisional === true;
+  // Canonical form, as an item holds it: an empty or unknown-only list
+  // means every field is running, never that nothing is.
+  const runningFields =
+    provisional && usage
+      ? normalizeRunningFields(usage, delta.usageRunningFields)
+      : undefined;
   let next: ChildWorkItem;
   if (!existing) {
     // Settle before any listing: record the terminal as a tombstone, so a
@@ -627,7 +800,11 @@ function applySettle(
       childId: delta.childId,
       status: delta.status,
       ...(result ? { result } : {}),
-      ...(usage ? { usage } : {}),
+      ...settledUsage(undefined, usage, {
+        open: true,
+        provisional,
+        runningFields,
+      }),
     });
   } else if (
     existing.status === 'running' ||
@@ -644,15 +821,25 @@ function applySettle(
       childId: delta.childId,
       status: delta.status,
       result: result ?? existing.result,
-      usage: usage ? { ...existing.usage, ...usage } : existing.usage,
+      ...settledUsage(existing, usage, {
+        open: true,
+        provisional,
+        runningFields,
+      }),
     });
   } else {
-    // Sticky terminal: a duplicate settle may only fill what is absent.
+    // Sticky terminal: a duplicate settle may only fill what is absent —
+    // except usage that is still a running figure (#3308), which the first
+    // settle to report usage replaces, as it would have on a running child.
     next = normalizeItem({
       ...(fillAbsent(existing, identity as ChildWorkItem) ?? existing),
       status: existing.status,
       result: fillAbsent(existing.result, result),
-      usage: fillAbsent(existing.usage, usage),
+      ...settledUsage(existing, usage, {
+        open: false,
+        provisional,
+        runningFields,
+      }),
     });
   }
   if (sameItem(existing, next)) return state;
@@ -691,6 +878,44 @@ export function applyChildWorkDelta(
         },
       };
   }
+}
+
+/**
+ * A settled item restated as the settle delta that reproduces it, for a
+ * consumer that seeds a registry from stored items (history replay, a
+ * reconnect's session view). Undefined for a running item. Keeps a
+ * provisional usage figure provisional (#3308), so the engine's final figure
+ * can still replace it after the replay.
+ */
+export function childWorkSettleFromItem(
+  item: ChildWorkItem,
+): Extract<ChildWorkDelta, { kind: 'settle' }> | undefined {
+  const {
+    producer,
+    reporterThreadId,
+    childId,
+    status,
+    result,
+    usage,
+    usageProvisional,
+    usageRunningFields,
+    ...identity
+  } = item;
+  if (!isChildWorkTerminalStatus(status)) return undefined;
+  return {
+    kind: 'settle',
+    producer,
+    reporterThreadId,
+    childId,
+    status,
+    ...(result ? { result } : {}),
+    ...(usage ? { usage } : {}),
+    ...(usage && usageProvisional ? { usageProvisional: true as const } : {}),
+    ...(usage && usageProvisional && usageRunningFields
+      ? { usageRunningFields }
+      : {}),
+    identity,
+  };
 }
 
 /** Every child a reporter holds (running and settled), in insertion order. */

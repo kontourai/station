@@ -1,0 +1,7 @@
+{
+  "revision": "0c041c578e2dcab24b2b42486a590f11dccaefc0",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed resource contract delta and all desktop/AppImage/mobile overlays. The default registry and tracked package examples join desktop resources; base and mobile configurations remain resource-free. Desktop Nightly uses the checked-in overlay; Android Nightly and iOS TestFlight use generated identity overlays without desktop resource maps. The 19 focused native resource/installer contract tests and executable resource ratchet pass; no packaged mobile or Windows runtime claim is made."}
+  ]
+}

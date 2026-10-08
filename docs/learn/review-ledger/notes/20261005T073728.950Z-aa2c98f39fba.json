@@ -1,0 +1,7 @@
+{
+  "revision": "833ab56d66ee03cae6d2413f2f3bd36bb2bde426",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Only removed the export keyword from startAgentChipText (StartComposer) and NEW_CHAT_HANDOFF_ROUTES (newChatIntent); no behaviour changed. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/lib/newChatIntent.ts"]}
+  ]
+}

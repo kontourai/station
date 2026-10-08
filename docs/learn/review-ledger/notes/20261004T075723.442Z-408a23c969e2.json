@@ -1,0 +1,7 @@
+{
+  "revision": "583288b163a7941806c4cd06916c6f734085cbc6",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the only newly stale linked input: Connections now explains explicit Allow another and the panel/authority lifetime of its uncertain-invitation advisory. The machine relationships guide links those setup steps but retains the same saved route versus Device versus Project authority distinctions, no automatic route selection, and independent Project membership/operate or relay:manage grant. Manual invitation recovery supplies none of those approvals and does not open terminal/Agent/Task publication or qualify native delivery. No prose change needed; bounded linked-guide delta review, not a renewed full guide/platform audit.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

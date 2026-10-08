@@ -205,7 +205,7 @@ The published CLI drives Stations that are already running — see `station stat
 
 **Selected local operations are available in the published CLI.** `open`,
 `doctor`, `environment show`, `environment credential show`, `environment offer`,
-`environment access list|approve|deny|devices|scope`, and `service status|start|stop` support
+`environment access list|approve|deny|devices|scope|revoke|remove`, `environment operator passkeys`, and `service status|start|stop` support
 an existing local installation. Local authorization validates the selected
 owner-only home and the loopback listener; it does not create a missing home.
 Service start/stop controls an existing OS service rather than building or

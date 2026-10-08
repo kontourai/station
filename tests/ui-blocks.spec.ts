@@ -2,8 +2,9 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { test } from './helpers/fixture-audit';
 import {
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
@@ -134,7 +135,7 @@ test.describe('Structured UI blocks', () => {
     ).toBeVisible();
   });
 
-  test('submitting a form block re-enters the conversation as a tagged user turn', async ({
+  test('retains form input across responsive reparenting and submits a tagged user turn', async ({
     page,
   }) => {
     await seedActiveChats(page, [
@@ -242,6 +243,30 @@ test.describe('Structured UI blocks', () => {
         },
       },
     });
+
+    await expect(
+      page.getByRole('heading', { name: 'Approve gate', exact: true }),
+    ).toBeVisible();
+    // Scope controls to the rendered form block: the composer's approval-mode
+    // chip also has an accessible name starting "Approv…", so a page-wide
+    // button lookup is ambiguous and breaks whenever composer labels move.
+    const gateForm = page.locator('form').filter({
+      has: page.getByRole('heading', { name: 'Approve gate', exact: true }),
+    });
+    const approveButton = gateForm.getByRole('button', {
+      name: 'Approve',
+      exact: true,
+    });
+
+    // Required-field guard fires before any send.
+    await approveButton.click();
+    await expect(gateForm.getByText('"Reviewer" is required.')).toBeVisible();
+    expect(sentBody).toBeNull();
+
+    // Fill before settlement, then move Chat between its workspace pane and dock.
+    const reviewer = gateForm.getByLabel('Reviewer');
+    await reviewer.fill('casey');
+    await gateForm.getByText('Sign off').click();
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
         provider: 'codex',
@@ -251,23 +276,26 @@ test.describe('Structured UI blocks', () => {
         turnId: 'turn-1',
       },
     });
-
+    await expect(page.locator('.streaming-message')).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 844 });
     await expect(
-      page.getByRole('heading', { name: 'Approve gate' }),
+      page
+        .locator('#chat-dock')
+        .getByRole('heading', { name: 'Approve gate', exact: true }),
     ).toBeVisible();
+    const notifications = page.getByRole('button', {
+      name: /^Dismiss notifications/,
+    });
+    if (await notifications.isVisible()) await notifications.click();
+    await expect(gateForm).toBeVisible();
+    await expect(reviewer).toHaveValue('casey');
+    await expect(gateForm.getByLabel('Sign off')).toBeChecked();
+    await approveButton.click();
 
-    // Required-field guard fires before any send.
-    await page.getByRole('button', { name: 'Approve', exact: true }).click();
-    await expect(page.getByText('"Reviewer" is required.')).toBeVisible();
-    expect(sentBody).toBeNull();
-
-    // Fill and submit.
-    await page.getByLabel('Reviewer').fill('casey');
-    await page.getByText('Sign off').click();
-    await page.getByRole('button', { name: 'Approve', exact: true }).click();
-
-    // Form locks after submit, and the tagged structured turn was sent.
-    await expect(page.getByRole('button', { name: 'Submitted' })).toBeVisible();
+    // The pending send locks the form; acknowledgement alone marks it Submitted.
+    await expect(
+      gateForm.getByRole('button', { name: 'Sending…' }),
+    ).toBeVisible();
     await expect.poll(() => sentBody).not.toBeNull();
     const turn = JSON.parse(sentBody as unknown as string).message as string;
     expect(turn).toContain('Submitted form "Approve gate":');
@@ -278,6 +306,9 @@ test.describe('Structured UI blocks', () => {
 
     releaseResponse();
     await responseFulfilled;
+    await expect(
+      gateForm.getByRole('button', { name: 'Submitted' }),
+    ).toBeVisible();
   });
 
   // archive#1399 — a claiming table block with

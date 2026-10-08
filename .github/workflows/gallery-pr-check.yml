@@ -1,4 +1,4 @@
-name: Gallery PR check
+name: "PR: Gallery"
 
 # The exact-pixel gallery gate, run on the pull request that moves a screen
 # rather than on the next nightly (#2428). Until this existed the gate ran only
@@ -24,20 +24,22 @@ name: Gallery PR check
 # rule that decides whether its own screens are photographed, and every
 # failure of it answers relevant=true.
 #
-# It checks out the PR head, not a merge with main: the code and the baseline
-# it is compared against come from the same tree, so a PR that has not
-# touched a screen matches its own copy of the baseline even when main has
-# since re-baselined that screen. Combinations of PRs are the nightly's job.
+# PRs compare their exact head with its own baseline. Merge groups compare
+# the synthesized candidate with that candidate's baseline, so independently
+# accepted visual changes must also work together before landing.
 on:
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
 
 permissions:
   contents: read
 
 concurrency:
-  group: gallery-pr-check-${{ github.event.pull_request.number || github.ref }}
+  group: gallery-pr-check-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -57,8 +59,8 @@ jobs:
       - id: relevance
         name: Classify gallery inputs
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           fail_closed() {
             echo "::warning::gallery change classification failed closed: $1"
@@ -86,7 +88,7 @@ jobs:
   gallery-diff:
     name: Gallery exact-pixel diff
     needs: classify
-    if: needs.classify.outputs.relevant == 'true'
+    if: always() && (needs.classify.result != 'success' || needs.classify.outputs.relevant != 'false')
     runs-on: ubuntu-22.04
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
@@ -98,6 +100,16 @@ jobs:
     env:
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     steps:
+      - name: Require successful Gallery classification
+        env:
+          CLASSIFICATION_RESULT: ${{ needs.classify.result }}
+          GALLERY_RELEVANT: ${{ needs.classify.outputs.relevant }}
+        run: |
+          if [[ "$CLASSIFICATION_RESULT" != success || "$GALLERY_RELEVANT" != true ]]; then
+            echo "::error::Gallery classification did not establish a valid capture plan."
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -114,10 +126,18 @@ jobs:
         with: { install: false }
 
       - name: Install the native build toolchain node-pty needs
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential
+          bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+            "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+            --output "$bootstrap"
+          printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+          sha256sum "$bootstrap"
+          bash "$bootstrap" build-essential
 
       - name: Trust the workspace checkout inside the container
         run: |

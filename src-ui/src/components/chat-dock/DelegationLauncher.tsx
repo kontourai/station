@@ -39,8 +39,16 @@ interface DelegationLauncherProps {
   parentTaskId?: string;
   parentTaskLabel?: string;
   initialPrompt?: string;
+  onDraftChange?: (prompt: string) => void;
+  title?: string;
+  submitLabel?: string;
+  routingExpanded?: boolean;
   onClose: () => void;
-  onDelegated: (task: DelegatedTaskHandle, targetName: string) => void;
+  onDelegated: (
+    task: DelegatedTaskHandle,
+    targetName: string,
+    placement: { stationName: string; prompt: string },
+  ) => void;
 }
 
 type TargetOption = {
@@ -145,6 +153,10 @@ export function DelegationLauncher({
   parentTaskId,
   parentTaskLabel,
   initialPrompt = '',
+  onDraftChange,
+  title = 'Delegate a task',
+  submitLabel = 'Delegate',
+  routingExpanded = false,
   onClose,
   onDelegated,
 }: DelegationLauncherProps) {
@@ -283,7 +295,7 @@ export function DelegationLauncher({
   const [prompt, setPrompt] = useState(initialPrompt);
   const [target, setTarget] = useState(defaultTarget);
   const [model, setModel] = useState(currentModel ?? '');
-  const [showRouting, setShowRouting] = useState(false);
+  const [showRouting, setShowRouting] = useState(routingExpanded);
   // Public repo labels/ids for the portable placement selector. The declared
   // execution-root repo wins; a sole repo is unambiguous; anything else
   // requires an explicit choice — never a guess.
@@ -317,7 +329,7 @@ export function DelegationLauncher({
       setChosenResourceId(null);
       setAuthorityStale(false);
       setModel(defaultTarget === currentTarget ? (currentModel ?? '') : '');
-      setShowRouting(false);
+      setShowRouting(routingExpanded);
       mutation.reset();
       requestAnimationFrame(() => promptRef.current?.focus());
     }
@@ -333,6 +345,7 @@ export function DelegationLauncher({
     initialPrompt,
     isOpen,
     mutation.reset,
+    routingExpanded,
   ]);
 
   useEffect(() => {
@@ -472,10 +485,12 @@ export function DelegationLauncher({
         }
       : undefined;
     const invocationApiBase = invocationScope?.apiBase ?? apiBase;
+    const capturedDraft = prompt;
     const capturedPrompt = prompt.trim();
     const capturedEnvironmentId = environmentId;
     const capturedTargetId = selectedTarget.id;
     const capturedTargetName = selectedTarget.name;
+    const capturedStationName = selectedEnvironmentName;
     const capturedModel = model.trim();
     const capturedParentTaskId = parentTaskId;
     const capturedWorkspace = projectSlug
@@ -517,7 +532,10 @@ export function DelegationLauncher({
         setAuthorityStale(true);
         return;
       }
-      onDelegated(task, capturedTargetName);
+      onDelegated(task, capturedTargetName, {
+        stationName: capturedStationName,
+        prompt: capturedDraft,
+      });
     } catch {
       // React Query exposes the actionable error inline and keeps the draft,
       // Project/resource and machine choice: no automatic redispatch, and a
@@ -528,6 +546,7 @@ export function DelegationLauncher({
   const containFocus = (event: React.KeyboardEvent<HTMLFormElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       onClose();
       return;
     }
@@ -589,11 +608,14 @@ export function DelegationLauncher({
         aria-modal="true"
         aria-labelledby="delegation-launcher-title"
         onKeyDown={containFocus}
-        onSubmit={(event) => void submit(event)}
+        onSubmit={(event) => {
+          event.stopPropagation();
+          void submit(event);
+        }}
       >
         <header className="delegation-launcher__header">
           <div>
-            <h2 id="delegation-launcher-title">Delegate a task</h2>
+            <h2 id="delegation-launcher-title">{title}</h2>
             <p>
               Start resumable work{projectName ? ` for ${projectName}` : ''}.
             </p>
@@ -621,7 +643,10 @@ export function DelegationLauncher({
               value={prompt}
               rows={5}
               placeholder="Implement the next bounded backlog item and verify it locally…"
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                setPrompt(event.target.value);
+                onDraftChange?.(event.target.value);
+              }}
             />
           </label>
 
@@ -957,7 +982,7 @@ export function DelegationLauncher({
               sshProjectBlocked
             }
           >
-            {mutation.isPending ? 'Starting…' : 'Delegate'}
+            {mutation.isPending ? 'Starting…' : submitLabel}
           </button>
         </footer>
       </form>

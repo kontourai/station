@@ -1,0 +1,7 @@
+{
+  "revision": "7dc5a9c590d9a9a049d34861591b7f171addd2a0",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Re-checked S1 desktop section against PairedDevicesPanel.tsx: scope, revoke and remove 401 copy now name station environment access scope/revoke/remove via hostCliRefusal, static hint no longer claims the host app manages the credential; route and authority claims untouched.","inputs":["docs/design/operator-device-access.md","packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx"]}
+  ]
+}

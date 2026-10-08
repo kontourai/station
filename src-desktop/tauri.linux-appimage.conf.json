@@ -5,13 +5,15 @@
   "bundle": {
     "resources": {
       "../dist-server": null,
-      "../dist-desktop-runtime/node_modules": null
+      "../dist-desktop-runtime/node_modules": null,
+      "../dist-desktop-runtime/examples": null
     },
     "linux": {
       "appimage": {
         "files": {
           "usr/share/Station/dist-server": "../dist-server",
-          "usr/share/Station/node_modules": "../dist-desktop-runtime/node_modules"
+          "usr/share/Station/node_modules": "../dist-desktop-runtime/node_modules",
+          "usr/share/Station/examples": "../dist-desktop-runtime/examples"
         }
       }
     }

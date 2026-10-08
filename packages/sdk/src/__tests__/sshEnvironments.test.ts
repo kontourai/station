@@ -32,23 +32,27 @@ describe('SSH environments SDK domain', () => {
     await expect(fetchSshEnvironments()).resolves.toEqual([
       { profile: { id: 'remote-1' } },
     ]);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/environments/ssh',
-      undefined,
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
 
     mockJsonResponse({
       success: true,
-      data: { hosts: [{ alias: 'brian-media' }], unavailableAliases: [] },
+      data: { hosts: [{ alias: 'home-media' }], unavailableAliases: [] },
     });
     await expect(fetchOpenSshHosts()).resolves.toEqual({
-      hosts: [{ alias: 'brian-media' }],
+      hosts: [{ alias: 'home-media' }],
       unavailableAliases: [],
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
       'http://example.test/api/environments/ssh/hosts',
-      undefined,
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces safe API errors instead of returning malformed envelopes', async () => {
@@ -64,7 +68,7 @@ describe('SSH environments SDK domain', () => {
         environments: [
           {
             environmentId: 'env-1',
-            environmentName: 'Brian media',
+            environmentName: 'Home media',
             sessions: [{ threadId: 'thread-1' }],
           },
         ],
@@ -88,7 +92,7 @@ describe('SSH environments SDK domain', () => {
       environments: [
         {
           environmentId: 'env-1',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [
             { threadId: 'thread-1', answerability: { answerable: true } },
           ],
@@ -103,10 +107,12 @@ describe('SSH environments SDK domain', () => {
         },
       ],
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/environments/ssh/sessions',
-      undefined,
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('addresses the collection without a trailing slash (#799)', async () => {

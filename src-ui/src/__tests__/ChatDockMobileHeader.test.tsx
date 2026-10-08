@@ -14,6 +14,18 @@ import {
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
+// The switcher paints each project with the sidebar's colour
+// (`useProjectAccents`), which reads the Project list; this harness mounts
+// no query client for it.
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
+  useProjects: () => ({
+    projects: [],
+    isLoading: false,
+    isConfirmedLoaded: true,
+  }),
+}));
+
 // The sheet's project picker and connection control mount inside this bar's
 // tree; `useIsMobile`/`useNavigation` are mocked so neither needs a real
 // `matchMedia` breakpoint or router.
@@ -309,7 +321,15 @@ describe('mobile conversation focus', () => {
   test('New chat is directly reachable and overflow keeps chat actions without repeating connection health', async () => {
     const onNewChat = vi.fn();
     renderHeader({ onNewChat, showConnection: false });
-    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    const newChat = screen.getByRole('button', { name: 'New chat' });
+    // The same quiet icon control as Chat actions beside it, not a filled
+    // primary button with a label squeezed out of view.
+    const chatActions = screen.getByRole('button', { name: 'Chat actions' });
+    expect(newChat.classList.contains('app-toolbar__icon-btn')).toBe(true);
+    expect(chatActions.classList.contains('app-toolbar__icon-btn')).toBe(true);
+    expect(newChat.classList.contains('button--primary')).toBe(false);
+    expect(newChat.textContent).toBe('');
+    fireEvent.click(newChat);
     expect(onNewChat).toHaveBeenCalledOnce();
     await openActions();
     expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();

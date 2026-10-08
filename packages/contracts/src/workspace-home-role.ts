@@ -303,8 +303,11 @@ export const WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS = {
     'Linked execution Session thread identifiers for a conversation',
   taskSessionId: 'Task session identifiers',
   agentSlug: 'Which Agent each item is bound to',
+  provider: 'Which engine each item recorded running on',
   projectSlug: 'Which Project each item belongs to',
   controlMode: 'Whether a session is owned here or followed read-only',
+  delegationEnvironmentKind:
+    'Whether a session is this Station’s record of a task running on a paired Station',
   environmentId: 'Remote environment identifiers',
   environmentLabel: 'Remote environment names',
 } as const satisfies Record<string, string>;

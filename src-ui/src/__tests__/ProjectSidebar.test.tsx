@@ -114,6 +114,8 @@ vi.mock('../contexts/open-chats-store', () => {
       modelLabel: chat.model ?? 'Model not reported',
       lifecycleLabel: 'Recent',
       updatedAt: 0,
+      projectSlug: chat.projectSlug,
+      environmentId: chat.environmentId,
     }));
   return {
     useOpenChats: fakeOpenChats,
@@ -211,11 +213,19 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePromotePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
 }));
 
+import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
+import { RecentChatList } from '../components/chat-start/RecentChatList';
+import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { useGitLocationByThreadId } from '../hooks/useGitLocationByThreadId';
+import { useProjectAccents } from '../hooks/useProjectAccents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import type { HomeWorkItem } from '../views/home/home-view-model';
+import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
 
 // #1765 routed the sidebar status row's command-palette keycap through
 // `useShortcutDisplay`, which throws outside KeyboardShortcutsProvider; an
@@ -752,6 +762,76 @@ describe('project row identity (#2150)', () => {
     const row = screen.getByRole('button', { name: /Campfit/ });
     expect(row.textContent).toContain('🏕️');
   });
+
+  test('an image icon is drawn beside the bar, and stays out of the name', () => {
+    resetState();
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: image,
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+    const icon = row.querySelector('.sidebar__project-icon');
+    expect(icon?.getAttribute('aria-hidden')).toBe('true');
+    expect(icon?.querySelector('img')?.getAttribute('src')).toBe(image);
+  });
+
+  test('a stored value the icon rule refuses is never hotlinked from the row', () => {
+    resetState();
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: 'https://example.com/logo.png',
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.querySelector('img')).toBeNull();
+    // Treated as no icon: the slot is reserved and empty; the bar carries
+    // the colour.
+    expect(row.querySelector('.sidebar__project-icon')).toBeNull();
+    expect(
+      row.querySelector('.sidebar__project-icon-slot')?.childElementCount,
+    ).toBe(0);
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+  });
+
+  test('every expanded row reserves the icon slot, so an icon-less name lines up with an iconed one', () => {
+    resetState();
+    projects.push(
+      {
+        id: 'p1',
+        slug: 'campfit',
+        name: 'Campfit',
+        icon: '🏕️',
+      } as (typeof projects)[number],
+      { id: 'p2', slug: 'ferry', name: 'Ferry' },
+    );
+    renderSidebar(<ProjectSidebar />);
+    for (const name of ['Campfit', 'Ferry']) {
+      const row = screen.getByRole('button', { name });
+      const slot = row.querySelector('.sidebar__project-icon-slot');
+      expect(slot, String(name)).toBeTruthy();
+      // The slot sits directly before the name, and is never named.
+      expect(slot?.nextElementSibling?.className).toBe('sidebar__project-name');
+      expect(slot?.getAttribute('aria-hidden')).toBe('true');
+    }
+    // An icon-less project leaves the slot empty: no dot that could read as
+    // status or presence. Its colour is the bar's alone.
+    const ferry = screen.getByRole('button', { name: 'Ferry' });
+    expect(
+      ferry.querySelector('.sidebar__project-icon-slot')?.childElementCount,
+    ).toBe(0);
+    expect(ferry.querySelector('[data-project-icon]')).toBeNull();
+    expect(
+      ferry.querySelector<HTMLElement>('.sidebar__project-accent')?.style
+        .backgroundColor,
+    ).toBeTruthy();
+  });
 });
 
 /**
@@ -977,5 +1057,221 @@ describe('ProjectSidebar compact rail chat entry (#1348)', () => {
 
     expect(listener).toHaveBeenCalledOnce();
     unregister();
+  });
+});
+
+/**
+ * One project, one colour, on every surface that paints it: the sidebar row,
+ * the dock's project switcher, the dock's inbox rows and Home's work rows.
+ * `projectAccents` is set-aware, so a surface that allocated over its own
+ * list would give a project another colour; each surface reads the shared
+ * `useProjectAccents` allocation instead.
+ */
+describe('a project wears the same colour everywhere', () => {
+  function Home({ items }: { items: HomeWorkItem[] }) {
+    const lanes = useHomeWorkLanes(items);
+    return (
+      <HomeRecentWorkSection
+        lanes={lanes}
+        workItems={items}
+        workLoading={false}
+        workDegraded={false}
+        workError={false}
+        agents={[]}
+        remoteUnavailable={[]}
+        remoteAuthenticationRequired={[]}
+        onOpen={vi.fn()}
+        onViewActivity={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+  }
+
+  /** The dock's inbox, fed the way `ChatDock` feeds it. */
+  function DockInbox({ items }: { items: HomeWorkItem[] }) {
+    return (
+      <ChatDockInboxPanel
+        items={items}
+        activeChatSessionId={null}
+        openChatSessionIds={[]}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        gitLocationByThreadId={useGitLocationByThreadId()}
+        projectAccentBySlug={useProjectAccents()}
+      />
+    );
+  }
+
+  test('the sidebar, the switcher, the dock inbox and Home agree on beta', async () => {
+    resetState();
+    projects.push(
+      { id: 'p-gamma', slug: 'gamma', name: 'Gamma' },
+      { id: 'p-alpha', slug: 'alpha', name: 'Alpha' },
+      { id: 'p-beta', slug: 'beta', name: 'Beta' },
+    );
+    const betaWork: HomeWorkItem = {
+      id: 'beta-work',
+      kind: 'chat',
+      kindLabel: 'Direct chat',
+      title: 'Tidy the beta release notes',
+      projectLabel: 'Beta',
+      projectSlug: 'beta',
+      agentLabel: 'Codex',
+      modelLabel: 'GPT-5',
+      updatedAt: Date.now() - 60_000,
+      lifecycleLabel: 'Ready',
+      chatSessionId: 'beta-work',
+    };
+
+    const sidebar = renderSidebar(<ProjectSidebar />);
+    const sidebarColour = sidebar.container.querySelector<HTMLElement>(
+      '[title="Open Beta workspace"] .sidebar__project-accent',
+    )?.style.backgroundColor;
+    sidebar.unmount();
+    // Sorted alpha, beta, gamma: beta takes the palette's SECOND colour,
+    // which no allocation over beta alone would give it.
+    expect(sidebarColour).toBe('var(--event-agent-complete)');
+
+    const switcher = renderSidebar(
+      <ChatDockProjectSwitcherSheet
+        anchorRef={{ current: null }}
+        boundProjectSlug="beta"
+        projects={[{ id: 'p-beta', slug: 'beta', name: 'Beta' }]}
+        onOpenProject={vi.fn()}
+        onSwitchProject={vi.fn()}
+        onNewProject={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const switcherColour = switcher.baseElement.querySelector<HTMLElement>(
+      '.chat-dock__project-switcher-accent',
+    )?.style.backgroundColor;
+    switcher.unmount();
+
+    const rowColour = (ui: ReactElement) => {
+      const view = renderSidebar(ui);
+      const colour = view.container.querySelector<HTMLElement>(
+        '.inbox-row__project-accent',
+      )?.style.backgroundColor;
+      view.unmount();
+      return colour;
+    };
+    const dockColour = rowColour(<DockInbox items={[betaWork]} />);
+    const homeColour = rowColour(<Home items={[betaWork]} />);
+    // The sidebar's own Open chats row, rendered by the real sidebar.
+    chats['beta-work'] = {
+      title: 'Tidy the beta release notes',
+      projectSlug: 'beta',
+    };
+    const openChatsView = renderSidebar(<ProjectSidebar />);
+    await openChatsView.findByText('Tidy the beta release notes');
+    const openChatsColour = openChatsView.container.querySelector<HTMLElement>(
+      '#sidebar-open-chats .inbox-row__project-accent',
+    )?.style.backgroundColor;
+    openChatsView.unmount();
+    const recentColour = rowColour(
+      <RecentChatList
+        items={[betaWork]}
+        context="beta"
+        agents={[]}
+        onOpen={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    expect({
+      switcher: switcherColour,
+      dock: dockColour,
+      home: homeColour,
+      openChats: openChatsColour,
+      recent: recentColour,
+    }).toEqual({
+      switcher: sidebarColour,
+      dock: sidebarColour,
+      home: sidebarColour,
+      openChats: sidebarColour,
+      recent: sidebarColour,
+    });
+  });
+
+  test("the sidebar's Open chats and New Chat's recent rows wear a project's icon, and a remote row wears neither mark", async () => {
+    resetState();
+    projects.push({
+      id: 'p-beta',
+      slug: 'beta',
+      name: 'Beta',
+      icon: '🧭',
+    } as (typeof projects)[number]);
+    const local: HomeWorkItem = {
+      id: 'beta-local',
+      kind: 'chat',
+      kindLabel: 'Direct chat',
+      title: 'Local beta work',
+      projectLabel: 'Beta',
+      projectSlug: 'beta',
+      agentLabel: 'Codex',
+      modelLabel: 'GPT-5',
+      updatedAt: Date.now() - 60_000,
+      lifecycleLabel: 'Ready',
+      chatSessionId: 'beta-local',
+    };
+    // The same slug on a peer Station names that Station's project.
+    const remote: HomeWorkItem = {
+      ...local,
+      id: 'beta-remote',
+      title: 'Remote beta work',
+      chatSessionId: 'beta-remote',
+      environmentId: 'peer-1',
+      environmentLabel: 'Peer Station',
+    };
+    const marks = (ui: ReactElement) => {
+      const view = renderSidebar(ui);
+      const rows = [
+        ...view.container.querySelectorAll('[data-testid="inbox-row"]'),
+      ].map((row) => {
+        const mark = row.querySelector('.inbox-row__project-accent');
+        return mark ? (mark.textContent ?? '') : null;
+      });
+      view.unmount();
+      return rows;
+    };
+    // The sidebar's own Open chats rows, rendered by the real sidebar.
+    chats['beta-local'] = { title: 'Local beta work', projectSlug: 'beta' };
+    chats['beta-remote'] = {
+      title: 'Remote beta work',
+      projectSlug: 'beta',
+      environmentId: 'peer-1',
+    };
+    const sidebar = renderSidebar(<ProjectSidebar />);
+    await sidebar.findByText('Remote beta work');
+    const openChatMarks = Object.fromEntries(
+      [
+        ...sidebar.container.querySelectorAll(
+          '#sidebar-open-chats [data-testid="inbox-row"]',
+        ),
+      ].map((row) => [
+        row.querySelector('.inbox-row__title')?.textContent,
+        row.querySelector('.inbox-row__project-accent')?.textContent ?? null,
+      ]),
+    );
+    sidebar.unmount();
+    expect(openChatMarks).toEqual({
+      'Local beta work': '🧭',
+      'Remote beta work': null,
+    });
+    expect(
+      marks(
+        <RecentChatList
+          items={[local, remote]}
+          context="beta"
+          agents={[]}
+          onOpen={vi.fn()}
+          onViewAll={vi.fn()}
+        />,
+      ),
+    ).toEqual(['🧭', null]);
   });
 });

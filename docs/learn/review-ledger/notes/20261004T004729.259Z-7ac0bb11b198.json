@@ -1,0 +1,7 @@
+{
+  "revision": "ac1660c74658094e6a7f617a5a2518a6c3d1aa3d",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Re-reviewed after the test moved its temporary Station homes to trackTempDirs; the route matrix, assertions and the S1 claims the record checks are unchanged (10/10 pass).","inputs":["docs/design/operator-device-access.md"]}
+  ]
+}

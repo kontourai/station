@@ -7,6 +7,7 @@ import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import {
   OrchestrationService,
+  PEER_PENDING_REQUEST_BODY_MAX_CHARS,
   PEER_PENDING_REQUEST_ID_MAX_CHARS,
   PEER_PENDING_REQUEST_TITLE_MAX_CHARS,
 } from '../../services/orchestration/orchestration-service.js';
@@ -18,6 +19,7 @@ import {
   PEER_RESPOND_FORBIDDEN_MESSAGE,
   respondToDelegatedTaskRequest,
 } from '../station-control-delegation.js';
+import { LocalStationRefusal } from '../station-control-shared.js';
 
 /**
  * A delegated task running on a PAIRED Station: its open request reaches this
@@ -39,6 +41,9 @@ const TASK_ID = 'task-peer-request';
 /** Another paired Station this Station also holds a credential for. */
 const OTHER_ENVIRONMENT_ID = 'environment-other';
 const OTHER_PEER_API = 'http://127.0.0.1:45178';
+/** A verified SSH environment, reached through a loopback tunnel. */
+const SSH_ENVIRONMENT_ID = 'environment-ssh';
+const SSH_API = 'http://127.0.0.1:45179';
 const fetchMock = vi.fn<typeof fetch>();
 
 const remote = createRemoteStationForwarder({
@@ -59,6 +64,23 @@ const remote = createRemoteStationForwarder({
         : null,
   },
 } as never);
+
+const sshRemote = (() => {
+  const view = {
+    profile: {
+      id: 'ssh-profile-1',
+      name: 'Box S',
+      environmentId: SSH_ENVIRONMENT_ID,
+      verifiedProjectPath: '/srv/project',
+      remoteHome: '/home/s',
+    },
+    state: { phase: 'connected', localUrl: SSH_API },
+  } as never;
+  return createRemoteStationForwarder({
+    ssh: { list: () => [view], connect: async () => view },
+    peers: { get: () => null },
+  } as never);
+})();
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -98,12 +120,23 @@ afterEach(() => {
 });
 
 let peerResponse: () => Response;
+let currentRespondCalls: number;
+let sshRespondCalls: number;
+let sshRespondBody: Record<string, unknown>;
+let currentRespondBody: Record<string, unknown>;
 let respondCalls: Array<{ url: string; body: Record<string, unknown> }>;
 let respondStatus: number;
+/** The refusal body the answering Station sends with a non-200 respond. */
+let respondRefusalBody: Record<string, unknown>;
 
 beforeEach(() => {
   respondCalls = [];
+  currentRespondCalls = 0;
+  sshRespondCalls = 0;
+  sshRespondBody = {};
+  currentRespondBody = {};
   respondStatus = 200;
+  respondRefusalBody = { success: false, error: 'not allowed here' };
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (input, init) => {
@@ -112,16 +145,24 @@ beforeEach(() => {
       return json({ environmentId: 'environment-here' });
     if (url === `${PEER_API}/api/orchestration/delegations/${TASK_ID}`)
       return peerResponse();
+    if (url === `${SSH_API}/api/orchestration/delegations/${TASK_ID}/respond`) {
+      sshRespondCalls += 1;
+      return json(sshRespondBody, 403);
+    }
+    // THIS Station's own respond route, reached by an input naming no
+    // environment (a `current` target): it answers with its own refusal.
+    if (
+      url === `${CURRENT_API}/api/orchestration/delegations/${TASK_ID}/respond`
+    ) {
+      currentRespondCalls += 1;
+      return json(currentRespondBody, 403);
+    }
     if (
       url === `${PEER_API}/api/orchestration/delegations/${TASK_ID}/respond`
     ) {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       respondCalls.push({ url, body });
-      if (respondStatus !== 200)
-        return json(
-          { success: false, error: 'not allowed here' },
-          respondStatus,
-        );
+      if (respondStatus !== 200) return json(respondRefusalBody, respondStatus);
       return json({
         success: true,
         data: {
@@ -193,7 +234,8 @@ function fixture() {
         candidate.kind === 'review_pending' &&
         candidate.source.threadId === threadId,
     );
-  return { service, threadId, observe, item };
+  const items = async () => (await projection.list()).items;
+  return { service, threadId, observe, item, items };
 }
 
 describe("a paired Station's open request reaches this Station's inbox", () => {
@@ -321,6 +363,105 @@ describe('a decision on it is forwarded to the paired Station', () => {
       ),
     ).rejects.toThrow(PEER_RESPOND_FORBIDDEN_MESSAGE);
   });
+
+  // #3338: the peer sentence is the PAIRED Station's 403 only. The peer is
+  // free to send any code (`station_control_caller_required` included) and
+  // any text; neither may cross this seam, as a code or as a cause.
+  test('a paired Station 403 carrying a local-looking code and detail keeps only the peer sentence', async () => {
+    const { observe } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: peerSnapshot({ id: 'req-peer-6', type: 'approval' }),
+      });
+    await observe();
+    respondStatus = 403;
+    respondRefusalBody = {
+      success: false,
+      code: 'station_control_caller_required',
+      error: 'PEER-INTERNAL-DETAIL /srv/peer/secret-path',
+    };
+    const error = await respondToDelegatedTaskRequest(
+      {
+        taskId: TASK_ID,
+        environmentId: ENVIRONMENT_ID,
+        requestId: 'req-peer-6',
+        decision: 'decline',
+        userId: 'default',
+      } as never,
+      undefined,
+      remote,
+    ).then(
+      () => undefined,
+      (caught: unknown) => caught as Error,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).toBe(PEER_RESPOND_FORBIDDEN_MESSAGE);
+    expect(error?.message).not.toContain('PEER-INTERNAL-DETAIL');
+    expect(error?.cause).toBeUndefined();
+    expect(error).not.toHaveProperty('code');
+  });
+
+  test("a 403 from THIS Station keeps its typed code and not the paired Station's sentence", async () => {
+    currentRespondBody = {
+      success: false,
+      code: 'station_control_caller_required',
+      error: 'This action needs a verified calling session.',
+    };
+    const error = await respondToDelegatedTaskRequest(
+      {
+        taskId: TASK_ID,
+        requestId: 'req-local-1',
+        decision: 'accept',
+        userId: 'default',
+      } as never,
+      undefined,
+      remote,
+    ).then(
+      () => undefined,
+      (caught: unknown) => caught as Error,
+    );
+    expect(currentRespondCalls).toBe(1);
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).not.toBe(PEER_RESPOND_FORBIDDEN_MESSAGE);
+    expect(error?.cause).toBeInstanceOf(LocalStationRefusal);
+    expect(error?.cause).toMatchObject({
+      refusalCode: 'station_control_caller_required',
+    });
+  });
+
+  // An SSH target is not a paired Station: its 403 never earns the
+  // paired-Station sentence. It is not this Station either, so it carries no
+  // typed local code; it gets the generic refusal, as before #3315.
+  test("a 403 from an SSH target is neither the paired Station's sentence nor a local code", async () => {
+    sshRespondBody = {
+      success: false,
+      code: 'station_control_caller_required',
+      error: 'SSH-HOST-DETAIL /home/s/secret',
+    };
+    const error = await respondToDelegatedTaskRequest(
+      {
+        taskId: TASK_ID,
+        environmentId: SSH_ENVIRONMENT_ID,
+        requestId: 'req-ssh-1',
+        decision: 'accept',
+        userId: 'default',
+      } as never,
+      undefined,
+      sshRemote,
+    ).then(
+      () => undefined,
+      (caught: unknown) => caught as Error,
+    );
+    expect(sshRespondCalls).toBe(1);
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.message).toBe(
+      'The selected Station could not resolve the delegated task request',
+    );
+    expect(error?.message).not.toBe(PEER_RESPOND_FORBIDDEN_MESSAGE);
+    expect(error?.message).not.toContain('SSH-HOST-DETAIL');
+    expect(error?.cause).toBeUndefined();
+  });
 });
 
 describe('bounds on what the paired Station reports', () => {
@@ -418,5 +559,101 @@ describe('a decision goes only to the recorded hosting Station', () => {
         .slice(before)
         .some(([url]) => String(url).startsWith(OTHER_PEER_API)),
     ).toBe(false);
+  });
+});
+
+describe("a paired Station's input question with a binding (delegatedInputAnswers)", () => {
+  test('the status read carries the binding, question and caller check to the item', async () => {
+    const { observe, items } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: {
+          ...peerSnapshot({
+            id: 'req-question',
+            type: 'input',
+            title: 'Which bucket?',
+            eventId: 'evt-question',
+            body: 'The release needs a destination bucket.',
+            callerCanRespond: true,
+          }),
+          status: 'needs_input',
+        },
+      });
+    await observe();
+    const projected = (await items()).find(
+      (candidate) => candidate.kind === 'needs_input',
+    );
+    expect(projected).toMatchObject({
+      body: 'The release needs a destination bucket.',
+      peerRequestReference: {
+        environmentId: ENVIRONMENT_ID,
+        taskId: TASK_ID,
+        requestId: 'req-question',
+        requestType: 'input',
+        threadId: 'peer-session-1',
+        requestEventId: 'evt-question',
+        callerCanRespond: true,
+      },
+    });
+    expect(projected).not.toHaveProperty('inputReference');
+  });
+
+  test('without an event id (an older paired Station) no binding is exposed', async () => {
+    const { observe, items } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: {
+          ...peerSnapshot({ id: 'req-question', type: 'input' }),
+          status: 'needs_input',
+        },
+      });
+    await observe();
+    const projected = (await items()).find(
+      (candidate) => candidate.kind === 'needs_input',
+    );
+    expect(projected?.peerRequestReference).toBeDefined();
+    expect(projected?.peerRequestReference).not.toHaveProperty(
+      'requestEventId',
+    );
+    expect(projected?.peerRequestReference).not.toHaveProperty('threadId');
+  });
+});
+
+describe('the paired Station question text bound', () => {
+  async function storedBody(body: string) {
+    const { service, observe, threadId } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: {
+          ...peerSnapshot({ id: 'req-body', type: 'input', body }),
+          status: 'needs_input',
+        },
+      });
+    await observe();
+    const summary = (
+      await service.listSessionReadModel(
+        sessionReadAuthorityFromRequest('default', undefined, undefined),
+      )
+    ).find((session) => session.threadId === threadId);
+    return summary?.delegation?.peerPendingRequest?.body ?? '';
+  }
+
+  test(`a body of exactly ${PEER_PENDING_REQUEST_BODY_MAX_CHARS} code points is stored whole`, async () => {
+    expect(PEER_PENDING_REQUEST_BODY_MAX_CHARS).toBe(4000);
+    const body = '𝔟'.repeat(PEER_PENDING_REQUEST_BODY_MAX_CHARS);
+    expect(await storedBody(body)).toBe(body);
+  });
+
+  test('a body one code point over is cut with a visible ellipsis', async () => {
+    const stored = await storedBody(
+      '𝔟'.repeat(PEER_PENDING_REQUEST_BODY_MAX_CHARS + 1),
+    );
+    expect(Array.from(stored)).toHaveLength(
+      PEER_PENDING_REQUEST_BODY_MAX_CHARS,
+    );
+    expect(stored.endsWith('…')).toBe(true);
   });
 });

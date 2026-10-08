@@ -76,6 +76,8 @@
 
     "packages/sdk/src/query-domains/workspaceConnections.ts",
 
+    "packages/shared/src/client-protocol.ts",
+
     "packages/shared/src/runtime-path-resolver.ts",
 
     "scripts/plugin-identity-enumeration-scan.mjs",
@@ -262,7 +264,13 @@
 
     "src-server/routes/system/system.ts",
 
+    "src-server/runtime/__tests__/client-protocol-admission.test.ts",
+
     "src-server/runtime/agents/runtime-default-agent.ts",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/runtime/bootstrap/agent-audience-gate.ts",
 
     "src-server/runtime/bootstrap/orchestration-request-principal.ts",
 
@@ -276,7 +284,11 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
+    "src-server/security/client-protocol-admission.ts",
+
     "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts",
 
     "src-server/security/station-browser-origins.ts",
 
@@ -392,7 +404,13 @@
 
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
 
-    "src-ui/src/views/layout-workspace-shape.ts"
+    "src-ui/src/views/layout-workspace-shape.ts",
+
+    "packages/contracts/src/usage-stats.ts",
+
+    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
+
+    "src-server/adapters/file/memory-adapter-messages.ts"
   ],
 
   "checks": [

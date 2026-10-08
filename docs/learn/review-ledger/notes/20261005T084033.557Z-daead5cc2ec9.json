@@ -1,0 +1,7 @@
+{
+  "revision": "eee809154f5f03738068afac8bd5e7b42a92c23a",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The only change is that the e2e manifest test's pinned sharedInstanceExclusive list now includes tests/project-icons.spec.ts, matching its existing registration. This doc names no exclusive or parallel-safe spec lists, and its claims about suite membership are unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts"]}
+  ]
+}

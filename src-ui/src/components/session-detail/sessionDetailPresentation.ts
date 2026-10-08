@@ -37,22 +37,15 @@ export function sessionChatOpenTarget(session: OrchestrationSessionSummary) {
     controlMode: session.controlMode,
     projectSlug: session.projectSlug,
     model: session.model,
+    delegationEnvironmentKind: session.delegation?.environmentKind,
   });
   return action.kind === 'rehydrate'
     ? focusChatEventDetailForAction(action)
     : null;
 }
 
-/**
- * A delegated task placed on a PAIRED Station. This Station keeps a lifecycle
- * record of it, but the transcript, the agent and the conversation live on the
- * peer — the record's agent slug and conversation id are the peer's own.
- */
-export function isPeerDelegationRecord(
-  session: Pick<OrchestrationSessionSummary, 'delegation'>,
-): boolean {
-  return session.delegation?.environmentKind === 'peer';
-}
+/** The peer rule lives with the open policy that also applies it. */
+export { isPeerDelegationRecord } from '../../views/home/work-item-open-policy';
 
 /** Same sentence the delegated-work coordinator shows for a peer record. */
 export const PEER_TRANSCRIPT_ELSEWHERE =

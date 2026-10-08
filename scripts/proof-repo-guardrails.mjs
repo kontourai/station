@@ -628,7 +628,7 @@ const usageAggregatorState = readRequiredSource(
 );
 for (const requiredHelper of [
   'export function createEmptyUsageStats',
-  'function updateDailyUsage',
+  'export function applyOrchestrationUsageToUsageStats',
   'export function computeStreakStats',
   'export function applyMessageToUsageStats',
   'export function mergeRescannedUsageStats',
@@ -6196,7 +6196,6 @@ for (const requiredHelper of [
   'export function ProjectSidebarRow',
   '@kontourai/station-sdk',
   '../../contexts/NavigationContext',
-  '../icons/LayoutIcon',
 ]) {
   if (!projectSidebarRow.includes(requiredHelper)) {
     errors.push(`ProjectSidebarRow.tsx must include ${requiredHelper}.`);

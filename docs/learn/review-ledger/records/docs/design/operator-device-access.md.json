@@ -1,0 +1,45 @@
+{
+  "path": "docs/design/operator-device-access.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Proposal for operator passkey sign-in and per-action step-up on the device-admin routes (#2894), with owner decisions D1, D2 and D6 recorded and D3-D5, D7-D11 open. Only slice S1 is implemented: off-host raw operator-credential use is observed and still allowed, and the host desktop app's local-grant credential is pinned as list-only.",
+
+  "limits": "Sections 2-7 describe unbuilt mechanisms (passkeys, sessions, step-up, consent-origin ceremony) and are design claims, not implementation evidence. WebAuthn RP ID statements are reasoned from the specification. No live desktop, paired-browser or tailnet run; the device-session cookie's refusal status is not verified. Line citations drift with later edits.",
+
+  "sources": [
+    "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
+
+    "src-desktop/src/lib.rs",
+
+    "src-server/runtime/__tests__/operator-credential-host-locality.test.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/security/host-operator-credential.ts",
+
+    "src-server/security/runtime-request-security.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/services/ssh/environment-security-service.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "src-server/utils/internal-api-token.ts"
+  ],
+
+  "checks": [
+    "Full document read against the reviewed draft; S1 sections re-read at c2c67c2f25 against the predicate, the four device-admin routes and the production wiring.",
+
+    "operator-credential-host-locality.test.ts executed through the real runtime-http boundary and a real EnvironmentSecurityService: 10/10 pass; device-pairing-routes and pairing-approval-auth-tier 118/118 pass.",
+
+    "Five fault injections on the predicate and route observation (Host check, position clause, untrusted-attestation fail-closed, operator-authority check, scope-route call) each failed the named row and were restored to green.",
+
+    "Desktop credential: server half EXECUTED with the exact local-grant exchange; the native broker attaching the self-provisioned credential is source inspection of src-desktop/src/lib.rs only."
+  ]
+}

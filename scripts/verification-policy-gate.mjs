@@ -140,7 +140,10 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   // itself red, and for why readiness runs last of the three.
   Object.freeze(['npm', Object.freeze(['run', 'proof:repo-governance'])]),
   Object.freeze(['npm', Object.freeze(['run', 'lint:check'])]),
-  Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'veritas:readiness', '--', '--format', 'json']),
+  ]),
   // station#4273: the typecheck invariant and its stated precondition. This
   // allowlist is the CANONICAL declaration — `run-ci-fast.mjs` must match it
   // exactly, which is what keeps "what the gate says it runs" and "what the
@@ -214,7 +217,7 @@ export const SUBMISSION_HANDOFF_GUIDANCE_MARKERS = Object.freeze([
   'Ordinary pull requests use focused evidence plus `npm run ci:fast`.',
   'Do not run `npm run full:regression`\nlocally merely because `main` moved.',
   'Nightly and tagged preview and stable promotions',
-  'manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.',
+  'manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.',
   'one exact source SHA',
 ]);
 /** The single document that carries the rendered lane catalog table. */

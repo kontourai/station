@@ -1,0 +1,7 @@
+{
+  "revision": "614888f3540f509781dad9c199d297e0ae3b951f",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Reviewed the representative fixture owner and CLI test after replacing the literal POSIX Vitest argument assertion with the exact host-native join. Disposable checkout, owned workspace links, real non-explain selector execution, target, cleanup and whole-command 120-second liveness fence remain unchanged. Windows pre-repair argument assertion was caught and exact restoration passed; selection/test elapsedMs remains distinct from checkout and cleanup wall time. README needs no prose change.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

@@ -90,6 +90,11 @@ const DECISION_2_PRINCIPAL_READS = [
   'get_review_request',
   'list_review_receipts',
   'get_review_receipt',
+  // #3160: an owner-scoped read of a Session the owner may read.
+  'wait_session',
+  // #3413: owner-scoped reads of the Sessions the caller's scope admits.
+  'list_project_activity',
+  'get_session_digest',
 ];
 // Decision 3: answering a worker's request needs bound + Project approve;
 // until slice C adds the Project path, only the bound operator.

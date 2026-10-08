@@ -413,6 +413,8 @@ describe('portable archive workflow paths filter', () => {
       'pnpm-lock.yaml',
       'pnpm-workspace.yaml',
       'schemas/app.schema.json',
+      'examples/registry/default.json',
+      'examples/matt-pocock-engineering/plugin.json',
       ...STATION_DOCS_INPUT_PATHS,
     ];
     expect(required.filter((file) => !covered(file))).toEqual([]);

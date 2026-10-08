@@ -21,6 +21,12 @@ They do not replace foreground chat or the Task's current-session association.
 
 ---
 
+Execution summaries can include `modelRoute: {connectionId, label, endpoint}`.
+It is a safe route snapshot from the engine launch: `endpoint` is an HTTP(S)
+origin without credentials, and no proxy key is included. Older sessions may
+omit it. Changing saved connection settings alone does not rewrite the snapshot;
+a new configured execution records its actual route.
+
 ## Visual Skill presentation
 
 Installed [Skill experiences](skill-experiences.md) use this same foreground
@@ -72,6 +78,17 @@ override refuses before execution. A separately verified remote workspace keeps
 its remote-path admission; the controlling Station does not resolve that path
 against its own filesystem.
 
+A plain-folder workspace (`{ "kind": "directory", "cwd": "..." }`) starts the
+engine in a folder that is not confined to a Project, so a paired device needs
+the operator's `coding:exec` grant to name one; without it the route answers
+`403` with `code: "working-directory-not-granted"` and starts nothing. This
+applies to `/chat`, `/chat/delegated`, `/chat/background`,
+`/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;
+the other routes the rule covers are listed in the [API reference](api.md#choosing-a-working-folder).
+The operator credential is unaffected, and so is the roundtrip script at the end
+of this page when it runs with the operator credential (a paired device's
+credential needs the grant).
+
 For a saved Environment use `{ "kind": "saved", "id": "..." }`. The
 controlling Station reaches that Environment through its configured peer or SSH
 access, rewrites the forwarded target to `current`, and the target Station resolves
@@ -87,6 +104,15 @@ For a new Session, Station repeats the folder decision immediately before it
 starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the
 request returns the same typed `403` and no engine starts.
+
+An Agent that messages, interrupts, or waits on an existing Session uses
+station-control's [Session control](../guides/self-configuring-agent.md#session-control)
+tools, which call their own agent-only routes under
+`/api/orchestration/session-control` rather than the routes above. Its
+read-only companions, `list_project_activity` and `get_session_digest`, call
+`/api/orchestration/session-activity` (see
+[Station Control Project Activity](api.md#station-control-project-activity)) and
+read as the calling Session's owner within the caller's Project.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
@@ -199,6 +225,32 @@ pages of five turns, and stops as soon as every open request is found. It keeps
 a generic placeholder when the host cannot supply the request, including one
 older than that bound. Request inspection sets `requiresAnswers` so clients
 route to the Session instead of offering a generic approval button.
+
+A tool server's form elicitation during a Station-agent turn (#3284) carries a
+normalized `payload.mcpElicitation` (`serverId`, `message`, `fields`) on
+`request.opened`. Answer it with the exact `expectedRequestEventId` and one of
+`accept` (with `elicitationContent`, keyed by field name), `decline` or
+`cancel`; `acceptForSession` is refused:
+
+```json
+{
+  "type": "respondToRequest",
+  "threadId": "session-id",
+  "requestId": "elicitation-id",
+  "expectedRequestEventId": "opened-event-id",
+  "decision": "accept",
+  "elicitationContent": { "name": "Ada", "age": 36 }
+}
+```
+
+Accepted content is validated against the form the person was shown: an
+unknown or missing required field, or a value outside its type, length,
+format, range or choices, is refused with a reason before the request is
+resolved. Values are never coerced or truncated (text at most 12,000
+characters). `decline` and `cancel` cannot carry content. Inspection sets
+`requiresAnswers` for these requests too. The
+[MCP host design](../design/mcp-ui-host.md#mcp-client-feature-support) records
+the supported form subset.
 
 `acceptForSession` also grants later calls to the same tool in that Session.
 The grant never covers an escalation beyond the call. In a Claude Session, a
@@ -402,10 +454,10 @@ The remaining controls are defined by
   and discard a Draft; it is not a general Session deletion.
 
 The other lifecycle controls are `adoptSession`
-(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, create an independent continuation of a
+(`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
-`alreadyAdopted: true`),
+`alreadyAdopted: true`; `target` is described below),
 `interruptTurn` (`{ type: 'interruptTurn', threadId, turnId? }`, cancel an in-flight turn),
 and `stopSession` (`{ type: 'stopSession', threadId }`).
 
@@ -421,7 +473,124 @@ Codex rollout observation reads the local `CODEX_HOME/sessions` directory
 (`~/.codex/sessions` by default) through bounded, read-only pages. It imports
 supported turn boundaries, user messages, assistant text, public reasoning
 summaries, tool activity, cumulative token snapshots, and compaction markers.
-Only transcripts attributed to configured Projects enter the shared follower.
+Every discovered transcript enters the shared follower
+([`AttachedSessionFollowService`](../../src-server/services/orchestration/attached-session-follow-service.ts)),
+which attributes it with `resolveAttachedSessionProject`: first a Project whose
+working directory contains the transcript's cwd (longest root; two Projects on
+one root are `ambiguous` with both named), then a Project whose working
+directory is in the same git repository, read from the `.git` entry and its
+`commondir` pointer without running git
+([`attached-session-repository.ts`](../../src-server/services/orchestration/attached-session-repository.ts)).
+The cwd's path inside its worktree is compared with the Project's path inside
+its own, so any worktree of the repository matches. A transcript neither
+step claims is followed with `projectAttribution: 'unattributed'` and no
+`projectSlug`; the summary then carries neither field. An unattributed result
+never replaces an attribution the log already records, unless a project that
+attribution names is no longer configured while the project set is non-empty
+(an empty set, which `listProjects()` also returns when the projects
+directory is missing, is not treated as a deletion). A repository match counts only a
+genuine checkout: a real `.git` directory that is its own common directory, or
+a linked worktree whose git-written `gitdir` back-pointer names that `.git`.
+A symlinked `.git` or a submodule's `.git` file matches by folder only.
+Discovery reads these folders (the real path of each cwd and Project
+directory, and the repository walk) in one helper process
+([`attached-session-path-probe.ts`](../../src-server/services/orchestration/attached-session-path-probe.ts)),
+never on the server's main thread. When that process answers nothing for
+1.5 seconds, as on a network or FUSE mount that has stopped responding, it is
+killed and replaced, and every folder it still owed is unread for that poll.
+An unread folder takes no part in matching: a transcript in one is followed
+as `unattributed` (which never replaces a recorded attribution), and a
+Project whose directory is unread is not matched. A folder that does not
+exist is different: it keeps its path as written. The folder the process was
+stuck on is not read again for 60 seconds, nor while that process is still
+alive. At most four killed helpers may still be alive before no new one
+starts; until one exits, which is logged, only folders under one they hung on
+are unread, and every other folder is matched as a missing folder is. A
+transcript in an unread folder that the log already files under a Project is
+still followed under it even where unattributed transcripts are not. The next
+poll that reads the folder corrects a new transcript's
+attribution. `adoptSession` still resolves its folder, and walks to its
+repository, with synchronous `realpath` and `lstat` calls on the main thread
+([`attached-session-continuation-place.ts`](../../src-server/services/orchestration/attached-session-continuation-place.ts)),
+so adopting a transcript whose folder is on a hung mount can still block the
+server. The
+local operator owns every attached transcript whatever its attribution, so the
+operator's paired devices with `orchestration:read` can read it through
+`personalConversationAccess`. Imported turns enter the owner-scoped message
+search projection. `AppConfig.attachedSessionsOutsideProjects: false` stops
+following unattributed transcripts from the next poll, already listed ones
+included; it deletes no imported event, search entry or read grant. A hosted runtime
+(`STATION_HOSTED_TENANT_REGISTRY_FILE` set) never follows unattributed
+transcripts. It does follow attributed ones, but without a tenant binding no
+account can read them.
+
+`adoptSession` decides where the child runs from the transcript's cwd at
+adoption time, not from the stored attribution
+([`attached-session-continuation-place.ts`](../../src-server/services/orchestration/attached-session-continuation-place.ts)).
+The cwd must still exist as a directory; it is symlink-resolved and attributed
+again with `resolveAttachedSessionProject` and a fresh repository lookup, and
+checked once more just before the engine is started. The child's cwd is always
+that resolved folder, and the engine is confined to it under the request's
+`workspace`/`host` grant as for any adoption. Station never relocates a
+conversation to another folder.
+
+- Attributed (by folder, or by repository from a worktree outside the Project
+  folder): the child records the Project's `projectSlug` and `localProjectId`.
+  `target` may be omitted or `{ kind: 'project', projectSlug }` naming that
+  same Project; `{ kind: 'own-folder' }` is refused.
+- Ambiguous: refused, naming the candidates.
+- Unattributed: refused unless `target` is `{ kind: 'own-folder' }`, which
+  creates a No project child (no `projectSlug`) confined to the cwd. That is
+  refused on a hosted runtime. Otherwise the resolved cwd must be strictly
+  inside the resolved home folder (`noProjectFolderRefusal`), and not inside a
+  dot-folder directly under home (every one, not a list of credential
+  stores), `~/Library` or `~/AppData`, not the system temporary folder or a
+  folder containing it, and not overlapping the Station runtime home. The
+  recorded cwd must not reach its folder through a symbolic link inside the
+  home folder, so the folder the person confirmed is the one the child runs
+  in. A different letter case or Unicode normalization of the same folder,
+  and links above the home folder (a linked or automounted home), are
+  accepted. Every refusal message names no path.
+  `{ kind: 'project', projectSlug }` is refused, because the cwd is not part of
+  any Project.
+
+Every adopted child records its resolved folder as
+`dispatchCanonicalCwd`, so a later engine start for it (a restart's
+recovery) refuses a folder that no longer resolves there
+(`assertDispatchCwdUnmoved`).
+
+An adopted child also records the execution binding a chat started from the
+dock records: the engine's own Agent (`agentSlug`, `targetKind: 'agent'`,
+`targetId`, `connectionId`, found by the rule New Chat's Enable uses, never
+created by adoption), this Station's `environmentId`, and itself as its
+`conversationId`. A child in a Project also records
+`workspaceIsolation: { mode: 'shared' }`. `GET /api/conversations/:id/open`
+then resolves it, and a `POST /api/orchestration/chat` follow-up whose
+workspace names only the child's Project continues it in its recorded
+`dispatchCanonicalCwd` (the Project folder, a folder inside it, or a
+worktree), never the Project folder instead. A follow-up that names a folder
+or an isolation meets the ordinary exact checks. A later Session of the
+conversation, started after the child's engine exited, starts in that same
+recorded folder, even a worktree outside the Project folder, only while the
+folder still resolves to the record and still passes adoption's check (the
+Project folder or a genuine worktree of its repository); otherwise it is
+refused as outside the Project. When the engine has no Agent
+on this Station, the child is created without a binding: Activity continues
+it, and the dock reports why it cannot open it.
+
+A refusal of the folder or Project answers 400 with
+`code: 'continuation_place_refused'` and `retryable: false`: the same request
+is refused again until the folder or the Projects change, so clients show the
+reason and offer no retry. The Starter Work launch reports it with
+`retrySafe: false`. An engine that fails its readiness check before
+anything is created answers 400 with `code: 'continuation_engine_not_ready'`,
+`retryable: true` and the engine's readiness report in `error`; the Starter
+Work launch settles it as `failed` with `retrySafe: true`. Other adoption
+failures keep their retryable answers.
+
+`target` accepts only these two shapes; any other field, such as a path, is
+refused at the route. The Starter Work `continue-session` launch accepts the
+same `target`.
 Encrypted content and subagent sidechain traversal are outside this importer.
 Additional user input after observed assistant or tool activity keeps the same
 native turn identity and is marked as steering. When the rollout does not
@@ -432,6 +601,47 @@ as observed progress without inventing a verdict. Discovery and parser limits
 are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
 deduplication.
+
+Grok observation reads `GROK_HOME/sessions` (`~/.grok/sessions` by default)
+through the same bounded, read-only follower
+([`grok-session-source.ts`](../../src-server/providers/sessions/grok-session-source.ts)).
+Each session's `updates.jsonl` is Grok's append-only log of ACP session updates,
+so a byte offset resumes it. The working directory comes from the session's
+`summary.json`, never from its folder name, which Grok shortens to a lossy
+slug-plus-hash for long paths. A session is listed once its log holds a user
+prompt; this excludes the prompt-less sessions Station's own engine probes
+leave behind. Subagent child sessions are not listed. A Station chat on the
+Grok engine runs through ACP; the follower treats the Grok session named by its
+resume cursor as Station-owned and does not import it again. Prompts, reasoning,
+assistant messages, tool calls and results with their success or failure,
+plans, per-turn token usage, stop reasons and compaction markers are imported;
+a mid-turn interjection is a steer. Where Grok records what the user typed
+separately (`displayText`, for interjections and locally expanded slash
+skills), Station shows that rather than the model-facing text. A new prompt
+after a turn that never recorded its completion ends that turn as aborted and
+its open tools as unresolved. User text Grok writes without a prompt index while
+a turn is open (interjections, echoed host turns and direct `!command` runs) is
+imported as a steer on that turn and never starts or aborts one. A
+rewind appends a marker rather than removing turns; Station keeps the rewound
+turns, because a live follower has already published them and the event log
+has no retraction. The marker is recorded as an extension notification and
+shown in the transcript as a quiet line ("Rewound to an earlier prompt"), after
+its turn when it arrives during one; compaction markers from both sources are
+shown the same way ("Context compacted"). A log
+or summary in an unrecognized shape is skipped with one logged warning per
+file kind, never guessed at. Discovery skips every working directory that is one of
+Station's own ACP workspaces, for this or another Station home (the layout
+`runtime/acp-workspaces/<session|probe>/<digest>` that
+[`managed-acp-workspace.ts`](../../src-server/services/acp/managed-acp-workspace.ts)
+creates), before reading it. Of the rest, it re-reads a working directory's
+folder list only when it changed, newest first, and per poll reads at most
+131,072 entries, stats at most 16,384 folders and inspects at most 1,024. New
+folders in a changed working directory and folders with new activity come
+first, so a new session is found on the poll it appears. The index holds at
+most 131,072 folders; past that it slides over the tree no faster than it can
+inspect, so an untouched old session in such a tree can take a few minutes to
+appear. A single working directory with more session folders than that is
+only partly listed.
 
 Claude transcript observation persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
@@ -471,9 +681,11 @@ usage unavailable until it can establish a durable child-only baseline, rather
 than reporting inherited tokens as new spending. This limitation does not
 prevent transcript observation or continuation.
 
-`STATION_EXTERNAL_CODEX_SOURCE_ROOT` and `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`
-can select separate history roots for observation. Each root contains the engine's
-`sessions` or `projects` directory, respectively. Discovery does not change the
+`STATION_EXTERNAL_CODEX_SOURCE_ROOT`, `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and
+`STATION_EXTERNAL_GROK_SOURCE_ROOT` can select separate history roots for
+observation. Each root contains the engine's `sessions`, `projects` or
+`sessions` directory, respectively. Grok observation otherwise uses `GROK_HOME`,
+then `~/.grok`; Grok sessions offer no continuation. Discovery does not change the
 process environment or ordinary launch configuration. Continuation has an
 additional binding: Codex adoption and resume set the child process's
 `CODEX_HOME` to the verified source home, ahead of a credential-profile home.
@@ -481,7 +693,9 @@ That home therefore also supplies the continued process's account/configuration.
 Claude continuation requires the source home to match the SDK's globally
 configured home; an independently overridden observation root is not enough.
 Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
-the engine's default home directory. See the
+the engine's default home directory. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+selects the folder holding OpenCode's session database for observation only;
+OpenCode sessions have no continuation. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
 [Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 
@@ -642,13 +856,29 @@ currency and price snapshot. Buckets are never summed together, and reported
 cost is never mixed with estimates.
 
 The read is authorized like the conversation transcript: every session in a
-conversation's lineage must be readable. A session you can't read that names
-your conversation is ignored, neither shown nor counted as missing: a real
-delegate of your conversation is your own work. One exception follows from
-that rule: in hosted mode, a delegate launched by a caller-less internal
-request (Station's own agent or a Strands-runtime agent) is owned by the
-Station operator, so another reader's tree doesn't count it and its total
-isn't marked partial for it. A delegate that ran on a
+conversation's lineage must be readable. A session you can't read is never
+read, named or figured. What happens to it depends on how its launch came to
+name your conversation, which the dispatch route records at launch in the
+reserved start metadata key `stationDelegationProvenance` (a request can't
+set it; Station strips any value a caller supplies):
+
+- `caller-derived` (from the calling session's own record) or
+  `runtime-attested` (Station's own runtime vouched for it): the session is
+  real work of your conversation that runs under another owner. In hosted
+  mode that happens when Station can't attribute the dispatch to a bound
+  caller (for example a Codex session calling through its URL token), so the
+  delegate is the Station operator's. It is counted as not visible: no node,
+  and the total is partial with one line saying how many such tasks there are.
+  The stamp counts only on the session's start record, beside the parent it
+  names.
+- `direct-claim` (passed through from a request outside this Station's
+  process, such as an operator, device, hosted-user or peer Station
+  credential), or no stamp (a launch from before it existed, or a
+  `parentTaskId`-only link): the link is only a claim, so the session is
+  ignored, neither shown nor counted as missing. Counting it would let anyone
+  mark someone else's total partial.
+
+A delegate that ran on a
 paired Station is shown from this Station's own record, with `not-reported`
 usage, and no peer is contacted. Responses are `Cache-Control: private,
 no-store`. `404` means no conversation you can read. `422` means the tree is
@@ -939,6 +1169,16 @@ answer it instead of offering a local reply. The field is absent for work this
 Station runs. A server that predates the field omits it; a reply sent to a peer
 record through that server is still refused, not delivered elsewhere.
 
+The same record also opens in Activity from every work-item surface: Home's
+continue action and lists, the dock inbox, the mobile task switcher, the
+Sessions list, and a project's live work. Its agent slug and conversation id
+are the paired Station's, so rehydrating it as a local chat would show an empty
+transcript whose composer cannot reach the task. Home's work items carry
+`delegationEnvironmentKind: 'peer'` for this. The workspace Home projection
+record names that field, so a Home role grant made before it no longer covers
+the projection, and Home falls back to the built-in view until the grant is
+approved again.
+
 The paired Station's own open request reaches this Station through its
 delegated-task status read (`GET /api/orchestration/delegations/:taskId`,
 field `pendingRequest`). Each status refresh records it on the peer record as
@@ -949,10 +1189,10 @@ for that request id. The attention item then carries `peerRequestReference`:
 request on the paired Station. It never carries `requestReference` or
 `inputReference`, so local request inspection and `respondToRequest` cannot use it.
 
-`viewerCanRespond` models two gates this Station applies before the
-`POST /api/orchestration/delegations/:taskId/respond` handler: the credential
-and pairing-scope gate for that path, then the station-control dispatch scope
-with the `approve` action. The handler can still refuse, for example an inbound
+`viewerCanRespond` models two gates this Station applies before the handler of
+the answering route: the credential and pairing-scope gate for that path, then
+the station-control dispatch scope. That is `respond` with `approve` for a
+decision, and `continue` with `execute` for an input answer. The handler can still refuse, for example an inbound
 delegation peer, hosted mode, or an environment that is not the task's
 recorded host. Absent means unknown, and clients offer nothing. For an
 `approval` or `permission` request with `viewerCanRespond: true`, clients post
@@ -960,8 +1200,56 @@ recorded host. Absent means unknown, and clients offer nothing. For an
 re-checks the request is open and decides it there. When the paired Station
 answers 403, the route reports "The paired Station refused this decision" in
 this Station's words; the paired Station's own diagnostics are not relayed.
-`input` and `confirmation` requests keep the note, because `respond` carries a
-decision, not an answer.
+`confirmation` requests keep the note.
+
+### Bound answers to a paired Station's question
+
+An `input` request is answered with a bound follow-up instead of a decision,
+because `respond` carries a decision, not text. A Station that advertises
+`capabilities.delegatedInputAnswers: true` in its public handshake
+(`GET /.well-known/station/v1`) accepts an optional `expectedInputRequest` on
+`POST /api/orchestration/delegations/:taskId/continue`:
+
+```json
+{
+  "message": "Use the staging bucket",
+  "environmentId": "environment-peer",
+  "expectedInputRequest": {
+    "threadId": "<the task's current Session on the serving Station>",
+    "requestId": "<its open request id>",
+    "requestEventId": "<its request.opened event id>"
+  }
+}
+```
+
+The executing Station delivers the message only as the answer to that
+request: the binding must name the task's current Session and an input request
+that is still open there, and the orchestration service checks it again right
+before invoking the engine. Otherwise the route answers HTTP 409 with
+`code: "input_request_changed"` and nothing is sent. A bound answer cannot
+also carry `model` or `modelOptions`, because a model change can start a
+successor Session before the binding is checked. That combination answers
+HTTP 400 with `code: "input_binding_model_change"`. A Station forwarding the
+answer first reads the selected Station's handshake. It sends the binding only
+when the handshake names that environment and advertises the capability,
+refusing with HTTP 409 and `code: "input_binding_unsupported"` otherwise. An
+older Station would drop the unknown field and deliver an unbound turn, so it
+never receives one. A forwarded `input_request_changed` keeps its code; the
+serving Station's prose does not cross.
+
+A Station with the capability also adds to the delegated-task snapshot's
+`pendingRequest`: `eventId`, `body` (the question as `presentOpenRequest`
+presents it), and, for a read it serves itself, `callerCanRespond`. That last
+field models the HTTP boundary and station-control dispatch scope of the
+answering route for the reading credential: `continue` with `execute` for an
+input request, `respond` with `approve` otherwise. A delegator records these
+fields on its peer record (body bounded to 4,000 code points; the binding stored
+only whole and within 1,024 code points per id). The attention item's
+`peerRequestReference` then carries `threadId`, `requestEventId` and
+`callerCanRespond`. Clients offer an answer box only for an `input` request
+with that binding, `viewerCanRespond: true`, and `callerCanRespond` not
+`false`. Without the binding, the item keeps the note. When `callerCanRespond`
+is absent, clients offer the action and show any refusal.
 
 The route forwards a decision only to the environment this Station recorded as
 hosting the task. A body naming another environment is refused before any

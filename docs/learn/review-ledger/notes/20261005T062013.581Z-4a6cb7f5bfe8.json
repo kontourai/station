@@ -1,0 +1,7 @@
+{
+  "revision": "f891786eebfb74100a956f1f7243fe52c32c2802",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Only a responsive action-inventory entry was added; no tokens or theming rules changed (the disabled Start uses existing --k-line/--k-panel-raised/--k-text-muted). No prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

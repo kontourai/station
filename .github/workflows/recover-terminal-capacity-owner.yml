@@ -1,4 +1,4 @@
-name: Recover terminal physical-host capacity owner
+name: "Tool: Recover terminal capacity owner"
 
 on:
   workflow_dispatch:

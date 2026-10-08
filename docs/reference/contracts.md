@@ -24,12 +24,13 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
-| `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
+| `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
+| `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb. Shapes only: the server validates and stores them, and no route, intake or dispatch consumes them yet |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
 | `@kontourai/station-contracts/native-device-proof` | Native Device request-proof version, header, approved binding, exact one-use claims and the host-proposed binding candidate (provisional canonical UUIDv4 ID, approved Device ID, full surface and Device public JWK; no secret); `NativeDeviceProofBindingReadbackV1` projects operator-only historical binding data and separate current Device-binding status; `NativeDeviceProofSelfReceiptV1` reuses that public tuple for the owning current Device bearer through a distinct protected read; `NativeDeviceProofSelfReceiptErrorV1` versions its closed lookup/refusal codes so an unrelated HTTP error cannot establish binding absence; protocol data grants no Device, account or Project authority and supplies no runtime admission |
 | `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
@@ -37,7 +38,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
@@ -49,6 +50,8 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
 | `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
+| `@kontourai/station-contracts/mcp-elicitation` | A tool server's form-mode elicitation normalized to Station's rendered field subset, its accepted content, and the accept/decline/cancel result; validation lives in shared |
+| `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
@@ -59,7 +62,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
-| `@kontourai/station-contracts/project` | Project config and metadata |
+| `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations and administration projections |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
@@ -142,7 +145,8 @@ The [native relay link contract](../../packages/contracts/src/native-relay-link.
 distinguishes public first contact from an invitation already bound to the
 installation's proof key. Its receiving `NativeRelayLinkDelivery` omits the
 invitation secret and exposes only routing metadata and a pending handle.
-The [publication codec](../../packages/connect/src/core/nativeRelayLink.ts) and
+The [publication codec](../../packages/shared/src/native-relay-link.ts), published
+as `@kontourai/station-shared/native-relay-link`, and
 [native intake](../../src-desktop/src/native_relay_link_intake.rs) own parsing
 and lifetime checks; declarations neither create a proof key nor approve a
 surface. Origin hints are not Station identity. The existing operator surface
@@ -167,6 +171,23 @@ inferred from transport success. The provider's optional
 is server-private, invitation-gated and returns a still-pending real person.
 Unsupported providers fail closed; it neither invents a principal nor changes
 browser cookie flows.
+
+The [relay-management contract](../../packages/contracts/src/relay-management.ts)
+exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
+and `RelayManagementView`. The view contains public route/signing-confirmation
+facts, channel-specific setup links, exact approved surfaces and pending
+account-bound Device candidates; it contains no connector issuer credential.
+`approvedBy` preserves actual human actor attribution. `relay:manage`, declared
+in [environment security](../../packages/contracts/src/environment-security.ts),
+is an explicitly operator-promoted Device scope excluded from presets/defaults.
+It admits closed management leaves and does not replace Project roles or grant
+Agent, terminal, or Task publication authority. Native account-managed POSTs
+use their dedicated host operation, not the generic read signer. For relay
+management, account-bound Devices reach only exact leaves through current native proof
+and account binding/session, with separate `relay:manage` for management.
+Credential-only account-bound Devices remain gated; capabilities return neutral
+false without management authority. Contract availability is not a released
+native journey receipt.
 
 ## Scheduler deferral events
 
@@ -583,7 +604,13 @@ Their absence means the task runs on this Station, or the server predates them.
 Station's checks on the delegated `respond` route. Both are additive and
 optional; neither feeds the local request routes. The source is
 `OrchestrationDelegationContext.peerPendingRequest` on the orchestration
-subpath, copied from the paired Station's status read and never derived here. `OrchestrationSendTurnInput.expectedInputRequest` is a
+subpath, copied from the paired Station's status read and never derived here.
+With the `delegatedInputAnswers` capability (`StationCapabilityFlags` on the
+environment-security subpath) the reference also carries the paired Station's
+`threadId`, `requestEventId` and `callerCanRespond`, and
+`OrchestrationPeerPendingRequest` the matching `eventId`, `threadId`, `body`
+and `callerCanRespond`. All are optional; their absence means an older Station
+or no report, and clients then offer no bound answer. `OrchestrationSendTurnInput.expectedInputRequest` is a
 constraint, not a grant, and is removed before the adapter receives input.
 
 The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)
@@ -660,6 +687,23 @@ engine/profile observation from the applied process environment. Its absence
 means account attribution is unknown; consumers must not infer the current
 active account. These fields are observations, never billing or routing authority.
 
+
+### Retained usage statistics
+
+`@kontourai/station-contracts/usage-stats` owns `UsageStats`, `DailyStats`,
+`ModelUsageStats`, `UnallocatedUsage`, `TokenReports` and `EngineUsageCoverage`.
+These are read-only projection shapes, not storage or authorization APIs.
+Current sums reflect retained source facts and can decrease after correction or
+deletion. `legacySummary` is separate unverified evidence. `unallocated` keeps
+unknown date, model, principal and provider attribution visible; recorded identity
+never grants access. `tokenReports` distinguishes a contributing measured zero
+from an unmeasured compatibility sum. Optional reported and estimated USD amounts
+retain their separate evidence scopes. See the
+[Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people)
+and [analytics rescan](api.md#rescan-analytics).
+
+Recorded principal buckets are returned only by the authorized instance-operator
+route. Ordinary analytics and rescan responses omit `byPrincipal`.
 
 ### Usage observation provenance
 

@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed #3405 affected sender Adapter and OutboundDispatchModule explanation. New form observer reads existing local refusal/enqueue/receipt decisions; it does not mutate durable claims, replay, exact provider-turn settlement, authorization or error-observer ordering. Form drafts are in-memory and separately scoped; supplied payload IDs remain unchanged. Other module ownership and map claims unchanged. Existing prose remains accurate; this is bounded source-delta review, not certification of every mapped module.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

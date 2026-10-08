@@ -70,8 +70,11 @@ station environment access scope <device> --add approval:full-access
 station environment access scope <device> --remove approval:full-access
 ```
 
-or, in the Station desktop app on that host, from the Station name (top
-right) → **Paired devices** → the device → **Change access**.
+The **Paired devices** panel (Station name, top right → **Paired devices** →
+the device → **Change access**) does not apply the change from the desktop
+app: the app holds a device credential, not the operator credential, and the
+route refuses it. Use the host CLI above. Remote operator access is
+[a proposal](../design/operator-device-access.md) (#2894).
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
@@ -189,8 +192,9 @@ delivery. A collaborator does not need to contribute a computer, checkout, or
 provider credentials to read that shared work.
 
 The guest entry also mounts Project access controls. Administration requires
-the appropriate current membership plus a separately approved Device operate
-scope; the UI does not confer either. Base Project views remain metadata-only
+the appropriate current membership plus a separately approved Device
+`orchestration:operate` or `relay:manage` scope; the UI does not confer either.
+Base Project views remain metadata-only
 and omit local paths, provider/model configuration, knowledge settings, and
 layouts. See [deployment authentication](deployment-authentication.md#browser-invitation-entry)
 and its linked source owners for the current guest boundaries.

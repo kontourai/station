@@ -255,15 +255,51 @@ their prior behavior. Existing Tailnet person bindings remain a separate
 personal-device mechanism; they do not become Project membership through this
 account contract.
 
+#### Native relay-management admission
+
+The account-bound Device gate admits these exact relay path families only
+through current native Device proof, current account session and matching
+Device/account binding. The shared pure classifier grants no authority:
+
+| Method | Exact path |
+| --- | --- |
+| GET / HEAD | `/api/relay-management` |
+| GET / HEAD | `/api/relay-management/capabilities` |
+| POST | `/api/relay-management/approvals` |
+| POST | `/api/relay-management/approvals/revoke` |
+| POST | `/api/relay-management/invitations` |
+| POST | `/api/relay-management/devices/:enrollmentId/approve` |
+| POST | `/api/relay-management/devices/:enrollmentId/deny` |
+
+The Device decision ID must match the existing 43-character opaque-ID rule.
+Management still requires an explicit current `relay:manage` promotion; the
+capabilities read can return `canManage: false` and confers no authority.
+Credential-only account-bound Devices remain gated. This does not add a legacy
+access grant, admit arbitrary methods or descendants, waive Project IAM, or
+open Agent, terminal or Task share/unshare operations. Both native-proof
+conditions on neutral Device-only observations remain intact; management is
+not a Device-only observation and still requires the account.
+
+The [gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts),
+[exact classifier](../../src-server/security/pairing-route-scopes.ts) and
+[management authority](../../src-server/security/relay-management-authority.ts)
+own these separate checks. This is source admission, not a physical/native
+operator or released Nightly journey receipt.
+
 #### Invited administrators through the API
 
 An accepted Project administrator can read `GET /api/projects/:slug/access`
 with an approved account-bound Device carrying `orchestration:read`. To manage
 members or invitation links, the operator must independently approve
-`orchestration:operate` on that Device through the existing
-`POST /api/pairing/devices/:deviceId/scope` endpoint. Grant exactly
-`["orchestration:read", "orchestration:operate"]`; the standard personal-device
-preset includes terminal access and is not the collaborator-management grant.
+`orchestration:operate` or the narrower `relay:manage` on that Device through
+the existing `POST /api/pairing/devices/:deviceId/scope` endpoint. For the closed
+access-management leaves, grant `orchestration:read` plus `relay:manage`
+(**Manage remote access**); presets/defaults exclude it. The standard
+personal-device preset includes terminal access and is not the
+collaborator-management grant. Native management account proofs use a separate
+fixed host operation. Account-bound relay management admits only the exact
+native leaves described below, with current Device/account proof and separate
+`relay:manage`. Neither scope replaces the person's Project role.
 The person remains signed in as their own account throughout this workflow.
 
 The audited POST leaves beneath `/api/projects/:slug/access` are
@@ -288,8 +324,18 @@ controls does not confer administration: current membership and the separately
 approved Device scope still govern each action. Independent-person browser and
 native qualification remain separate from backend and component-test evidence.
 
-For authenticated members, the existing Project catalogue/detail endpoints
-return `station.member-project/v1` views: Project ID, slug, name, optional icon
+An account session presented on a credential that is not account-bound is also
+a member caller for Agents. It sees only Agents whose
+[audience](../reference/config.md#audience) admits its current membership, as
+member views. Every other Agent returns the uniform not-found. The Agent
+routes refuse a member's create, update and delete, member turns and
+approval answers are refused until
+[#3277](https://github.com/kontourai/station/issues/3277), and the design
+lists the Agent-related paths not yet gated.
+See [Agent audience](../design/project-membership.md#agent-audience).
+
+For authenticated members, the existing Project catalogue/detail endpoints,
+and `/api/boot`'s `projects` section, return `station.member-project/v1` views: Project ID, slug, name, optional icon
 and description, and currently effective actions (`view` in this profile).
 Local workspace paths, provider/model configuration, knowledge settings and
 layout metadata are excluded. Unaudited nested Project resources remain denied.
@@ -629,7 +675,9 @@ exchange and revoke, plus `/api/account-auth/accept-invitation`. GET/HEAD admits
 `publication` leaves at `/api/projects/:slug/shared-work/:taskId/`. Neutral
 handshake/status/identity observations may use Device proof alone when no
 account material is supplied; account-bearing requests and Project reads retain
-current account verification. Everything else — pairing, consent, terminal,
+current account verification. The status exception requires verified native
+Device proof; an ordinary account-bound Device with an account session still
+cannot read `/api/system/status`. Everything else — pairing, consent, terminal,
 plugin, operator and admin surfaces — refuses proof authority even for a broadly
 scoped Device. Each request re-proves: the JWS is verified against the exact
 received bytes and private peer provenance, the JTI is consumed once, and the

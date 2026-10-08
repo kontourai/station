@@ -1,0 +1,7 @@
+{
+  "revision": "582aef22350835c5e1238229168bc834617dcdd3",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"src-ui/src/index.css changed only in two comments (the collapsed dock action is now named New chat); no rule changed, so nothing this page or capture shows changed. No prose change or recapture needed.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]}
+  ]
+}

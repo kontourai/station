@@ -7,7 +7,7 @@ Station stages every supported package from one immutable `vMAJOR.MINOR.PATCH`
 or `vMAJOR.MINOR.PATCH-preview.N` tag. The tag workflow never publishes the
 GitHub Release. It uploads workflow artifacts while each platform builds, then
 one assembler creates a draft only after the deterministic inventory and every
-checksum validate. `Publish Station release` is a separately approved manual
+checksum validate. `Release: Publish` is a separately approved manual
 workflow that downloads and revalidates the draft before making it public. Its
 terminal availability job has only `contents:read`, `attestations:read`,
 `pull-requests:read`, and `issues:write`: after publication it redownloads and
@@ -277,6 +277,10 @@ completion remains `NOT_VERIFIED`.
 is a separate build/smoke matrix for platform-specific server archives. The
 [builder](../../scripts/lib/portable-server-archive.mjs) stages the selected
 Node runtime, native dependencies, compiled server/UI/CLI, and platform launcher.
+It also stages the bundled Station catalog and its declared local packages,
+including the curated engineering Skills, from tracked source files. The archive
+smoke starts a fresh server and checks that the catalog resolves the collection
+inside that extracted archive. Listing it does not install it or grant tools.
 It refuses a target that differs from the build host's platform and architecture,
 because native dependencies come from that host's install.
 It marks the tree as prebuilt so the CLI does not try to rebuild it at startup.
@@ -315,9 +319,10 @@ install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
 Normal operation is a Nightly started by a passing main qualification run for
-the commit it qualified, at most about once a day, or the scheduled Nightly
-build, which fires daily at 06:43 UTC. Either uses its run's workflow event
-SHA, never stages a source its published markers already contain, and skips
+the commit it qualified, at most about once a day. Nightly has no independent
+schedule; manual dispatch remains available for recovery and requires
+exact-source qualification. Both entry points use their workflow event SHA,
+never stage a source their published markers already contain, and skip
 native staging only when the
 cohort decision has the required platform markers and matching ledger rows.
 The tag alone is insufficient, as described above. To request that normal behavior
@@ -551,14 +556,14 @@ has its own readback receipt; physical installation remains separate.
 
 ## Stage, inspect, publish, and roll back
 
-Push an immutable tag. The `Stage Station release` preflight binds that tag to
+Push an immutable tag. The `Release: Stage` preflight binds that tag to
 one source SHA, then the reusable hosted full-regression gate must pass on that
 exact SHA before any preview or stable producer can build, sign, upload, or
 publish. The workflow preserves the GHCR image under
 `ghcr.io/kontourai/station:sha-<source-sha>` and creates a GitHub draft only
 after the inventory passes. Inspect the draft's
 `station-release-inventory.json`, `station-release-checksums.txt`, and
-`station-container-release.json`, then run `Publish Station release` with its
+`station-container-release.json`, then run `Release: Publish` with its
 tag through `native-release-publish`. Every platform payload is attested by its
 producing job. The inventory and checksum manifest are separately attested
 protocol roots because they cannot hash each other; the inventory covers every

@@ -1,4 +1,4 @@
-name: Hosted full regression
+name: "Main: Full qualification"
 
 # Qualification runs independently of integration. Every canonical phase and
 # the Android viewport suite must pass; matrix failures never cancel siblings.
@@ -145,10 +145,19 @@ jobs:
 
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
+          set -euo pipefail
           if [[ ! -x /bin/zsh ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes zsh
+            bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+              "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+              --output "$bootstrap"
+            printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+            sha256sum "$bootstrap"
+            sudo bash "$bootstrap" zsh
           fi
           command -v zsh
           test -x /bin/zsh
@@ -245,10 +254,19 @@ jobs:
 
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
+          set -euo pipefail
           if [[ ! -x /bin/zsh ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes zsh
+            bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+              "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+              --output "$bootstrap"
+            printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+            sha256sum "$bootstrap"
+            sudo bash "$bootstrap" zsh
           fi
           command -v zsh
           test -x /bin/zsh
@@ -335,10 +353,19 @@ jobs:
 
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
+          set -euo pipefail
           if [[ ! -x /bin/zsh ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes zsh
+            bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+              "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+              --output "$bootstrap"
+            printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+            sha256sum "$bootstrap"
+            sudo bash "$bootstrap" zsh
           fi
           command -v zsh
           test -x /bin/zsh

@@ -1,0 +1,7 @@
+{
+  "revision": "c9e6246d2a099c1e0fa1fb36903222fab9f97293",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Reviewed against the merged handshake: executionPreparation is still advertised and gates project-portable-prepared exactly as described; the merge only adds the unrelated delegatedInputAnswers flag beside it and the bound-answer continue path in station-control-delegation, which this design does not describe.","inputs":["docs/design/remote-execution-preparation.md","src-server/tools/station-control-delegation.ts","src-server/capabilities/station-capability-flags.ts"]}
+  ]
+}

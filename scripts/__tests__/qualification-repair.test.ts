@@ -17,9 +17,11 @@ import {
 } from '../actionlint-gate.mjs';
 import { eligibleLanding } from '../landing-automation.mjs';
 import {
+  NO_AGENT_REASON,
   nextRepairState,
   QUALIFICATION_GATE_JOB,
   qualificationConclusion,
+  repairAgent,
   repairState,
   validateRepairPaths,
   validateRepairRun,
@@ -127,11 +129,13 @@ describe('qualification repair lifecycle', () => {
       mergeable_state: 'clean',
     };
     expect(eligibleLanding(pr, run, 'owner/repo')).toBe(true);
+    expect(eligibleLanding({ ...pr, auto_merge: {} }, run, 'owner/repo')).toBe(
+      true,
+    );
     for (const change of [
       { labels: [] },
       { draft: true },
       { mergeable_state: 'dirty' },
-      { auto_merge: {} },
       { head: { sha: 'b'.repeat(40), repo: { full_name: 'owner/repo' } } },
     ])
       expect(eligibleLanding({ ...pr, ...change }, run, 'owner/repo')).toBe(
@@ -163,6 +167,7 @@ describe('qualification repair lifecycle', () => {
     async () => {
       const root = makeTempDir('station-landing-label-');
       let green = false;
+      let alreadyArmed = false;
       const pr = {
         number: 7,
         state: 'open',
@@ -192,7 +197,12 @@ describe('qualification repair lifecycle', () => {
                     },
                   ],
                 }
-              : pr,
+              : {
+                  ...pr,
+                  auto_merge: alreadyArmed
+                    ? { enabled_by: { login: 'station-automation' } }
+                    : null,
+                },
           ),
         );
       });
@@ -206,7 +216,50 @@ describe('qualification repair lifecycle', () => {
       mkdirSync(bin);
       writeFileSync(
         join(bin, 'gh'),
-        '#!/bin/sh\nprintf "%s\n" "$*" > "$ARM_MARKER"\n',
+        `#!/bin/sh
+if [ "$1" = api ]; then
+  node -e 'const fs=require("node:fs"); const armed=fs.existsSync(process.env.ARM_MARKER); process.stdout.write(JSON.stringify({data:{repository:{pullRequest:{headRefOid:process.env.QUERY_HEAD || (armed ? process.env.MUTATION_HEAD : process.env.EXPECTED_HEAD),isInMergeQueue:armed && process.env.QUEUE_RESULT === "queued",autoMergeRequest:(armed && process.env.QUEUE_RESULT === "armed") || process.env.PRE_ARMED === "1" ? {enabledAt:"2026-10-05T00:00:00Z"} : null}}}}));'
+else
+  arguments="$*"
+  if [ "$1" != pr ] || [ "$2" != merge ] || [ "$3" != 7 ]; then
+    echo 'unexpected landing command or pull request' >&2
+    exit 1
+  fi
+  shift 3
+  expected=""
+  repository=""
+  automatic=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --repo)
+        shift
+        repository="$1"
+        ;;
+      --auto)
+        automatic=1
+        ;;
+      --match-head-commit)
+        shift
+        expected="$1"
+        ;;
+      *)
+        echo 'unexpected landing option' >&2
+        exit 1
+        ;;
+    esac
+    shift
+  done
+  if [ "$repository" != owner/repo ] || [ "$automatic" != 1 ]; then
+    echo 'wrong repository or missing auto-merge intent' >&2
+    exit 1
+  fi
+  if [ -n "$expected" ] && [ "$expected" != "$MUTATION_HEAD" ]; then
+    echo 'head changed before arm mutation' >&2
+    exit 1
+  fi
+  printf "%s\n" "$arguments" >> "$ARM_MARKER"
+fi
+`,
       );
       chmodSync(join(bin, 'gh'), 0o755);
       const marker = join(root, 'armed');
@@ -214,6 +267,9 @@ describe('qualification repair lifecycle', () => {
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
         ARM_MARKER: marker,
+        EXPECTED_HEAD: run.head_sha,
+        MUTATION_HEAD: run.head_sha,
+        QUEUE_RESULT: 'queued',
         GITHUB_EVENT_PATH: event,
         GITHUB_REPOSITORY: 'owner/repo',
         GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
@@ -232,9 +288,69 @@ describe('qualification repair lifecycle', () => {
           env,
           windowsHide: true,
         });
-        expect(readFileSync(marker, 'utf8')).toBe(
-          'pr merge 7 --repo owner/repo --auto\n',
-        );
+        const initialArms = readFileSync(marker, 'utf8');
+        expect(initialArms.trim().split('\n')).toHaveLength(1);
+        // Already queued is a no-op, not another arming attempt.
+        await exec(process.execPath, [landing], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        });
+        expect(readFileSync(marker, 'utf8')).toBe(initialArms);
+        // The actual stall starts armed, not queued. Fresh arming must still
+        // run once with the reviewed head when an old request already exists.
+        alreadyArmed = true;
+        const stalledMarker = join(root, 'stalled-arm');
+        const repaired = await exec(process.execPath, [landing], {
+          cwd: root,
+          env: { ...env, ARM_MARKER: stalledMarker, PRE_ARMED: '1' },
+          windowsHide: true,
+        });
+        expect(repaired.stdout).toContain('queued');
+        expect(
+          readFileSync(stalledMarker, 'utf8').trim().split('\n'),
+        ).toHaveLength(1);
+        const refusedMarker = join(root, 'refused-arm');
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: {
+              ...env,
+              ARM_MARKER: refusedMarker,
+              QUERY_HEAD: 'b'.repeat(40),
+            },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('changed head');
+        expect(() => readFileSync(refusedMarker)).toThrow();
+        // A push between a good precheck and mutation cannot arm the new head.
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: {
+              ...env,
+              ARM_MARKER: refusedMarker,
+              MUTATION_HEAD: 'b'.repeat(40),
+            },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow();
+        expect(() => readFileSync(refusedMarker)).toThrow();
+
+        // A green CLI exit alone must not claim successful admission.
+        await expect(
+          exec(process.execPath, [landing], {
+            cwd: root,
+            env: { ...env, QUEUE_RESULT: 'none' },
+            windowsHide: true,
+          }),
+        ).rejects.toThrow('neither armed nor queued');
+        const waiting = await exec(process.execPath, [landing], {
+          cwd: root,
+          env: { ...env, QUEUE_RESULT: 'armed' },
+          windowsHide: true,
+        });
+        expect(waiting.stdout).toContain('armed_waiting_for_queue');
       } finally {
         await new Promise<void>((done) => server.close(() => done()));
       }
@@ -337,6 +453,180 @@ describe('qualification repair lifecycle', () => {
     }
   });
 
+  describe('repair agent selector', () => {
+    async function prepareWith(
+      agent: string | undefined,
+      opts: { conclusion?: string; existing?: object } = {},
+    ) {
+      const root = makeTempDir('station-repair-agent-');
+      const writes: Array<{ method: string; url: string; body: any }> = [];
+      const server = createServer(async (req, res) => {
+        let bytes = '';
+        for await (const chunk of req) bytes += chunk;
+        res.setHeader('content-type', 'application/json');
+        if (req.method !== 'GET')
+          writes.push({
+            method: req.method!,
+            url: req.url!,
+            body: bytes ? JSON.parse(bytes) : null,
+          });
+        if (req.url?.includes('/branches/main')) {
+          res.writeHead(503);
+          res.end('{}');
+          return;
+        }
+        if (req.url?.includes('/actions/runs/42/jobs')) {
+          res.end(
+            JSON.stringify({
+              jobs: [{ name: 'corpus', conclusion: 'failure' }],
+            }),
+          );
+          return;
+        }
+        if (req.url?.endsWith('/actions/runs/42')) {
+          res.end(
+            JSON.stringify({
+              ...run,
+              conclusion: opts.conclusion ?? 'failure',
+            }),
+          );
+          return;
+        }
+        if (req.url?.includes('/issues?')) {
+          res.end(JSON.stringify(opts.existing ? [opts.existing] : []));
+          return;
+        }
+        res.end(JSON.stringify({ number: 7, state: 'open' }));
+      });
+      await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw new Error('No address');
+      const event = join(root, 'event.json');
+      writeFileSync(event, JSON.stringify({ workflow_run: { id: 42 } }));
+      const output = join(root, 'output');
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        GITHUB_REPOSITORY: 'owner/repo',
+        GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+        GITHUB_EVENT_PATH: event,
+        GITHUB_OUTPUT: output,
+        GITHUB_RUN_ID: '99',
+        GITHUB_RUN_ATTEMPT: '1',
+      };
+      delete env.QUALIFICATION_REPAIR_AGENT;
+      if (agent !== undefined) env.QUALIFICATION_REPAIR_AGENT = agent;
+      try {
+        const result = await exec(process.execPath, [script, 'prepare'], {
+          cwd: root,
+          env,
+          windowsHide: true,
+        }).then(
+          () => ({ code: 0, stderr: '' }),
+          (error) => ({ code: error.code as number, stderr: error.stderr }),
+        );
+        let out = '';
+        try {
+          out = readFileSync(output, 'utf8');
+        } catch {}
+        return { ...result, out, writes };
+      } finally {
+        await new Promise<void>((done) => server.close(() => done()));
+      }
+    }
+
+    it.each([undefined, '', '  '])(
+      'records needs-owner without a claim or an invented owner when the agent is %j',
+      async (agent) => {
+        const result = await prepareWith(agent);
+        expect(result.code).toBe(0);
+        expect(result.out).toContain('claim=false');
+        expect(result.out).not.toContain('claim=true');
+        expect(result.writes).toHaveLength(1);
+        expect(result.writes[0]).toMatchObject({
+          method: 'POST',
+          url: '/repos/owner/repo/issues',
+        });
+        const body = result.writes[0].body.body as string;
+        expect(repairState(body)?.repairState).toBe('needs-owner');
+        expect(body).toContain(NO_AGENT_REASON);
+        expect(body).not.toContain('Owner: automated qualification repair');
+        expect(body).not.toContain('One bounded sweep');
+      },
+    );
+
+    it('keeps a claimed episode from before the opt-out parked at needs-owner', async () => {
+      const claimed = nextRepairState(null, run).state;
+      const existing = {
+        number: 7,
+        state: 'open',
+        title: 'Main qualification repair',
+        user: { login: 'github-actions[bot]' },
+        body: `<!-- station-qualification:${JSON.stringify(claimed)} -->`,
+      };
+      const result = await prepareWith(undefined, { existing });
+      expect(result.out).toContain('claim=false');
+      expect(result.writes[0].method).toBe('PATCH');
+      expect(repairState(result.writes[0].body.body)?.repairState).toBe(
+        'needs-owner',
+      );
+    });
+
+    it('still closes the issue on green with no agent configured', async () => {
+      const state = nextRepairState(null, run, { agent: false }).state;
+      const result = await prepareWith(undefined, {
+        conclusion: 'success',
+        existing: {
+          number: 7,
+          state: 'open',
+          title: 'Main qualification repair',
+          user: { login: 'github-actions[bot]' },
+          body: `<!-- station-qualification:${JSON.stringify({ ...state, lastStartedAt: '2026-10-01T00:00:00Z' })} -->`,
+        },
+      });
+      expect(result.code).toBe(0);
+      expect(result.writes).toEqual([
+        {
+          method: 'PATCH',
+          url: '/repos/owner/repo/issues/7',
+          body: { state: 'closed', state_reason: 'completed' },
+        },
+      ]);
+    });
+
+    it('claims a repair when the agent is codex', async () => {
+      const result = await prepareWith('codex');
+      // The branches/main stub fails after the claim, as in the settle test.
+      expect(result.out).toContain('claim=true');
+      const body = result.writes[0].body.body as string;
+      expect(repairState(body)?.repairState).toBe('claimed');
+      expect(body).toContain('Owner: automated qualification repair');
+    });
+
+    it('refuses an unknown agent and starts nothing', async () => {
+      for (const agent of ['Codex', 'claude', 'codex,claude']) {
+        const result = await prepareWith(agent);
+        expect(result.code).toBe(1);
+        expect(result.stderr).toContain('Unknown QUALIFICATION_REPAIR_AGENT');
+        expect(result.out).not.toContain('claim=true');
+        expect(result.writes).toEqual([]);
+      }
+    });
+
+    it('resolves the selector and withholds the claim in the state machine', () => {
+      expect(repairAgent(undefined)).toBeNull();
+      expect(repairAgent('')).toBeNull();
+      expect(repairAgent('codex')).toBe('codex');
+      expect(() => repairAgent('other')).toThrow(/Unknown/);
+      const first = nextRepairState(null, run, { agent: false });
+      expect(first.action).toBe('update');
+      expect(first.state.repairState).toBe('needs-owner');
+      expect(
+        nextRepairState(first.state, run, { agent: false, retry: true }).action,
+      ).toBe('update');
+    });
+  });
+
   it('settles an attempt whose preparation fails after claiming the durable episode', async () => {
     const root = makeTempDir('station-repair-prepare-');
     let body = '';
@@ -381,6 +671,7 @@ describe('qualification repair lifecycle', () => {
       GITHUB_RUN_ID: '99',
       GITHUB_RUN_ATTEMPT: '1',
       REPAIR_ISSUE: '7',
+      QUALIFICATION_REPAIR_AGENT: 'codex',
     };
     try {
       await expect(

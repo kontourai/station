@@ -1396,4 +1396,20 @@ describe('station-control operations tools (characterization)', () => {
       defaultApprovalMode: 'ask',
     });
   });
+
+  test('update_config refuses to change the terminal shell, and other settings still reach the route', async () => {
+    const tools = await registerTools();
+    fetchMock.mockResolvedValue(jsonResponse({ success: true, data: {} }));
+    const refused = await tools.update_config!({
+      updates: { terminalShell: '/tmp/evil-shell', defaultMaxTurns: 5 },
+    });
+    expect(JSON.parse(refused.content[0]!.text)).toMatchObject({
+      success: false,
+      code: 'command-not-granted',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await tools.update_config!({ updates: { defaultMaxTurns: 5 } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
