@@ -1,0 +1,9 @@
+{
+  "revision": "a6f1b59d6008bc9470b371f6fd5072fffa871fd3",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the formatter-only wrapping of the existing composer mark width/height assertions. Same rendered mark, 12px fallback and 18px valid-icon expectations remain; no fixture, production geometry, identity, fallback validator or user journey changed. Prior exact behavior evidence remains baseline two dot regressions followed by49 composition passes; this correction only brings that same keeper into formatter compliance. Read-only lint passed after the change. Guide icon/colour and start semantics remain accurate; reference PNGs and capture policy remain untouched. New-head Gallery pixel proof remains pending.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the formatter-only wrapping of the existing composer mark width/height assertions. Same rendered mark, 12px fallback and 18px valid-icon expectations remain; no fixture, production geometry, identity, fallback validator or user journey changed. Prior exact behavior evidence remains baseline two dot regressions followed by49 composition passes; this correction only brings that same keeper into formatter compliance. Read-only lint passed after the change. Guide icon/colour and start semantics remain accurate; reference PNGs and capture policy remain untouched. New-head Gallery pixel proof remains pending.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx"]}
+  ]
+}

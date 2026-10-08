@@ -194,6 +194,7 @@ export {
   closeProjectTerminal,
   getProjectResolution,
   getProjectView,
+  listProjectRunLocations,
   listProjectViews,
 } from './client/projects';
 export {
@@ -638,6 +639,7 @@ export {
   type PluginSettingField,
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
+  PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
@@ -973,6 +975,7 @@ export {
   useProjectLayoutsQuery,
   useProjectQuery,
   useProjectResolutionQuery,
+  useProjectRunLocationsQuery,
   useProjectSessionBoardQuery,
   useProjectsQuery,
   useProposedChangesQuery,

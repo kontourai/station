@@ -923,6 +923,20 @@ authority changes before the body is consumed. With `requireRequestScope`, a
 missing scope uses an isolated inert key and never exposes an older unscoped
 cache entry.
 
+### `useProjectRunLocationsQuery(config?)`
+
+Fetches `GET /api/projects/run-locations` through `listProjectRunLocations`:
+each Project's `ProjectRunsAt` by slug, or an empty map for a shared member. It
+takes the same scoped configuration as `useProjectsQuery` and keys under
+`[PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX, …]` (`'project-run-locations'`),
+outside `'projects'`, so a host that persists `'projects'` reads does not
+replay a folder answer across reloads. The Project list does not carry run
+locations, so mount this only where one is shown and fall back to the stored
+folder until it answers. Station's start composer reads it through
+`ProjectsContext`'s `useScopedProjectRunLocationsQuery`, with a 30-second
+`staleTime` and `refetchOnMount: true` (Station's client default is `false`),
+only while the composer is open.
+
 ### `useProjectQuery(slug: string, config?)`
 
 Fetches a single project by slug. It accepts the same scoped configuration as

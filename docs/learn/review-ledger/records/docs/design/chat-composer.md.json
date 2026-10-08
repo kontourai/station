@@ -100,6 +100,8 @@
 
     "src-ui/src/components/chat-start/StartComposer.tsx",
 
+    "src-ui/src/__tests__/StartComposerParity.test.tsx",
+
     "src-ui/src/components/chat-start/StartStationControl.tsx",
 
     "src-ui/src/components/home/HomeStartComposer.tsx",
