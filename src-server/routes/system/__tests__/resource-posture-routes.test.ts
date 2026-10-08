@@ -1,3 +1,4 @@
+import type { HostResourceSnapshot } from '@kontourai/station-contracts/system-status';
 import { describe, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { createResourcePostureRoutes } from '../resource-posture-routes.js';
@@ -78,7 +79,10 @@ test('resource diagnostics describe the answering process and host memory', asyn
     },
   });
   const response = await app.request('/resource-posture');
-  const body = await response.json();
+  const body = await readJson<{
+    success: boolean;
+    data: { busyPercent?: number; resources: HostResourceSnapshot };
+  }>(response);
   expect(body.data.busyPercent).toBeUndefined();
   expect(body.data.resources.process.pid).toBe(process.pid);
   expect(body.data.resources.process.rssBytes).toBeGreaterThan(0);
