@@ -129,6 +129,18 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+/**
+ * Node-spawning version probes (node, npm, tauri-cli on Windows) start
+ * alongside every sibling probe at once. On a cold hosted Windows runner
+ * that cold start — node loading npm-cli.js while the platform scans it —
+ * can exceed the 10s default with no tool actually wedged (Windows PR
+ * portable floor runs 37715264790 and 37727322927 both timed the npm probe
+ * out on branches whose trees had not touched it, while sibling runs of the
+ * same trees passed). A wedged tool still reports `failed` here; the wider
+ * bound only stops a healthy cold start from reading as one.
+ */
+const VERSION_PROBE_TIMEOUT_MS = 30_000;
+
 async function checkCommand(id, command, args, options = {}) {
   const started = performance.now();
   if (options.traceProbes) {
@@ -386,9 +398,13 @@ async function collectChecks(root, probeOptions) {
     'adb',
   ]);
   const checks = {
-    node: probe('node', process.execPath, ['--version']),
+    node: probe('node', process.execPath, ['--version'], {
+      timeout: VERSION_PROBE_TIMEOUT_MS,
+    }),
     npm: npm
-      ? probe('npm', npm.command, npm.args)
+      ? probe('npm', npm.command, npm.args, {
+          timeout: VERSION_PROBE_TIMEOUT_MS,
+        })
       : {
           id: 'npm',
           status: 'failed',
@@ -417,6 +433,7 @@ async function collectChecks(root, probeOptions) {
             'tauri-cli',
             windows ? process.execPath : tauriBin,
             windows ? [tauriBin, '--version'] : ['--version'],
+            { timeout: VERSION_PROBE_TIMEOUT_MS },
           ),
     java: probe('java', 'java', ['-version']),
     adb: probe('adb', adb ?? 'adb', ['devices', '-l'], {
