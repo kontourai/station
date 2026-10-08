@@ -59,3 +59,8 @@ fc181b4eb5829e84839ef38ee0c87707d86005ea:docs/learn/review-ledger/notes/20261001
 # The comment above an earlier entry on this branch quoted the matched prose
 # itself; pin that one historical location (squash-merged away from main).
 e8515b04d21896ad5fe694da061187bc9ca0a809:.gitleaksignore:generic-api-key:50
+
+# #3410: maintainer-confirmed manually entered synthetic browser fixture; not an issued credential.
+# Exact historical fingerprint only; future occurrences remain scanned.
+# Authorization: https://github.com/kontourai/station/pull/3410#issuecomment-6050560851
+b78eecc87b8c0ac3c0ef4b864c9f73855b659e30:tests/input-request.spec.ts:generic-api-key:398
