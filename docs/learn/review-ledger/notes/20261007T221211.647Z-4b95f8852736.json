@@ -1,0 +1,7 @@
+{
+  "revision": "bf10c6343f4f8a9414455da1bb6ddeabcc79a684",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Executed exact bf10c6343f on desktop-win Node24.18 after clean owned tree and no active Node/fixture-child census: 13PASS/2POSIX signal-only skips, 27.49s suite; controlled three-stall report10.714s, real npm/Tauri3.287s, missing npm3.273s and missing local Tauri3.292s. Existing10s per-command and30s report bounds unchanged. No remaining Node/stalled/Rust/owned-guard processes observed after focused suite. POSIX cancellation remains separately executed on this Mac at source82ac (12PASS/3Windows-only skips), with baseline and signal-handler omission controls caught and exact restoration. This is host-specific Node24.18 focused evidence; actual hosted Node24.21 timed inner probe remains UNKNOWN, and no native app/device/release qualification is claimed.","inputs":["docs/guides/desktop-build.md"]}
+  ]
+}
