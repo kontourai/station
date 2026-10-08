@@ -383,7 +383,7 @@ for (const [label, viewport] of VIEWPORTS) {
       const token = codex.form.getByLabel(/Paste the deploy token/);
       await expect(token).toHaveAttribute('type', 'password');
       await codex.form.getByRole('radio', { name: /eu-west/ }).check();
-      await token.fill('tok-private-123');
+      await token.fill('canary-private-answer');
       await shot(page, testInfo, `${label}-secret`);
       await codex.actions.getByRole('button', { name: 'Send' }).click();
       await expect.poll(() => answers(posted).length).toBe(1);
@@ -406,11 +406,11 @@ for (const [label, viewport] of VIEWPORTS) {
       await expect
         .poll(() => answers(posted).map((command) => command.content))
         .toEqual([
-          { region: '1', token: 'tok-private-123' },
+          { region: '1', token: 'canary-private-answer' },
           { recipient: 'Ada', copies: 2, format: 'html' },
         ]);
       // The secret never reaches the transcript record or the page text.
-      await expect(page.getByText('tok-private-123')).toHaveCount(0);
+      await expect(page.getByText('canary-private-answer')).toHaveCount(0);
       health.assertHealthy();
     });
 
