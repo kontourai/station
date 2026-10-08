@@ -307,7 +307,20 @@ export function trackOrchestrationSession(options: {
     options.session.threadId,
     options.session.provider,
   );
-  options.sessionReadModel.set(options.session.threadId, options.session);
+  const existing = options.sessionReadModel.get(options.session.threadId);
+  const nativeState =
+    existing?.provider === options.session.provider ? existing : undefined;
+  options.sessionReadModel.set(options.session.threadId, {
+    ...options.session,
+    ...(options.session.resumeCursor === undefined &&
+    nativeState?.resumeCursor !== undefined
+      ? { resumeCursor: nativeState.resumeCursor }
+      : {}),
+    ...(options.session.persistSession === undefined &&
+    nativeState?.persistSession !== undefined
+      ? { persistSession: nativeState.persistSession }
+      : {}),
+  });
 }
 
 export async function resolveOrchestrationAdapterForThread(options: {
@@ -510,6 +523,19 @@ export function buildOrchestrationSessionSummary(options: {
   conversationDraftFacts?: ConversationDraftFacts;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
+  const persistedNativeState =
+    options.persisted?.provider === base?.provider &&
+    options.persisted?.threadId === base?.threadId
+      ? options.persisted
+      : undefined;
+  const resumeCursor =
+    base?.resumeCursor !== undefined
+      ? base.resumeCursor
+      : persistedNativeState?.resumeCursor;
+  const persistSession =
+    base?.persistSession !== undefined
+      ? base.persistSession
+      : persistedNativeState?.persistSession;
   if (!base) {
     throw new Error('A persisted or loaded session is required');
   }
@@ -618,19 +644,10 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
-    ...(base.resumeCursor !== undefined
-      ? { resumeCursor: base.resumeCursor }
-      : {}),
-    // #765 A1: carried so conversation continuation can tell a cursor with a
-    // durable engine transcript behind it from one whose session was started
-    // with persistence explicitly off (the Claude adapter spawns those with
-    // `--no-session-persistence`, so presenting the cursor to a child start
-    // is guaranteed to fail). Only a LOADED session ever carries an explicit
-    // `false` — the event-store row stores false and absent identically —
-    // which is exactly the live-continuation window the guard needs.
-    ...(base.persistSession !== undefined
-      ? { persistSession: base.persistSession }
-      : {}),
+    ...(resumeCursor !== undefined ? { resumeCursor } : {}),
+    // A partial live projection cannot erase a persisted native cursor or its
+    // persistence posture; explicit false still refuses a native continuation.
+    ...(persistSession !== undefined ? { persistSession } : {}),
     ...(base.attachedSource ? { attachedSource: base.attachedSource } : {}),
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,

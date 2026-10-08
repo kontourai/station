@@ -223,7 +223,11 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
     return { status: 'retired' as const };
   }
   async listSessions(): Promise<ProviderSession[]> {
-    return [...this.sessions.values()];
+    return [...this.sessions.values()].map((session) => {
+      if (!this.nativeReturn) return session;
+      const { resumeCursor: _cursor, ...snapshot } = session;
+      return snapshot;
+    });
   }
   async hasSession(threadId: string): Promise<boolean> {
     return this.sessions.has(threadId);
