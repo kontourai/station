@@ -65,7 +65,7 @@
       "name": "developer-telemetry",
       "width": 1440,
       "height": 900,
-      "sha256": "a0067c9825a53aab5257dee317839c5d5365a462d879b93abc64998a586ccba1"
+      "sha256": "36861266dfcb82cb7d8ec407de5e7b51851c24aa1de682a11307a3e7bf326474"
     },
     {
       "name": "home",
@@ -77,13 +77,13 @@
       "name": "mobile-access-request-error-320",
       "width": 320,
       "height": 844,
-      "sha256": "b4518aa8295137997b5d10150b826f1fbf4d9dc10e2445f250fc2381e745296c"
+      "sha256": "f26044b415b598660525808010100705c2f18769fec85d48c2a22a1c3c7ec97f"
     },
     {
       "name": "mobile-access-request-error-390",
       "width": 390,
       "height": 844,
-      "sha256": "a488fddb9eba9d6c9e879d5d3db454daeed314d0852e047eb636a6792a95d891"
+      "sha256": "c9bcb9c15bb0b59e3265093cc3601674f07870bf0b5a895ad802c27b48300959"
     },
     {
       "name": "mobile-activity-compact",
@@ -137,13 +137,13 @@
       "name": "mobile-http-consent-320",
       "width": 320,
       "height": 844,
-      "sha256": "2fee463010fafa79aaf48b03e948f107483b7b4d46dc6a2fb5742a49f7547455"
+      "sha256": "79f37decd036883bd748852f8cde829150db9d9e493d1664c57eea83427bf3c2"
     },
     {
       "name": "mobile-http-consent-390",
       "width": 390,
       "height": 844,
-      "sha256": "da0ab11ab125ded2492908628dcb2ff43edde73ae301eb45a97b307d49032909"
+      "sha256": "08e40fde167893f2be785fd2a94b1257f7eca1ce00cb4bf35457bb41adcdec1c"
     },
     {
       "name": "mobile-onboarding-setup",
@@ -155,7 +155,7 @@
       "name": "mobile-settings-overview",
       "width": 390,
       "height": 844,
-      "sha256": "2d743bfd4e15e8766936c09111a312ff66185cff956ca93b84a215e6453c7936"
+      "sha256": "068fe8f7316ce29c3cea292692f3d3840c0799e8982216c37f5f5491a74aed5c"
     },
     {
       "name": "motion-reduced-mobile-chat",
@@ -215,7 +215,7 @@
       "name": "overlay-connection-banner",
       "width": 390,
       "height": 844,
-      "sha256": "785ea37b040e8d62ff1c32185d7bc00dec213ded7114325afdb2ff79dcbe6bcf"
+      "sha256": "c2810275f6538ac434ac2e4db38dc0181073bc1888c363e5e9609b79e469c95d"
     },
     {
       "name": "overlay-dock-project-bound",
@@ -311,13 +311,13 @@
       "name": "settings",
       "width": 1440,
       "height": 900,
-      "sha256": "d62e3a804f90c443944e304d769af48e4f8d3fbf6f52f57c6f2d1368a3a24c37"
+      "sha256": "c9b103f40c50fb405bfab6c94ee91284ffb9041aa2c037021b4aafc356da00d8"
     },
     {
       "name": "settings-info-tip",
       "width": 1440,
       "height": 900,
-      "sha256": "8cb95d0012f98aaa1df444323768a5dc0f9b0c51daa7597ff88e095e90775b3b"
+      "sha256": "6de4016760c4301d1d22a69cccc0073ea91f26a746eaf1e29ed79af1cfbf1eba"
     },
     {
       "name": "skills",
