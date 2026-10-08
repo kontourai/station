@@ -81,6 +81,7 @@ function credentialRecoveryFixture(
     upsertCredentialProfile: vi.fn(async () => recovery),
     deleteCredentialProfile: vi.fn(async () => recovery),
     setCredentialProfileEnrollment: vi.fn(async () => recovery),
+    setCredentialProfileEnv: vi.fn(async () => recovery),
     setCredentialRecoveryAutomaticPolicy: vi.fn(async () => recovery),
     applyCredentialProfile: vi.fn(async () => ({
       capability: 'restart_resume' as const,
