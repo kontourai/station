@@ -576,7 +576,11 @@
 
     "packages/sdk/src/query-domains/mcpPromptRun.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-conversation-read.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-conversation-read.test.ts",
+
+    "packages/sdk/src/query-domains/developerRuntime.ts",
+
+    "packages/sdk/src/query-domains/resourcePosture.ts"
   ],
 
   "checks": [

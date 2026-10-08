@@ -689,6 +689,11 @@ does not confirm gateway acceptance or delivery to a phone. See
 
 ## System status and update provenance
 
+`HostResourceSnapshot` describes point-in-time host memory and the answering
+Station process's PID, uptime, RSS and JavaScript heap. The resource-posture API
+adds it optionally; its observation timestamp is independent of the cached CPU
+sample. It is display-only and carries no execution or admission authority.
+
 `@kontourai/station-contracts/system-status` owns `DevicePresentation`
 (the request-bound host/paired projection), `SystemRuntimeIdentity`
 (the answering server's `instanceId`/`bootId`/`sha` triple with an optional
