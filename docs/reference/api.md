@@ -19,6 +19,15 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Project tool defaults
+
+Project create and update bodies accept optional `toolDefaults` with
+`mcpServers` and `knowledge`, through the [Project schema](../../src-server/routes/schemas/schema-definitions/content.ts).
+The nested object rejects unknown fields. Server IDs must pass the configured
+MCP ID validator; the list is limited to 32 IDs of at most 128 characters.
+These values configure additive tool delivery, subject to the Agent's existing
+restrictions and ordinary Project edit authority. See [configuration](./config.md#project-tool-defaults).
+
 ## Station MCP endpoints
 
 `/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
@@ -35,6 +44,52 @@ apply to each tool operation.
 - HTTP success can mean persisted or accepted while activation remains pending.
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
+
+## Choosing a working folder
+
+Naming a folder takes the authority to run commands there: for a paired
+device, the operator's `coding:exec` grant (the same rule `POST /api/projects`
+applies to a Project's folder). A device without it, including a `delegation`
+or `standard` preset device, gets `403` with
+`code: 'working-directory-not-granted'` and nothing starts or saves. The rule
+covers exactly these routes:
+
+- `POST /api/orchestration/delegations`, `/chat`, `/chat/delegated`,
+  `/chat/background` and `/conversations/:conversationId/handoff`, when
+  `target.workspace` is `{ kind: 'directory', cwd }`;
+- `POST /api/tasks/:taskId/dispatch` and `POST /api/starter-work/launch`
+  (`start-task`), when `runtimeConfig.cwd` is not the Task Project's own
+  folder;
+- `POST /api/projects/attach` with a `workingDirectory`, and
+  `PUT /api/projects/:slug/identity/execution-root` setting a path.
+
+A `{ kind: 'project' }` workspace is unchanged. The operator, and the desktop
+app on the Station's own computer, are not decided by the rule. Other routes
+that take a path are not covered by it.
+
+Choosing a command for Station to run takes the same authority, decided by the
+same check, and answers `403` with `code: 'command-not-granted'` and nothing saved
+or run. It covers exactly: `POST /acp/connections`, and `PUT /acp/connections/:id`
+when `command`, `args` or `cwd` change; `POST /integrations`, and
+`PUT /integrations/:id`, when `command` or `args` are set or change; `POST
+/api/projects/:slug/flow/runs/:runId/evidence/command`; and `PUT /config/app`
+when `terminalShell` changes (an agent's station-control call may not change it
+at all). The same code covers a tool server's `env` or `secretEnv` on a
+command-launching server, a URL-transport record changed to launch a stored
+command, `POST /api/plugins/install`, `/:name/recover` and `/:name/update`,
+`POST /api/registry/plugins/install` and `POST /api/registry/integrations/install`;
+entering an API key for a command-launching tool server from a paired device now
+needs the grant. Binding a secret to a command-launching server
+(`POST /api/secret-bindings/:id/bind`, `migrate-stored-env`, and `PUT` on a binding
+already bound to one) and `POST /api/registry/agents/install` take it too. A bind is checked for a missing or hidden
+binding too, so a caller without the grant gets `command-not-granted` there and one
+with it gets the service's `404`; a person-owned binding still answers the
+service's `400`; no env name is
+exempt. A saved
+Environment's dispatch that names no Project
+is sent with the verified project folder; if that Station answers
+`working-directory-not-granted`, the caller gets a fixed message naming a Project
+or the grant.
 
 ## Personal Task room agent requests
 
@@ -1362,15 +1417,32 @@ at most once a minute, sharing an in-flight rebuild with other readers.
 `snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
 engine sources, and `snapshot.skippedMessages` counts unreadable message rows.
 `snapshot.missingMessageCosts` counts saved assistant/usage rows without a valid
-cost, while `snapshot.costCoverageChecked` becomes false after incremental
-writes or enrichment until a rebuild. `snapshot.retainedUsage` flags retained
-message, token or cost totals larger than the currently rescanned corpus
-(ignoring cost rounding differences).
+cost, while `snapshot.costCoverageChecked` becomes false after message writes or
+enrichment until a rebuild. `snapshot.projection: "retained-source-v1"` marks
+current counters rebuilt from retained observations; corrections or deletions
+can reduce them. Earlier summaries remain in `legacySummary` as unverified
+migration evidence, excluded from current totals. `unallocated` keeps missing
+or ambiguous date/model/provider/principal allocations explicit. `tokenReports`
+distinguishes a measured zero from an unmeasured compatibility sum. Optional
+`reportedCostUsd` and `estimatedCostUsd` remain separate. Ordinary usage and
+rescan responses omit `byPrincipal`.
 A completed scan does not prove historical totals or every provider's accounting
 are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
+
+### Read Station Operator Usage
+
+`GET /api/analytics/station-usage` returns
+`{success: true, data: stats, scope: {kind: "station", stationId}}` with the
+local instance's retained-source statistics, including `byPrincipal`.
+Authorization uses the runtime-bound home-possession local-operator predicate;
+request flags, an ordinary paired credential, or a person attribution do not
+grant it. Hosted deployments and tenant workers are refused. Missing operator
+authority returns 403 before a source read; responses use `Cache-Control: no-store`.
+Peer Stations are excluded. This is an instance overview, not a person billing
+statement or complete provider-wide usage. See [measurement coverage](../guides/monitoring.md#operator-view-of-this-instance).
 
 ### Read Usage Receipts and Rollups
 
@@ -1411,10 +1483,17 @@ omit numeric progress, and remain locked; a reported zero remains eligible.
 
 `POST /api/analytics/rescan` returns
 `{success: true, data: stats, message: "Full rescan completed"}`. It scans
-Agent file-memory transcripts and folds available orchestration usage, excluding
-Session IDs already counted in file memory. It merges the rescan with retained
-stats rather than resetting every lifetime counter to zero. An unavailable
-orchestration source is not a measured empty source; inspect coverage metadata.
+Agent file-memory transcripts and folds available orchestration usage into a new
+retained-source projection. Corrected or deleted records decrease current totals
+and remove obsolete buckets. Pre-projection saved summaries remain separate,
+unverified `legacySummary` evidence. Only canonical Station-agent relay provenance
+selects a saved-message primary ledger; a matching conversation ID alone does not
+exclude external-engine usage. `unallocated` exposes missing or ambiguous date,
+model, principal and provider attribution. UTC buckets contain recorded facts,
+not precise consumption dates. Optional cost components and `tokenReports`
+preserve measured zero versus absence. An unavailable orchestration source is not
+a measured empty source; inspect snapshot and coverage metadata. See the
+[stats contract](../../packages/contracts/src/usage-stats.ts).
 
 ## Monitoring
 
@@ -2378,7 +2457,9 @@ provider's available catalog.
 
 `POST /api/registry/agents/install` accepts `{id, ...pluginInstallFields}`.
 When the ID resolves to a plugin, it uses the plugin install/consent path below.
-Otherwise it calls the Agent registry provider and returns its result. A
+Otherwise it calls the Agent registry provider (which copies a plugin tree into
+the plugins directory, so a paired device needs the `coding:exec` grant here
+too) and returns its result. A
 successful provider result triggers ACP-mode refresh, whose failure is currently
 caught separately; it is not a universal runtime-activation receipt.
 
@@ -2890,17 +2971,60 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
-`GET /api/conversations/:id/read?limit=&cursor=` returns one page of a
-conversation's transcript: `{conversationId, access, notice, messageCount,
-messages, nextCursor}`. `limit` is 1 to 50 (default 20); anything else is
-refused with `conversation_read_limit_out_of_range`, and a page's serialized
-messages never exceed 64 KB. Pass `nextCursor` back as `cursor`; it is checked
-only after the read is admitted. A station-control caller that is not a bound
+`GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
+page of a conversation's transcript: `{conversationId, access, notice,
+messageCount, messages, prevCursor, nextCursor}`. `limit` is 1 to 50 (default
+20); anything else is refused with `conversation_read_limit_out_of_range`, and a
+page's serialized messages never exceed 64 KB. Pass `nextCursor` back as
+`cursor` for newer messages or `prevCursor` for older ones (`null` at the
+ends); a cursor is checked only after the read is admitted. `aroundMessageId` (a
+`search_sessions` hit's `messageId`, at most 512 characters, not together with
+`cursor`) returns the page that contains that message: a message that is not in
+the conversation answers `conversation_read_anchor_not_found` (404), and nothing
+is read. User messages carry the stable id a search hit names
+(`<turn start event id>:user`). A station-control caller that is not a bound
 operator is further limited to its own conversation, its scope, or a
 conversation a person referenced in its conversation, and reads as the
 session's owner; a bound operator keeps the operator's reach. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
+
+### Station Control Project Activity
+
+`GET /api/orchestration/session-activity?limit=&cursor=` and
+`GET /api/orchestration/session-activity/:sessionId/digest?turnLimit=&cursor=`
+are the routes behind the station-control `list_project_activity` and
+`get_session_digest` tools. Both answer only a station-control tool call with a
+verified caller (anything else gets `403` `station_control_caller_required`) and
+read as the calling Session's owner.
+
+The list returns `{sessions, nextCursor}`: the Sessions of the caller's own
+Project (or the global space), newest activity first, one per conversation, each
+`{sessionId, conversationId?, title?, projectSlug?, engine, agent?, status,
+turnRunning, lastActivityAt, workingDirectory?, worktree?, self?}`. `status` is
+the status ladder's word. `limit` is 1 to 50 (default 25); anything else is
+`project_activity_limit_out_of_range`, and a `cursor` the list did not return is
+`project_activity_cursor_invalid`.
+
+The digest returns `{session, turns, page, nextCursor, delegatedChildrenIncomplete?}`,
+folded from recorded events only: `session` is `{sessionId, conversationId, title?,
+projectSlug?, engine, agent?, status, turnCount, worktree?}`, and each turn (newest
+first) has `turnId`, `startedAt`, `request?`, `outcome` (`completed`, `failed`,
+`interrupted` or `open`), `toolCalls`, and, when recorded, `files`,
+`pullRequests` and `delegatedChildren` (Sessions that started within the turn's
+window) with their totals. `filesReported: false` marks a turn that called tools
+none of which carried an engine tool kind: its absent `files` is unknown, not
+none. A page holds at most
+`turnLimit` turns (1 to 25, default 10; more is
+`session_digest_limit_out_of_range`) and at most 8 KiB of serialized turns. A
+lineage of more than 500 Sessions is `422` `session_digest_lineage_too_long`; a
+single turn over the page cap is `422` `session_digest_turn_too_large`. A
+caller reads the digest of its own conversation whatever its scope.
+
+A Session the caller may not see (another Project, another person, an unconfined
+Session for a caller that is not a bound operator, another Station) answers `404`
+`session_not_found`, identical to one that does not exist. See the
+[route](../../src-server/routes/orchestration/session-project-activity.ts).
 
 ### Agent Conversation Title
 
@@ -3271,7 +3395,8 @@ or connected assertion. Browser RTC remains renderer-owned.
 
 The separate [account owner](../../src-desktop/src/native_account_operations.rs)
 registers challenge/key preparation, complete local username/password exchange
-body preparation, canonical GET/HEAD member-read account headers, and fixed
+body preparation, canonical GET/HEAD member-read account headers, dedicated
+closed relay/Project access management headers, and fixed
 invitation-acceptance and native-continuation revocation requests. It constructs
 account claims using independent key custody and current host owners, with
 bounded one-exchange handles, replay/expiry and post-sign key fencing. These
@@ -3279,9 +3404,16 @@ structured commands do not mint a principal or replace the server's current
 provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
 for the typed provider and account-body-before-Device-signing ordering.
 
-The selected native relay member route permits only bounded Station observations
-and Project/shared-work reads, plus its fixed account operations. Ordinary SDK
-mutations are refused; operator and compute surfaces are unsupported. Native
+The selected native relay member route permits bounded Station observations
+and Project/shared-work reads, its fixed account operations, and the closed
+relay-management/Project access management inventory. The latter uses dedicated
+native account proof preparation and requires management scope plus independent
+Project IAM. The account-bound gate admits only the exact native relay leaves
+with current Device proof and account binding/session; `relay:manage` remains a
+separate management requirement. Credential-only account-bound Devices stay
+refused, and the capabilities read grants no authority.
+Other SDK mutations, terminal, Agent and Task publication writes are refused;
+generic operator and compute surfaces remain unsupported. Native
 continuation revocation retires that continuation and its provider session,
 without retiring Device custody. These are source-composed contracts, not a
 fresh native enrollment, physical-device, or published application receipt.

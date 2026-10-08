@@ -1,0 +1,7 @@
+{
+  "revision": "ac6860e23a97adf589f845874841af7f9b2cfc1f",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Read the entire proposal and its section 9 owner decisions against the integrated source. Reviewed this lane's cited remote-access threat-model delta: separate closed relay-management/native-proof leaves with operator-promoted relay:manage, actor/provider/target freshness and independent Project IAM do not authorize Funnel/public Station ingress, webhook automation, unattended grants or merge authority. Existing Funnel rejection and polling-first/no-public-Station decision remain unchanged; broker-forwarded push remains a proposal awaiting enablement. No prose change needed for this dependency delta. The inherited classification summary says owner decisions pending although section 9 records decisions; retain that prior classification as history, and this note records their current presence. ac686 focused run was 805 PASS/1 freshness FAIL; no live webhook, new device, canonical or changed-note test result claimed.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]}
+  ]
+}

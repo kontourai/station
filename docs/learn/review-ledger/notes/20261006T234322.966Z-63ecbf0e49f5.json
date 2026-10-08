@@ -1,0 +1,7 @@
+{
+  "revision": "0dd234dc8966852429ddc69f3f920e62a7cb4ab3",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed New chat entry from mobile header, collapsed dock, workspace controls and task picker. All retain onNewChat dispatch and existing composer flow; this refactor moves only the sole toolbar rendering. Corrected stale pencil description to actual conversation-plus glyph. Source inspection does not establish chat runtime completion or new browser/device acceptance; changed-source tests and build pending.","inputs":["docs/user/getting-started.md","src-ui/src/components/NewChatAction.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]}
+  ]
+}

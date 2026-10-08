@@ -1,0 +1,7 @@
+{
+  "revision": "0f55acc59224927af8c79d783c3298dd2f6f3cac",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Reviewed fixture repair at 0f55acc592: Project Settings keeps the real Tools section mounted and now supplies typed successful empty integration and Knowledge-root query results. SDK query return types and ToolsSection caller were inspected; no product or guide behavior changed. Focused shell plus Tools keeper passed 37 tests. The keeper caught a temporary production mutation that removed Weather from saved mcpServers, and exact source bytes were restored. This is local jsdom evidence, not hosted qualification, runtime provider or release proof.","inputs":["docs/guides/knowledge.md","src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}

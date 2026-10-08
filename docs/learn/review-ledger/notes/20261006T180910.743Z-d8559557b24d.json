@@ -1,0 +1,7 @@
+{
+  "revision": "c432cfdacbef6762b883773a11bf15637db6b8bb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"chat.css change lowers the phone project-control container query from 88px to 48px of content, measured in the real UI: long chat title leaves 40px (glyph), the short 'Chat' title leaves 56/87/98px at 320/390/412 (caption and name shown, as before this PR). The doc's claim (folder glyph only when a long title leaves the control too narrow for words; aria-label names the project) is now exactly what renders.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

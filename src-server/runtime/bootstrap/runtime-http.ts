@@ -1099,6 +1099,7 @@ function configureRuntimeSecurity(
             path: c.req.path,
           },
           authority === 'operator-credential',
+          locality === 'home-possession',
         );
       if (!permitted) {
         if (cookieCredential) {

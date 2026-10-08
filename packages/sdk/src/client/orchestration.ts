@@ -37,6 +37,7 @@
  */
 import type { ChildWorkTranscriptPage } from '@kontourai/station-contracts/child-work';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type { McpElicitationContent } from '@kontourai/station-contracts/mcp-elicitation';
 import type {
   AdoptedSessionResult,
   SteerInputInspectionResult,
@@ -108,6 +109,8 @@ export interface RespondToRequestInput {
   /** With `acceptForSession`: grant the whole Station browser server. */
   sessionGrantScope?: 'server';
   answers?: HarnessQuestionAnswers;
+  /** #3284: accepted content for a tool server's form; validated server-side. */
+  elicitationContent?: McpElicitationContent;
 }
 
 export interface RespondToRequestResult {

@@ -1,0 +1,9 @@
+{
+  "revision": "63e890e6988a33ea897d33e386dea52575e05759",
+
+  "notes": [
+    {"path":"docs/guides/commands.md","note":"Re-reviewed the hook after CI reported dispatchSlashCommand as unused: it now destructures the literal dynamic import and calls that binding directly. The async dispatcher is still returned without awaiting its execution inside the load-error catch, so execution failures retain the prior propagation and only import/synchronous binding failure takes the refusal path. ACP passthrough and precedence are unchanged. The refusal copy names Station commands rather than an implementation handler. No prose change; code-health and focused async dispatch evidence are requested on this revision.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useSlashCommandHandler.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-reviewed the direct dynamic import repair in the command hook. It exposes the real lazy dispatcher caller to code-health analysis without suppressing or weakening the gate; catalog selection, variable contracts and dispatch rules in this document remain unchanged. No prose change or new provider/runtime claim.","inputs":["docs/architecture/abstraction-review.md"]}
+  ]
+}

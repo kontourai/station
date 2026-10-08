@@ -1,10 +1,12 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 
 let providerEntries: Array<{
   builtin?: boolean;
@@ -26,6 +28,25 @@ const { CodexAdapter } = await import(
   '../../../providers/adapters/codex-adapter.js'
 );
 const homes: string[] = [];
+
+/**
+ * Choosing what a connection runs takes the operator in person (or a device
+ * holding coding:exec), and a request no auth boundary saw is refused, so the
+ * bare route is mounted behind the operator's principal.
+ */
+function asOperator(routes: Hono): Hono {
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      credential: 'operator-credential',
+      authority: 'operator-credential',
+      source: 'bearer',
+    });
+    await next();
+  });
+  app.route('/', routes);
+  return app;
+}
 
 async function createFilesystemRuntimeContext() {
   const home = mkdtempSync(join(tmpdir(), 'station-acp-routes-'));
@@ -74,7 +95,7 @@ describe('ACP Routes', () => {
 
   test('GET /status returns ACP status', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/status'));
     expect(body.success).toBe(true);
     expect(body.data.connected).toBe(false);
@@ -82,7 +103,7 @@ describe('ACP Routes', () => {
 
   test('rejects an invalid engine identity before any durable write', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections', {
       method: 'POST',
@@ -97,7 +118,7 @@ describe('ACP Routes', () => {
 
   test('GET /connections returns connection list', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/connections'));
     expect(body.success).toBe(true);
     expect(body.data).toEqual([]);
@@ -177,7 +198,7 @@ describe('ACP Routes', () => {
       },
     ];
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/registry'));
     expect(body.success).toBe(true);
     expect(body.data).toEqual([
@@ -216,7 +237,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.loadACPConfig.mockResolvedValue({
       connections: [{ id: 'kiro', name: 'Kiro', command: 'kiro-cli' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/registry'));
     expect(body.data).toEqual([
       expect.objectContaining({
@@ -254,7 +275,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.loadACPConfig.mockResolvedValue({
       connections: [{ id: 'kiro', name: 'User Kiro', command: 'kiro-cli' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(await app.request('/registry'));
 
     expect(body.data).toEqual([
@@ -285,7 +306,7 @@ describe('ACP Routes', () => {
       },
     ];
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(
       await app.request('/registry/kiro/install', { method: 'POST' }),
     );
@@ -328,7 +349,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.loadACPConfig.mockResolvedValue({
       connections: [{ id: 'kiro', command: 'kiro-cli' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/registry/kiro/install', { method: 'POST' });
     expect(res.status).toBe(409);
   });
@@ -362,7 +383,7 @@ describe('ACP Routes', () => {
       }
       return originalAgentExists(slug);
     };
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     const first = await app.request('/registry/kiro/install', {
       method: 'POST',
@@ -410,7 +431,7 @@ describe('ACP Routes', () => {
       },
     ];
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     const first = await json(
       await app.request('/registry/kiro/install', { method: 'POST' }),
@@ -462,7 +483,7 @@ describe('ACP Routes', () => {
     } as any);
 
     const body = await json(
-      await createACPRoutes(ctx).request('/registry/kiro/install', {
+      await asOperator(createACPRoutes(ctx)).request('/registry/kiro/install', {
         method: 'POST',
       }),
     );
@@ -494,7 +515,7 @@ describe('ACP Routes', () => {
       }
       return originalLoadAgent(slug);
     };
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
     const originalAddConnection = ctx.acpBridge.addConnection;
     ctx.acpBridge.addConnection = async (...args: unknown[]) => {
       installed = true;
@@ -527,7 +548,7 @@ describe('ACP Routes', () => {
     ];
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
     ctx.acpBridge.addConnection.mockResolvedValue(false);
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     const body = await json(
       await app.request('/registry/muse/install', { method: 'POST' }),
@@ -559,7 +580,7 @@ describe('ACP Routes', () => {
     ];
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
     ctx.acpBridge.addConnection.mockResolvedValue(false);
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
     await app.request('/registry/muse/install', { method: 'POST' });
 
     ctx.acpBridge.addConnection.mockResolvedValue(true);
@@ -585,7 +606,7 @@ describe('ACP Routes', () => {
     ctx.acpBridge.addConnection.mockRejectedValue(
       new Error('spawn muse ENOENT'),
     );
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     const body = await json(
       await app.request('/connections', {
@@ -604,7 +625,7 @@ describe('ACP Routes', () => {
 
   test('POST /connections creates no Agent for a disabled connection', async () => {
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
 
     await app.request('/connections', {
       method: 'POST',
@@ -623,7 +644,7 @@ describe('ACP Routes', () => {
 
   test('POST /connections creates connection', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const body = await json(
       await app.request('/connections', {
         method: 'POST',
@@ -646,7 +667,7 @@ describe('ACP Routes', () => {
       }
       return originalAgentExists(slug);
     };
-    const app = createACPRoutes(ctx);
+    const app = asOperator(createACPRoutes(ctx));
     const request = () =>
       app.request('/connections', {
         method: 'POST',
@@ -689,7 +710,7 @@ describe('ACP Routes', () => {
         return result;
       },
     );
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections', {
       method: 'POST',
@@ -711,7 +732,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.loadACPConfig.mockResolvedValue({
       connections: [{ id: 'test', command: 'x' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/connections', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -743,7 +764,7 @@ describe('ACP Routes', () => {
         return result;
       },
     );
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
     const request = () =>
       app.request('/connections', {
         method: 'POST',
@@ -763,7 +784,7 @@ describe('ACP Routes', () => {
 
   test('DELETE /connections/:id returns 404 without beginning a mutation when absent', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/missing', {
       method: 'DELETE',
@@ -782,7 +803,7 @@ describe('ACP Routes', () => {
         { id: 'kiro', name: 'Kiro', command: 'kiro-cli', enabled: true },
       ],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const empty = await app.request('/connections/kiro', {
       method: 'PUT',
@@ -815,7 +836,7 @@ describe('ACP Routes', () => {
       connections: [previous],
     });
     ctx.configLoader.saveACPConfig.mockRejectedValue(new Error('write failed'));
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/kiro', {
       method: 'PUT',
@@ -841,7 +862,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.saveACPConfig.mockImplementation(async (next) => {
       stored = structuredClone(next) as typeof stored;
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const update = await app.request('/connections/kiro', {
       method: 'PUT',
@@ -885,7 +906,7 @@ describe('ACP Routes', () => {
     ctx.configLoader.saveACPConfig.mockImplementation(async (next) => {
       stored = structuredClone(next) as typeof stored;
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     // Create: no provideToolServers supplied ⇒ absent, never inferred.
     expect(stored.connections[0].provideToolServers).toBeUndefined();
@@ -924,7 +945,7 @@ describe('ACP Routes', () => {
         },
       ],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/opencode', {
       method: 'PUT',
@@ -943,7 +964,7 @@ describe('ACP Routes', () => {
       connected: true,
       connections: [{ id: 'kiro', name: 'Kiro', status: 'unavailable' }],
     });
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/kiro/reconnect', {
       method: 'POST',
@@ -976,7 +997,7 @@ describe('ACP Routes', () => {
       ],
     });
     ctx.acpBridge.reconnect.mockResolvedValue(false);
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/kiro/reconnect', {
       method: 'POST',
@@ -1019,7 +1040,7 @@ describe('ACP Routes', () => {
         ],
       });
     ctx.acpBridge.reconnect.mockResolvedValue(false);
-    const response = await createACPRoutes(ctx as any).request(
+    const response = await asOperator(createACPRoutes(ctx as any)).request(
       '/connections/opencode/reconnect',
       { method: 'POST' },
     );
@@ -1037,7 +1058,7 @@ describe('ACP Routes', () => {
       connections: [{ id: 'kiro', name: 'Kiro', status: 'probing' }],
     });
     ctx.acpBridge.reconnect.mockResolvedValue(false);
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/kiro/reconnect', {
       method: 'POST',
@@ -1052,7 +1073,7 @@ describe('ACP Routes', () => {
 
   test('POST /connections/:id/reconnect returns 404 for a connection the bridge does not hold', async () => {
     const ctx = createMockRuntimeContext();
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/missing/reconnect', {
       method: 'POST',
@@ -1075,7 +1096,7 @@ describe('ACP Routes', () => {
     ctx.acpBridge.reconnect.mockRejectedValue(
       new Error('spawn muse ENOENT: Bearer sk-test1234 leaked in stderr'),
     );
-    const app = createACPRoutes(ctx as any);
+    const app = asOperator(createACPRoutes(ctx as any));
 
     const response = await app.request('/connections/muse/reconnect', {
       method: 'POST',
@@ -1107,7 +1128,7 @@ describe('ACP Routes', () => {
     test('POST /connections refuses an id a native runtime Adapter owns', async () => {
       registerNativeCodex();
       const ctx = createMockRuntimeContext();
-      const app = createACPRoutes(ctx as any);
+      const app = asOperator(createACPRoutes(ctx as any));
 
       const response = await app.request('/connections', {
         method: 'POST',
@@ -1140,7 +1161,7 @@ describe('ACP Routes', () => {
         },
       });
       const ctx = createMockRuntimeContext();
-      const app = createACPRoutes(ctx as any);
+      const app = asOperator(createACPRoutes(ctx as any));
 
       const response = await app.request('/connections', {
         method: 'POST',
@@ -1159,7 +1180,7 @@ describe('ACP Routes', () => {
     test('POST /connections still accepts an ACP id no native Adapter owns', async () => {
       registerNativeCodex();
       const ctx = createMockRuntimeContext();
-      const app = createACPRoutes(ctx as any);
+      const app = asOperator(createACPRoutes(ctx as any));
 
       const response = await app.request('/connections', {
         method: 'POST',
@@ -1182,7 +1203,7 @@ describe('ACP Routes', () => {
         },
       });
       const ctx = createMockRuntimeContext();
-      const app = createACPRoutes(ctx as any);
+      const app = asOperator(createACPRoutes(ctx as any));
 
       const response = await app.request('/registry/codex/install', {
         method: 'POST',

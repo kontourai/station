@@ -7,6 +7,7 @@ import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type { McpElicitationContent } from '@kontourai/station-contracts/mcp-elicitation';
 import type { ModelInventoryExecutionIdentity } from '@kontourai/station-contracts/model-inventory';
 import type {
   EngineId,
@@ -331,6 +332,8 @@ export interface ProviderAdapterShape {
     context?: {
       clientOrigin?: ClientOrigin;
       answers?: HarnessQuestionAnswers;
+      /** #3284: validated content for an accepted MCP form elicitation. */
+      elicitationContent?: McpElicitationContent;
       expectedRequestEventId?: string;
       /**
        * With `acceptForSession`: widen the grant to the whole in-process

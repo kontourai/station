@@ -8,6 +8,10 @@ import type {
   ProjectConfig,
   ProjectIconCandidate,
 } from '@kontourai/station-contracts/project';
+import type {
+  useIntegrationsQuery,
+  useKnowledgeRootsQuery,
+} from '@kontourai/station-sdk';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -142,6 +146,10 @@ vi.mock('../views/project-settings/LayoutsSection', () => ({
   LayoutsSection: () => <section>Layouts section</section>,
 }));
 
+vi.mock('../views/project-settings/ToolsSection', () => ({
+  ToolsSection: () => <section>Tools section</section>,
+}));
+
 vi.mock('../views/project-settings/KnowledgeSection', () => ({
   KnowledgeSection: () => <section>Knowledge section</section>,
 }));
@@ -155,6 +163,28 @@ vi.mock('../views/project-settings/ResourcesSection', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useIntegrationsQuery: () =>
+    ({
+      data: [],
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      refetch: vi.fn(),
+    }) satisfies Pick<
+      ReturnType<typeof useIntegrationsQuery>,
+      'data' | 'isLoading' | 'isError' | 'isSuccess' | 'refetch'
+    >,
+  useKnowledgeRootsQuery: () =>
+    ({
+      data: [],
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      refetch: vi.fn(),
+    }) satisfies Pick<
+      ReturnType<typeof useKnowledgeRootsQuery>,
+      'data' | 'isLoading' | 'isError' | 'isSuccess' | 'refetch'
+    >,
   // #2144 slice 2: the workspace picker names the mode the Station default
   // currently resolves to, so this view now reads the Station config.
   useConfigQuery: vi.fn(() => ({

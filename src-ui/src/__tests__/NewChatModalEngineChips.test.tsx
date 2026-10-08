@@ -278,6 +278,7 @@ describe('NewChatModal engine chips', () => {
     expect(
       screen.queryByRole('button', { name: /session override/ }),
     ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     // An effort change keeps the picker open.
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Thinking effort' }),

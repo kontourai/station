@@ -20,6 +20,7 @@ import {
 } from '../../routes/system/native-relay-enrollment-routes.js';
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
+import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   classifyOperatorCredentialPosition,
@@ -29,6 +30,11 @@ import {
   usesOperatorCredential,
 } from '../../security/host-operator-credential.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import { captureRelayManagementActor } from '../../security/relay-management-actor.js';
+import {
+  captureRelayManagementApproval,
+  hasRelayManagementAuthority,
+} from '../../security/relay-management-authority.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import {
   isPrincipalScopedAgentRequest,
@@ -53,6 +59,7 @@ import {
 } from '../../services/browser/browser-service.js';
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
 import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createAndroidAvdResolver } from '../../services/devices/android-avd.js';
 import {
   type DeviceAccess,
@@ -229,6 +236,7 @@ import {
   runtimeConnectionSummary,
 } from '../../routes/agents/enriched-agents.js';
 import { createInvokeRoutes } from '../../routes/agents/invoke.js';
+import { createAgentMcpPromptRoutes } from '../../routes/agents/mcp-prompts.js';
 import { resolveRuntimeAgent } from '../../routes/agents/runtime-agent-resolver.js';
 import { createSkillRoutes } from '../../routes/agents/skills.js';
 import { createTemplateRoutes } from '../../routes/agents/templates.js';
@@ -314,6 +322,7 @@ import { createOrchestrationRoutes } from '../../routes/orchestration/orchestrat
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
+import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
   createTaskRoutes,
@@ -375,6 +384,7 @@ import { createSettingsRegistryRoutes } from '../../routes/system/settings-regis
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
+import { launchesCommand } from '../../routes/working-directory-authority.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
 import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
@@ -393,6 +403,7 @@ import {
   classifyDirectDeviceActivityPeer,
   classifyRuntimePeer,
   getRuntimeAuthenticatedRequestPrincipal,
+  getRuntimeNativeDeviceProofPrincipal,
   isBoundRuntimeLocalOperator,
   isLoopbackAuthority,
   isRuntimeRequestPrincipalCurrent,
@@ -409,6 +420,7 @@ import { resolveStationBrowserOrigins } from '../../security/station-browser-ori
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import {
   principalKey,
@@ -761,6 +773,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
   nativeDeviceProofBindings?: NativeDeviceProofBindingService;
   /**
@@ -2104,6 +2117,65 @@ export function configureRuntimeRoutes(
       createNativeRelayEnrollmentOperatorRoutes(context.nativeRelayEnrollment),
     );
   }
+  if (context.relayInvitationOwner && context.nativeSurfaceRegistry)
+    context.app.route(
+      '/api/relay-management',
+      createRelayManagementRoutes({
+        owner: context.relayInvitationOwner,
+        registry: context.nativeSurfaceRegistry,
+        enrollment: context.nativeRelayEnrollment,
+        resolveActor: (c) => resolveOrchestrationRequestPrincipal(c),
+        actorCurrency: (request, actor) =>
+          captureRelayManagementActor(
+            request,
+            actor,
+            context.environmentSecurityService.devicePairing,
+            context.deploymentAuthentication?.service,
+          ),
+        captureDecision: (request, subjectId, actor) =>
+          captureRelayManagementApproval(
+            request,
+            subjectId,
+            context.environmentSecurityService,
+            context.environmentSecurityService.devicePairing,
+            actor,
+            captureRelayManagementActor(
+              request,
+              actor,
+              context.environmentSecurityService.devicePairing,
+              context.deploymentAuthentication?.service,
+            ),
+          ),
+        recordDecision: (request, operation, subject) => {
+          const native = getRuntimeNativeDeviceProofPrincipal(request);
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          const account =
+            context.deploymentAuthentication?.service.current(request);
+          context.logger.info('Remote access management decision', {
+            operation,
+            subject,
+            actorPrincipalId:
+              account?.kind === 'authenticated'
+                ? account.principal.id
+                : roomRequestPrincipals.get(request)?.id,
+            actorDeviceId:
+              native?.deviceId ??
+              (principal?.authority === 'device-credential'
+                ? context.environmentSecurityService.identifyDevice(
+                    principal.credential,
+                  )?.id
+                : undefined),
+            authority: native ? 'native-device-proof' : principal?.authority,
+          });
+        },
+        isManager: (request) =>
+          hasRelayManagementAuthority(
+            request,
+            context.environmentSecurityService,
+            context.environmentSecurityService.devicePairing,
+          ),
+      }),
+    );
   if (context.nativeSurfaceRegistry)
     context.app.route(
       '/api/pairing/native-relay-surfaces',
@@ -2616,6 +2688,10 @@ export function configureRuntimeRoutes(
           .map((peer) => peerCredentialStore.get(peer.environmentId))
           .filter((peer): peer is NonNullable<typeof peer> => peer !== null),
       context.environmentSecurityService.devicePairing.environmentId(),
+      (request) =>
+        !hostedTenantRegistry &&
+        !isHostedTenantExecutionRequired() &&
+        isBoundRuntimeLocalOperator(request),
     ),
   );
   context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));
@@ -2675,6 +2751,8 @@ export function configureRuntimeRoutes(
       context.secretBindingAdministration,
       context.secretBindingIntegrationAdministration,
       context.mcpService,
+      async (integrationId) =>
+        launchesCommand(await context.mcpService.getIntegration(integrationId)),
       { resolveViewerPrincipalId: resolveConnectedAccountPrincipalId },
     ),
   );
@@ -4499,6 +4577,23 @@ export function configureRuntimeRoutes(
     );
   }
 
+  // station#3413: Station Control's Project activity reads (the Sessions in
+  // the caller's Project, and one Session's digest). Agent-only leaves with
+  // their own per-Session scope check; their own prefix so nothing above
+  // changes.
+  if (context.orchestrationEventStore) {
+    context.app.route(
+      '/api/orchestration/session-activity',
+      createSessionProjectActivityRoutes({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        hostedTenantRegistry,
+      }),
+    );
+  }
+
   const runtimeContext = context.buildRuntimeContext();
 
   context.app.route(
@@ -4574,6 +4669,15 @@ export function configureRuntimeRoutes(
 
   context.app.route('/acp', createACPRoutes(runtimeContext));
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
+  context.app.route(
+    '/agents',
+    createAgentMcpPromptRoutes({
+      resolveAgentSpec: (slug) =>
+        runtimeContext.agentSpecs.get(runtimeAgentKey(slug)),
+      prompts: context.mcpService,
+      logger: context.logger,
+    }),
+  );
   context.app.route(
     '/',
     createInvokeRoutes(runtimeContext, {
@@ -6526,6 +6630,7 @@ export function configureRuntimeRoutes(
               ).id,
               c.req.raw,
             ),
+          projectFolder: resolveWorkspacePath,
         },
       ),
     );

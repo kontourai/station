@@ -1,0 +1,129 @@
+.station-usage.usage-rollup {
+  gap: var(--k-space-4);
+}
+
+.station-usage .button,
+.station-usage .choice-trigger {
+  min-height: 44px;
+}
+
+.station-usage__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  flex-wrap: wrap;
+}
+
+.station-usage__picker {
+  position: relative;
+  display: inline-flex;
+  width: min(100%, 14rem);
+}
+
+.station-usage__picker .choice-trigger {
+  width: 100%;
+  appearance: none;
+  padding-inline-end: calc(var(--k-space-6) + var(--k-space-2));
+}
+
+.station-usage__picker .choice-caret {
+  position: absolute;
+  inset-inline-end: var(--k-space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.station-usage__totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  gap: var(--k-space-4);
+  margin: 0;
+  padding-block: var(--k-space-3);
+  border-block: 1px solid var(--k-line);
+}
+
+.station-usage dt,
+.station-usage__sources {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.station-usage dd {
+  margin: var(--k-space-1) 0 0;
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.station-usage__totals dd {
+  font-size: var(--k-text-xl);
+  font-weight: 600;
+}
+
+.station-usage__ranking {
+  display: grid;
+  gap: var(--k-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.station-usage__rank-label {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--k-space-4);
+  margin-bottom: var(--k-space-2);
+  font-size: var(--k-text-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.station-usage__rank-label span {
+  overflow-wrap: anywhere;
+}
+
+.station-usage__rank-label strong {
+  font-family: var(--k-font-mono);
+  font-weight: 500;
+}
+
+.station-usage__track {
+  height: var(--k-space-2);
+  background: var(--k-panel-raised);
+}
+
+.station-usage__track span {
+  display: block;
+  height: 100%;
+  background: var(--k-brand);
+}
+
+.station-usage__unknown .station-usage__track span {
+  background: var(--k-text-faint);
+  border-top: 1px dashed var(--k-text);
+}
+
+.station-usage__details {
+  border-top: 1px solid var(--k-line);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.station-usage summary {
+  display: list-item;
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  color: var(--k-text);
+}
+
+.station-usage__sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--k-space-3);
+}
+
+.station-usage summary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}

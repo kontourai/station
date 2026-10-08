@@ -1,0 +1,7 @@
+{
+  "revision": "87c0dbecd22cbdd68d835dc084a4434a54a5dd53",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added the real nested-readiness diagnostic regression as evidence owner for the new fast-CI diagnostic paragraph. It executes the selected configured npm readiness command against the pinned Veritas CLI and a real failing required check, then persists stdout/stderr through the canonical redactor. The pre-fix failure was missing nested stdout; after the format change all 30 focused tests passed, with 2 Windows-only skips. This does not establish hosted artifact delivery or promotion qualification.","inputs":["docs/guides/testing.md","scripts/__tests__/veritas-readiness-evidence.test.ts"]}
+  ]
+}

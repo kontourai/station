@@ -165,6 +165,9 @@ import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js'
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
 export interface InitializeRuntimeDeps {
+  resolveProjectToolServers?: (
+    input: import('@kontourai/station-contracts/provider').ProviderSessionStartInput,
+  ) => Promise<readonly string[]>;
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -513,6 +516,7 @@ export async function initializeRuntime(
   const loadSessionAgentSpec = (slug: string) =>
     configLoader.loadAgent(slug).catch(() => null);
   const resolveSessionAgent = createSessionAgentResolver({
+    resolveProjectToolServers: deps.resolveProjectToolServers,
     loadAgentSpec: loadSessionAgentSpec,
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),

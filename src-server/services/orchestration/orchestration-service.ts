@@ -124,6 +124,10 @@ import {
   readHarnessQuestionnaire,
   validateHarnessQuestionAnswers,
 } from '@kontourai/station-shared/harness-questions';
+import {
+  readMcpElicitationForm,
+  validateMcpElicitationContent,
+} from '@kontourai/station-shared/mcp-elicitation';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
@@ -4014,9 +4018,16 @@ export class OrchestrationService {
     return true;
   }
 
+  /**
+   * `options.threadIds` narrows the read to those sessions (station#3413: the
+   * digest of ONE Session must not fold the whole inventory). Each is still
+   * held to the same readability and ephemeral checks as the full read.
+   */
   async listSessionReadModel(
     authority: SessionReadScope,
+    options?: { threadIds?: readonly string[] },
   ): Promise<OrchestrationSessionSummary[]> {
+    const only = options?.threadIds ? new Set(options.threadIds) : undefined;
     this.initialize();
     await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
     this.evictCollidingAttachedAliases();
@@ -4036,6 +4047,7 @@ export class OrchestrationService {
     const observedAt = new Date().toISOString();
     const readableThreadIds = [...threadIds].filter(
       (threadId) =>
+        (!only || only.has(threadId)) &&
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );
@@ -8180,6 +8192,40 @@ export class OrchestrationService {
             else if (command.answers !== undefined)
               throw new Error('A cancelled question cannot carry answers.');
           }
+          // #3284: a tool server's form. Accepted content must fit the form
+          // the person was actually shown — this exact opened event — and is
+          // refused with a reason otherwise; never coerced or cut to fit.
+          const elicitationForm = readMcpElicitationForm(
+            currentQuestionRequest?.state === 'found' &&
+              currentQuestionRequest.event.payload.method === 'request.opened'
+              ? currentQuestionRequest.event.payload.payload?.mcpElicitation
+              : undefined,
+          );
+          let elicitationContent:
+            | ReturnType<typeof validateMcpElicitationContent>
+            | undefined;
+          if (elicitationForm || command.elicitationContent !== undefined) {
+            if (
+              !elicitationForm ||
+              !command.expectedRequestEventId ||
+              command.decision === 'acceptForSession'
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Inspect the current form before answering it.',
+              );
+            if (command.decision === 'accept') {
+              if (command.elicitationContent === undefined)
+                throw new Error('Fill in the form before sending it.');
+              elicitationContent = validateMcpElicitationContent(
+                elicitationForm,
+                command.elicitationContent,
+              );
+            } else if (command.elicitationContent !== undefined)
+              throw new Error(
+                'A declined or cancelled form cannot carry content.',
+              );
+          }
 
           const assertAnswerCurrent = () => {
             if (command.expectedRequestEventId !== undefined) {
@@ -8307,7 +8353,7 @@ export class OrchestrationService {
             decision === 'acceptForSession' &&
             command.sessionGrantScope === 'server';
           const requestContext =
-            questionnaire || context?.clientOrigin || serverScope
+            questionnaire || elicitationForm || context?.clientOrigin || serverScope
               ? {
                   ...(serverScope
                     ? { sessionGrantScope: 'server' as const }
@@ -8316,7 +8362,9 @@ export class OrchestrationService {
                     ? { clientOrigin: context.clientOrigin }
                     : {}),
                   ...(command.answers ? { answers: command.answers } : {}),
-                  ...(questionnaire && command.expectedRequestEventId
+                  ...(elicitationContent ? { elicitationContent } : {}),
+                  ...((questionnaire || elicitationForm) &&
+                  command.expectedRequestEventId
                     ? { expectedRequestEventId: command.expectedRequestEventId }
                     : {}),
                 }

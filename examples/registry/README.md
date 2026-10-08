@@ -1,6 +1,6 @@
 # Example Registry Manifest
 
-This directory holds the two registry manifests Station ships. The Registry
+This directory holds the default registry and the fuller checkout catalog. The Registry
 marketplace can also connect this manifest as an additional source through
 Add marketplace → Station JSON manifest, using its absolute path on the host.
 Its entries still use the existing plugin preview, consent and installation
@@ -17,6 +17,11 @@ publisher identity or execution qualification.
   `fieldwork-review`). Point `registryUrl` at it to expose those too.
 - Relative `source` values resolve from this directory, so both are reproducible
   from any checkout.
+- Prebuilt server archives and desktop resources stage `default.json` with its
+  declared local plugin and integration targets. The builder copies tracked
+  source files, including Skill references and notices, and excludes untracked
+  build-host files. The fuller `manifest.json` remains a checkout/source-archive
+  catalog; it is not part of that prebuilt default.
 - `npm run proof:registry-manifest` validates `manifest.json` through both the
   server registry provider and the CLI registry resolver.
   `src-server/providers/registries/__tests__/default-registry.test.ts` holds

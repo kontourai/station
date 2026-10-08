@@ -1,0 +1,27 @@
+{
+  "revision": "86b1ed2fe3030a9419b5ac140d1817293ba34780",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared start entry, fixed Project context, destination task launcher, separate Agent and Model controls, model Options and recent filtering. Focused mounted tests and portal mutation passed; browser Home, pickers and Project entry inspected. Peer foreground chats remain unsupported; native shells not verified.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat-start/StartStationControl.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/chat-dock/DelegationLauncher.tsx","src-ui/src/components/session/SessionModelPicker.tsx","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated the current start journey: separate Agent and Model controls, Project and destination above the draft, Recent and Options, authorized remote tasks, fixed Project page context and no fallback for a missing Project. Traced actual shared callers and focused tests.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the chat picker delta and documented Recent and Options. Model/provider identity, connection setup, default reset and device preferences retain their existing owners and contracts; no connection API changes.","inputs":["docs/guides/connections.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Bounded start-surface delta review: new destination task entry and separate Model trigger do not change automatic engine preparation, prerequisites, setup return or connection onboarding. Existing documented setup mechanisms remain accurate; no new first-run readiness claim.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/guides/agents.md","note":"Bounded picker and task-launcher delta review: Agent readiness, repair, engine binding and model identity are unchanged. Separate Model trigger and Options are documented in the canonical start guide; existing agent configuration and ordinary delegation defaults remain accurate.","inputs":["docs/guides/agents.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Bounded task-launcher delta review: the new start entry reuses the existing portable Project/resource admission and receiver worker inventory. Existing station.delegate and self-configuration API semantics are unchanged; no automatic peer chat migration or grant changes.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed ProjectPage addition against Starter Work callers. The compact fixed-Project composer precedes activity; plugin eligibility and starter launch retain their existing scoped query, admission and one-shot dispatch. Existing starter instructions remain accurate.","inputs":["docs/guides/starter-work.md","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the Project scene and preserved its historical capture revision. Caption explicitly states that the original image predates the new inline composer and routes current controls to getting-started; existing saved-Task illustration is not current UI qualification.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Bounded ProjectPage/start delta review: only app-owned UI composition changes. The SDK hooks and public request/response contracts used by Project and task dispatch remain unchanged; no SDK reference prose correction is needed.","inputs":["docs/reference/sdk.md","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Bounded launcher/picker delta review: regular delegation remains Delegate a task with collapsed routing; the new start entry expands routing under Run on a Station. The self-configuring Agent example and tool/API contracts remain unchanged.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Historical capture review only: the original image and capturedRevision are retained, and its caption explicitly identifies the older appearance and absence of the new inline composer. The Project/Task distinction illustrated by the original sample remains accurate. This does not qualify current UI pixels, native shells or live execution.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

@@ -530,10 +530,10 @@ export async function installMockOrchestrationSse(page: Page): Promise<void> {
         );
       }
 
-      dispatch(type: string, payload: unknown) {
+      dispatch(type: string, payload: unknown, id?: number) {
         this.controller.enqueue(
           encoder.encode(
-            `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`,
+            `${id === undefined ? '' : `id: ${id}\n`}event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`,
           ),
         );
       }
@@ -566,9 +566,9 @@ export async function installMockOrchestrationSse(page: Page): Promise<void> {
     };
 
     (window as any).__mockOrchestrationSse = {
-      emit(type: string, payload: unknown) {
+      emit(type: string, payload: unknown, id?: number) {
         for (const instance of MockSseConnection.instances) {
-          instance.dispatch(type, payload);
+          instance.dispatch(type, payload, id);
         }
       },
       count() {
@@ -729,6 +729,14 @@ export async function emitMockOrchestrationEvent(
   page: Page,
   type: string,
   payload: unknown,
+  /**
+   * The frame's global stream sequence (its SSE `id:`). Only a sequenced
+   * frame is stitched into a conversation's event window, so a live event
+   * that must change the PROJECTED transcript (a request resolved elsewhere)
+   * needs one past the window's watermark. Omitted, the frame carries no id,
+   * as before.
+   */
+  options: { sequence?: number } = {},
 ): Promise<void> {
   if (
     type === 'orchestration:event' &&
@@ -750,10 +758,10 @@ export async function emitMockOrchestrationEvent(
     emittedOrchestrationEvents.set(page, events);
   }
   await page.evaluate(
-    ([eventType, eventPayload]) => {
-      (window as any).__mockOrchestrationSse.emit(eventType, eventPayload);
+    ([eventType, eventPayload, id]) => {
+      (window as any).__mockOrchestrationSse.emit(eventType, eventPayload, id);
     },
-    [type, payload],
+    [type, payload, options.sequence] as const,
   );
 }
 

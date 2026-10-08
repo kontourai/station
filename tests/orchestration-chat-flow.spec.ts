@@ -14,6 +14,7 @@ import {
   seedOrchestrationRoutes,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { openChooserFromToggle } from './helpers/region-placement';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 const answerBasisProjection = {
@@ -553,7 +554,7 @@ test.describe('Orchestration Chat Flow', () => {
    * answer path into each state the issue names: pending, refused ("was not
    * delivered"), and "no longer open" (buttons disabled).
    */
-  test('keeps the approval card label visible and its glyphs clear of the buttons at 360px and 720px, with legible buttons in both themes (#2917)', async ({
+  test('keeps the approval card label visible and its glyphs clear of its controls at 360px and 720px (decisions in the #3331 request sheet) and in a narrow desktop dock, with legible buttons in both themes (#2917)', async ({
     page,
   }) => {
     const browserHealth = await monitorBrowserHealth(page);
@@ -702,7 +703,14 @@ test.describe('Orchestration Chat Flow', () => {
     });
     await expect(allowOnce).toBeVisible();
 
-    const expectClearLayout = async (context: string) => {
+    // On a phone width (#3331) the row carries one Answer control and the
+    // three decisions move into the shared request sheet; the desktop row
+    // keeps all three inline.
+    const expectClearLayout = async (
+      context: string,
+      controls = '.tool-call__approve-btn, button[aria-label="More ways to allow this request"]',
+      controlCount = 3,
+    ) => {
       const label = await card.locator('.tool-call__label').boundingBox();
       expect(label, `${context}: label box`).not.toBeNull();
       // Collapsed to 0px on main at 360px (every state) and at 720px once
@@ -716,24 +724,19 @@ test.describe('Orchestration Chat Flow', () => {
       expect(line!.width, `${context}: line width`).toBeGreaterThanOrEqual(
         Math.min(160, row!.width) - 1,
       );
-      // Deny and Allow Once, plus the menu holding the session choices.
-      const buttons = await card
-        .locator(
-          '.tool-call__approve-btn, button[aria-label="More ways to allow this request"]',
-        )
-        .evaluateAll((nodes) =>
-          nodes.map((node) => {
-            const r = node.getBoundingClientRect();
-            return {
-              text: node.textContent,
-              x: r.x,
-              y: r.y,
-              w: r.width,
-              h: r.height,
-            };
-          }),
-        );
-      expect(buttons, context).toHaveLength(3);
+      const buttons = await card.locator(controls).evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const r = node.getBoundingClientRect();
+          return {
+            text: node.textContent,
+            x: r.x,
+            y: r.y,
+            w: r.width,
+            h: r.height,
+          };
+        }),
+      );
+      expect(buttons, context).toHaveLength(controlCount);
       const glyphs = await card
         .locator('.tool-call__glyph, .tool-call__awaiting, .tool-call__chevron')
         .evaluateAll((nodes) =>
@@ -772,7 +775,10 @@ test.describe('Orchestration Chat Flow', () => {
       ).toBe(true);
     };
 
-    const expectLegibleButtons = async (context: string) => {
+    const expectLegibleButtons = async (
+      context: string,
+      buttons: Locator = card.locator('.tool-call__approve-btn'),
+    ) => {
       const measure = async (button: Locator, label: string) => {
         // contrastRatio does not model element opacity, which is how the
         // disabled and hover states used to fade the text under 4.5:1. Pin
@@ -798,9 +804,7 @@ test.describe('Orchestration Chat Flow', () => {
         await page.evaluate((value) => {
           document.documentElement.setAttribute('data-theme', value);
         }, theme);
-        for (const button of await card
-          .locator('.tool-call__approve-btn')
-          .all()) {
+        for (const button of await buttons.all()) {
           const label = `${context} ${theme} ${await button.textContent()}`;
           await page.mouse.move(0, 0);
           await measure(button, label);
@@ -820,57 +824,45 @@ test.describe('Orchestration Chat Flow', () => {
     // back on screen in the dock before its geometry is read.
     await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
     await expect(page.locator('#chat-dock')).toBeVisible();
-    await expect(allowOnce).toBeVisible();
-    await expectClearLayout('pending 360');
-    await expectLegibleButtons('pending');
+    const answerControl = card.getByRole('button', {
+      name: 'Answer',
+      exact: true,
+    });
+    await expect(answerControl).toBeVisible();
+    await expect(allowOnce).toHaveCount(0);
+    await expectClearLayout('pending 360', '.request-sheet-trigger', 1);
+    await expectLegibleButtons('pending row', answerControl);
 
-    await allowOnce.click();
-    await expect(card.getByRole('alert')).toContainText(
+    await answerControl.click();
+    const sheet = page.getByRole('dialog', { name: 'Needs approval' });
+    const sheetActions = sheet.locator('.request-sheet__actions button');
+    const sheetAllow = sheet.getByRole('button', {
+      name: 'Allow Once',
+      exact: true,
+    });
+    await expect(sheetAllow).toBeVisible();
+    await expectLegibleButtons('pending sheet', sheetActions);
+
+    await sheetAllow.click();
+    await expect(sheet.getByRole('alert')).toContainText(
       'Your decision was not delivered',
     );
-    await expectClearLayout('refused 360');
-    await expectLegibleButtons('refused');
+    await expectClearLayout('refused 360', '.request-sheet-trigger', 1);
+    await expectLegibleButtons('refused sheet', sheetActions);
     await page.setViewportSize({ width: 720, height: 800 });
-    await expectClearLayout('refused 720');
-    // At 720px the row has room for the line's basis beside the buttons, so
-    // the refused sentence wraps under the buttons rather than widening the
-    // actions until they drop below the label.
-    const [labelBox, allowBox] = await Promise.all([
-      card.locator('.tool-call__line').boundingBox(),
-      allowOnce.boundingBox(),
-    ]);
-    expect(
-      allowBox!.y,
-      'refused 720: buttons share the label row',
-    ).toBeLessThan(labelBox!.y + labelBox!.height);
+    // 720px is still a phone-class width (max-width 768px): the sheet stays
+    // open over the row, and the row keeps its label beside Answer.
+    await expect(sheet).toBeVisible();
+    await expectClearLayout('refused 720', '.request-sheet-trigger', 1);
 
     answer = 'settled';
     await page.setViewportSize({ width: 360, height: 800 });
-    const enabledBoxes = await card
-      .locator('.tool-call__approve-btn')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => node.getBoundingClientRect().width),
-      );
-    await allowOnce.click();
-    await expect(card.getByRole('status')).toHaveText(
+    await sheetAllow.click();
+    await expect(sheet.getByRole('status')).toHaveText(
       'This request is no longer open.',
     );
-    await expect(allowOnce).toBeDisabled();
-    // Disabling restyles the buttons without resizing them: a border that
-    // appears only when disabled shifted every button by 2px on click.
-    const disabledBoxes = await card
-      .locator('.tool-call__approve-btn')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => node.getBoundingClientRect().width),
-      );
-    disabledBoxes.forEach((width, index) => {
-      expect(
-        Math.abs(width - enabledBoxes[index]),
-        `button ${index} width change on disable`,
-      ).toBeLessThan(0.5);
-    });
-    await expectClearLayout('no longer open 360');
-    await expectLegibleButtons('no longer open');
+    await expect(sheetAllow).toBeDisabled();
+    await expectClearLayout('no longer open 360', '.request-sheet-trigger', 1);
 
     // A desktop viewport (above the 768px breakpoint, so the shared mobile
     // `[class*="__actions"]` wrap rule does not apply) with the card in the
@@ -878,9 +870,14 @@ test.describe('Orchestration Chat Flow', () => {
     // than overflow it with buttons squeezed into vertical letters.
     answer = 'refuse';
     await page.setViewportSize({ width: 1280, height: 800 });
-    // A route whose Chat is the dock: the Coding layout's centre owns Chat on
-    // a wide screen (#928 coding stack), so the narrow right dock is Home's.
-    await page.goto('/?chat=conv-1&dock=open&dockSlotPlacement=right');
+    // Navigate through the app and place Chat through its public region
+    // owner. A browser reload can retain the Coding pane instead of landing
+    // the ambient shell under the hosted smoke fixture.
+    await page.getByRole('button', { name: 'Home', exact: true }).click();
+    await expect(page).toHaveURL(/\/(?:\?.*)?$/);
+    const rightChooser = await openChooserFromToggle(page, 'Right');
+    await rightChooser.getByRole('menuitem', { name: /^Chat( |$)/ }).click();
+    await expect(rightChooser).toBeHidden();
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
     await page.addStyleTag({
       content:
@@ -898,6 +895,7 @@ test.describe('Orchestration Chat Flow', () => {
         actionsBox.x + actionsBox.width,
         `${context}: actions inside the card`,
       ).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+      // Deny and Allow Once; the session choices sit in the overflow menu.
       const lineCounts = await card
         .locator('.tool-call__approve-btn')
         .evaluateAll((nodes) =>
@@ -909,7 +907,6 @@ test.describe('Orchestration Chat Flow', () => {
             ).size;
           }),
         );
-      // Deny and Allow Once; the session choices sit in the overflow menu.
       expect(lineCounts, `${context}: button labels on one line`).toEqual([
         1, 1,
       ]);
@@ -922,6 +919,39 @@ test.describe('Orchestration Chat Flow', () => {
     );
     await expectClearLayout('desktop right dock refused');
     await expectActionsContained('desktop right dock refused');
+
+    // The disabled "no longer open" state of the inline buttons. Only a
+    // desktop renders them since #3331 (a phone answers in the request
+    // sheet), so this is where their disabled styling is pinned. The 720px
+    // label-row check this test once made has no subject any more: 720px is
+    // under the 768px phone query, where the row carries only Answer.
+    answer = 'settled';
+    const desktopEnabledWidths = await card
+      .locator('.tool-call__approve-btn')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().width),
+      );
+    await allowOnce.click();
+    await expect(card.getByRole('status')).toHaveText(
+      'This request is no longer open.',
+    );
+    await expect(allowOnce).toBeDisabled();
+    // Disabling restyles the buttons without resizing them: a border that
+    // appears only when disabled shifted every button by 2px on click.
+    const desktopDisabledWidths = await card
+      .locator('.tool-call__approve-btn')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().width),
+      );
+    expect(desktopDisabledWidths).toHaveLength(desktopEnabledWidths.length);
+    desktopDisabledWidths.forEach((width, index) => {
+      expect(
+        Math.abs(width - desktopEnabledWidths[index]),
+        `desktop button ${index} width change on disable`,
+      ).toBeLessThan(0.5);
+    });
+    await expectClearLayout('desktop right dock no longer open');
+    await expectLegibleButtons('desktop right dock no longer open');
     browserHealth.assertHealthy();
   });
 });
