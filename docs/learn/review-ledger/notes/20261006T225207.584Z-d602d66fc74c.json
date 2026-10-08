@@ -1,0 +1,7 @@
+{
+  "revision": "9ea1dd94f4efbe68e47b63e30af93ebccc8386b9",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Evidence count clarification for the prior note: initial45-suite run at1db had44passingfiles plus docs-index31PASS1FAIL, total801PASS1FAIL (770passed outside docs-index); after the scoped manifest review note at9ea, only the failingdocs-index suite was rechecked and32/32PASS. No blanket45-suite rerun or whole-source/native/device/hosted PASS is implied. Shared native-relay export remains the only manifest delta; inherited patched graph/D7/Oct13bound disposition and actualintegratedbinding remain unchanged.","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

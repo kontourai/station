@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
 import { CI_FAST_TIMEOUT_MS } from './verification-lanes.mjs';
 
@@ -242,7 +243,10 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // exactly as they do locally. The "0 files changed -> no matched nodes"
   // line printed on a clean tree reports changed-node routing, not these
   // rules — reading it as "nothing was checked" is the trap.
-  Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'veritas:readiness', '--', '--format', 'json']),
+  ]),
   // PRECONDITION for the aggregate below, not a build step for its own sake
   // (station#4273). `typecheck:ui` resolves `@kontourai/station-connect`
   // through `packages/connect/dist`; without it that lane reports a bogus
@@ -332,7 +336,18 @@ export function classifyCiFastCommandResult(result) {
 }
 
 function run(command, args, { cwd, timeout, env }) {
-  const result = spawnSync(command, args, {
+  let invocation = { command, args };
+  if (command === 'npm') {
+    try {
+      invocation = npmInvocation(args, { env });
+    } catch (cause) {
+      throw new CiFastInfrastructureError(
+        `ci:fast npm launcher could not resolve: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      );
+    }
+  }
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd,
     ...(env ? { env } : {}),
     stdio: 'inherit',

@@ -2,7 +2,10 @@ import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-c
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
+import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
   type LoadedDeploymentAuthentication,
@@ -33,6 +36,8 @@ import {
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
+import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
@@ -128,11 +133,9 @@ import { makeUnattendedGrantResolver } from '../../services/agents/unattended-gr
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
-import {
-  appHomeActive,
-  connectionSpawnEnv,
-} from '../../services/connections/connection-env.js';
+import { appHomeActive } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import {
@@ -153,6 +156,8 @@ import {
   type FeaturePreviewSelector,
 } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
+import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
+import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
@@ -510,6 +515,7 @@ export interface StationRuntimeOptions {
     ready: (application: VirtualApplication) => void;
   };
   /** Explicit self-hosted routing composition; requires virtualApplication. */
+  relayInvitationOwner?: RelayInvitationOwner;
   selfHostedBrokerConnector?: {
     /** Validated native application lane actually selected by the trusted connector factory. */
     nativeApplication?: NativeApplicationConnectorConfiguration;
@@ -543,6 +549,7 @@ export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
   private virtualApplication?: VirtualApplicationIngress;
+  private readonly relayInvitationOwner?: RelayInvitationOwner;
   private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
   private selfHostedBroker?: {
     start(): Promise<void>;
@@ -760,6 +767,7 @@ export class StationRuntime {
   private approvalRegistry: ApprovalRegistry;
   private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
   private readonly codexRolloutSource = new CodexRolloutSessionSource();
+  private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
     resolveSourceHome: (affinity) =>
@@ -837,11 +845,12 @@ export class StationRuntime {
     // byte-identical spawn env. Lazy-captured posture identical to
     // `getAppHomeEnv` above: only invoked at spawn time, well after
     // construction.
-    getConnectionEnv: async () => {
-      const appConfig = await this.configLoader.loadAppConfig();
-      return connectionSpawnEnv(
-        appConfig.agentConnections?.claude?.config,
+    getConnectionLaunch: async () => {
+      const config = await this.configLoader.loadAppConfig();
+      return engineProxyLaunch(
         'claude',
+        config.agentConnections?.claude?.config,
+        this.providerService.listProviderConnections(),
       );
     },
     // Station#1157 review fix (MEDIUM): the built-in station-control MCP
@@ -936,11 +945,12 @@ export class StationRuntime {
     // station#2072: codex counterpart of claudeAdapter's getConnectionEnv
     // closure above — same sanitization, same lazy capture, `CODEX_HOME`
     // as the config-home key.
-    getConnectionEnv: async () => {
-      const appConfig = await this.configLoader.loadAppConfig();
-      return connectionSpawnEnv(
-        appConfig.agentConnections?.codex?.config,
+    getConnectionLaunch: async () => {
+      const config = await this.configLoader.loadAppConfig();
+      return engineProxyLaunch(
         'codex',
+        config.agentConnections?.codex?.config,
+        this.providerService.listProviderConnections(),
       );
     },
     // archive#1195: the wire-safe substitution for the built-in
@@ -1116,6 +1126,12 @@ export class StationRuntime {
     ),
   });
   private consentListener: ConsentListener | null = null;
+  // #3257 (S2b): the operator passkey enrollment ceremony. The registry file is
+  // created only when a ceremony actually begins (which needs
+  // STATION_TRUSTED_CONSENT_ORIGIN), so a Station that never enrolls a passkey
+  // never creates the database; it is closed with the other private stores.
+  private operatorPasskeyRegistry?: LazyOperatorPasskeyRegistry;
+  private operatorPasskeys?: OperatorPasskeyEnrollmentService;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
@@ -1162,6 +1178,7 @@ export class StationRuntime {
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
+    this.relayInvitationOwner = options.relayInvitationOwner;
     this.selfHostedBrokerConfiguration = options.selfHostedBrokerConnector;
     if (
       this.selfHostedBrokerConfiguration &&
@@ -3651,6 +3668,8 @@ export class StationRuntime {
           attachedSessionSources: [
             this.claudeTranscriptSource,
             this.codexRolloutSource,
+            new GrokSessionSource({ logger: this.logger }),
+            this.openCodeSessionSource,
           ],
           port: this.port,
           host: this.host,
@@ -3661,6 +3680,20 @@ export class StationRuntime {
           timers: this.timers,
           configLoader: this.configLoader,
           storageAdapter: this.storageAdapter,
+          resolveProjectToolServers: async (input) => {
+            const slug = input.metadata?.projectSlug;
+            if (typeof slug !== 'string' || !slug) return [];
+            const project = this.projectService.getProject(slug);
+            const roots = await this.knowledgeStoreProvider.listRoots();
+            return projectMcpServers(
+              project,
+              roots.some(
+                (root) =>
+                  root.scope.kind === 'project' &&
+                  root.scope.projectSlug === slug,
+              ),
+            );
+          },
           skillService: this.skillService,
           feedbackService: this.feedbackService,
           voiceService: this.voiceService,
@@ -4139,6 +4172,33 @@ export class StationRuntime {
    * refusal — and never degrades open. This deliberately does NOT copy the
    * MCP frame proxy's silent `resolve(null)` optional-degrade shape.
    */
+  /**
+   * The enrollment service, or undefined where it must not exist (hosted
+   * tenants, D11). Opening the store is deferred to first use, and a store
+   * that cannot open privately fails that call closed; it never blocks startup.
+   */
+  private getOperatorPasskeys(): OperatorPasskeyEnrollmentService | undefined {
+    if (this.operatorPasskeys) return this.operatorPasskeys;
+    if (isHostedTenantExecutionRequired()) return undefined;
+    this.operatorPasskeyRegistry = new LazyOperatorPasskeyRegistry(
+      this.configLoader.getProjectHomeDir(),
+    );
+    this.operatorPasskeys = new OperatorPasskeyEnrollmentService({
+      registry: this.operatorPasskeyRegistry,
+      origin: this.consentChannel.trustedOrigin,
+      resolveDevice: (deviceId) => {
+        const device = this.environmentSecurityService.devicePairing
+          .listDevices()
+          .find((item) => item.id === deviceId);
+        return device && device.revokedAt === null
+          ? { scope: device.scope }
+          : null;
+      },
+      logger: this.logger,
+    });
+    return this.operatorPasskeys;
+  }
+
   private async startConsentListenerOrReport(): Promise<void> {
     if (isHostedTenantExecutionRequired()) {
       // Same posture as the terminal listener above: hosted ingress is
@@ -4170,6 +4230,7 @@ export class StationRuntime {
         channel: this.consentChannel,
         credentials: this.environmentSecurityService,
         logger: this.logger,
+        passkeys: this.getOperatorPasskeys(),
       }),
       port,
       host: this.host,
@@ -4221,6 +4282,7 @@ export class StationRuntime {
       agentActivityPublisher,
       notificationDeliveryRouter,
     } = configureRuntimeRoutes({
+      relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
       ...(this.nativeDeviceProofPilot
@@ -4244,6 +4306,7 @@ export class StationRuntime {
       environmentSecurityService: this.environmentSecurityService,
       approvalRegistry: this.approvalRegistry,
       consentChannel: this.consentChannel,
+      operatorPasskeys: this.getOperatorPasskeys(),
       appConfig: this.appConfig,
       // Delta2 review H2: `appConfig` above is captured once, here, while
       // `this.appConfig` is REPLACED by every configuration reload
@@ -4359,6 +4422,25 @@ export class StationRuntime {
       activeAgents: this.activeAgents,
       agentSpecs: this.agentSpecs,
       agentTools: this.agentTools,
+      loadProjectTools: createProjectNativeToolLoader({
+        agentSpecs: this.agentSpecs,
+        getProject: (slug) => this.projectService.getProject(slug),
+        listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        loadTools: (slug, spec) =>
+          this.framework.loadTools(slug, spec, {
+            configLoader: this.configLoader,
+            mcpConfigs: this.mcpConfigs,
+            mcpCustody: this.mcpCustody,
+            mcpConnectionStatus: this.mcpConnectionStatus,
+            integrationMetadata: this.integrationMetadata,
+            toolNameMapping: this.toolNameMapping,
+            toolNameReverseMapping: this.toolNameReverseMapping,
+            mcpToolProvenanceGeneration: this.mcpToolProvenanceGeneration,
+            integrationSecretResolver: this.secretBindingAdministration,
+            logger: this.logger,
+            serverPort: this.port,
+          }),
+      }),
       memoryAdapters: this.memoryAdapters,
       mcpConnectionStatus: this.mcpConnectionStatus,
       integrationMetadata: this.integrationMetadata,
@@ -4817,6 +4899,13 @@ export class StationRuntime {
     try {
       this.applicationSessions?.close();
       this.applicationSessions = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.operatorPasskeyRegistry?.close();
+      this.operatorPasskeyRegistry = undefined;
+      this.operatorPasskeys = undefined;
     } catch (error) {
       failures.push(error);
     }

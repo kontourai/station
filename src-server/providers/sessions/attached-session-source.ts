@@ -77,9 +77,21 @@ export interface AttachedSessionSource {
   readonly kind: string;
   /** Declared only when completed canonical turn IDs are native fork positions. */
   readonly continuationBoundary?: 'completed-turn';
+  /**
+   * For an engine Station runs under a different provider id (Grok runs as an
+   * ACP connection): the native session id a persisted Station session owns
+   * in this source, so the follower does not import Station's own session a
+   * second time. Absent: only the same provider's adapter proves ownership.
+   */
+  ownedNativeSessionId?(session: {
+    provider: string;
+    resumeCursor?: unknown;
+  }): string | undefined;
   discover(): Promise<AttachedSessionDiscoveryResult>;
   read(
     session: AttachedSessionDescriptor,
     cursor?: AttachedSessionCursor,
   ): Promise<AttachedSessionReadResult>;
+  /** Release held resources (open store handles); called when following stops. */
+  close?(): void;
 }

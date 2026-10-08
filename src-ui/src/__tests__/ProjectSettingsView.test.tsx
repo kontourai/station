@@ -4,7 +4,14 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
-import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import type {
+  ProjectConfig,
+  ProjectIconCandidate,
+} from '@kontourai/station-contracts/project';
+import type {
+  useIntegrationsQuery,
+  useKnowledgeRootsQuery,
+} from '@kontourai/station-sdk';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -34,6 +41,8 @@ const sdkMocks = vi.hoisted(() => ({
   peersError: false,
   peersLoading: false,
   modelConnections: [] as Array<Record<string, unknown>>,
+  iconCandidates: [] as ProjectIconCandidate[],
+  iconCandidatesQuery: vi.fn(),
   // `undefined` is the unread config — the picker must not claim a resolved
   // mode it has not seen.
   stationConfig: undefined as
@@ -137,6 +146,10 @@ vi.mock('../views/project-settings/LayoutsSection', () => ({
   LayoutsSection: () => <section>Layouts section</section>,
 }));
 
+vi.mock('../views/project-settings/ToolsSection', () => ({
+  ToolsSection: () => <section>Tools section</section>,
+}));
+
 vi.mock('../views/project-settings/KnowledgeSection', () => ({
   KnowledgeSection: () => <section>Knowledge section</section>,
 }));
@@ -150,6 +163,28 @@ vi.mock('../views/project-settings/ResourcesSection', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useIntegrationsQuery: () =>
+    ({
+      data: [],
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      refetch: vi.fn(),
+    }) satisfies Pick<
+      ReturnType<typeof useIntegrationsQuery>,
+      'data' | 'isLoading' | 'isError' | 'isSuccess' | 'refetch'
+    >,
+  useKnowledgeRootsQuery: () =>
+    ({
+      data: [],
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      refetch: vi.fn(),
+    }) satisfies Pick<
+      ReturnType<typeof useKnowledgeRootsQuery>,
+      'data' | 'isLoading' | 'isError' | 'isSuccess' | 'refetch'
+    >,
   // #2144 slice 2: the workspace picker names the mode the Station default
   // currently resolves to, so this view now reads the Station config.
   useConfigQuery: vi.fn(() => ({
@@ -183,6 +218,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: sdkMocks.error,
     refetch: sdkMocks.refetch,
   })),
+  // The icon picker's artwork discovery; closed by default, so unread.
+  useProjectIconCandidatesQuery: (...args: unknown[]) => {
+    sdkMocks.iconCandidatesQuery(...args);
+    return { data: sdkMocks.iconCandidates, isFetching: false };
+  },
   useUpdateProjectMutation: vi.fn(() => ({
     isPending: false,
     mutateAsync: async (
@@ -327,7 +367,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expectPageFullRoot(container);
     expect(container.querySelector('.project-settings')).toBeNull();
     expect(
-      screen.getByRole('heading', { name: 'D Demo Project' }),
+      // The icon is drawn, never spelled into the heading: a stored image
+      // icon is a data URL, which used to land here as text.
+      screen.getByRole('heading', { name: 'Demo Project' }),
     ).toBeTruthy();
     expect(inputValue(screen.getByLabelText('Working Directory'))).toBe(
       '/Users/me/dev/demo',
@@ -795,7 +837,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       expect(sdkMocks.updateProject).toHaveBeenCalledWith({
         slug: 'demo',
         name: 'Demo Project Updated',
-        icon: 'D',
+        // The icon did not change, so it is not re-sent.
         description: 'Demo project description',
         defaultModel: 'openai:gpt-5',
         defaultProviderId: '',
@@ -975,5 +1017,183 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(screen.getByRole('dialog').textContent).toContain(
       'no longer have a live Project workspace',
     );
+  });
+});
+
+describe('ProjectSettingsView: changing the icon after creation', () => {
+  // The writer's shape: discovery's base64 data URL of a real PNG signature.
+  const FAVICON: ProjectIconCandidate = {
+    relativePath: 'public/favicon.png',
+    dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    mediaType: 'image/png',
+    source: 'favicon',
+  };
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/projects/demo/settings');
+    sdkMocks.project = projectFixture;
+    sdkMocks.isLoading = false;
+    sdkMocks.isError = false;
+    sdkMocks.updateFailure = null;
+    sdkMocks.updateProject.mockClear();
+    sdkMocks.iconCandidatesQuery.mockClear();
+    sdkMocks.iconCandidates = [FAVICON];
+  });
+
+  const openPicker = () =>
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose project icon' }),
+    );
+  const save = () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+  test('suggests artwork from the saved folder only once the picker opens, and applies nothing', () => {
+    renderProjectSettings();
+    expect(sdkMocks.iconCandidatesQuery).toHaveBeenLastCalledWith(
+      '/Users/me/dev/demo',
+      { enabled: false },
+    );
+    expect(screen.queryByLabelText('Use public/favicon.png')).toBeNull();
+
+    openPicker();
+    expect(sdkMocks.iconCandidatesQuery).toHaveBeenLastCalledWith(
+      '/Users/me/dev/demo',
+      { enabled: true },
+    );
+    expect(screen.getByLabelText('Use public/favicon.png')).toBeTruthy();
+    // A suggestion is not a change.
+    expect(screen.queryByText('unsaved')).toBeNull();
+  });
+
+  test('saves a picked candidate as the icon', async () => {
+    renderProjectSettings();
+    openPicker();
+    fireEvent.click(screen.getByLabelText('Use public/favicon.png'));
+    save();
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'demo', icon: FAVICON.dataUrl }),
+      ),
+    );
+    expect(screen.queryByText('unsaved')).toBeNull();
+  });
+
+  test('No icon saves the clear the route understands', async () => {
+    renderProjectSettings();
+    openPicker();
+    fireEvent.click(screen.getByRole('button', { name: 'No icon' }));
+    save();
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'demo', icon: '' }),
+      ),
+    );
+  });
+
+  test('a typed glyph the rule refuses is named inline and blocks Save', () => {
+    renderProjectSettings();
+    openPicker();
+    fireEvent.change(screen.getByLabelText(/Emoji or symbol/), {
+      target: { value: '/Users/me/secrets/logo.png' },
+    });
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Links, file paths',
+    );
+    const saveButton = screen.getByRole('button', {
+      name: 'Save',
+    }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText(/Emoji or symbol/), {
+      target: { value: '🧭' },
+    });
+    expect(saveButton.disabled).toBe(false);
+  });
+
+  test('an uploaded ICO the browser labels image/vnd.microsoft.icon is stored as image/x-icon', async () => {
+    renderProjectSettings();
+    openPicker();
+    const input = screen.getByTestId(
+      'project-settings-icon-upload',
+    ) as HTMLInputElement;
+    // The chooser offers ICO files under either label and by extension.
+    expect(input.accept.split(',')).toEqual(
+      expect.arrayContaining([
+        'image/x-icon',
+        'image/vnd.microsoft.icon',
+        '.ico',
+      ]),
+    );
+    // An ICO header (reserved 0, type 1) as a browser types it.
+    const ico = new File(
+      [new Uint8Array([0, 0, 1, 0, 1, 0, 16, 16])],
+      'favicon.ico',
+      {
+        type: 'image/vnd.microsoft.icon',
+      },
+    );
+    fireEvent.change(input, { target: { files: [ico] } });
+    await waitFor(() =>
+      expect(screen.getByLabelText('Current image')).toBeTruthy(),
+    );
+    save();
+    await waitFor(() => expect(sdkMocks.updateProject).toHaveBeenCalled());
+    const { icon } = sdkMocks.updateProject.mock.calls[0][0];
+    expect(icon).toBe(
+      `data:image/x-icon;base64,${Buffer.from([0, 0, 1, 0, 1, 0, 16, 16]).toString('base64')}`,
+    );
+  });
+
+  test('a legacy link icon is named once, and the picker opens on no icon without an error', async () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      icon: 'https://example.com/legacy.png',
+    };
+    renderProjectSettings();
+    const notice =
+      'This project’s icon can’t be shown any more. Choose a new one.';
+    expect(screen.getByText(notice)).toBeTruthy();
+    openPicker();
+    const glyphInput = screen.getByLabelText(
+      /Emoji or symbol/,
+    ) as HTMLInputElement;
+    expect(glyphInput.value).toBe('');
+    expect(glyphInput.getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'No icon' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+
+    // Choosing a replacement retires the notice and saves the new icon.
+    fireEvent.change(glyphInput, { target: { value: '🧭' } });
+    expect(screen.queryByText(notice)).toBeNull();
+    save();
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'demo', icon: '🧭' }),
+      ),
+    );
+  });
+
+  test('a project whose icon is allowed shows no legacy notice', () => {
+    sdkMocks.project = { ...projectFixture, icon: '🧭' };
+    renderProjectSettings();
+    expect(screen.queryByText(/can’t be shown any more/)).toBeNull();
+  });
+
+  test('a legacy icon the rule refuses neither blocks nor rides along on an unrelated save', async () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      icon: 'https://example.com/legacy.png',
+    };
+    renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'New description' },
+    });
+    save();
+    await waitFor(() => expect(sdkMocks.updateProject).toHaveBeenCalled());
+    expect(sdkMocks.updateProject.mock.calls[0][0]).not.toHaveProperty('icon');
   });
 });

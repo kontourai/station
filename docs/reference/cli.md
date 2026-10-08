@@ -137,7 +137,7 @@ Current command availability, with background in the [CLI product design](../des
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
 | Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request` | yes | yes |
-| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
+| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
 | Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
 
@@ -358,7 +358,7 @@ parent directories or infer a target from repository contents.
 
 The default Station applies to every command that talks to a Station API,
 including `environment` verbs. Host-side verbs that must run against the local
-Station (`environment access list|approve|deny`) still require a loopback
+Station (`environment access list|approve|deny`, `environment operator passkeys`) still require a loopback
 target — pass the selected channel's loopback `--api-base` explicitly when a
 remote Station is your default. `--station=<name>` also works for these
 verbs, but only for a saved Station whose endpoint is loopback AND that
@@ -870,6 +870,13 @@ the CLI. Chat currently uses that process directory rather than the preserved
 `STATION_INVOKED_CWD`; an invocation from another repository can therefore use
 the Station checkout. For directory-based work, pass an explicit target-visible
 `--cwd`. This is a current caller limitation, not a Project authorization grant.
+
+With `--on=<environment>` and neither `--project` nor `--cwd`, a new chat sends
+no workspace, because this machine's directory means nothing on another Station.
+A directory workspace (the default for the current Station, or `--cwd`, or
+`station delegate --project-path`/`--cwd`) needs the operator's credential or a
+device holding the `coding:exec` grant; a paired device without it is refused with
+`working-directory-not-granted` and nothing starts. `--project` needs no grant.
 
 On continuation, the current caller omits workspace selection: `--project`
 and `--cwd` have no effect and are not warned about. The Conversation keeps its
@@ -1571,7 +1578,8 @@ station flow report <project> <runId> [--api-base=<url>]
 ```
 
 `attach-command` runs the command **server-side in the project workspace**
-(same trust level as scheduler jobs and tool servers) and attaches the output
+(same trust level as scheduler jobs and tool servers, and a paired device needs the
+operator's `coding:exec` grant: `command-not-granted` otherwise) and attaches the output
 tail as claim evidence: exit 0 attaches the claim with status `assumed` — a
 passing command is a claim, not verification, and Surface downgrades
 `verified` without backing evidence; a non-zero exit or timeout attaches
@@ -2244,12 +2252,18 @@ station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
 station environment offer [--tailscale] [--tailscale-serve-port=<port>]
+station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
 station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
 station environment access scopes [--json]
+station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
 station environment list [--api-base=<url>]
@@ -2327,6 +2341,18 @@ station environment peers remove <environment-id>
   it; re-running changes nothing already reset. A paired remote CLI cannot run
   these verbs: they refuse a non-loopback target before reading any
   credential.
+- `access revoke` and `access remove` finish what the Paired devices panel
+  cannot do from a native host app (#3256), on the same host-only channel and
+  with the same device selector as `access scope` (id, unique id prefix, or
+  exact name; an ambiguous one is refused). `access revoke` ends a live
+  device's access immediately, closes its terminal and voice connections, and
+  resets to Ask what its full access had granted, printing the same report as
+  `--remove approval:full-access`; the device can pair again later. `access
+  remove` deletes the record of an already-revoked device; a device that is
+  still paired is refused (revoke it first). Both name the device before
+  acting and fail unless Station's answer names that same device as revoked.
+  Neither can be undone, so an interactive run asks first, and a run with no
+  terminal is refused before Station is contacted unless it passes `--force`.
 - `environment peers` manages the **outbound** peer-credential store: the
   credentials this Station presents when it delegates to another Station, as
   opposed to the inbound device credentials `access`/pairing issues. `peers add`

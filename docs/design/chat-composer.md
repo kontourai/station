@@ -40,18 +40,87 @@ detail, with a Back to list control, instead of squeezing both columns.
 
 ## Starting and resuming work
 
-Ordinary New chat opens an unsent message draft, with compact Agent and Model
-controls and up to five recent chats from the selected project or No project.
+The phone-width captures compare the baseline and redesigned controls in the
+same isolated sample home and light theme. They show appearance, not task
+execution or native-shell qualification. Capture revisions and limits are in
+[the media manifest](../learn/media.json).
+
+| Surface | Before | After |
+| --- | --- | --- |
+| New chat | ![Baseline new chat](../learn/media/new-chat-start-before.png) | ![Redesigned new chat](../learn/media/new-chat-start-after.png) |
+| Project page | ![Baseline Project page](../learn/media/project-start-before.png) | ![Project start composer](../learn/media/project-start-after.png) |
+
+The Project comparison captures precede the removal of the header's local
+folder controls. Their capture revisions remain recorded; folder details now
+live in Settings.
+
+New chat opens the shared start composer. Home renders it inline, and an
+operator's Project page renders a compact version above its activity with
+the Project fixed. Project and Station controls sit above the text box;
+separate Agent and Model controls sit inside it beside Start and the overflow
+for visual skills. The Agent list retains each Agent's readiness and repair
+action, with a short purpose for custom Agents. The Model picker offers search, recent choices, favorites and provider
+filters; Options reveals capability filters and the selected model's supported
+runtime controls. Reviewed canonical model identities still own grouping across
+provider routes; similar names do not establish equivalence.
+
+Home keeps a screen-reader page title while the shared composer owns the
+visible start heading. An empty Home does not add a second welcome question.
+
+The **on <host>** control names the answering Station's host projection, or
+**on Project default** when the Project has a saved execution environment. It
+opens the existing task launcher with the current message, Project and Agent,
+and with its Station/worker/model routing controls expanded. The launcher
+loads the selected environment's own worker inventory and retains portable
+Project/resource admission and the explicit no-fallback refusals. **Run task**
+starts a task; it does not place or migrate a foreground chat on a peer. Editing
+the task message updates the originating draft, so Cancel retains those edits.
+A successful launch clears only the text submitted and names its captured
+Station; newly typed text stays. Remote task submission and Escape do not
+submit or dismiss the underlying foreground composer. Prepared visual skills
+and coding-context drafts keep their existing chat-only path.
+
+The Project header leads with its name, description and observed Git branch.
+The local working-directory path and editor live in Project Settings, alongside
+resource bindings. A branch badge does not claim a GitHub integration or whole
+Project synchronization: portable Project identity and per-Station resource
+bindings remain separate from Git content synchronization.
+
+A Project page start hands the dock its fixed Project without changing the
+ambient dock binding. An unavailable fixed Project blocks starting and keeps
+the message. Returned drafts are scoped to that Project and Station authority.
+A project with no folder can still be chosen and runs where the server puts it:
+the home folder, or for an ACP engine its connection folder or a private
+Station-managed workspace. The project menu states the run-location hint.
+Up to five recent chats from the
+selected project or No project follow; with none, the composer stands alone.
+A start or hand-off from Home is taken only by the ambient dock, which says
+so (the intent is cancelable); Home keeps its message until the chat starts,
+then removes only the text it sent. A dismissed dock draft (from a hand-off
+or a Start) comes back as edited there: into an empty field directly,
+otherwise behind Restore your earlier draft (a swap) and Discard it, with a
+polite announcement. Waiting drafts are kept in the tab's session storage, so
+they survive a reload but not closing the tab.
 The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
+When Continue holds Home's only item of work, Recent work is not shown and
+View Activity sits beside the Continue heading.
+Home's Recent work rows are the same row: a decorative mark before the Project
+name is the Project's chosen icon, or, without one, a dot in its sidebar colour
+(the name stays plain text); a row read from another Station draws no mark,
+since its slug names that Station's Project. The hover card's Project row
+repeats that mark, and its Git section reads the row's local session folder, as
+in the dock.
 The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
-Choosing an Agent or Model in this draft does not start an engine. Send hands
-the message to the dock’s existing sender once. Setup actions retain the draft
+Choosing on a chip does not start an engine; a choice is remembered (Agent per
+context, Model per binding, project as the dock's binding). Start hands the
+message to the dock’s existing sender once; Home's Start hands the dock its
+exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
 explicit replacement; an unavailable preference keeps its reason and repair.
-Home’s quick-start recommendation remains runnable. The mobile overflow holds
+Home’s composer shows the same remembered Agent, repair included; only with no Agent to offer does its Start run the quick-start preparation. The mobile overflow holds
 chat actions rather than repeating the app header’s connection-health row.
 When fullscreen chat hides that header, its actions sheet retains Station
 management and connection state.
@@ -74,6 +143,30 @@ the shared motion token, while the clock reserves a stable text column. Running
 tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection
 and makes pill size changes immediate.
+
+On a phone, a settled answer shows its tool work as one row. Every call from
+the first to the last, and the narration between them, folds into a single
+summary where the first call was. The intent before it and the outcome after it
+stay visible. Opening the row lists the calls with that narration in its
+original order. Files, UI blocks, runtime errors and calls still waiting on a
+grant stay outside the fold, and so does the last narration when no text
+follows the last call. While the turn is live it keeps the shape it streamed
+with. In the summary, a failure is counted as **retried** rather than
+**failed** when a later call in the same summary ran the same tool with
+identical, recorded arguments and succeeded. A steer inside a turn does not
+start a new exchange. Under each settled answer, a muted time beside the ⋯
+button gives the turn's completion time from its provenance envelope. An
+answer without a readable envelope time shows no time. Exchanges are divided
+by a thin rule.
+
+On every screen size, a failed command, read or search row keeps the
+completed verb ("Ran …") beside its Failed badge, because that verb only says
+the call ran. A failed edit, delete or other tool keeps the bare verb
+("Edit …"), because the change may not have happened. Tool summaries follow
+the same split per kind: when every edit, delete or other call of a kind
+failed, the settled summary names them without a completed verb ("2 file
+edits"); one success keeps the completed phrase, and the failed and retried
+counts disclose the rest.
 
 User-message action menus reserve padding before hover so their targets cannot
 cover the text. Individual tool failures remain on their transcript rows rather
@@ -153,6 +246,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   selection source, and any unavailable reason. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
+- Choosing or resetting a Model closes the picker, in a chat, in the start
+  composer and in a fork's Agent list; changing a runtime option such as
+  effort keeps it open. The reset names the default it restores by its source
+  (**Use project default**, **Use agent default**), or **Use source turn** for
+  a fork's own Agent, never the choice it clears.
 - Search spans all ready Providers. A compact rail exposes Favorites, All, and
   each Provider without teaching internal connection categories.
 - Unavailable Providers explain their status and are disabled. They can never
@@ -343,11 +441,12 @@ Owner-directed revision (clarified 2026-09-05): project switching and
 conversation switching are primary phone-header actions. Both stay directly
 reachable with readable current context and 44px touch targets at 320px,
 390px, and 412px widths. Neither requires opening Chat actions first.
-The **Chats and tasks** picker keeps a circular **+** action at the lower
+The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
-**New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
+**New chat**; the mobile header uses its icon-only chat-bubble-plus form.
+It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
-title, Project, and a right-aligned status/time. Unresolved Agents retain their
+title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
 name. The status line is the ladder's own words (`Needs answer`, `Needs
 approval`, …, the same words the dock row prints). Running time uses the
 recorded open-turn start; without one, the row's compact time trails the status
@@ -368,7 +467,9 @@ chat and its original project. Opening an existing conversation also preserves
 this default. Choosing a different project in the chat bar
 overrides that default until the next explicit workspace selection. Both bars
 caption this value **New chats**; desktop also names the current chat's project
-when it differs. This revises the earlier independent-sidebar/default behavior.
+when it differs. On a phone, when a long chat title leaves the control too
+narrow for words, it shows only a folder glyph; its accessible name still
+names the project. This revises the earlier independent-sidebar/default behavior.
 
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**

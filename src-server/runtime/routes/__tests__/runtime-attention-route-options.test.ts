@@ -83,7 +83,9 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 });
 
-function projectionWithPeerApproval() {
+function projectionWithPeerApproval(
+  requestType: 'approval' | 'input' = 'approval',
+) {
   const home = makeTempDir('station-attention-options-');
   const store = new EventStore(join(home, 'orchestration.sqlite'));
   cleanups.push(() => {
@@ -115,12 +117,12 @@ function projectionWithPeerApproval() {
   service.recordPeerDelegationActivityOutcome({
     taskId: 'task-peer',
     environmentId: 'environment-peer',
-    status: 'review_pending',
+    status: requestType === 'input' ? 'needs_input' : 'review_pending',
   });
   service.recordPeerDelegationPendingRequest({
     taskId: 'task-peer',
     environmentId: 'environment-peer',
-    pendingRequest: { id: 'req-1', type: 'approval', title: 'Allow bash' },
+    pendingRequest: { id: 'req-1', type: requestType, title: 'Allow bash' },
   });
   return new AttentionProjectionService({ list: () => [] } as never, service, {
     getRunConsole: async () => ({ gates: [] }),
@@ -130,8 +132,9 @@ function projectionWithPeerApproval() {
 async function peerItemAs(
   credential: string | StationControlCallerSetup,
   options: Parameters<typeof createAttentionRoutes>[1] | 'runtime' = 'runtime',
+  requestType: 'approval' | 'input' = 'approval',
 ): Promise<ReviewPendingAttentionItem | undefined> {
-  const projection = projectionWithPeerApproval();
+  const projection = projectionWithPeerApproval(requestType);
   const app = new Hono();
   app.use('*', async (c, next) => {
     if (typeof credential === 'string') {
@@ -186,8 +189,9 @@ async function peerItemAs(
   const body = (await response.json()) as { data: AttentionProjection };
   return body.data.items.find(
     (item): item is ReviewPendingAttentionItem =>
-      item.kind === 'review_pending' && item.environmentKind === 'peer',
-  );
+      (item.kind === 'review_pending' || item.kind === 'needs_input') &&
+      item.environmentKind === 'peer',
+  ) as ReviewPendingAttentionItem | undefined;
 }
 
 test('the operator, whose credential can POST the respond route, may respond', async () => {
@@ -212,6 +216,15 @@ test('a route composed without the predicate claims nothing', async () => {
   });
   expect(item).toHaveProperty('peerRequestReference');
   expect(item).not.toHaveProperty('viewerCanRespond');
+});
+
+test('an input question is judged on the continue route: operate may answer, read may not', async () => {
+  expect(
+    (await peerItemAs(OPERATE_DEVICE, 'runtime', 'input'))?.viewerCanRespond,
+  ).toBe(true);
+  expect(
+    (await peerItemAs(READ_DEVICE, 'runtime', 'input'))?.viewerCanRespond,
+  ).toBe(false);
 });
 
 /**

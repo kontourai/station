@@ -169,10 +169,12 @@ describe('native-platform-boundary', () => {
     expect(EXPECTED_APPIMAGE_REMOVED_RESOURCES).toEqual({
       '../dist-server': null,
       '../dist-desktop-runtime/node_modules': null,
+      '../dist-desktop-runtime/examples': null,
     });
     expect(EXPECTED_APPIMAGE_RUNTIME_FILES).toEqual({
       'usr/share/Station/dist-server': '../dist-server',
       'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
+      'usr/share/Station/examples': '../dist-desktop-runtime/examples',
     });
     expect(
       findTauriResourceBoundaryViolations(

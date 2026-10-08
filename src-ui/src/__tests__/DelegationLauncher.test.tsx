@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
+import { StartComposer } from '../components/chat-start/StartComposer';
 
 const mutateAsync = vi.fn();
 const reset = vi.fn();
@@ -148,7 +149,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
               environment: input.environmentId
                 ? {
                     id: staleDiscoveryEnvironment ?? input.environmentId,
-                    name: 'Brian Media',
+                    name: 'Home Media',
                     kind: 'ssh',
                   }
                 : {
@@ -224,7 +225,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
               {
                 profile: {
                   id: 'media',
-                  name: 'Brian Media',
+                  name: 'Home Media',
                   environmentId: 'env-media',
                   verifiedProjectPath:
                     '/home/user/dev/github/kontourai/station',
@@ -283,7 +284,7 @@ describe('DelegationLauncher', () => {
       taskId: 'task:1',
       sessionId: 'task:1',
       status: 'dispatched',
-      environment: { id: 'env-media', name: 'Brian Media', kind: 'ssh' },
+      environment: { id: 'env-media', name: 'Home Media', kind: 'ssh' },
       target: { kind: 'agent', id: 'codex' },
       resumable: true,
     });
@@ -330,20 +331,42 @@ describe('DelegationLauncher', () => {
 
   test('shows Agent-only targets and delegates to a saved SSH environment without a Project', async () => {
     const onDelegated = vi.fn();
+    const localStart = vi.fn();
+    const onDraftChange = vi.fn();
     render(
-      <DelegationLauncher
-        isOpen
-        apiBase="http://station.test"
-        currentAgentId="codex"
-        currentModel="gpt-5.6-sol"
-        parentTaskId="codex:1721355900000"
-        parentTaskLabel="Fix delegation controls"
-        initialPrompt="Fix the mobile task controls"
-        onClose={vi.fn()}
-        onDelegated={onDelegated}
-      />,
+      <StartComposer
+        prompt="Local draft"
+        onPromptChange={vi.fn()}
+        agent={{ status: 'ready', needsSetup: false }}
+        project={{ status: 'ready', label: 'No workspace', isGlobal: true }}
+        onOpenAgents={vi.fn()}
+        onOpenProject={vi.fn()}
+        canStart
+        pending={false}
+        onStart={localStart}
+      >
+        <DelegationLauncher
+          isOpen
+          apiBase="http://station.test"
+          currentAgentId="codex"
+          currentModel="gpt-5.6-sol"
+          parentTaskId="codex:1721355900000"
+          parentTaskLabel="Fix delegation controls"
+          initialPrompt="Fix the mobile task controls"
+          onClose={vi.fn()}
+          onDraftChange={onDraftChange}
+          onDelegated={onDelegated}
+        />
+      </StartComposer>,
     );
 
+    fireEvent.change(screen.getByLabelText('Task'), {
+      target: { value: 'Revised remote draft' },
+    });
+    expect(onDraftChange).toHaveBeenLastCalledWith('Revised remote draft');
+    fireEvent.change(screen.getByLabelText('Task'), {
+      target: { value: 'Fix the mobile task controls' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
     expect(screen.getByRole('option', { name: 'Codex — Agent' })).toBeTruthy();
     expect(
@@ -371,13 +394,15 @@ describe('DelegationLauncher', () => {
         }) as HTMLOptionElement
       ).disabled,
     ).toBe(true);
-    fireEvent.click(screen.getByText('1 unavailable on Brian Media'));
+    fireEvent.click(screen.getByText('1 unavailable on Home Media'));
     expect(screen.getByText(/Install the required runtime first/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Model'), {
       target: { value: 'gpt-5.6-sol' },
     });
     expect(screen.getAllByText(/GPT-5.6 Sol/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    expect(localStart).not.toHaveBeenCalled();
 
     // No-Project SSH delegation keeps its explicit semantics: no workspace,
     // no Project substitution — and no SSH repair notice either.
@@ -402,6 +427,7 @@ describe('DelegationLauncher', () => {
     expect(onDelegated).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'task:1' }),
       'Remote Codex',
+      { stationName: 'Home Media', prompt: 'Fix the mobile task controls' },
     );
   });
 
@@ -656,7 +682,7 @@ describe('DelegationLauncher', () => {
   });
 
   test('keeps the draft and offers retry when capability discovery fails', () => {
-    discoveryFailure = new Error('Brian Media could not be reached');
+    discoveryFailure = new Error('Home Media could not be reached');
     render(
       <DelegationLauncher
         isOpen
@@ -670,7 +696,7 @@ describe('DelegationLauncher', () => {
     );
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'Brian Media could not be reached',
+      'Home Media could not be reached',
     );
     expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
       'Keep this task draft',
@@ -849,7 +875,7 @@ describe('DelegationLauncher', () => {
         environmentId: 'env-media',
         apiBase: 'https://media.example.test',
         scope: 'orchestration:read orchestration:operate',
-        label: 'Brian Media (peer)',
+        label: 'Home Media (peer)',
         createdAt: 1,
         updatedAt: 1,
       },
@@ -866,10 +892,10 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
     expect(
       screen.queryByRole('option', {
-        name: 'Brian Media (peer) — Paired Station',
+        name: 'Home Media (peer) — Paired Station',
       }),
     ).toBeNull();
-    expect(screen.getAllByRole('option', { name: /Brian Media/ }).length).toBe(
+    expect(screen.getAllByRole('option', { name: /Home Media/ }).length).toBe(
       1,
     );
   });
@@ -1637,7 +1663,7 @@ describe('DelegationLauncher', () => {
         taskId: 'task:1',
         sessionId: 'task:1',
         status: 'dispatched',
-        environment: { id: 'env-media', name: 'Brian Media', kind: 'ssh' },
+        environment: { id: 'env-media', name: 'Home Media', kind: 'ssh' },
         target: { kind: 'agent', id: 'codex' },
         resumable: true,
       };

@@ -371,6 +371,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-provider-picker.spec.ts',
     'tests/project-layout-render-storm.spec.ts',
     'tests/orchestration-chat-flow.spec.ts',
+    'tests/mcp-elicitation-form.spec.ts',
+    'tests/mobile-request-sheet.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
     'tests/veritas-readiness-panel.spec.ts',
@@ -437,6 +439,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // instance with a sibling spec.
     'tests/agents-editor-gates.spec.ts',
     'tests/skills-command-routes.spec.ts',
+    // Creates a live project, suspends every LLM connection while it runs one
+    // real turn in that project, and saves the project's icon.
+    'tests/project-icons.spec.ts',
     // D9 resets the whole notification store and acknowledges every pending
     // attention item to get a deterministic bell count; D8 creates, deletes
     // and re-creates two projects by fixed slug. Both are instance-wide
@@ -818,6 +823,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted project lifecycle lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-icons.spec.ts',
+    bucket: 'product',
+    surface: 'Projects',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "An icon set after creation, end to end: the settings picker uploads a real PNG, the live server validates and persists it, and the sidebar row, a Home row for a real session in that project, and the dock project switcher all draw the stored image. Live because the Home row and the persistence are the server's.",
     exceptions: [],
   },
   {
@@ -1429,6 +1444,24 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/mcp-elicitation-form.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/mobile-request-sheet.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3331 shared mobile request sheet at 390x844 for a long MCP elicitation form and a short tool approval: card-to-sheet, pinned actions, content-fit height, dismissal (backdrop, swipe, Escape, close) leaving the request pending, Send with an emulated keyboard, resolution elsewhere closing the sheet, focus trap/return, reduced motion, and inline desktop at 1280.',
+    exceptions: [],
+  },
+  {
     path: 'tests/acp-orchestration-plan.spec.ts',
     bucket: 'product',
     surface: 'Chat / Orchestration',
@@ -1512,7 +1545,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'kontourai/station#689 — proves the New Chat workspace picker renders as a contained bottom sheet (not the clipped anchored dropdown) at 390x844, and covers open, scroll, filter, pick, outside-tap, and Escape dismissal.',
+      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
     exceptions: [],
   },
   {

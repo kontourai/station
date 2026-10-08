@@ -3,18 +3,21 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { checkChangesets } from '../check-changesets.mjs';
 import {
   CI_FAST_STEP_MARKER_PATTERN,
   ciFastStepMarker,
 } from '../lib/ci-fast-step-marker.mjs';
+import { npmInvocation } from '../lib/npm-cli.mjs';
 import { CHANGED_DEADLINE_ENV as SELECTOR_DEADLINE_ENV } from '../run-changed-verification.mjs';
 import {
   CHANGED_DEADLINE_ENV,
@@ -43,8 +46,10 @@ import {
 const [, contentIntegrityArgs] = CONTENT_INTEGRITY_FAST_COMMAND;
 const contentIntegrityScript = contentIntegrityArgs[1];
 const contentGateRepos = new Set<string>();
+const makeTempDir = trackTempDirs();
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const dir of contentGateRepos)
     rmSync(dir, { recursive: true, force: true });
   contentGateRepos.clear();
@@ -101,7 +106,9 @@ function runOnlyFastGate(
     env: { STATION_CI_FAST_BASE: 'fixture-base' },
     execute(command, args, { cwd: childCwd, timeout }) {
       if (command !== gate[0] || args !== gate[1]) return 0;
-      const result = spawnSync(command, args, {
+      const invocation =
+        command === 'npm' ? npmInvocation(args) : { command, args };
+      const result = spawnSync(invocation.command, invocation.args, {
         cwd: childCwd,
         timeout,
         encoding: 'utf8',
@@ -115,6 +122,73 @@ function runOnlyFastGate(
 }
 
 describe('bounded ci:fast runner', () => {
+  it.skipIf(process.platform !== 'win32')(
+    'reports an unavailable npm launcher as infrastructure through the real CLI owner',
+    () => {
+      const root = makeTempDir('station-ci-fast-missing-npm-');
+      mkdirSync(join(root, 'scripts'));
+      writeFileSync(
+        join(root, 'scripts', 'node-runtime-contract.mjs'),
+        'process.exit(0);',
+      );
+      vi.stubEnv('npm_execpath', join(root, 'absent npm', 'npm-cli.js'));
+      let errorOutput = '';
+
+      const status = runCiFastCli({
+        run: () =>
+          runCiFast({
+            cwd: root,
+            env: { [FAST_SCOPE_ENV]: 'statics' },
+            report: () => {},
+          }),
+        error: (message) => {
+          errorOutput += message;
+        },
+      });
+
+      expect(status).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
+      expect(errorOutput).toContain(CI_FAST_OWNER_INFRASTRUCTURE_PREFIX);
+      expect(errorOutput).toContain('cannot resolve npm CLI as a local file');
+    },
+  );
+
+  it.skipIf(process.platform !== 'win32')(
+    'runs a required npm invariant through the selected CLI and propagates its failure',
+    () => {
+      const root = makeTempDir('station-ci-fast-npm-');
+      const cliDir = join(root, 'selected npm & cli');
+      const marker = join(root, 'npm-argv.json');
+      mkdirSync(join(root, 'scripts'));
+      mkdirSync(cliDir);
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({ type: 'module' }),
+      );
+      writeFileSync(
+        join(root, 'scripts', 'node-runtime-contract.mjs'),
+        'process.exit(0);',
+      );
+      const cli = join(cliDir, 'npm-cli.js');
+      writeFileSync(
+        cli,
+        `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, JSON.stringify(process.argv.slice(2))); process.exit(23);`,
+      );
+      vi.stubEnv('npm_execpath', cli);
+
+      const status = runCiFast({
+        cwd: root,
+        env: { [FAST_SCOPE_ENV]: 'statics' },
+        report: () => {},
+      });
+
+      expect(status).toBe(23);
+      expect(JSON.parse(readFileSync(marker, 'utf8'))).toEqual([
+        'run',
+        'dependencies:verify',
+      ]);
+    },
+  );
+
   it('runs the affected selector before the fixed static invariant set', () => {
     const calls: Array<{ command: string; args: string[]; timeout: number }> =
       [];
@@ -249,7 +323,7 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'lint:check']],
       // Ordered after the two evidence-checks it re-executes, so a failure in
       // either reports under its own name first.
-      ['npm', ['run', 'veritas:readiness']],
+      ['npm', ['run', 'veritas:readiness', '--', '--format', 'json']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect
       // through packages/connect/dist). The aggregate is invoked DIRECTLY

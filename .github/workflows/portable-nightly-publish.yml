@@ -1,4 +1,4 @@
-name: Portable server Nightly publication
+name: "Nightly: Portable publication"
 
 # #2675 slice E. Builds the five station-server-<os>-<arch> archives for one
 # Nightly version, assembles the schema v2 manifest from their descriptors,

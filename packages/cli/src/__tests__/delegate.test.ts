@@ -1228,7 +1228,7 @@ describe('station delegate over HTTP', () => {
     await runCli([
       'delegate',
       '--agent=codex',
-      '--on=env-brian-media',
+      '--on=env-home-media',
       '--model=gpt-5.6-sol',
       '--project=station',
       'Run the focused tests',
@@ -1240,7 +1240,7 @@ describe('station delegate over HTTP', () => {
     );
     expect(request?.body).toMatchObject({
       target: {
-        environment: { kind: 'saved', id: 'env-brian-media' },
+        environment: { kind: 'saved', id: 'env-home-media' },
         agent: 'codex',
         model: { override: 'gpt-5.6-sol' },
         workspace: { kind: 'project', projectSlug: 'station' },

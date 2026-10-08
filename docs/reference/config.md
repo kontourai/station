@@ -9,6 +9,25 @@ For usage context, see [docs/guides/agents.md](../guides/agents.md).
 
 ---
 
+## Project tool defaults
+
+[ProjectConfig](../../packages/contracts/src/project.ts) accepts optional
+`toolDefaults: { mcpServers?: string[], knowledge?: boolean }`. The server list
+contains up to 32 configured MCP IDs, each at most 128 characters. Omitted
+`knowledge` enables delivery of `station-knowledge` when a registered Project
+store exists; `false` disables that Project addition.
+
+These defaults add servers while retaining Agent availability restrictions,
+approval patterns and an explicit harness replacement mode. They grant no
+credentials or store access. External sessions resolve them at session start;
+native chats use a per-turn Agent tool view. See [Project Knowledge and tools](../guides/knowledge.md#project-tools-and-automatic-store-detection).
+
+Claude Code and Codex engine connections can set
+`agentConnections.<engine>.config.proxyConnectionId` to a saved OpenAI-compatible
+Model connection. The UI exposes this as **Connect through**. The engine uses the
+current saved address/key at launch, without copying credentials or changing the
+global CLI configuration. See [proxy setup](../guides/connections.md#route-an-engine-through-a-model-proxy).
+
 ## app.json
 
 **Location:** `<STATION_HOME>/config/app.json`
@@ -57,7 +76,8 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultEmbeddingProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultEmbeddingModel` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultVectorDbProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
-| `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`) |
+| `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
+| `attachedSessionsOutsideProjects` | boolean | `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Station host). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
 
 ### templateVariables
@@ -254,6 +274,36 @@ Defines a single agent. The directory name is the agent's slug.
 | `ui` | object | no | UI configuration including quick prompts |
 | `skills` | string[] | no | Skill IDs available to this agent |
 | `execution` | object | no | Runtime, model connection, and optional model dispatch policy |
+| `project` | string | no | Owning Project slug; absent means global scope. The Project must exist when the value is introduced. |
+| `audience` | object | no | Who besides the operator may list, read and use the Agent (`station.agent-audience/v1`). Absent means operator only. See [audience](#audience). |
+
+### audience
+
+`audience` takes one of three versioned shapes. Absent and `operator` mean the
+same thing: only the operator's own requests see the Agent. Agents saved before
+this field existed need no rewrite.
+
+```json
+{ "version": "station.agent-audience/v1", "kind": "operator" }
+{ "version": "station.agent-audience/v1", "kind": "project-permission", "permission": "discuss" }
+{ "version": "station.agent-audience/v1", "kind": "project-roles", "roles": ["viewer", "contributor"] }
+```
+
+`permission` is a Project member action (`view`, `discuss`, `edit`, `execute`,
+`approve`, `manage-members`, `manage-extensions`, `manage-compute`). `roles` is
+a non-empty, duplicate-free list of `viewer`, `contributor`, `admin` and `owner`.
+A member audience requires `project`, because membership belongs to one Project.
+An invalid value is refused on save and load with the reason, for example
+`/audience: audience.permission must be one of: ...`. The
+[validator](../../src-server/domain/validator.ts) runs
+[`agentAudienceRefusal`](../../src-server/services/agents/agent-audience.ts)
+ahead of the [schema](../../schemas/agent.schema.json). A save cannot clear the
+field with `null`; set `kind` to `operator` instead.
+
+Admission is decided per request against the caller's current, active
+membership in the owning Project; see
+[Agent audience](../design/project-membership.md#agent-audience) for what a
+member may do with an admitted Agent today.
 
 ### execution / model dispatch
 

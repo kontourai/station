@@ -14,7 +14,7 @@
 > CI, container, Windows, and Android, while provider-hosted publish and
 > Pages jobs can still fail before executing because of organization billing. A green
 > detector result describes the `main` tree it ran against and **cannot clear a
-> candidate pull request diff**. Secret Scan scans all Git history reachable from
+> candidate pull request diff**. PR: Secret scan scans all Git history reachable from
 > the candidate merge ref before merge, so a red may come from pre-existing
 > reachable history; it does not replace the rest of merge-readiness evidence. Inspect the
 > live job steps before classifying a
@@ -42,7 +42,7 @@ subsequent merges operating under it (2026-07-26).
 4. Keep the branch fresh with `origin/main`, use independent review or fault injection
    where the change's risk warrants it, and state the local evidence basis in the PR.
    Do not cite a green self-hosted CI result as PR clearance: those workflows run
-   after merge and do not evaluate the candidate diff. Secret Scan is candidate
+   after merge and do not evaluate the candidate diff. PR: Secret scan is candidate
    evidence only for the secret-scanning surface.
 5. Use `npm run ci:fast` for bounded affected-test feedback, then run
    `npm run full:regression` once as the final local checkpoint. Its coordinated

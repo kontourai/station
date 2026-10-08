@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type {
@@ -30,11 +31,17 @@ import type { AgentData } from '../contexts/AgentsContext';
 import { bannerStore, useBanners } from '../contexts/banner-store';
 import { navigationStore } from '../contexts/navigation-store';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
 const experienceRead = vi.hoisted(() => ({
   inventory: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
   refetch: vi.fn(),
 }));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
     namespace: 'authority-1',
@@ -217,10 +224,15 @@ async function returnToChat() {
   await screen.findByRole('dialog', { name: 'New Chat' });
 }
 beforeAll(() => {
-  window.matchMedia = vi.fn().mockReturnValue({ matches: false });
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
   Element.prototype.scrollIntoView = vi.fn();
 });
 beforeEach(() => {
+  resetStartChoicesForTests();
   experienceRead.inventory = { experiences: [], diagnostics: [] };
   experienceRead.refetch.mockReset().mockResolvedValue(undefined);
   screenSize.mobile = false;
@@ -275,7 +287,7 @@ describe('New Chat repair and return', () => {
       screen.getByRole('textbox', { name: /What would you like to build/ }),
       { target: { value: 'Keep my visual skill input' } },
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Model:/ }));
     fireEvent.click(
@@ -298,9 +310,7 @@ describe('New Chat repair and return', () => {
     expect(
       screen.getByRole('textbox', { name: /What would you like to build/ }),
     ).toHaveProperty('value', 'Keep my visual skill input');
-    expect(
-      screen.getByRole('button', { name: 'Workspace: Beta' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Model: Chosen' })).toBeTruthy();
     expect(screen.getByText(/selected source changed/)).toBeTruthy();
     expect(view.onSelect).not.toHaveBeenCalled();
@@ -322,7 +332,7 @@ describe('New Chat repair and return', () => {
   });
   test('retains intentional Project and Model through repair without selecting or sending', async () => {
     const view = harness();
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Model:/ }));
     fireEvent.click(
@@ -334,9 +344,7 @@ describe('New Chat repair and return', () => {
     view.update({ agents: [READY] });
     await returnToChat();
     expect(navigationStore.getSnapshot().pathname).toBe('/');
-    expect(
-      screen.getByRole('button', { name: 'Workspace: Beta' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Model: Chosen' })).toBeTruthy();
     expect(view.onSelect).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
@@ -464,7 +472,7 @@ describe('New Chat repair and return', () => {
       /workspace.*no longer available/,
     );
     expect(
-      screen.getByRole('button', { name: 'Workspace: Select workspace' }),
+      screen.getByRole('button', { name: 'Project: Select project' }),
     ).toBeTruthy();
     fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
       key: 'Enter',
@@ -542,7 +550,7 @@ describe('New Chat retained context safeguards', () => {
   });
   test('a fresh modal owner removes the suspended banner and discards its choices', async () => {
     const view = harness();
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     await openSetup();
     view.unmount();
@@ -550,9 +558,7 @@ describe('New Chat retained context safeguards', () => {
     expect(
       screen.queryByRole('button', { name: 'Return to New Chat' }),
     ).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Workspace: Alpha' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Project: Alpha' })).toBeTruthy();
   });
 });
 
@@ -771,9 +777,10 @@ test('a refused setup navigation restores the draft with feedback instead of lea
 
 test('composer setup returns directly to the retained message and repaired Agent without starting work', async () => {
   const view = harness({ startSurface: true, agents: [NEEDS_SETUP] });
-  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
-    target: { value: 'Keep my message' },
-  });
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'What would you like done?' }),
+    { target: { value: 'Keep my message' } },
+  );
   fireEvent.click(
     await screen.findByRole('button', { name: 'Connect Assistant' }),
   );
@@ -783,10 +790,52 @@ test('composer setup returns directly to the retained message and repaired Agent
   view.update({ agents: [READY] });
   fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
   expect(
-    await screen.findByRole('textbox', { name: 'Message' }),
+    await screen.findByRole('textbox', { name: 'What would you like done?' }),
   ).toHaveProperty('value', 'Keep my message');
   expect(view.onSelect).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start' }));
   expect(view.onSelect).toHaveBeenCalledOnce();
   expect(view.onSelect.mock.calls[0][3]).toBe('Keep my message');
+});
+
+// Owner decision 1: setup from Home's composer is handed to this composer,
+// where the setup journey survives the page change. The hand-off must be
+// lossless: the prompt, the project, the Agent and the Model Home's chips
+// showed all come back after setup, and start exactly as chosen.
+test("a hand-off from Home's composer runs setup here and returns with the prompt and every choice intact", async () => {
+  const view = harness({
+    startSurface: true,
+    agents: [NEEDS_SETUP],
+    initialPrompt: 'Keep my Home message',
+    startSelection: {
+      context: 'beta',
+      agentSlug: 'assistant',
+      model: { modelId: 'chosen', providerOptions: { effort: 'high' } },
+    },
+    handoff: { kind: 'repair', agentSlug: 'assistant', route: 'models' },
+  });
+  // The hand-off starts the setup journey by itself: no second click.
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+  );
+  view.update({ agents: [READY] });
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Return to New Chat' }),
+  );
+  expect(
+    await screen.findByRole('textbox', { name: 'What would you like done?' }),
+  ).toHaveProperty('value', 'Keep my Home message');
+  expect(screen.getByRole('button', { name: 'Project: Beta' })).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Agent: Assistant · Chosen' }),
+  ).toBeTruthy();
+  expect(view.onSelect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+  expect(view.onSelect).toHaveBeenCalledOnce();
+  const call = view.onSelect.mock.calls[0];
+  expect(call[0].slug).toBe('assistant');
+  expect(call[1]).toBe('beta');
+  expect(call[3]).toBe('Keep my Home message');
+  expect(call[4]).toBe('chosen');
+  expect(call[8]).toEqual({ effort: 'high' });
 });

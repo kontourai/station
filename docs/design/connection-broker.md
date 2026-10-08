@@ -597,8 +597,14 @@ GET/HEAD Station health/authority, Project list/detail, shared-work list, and
 scoped document/history/publication reads. Neutral Device-only observations are
 `/.well-known/station/v1`, `/api/system/status` and `/api/system/identity`.
 Authority and member reads still require the separate account. Privileged,
-terminal, plugin, pairing, consent and operator routes refuse proof authority
-even when the proven Device holds broad scopes. The one [native Device request
+terminal, plugin, pairing, consent and generic operator routes refuse proof
+authority even when the proven Device holds broad scopes. A separate closed
+relay-management and Project access management inventory now has native
+transport and fixed account-proof preparation; it requires explicit management
+scope and independent Project IAM. The account-bound gate admits only exact
+native relay-management leaves with current Device/account binding and separate
+management scope; credential-only account-bound Devices remain gated.
+Capabilities return neutral false without management authority. The one [native Device request
 authority](../../src-server/security/native-device-request-authority.ts) mints
 the credential-free principal on the final Request, and every later seam
 (account-bound gate, orchestration principal, Project membership authority,
@@ -615,7 +621,14 @@ absent-Authorization bucket.
 ([runtime-routes native pilot](../../src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts))
 drives the real HTTP admission, real application channel and Pion adapter with
 a faked peer transport, real pairing/binding/replay/membership stores and the
-real local-account provider. It does not prove a packaged Tauri host, the
+real local-account provider. At `07a7d02ff0`, the owning verification lane
+executed 35/35 tests. Native manager coverage exercises actual surface-registry
+approval/revocation and the invitation-owner call with an external broker stub.
+Device approve/deny checks reach only `503 enrollment_unavailable` admission;
+they do not exercise enrollment decisions. Maintained fault controls removing
+native admission caused four failures; removing the native-principal condition
+caused one. Both byte-exact restorations returned 35/35. Earlier prerequisite
+and fixture failures remain failed diagnostics. This does not prove a packaged Tauri host, the
 host-signing IPC, physical devices or a production identity provider. The
 approval-context factory still does not authenticate an operator. The opt-in
 runtime mounts an operator-credential-only approval/readback route that checks

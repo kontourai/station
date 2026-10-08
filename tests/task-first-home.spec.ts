@@ -6,7 +6,10 @@ import type {
   BrowserPaneAccessView,
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import type { WorkspaceFilePreview } from '@kontourai/station-contracts/workspace-file-preview';
+import type {
+  WorkspaceFileChanges,
+  WorkspaceFilePreview,
+} from '@kontourai/station-contracts/workspace-file-preview';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
@@ -291,6 +294,32 @@ async function mockTaskFirstHome(
         content: 'export function App() {}\n',
       };
       await route.fulfill(json(preview));
+      return;
+    }
+    // The pane then reads that file's changes against HEAD (#3365): the file
+    // came from the active-work changed-files list, so it has a patch, in the
+    // `{ success, data }` envelope the real route uses
+    // (src-server/routes/projects/workspace-pane-previews.ts). Only the
+    // previewed file's own read is declared; any other body falls through to
+    // the fixture audit and fails the test by name.
+    if (
+      path === '/api/projects/station/file-preview/changes' &&
+      route.request().method() === 'POST' &&
+      route.request().postData() ===
+        JSON.stringify({ path: 'src-ui/src/App.tsx' })
+    ) {
+      const changes: WorkspaceFileChanges = {
+        state: 'changed',
+        base: 'HEAD',
+        patch:
+          'diff --git a/src-ui/src/App.tsx b/src-ui/src/App.tsx\n' +
+          'index e69de29..8b7a6f1 100644\n' +
+          '--- a/src-ui/src/App.tsx\n' +
+          '+++ b/src-ui/src/App.tsx\n' +
+          '@@ -0,0 +1 @@\n' +
+          '+export function App() {}\n',
+      };
+      await route.fulfill(json(changes));
       return;
     }
     if (path === '/api/projects/station/layouts') {
@@ -678,46 +707,77 @@ async function mockTaskFirstHome(
 }
 
 /**
- * Opens Home's New chat draft (#3201). The draft opens with the default Agent
- * preselected and no card list; choosing an Agent or Model never starts an
- * engine, only Send does.
+ * Opens the dock's start composer through the dock's own New chat action
+ * (the collapsed bar's icon, the open dock's New, or a phone header's): the
+ * same composer Home renders inline. It opens on the remembered Agent and
+ * project; choosing an Agent, Model or project never starts an engine, only
+ * Start does.
  */
 async function openNewChatDraft(page: Page) {
   await page
-    .locator('.home-view__goal-actions')
+    .locator(
+      '.chat-dock__header, .chat-dock__tab-actions, .chat-dock__no-chat, .chat-dock__mobile-header',
+    )
     .getByRole('button', { name: 'New chat', exact: true })
+    .first()
     .click();
   const dialog = page.getByRole('dialog', { name: 'New chat', exact: true });
   await expect(dialog).toBeVisible();
   return {
     dialog,
-    draft: dialog.getByRole('form', { name: 'New chat draft' }),
+    draft: dialog.getByRole('form', { name: 'Start work' }),
   };
+}
+
+/** Chooses a project through a composer's project chip. */
+async function chooseProject(page: Page, composer: Locator, slug: string) {
+  await composer.getByRole('button', { name: /^Project: / }).click();
+  const menu = page.getByRole('dialog', { name: 'Choose project' });
+  await expect(menu).toBeVisible();
+  await menu.locator(`[data-context-value="${slug}"]`).click();
+  await expect(menu).toHaveCount(0);
 }
 
 /** Opens the draft and scopes it to the Station project (not yet sent). */
 async function openProjectDraft(page: Page) {
   const opened = await openNewChatDraft(page);
-  await opened.dialog
-    .getByRole('button', { name: 'Workspace: No workspace' })
-    .click();
-  await opened.dialog.locator('[data-context-value="station"]').click();
   await expect(
-    opened.dialog.getByRole('button', { name: 'Workspace: Station' }),
+    opened.draft.getByRole('button', { name: 'Project: No project' }),
+  ).toBeVisible();
+  await chooseProject(page, opened.draft, 'station');
+  await expect(
+    opened.draft.getByRole('button', { name: 'Project: Station' }),
   ).toBeVisible();
   return opened;
 }
 
-/** Sends the draft's message; the dialog closes into the dock's chat. */
+/** Starts the draft's message; the dialog closes into the dock's chat. */
 async function sendDraft(
   { dialog, draft }: Awaited<ReturnType<typeof openNewChatDraft>>,
   message: string,
 ) {
   await draft
-    .getByRole('textbox', { name: 'Message', exact: true })
+    .getByRole('textbox', { name: 'What would you like done?', exact: true })
     .fill(message);
-  await draft.getByRole('button', { name: 'Send', exact: true }).click();
+  await draft.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(dialog).toHaveCount(0);
+}
+
+/**
+ * Opens the Model picker the way a person reaches it in a start composer:
+ * the Agent chip's list, then that Agent row's Model control.
+ */
+async function openComposerModelPicker(page: Page, composer: Locator) {
+  await composer.getByRole('button', { name: /^Agent: / }).click();
+  const agents = page.getByRole('dialog', { name: 'Choose agent' });
+  await expect(agents).toBeVisible();
+  await agents
+    .getByRole('button', { name: /^Model: / })
+    .first()
+    .click();
+  const picker = page.getByRole('dialog', { name: 'Choose model' });
+  await expect(picker).toBeVisible();
+  return picker;
 }
 
 /**
@@ -910,20 +970,26 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await mockTaskFirstHome(page, { commands });
     await page.goto('/');
     const prompt = 'Reply exactly GOAL READY. Use no tools.';
-    // #3312: with work on the page the compact form names the Agent and
-    // Model Start will run on, beside Start. What it advertises is what the
-    // started chat runs on, read back below.
-    const form = page.locator('.home-view__goal--compact');
-    const start = form.getByRole('button', {
-      name: 'Start a chat',
+    // With work on the page Home's start composer is the compact one, and
+    // its Agent chip names the Agent and Model Start will run on. What it
+    // advertises is what the started chat runs on, read back below.
+    const form = page.getByRole('form', { name: 'Start work' });
+    await expect(form).toHaveClass(/start-composer--compact/);
+    const start = form.getByRole('button', { name: 'Start', exact: true });
+    const advertised = form.getByRole('button', {
+      name: 'Agent: Codex · gpt-5.3-codex',
       exact: true,
     });
-    const advertised = form.locator('.home-view__goal-identity');
-    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
-    await expect(start).toHaveAccessibleDescription('Codex · gpt-5.3-codex');
+    await expect(advertised).toBeVisible();
+    // The composer is Home's only start: no second "New chat" beside it.
+    await expect(
+      form.getByRole('button', { name: 'New chat', exact: true }),
+    ).toHaveCount(0);
     const [advertisedAgent, advertisedModel] = (
-      (await advertised.textContent()) ?? ''
-    ).split(' · ');
+      (await advertised.getAttribute('aria-label')) ?? ''
+    )
+      .replace(/^Agent: /, '')
+      .split(' · ');
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
@@ -940,7 +1006,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       message: prompt,
       target: { agent: 'codex-agent' },
     });
-    await expect(page.getByRole('dialog', { name: 'New Chat' })).toHaveCount(0);
+    await expect(
+      page.getByRole('dialog', { name: 'New chat', exact: true }),
+    ).toHaveCount(0);
     // The started chat's own Agent and Model controls name the advertised
     // ones.
     await expectStartedChatRuns(page, prompt, advertisedAgent, advertisedModel);
@@ -972,14 +1040,18 @@ test.describe('Task-first Home (#332, mocked)', () => {
     });
     await page.goto('/');
     const prompt = 'Reply exactly PROJECT READY. Use no tools.';
-    const form = page.locator('.home-view__goal--compact');
-    const start = form.getByRole('button', {
-      name: 'Start a chat',
-      exact: true,
-    });
-    const advertised = form.locator('.home-view__goal-identity');
-    await expect(advertised).toHaveText('Codex · gpt-5.4');
-    await expect(start).toHaveAccessibleDescription('Codex · gpt-5.4');
+    const form = page.getByRole('form', { name: 'Start work' });
+    const start = form.getByRole('button', { name: 'Start', exact: true });
+    // Both chips name what Start uses: the bound project and its default.
+    await expect(
+      form.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
+    await expect(
+      form.getByRole('button', {
+        name: 'Agent: Codex · gpt-5.4',
+        exact: true,
+      }),
+    ).toBeVisible();
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
@@ -1032,8 +1104,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // `station:open-project-chats` dispatch) — ChatDock's listener for that
     // event stays wired, and the project page's "New here?" CTA is now its
     // caller (`requestProjectChat`), but nothing on THIS route dispatches
-    // it. Reroute through Home's "New chat" action, which opens the same
-    // New chat draft in its intentionally task-free "No workspace" state, then drive
+    // it. Reroute through the dock's "New chat" action, which opens the
+    // start composer in its intentionally task-free "No project" state, then drive
     // the dock's own Maximize control explicitly — proving the maximize
     // transition through its real affordance instead of as a residual side
     // effect of the removed dispatch. Every downstream assertion below is
@@ -1041,7 +1113,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // assertion (now after an explicit click, not implicit) moved.
     const { dialog: newChat } = await openNewChatDraft(page);
     await expect(
-      newChat.getByRole('button', { name: 'Workspace: No workspace' }),
+      newChat.getByRole('button', { name: 'Project: No project' }),
     ).toBeVisible();
     await newChat.press('Escape');
     await expect(newChat).toHaveCount(0);
@@ -1096,16 +1168,16 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const opened = await openProjectDraft(page);
     const { draft } = opened;
 
-    // The draft's chip names the model only; the provider is read in the
-    // picker's selection and, after Send, on the dock's qualified chip.
-    const modelButton = draft.getByRole('button', {
-      name: 'Model: Shared model',
+    // The draft's Agent chip names the Agent and Model; the provider is read
+    // in the picker's selection and, after Start, on the dock's qualified
+    // chip. The picker is the Agent list's Model control for that Agent.
+    const agentChip = draft.getByRole('button', {
+      name: 'Agent: Station Agent · Shared model',
       exact: true,
     });
+    await expect(agentChip).toBeVisible();
     const openPicker = async () => {
-      await modelButton.click();
-      const picker = page.getByRole('dialog', { name: 'Choose model' });
-      await expect(picker).toBeVisible();
+      const picker = await openComposerModelPicker(page, draft);
       // The provider filter persists across openings; press it only once.
       const filter = picker.getByRole('button', {
         name: 'Bedrock · Prod',
@@ -1115,15 +1187,15 @@ test.describe('Task-first Home (#332, mocked)', () => {
         await filter.click();
       return picker;
     };
-    // Unlike the dock's picker, the draft's stays open after a choice; its
-    // Close button is how the user returns to the draft, and focus returns to
-    // the chip that opened it (the first opening also loads the picker chunk
-    // behind a loading frame, which must not take the return target with it).
-    const closePicker = async (picker: Locator) => {
-      await picker.getByRole('button', { name: 'Close model picker' }).click();
+    // Choosing or resetting a Model closes the draft's picker, as the dock's
+    // in-chat picker does, and focus returns to the Agent chip (the Agent
+    // list closed for the picker; the first opening also loads the picker
+    // chunk behind a loading frame, which must not take the return target
+    // with it).
+    const expectPickerClosed = async (picker: Locator) => {
       await expect(picker).toHaveCount(0);
       await expect(
-        draft.getByRole('button', { name: /^Model: / }),
+        draft.getByRole('button', { name: /^Agent: / }),
       ).toBeFocused();
     };
     const bedrockOption = (picker: Locator) =>
@@ -1140,11 +1212,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       'false',
     );
     await bedrockOption(picker).click();
-    await expect(bedrockOption(picker)).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    await closePicker(picker);
+    await expectPickerClosed(picker);
     expect(commands).toEqual([]);
 
     const chosen = await openPicker();
@@ -1152,18 +1220,26 @@ test.describe('Task-first Home (#332, mocked)', () => {
       'aria-selected',
       'true',
     );
-    // The draft's reset button is named after the source of the current choice
-    // ("Use session override"), not the default it restores.
-    await chosen.getByRole('button', { name: /^Use / }).click();
-    await expect(bedrockOption(chosen)).toHaveAttribute(
+    // The reset names the default it restores, never the choice it clears
+    // ("Use session override"): here, the Agent's default.
+    await chosen
+      .getByRole('button', { name: 'Use agent default', exact: true })
+      .click();
+    await expectPickerClosed(chosen);
+
+    const cleared = await openPicker();
+    await expect(bedrockOption(cleared)).toHaveAttribute(
       'aria-selected',
       'false',
     );
-    await bedrockOption(chosen).click();
-    await closePicker(chosen);
+    await bedrockOption(cleared).click();
+    await expectPickerClosed(cleared);
 
-    // Send: the chosen provider/model is what the engine is asked to use, and
-    // the dock's chat carries it under its provider-qualified name.
+    // A Model chosen on the chip is remembered (owner decision): the chip
+    // still names it after the picker closed.
+    await expect(agentChip).toBeVisible();
+    // Start: the chosen provider/model is what the engine is asked to use,
+    // and the dock's chat carries it under its provider-qualified name.
     await sendDraft(opened, 'Send with the chosen model.');
     await expect
       .poll(() =>
@@ -1245,29 +1321,35 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       page.getByRole('heading', { name: "What's next?" }),
     ).toHaveCount(0);
-    // The card's label is exactly "Continue", then the work it continues and
-    // that work's own Agent and Model (not "Continue most recent work").
-    const continuation = page.getByRole('button', {
-      name: /^Continue Worker task · task first home Codex · gpt-5\.3-codex · /,
+    // The card is labelled exactly "Continue", and it is the work row itself,
+    // reading like the inbox's: the work's agent and project (owner, 2026-10).
+    const continueCard = page.getByRole('region', {
+      name: 'Continue',
+      exact: true,
+    });
+    const continuation = continueCard.getByRole('button', {
+      name: 'Worker task · task first home, station',
+      exact: true,
     });
     await expect(continuation).toBeVisible();
-    await expect(continuation.locator(':scope > span')).toHaveText('Continue');
-    // Home's New chat button carries no identity line anymore (#3201). With
-    // work on the page the goal field is the compact one-line form: no
-    // "Using …" caption (design round 2026-10, V1), but the identity Start
-    // will use stays beside Start (#3312). It is the one the New chat draft
-    // opens with, asserted below.
-    await expect(page.locator('.home-view__goal--compact')).toBeVisible();
-    const advertised = page.locator(
-      '.home-view__goal--compact .home-view__goal-identity',
-    );
-    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
+    await expect(continueCard).toContainText('Codex · station');
+    // With work on the page the start composer is the compact one: no
+    // "Using …" caption (design round 2026-10, V1); the Agent chip names
+    // what Start will use. It is the one the dock's draft opens with,
+    // asserted below. Home has no second "New chat" start.
+    const homeComposer = page.getByRole('form', { name: 'Start work' });
+    await expect(homeComposer).toHaveClass(/start-composer--compact/);
+    const advertised = homeComposer.getByRole('button', {
+      name: 'Agent: Codex · gpt-5.3-codex',
+      exact: true,
+    });
+    await expect(advertised).toBeVisible();
     await expect(page.getByText(/^Using /)).toHaveCount(0);
     await expect(
       page
-        .locator('.home-view__goal-actions')
+        .locator('.home-view')
         .getByRole('button', { name: 'New chat', exact: true }),
-    ).not.toContainText('gpt-5.3-codex');
+    ).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: /Open local project/i }),
     ).toBeVisible();
@@ -1300,15 +1382,25 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .toBeNull();
     await expect(page.getByText('No chat open')).toBeVisible();
 
-    // The identity Home advertises is the one the New chat draft opens with,
-    // as its Agent and Model controls.
-    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
+    // The selection Home's chips name is the one the dock's draft opens
+    // with: the same chips, the same words. Opening the project's work bound
+    // the dock to it, so both now open on Station.
+    await expect(advertised).toBeVisible();
+    await expect(
+      homeComposer.getByRole('button', {
+        name: 'Project: Station',
+        exact: true,
+      }),
+    ).toBeVisible();
     const { dialog, draft } = await openNewChatDraft(page);
     await expect(
-      draft.getByRole('button', { name: 'Agent: Codex', exact: true }),
+      draft.getByRole('button', {
+        name: 'Agent: Codex · gpt-5.3-codex',
+        exact: true,
+      }),
     ).toBeVisible();
     await expect(
-      draft.getByRole('button', { name: 'Model: gpt-5.3-codex', exact: true }),
+      draft.getByRole('button', { name: 'Project: Station', exact: true }),
     ).toBeVisible();
     await dialog.press('Escape');
     await expect(dialog).toHaveCount(0);
@@ -1374,7 +1466,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     const opened = await openNewChatDraft(page);
     await expect(
-      opened.dialog.getByRole('button', { name: 'Workspace: No workspace' }),
+      opened.draft.getByRole('button', { name: 'Project: No project' }),
     ).toBeVisible();
     await sendDraft(opened, 'Start a direct chat.');
     await expect(page.locator('.chat-dock')).toBeVisible();
@@ -1667,6 +1759,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await actionsMenuTrigger.click();
     await expect(menu).toBeVisible();
     await filesTrigger.click();
+    // The opened file's pane reads its changes against HEAD (#3365). Wait
+    // for that read so the test, not teardown timing, decides it ran.
+    const changesRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          '/api/projects/station/file-preview/changes' &&
+        response.request().method() === 'POST',
+    );
     await page
       .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
       .click();
@@ -1676,6 +1776,18 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
       'src-ui/src/App.tsx',
     );
+    const changes = await changesRead;
+    expect(changes.status()).toBe(200);
+    // The pane asked for the file it opened.
+    expect(changes.request().postDataJSON()).toMatchObject({
+      path: 'src-ui/src/App.tsx',
+    });
+    // The opened preview shows the file and consumed the read: the Changes
+    // toggle counts the declared patch's one changed line.
+    await expect(page.getByText('export function App() {}')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
+    ).toBeVisible();
     await expect(
       page.getByRole('textbox', { name: /^Type a message/ }),
     ).toBeVisible();
@@ -1776,13 +1888,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await mockStationModelProviders(page);
       await page.goto('/');
 
-      // The picker is first reached from the New chat draft's Model control.
+      // The picker is first reached from the draft's Agent list, that
+      // Agent's Model control.
       const opened = await openProjectDraft(page);
-      await opened.draft
-        .getByRole('button', { name: 'Model: Shared model', exact: true })
-        .click();
-      const draftPicker = page.getByRole('dialog', { name: 'Choose model' });
-      await expect(draftPicker).toBeVisible();
+      const draftPicker = await openComposerModelPicker(page, opened.draft);
       await expectContainedAndTouchFriendly(draftPicker);
       await draftPicker
         .getByRole('button', { name: 'Close model picker' })

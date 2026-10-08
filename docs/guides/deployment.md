@@ -612,6 +612,9 @@ FQDN): the consent session cookie is host-scoped and is not sent across
 hostnames, so a different name fails closed with `unauthenticated`. Unset, the
 behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
 
+With this origin set, a paired browser can also enroll an operator passkey; see
+[Enroll an operator passkey](operator-passkeys.md).
+
 #### Troubleshooting the pairing path
 
 | Symptom | Likely cause | Check |
@@ -625,7 +628,7 @@ behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
 
 
 The repository-owned dogfood supervisor keeps one named Station instance on
-the exact `origin/main` commit whose GitHub Actions `CI` **push** run completed
+the exact `origin/main` commit whose GitHub Actions `PR: CI` **push** run completed
 successfully. Its staging code creates a detached release and currently calls
 legacy `npm ci` plus `./station build` before stopping the active release.
 That dependency command is not the repository's managed pinned-pnpm setup path;
@@ -862,7 +865,7 @@ tailscale serve status --json | jq .
 ```
 
 The `active.sha` must equal the provenance SHA returned by both identity
-endpoints. `active.ci.url` is the accepted exact-SHA `CI` push-run receipt. A
+endpoints. `active.ci.url` is the accepted exact-SHA `PR: CI` push-run receipt. A
 pending, failed, absent, PR-only, different-workflow, or wrong-SHA run blocks
 promotion.
 

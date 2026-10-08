@@ -38,7 +38,7 @@
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
       "scenario": "Connections \u2192 Models",
-      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained.",
+      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later.",
       "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
         "docs/guides/connections.md",
@@ -82,7 +82,7 @@
       "alt": "Browse the example model and engine settings.",
       "caption": "Browse Models and Engines without testing or invoking a provider.",
       "scenario": "Connections \u2192 Models and Engines",
-      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained.",
+      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
         "docs/guides/connections.md"
@@ -105,15 +105,67 @@
     {
       "path": "docs/learn/media/repository-knowledge-narrow.png",
       "kind": "image",
-      "digest": "93a0b78417a551a7430d558e099b5457b83e3297a6b9a95b73d3c5cf0bb9725e",
-      "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record.",
+      "digest": "ee41b771796dce8d021bab23f63db99bd9e5ad283ebf37e7c35699dfc78b46c2",
+      "alt": "Knowledge Library shows 1656 repository records, 3278 links and the selected KnowledgeStoreProvider canonical record, its title wrapped at the word boundary.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail at a narrow browser width.",
       "scenario": "Knowledge Library \u2192 narrow layout",
-      "evidence": "Actual installed Knowledge Library example plugin (npm run build --prefix examples/knowledge-library, installed through the Plugins page) on an isolated Station built from 171fcbe0c: own home, instance rem-capture-kl, ports 43621/43631. Fresh export of this revision's atlas, module map and review ledger (input digest 1024718b7c30) imported through the public SDK (createKnowledgeRoot, then the example ingest --apply) into a new project root; the first apply stopped after 1656 confirmed creates before its final readback and the identical rerun created nothing and verified 1656 canonical records/3278 links. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider; measured at 390\u00d7844 with the phone toolbar showing the whole Station name and no horizontal overflow (document width 390). Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Host was heavily loaded, so the plugin registry needed Retry extensions before the pane loaded; keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval.",
-      "capturedRevision": "171fcbe0cdcb2a4266aa71ae737baf757b4436dd",
+      "evidence": "Actual installed Knowledge Library example plugin on an isolated Station built from 4e900230b (this change's branch): own home, instance rem-capture-kl, ports 43621/43631, the same home and imported project root as the 171fcbe0c capture (1656 canonical records/3278 links imported through the public SDK from that revision's atlas, module map and review ledger, input digest 1024718b7c30). The plugin bundle takes the SDK from the host, so the record heading is this revision's KnowledgeRecall. No graph/detail API fixture. Actual deep selection of KnowledgeStoreProvider, measured at 390\u00d7844 with no horizontal overflow (document width 390); the record heading wraps as KnowledgeStore / Provider. Only user.name changed to Sample User, by rewriting that field in the browser's /api/auth/status response. Keyboard return and a next selection were not re-run for this capture. No provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 171fcbe0c; matching source hashes are not semantic approval.",
+      "capturedRevision": "4e900230beb9023bec9a2a8e21cc82327d7139e2",
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/new-chat-start-before.png",
+      "kind": "image",
+      "digest": "ca6433882c8c4d19cc008068c7d45f0ff27f25132ac24af448bfa907a7303aec",
+      "alt": "new-chat start controls before the composer redesign at phone width.",
+      "caption": "New-Chat start controls, before the redesign.",
+      "scenario": "Compare shared chat and Project start controls",
+      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification.",
+      "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
+      "documents": [
+        "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/new-chat-start-after.png",
+      "kind": "image",
+      "digest": "a1b54b7a701fa0ba86c54a1cdce5f34c62c0b00aeb5aaba19f66d0b7cf33e7d5",
+      "alt": "new-chat start controls after the composer redesign at phone width.",
+      "caption": "New-Chat start controls, after the redesign.",
+      "scenario": "Compare shared chat and Project start controls",
+      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification.",
+      "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
+      "documents": [
+        "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/project-start-before.png",
+      "kind": "image",
+      "digest": "7184cdff9558420cb706b7aec79d6efc2166a363d697c0747a5481b98553bb2e",
+      "alt": "project start controls before the composer redesign at phone width.",
+      "caption": "Project start controls, before the redesign.",
+      "scenario": "Compare shared chat and Project start controls",
+      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification.",
+      "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
+      "documents": [
+        "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/project-start-after.png",
+      "kind": "image",
+      "digest": "9189c65ad2389f014d2c28a662b70ff638805ab9b8373163d7e48f6ec72e6a49",
+      "alt": "project start controls after the composer redesign at phone width.",
+      "caption": "Project start controls, after the redesign.",
+      "scenario": "Compare shared chat and Project start controls",
+      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification.",
+      "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
+      "documents": [
+        "docs/design/chat-composer.md"
       ]
     }
   ]

@@ -1,0 +1,13 @@
+{
+  "revision": "e3758f31cda720393aa9d466b29fe1ee301ff9b9",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"#3036: re-checked after the guard was limited to layout version 3 in the no-merge-base fallback; scoped/advisory split for freshness is unchanged and advisory events still resolve before scope.","inputs":[".veritas/README.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3036: re-checked after the fallback change; the scoped blocking and advisory-in-queue claims still match documentation-freshness.mjs.","inputs":["docs/guides/code-quality.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"#3036: re-checked the guards paragraph against the final code: the missing-merge-base block applies in PR context for the version 3 layout (older layouts report not-applicable), with serializer JSDoc now typed for path-only records and index versions in review-ledger-store.mjs.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-ledger-store.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"#3036: re-checked after the fallback change and serializer type fixes; the notes-files claims are unchanged.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-ledger-store.mjs"]}
+  ]
+}

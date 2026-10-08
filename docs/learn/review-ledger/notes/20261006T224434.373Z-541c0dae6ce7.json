@@ -1,0 +1,7 @@
+{
+  "revision": "4285c2062e452a942a8f09b9db71a8885d7de561",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed the home-state snapshot and supervised rollback contract against the new default automation ledger location. automation is explicitly state and automation.sqlite appears in the declared store inventory; the archive already handles included .sqlite files and WAL checkpoint failure. No channel, release pointer, updater strategy, trust policy or rollback default changes. Existing architectural explanation remains accurate. Related registry/archive/update-backup/automation focused suites passed 94/94, with missing registry removal caught and source restoration verified; no promotion proof inferred.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

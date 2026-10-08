@@ -541,7 +541,8 @@ The five decisions of the 2a plan, as taken (each reversible on its own):
   at the unchanged `--chat-dock-header-height` (38/53px); the strip hides
   with the body (it also shows during a drag from Collapsed, as Chat's
   pane controls do), and the selected pane's toolbar keeps its
-  collapsed-state affordances ("Start a chat", #800).
+  collapsed-state affordance (#800): the icon-only New chat action, the one
+  way into the start composer.
 - **D2 — folded menu (bottom-only devices): rows per region.** Each
   occupied dock region contributes its panes in tab order: the selected
   pane's row is the region's Hide/Show, a pane behind a tab gets a Show row

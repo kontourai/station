@@ -1,4 +1,4 @@
-name: Main qualification
+name: "Main: Qualification"
 
 on:
   schedule:
@@ -30,8 +30,8 @@ jobs:
   # later main HEAD cannot publish an older qualified commit: every
   # attestation, provenance record and cohort verifier binds to the run's
   # triggering commit. Here that commit is the qualified one by construction.
-  # The scheduled Nightly stays as the fallback and the CLI's npm
-  # trusted-publisher path.
+  # Main qualification owns the delivery schedule; manual Nightly dispatch
+  # remains available for recovery with exact-source qualification.
   # Dormant until the owner sets STATION_QUALIFIED_NIGHTLY to `enabled`, after
   # admitting main-qualification.yml@refs/heads/main to the GCP workload
   # identity condition (Android staging) and, for the CLI, to npm trusted

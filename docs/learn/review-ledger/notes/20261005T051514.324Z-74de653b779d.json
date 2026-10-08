@@ -1,0 +1,47 @@
+{
+  "revision": "c01108b31db1903966e3581353b828db2dfd070a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Fix round after the independent review: checked HomeStartComposer (dispatchNewChatIntent; text kept and 'No chat dock is open' when no dock takes it; hand-off text returns on dismissal including after remount; started clears the field), ChatDock/useChatDockOverlays outcome reporting, readNewChatIntent's selectionInvalid path and NewChatModal's alert and stale-Model refusal, ContextPickerOptions' folderless refusal in the chip menu, NO_PROJECT_LABEL, RecentChatList rendering nothing when empty, isConfirmedLoaded gating with the read error shown. Rewrote the chip, memory, loading and hand-off paragraphs accordingly.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/chat-dock/useChatDockOverlays.ts","src-ui/src/components/chat-start/RecentChatList.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/index.css","src-ui/src/lib/newChatIntent.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the start composer paragraph against StartComposer (overflow beside Start, chips on one line), the folderless refusal, RecentChatList's empty case and the cancelable intent / outcome reporting in ChatDock and HomeStartComposer. index.css comment-only edits change no claim here.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-start/RecentChatList.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"NewChatModal since the last record: invalid-selection alert, stale pinned Model refused before start, setupError (including the project list) shown in the composer, No project label. The setup helper and setup-return claims here are unchanged; no prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"D1 already names the icon-only New chat action. ChatDock.tsx since the last record: the new-chat listener uses dockAcceptsNewChatIntent and calls preventDefault on intents it takes, the start path reports 'started' to the sender, and projectsLoaded reads useProjects().isConfirmedLoaded. This page names no such client event or setting; no claim changed. This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Updated the start composer sentence: chips on one line with the Agent chip shrinking first, overflow with Start, two rows on a phone with no viewport query, 44px targets, edge-sheet menus. The responsive action-surface inventory gained the StartComposer.tsx entry (its __actions row); this page names no inventory entry.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home still covers the Home rows it names (continuation now the Continue card above Recent work, composer reachability, mobile geometry); no row names a removed control. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]},
+
+    {"path":"docs/design/collaborative-editor-pane.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/design/collaborative-editor-pane.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page. The responsive action-surface inventory gained the StartComposer.tsx entry (its __actions row); this page names no inventory entry.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page. The responsive action-surface inventory gained the StartComposer.tsx entry (its __actions row); this page names no inventory entry.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"This branch's index.css change since the last record is two comments (the collapsed dock's \"Start a chat\" label is now the New chat action) and no rule; it changes no claim on this page. The responsive action-surface inventory gained the StartComposer.tsx entry (its __actions row); this page names no inventory entry.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock.tsx since the last record: the new-chat listener uses dockAcceptsNewChatIntent and calls preventDefault on intents it takes, the start path reports 'started' to the sender, and projectsLoaded reads useProjects().isConfirmedLoaded. This page names no such client event or setting; no claim changed.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock.tsx since the last record: the new-chat listener uses dockAcceptsNewChatIntent and calls preventDefault on intents it takes, the start path reports 'started' to the sender, and projectsLoaded reads useProjects().isConfirmedLoaded. This page names no such client event or setting; no claim changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

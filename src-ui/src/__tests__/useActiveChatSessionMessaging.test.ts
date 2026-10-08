@@ -864,28 +864,180 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(followUp.target).not.toHaveProperty('workspace');
   });
 
+  it('reports a definite visual-skill refusal, then admission after the selection is removed', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      skillExperienceDraftInvalid: true,
+    });
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Submitted form',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true, onAdmission },
+      );
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(onAdmission.mock.calls).toEqual([['not-invoked']]);
+    activeChatsStore.updateChat(sessionId, {
+      skillExperienceDraftInvalid: false,
+    });
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Submitted form',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true, onAdmission },
+      );
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(onAdmission.mock.calls).toEqual([['not-invoked'], ['accepted']]);
+  });
+
+  it('reports busy form follow-up queue admission even though the legacy return value is undefined', async () => {
+    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'Submitted form',
+          undefined,
+          undefined,
+          undefined,
+          { queueOnBusy: true, onAdmission },
+        ),
+      ).toBeUndefined();
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toContain(
+      'Submitted form',
+    );
+    expect(onAdmission.mock.calls).toEqual([['accepted']]);
+  });
+
   it('reuses the same client turn id from the Retry affordance', async () => {
     sendExecutionMessageMock
       .mockRejectedValueOnce(new Error('temporarily unavailable'))
       .mockResolvedValueOnce(successReceipt());
+    const onAdmission = vi.fn();
+    const claimRetry = vi.fn().mockReturnValue(true);
     const { result } = renderHook(() => useSendMessage('http://api.test'));
 
     await act(async () => {
-      await result.current(sessionId, 'codex', undefined, 'retry me');
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'retry me',
+        undefined,
+        undefined,
+        undefined,
+        { onAdmission, claimRetry },
+      );
     });
     const firstId = sendExecutionMessageMock.mock.calls[0][1].clientTurnId;
     const retry = activeChatsStore
       .getSnapshot()
       [sessionId]?.ephemeralMessages?.at(-1)?.action?.handler;
     expect(retry).toBeTypeOf('function');
+    expect(onAdmission.mock.calls).toEqual([['indeterminate']]);
 
     await act(async () => {
       await retry?.();
     });
+    expect(onAdmission.mock.calls).toEqual([['indeterminate'], ['accepted']]);
     expect(sendExecutionMessageMock.mock.calls[1][1].clientTurnId).toBe(
       firstId,
     );
+    claimRetry.mockReturnValue(false);
+    await act(async () => {
+      await retry?.();
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    expect(onAdmission.mock.calls).toEqual([['indeterminate'], ['accepted']]);
   });
+
+  it.each(['stopped', 'foreground-indeterminate'])(
+    'completes form Retry observation when its attempt is %s',
+    async (outcome) => {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new Error('temporary refusal'),
+      );
+      if (outcome === 'stopped') {
+        sendExecutionMessageMock.mockImplementationOnce(
+          (
+            _base: string,
+            _input: unknown,
+            { signal }: { signal: AbortSignal },
+          ) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              });
+            }),
+        );
+      } else {
+        sendExecutionMessageMock.mockRejectedValueOnce(
+          Object.assign(new Error('Receipt unavailable'), {
+            code: 'foreground_message_indeterminate',
+            outcome: 'indeterminate',
+          }),
+        );
+      }
+      const onAdmission = vi.fn();
+      const { result } = renderHook(() => ({
+        send: useSendMessage('http://api.test'),
+        cancel: useCancelMessage('http://api.test'),
+      }));
+      await act(async () => {
+        await result.current.send(
+          sessionId,
+          'codex',
+          undefined,
+          'Submitted form',
+          undefined,
+          undefined,
+          undefined,
+          { onAdmission, claimRetry: () => true },
+        );
+      });
+      const retry = activeChatsStore
+        .getSnapshot()
+        [sessionId]?.ephemeralMessages?.at(-1)?.action?.handler;
+      expect(retry).toBeTypeOf('function');
+      await act(async () => {
+        const retryAttempt = retry?.();
+        if (outcome === 'stopped') {
+          await vi.waitFor(() =>
+            expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2),
+          );
+          await result.current.cancel(sessionId);
+          await retryAttempt;
+        } else {
+          await expect(retryAttempt).rejects.toMatchObject({
+            code: 'foreground_message_indeterminate',
+          });
+        }
+      });
+      expect(onAdmission.mock.calls).toEqual([
+        ['indeterminate'],
+        ['indeterminate'],
+      ]);
+    },
+  );
 
   it('marks a failed send as a send-failure notice, which the composer repeats', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(

@@ -17,12 +17,30 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
+- `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
 [package README](../../packages/shared/README.md) for distribution and build
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
+
+## Native relay link codec
+
+`@kontourai/station-shared/native-relay-link` owns `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink`.
+The [canonical implementation](../../packages/shared/src/native-relay-link.ts)
+validates the closed native link envelope, channel scheme and bounded fragment
+payload. Public route intent and installation-bound invitation parsing grant
+no Station trust, Device, account or Project authority. Receiving invitation
+secrets remains the native host's responsibility.
+
+The SDK and server use this published Shared leaf; Connect's existing
+`/native-relay-link` entry re-exports it for compatibility. There is one parser,
+with the existing wire format and rejection rules. Use a package release that
+contains the new subpath and a toolchain that handles its TypeScript source;
+source availability is not publication or native delivery proof. See the
+[link contract and custody boundary](connect.md#native-relay-link-publication).
 
 ## Skill experience validation
 
@@ -54,6 +72,20 @@ proposal, preview, evaluation and revision review.
 complete answer batch and translate selected IDs to display labels/custom
 text. They do not authorize a reply or prove engine delivery. Stable types
 come from `@kontourai/station-contracts/harness-questions`.
+
+## MCP elicitation helpers
+
+`@kontourai/station-shared/mcp-elicitation` owns the browser-safe
+`mcpElicitationFormFromRequest`, `readMcpElicitationForm`,
+`validateMcpElicitationContent` and `readMcpElicitationResult` helpers. They
+normalize a form-mode `elicitation/create` request into the field subset
+Station renders, refuse anything outside it or over a bound, and validate
+accepted content against the form with a reason, never coercing or
+truncating. The server's answer path and the browser card run the same
+validator. Eager event and pending-card readers use the form-only
+`@kontourai/station-shared/mcp-elicitation-form` subpath; answer validation
+loads with the form renderer. The public facade retains the same helpers.
+Stable types come from `@kontourai/station-contracts/mcp-elicitation`.
 
 ## Request settlement
 
@@ -290,6 +322,8 @@ interface ToolDef {
     intervalMs?: number;
   };
   exposedTools?: string[];
+  /** #3279: each person connects their own account (see the API reference). */
+  credentialOwnership?: { owner: 'principal'; allowInstanceFallback?: boolean };
 }
 
 interface ToolPermissions {
@@ -504,6 +538,18 @@ interface ProjectConfig {
 for that Station access and project. The remembered choice takes precedence;
 No project has its own remembered choice. Create/update requests accept `null`
 to clear `defaultAgent`; stored and read configuration omit the cleared field.
+
+`icon` is either a short glyph (an emoji or symbol of at most 16 UTF-16 code
+units, with at least one visible character; no `/`, `\`, `:`, control
+character, bidirectional control or unpaired surrogate; and no leading `~`) or
+a base64 PNG, JPEG, WebP or ICO `data:` URL whose bytes match its type and
+number at most 128 KiB. [`projectIconProblem`](../../packages/contracts/src/project.ts)
+is that rule; `POST /api/projects` and `PUT /api/projects/:slug` refuse any
+other value with 400, so a path or remote URL is never stored, and
+`ProjectService` applies it to a new icon from any other caller. `''` or `null`
+in a request clears the icon, and the stored record then omits it. An update
+that does not name `icon` leaves the stored one alone, including an older value
+the rule now refuses; the UI does not draw such a value.
 
 `agents` is optional by design: `undefined` means the project can use all
 known agents, while an explicit empty array means the project exposes no agents.

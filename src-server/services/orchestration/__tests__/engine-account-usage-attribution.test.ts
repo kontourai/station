@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
+import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -306,6 +307,77 @@ test('Codex token replacement survives a process restart while Claude cost epoch
       inputTokens: 450,
       reportedCost: { amount: 5, currency: 'USD' },
     });
+  } finally {
+    store.close();
+  }
+});
+
+test('a resumed Claude process continues its cost receipt while a fresh restart and a zeroed resume still add (station#3320)', async () => {
+  const home = makeTempDir('usage-route-resume-cost-');
+  const store = new EventStore(join(home, 'events.sqlite'));
+  let ordinal = 0;
+  // The shapes the Claude adapter persists: `session.started` from
+  // `startTrackedSession` (resume marker only on a resumed query()), and the
+  // cost-bearing usage event from the `result` handler.
+  const started = (resumed: boolean) =>
+    store.appendEvent({
+      eventId: `resume-start-${++ordinal}`,
+      provider: 'claude',
+      threadId: 'resumed',
+      sessionId: 'resumed',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      initialState: 'created',
+      metadata: {
+        userId: 'reader',
+        cwd: '/work',
+        ...(resumed ? { nativeSessionResumed: true } : {}),
+      },
+    });
+  const result = (reportedCostUsd: number) => {
+    const turnId = `resume-turn-${++ordinal}`;
+    store.appendEvent({
+      eventId: `resume-usage-${ordinal}`,
+      provider: 'claude',
+      threadId: 'resumed',
+      turnId,
+      createdAt: new Date().toISOString(),
+      method: 'token-usage.updated',
+      promptTokens: 10,
+      completionTokens: 3,
+      reportedCostUsd,
+    });
+  };
+  try {
+    // Live Agent SDK 0.3.278 figures: fresh 0.030603, the same transcript
+    // resumed 0.0324923 (already including it).
+    started(false);
+    result(0.02);
+    result(0.030603);
+    started(true);
+    // The resume handshake restates the saved total unchanged.
+    result(0.030603);
+    result(0.0324923);
+    // A fresh process (new transcript) starts from zero and adds.
+    started(false);
+    result(0.0088783);
+    // A resume of a missing transcript reports 0; it must not erase spend.
+    started(true);
+    result(0);
+    const response = await usageRoute(store, home, 'reader').request(
+      `/usage-rollup?${windowQuery()}`,
+    );
+    expect(response.status).toBe(200);
+    const rollup = await readJson<{ data: UsageRollup }>(response);
+    const row = rollup.data.rows.find((entry) => entry.provider === 'claude');
+    // Per-process summing would report 0.0719736 (0.030603 counted twice).
+    expect(row?.reportedCost?.currency).toBe('USD');
+    expect(row?.reportedCost?.amount).toBeCloseTo(0.0413706, 10);
+    // The session fold over the same durable events agrees with the rollup.
+    expect(
+      foldUsageEvents(store.listEvents('resumed').map((event) => event.payload))
+        .reportedCostUsd,
+    ).toBeCloseTo(0.0413706, 10);
   } finally {
     store.close();
   }

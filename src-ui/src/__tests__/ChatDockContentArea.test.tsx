@@ -25,7 +25,11 @@ describe('ChatDockContentArea', () => {
     renderContentArea(vi.fn(), onNewChat, false);
 
     expect(screen.getByText('No chat open')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Start a chat' }));
+    // The one New chat action, not a second "Start a chat" wording.
+    expect(screen.queryByText('Start a chat')).toBeNull();
+    const action = screen.getByRole('button', { name: 'New chat' });
+    expect(action.className).toContain('new-chat-action');
+    fireEvent.click(action);
     expect(onNewChat).toHaveBeenCalledExactlyOnceWith();
   });
 

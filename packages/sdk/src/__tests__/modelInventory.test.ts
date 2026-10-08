@@ -31,9 +31,12 @@ describe('contributed model manifest SDK domain', () => {
     } as Response);
 
     await expect(fetchContributedModelManifest()).resolves.toEqual(manifest);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/connections/model-inventory',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces the API safe error without returning a malformed envelope', async () => {

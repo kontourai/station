@@ -3,8 +3,8 @@
  * (docs/design/principals.md, archive#4075 architecture map).
  *
  * There is deliberately no second registry: `UnattendedPrincipal` in
- * `src-server/runtime/types.ts` (voice/scheduled-job/delegated-child) is
- * already principal-shaped, and its stable identity is representable as a
+ * `src-server/runtime/types.ts` (voice/scheduled-job/delegated-child/
+ * automation-rule) is already principal-shaped, and its stable identity is representable as a
  * `kind: 'agent'` PrincipalRef. The `agent` kind is declared for that
  * future subsumption; no production code
  * builds an `agent`-kind PrincipalRef yet. archive#4075 stage 2

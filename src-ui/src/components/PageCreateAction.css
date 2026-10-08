@@ -1,0 +1,16 @@
+/* The phone form of a page's creation action: the shared round plus
+   (CreatePlusButton), fixed bottom-right. `--dock-bottom-clearance`
+   (index.css) already sums the dock, safe area and on-screen keyboard; the
+   floating-action layer sits above the dock and below dialogs and sheets. */
+.page-create-action {
+  position: fixed;
+  right: calc(var(--safe-right, 0px) + var(--k-space-4));
+  bottom: calc(var(--dock-bottom-clearance, 0px) + var(--k-space-4));
+  z-index: var(--layer-floating-action);
+}
+/* A maximized chat or an open detail sheet owns the screen; the collection's
+   "+" belongs to the list underneath it. */
+:root:has(.app__main--mobile-dock-fullscreen, .split-pane__right--sheet)
+.page-create-action {
+  display: none;
+}
