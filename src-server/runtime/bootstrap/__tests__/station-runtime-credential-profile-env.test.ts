@@ -138,6 +138,10 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
       env: {
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         CLAUDE_CONFIG_DIR: credentialProfileAppHomeDir('claude', 'proxy'),
+        CLAUDE_SECURESTORAGE_CONFIG_DIR: credentialProfileAppHomeDir(
+          'claude',
+          'proxy',
+        ),
       },
     });
     await expect(hoisted.codex?.getAppHomeEnv?.('proxy')).resolves.toEqual({

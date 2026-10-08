@@ -24,7 +24,7 @@ const routed = {
 };
 
 describe('credential profile env resolver (#2966)', () => {
-  test('an explicitly selected profile resolves to its overlay with its own home key last', async () => {
+  test('an explicitly selected profile resolves to its overlay with its own home keys last', async () => {
     const homeDir = await tempHome();
     const resolve = createCredentialProfileAppHomeEnvResolver({
       engine: 'claude',
@@ -41,8 +41,15 @@ describe('credential profile env resolver (#2966)', () => {
     expect(resolved?.profileRef).toBe('proxy');
 
     const dir = credentialProfileAppHomeDir('claude', 'proxy', homeDir);
-    expect(env).toEqual({ ...routed, CLAUDE_CONFIG_DIR: dir });
-    expect(Object.keys(env ?? {}).at(-1)).toBe('CLAUDE_CONFIG_DIR');
+    expect(env).toEqual({
+      ...routed,
+      CLAUDE_CONFIG_DIR: dir,
+      CLAUDE_SECURESTORAGE_CONFIG_DIR: dir,
+    });
+    expect(Object.keys(env ?? {}).slice(-2)).toEqual([
+      'CLAUDE_CONFIG_DIR',
+      'CLAUDE_SECURESTORAGE_CONFIG_DIR',
+    ]);
     expect(existsSync(dir)).toBe(true);
   });
 
