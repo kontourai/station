@@ -310,17 +310,24 @@ export function trackOrchestrationSession(options: {
   const existing = options.sessionReadModel.get(options.session.threadId);
   const nativeState =
     existing?.provider === options.session.provider ? existing : undefined;
-  options.sessionReadModel.set(options.session.threadId, {
-    ...options.session,
-    ...(options.session.resumeCursor === undefined &&
-    nativeState?.resumeCursor !== undefined
-      ? { resumeCursor: nativeState.resumeCursor }
-      : {}),
-    ...(options.session.persistSession === undefined &&
-    nativeState?.persistSession !== undefined
-      ? { persistSession: nativeState.persistSession }
-      : {}),
-  });
+  const retainCursor =
+    options.session.resumeCursor === undefined &&
+    nativeState?.resumeCursor !== undefined;
+  const retainPersistence =
+    options.session.persistSession === undefined &&
+    nativeState?.persistSession !== undefined;
+  options.sessionReadModel.set(
+    options.session.threadId,
+    retainCursor || retainPersistence
+      ? {
+          ...options.session,
+          ...(retainCursor ? { resumeCursor: nativeState?.resumeCursor } : {}),
+          ...(retainPersistence
+            ? { persistSession: nativeState?.persistSession }
+            : {}),
+        }
+      : options.session,
+  );
 }
 
 export async function resolveOrchestrationAdapterForThread(options: {
