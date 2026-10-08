@@ -1,5 +1,88 @@
 [
   {
+    "timestampUtc": "2026-10-08T06:31:44Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2472.37735427039",
+    "sha": "8a8f38298ef2e0a64c8fb1e1c48b312099f088cb",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/37735427039",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2472.37735427039 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "353dfd913bc2837d47a6fc5cede97858a32e32fe",
+      "groups": {
+        "feat": [
+          "[#3490](https://github.com/kontourai/station/pull/3490) feat(chat): redesign shared start and choose a Station for tasks",
+          "[#3388](https://github.com/kontourai/station/pull/3388) feat(chat): one mobile bottom sheet for elicitation forms and approvals (#3331)",
+          "[#3249](https://github.com/kontourai/station/pull/3249) feat: add IAM relay invitations and compact mobile device controls",
+          "[#3449](https://github.com/kontourai/station/pull/3449) feat(automation): contracts, unattended principal, store and ledger (#3439 S1)",
+          "[#3385](https://github.com/kontourai/station/pull/3385) feat(profile): show reconciled Station usage with a compact operator view",
+          "[#3306](https://github.com/kontourai/station/pull/3306) feat(mcp): prompts as slash commands and form elicitation (#3284 slice 1)",
+          "[#3259](https://github.com/kontourai/station/pull/3259) feat(projects): add tool defaults and Knowledge stores",
+          "[#3428](https://github.com/kontourai/station/pull/3428) feat(station-control): list_project_activity, get_session_digest and a read_conversation anchor (#3413 A)",
+          "[#3468](https://github.com/kontourai/station/pull/3468) feat(chat): one work row per settled turn on phones",
+          "[#3452](https://github.com/kontourai/station/pull/3452) feat(transcript): show context-compacted and rewound markers",
+          "[#3434](https://github.com/kontourai/station/pull/3434) feat(activity): show OpenCode conversations started outside Station",
+          "[#3212](https://github.com/kontourai/station/pull/3212) feat(server): refuse client API protocols below the advertised minimum (#2962)",
+          "[#3433](https://github.com/kontourai/station/pull/3433) feat(activity): show Grok CLI conversations started outside Station",
+          "[#3435](https://github.com/kontourai/station/pull/3435) feat(activity): Continue in Station for worktree and No project conversations",
+          "[#3409](https://github.com/kontourai/station/pull/3409) feat(cli): station environment access revoke and remove; panel names the host commands (#3256)"
+        ],
+        "fix": [
+          "[#3501](https://github.com/kontourai/station/pull/3501) fix(tooling): restore Windows qualification checks",
+          "[#3498](https://github.com/kontourai/station/pull/3498) fix(tooling): collect bounded context probes concurrently",
+          "[#3492](https://github.com/kontourai/station/pull/3492) fix(connect): preserve explicitly promoted relay access",
+          "[#3497](https://github.com/kontourai/station/pull/3497) fix(ci): bootstrap Ubuntu prerequisites from trusted workflow source",
+          "[#3494](https://github.com/kontourai/station/pull/3494) fix(guardrails): require public usage attribution export",
+          "[#3491](https://github.com/kontourai/station/pull/3491) fix(chat): preserve folded approval through the mobile request sheet (#3149)",
+          "[#3479](https://github.com/kontourai/station/pull/3479) fix(ci): retain nested readiness failure diagnostics",
+          "[#3476](https://github.com/kontourai/station/pull/3476) fix(ci): accept private-only plans and migrated public review prose",
+          "[#3473](https://github.com/kontourai/station/pull/3473) fix(chat): retain form input across transcript remounts",
+          "[#3474](https://github.com/kontourai/station/pull/3474) fix(ci): create version PRs with scoped GitHub App authentication",
+          "[#3213](https://github.com/kontourai/station/pull/3213) fix(packaging): include bundled Station marketplace in distributions",
+          "[#3471](https://github.com/kontourai/station/pull/3471) fix(ci): load landing helpers from the trusted workflow revision",
+          "[#3297](https://github.com/kontourai/station/pull/3297) fix(claude): recognize selected macOS secure-store readiness",
+          "[#3445](https://github.com/kontourai/station/pull/3445) fix(security): repair advisory graph and bind formatter acceptance",
+          "[#3443](https://github.com/kontourai/station/pull/3443) fix(security): a paired device needs coding:exec to choose a folder, a command or code (#3441)",
+          "[#3455](https://github.com/kontourai/station/pull/3455) fix(activity): read outside-session folders in a helper process so a hung mount can't freeze Station",
+          "[#3454](https://github.com/kontourai/station/pull/3454) fix(continuation): open continued conversations in the dock and keep follow-ups in their folder",
+          "[#3450](https://github.com/kontourai/station/pull/3450) fix(projects): resolve a session's preview workspace from its start record",
+          "[#3383](https://github.com/kontourai/station/pull/3383) fix(engines): dock header uses the catalog engine; refuse ACP ids native engines own (#3355)",
+          "[#3446](https://github.com/kontourai/station/pull/3446) fix(tooling): probe Windows Tauri CLIs through Node",
+          "[#3444](https://github.com/kontourai/station/pull/3444) fix(ci): stage bundled examples before Windows Rust compilation",
+          "[#3424](https://github.com/kontourai/station/pull/3424) fix(gallery): keep the Settings frame visible and validate complete captures",
+          "[#3442](https://github.com/kontourai/station/pull/3442) fix(child-work): Muse children settle with their full usage; reported usage fields stay sticky",
+          "[#3437](https://github.com/kontourai/station/pull/3437) fix(acp): startAll clears the previous probe timer before arming a new one (#3421)"
+        ],
+        "ci": [
+          "[#3393](https://github.com/kontourai/station/pull/3393) ci(queue): explain merge-queue removals on the PR and re-arm queue-ahead conflicts (#3101 C, E)",
+          "[#3438](https://github.com/kontourai/station/pull/3438) ci(qualification-repair): no automated repair agent unless explicitly configured"
+        ],
+        "docs": [
+          "[#3478](https://github.com/kontourai/station/pull/3478) docs: visualize release process and faster Nightly design",
+          "[#3448](https://github.com/kontourai/station/pull/3448) docs(design): propose Station Automations (#3439 S0)"
+        ],
+        "other": [
+          "[#3466](https://github.com/kontourai/station/pull/3466) test(e2e): assert the Coding rail's active-mode state and settle the sheet entrance",
+          "[#3472](https://github.com/kontourai/station/pull/3472) test(windows): repair native path and workflow shell fixtures",
+          "[#3469](https://github.com/kontourai/station/pull/3469) test(projects): bind checkout fixture remotes by exact path",
+          "[#3453](https://github.com/kontourai/station/pull/3453) test(protocol): align caller keepers with canonical headers",
+          "[#3451](https://github.com/kontourai/station/pull/3451) chore: finish the identity scrub follow-ups",
+          "[#3436](https://github.com/kontourai/station/pull/3436) test(coding): let the FIFO worktree case run on git that omits the registration",
+          "[#3432](https://github.com/kontourai/station/pull/3432) chore(test): rename media-server host fixtures to a neutral name",
+          "[#3431](https://github.com/kontourai/station/pull/3431) test(knowledge): a VoltAgent turn strips the tool purpose and reads the knowledge result"
+        ]
+      },
+      "note": null,
+      "commitCount": 51
+    }
+  },
+  {
     "timestampUtc": "2026-10-06T01:13:15Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2470",
