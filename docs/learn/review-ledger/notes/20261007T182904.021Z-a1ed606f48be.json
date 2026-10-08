@@ -1,0 +1,7 @@
+{
+  "revision": "da6113aad2456629ca68313284c50fdaa41a93a9",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the one-line browser locator correction at da6113aad2: the phone approval sheet uses canonical Needs approval, and the keeper now selects that literal before exercising Allow Once. Source owner ToolApprovalSheet and the real mounted browser actions were inspected; no decision, grant, geometry, theme or fixture behavior changed. Hosted exact 30132 baseline failed only the old Approval needed dialog locator. The maintained focused Chromium keeper now passes on da6113 at 360px,720px,narrow desktop dock and both themes, including refused and already-settled decision states. test:fixtures:check and typecheck:e2e pass after generating the missing Connect build dependency. This is browser fixture evidence, not real provider acknowledgement, packaged native behavior or release qualification; no guide prose changes needed.","inputs":["docs/conformance/tool-policy-delivery.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

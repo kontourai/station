@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test } from 'vitest';
 import {
   HOME_LIFECYCLE_LABELS,
@@ -245,6 +246,21 @@ describe('a row word can never contradict its lane heading', () => {
     );
   });
 
+  test('the word the server tools use (contracts) is the ladder’s own, for every session in the walk', () => {
+    // `list_project_activity` words a session with `sessionLadderWord`, not a
+    // copy: the two must agree on every shape here. The UI's Running rung
+    // alone refines its word with UI facts (a sub-agent count, the no-progress
+    // marker), which the server's summary-only read leaves as "Running".
+    const refinements = /^(\d+ sub-agents?|No progress)$/;
+    for (const entry of MIXED_FIXTURE) {
+      const ui = wordOf(entry.threadId);
+      expect([entry.threadId, sessionLadderWord(entry)]).toEqual([
+        entry.threadId,
+        refinements.test(ui) ? 'Running' : ui,
+      ]);
+    }
+  });
+
   test('every session in every lane prints a word that lane permits', () => {
     const seen: string[] = [];
     for (const lane of lanes) {
@@ -386,6 +402,9 @@ const SRC_ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** The surfaces the vocabulary governs. */
 const SURFACE_ROOTS = [
   'components/home',
+  // The start composer (Home and the dock's draft) and its dock host.
+  'components/chat-start',
+  'components/modals/NewChatModal.tsx',
   'components/inbox-row',
   'components/chat-dock',
   'components/project-sidebar',
@@ -461,14 +480,10 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
 const RETIRED_ALLOWED: ReadonlyArray<[file: string, retired: string]> = [
   // The banner's one sentence form of the ladder's "No progress · Nm".
   ['components/home/ProgressSilenceObservation.tsx', 'No progress for'],
-  // A sentence about a refused decision reply ("The engine is still waiting
-  // for an answer."), not the retired "Still waiting" status label.
-  ['components/chat-dock/ChatDockBody.tsx', 'Still waiting'],
   // The literal the model resolver returns, filtered OUT here, never shown.
-  ['components/home/HomeActionSection.tsx', 'Model not reported'],
   ['components/chat-dock/ChatInboxHoverCard.tsx', 'Model not reported'],
+  ['components/chat-start/StartComposer.tsx', 'Model not reported'],
   ['components/chat-dock/command-launcher-model.ts', 'Model not reported'],
-  ['views/home/useHomeViewModel.ts', 'Model not reported'],
   ['views/home/home-view-model.ts', 'Model not reported'],
 ];
 

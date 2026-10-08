@@ -25,8 +25,10 @@ import {
   stationControlRefusalBody,
   stationControlToolPolicy,
 } from './station-control-policy.js';
+import { registerProjectActivityTools } from './station-control-project-activity-tools.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
 import { registerSessionSearchTools } from './station-control-session-search-tools.js';
+import { registerSessionTools } from './station-control-session-tools.js';
 import {
   getStationControlCaller,
   jsonToolResult,
@@ -87,6 +89,8 @@ function stationControlToolMetadata(name: string) {
     ['Knowledge', /knowledge/],
     ['Evidence', /basis|review|receipt/],
     ['Agents', /agent/],
+    // The Sessions in a Project: a chat-level read, not a Project record.
+    ['Chats', /^list_project_activity$/],
     ['Projects', /project|layout|^board_/],
     ['Chats', /conversation|session|message/],
     ['Tasks', /task|delegat|ssh_environment|pull_request/],
@@ -266,6 +270,8 @@ export function createSelectedStationControlMcpServer(
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
   registerSessionSearchTools(registry);
+  registerSessionTools(registry);
+  registerProjectActivityTools(registry);
   registerNotifyTools(registry);
   registerDeclarePullRequestTools(registry);
   return server;

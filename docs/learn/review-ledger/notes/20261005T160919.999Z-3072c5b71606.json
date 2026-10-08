@@ -1,0 +1,7 @@
+{
+  "revision": "6d46b92f85582f83e80a836af3f3561e4f1b170a",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed qualification-owned cadence, exact-event SHA caller substitution and manual recovery; traced watchdog eight-hour start, fourteen-hour gate, three-hour active thresholds, durable health incident and API error handling. npm Main qualification publisher configuration was verified in Chrome; hosted exchange and delivery are not yet verified.","inputs":["docs/guides/releasing.md",".github/workflows/main-qualification.yml",".github/workflows/nightly.yml",".github/workflows/qualification-health.yml","scripts/qualification-health.mjs"]}
+  ]
+}

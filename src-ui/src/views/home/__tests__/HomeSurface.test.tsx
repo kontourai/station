@@ -1,5 +1,11 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { HomeWorkItem } from '../home-view-model';
 
@@ -19,8 +25,19 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 vi.mock('../../../hooks/useGitLocationByThreadId', () => ({
   useGitLocationByThreadId: () => new Map(),
 }));
+const accentProbe = vi.hoisted(() => ({
+  accents: new Map<string, string>(),
+}));
 vi.mock('../../../hooks/useProjectAccents', () => ({
-  useProjectAccents: () => new Map(),
+  useProjectAccents: () => accentProbe.accents,
+}));
+
+// The start composer owns its own tests (`HomeStartComposer.test.tsx`); here
+// it is the one "Start work" form whose place and compactness Home decides.
+vi.mock('../../../components/home/HomeStartComposer', () => ({
+  HomeStartComposer: ({ compact }: { compact?: boolean }) => (
+    <form aria-label="Start work" data-compact={String(Boolean(compact))} />
+  ),
 }));
 vi.mock('../../../hooks/useProjectIcons', () => ({
   useProjectIcons: () => new Map(),
@@ -146,9 +163,11 @@ describe('HomeSurface composition', () => {
     showSurfacePage.mockClear();
   });
 
-  test('an empty Station keeps the page heading and leads with the cards (V1)', () => {
+  test('an empty Station keeps its accessible page heading and starter cards', () => {
     renderHome({ workItems: [] });
-    expect(screen.getByRole('heading', { name: "What's next?" })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Home' }),
+    ).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
     expect(screen.queryByText('Skip to recent work')).toBeNull();
   });
@@ -218,39 +237,129 @@ describe('HomeSurface composition', () => {
     },
   );
 
-  test('the start card names the agent it can actually open on', () => {
-    renderHome();
-    const card = screen.getByRole('button', { name: /Start a chat/ });
-    expect(card).toHaveProperty('disabled', true);
+  test('the start composer is compact above a page of work, full on an empty one', () => {
+    renderHome({ workItems: [] });
     expect(
-      screen.getByRole('textbox', { name: 'What would you like done?' }),
-    ).toBeTruthy();
+      screen.getByRole('form', { name: 'Start work' }).dataset.compact,
+    ).toBe('false');
+    cleanup();
+    renderHome({
+      workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
+    });
+    expect(
+      screen.getByRole('form', { name: 'Start work' }).dataset.compact,
+    ).toBe('true');
   });
 
-  test('with no runnable agent the start card becomes a set-up CTA', () => {
-    // Finding 5: Home must not name an Agent the New Chat picker refuses one
-    // click later. On a home where nothing is runnable it stops recommending
-    // and asks for the setup instead — same destination, honest promise.
-    renderHome({
-      startReady: false,
-      startIdentity: 'No agent is ready yet',
-      defaultSelection: {
-        agent: undefined,
-        effectiveModel: { label: 'Model not reported' },
-      },
+  // The Continue and Last project cards read like the inbox rows (owner,
+  // 2026-10): Continue IS the shared work row; Last project carries the
+  // project's accent, as the sidebar draws it.
+  test('Continue is the shared work row, and opens the work', () => {
+    const running = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
+    );
+    const { model: m } = renderHome({
+      workItems: [running],
+      primaryWorkItem: running,
     });
-    expect(screen.getByRole('button', { name: /Start a chat/ })).toHaveProperty(
-      'disabled',
-      true,
+    const region = screen.getByRole('region', { name: 'Continue' });
+    const row = region.querySelector<HTMLElement>('.chat-dock-inbox__item');
+    expect(row?.textContent).toContain('Wire the delegate verbs');
+    expect(row?.textContent).toContain('Codex');
+    fireEvent.click(row!);
+    expect(m.continueWork).toHaveBeenCalledWith(running);
+  });
+
+  // Review MED-3b: the item in Continue is not repeated in the list beside
+  // it; every other item still is.
+  test('the list leaves out the item the Continue card shows, and keeps the rest', () => {
+    const newest = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
     );
-    const cta = screen.getByRole('button', { name: /Start a chat/ });
-    fireEvent.change(
-      screen.getByRole('textbox', { name: 'What would you like done?' }),
-      { target: { value: 'Help me' } },
+    const older = item(
+      'b',
+      'Audit the ref translation',
+      'Station',
+      30,
+      'Running',
     );
-    expect(cta).toHaveProperty('disabled', false);
-    // And it names no agent at all.
-    expect(cta.textContent).not.toContain('Codex');
+    renderHome({ workItems: [newest, older], primaryWorkItem: newest });
+    const recent = screen.getByRole('region', { name: 'Recent work' });
+    expect(within(recent).queryByText('Wire the delegate verbs')).toBeNull();
+    expect(within(recent).getByText('Audit the ref translation')).toBeTruthy();
+    expect(screen.getAllByText('Wire the delegate verbs')).toHaveLength(1);
+    // The row is the lanes' full-size row, in the lanes' own list.
+    const region = screen.getByRole('region', { name: 'Continue' });
+    expect(region.querySelector('ul.home-view__task-list')).toBeTruthy();
+  });
+
+  // Second review: with one item, Continue holds it and Recent work would
+  // be a heading over nothing. It is left out; View Activity sits beside
+  // the Continue heading, which is an h2 like the section it replaces.
+  test('one item: no empty Recent work, and View Activity beside Continue', () => {
+    const only = item('a', 'Wire the delegate verbs', 'Station', 2, 'Running');
+    renderHome({ workItems: [only], primaryWorkItem: only });
+    expect(screen.queryByRole('region', { name: 'Recent work' })).toBeNull();
+    const region = screen.getByRole('region', { name: 'Continue' });
+    expect(
+      within(region).getByRole('heading', { level: 2, name: 'Continue' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(region).getByRole('button', { name: 'View Activity' }),
+    );
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    // The skip link still lands on the work.
+    expect(
+      screen
+        .getByRole('link', { name: 'Skip to recent work' })
+        .getAttribute('href'),
+    ).toBe(`#${region.id}`);
+  });
+
+  test('several items: Recent work holds the rest and keeps View Activity', () => {
+    const newest = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
+    );
+    const older = item(
+      'b',
+      'Audit the ref translation',
+      'Station',
+      30,
+      'Running',
+    );
+    renderHome({ workItems: [newest, older], primaryWorkItem: newest });
+    const recent = screen.getByRole('region', { name: 'Recent work' });
+    expect(
+      within(recent).getByRole('button', { name: 'View Activity' }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: 'Continue' })).queryByRole(
+        'button',
+        { name: 'View Activity' },
+      ),
+    ).toBeNull();
+  });
+
+  test('Last project carries the project accent the sidebar uses', () => {
+    accentProbe.accents = new Map([['station', 'rgb(1, 2, 3)']]);
+    renderHome({}, vi.fn(), { type: 'project', slug: 'station' });
+    const card = screen.getByRole('button', { name: /Last project/ });
+    const accent = card.querySelector<HTMLElement>('.home-view__action-accent');
+    // The sidebar's colour for this project, from the one shared map.
+    expect(accent?.style.backgroundColor).toBe('rgb(1, 2, 3)');
+    accentProbe.accents = new Map();
   });
 
   test.each([true, false])(

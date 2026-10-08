@@ -1,0 +1,7 @@
+{
+  "revision": "6c77533c97a0f90be2ff0a38267ee11b1c7efdde",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed against the run-e2e-suite.mjs change isolating the Grok external session source root per run, like Claude, Codex and OpenCode. The page claims the smoke runner owns its instance, temporary home and ports, separate from dogfood state on the host; it lists no per-engine roots, so no prose changes. The change closes a gap where the server could tail the host's ~/.grok.","inputs":["docs/testing/browser-smoke.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}

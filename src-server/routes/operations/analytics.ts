@@ -3,6 +3,7 @@
  */
 
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
+import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
 import { Hono } from 'hono';
 import { LocalUsageReceiptSource } from '../../analytics/local-usage-receipt-source.js';
 import type { UsageAggregator } from '../../analytics/usage-aggregator.js';
@@ -19,14 +20,47 @@ import {
   errorMessage,
 } from '../schemas/schemas.js';
 
+function publicUsageStats(stats: UsageStats) {
+  const { byPrincipal: _operatorPrincipals, ...publicStats } = stats;
+  return publicStats;
+}
+
 export function createAnalyticsRoutes(
   usageAggregator: UsageAggregator | undefined,
   usageRollupService?: UsageRollupService,
   readAuthorityForRequest?: (request: Request) => UsageRollupReadAuthority,
   configuredPeers?: () => readonly (PeerCredential & { credential: string })[],
   localStationId = 'local',
+  canReadStationUsage?: (request: Request) => boolean,
 ) {
   const app = new Hono();
+
+  app.get('/station-usage', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    if (canReadStationUsage?.(c.req.raw) !== true) {
+      return c.json(
+        { success: false, error: 'Station operator access required' },
+        403,
+      );
+    }
+    if (!usageAggregator) {
+      return c.json(
+        { success: false, error: 'Analytics not initialized' },
+        500,
+      );
+    }
+    try {
+      const stats = await usageAggregator.readStats();
+      analyticsOps.add(1, { op: 'get_station_usage' });
+      return c.json({
+        success: true,
+        data: stats,
+        scope: { kind: 'station', stationId: localStationId },
+      });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
 
   app.get('/usage', async (c) => {
     try {
@@ -37,7 +71,7 @@ export function createAnalyticsRoutes(
         );
       }
       analyticsOps.add(1, { op: 'get_usage' });
-      const stats = await usageAggregator.readStats();
+      const stats = publicUsageStats(await usageAggregator.readStats());
       const from = c.req.query('from');
       const to = c.req.query('to');
       if (from || to) {
@@ -254,7 +288,7 @@ export function createAnalyticsRoutes(
           500,
         );
       }
-      const stats = await usageAggregator.fullRescan();
+      const stats = publicUsageStats(await usageAggregator.fullRescan());
       analyticsOps.add(1, { op: 'rescan' });
       return c.json({
         success: true,

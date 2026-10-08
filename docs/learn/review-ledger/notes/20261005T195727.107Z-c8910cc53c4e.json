@@ -1,0 +1,7 @@
+{
+  "revision": "c7d1440569b0cd745cd607922f263b7d0431b81b",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"#3411: acp-process.ts gained resumeSession/listSessions/deleteSession and loadSession now returns the agent's modes/configOptions. Re-read the ACPProcess claims (spawn env inheritance, authored MCP servers on session/new and session/load); the spawn path and mcpServers forwarding are unchanged, so no prose change.","inputs":["docs/design/connections-onboarding.md","src-server/services/acp/acp-process.ts"]}
+  ]
+}

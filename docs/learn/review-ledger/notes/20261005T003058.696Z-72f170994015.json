@@ -1,0 +1,7 @@
+{
+  "revision": "2910576181ea3b322b6d9bb756736eb4c7a88f27",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"#3308 review round: contracts reference child-work row extended; AGENTS routing remains accurate. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -16,6 +16,7 @@ import {
 } from '@kontourai/station-contracts/config';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import { agentAudienceRefusal } from '../services/agents/agent-audience.js';
 
 class ValidationError extends Error {
   constructor(
@@ -87,6 +88,19 @@ class SchemaValidator {
    * Optional so the shape-only callers that have no slug are unchanged.
    */
   validateAgentSpec(data: unknown, slug?: string): asserts data is AgentSpec {
+    // #3276: the audience gets its own reason ahead of the schema, whose
+    // `oneOf` can only say that none of the three shapes matched.
+    const audienceRefusal =
+      typeof data === 'object' && data !== null
+        ? agentAudienceRefusal(
+            data as { audience?: unknown; project?: unknown },
+          )
+        : undefined;
+    if (audienceRefusal)
+      throw new ValidationError(
+        `Invalid agent configuration:\n  /audience: ${audienceRefusal}`,
+        [],
+      );
     this.validate('agent', data);
     this.validateAgentSemantics(data as AgentSpec, slug);
   }

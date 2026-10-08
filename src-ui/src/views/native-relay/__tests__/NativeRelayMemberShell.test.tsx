@@ -18,6 +18,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
@@ -204,6 +205,8 @@ beforeEach(() => {
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects')
       return Response.json({ success: true, data: [member] });
@@ -236,6 +239,8 @@ it('reads published task content through the real member SDK without starting op
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     let data: unknown;
     if (path === '/api/projects') data = [member];
@@ -276,8 +281,11 @@ it('reads published task content through the real member SDK without starting op
   });
   render(<NativeRelayMemberShell />);
   await screen.findByRole('heading', { name: 'Shared research' });
-  fireEvent.click(screen.getByRole('button', { name: member.name }));
-  expect(window.location.pathname).toBe('/projects/shared');
+  // One shared Project opens directly; its own header names it, so there is
+  // no switcher repeating the name.
+  expect(
+    screen.queryByRole('navigation', { name: 'Shared Projects' }),
+  ).toBeNull();
   fireEvent.click(
     await screen.findByRole('button', {
       name: 'Read shared item: Published task',
@@ -288,6 +296,7 @@ it('reads published task content through the real member SDK without starting op
   expect(paths().sort()).toEqual(
     [
       '/api/auth/authority',
+      '/api/relay-management/capabilities',
       '/api/projects',
       '/api/projects/shared',
       '/api/projects/shared/shared-work',
@@ -305,9 +314,9 @@ it('keeps accountless recovery and device theme controls open without protected 
     screen.getByRole('heading', { level: 1, name: 'Home Station' }),
   ).toBeDefined();
   expect(screen.getByText('Native account recovery')).toBeDefined();
-  expect(
-    screen.getByText('Finish the steps above to see your shared projects.'),
-  ).toBeDefined();
+  // Before an account is current, setup is the page, not a disclosure.
+  expect(document.querySelector('details')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Stations' })).toBeNull();
   const previousTheme = document.documentElement.dataset.theme;
   fireEvent.click(
     screen.getByRole('button', { name: /Switch to (light|dark) mode/ }),
@@ -325,6 +334,8 @@ it('rejects operator detail DTOs and never synthesizes a member view', async () 
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects')
       return Response.json({ success: true, data: [member] });
@@ -343,11 +354,14 @@ it('rejects operator detail DTOs and never synthesizes a member view', async () 
   render(<NativeRelayMemberShell />);
   await screen.findByText('This Project is unavailable');
   expect(screen.queryByText('Private workspace')).toBeNull();
-  expect(paths()).toEqual([
-    '/api/auth/authority',
-    '/api/projects',
-    '/api/projects/shared',
-  ]);
+  expect(paths().sort()).toEqual(
+    [
+      '/api/relay-management/capabilities',
+      '/api/auth/authority',
+      '/api/projects',
+      '/api/projects/shared',
+    ].sort(),
+  );
 });
 it('drops a late Project body after account loss and performs a fresh read for the next account', async () => {
   navigationStore.setProject('previous-account-project');
@@ -359,6 +373,8 @@ it('drops a late Project body after account loss and performs a fresh read for t
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects') {
       await held;
@@ -376,7 +392,7 @@ it('drops a late Project body after account loss and performs a fresh read for t
     release();
     await held;
   });
-  expect(screen.queryByRole('button', { name: member.name })).toBeNull();
+  expect(screen.queryByRole('heading', { name: member.name })).toBeNull();
   expect(paths()).not.toContain('/api/projects/shared');
   expect(screen.getByText('Native account recovery')).toBeDefined();
   current = true;
@@ -391,6 +407,8 @@ it('drops a late Project body after account loss and performs a fresh read for t
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects')
       return Response.json({ success: true, data: [member] });
@@ -425,6 +443,8 @@ it('the real invitation panel refreshes an already-empty member catalog in its s
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects')
       return Response.json({ success: true, data: accepted ? [member] : [] });
@@ -436,12 +456,20 @@ it('the real invitation panel refreshes an already-empty member catalog in its s
   });
   render(<NativeRelayMemberShell />);
   await screen.findByText('Nothing is shared with this account yet.');
-  fireEvent.change(screen.getByLabelText('Account invitation token'), {
-    target: { value: 'i'.repeat(43) },
-  });
+  // With an account current, Station setup moves off the page; the empty
+  // catalog's action opens it where the invitation is used.
+  expect(screen.queryByLabelText('Project invitation link or code')).toBeNull();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Accept account invitation' }),
+    screen.getByRole('button', { name: 'Use a Project invitation' }),
   );
+  const stations = within(
+    await screen.findByRole('dialog', { name: 'Your Stations' }),
+  );
+  fireEvent.change(
+    await stations.findByLabelText('Project invitation link or code'),
+    { target: { value: 'i'.repeat(43) } },
+  );
+  fireEvent.click(stations.getByRole('button', { name: 'Join Project' }));
   await screen.findByRole('heading', { name: member.name });
   expect(paths().filter((path) => path === '/api/projects')).toHaveLength(2);
   expect(state.invitation).toHaveBeenCalledWith('i'.repeat(43));

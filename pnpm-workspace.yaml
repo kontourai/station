@@ -38,15 +38,20 @@ pmOnFail: ignore
 ignoredOptionalDependencies:
   - '@napi-rs/canvas'
 overrides:
+  '@modelcontextprotocol/client': 2.2.0
+  '@modelcontextprotocol/sdk': 1.31.0
+  shell-quote: 1.11.0
   '@grpc/grpc-js': ^1.14.5
   adm-zip: ^0.6.0
   axios: ^1.20.0
   express-rate-limit: ^8.3.1
   fast-uri: ^3.1.8
   form-data: ^4.0.6
+  fast-copy: 4.1.0
   gaxios: ^7.3.0
   lodash: ^4.18.1
   node-forge: ^1.4.0
+  proxy-addr: 2.0.8
   qs: ^6.16.0
   router>path-to-regexp: ^8.4.2
   anymatch>picomatch: ^2.3.2
@@ -69,6 +74,7 @@ overrides:
   socks>ip-address: ^10.5.1
   "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
+  "sprintf-js@1.0.3": patches/sprintf-js-1.0.3.patch
   "@voltagent/core@2.10.0": patches/voltagent-core-2.10.0.patch
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true

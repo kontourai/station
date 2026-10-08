@@ -51,7 +51,10 @@ import {
   NATIVE_DEVICE_PROOF_SELF_RECEIPT_ERROR_VERSION,
   type NativeDeviceProofSelfReceiptV1,
 } from '@kontourai/station-contracts/native-device-proof';
-import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import type {
+  SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeRouteInvitationV2,
+} from '@kontourai/station-contracts/self-hosted-broker';
 import {
   createNativeApplicationSessionProof,
   serializedCredentialsHash,
@@ -69,10 +72,12 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { NativeDeviceRequestAuthority } from '../../../security/native-device-request-authority.js';
+import { NativeSurfaceRegistry } from '../../../services/connections/native-surface-registry.js';
 import {
   createNativeV2PionApplicationAdapter,
   readVerifiedNativePionApplicationRequest,
 } from '../../../services/connections/native-v2-pion-application-adapter.js';
+import type { RelayInvitationOwner } from '../../../services/connections/relay-invitation-owner.js';
 import {
   readVerifiedNativeVirtualApplicationRequest,
   VirtualApplicationIngress,
@@ -86,6 +91,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
+import { ConnectionSigningKeyStore } from '../../../services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
   NativeDeviceProofBindingService,
@@ -227,6 +233,7 @@ interface ManualChannel {
 
 describe('native Device request-proof pilot over the production composition', () => {
   const directories: string[] = [];
+  const relayRegistries: NativeSurfaceRegistry[] = [];
   const ambientHome = process.env.STATION_HOME;
   const ambientRoot = process.env.STATION_ROOT;
   const ambientOrigins = process.env.ALLOWED_ORIGINS;
@@ -247,12 +254,13 @@ describe('native Device request-proof pilot over the production composition', ()
     else process.env.STATION_ROOT = ambientRoot;
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
+    for (const registry of relayRegistries.splice(0)) registry.close();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     directories.splice(0);
   });
 
-  async function setup() {
+  async function setup(withRelayManagement = false) {
     const owned = directories[directories.length - 1];
     const homeDir = join(owned, 'data');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
@@ -321,6 +329,65 @@ describe('native Device request-proof pilot over the production composition', ()
     if (!applicationSessions)
       throw new Error('local accounts lack native session capabilities');
 
+    const trust = withRelayManagement
+      ? await new ConnectionSigningKeyStore(homeDir).initialize()
+      : undefined;
+    const registry = trust
+      ? new NativeSurfaceRegistry(homeDir, STATION_ID)
+      : undefined;
+    if (registry) relayRegistries.push(registry);
+    const relayScope = {
+      stationId: STATION_ID,
+      enrollmentId: trust?.enrollmentId ?? randomUUID(),
+      routingGeneration: 1,
+    };
+    const relaySurface = {
+      kind: 'station-native' as const,
+      appIdentifier: 'io.kontourai.station.nightly',
+      channel: 'nightly' as const,
+      clientInstanceId: randomUUID(),
+      keyThumbprint: 'T'.repeat(43),
+    };
+    const relayRoute = {
+      applicationOrigin: ORIGIN,
+      brokerOrigin: 'https://broker.example',
+      stationId: STATION_ID,
+      enrollmentId: relayScope.enrollmentId,
+    };
+    const describeRelay = vi.fn(async () => {
+      if (!trust) throw new Error('relay fixture not configured');
+      return { route: relayRoute, trust, routingGeneration: 1 };
+    });
+    const prepareRelay = vi.fn(async (_value: unknown) => ({
+      scope: relayScope,
+      surface: relaySurface,
+    }));
+    const issueRelay = vi.fn(
+      async (
+        _prepare: unknown,
+        _signal: AbortSignal,
+        ttl?: number | null,
+      ): Promise<SelfHostedBrokerNativeRouteInvitationV2> => ({
+        version: 'station-broker-native-route-invitation/v2',
+        brokerOrigin: relayRoute.brokerOrigin,
+        scope: relayScope,
+        stationSigningKeyId: 'K'.repeat(43),
+        stationSigningGeneration: 1,
+        surface: relaySurface,
+        invitationId: 'I'.repeat(43),
+        invitationSecret: 'S'.repeat(43),
+        expiresAt:
+          ttl === null
+            ? Number.MAX_SAFE_INTEGER
+            : Date.now() + (ttl ?? 86_400_000),
+      }),
+    );
+    const relayOwner: RelayInvitationOwner = {
+      describe: describeRelay,
+      prepare: prepareRelay,
+      issueNativeInvitation: issueRelay,
+    };
+
     let appConfig: Record<string, unknown> = {};
     const app = new Hono();
     const eventBus = new EventBus();
@@ -374,6 +441,9 @@ describe('native Device request-proof pilot over the production composition', ()
       taskGraphService: { listTasks: () => [] },
       nativeDeviceProofPilot: { ...pilot, authority: nativeAuthority },
       nativeDeviceProofBindings: bindingService,
+      relayInvitationOwner: withRelayManagement ? relayOwner : undefined,
+      nativeSurfaceRegistry: registry,
+      nativeRelayEnrollment: undefined,
     });
     const result = configureRuntimeRoutesProduction(
       context as unknown as Parameters<
@@ -981,6 +1051,12 @@ describe('native Device request-proof pilot over the production composition', ()
       operatorAuthority,
       nativeAuthority,
       lastNativeRequest: () => lastNativeRequest,
+      registry,
+      relayScope,
+      relaySurface,
+      describeRelay,
+      prepareRelay,
+      issueRelay,
     };
   }
 
@@ -1939,6 +2015,347 @@ describe('native Device request-proof pilot over the production composition', ()
       // Challenge, exchange, list and read each consumed exactly one JTI;
       // currentness rechecks never consume again.
       expect(peer.replaySize()).toBe(4);
+    } finally {
+      peer.dispose();
+    }
+  });
+
+  test('native relay manager composes real account and promoted Device authority for reads, setup approval, invitation and revocation; device decisions expose unavailable enrollment only', async () => {
+    const h = await setup(true);
+    const guest = await h.shareAndCreateGuest('relay-manager', 'Relay manager');
+    const paired = await h.pairNativeDevice(
+      'relay-manager-device',
+      guest.login,
+    );
+    h.security.devicePairing.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read', 'orchestration:operate', 'relay:manage'],
+      operatorApproval,
+    );
+    const peer = await h.startNativePeer(paired);
+    try {
+      await peer.session.establish({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      });
+      const send = async (method: string, path: string, value?: unknown) => {
+        const body = value === undefined ? undefined : JSON.stringify(value);
+        const bytes = new TextEncoder().encode(body ?? '');
+        return peer.nativeFetch(
+          new Request(`${ORIGIN}${path}`, {
+            method,
+            headers: {
+              ...(await peer.session.headers(method, path, bytes)),
+              ...(body ? { 'Content-Type': 'application/json' } : {}),
+            },
+            ...(body ? { body } : {}),
+          }),
+        );
+      };
+      for (const method of ['GET', 'HEAD']) {
+        for (const path of [
+          '/api/relay-management',
+          '/api/relay-management/capabilities',
+        ]) {
+          const response = await send(method, path);
+          expect(response.status, await response.clone().text()).toBe(200);
+          if (method === 'GET' && path.endsWith('/capabilities'))
+            expect(await response.json()).toEqual({
+              data: { canManage: true, configured: true },
+            });
+          else await response.text();
+        }
+      }
+      const approval = await send('POST', '/api/relay-management/approvals', {
+        prepare: {},
+      });
+      expect(approval.status, await approval.clone().text()).toBe(200);
+      const { data } = await readJson<{
+        data: { approvalId: string; revision: number; approvedBy: string };
+      }>(approval);
+      expect(data.approvedBy).toBe(
+        deploymentAccountPrincipal(
+          guest.login.issuer,
+          guest.login.session.subject,
+          GUEST_DISPLAY,
+        ).id,
+      );
+      expect(h.registry?.approvedSurfaces()).toHaveLength(1);
+      const invitation = await send(
+        'POST',
+        '/api/relay-management/invitations',
+        { prepare: {}, lifetime: '5m' },
+      );
+      expect(invitation.status, await invitation.clone().text()).toBe(200);
+      expect(h.issueRelay).toHaveBeenCalledOnce();
+      expect(h.issueRelay.mock.calls[0]?.[2]).toBe(300_000);
+      await invitation.text();
+      const revoked = await send(
+        'POST',
+        '/api/relay-management/approvals/revoke',
+        { approvalId: data.approvalId, expectedRevision: data.revision },
+      );
+      expect(revoked.status, await revoked.clone().text()).toBe(200);
+      await revoked.text();
+      expect(h.registry?.approvedSurfaces()).toHaveLength(0);
+      for (const operation of ['approve', 'deny']) {
+        const response = await send(
+          'POST',
+          `/api/relay-management/devices/${'D'.repeat(43)}/${operation}`,
+          { candidate: {} },
+        );
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({
+          error: { code: 'enrollment_unavailable' },
+        });
+      }
+      expect(h.issueRelay).toHaveBeenCalledOnce();
+    } finally {
+      peer.dispose();
+    }
+  });
+
+  test.each([
+    'unpromoted',
+    'no-account',
+    'withdrawn',
+    'revoked-device',
+    'revoked-account',
+    'retired-binding',
+    'expired-proof',
+  ] as const)(
+    'native relay management refuses %s authority before every broker effect',
+    async (failure) => {
+      const h = await setup(true);
+      const guest = await h.shareAndCreateGuest(
+        `relay-${failure}`,
+        `Relay ${failure}`,
+      );
+      const paired = await h.pairNativeDevice(
+        `relay-${failure}-device`,
+        guest.login,
+      );
+      if (failure !== 'unpromoted')
+        h.security.devicePairing.setDeviceScope(
+          paired.device.id,
+          ['orchestration:read', 'orchestration:operate', 'relay:manage'],
+          operatorApproval,
+        );
+      const peer = await h.startNativePeer(paired);
+      try {
+        if (failure !== 'no-account')
+          await peer.session.establish({
+            username: guest.username,
+            password: GUEST_PASSWORD,
+          });
+        const paths = [
+          ['GET', '/api/relay-management'],
+          ['HEAD', '/api/relay-management'],
+          ['GET', '/api/relay-management/capabilities'],
+          ['HEAD', '/api/relay-management/capabilities'],
+          ['POST', '/api/relay-management/approvals'],
+          ['POST', '/api/relay-management/approvals/revoke'],
+          ['POST', '/api/relay-management/invitations'],
+          ['POST', `/api/relay-management/devices/${'D'.repeat(43)}/approve`],
+          ['POST', `/api/relay-management/devices/${'D'.repeat(43)}/deny`],
+        ];
+        const queued = [];
+        for (const [method, path] of paths) {
+          const body = method === 'POST' ? '{}' : undefined;
+          const bytes = new TextEncoder().encode(body ?? '');
+          const headers =
+            failure === 'no-account'
+              ? {
+                  [NATIVE_DEVICE_PROOF_HEADER]: await peer.deviceProof(
+                    method,
+                    path,
+                    bytes,
+                  ),
+                }
+              : await peer.session.headers(method, path, bytes);
+          if (failure === 'expired-proof') {
+            const old = Date.now() - 60_000;
+            const clock = vi.spyOn(Date, 'now').mockReturnValue(old);
+            try {
+              headers[NATIVE_DEVICE_PROOF_HEADER] = await peer.deviceProof(
+                method,
+                path,
+                bytes,
+              );
+            } finally {
+              clock.mockRestore();
+            }
+          }
+          queued.push(
+            new Request(`${ORIGIN}${path}`, {
+              method,
+              headers,
+              ...(body ? { body } : {}),
+            }),
+          );
+        }
+        if (failure === 'withdrawn')
+          h.security.devicePairing.setDeviceScope(
+            paired.device.id,
+            ['orchestration:read', 'orchestration:operate'],
+            operatorApproval,
+          );
+        if (failure === 'revoked-device')
+          h.security.devicePairing.revokeDevice(
+            paired.device.id,
+            'operator-credential',
+          );
+        if (failure === 'retired-binding')
+          h.bindingService.revokeBinding({
+            bindingId: paired.binding.bindingId,
+            deviceId: paired.device.id,
+            surface: paired.surface,
+            jwk: paired.deviceKey.publicJwk,
+            approval: h.operatorAuthority.approve({
+              operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+              tuple: {
+                operation: 'revoke',
+                stationId: paired.binding.stationId,
+                deviceId: paired.device.id,
+                bindingId: paired.binding.bindingId,
+                surface: paired.surface,
+                jwk: paired.deviceKey.publicJwk,
+              },
+            }),
+          });
+        if (failure === 'revoked-account') {
+          const observation = vi.spyOn(
+            h.localAccounts.service,
+            'verifySessionReference',
+          );
+          const path = '/api/relay-management/capabilities';
+          const current = await peer.nativeFetch(
+            new Request(`${ORIGIN}${path}`, {
+              headers: await peer.session.headers('GET', path),
+            }),
+          );
+          expect(current.status).toBe(200);
+          await current.text();
+          const sessionId = observation.mock.calls.at(-1)?.[0];
+          if (!sessionId)
+            throw new Error('native account verifier was not reached');
+          await h.localAccounts.service.revokeSessionReference(
+            sessionId,
+            new AbortController().signal,
+          );
+        }
+        for (const request of queued) {
+          const response = await peer.nativeFetch(request);
+          if (
+            (failure === 'unpromoted' || failure === 'withdrawn') &&
+            new URL(request.url).pathname.endsWith('/capabilities')
+          ) {
+            expect(response.status).toBe(200);
+            if (request.method === 'GET')
+              expect(await response.json()).toEqual({
+                data: { canManage: false, configured: true },
+              });
+            else await response.text();
+          } else {
+            expect(
+              response.status,
+              `${request.method} ${new URL(request.url).pathname}`,
+            ).toBeGreaterThanOrEqual(400);
+            await response.text();
+          }
+        }
+        expect(h.describeRelay).not.toHaveBeenCalled();
+        expect(h.prepareRelay).not.toHaveBeenCalled();
+        expect(h.issueRelay).not.toHaveBeenCalled();
+        expect(h.registry?.approvedSurfaces()).toHaveLength(0);
+      } finally {
+        peer.dispose();
+      }
+    },
+  );
+
+  test('relay promotion cannot turn a credential-only account Device into a native manager, or authorize native sibling routes and wrong methods', async () => {
+    const h = await setup(true);
+    const guest = await h.shareAndCreateGuest('relay-closed', 'Relay closed');
+    const paired = await h.pairNativeDevice('relay-closed-device', guest.login);
+    h.security.devicePairing.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read', 'orchestration:operate', 'relay:manage'],
+      operatorApproval,
+    );
+    const login = await h.request('/api/account-auth/sign-in/username', {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      }),
+    });
+    expect(login.status, await login.clone().text()).toBe(200);
+    const accountCookie = login.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ');
+    expect(accountCookie).not.toBe('');
+    await login.text();
+    const credentialOnlyHeaders = {
+      Authorization: `Bearer ${paired.credential}`,
+      Cookie: accountCookie,
+    };
+    const currentAccount = await h.localAccounts.service.authenticate(
+      new Request(`${ORIGIN}/api/relay-management`, {
+        headers: credentialOnlyHeaders,
+      }),
+    );
+    expect(currentAccount.kind).toBe('authenticated');
+    if (currentAccount.kind !== 'authenticated')
+      throw new Error('credential-only fixture needs a real current account');
+    expect(currentAccount.principal.id).toBe(
+      deploymentAccountPrincipal(
+        guest.login.issuer,
+        guest.login.session.subject,
+        GUEST_DISPLAY,
+      ).id,
+    );
+    const credentialOnly = await h.request('/api/relay-management', {
+      headers: credentialOnlyHeaders,
+    });
+    expect(credentialOnly.status).toBe(403);
+    await credentialOnly.text();
+    expect(h.describeRelay).not.toHaveBeenCalled();
+    expect(h.prepareRelay).not.toHaveBeenCalled();
+    expect(h.issueRelay).not.toHaveBeenCalled();
+    const peer = await h.startNativePeer(paired);
+    try {
+      await peer.session.establish({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      });
+      for (const [method, path, code] of [
+        ['PUT', '/api/relay-management', 'insufficient_scope'],
+        ['POST', '/api/relay-management/capabilities', 'insufficient_scope'],
+        ['GET', '/api/relay-management/unlisted', 'insufficient_scope'],
+        ['POST', '/api/pairing/devices', 'native_device_proof_route_forbidden'],
+        [
+          'POST',
+          '/api/relay-management/devices/not-an-enrollment/approve',
+          'native_device_proof_route_forbidden',
+        ],
+      ]) {
+        const response = await peer.nativeFetch(
+          new Request(`${ORIGIN}${path}`, {
+            method,
+            headers: await peer.session.headers(method, path),
+          }),
+        );
+        expect(response.status, `${method} ${path}`).toBe(403);
+        expect(await response.json(), `${method} ${path}`).toEqual({
+          error: { code },
+        });
+      }
+      expect(h.describeRelay).not.toHaveBeenCalled();
+      expect(h.prepareRelay).not.toHaveBeenCalled();
+      expect(h.issueRelay).not.toHaveBeenCalled();
     } finally {
       peer.dispose();
     }

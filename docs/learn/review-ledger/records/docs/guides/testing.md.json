@@ -144,7 +144,33 @@
 
     "scripts/check-prepush-orchestration-transfer.mjs",
 
-    "scripts/__tests__/prepush-orchestration-transfer.test.ts"
+    "scripts/__tests__/prepush-orchestration-transfer.test.ts",
+
+    "scripts/run-vitest-corpus.mjs",
+
+    "scripts/__tests__/run-vitest-corpus.test.ts",
+
+    "scripts/__tests__/windows-resource-staging.test.ts",
+
+    "scripts/__tests__/veritas-readiness-evidence.test.ts",
+
+    "scripts/evidence-check-execution-gate.mjs",
+
+    "scripts/install-ci-ubuntu-packages.sh",
+
+    ".github/workflows/gallery-pr-check.yml",
+
+    ".github/workflows/nightly-gallery.yml",
+
+    "scripts/actionlint-gate.mjs",
+
+    "scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts",
+
+    "scripts/vitest-resource-manifest.mjs",
+
+    "scripts/proof-repo-guardrails.mjs",
+
+    "scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts"
   ],
 
   "checks": [

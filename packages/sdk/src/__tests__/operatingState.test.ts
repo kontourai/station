@@ -29,9 +29,12 @@ describe('operatingState SDK domain', () => {
     await expect(fetchOperatingState('demo')).resolves.toEqual({
       processes: [],
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/projects/demo/operating-state',
+      { headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces a server-reported error', async () => {

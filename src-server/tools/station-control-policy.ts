@@ -608,6 +608,51 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   interrupt_task: { ...DISPATCH, routes: DISPATCH_ROUTES },
 
+  // ── operations: Session control (#3160) ────────────────────────────────
+  // Each owns its leaf and shares none with dispatch. The guard holds the
+  // caller to a recorded owner; the route then decides the target Session's
+  // scope itself (`refuseOutOfScopeDispatch`: the owner's own sessions in the
+  // caller's Project or global space, never `host`, never remote, with the
+  // owner's Project `execute` action) before any effect. A bound operator
+  // keeps the operator's reach, as everywhere else.
+  send_to_session: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/session-control/send')],
+  },
+  interrupt_session: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/session-control/interrupt')],
+  },
+  // An owner-scoped read (decision 2): it observes any Session the owner may
+  // read and changes none.
+  wait_session: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-control/:sessionId/wait')],
+  },
+
+  // ── operations: Project activity (#3413) ───────────────────────────────
+  // Owner-scoped reads (decision 2): each answers with what the caller's owner
+  // may read. The routes then hold every Session to the one scope rule
+  // (`stationControlScopeRefusal`, Project `view`): a caller that is not bound
+  // stays in its own Project or the global space, and another Project's
+  // Sessions read as absent. Each owns its leaf and shares none.
+  list_project_activity: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity')],
+  },
+  get_session_digest: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity/:sessionId/digest')],
+  },
+
   // ── operations: SSH environments ───────────────────────────────────────
   create_ssh_environment: {
     ...OPERATOR_MUTATION,
@@ -949,7 +994,11 @@ export function stationControlSessionScope(
   return { kind: 'global' };
 }
 
-function sameScope(a: StationControlScope, b: StationControlScope): boolean {
+/** Whether two scopes are the same Project, or both the global space. */
+export function sameScope(
+  a: StationControlScope,
+  b: StationControlScope,
+): boolean {
   if (a.kind === 'unreadable' || b.kind === 'unreadable') return false;
   if (a.kind === 'global' || b.kind === 'global') return a.kind === b.kind;
   return a.id === b.id;

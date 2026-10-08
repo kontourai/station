@@ -1,0 +1,7 @@
+{
+  "revision": "a2e220c76a956f03eefcfb34fad26409c668e3d0",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3406: the guide makes no claim about attached-session discovery or folder resolution; the follow-service change (folder reads moved to a helper process) leaves its Agent configuration, adoption and approval content accurate. No prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

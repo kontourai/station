@@ -145,9 +145,11 @@ describe('scheduler query domain', () => {
       expect.objectContaining({ runId: 'run-1' }),
     ]);
 
-    expect(fetch).toHaveBeenCalledWith('http://example.test/api/runs', {
+    expect(fetch).toHaveBeenNthCalledWith(1, 'http://example.test/api/runs', {
       method: 'GET',
+      headers: { 'X-Station-Client-Protocol': '1' },
     });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('#167 iteration-2 (H1): surfaces the server error body on a non-2xx /api/runs failure instead of a generic status message', async () => {

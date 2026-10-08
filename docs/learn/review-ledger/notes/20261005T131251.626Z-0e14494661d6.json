@@ -1,0 +1,7 @@
+{
+  "revision": "fed7d14336a7270578e7e17e53892b76d8c10cfa",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-read the project icon paragraph against this change: icons and colour still appear on Home and chat rows (now also New chat recent rows and the sidebar's Open chats via rowProjectMarks), sidebar icon-less rows still show the colour (bar plus a faint dot in the reserved slot), remote rows still show neither. No prose change needed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/RecentChatList.tsx"]}
+  ]
+}

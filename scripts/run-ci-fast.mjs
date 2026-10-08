@@ -248,7 +248,10 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // exactly as they do locally. The "0 files changed -> no matched nodes"
   // line printed on a clean tree reports changed-node routing, not these
   // rules — reading it as "nothing was checked" is the trap.
-  Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'veritas:readiness', '--', '--format', 'json']),
+  ]),
   // PRECONDITION for the aggregate below, not a build step for its own sake
   // (station#4273). `typecheck:ui` resolves `@kontourai/station-connect`
   // through `packages/connect/dist`; without it that lane reports a bogus

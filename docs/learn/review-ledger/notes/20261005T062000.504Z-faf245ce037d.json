@@ -1,0 +1,7 @@
+{
+  "revision": "f891786eebfb74100a956f1f7243fe52c32c2802",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"NewChatModal changes this round: onDraftChange reporting, Project:/Select project accessible names, Runs in folder chip text. None touches this page's setup helper or setup-return claims. No prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

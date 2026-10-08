@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import type { Page } from '@playwright/test';
 import { genericIconPng } from './fixtures/generic-icon-png';
 import {
   waitForAgentRemoved,
@@ -62,6 +63,25 @@ async function setConnectionsEnabled(
     );
     expect(response.ok()).toBe(true);
   }
+}
+
+/**
+ * The dock's own inbox row for the session in the project: the rows
+ * `ChatDock` renders from its own accent and icon reads, which no
+ * panel-level test reaches.
+ */
+async function dockInboxRow(page: Page, projectSlug: string) {
+  const hide = page.getByRole('button', { name: 'Hide inbox', exact: true });
+  const show = page.getByRole('button', { name: /^Show inbox/ });
+  await expect(hide.or(show)).toBeVisible({ timeout: 20_000 });
+  if (await show.isVisible()) await show.click();
+  const row = page
+    .getByRole('complementary', { name: 'Inbox chats' })
+    .locator('[data-testid="inbox-row"]')
+    .filter({ hasText: projectSlug })
+    .first();
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  return row;
 }
 
 test.describe('project icons', () => {
@@ -186,10 +206,21 @@ test.describe('project icons', () => {
       )
       .toBe(true);
 
+    // --- The dock inbox, before an icon: the project's colour ------------
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/projects/${projectSlug}?dock=open`);
+    const swatch = (await dockInboxRow(page, projectSlug)).locator(
+      '.inbox-row__project-accent',
+    );
+    await expect(swatch).toHaveAttribute('data-project-icon', 'dot');
+    // Painted with a colour, not merely present.
+    await expect
+      .poll(() => swatch.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .not.toMatch(/^(rgba\(0, 0, 0, 0\)|transparent)$/);
+
     // --- Set the icon in settings: upload a generic image, Save ----------
     const png = genericIconPng();
     const expectedIcon = `data:image/png;base64,${png.toString('base64')}`;
-    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/projects/${projectSlug}/edit`);
     await page.getByRole('button', { name: 'Choose project icon' }).click();
     await page
@@ -254,6 +285,15 @@ test.describe('project icons', () => {
       .filter({ hasText: projectName });
     await expect(
       switcherRow.locator('.chat-dock__project-switcher-icon img'),
+    ).toHaveAttribute('src', expectedIcon);
+    await page.keyboard.press('Escape');
+    await expect(switcher).toBeHidden();
+
+    // --- The dock's inbox row now draws the icon ---------------------------
+    await expect(
+      (await dockInboxRow(page, projectSlug)).locator(
+        '.inbox-row__project-accent img',
+      ),
     ).toHaveAttribute('src', expectedIcon);
 
     browserHealth.assertHealthy();

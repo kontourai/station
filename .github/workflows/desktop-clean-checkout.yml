@@ -1,4 +1,4 @@
-name: Desktop clean-checkout build
+name: "PR: Desktop clean checkout"
 
 on:
   workflow_dispatch:

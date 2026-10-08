@@ -41,6 +41,15 @@ function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
   return BRAND_KEYS.find((brand) => brand === engineId);
 }
 
+/**
+ * Whether this build ships a mark for the engine. Lets a caller choose an
+ * engine as a stand-in only when the stand-in draws something more specific
+ * than initials (#3355); `'acp'` and plugin engines answer `false`.
+ */
+export function hasBundledEngineMark(engineId: EngineId): boolean {
+  return resolveBrandKey(engineId) !== undefined;
+}
+
 function explicitBrand(value: unknown): BrandKey | undefined {
   if (typeof value !== 'string' || !value.startsWith('brand:'))
     return undefined;
@@ -56,6 +65,33 @@ function isGlyph(value: unknown): value is string {
     !/^(?:https?:|data:|\/|[A-Za-z]:[\\/])/.test(value) &&
     !/\.(?:png|jpe?g|webp|ico)$/i.test(value)
   );
+}
+
+/**
+ * Whether a glyph is one grapheme (an emoji, even a ZWJ sequence, or one
+ * letter) rather than a short text label such as an engine default's "MV".
+ * Only a single grapheme may fill the tile; two letters at that size overflow
+ * it. Without `Intl.Segmenter`, code points stand in, which can only
+ * under-count a sequence as several and draw it at the smaller text size.
+ */
+function isSingleGrapheme(value: string): boolean {
+  const Segmenter = (
+    Intl as typeof Intl & {
+      Segmenter?: new (
+        locale?: string,
+        options?: { granularity?: string },
+      ) => { segment(input: string): Iterable<unknown> };
+    }
+  ).Segmenter;
+  if (!Segmenter) return Array.from(value).length === 1;
+  let count = 0;
+  for (const _ of new Segmenter(undefined, { granularity: 'grapheme' }).segment(
+    value,
+  )) {
+    count += 1;
+    if (count > 1) return false;
+  }
+  return count === 1;
 }
 
 function safeSameOriginImage(value: unknown): string | undefined {
@@ -221,7 +257,11 @@ export function BrandIcon({
       {...(alt ? { role: 'img', 'aria-label': alt } : { 'aria-hidden': true })}
     >
       {content ? (
-        <span className="brand-icon__glyph">{content}</span>
+        <span
+          className={`brand-icon__glyph${isSingleGrapheme(content) ? '' : ' brand-icon__glyph--text'}`}
+        >
+          {content}
+        </span>
       ) : explicitBrandKey ? (
         <Mark brand={explicitBrandKey} />
       ) : imageSource && failedImageSource !== imageSource ? (

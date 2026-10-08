@@ -1,0 +1,7 @@
+{
+  "revision": "9fd13e2261f777a649843a23e9323ac477052139",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the whole-tree scan guidance against the change: it only adds a truthful classification entry for review-ledger-guards.test.ts (git ls-files in a fixture repo); no documented claim changes.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

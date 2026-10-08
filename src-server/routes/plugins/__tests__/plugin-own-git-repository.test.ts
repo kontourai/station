@@ -7,6 +7,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 import { execGitSync } from '../../../utils/git-exec.js';
@@ -80,7 +81,11 @@ async function enclosedPlugin() {
   const head = git(home, 'rev-parse', 'HEAD');
   // Premise: the enclosing checkout has a commit a pull would bring in.
   expect(git(home, 'rev-list', '--count', 'HEAD..@{u}')).toBe('1');
-  return { home, head, app: createPluginRoutes(home, makeLogger()) };
+  return {
+    home,
+    head,
+    app: withOperatorPrincipal(createPluginRoutes(home, makeLogger())),
+  };
 }
 
 describe('plugin git routes use only the plugin’s own repository', () => {
@@ -132,7 +137,7 @@ describe('plugin git routes use only the plugin’s own repository', () => {
       JSON.stringify({ name: 'worktree-plugin', version: '1.1.0' }),
     );
     git(origin, 'commit', '-q', '-am', 'v2');
-    const app = createPluginRoutes(home, makeLogger());
+    const app = withOperatorPrincipal(createPluginRoutes(home, makeLogger()));
     const response = await app.request('/worktree-plugin/update', {
       method: 'POST',
     });

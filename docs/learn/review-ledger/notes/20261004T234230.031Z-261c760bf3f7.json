@@ -1,0 +1,7 @@
+{
+  "revision": "be2ce137c752a3108459c55bcb88cc7228a96908",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"#3308: contracts reference changed only the child-work row; AGENTS routing and the reducer-in-contracts note remain accurate. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

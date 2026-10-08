@@ -24,7 +24,17 @@
 
     "packages/connect/src/core/nativeRelayLink.ts",
 
-    "packages/contracts/src/native-relay-link.ts"
+    "packages/contracts/src/native-relay-link.ts",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts"
   ],
 
   "checks": [

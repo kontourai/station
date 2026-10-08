@@ -325,7 +325,7 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'lint:check']],
       // Ordered after the two evidence-checks it re-executes, so a failure in
       // either reports under its own name first.
-      ['npm', ['run', 'veritas:readiness']],
+      ['npm', ['run', 'veritas:readiness', '--', '--format', 'json']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect
       // through packages/connect/dist). The aggregate is invoked DIRECTLY

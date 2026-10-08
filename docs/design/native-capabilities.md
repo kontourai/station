@@ -173,7 +173,13 @@ host signer for bounded per-request Device proof. Station composes this in its
 for an explicitly selected native saved route. Its read surface is limited to
 Station health, authority and member Project/shared-work reads; fixed account
 challenge/exchange/revoke and invitation acceptance are separate control leaves.
-Account continuation and Project membership remain independent. A mounted
+The separate closed management inventory adds relay setup/invitation/Device
+decisions and Project access administration without granting terminal, Agent
+or Task publication writes. The account-bound gate admits only exact native
+relay-management leaves with current Device/account proof and separate
+`relay:manage`; credential-only account-bound Devices remain refused.
+Capabilities are neutral false without management authority. Account
+continuation and Project membership remain independent. A mounted
 consumer is not proof of a completed fresh native or physical Project journey.
 
 Rust verifies the exact Station-signed nonce, connection identity, offer/answer
@@ -194,7 +200,7 @@ separate from account sign-in and enrollment.
 The [account proof-key vault](../../src-desktop/src/native_account_proof_key.rs)
 is included in desktop and mobile builds. The vault remains Rust-internal; the
 [account operation owner](../../src-desktop/src/native_account_operations.rs)
-reaches it through five main-window commands, with no raw signing IPC. The
+reaches it through six main-window commands, with no raw signing IPC. The
 [production account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts)
 composes those commands with the selected encrypted native application owner;
 the [account panel](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
@@ -219,7 +225,10 @@ accepts closed opaque challenge data and local username/password credentials;
 Rust derives identity, hashes, JTI and time and returns the complete exchange
 body and matching proof header. `station_native_account_request_headers` accepts
 opaque native continuation data and only the canonical GET/HEAD health and
-member-read inventory. `station_native_account_accept_invitation_prepare`
+member-read inventory. `station_native_account_management_headers` prepares
+GET/HEAD/POST proofs only for the closed relay-management and Project access
+management leaves; it does not widen the generic read operation.
+`station_native_account_accept_invitation_prepare`
 accepts one canonical invitation token for its fixed POST leaf;
 `station_native_account_revoke_prepare` prepares only the empty-body native
 revoke leaf. No caller-supplied audience, Device, surface, hash or signing bytes

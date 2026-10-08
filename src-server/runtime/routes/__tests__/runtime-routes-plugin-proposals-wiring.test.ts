@@ -318,10 +318,26 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
         path,
         code: 'person-approval-required',
       });
-      expect({ path, status: reached.status }).not.toEqual({
-        path,
-        status: 403,
-      });
+      if (path === '/api/plugins/install') {
+        // Installing runs the package's code, so a person's device without
+        // the operator's coding:exec grant is refused by that second gate,
+        // after the person gate it passed. The delegation device above never
+        // reaches it: the person gate answers first.
+        expect({
+          path,
+          status: reached.status,
+          code: reachedBody.code,
+        }).toEqual({
+          path,
+          status: 403,
+          code: 'command-not-granted',
+        });
+      } else {
+        expect({ path, status: reached.status }).not.toEqual({
+          path,
+          status: 403,
+        });
+      }
     }
   });
 

@@ -47,6 +47,8 @@ describe('public handshake compatibility block', () => {
         remoteAuth: REMOTE_AUTH_PROTOCOL_VERSION,
         devicePairing: DEVICE_PAIRING_PROTOCOL_VERSION,
         environmentProof: STATION_PROOF_PROTOCOL_VERSION,
+        // Literal on purpose: clients key on this exact name (#2962).
+        clientProtocolHeader: 1,
       },
     });
   });
@@ -105,6 +107,7 @@ describe('public handshake capability flags (station#1095)', () => {
       portableExecutionOffers: true,
       delegationAttemptClaims: true,
       executionPreparation: true,
+      delegatedInputAnswers: true,
     });
   });
 
@@ -139,6 +142,7 @@ describe('public handshake capability flags (station#1095)', () => {
       portableExecutionOffers: true,
       delegationAttemptClaims: true,
       executionPreparation: true,
+      delegatedInputAnswers: true,
     });
     for (const buildIdentityField of [
       'build',

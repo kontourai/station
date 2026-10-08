@@ -17,8 +17,7 @@
 // performed; it does not decide whether the prose is accurate.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import {
   assertDocumentationFresh,
   checkDocumentationFreshness,
@@ -37,6 +36,8 @@ import {
   compileReviewState,
   notesFileName,
   parseReviewLedgerFiles,
+  planNoteCompaction,
+  REVIEW_LEDGER_DIR,
   REVIEW_LEDGER_INDEX,
   readGitObjects,
   readReviewFiles,
@@ -46,6 +47,7 @@ import {
   serializeLedgerIndex,
   serializeNotesFile,
   serializeRecordFile,
+  writeReviewFiles,
 } from './lib/review-ledger-store.mjs';
 
 const USAGE = [
@@ -444,8 +446,10 @@ function serializeLedgerFiles(parsed) {
     text.set(file, serializeRecordFile(data));
   for (const [, { file, data }] of parsed.captures)
     text.set(file, serializeCaptureReviewFile(data));
-  for (const { file, data } of parsed.notes)
-    text.set(file, serializeNotesFile(data));
+  // Archived notes stay in their archive, whose bytes are never rewritten.
+  for (const [file, archive] of parsed.archives) text.set(file, archive);
+  for (const { file, data, archive } of parsed.notes)
+    if (archive === undefined) text.set(file, serializeNotesFile(data));
   return text;
 }
 
@@ -592,13 +596,7 @@ export async function recordDocumentationReviews({
       requireFresh: ({ path: file }) => captures.has(file),
     });
 
-  const written = [];
-  for (const [file, text] of after)
-    if (before.get(file) !== text) {
-      mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-      writeFileSync(path.join(root, file), text);
-      written.push(file);
-    }
+  const written = writeReviewFiles(root, after, before);
   return {
     revision: head,
     notesFile,
@@ -731,11 +729,7 @@ async function recordReviewNotes(
       snapshot.read,
       { reportMissing: true },
     );
-  for (const [file, text] of after)
-    if (before.get(file) !== text) {
-      mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-      writeFileSync(path.join(root, file), text);
-    }
+  writeReviewFiles(root, after, before);
   return {
     revision: head,
     notesFile,
@@ -965,16 +959,36 @@ export async function main(argv = process.argv.slice(2)) {
       env: { STATION_DOCS_FRESHNESS: 'strict' },
     });
     assertDocumentationFresh(result);
-    if (readReviewState(root, { history: false }).ledger.layoutVersion !== 3)
+    const { parsed: files } = readReviewFiles(root);
+    if (files.index.version !== 3)
       throw reviewError(
         'unsupported-version',
         'Advance the baseline only after path-only migration.',
       );
-    writeFileSync(
-      path.join(root, REVIEW_LEDGER_INDEX),
+    // Notes the previous advance already covered move into one immutable
+    // archive in the same change (#3394); scoped freshness accepts their
+    // removal only because their exact bytes are in that added archive.
+    const { archive, archived, after } = planNoteCompaction(root, files);
+    after.set(
+      REVIEW_LEDGER_INDEX,
       serializeLedgerIndex({ version: 3, coverageBaseline: head }),
     );
-    console.log(`Advanced coverage baseline to ${head}; commit the index.`);
+    const before = serializeLedgerFiles(files);
+    // Validate the compacted store with the parser the gates use before
+    // writing any of it.
+    const proposed = new Map(before);
+    for (const [file, text] of after)
+      if (text === undefined) proposed.delete(file);
+      else proposed.set(file, text);
+    parseReviewLedgerFiles(proposed);
+    writeReviewFiles(root, after, before);
+    console.log(
+      `Advanced coverage baseline to ${head}${
+        archive
+          ? `; archived ${archived.length} landed note(s) in ${archive}`
+          : ''
+      }; commit ${REVIEW_LEDGER_DIR}.`,
+    );
     return;
   }
   if (parsed.mode === 'show-delta') {

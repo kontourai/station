@@ -1,0 +1,7 @@
+{
+  "revision": "2000dd43abd8a30ca28bb7a4ccd336ad7dfe3131",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"The capture shows a local Inspect request dialog; the attention route differs from main only by passing the request type to the viewer predicate; orchestration-service differs from main only by storing the paired Station binding, question and caller check on peer records, leaving local inspection unchanged.","inputs":["docs/learn/media/inspect-request.png","src-server/routes/orchestration/attention.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
