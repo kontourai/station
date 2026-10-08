@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { SectionNav, type SectionNavItem } from './SectionNav';
-import './SectionNavigation.css';
 
 /** One responsive section selector for Settings and diagnostic workspaces. */
 export function SectionNavigation({

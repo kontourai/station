@@ -1,5 +1,0 @@
-.section-navigation__picker {
-  display: grid;
-  gap: var(--k-space-2);
-  margin-block: var(--k-space-3);
-}
