@@ -1,7 +1,8 @@
-import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { loadAll } from 'js-yaml';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import {
   collectCorpusTestFiles,
   SCRIPT_FILE_PATTERN,
@@ -145,8 +146,8 @@ function workflowReachability(repoRoot, errors) {
 }
 
 function executeCandidate(repoRoot, scriptName) {
-  const executable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  return spawnSync(executable, ['--silent', 'run', scriptName], {
+  const invocation = npmInvocation(['--silent', 'run', scriptName]);
+  return spawnSyncBounded(invocation.command, invocation.args, {
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
