@@ -322,7 +322,13 @@
 
     "src-server/services/peers/__tests__/peer-enrollment-routes.test.ts",
 
-    "src-ui/src/__tests__/ConnectStationDialog.test.tsx"
+    "src-ui/src/__tests__/ConnectStationDialog.test.tsx",
+
+    "packages/connect/src/react/connection-manager-modal/DeviceScopeEditor.tsx",
+
+    "packages/connect/src/__tests__/DeviceScopeEditor.test.tsx",
+
+    "packages/connect/src/__tests__/deviceActivity.test.ts"
   ],
 
   "checks": [

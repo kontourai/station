@@ -108,7 +108,9 @@
 
     "src-ui/src/views/project-settings/__tests__/ToolsSection.test.tsx",
 
-    "src-server/runtime/frameworks/__tests__/strands-tool-loader.test.ts"
+    "src-server/runtime/frameworks/__tests__/strands-tool-loader.test.ts",
+
+    "src-ui/src/__tests__/ProjectSettingsView.test.tsx"
   ],
 
   "checks": [

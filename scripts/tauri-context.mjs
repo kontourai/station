@@ -1,12 +1,21 @@
 #!/usr/bin/env node
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, platform as hostPlatform } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import { exactProcessIdentity } from '../packages/shared/src/process-identity.mjs';
+import { CAPTURE_MAX_BYTES } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from './lib/owned-process.mjs';
 import { readPnpmLock } from './lib/pnpm-lockfile.mjs';
 
 const GUIDES_URL = 'https://v2.tauri.app/_llms-txt/guides.txt';
@@ -58,6 +67,7 @@ Context report:
   --json | --format <human|json>
   --root <path>
   --strict
+  --trace-probes
 
 Official Tauri documentation:
   --list-topics
@@ -119,36 +129,121 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function checkCommand(id, command, args, options = {}) {
-  const result = spawnSyncBounded(command, args, {
-    cwd: options.cwd,
-    encoding: 'utf8',
-    timeout: options.timeout ?? 10_000,
-    windowsHide: true,
+async function checkCommand(id, command, args, options = {}) {
+  const started = performance.now();
+  if (options.traceProbes) {
+    process.stderr.write(
+      `${JSON.stringify({ id, phase: 'start', elapsedMs: 0, status: 'running' })}\n`,
+    );
+  }
+  const finish = (check) => {
+    if (options.traceProbes) {
+      process.stderr.write(
+        `${JSON.stringify({ id, phase: 'end', elapsedMs: Math.round(performance.now() - started), status: check.status })}\n`,
+      );
+    }
+    return check;
+  };
+  let rejectBoundary;
+  const boundary = new Promise((_, reject) => {
+    rejectBoundary = reject;
   });
-  if (result.error?.code === 'ENOENT') {
-    return { id, status: 'skipped', reason: 'command-not-found', command };
+  const timeout = options.timeout ?? 10_000;
+  const timer = setTimeout(
+    () => rejectBoundary(new Error(`${id} timed out after ${timeout}ms`)),
+    timeout,
+  );
+  const onAbort = () =>
+    rejectBoundary(options.signal.reason ?? new Error(`${id} cancelled`));
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+  if (options.signal?.aborted) onAbort();
+  const execution = executeOwnedCommand(command, args, spawn, id, {
+    cwd: options.cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+    ...(options.resolveParentIdentity
+      ? { resolveParentIdentity: options.resolveParentIdentity }
+      : {}),
+  });
+  const capture = captureOwnedProcessOutput(execution, {
+    maxBytes: CAPTURE_MAX_BYTES,
+    onOverflow: () =>
+      rejectBoundary(new Error(`${id} output exceeded its bound`)),
+  });
+  let result;
+  let failure;
+  try {
+    result = await Promise.race([execution.completion, boundary]);
+  } catch (error) {
+    failure = error;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', onAbort);
+  }
+  const cleanup = await terminateSuiteExecution(execution, {
+    waitForSuiteSettlement,
+    terminationGraceMs: 1_000,
+    terminationForceMs: 2_000,
+    processLabel: id,
+  });
+  const output = capture.finish();
+  if (!cleanup.settled || cleanup.errors.length) {
+    return finish({
+      id,
+      status: 'failed',
+      reason: `${id} process cleanup did not settle`,
+      command,
+    });
+  }
+  if (output.truncated || output.invalidUtf8) {
+    return finish({
+      id,
+      status: 'failed',
+      reason: `${id} output exceeded its capture contract`,
+      command,
+    });
+  }
+  if (failure) {
+    return finish({ id, status: 'failed', reason: failure.message, command });
+  }
+  const windowsMissingCommand =
+    process.platform === 'win32' &&
+    result.error &&
+    execution.settlementEvidence?.().identities.target === null &&
+    output.stderr.text.trim() === 'station-owned-guard: create-process win32=2';
+  if (result.error?.code === 'ENOENT' || windowsMissingCommand) {
+    return finish({
+      id,
+      status: 'skipped',
+      reason: 'command-not-found',
+      command,
+    });
   }
   if (result.error) {
-    return { id, status: 'failed', reason: result.error.message, command };
+    return finish({
+      id,
+      status: 'failed',
+      reason: result.error.message,
+      command,
+    });
   }
-  const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
+  const combined = `${output.stdout.text}\n${output.stderr.text}`.trim();
   if (result.status !== 0 && !options.acceptNonzero) {
-    return {
+    return finish({
       id,
       status: 'failed',
       reason: combined.slice(0, 1_000) || `exit-${result.status}`,
       command,
-    };
+    });
   }
-  return {
+  return finish({
     id,
     status: 'checked',
     command,
     value: options.parse
       ? options.parse(combined, result)
       : combined.split('\n')[0],
-  };
+  });
 }
 
 function firstExisting(paths) {
@@ -233,12 +328,12 @@ function capabilityReport(desktopRoot, selected) {
     });
 }
 
-function gitGeneratedState(root, relativePath) {
-  const check = checkCommand(
+async function gitGeneratedState(root, relativePath, options) {
+  const check = await checkCommand(
     `git-${relativePath}`,
     'git',
     ['status', '--short', '--', relativePath],
-    { cwd: root, parse: (output) => output },
+    { ...options, cwd: root, parse: (output) => output },
   );
   return {
     path: relativePath,
@@ -255,7 +350,9 @@ function gitGeneratedState(root, relativePath) {
   };
 }
 
-function collectChecks(root) {
+async function collectChecks(root, probeOptions) {
+  const probe = (id, command, args, options = {}) =>
+    checkCommand(id, command, args, { ...probeOptions, ...options });
   let npm;
   let npmResolutionError;
   try {
@@ -289,18 +386,18 @@ function collectChecks(root) {
     'adb',
   ]);
   const checks = {
-    node: checkCommand('node', process.execPath, ['--version']),
+    node: probe('node', process.execPath, ['--version']),
     npm: npm
-      ? checkCommand('npm', npm.command, npm.args)
+      ? probe('npm', npm.command, npm.args)
       : {
           id: 'npm',
           status: 'failed',
           reason: npmResolutionError,
           command: 'npm',
         },
-    rustc: checkCommand('rustc', 'rustc', ['--version']),
-    cargo: checkCommand('cargo', 'cargo', ['--version']),
-    rustTargets: checkCommand(
+    rustc: probe('rustc', 'rustc', ['--version']),
+    cargo: probe('cargo', 'cargo', ['--version']),
+    rustTargets: probe(
       'rust-targets',
       'rustup',
       ['target', 'list', '--installed'],
@@ -316,21 +413,21 @@ function collectChecks(root) {
             reason: 'command-not-found',
             command: tauriBin,
           }
-        : checkCommand(
+        : probe(
             'tauri-cli',
             windows ? process.execPath : tauriBin,
             windows ? [tauriBin, '--version'] : ['--version'],
           ),
-    java: checkCommand('java', 'java', ['-version']),
-    adb: checkCommand('adb', adb ?? 'adb', ['devices', '-l'], {
+    java: probe('java', 'java', ['-version']),
+    adb: probe('adb', adb ?? 'adb', ['devices', '-l'], {
       parse: parseAdbDevices,
     }),
   };
   if (hostPlatform() === 'darwin') {
-    checks.xcode = checkCommand('xcode', 'xcodebuild', ['-version'], {
+    checks.xcode = probe('xcode', 'xcodebuild', ['-version'], {
       parse: (output) => output.split('\n').filter(Boolean),
     });
-    checks.appleDevices = checkCommand(
+    checks.appleDevices = probe(
       'apple-devices',
       'xcrun',
       ['xcdevice', 'list', '--timeout', '2'],
@@ -348,7 +445,11 @@ function collectChecks(root) {
       reason: 'host-is-not-macos',
     };
   }
-  return checks;
+  return Object.fromEntries(
+    await Promise.all(
+      Object.entries(checks).map(async ([key, value]) => [key, await value]),
+    ),
+  );
 }
 
 function normalizedVersion(value) {
@@ -421,7 +522,11 @@ export function collectFindings({ versions, checks, generated }) {
   return findings;
 }
 
-export function buildContextReport(root, selectedPlatform = 'all') {
+export async function buildContextReport(
+  root,
+  selectedPlatform = 'all',
+  { traceProbes = false, signal } = {},
+) {
   const cargoPath = join(root, 'src-desktop', 'Cargo.toml');
   const desktopRoot = dirname(cargoPath);
   const cargoToml = readFileSync(cargoPath, 'utf8');
@@ -465,10 +570,25 @@ export function buildContextReport(root, selectedPlatform = 'all') {
       },
     ]),
   );
-  const checks = collectChecks(root);
+  const parentIdentity =
+    process.platform === 'win32'
+      ? exactProcessIdentity(process.pid)
+      : undefined;
+  const probeOptions = {
+    traceProbes,
+    signal,
+    ...(process.platform === 'win32'
+      ? { resolveParentIdentity: () => parentIdentity }
+      : {}),
+  };
+  const [checks, androidGenerated, iosGenerated] = await Promise.all([
+    collectChecks(root, probeOptions),
+    gitGeneratedState(root, 'src-desktop/gen/android', probeOptions),
+    gitGeneratedState(root, 'src-desktop/gen/apple', probeOptions),
+  ]);
   const generated = {
     android: {
-      ...gitGeneratedState(root, 'src-desktop/gen/android'),
+      ...androidGenerated,
       owners: [
         'src-desktop/tauri.android.conf.json',
         'scripts/apply-android-native-bootstrap.mjs',
@@ -476,7 +596,7 @@ export function buildContextReport(root, selectedPlatform = 'all') {
       ].filter((path) => existsSync(join(root, path))),
     },
     ios: {
-      ...gitGeneratedState(root, 'src-desktop/gen/apple'),
+      ...iosGenerated,
       owners: [
         'src-desktop/tauri.ios.conf.json',
         'src-desktop/gen/apple/project.yml',
@@ -579,6 +699,7 @@ function parseArgs(argv) {
     platform: 'all',
     root: resolve(dirname(fileURLToPath(import.meta.url)), '..'),
     strict: false,
+    traceProbes: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -590,6 +711,7 @@ function parseArgs(argv) {
     else if (value === '--topic') options.topic = argv[++index];
     else if (value === '--max-chars') options.maxChars = Number(argv[++index]);
     else if (value === '--strict') options.strict = true;
+    else if (value === '--trace-probes') options.traceProbes = true;
     else if (value === '--list-topics') options.listTopics = true;
     else if (value === '--help' || value === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${value}`);
@@ -631,7 +753,26 @@ async function main() {
     await printDocumentation(options.topic, options.maxChars);
     return;
   }
-  const report = buildContextReport(options.root, options.platform);
+  const controller = new AbortController();
+  const cancel = (signal, exitCode) => () => {
+    process.exitCode = exitCode;
+    controller.abort(new Error(`Context report cancelled by ${signal}`));
+  };
+  const interrupt = cancel('SIGINT', 130);
+  const terminate = cancel('SIGTERM', 143);
+  process.on('SIGINT', interrupt);
+  process.on('SIGTERM', terminate);
+  let report;
+  try {
+    report = await buildContextReport(options.root, options.platform, {
+      traceProbes: options.traceProbes,
+      signal: controller.signal,
+    });
+  } finally {
+    process.off('SIGINT', interrupt);
+    process.off('SIGTERM', terminate);
+  }
+  if (controller.signal.aborted) return;
   process.stdout.write(
     options.format === 'json'
       ? `${JSON.stringify(report, null, 2)}\n`
