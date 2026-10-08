@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 const bootHistory = vi.hoisted(() => ({
@@ -63,9 +63,32 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
+const resourceObservation = vi.hoisted(() => ({
+  data: {
+    kind: 'critical',
+    busyPercent: 99,
+    cpuCount: 12,
+    ageMs: 1500,
+    sampledAt: 12345,
+    sampleMs: 500,
+    source: 'test',
+    thresholdPercent: 85,
+    resources: {
+      sampledAt: 100,
+      memory: { totalBytes: 1000, freeBytes: 100 },
+      process: {
+        pid: 42,
+        uptimeSeconds: 100,
+        rssBytes: 500,
+        heapUsedBytes: 200,
+        heapTotalBytes: 300,
+      },
+    },
+  },
+}));
 vi.mock('@kontourai/station-sdk/resource-posture', () => ({
-  useResourcePostureForApiBaseQuery: () => ({
-    data: { busyPercent: 99, cpuCount: 12, ageMs: 1_500 },
+  useResourcePostureForApiBaseQuery: (apiBase: string) => ({
+    data: apiBase.includes('station-b') ? undefined : resourceObservation.data,
   }),
 }));
 
@@ -151,4 +174,31 @@ test('Services reports readiness reasons and discovery freshness', () => {
     }),
   ).toBeTruthy();
   expect(screen.queryByText('No boot records yet')).toBeNull();
+});
+
+test('Performance discards another Station host’s chart on connection switch', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const tab = (apiBase: string) => (
+    <QueryClientProvider client={client}>
+      <SystemTab apiBase={apiBase} />
+    </QueryClientProvider>
+  );
+  const mounted = render(tab('http://station-a.test'));
+  fireEvent.click(screen.getByRole('tab', { name: 'Performance' }));
+  resourceObservation.data = {
+    ...resourceObservation.data,
+    resources: { ...resourceObservation.data.resources, sampledAt: 200 },
+  };
+  mounted.rerender(tab('http://station-a.test'));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('img', {
+        name: 'CPU busy percentage across 2 received samples',
+      }),
+    ).toBeTruthy(),
+  );
+  mounted.rerender(tab('http://station-b.test'));
+  expect(screen.queryByRole('img')).toBeNull();
 });

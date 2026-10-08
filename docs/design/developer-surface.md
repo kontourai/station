@@ -33,7 +33,9 @@ Tool latency uses only measured result events in the loaded, filtered window;
 truncated or unreadable history is marked partial. Usage reuses the receipt
 rollup and operator Station overview rather than process-lifetime direct-chat
 metrics. Context reads the selected conversation's statistics, reporting missing
-occupancy explicitly. Routing keeps both inference receipt readers. Their time
+occupancy explicitly and distinguishing engine observations from Station estimates.
+Missing-conversation placeholders do not produce an occupancy figure. Performance
+history starts afresh when the connected host changes. Routing keeps both inference receipt readers. Their time
 windows and scope are owned by the respective readers, not the activity filter.
 
 The route remains `/developer/telemetry` for compatibility. Monitoring has one

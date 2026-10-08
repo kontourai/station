@@ -30,7 +30,7 @@ Developer → Monitoring provides five views over existing Station measurements:
 | Activity | Live monitoring events plus bounded file history. Search and filters apply to loaded rows. The expandable session list reads canonical current session summaries independently of the event window. |
 | Tool latency | Reported `station.tool.duration_ms` on filtered tool-result events. p50/p95 use measured durations only; unreported durations and outcomes remain separate. Truncated or failed history makes the result partial. |
 | Usage | Existing usage receipt rollup and operator-only Station usage overview. Reported cost, estimates, currency and coverage retain their existing distinctions. |
-| Context | Latest statistics for a selected session with an assigned Agent and conversation identity. Missing context occupancy is "Not reported"; occupancy is not token consumption. |
+| Context | Latest statistics for a selected session with an assigned Agent and conversation identity. Engine observations and Station estimates are labeled separately. Missing conversations or unreported measurement sources do not produce a percentage. Occupancy is not token consumption. |
 | Routing | Recent consuming and serving inference receipts, using each reader's own bounds. |
 
 Developer → System → Performance polls host CPU and memory diagnostics every

@@ -56,7 +56,7 @@ export default function SystemTab({ apiBase }: { apiBase: string }) {
         aria-labelledby={tabElementId('system-views', view)}
       >
         {view === 'performance' ? (
-          <SystemPerformance apiBase={apiBase} />
+          <SystemPerformance key={apiBase} apiBase={apiBase} />
         ) : view === 'services' ? (
           <SystemServices apiBase={apiBase} />
         ) : (

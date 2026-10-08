@@ -29,7 +29,9 @@ export function ContextDiagnostics({
     !!session,
     5_000,
   );
-  const value = stats?.contextWindowPercentage;
+  const source = stats?.measurement?.source;
+  const value =
+    stats?.notFound || !source ? undefined : stats?.contextWindowPercentage;
   const percentage =
     typeof value === 'number' && Number.isFinite(value) && value >= 0
       ? value
@@ -38,8 +40,9 @@ export function ContextDiagnostics({
     <section className="monitoring-page__scroll" aria-label="Context usage">
       <h2>Context usage</h2>
       <p className="developer-tab__hint">
-        Latest conversation-statistics observation. Context occupancy is not
-        consumed tokens, and is available only where the engine reports it.
+        Latest conversation statistics. Engine observations and Station
+        estimates are labeled separately. Context occupancy is not consumed
+        tokens.
       </p>
       {readStatus === 'error' ? (
         <ErrorState variant="compact" title="Session inventory unavailable" />
@@ -82,7 +85,11 @@ export function ContextDiagnostics({
           ) : (
             <dl className="system-tab__facts">
               <div>
-                <dt>Reported context occupancy</dt>
+                <dt>
+                  {source === 'station-memory'
+                    ? 'Estimated context occupancy'
+                    : 'Reported context occupancy'}
+                </dt>
                 <dd>
                   {percentage === undefined
                     ? 'Not reported'
