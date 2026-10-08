@@ -113,6 +113,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: ${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE == 'expanded' && 4 || 2 }}
       matrix:
         include:
           - slice: 1-2 of 8
@@ -226,6 +227,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: ${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE == 'expanded' && 2 || 1 }}
       matrix:
         include:
           - slice: 1 of 2
