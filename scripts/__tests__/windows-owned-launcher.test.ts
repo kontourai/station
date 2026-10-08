@@ -1,11 +1,10 @@
 import { fork } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { exactProcessIdentity } from '../../packages/shared/src/process-identity.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
-import { buildWindowsOwnedGuard } from '../lib/windows-owned-guard-build.mjs';
 
 const LAUNCHER = resolve(import.meta.dirname, '../windows-owned-launcher.mjs');
 
@@ -139,12 +138,23 @@ function nativeGuard(wrongCreation = false) {
       ),
     );
   }
-  return buildWindowsOwnedGuard({
-    source,
-    tempDirectory: directory,
-    spawnProcess: (executable, args, options) =>
-      spawnSyncBounded(executable, args, { ...options, timeout: 10_000 }),
-  });
+  const windows = process.env.WINDIR;
+  if (!windows)
+    throw new Error('Native binding fixture compiler root unavailable');
+  const executable = join(directory, 'station-windows-owned-guard.exe');
+  const compiled = spawnSyncBounded(
+    join(windows, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'),
+    ['/nologo', '/target:exe', `/out:${executable}`, source],
+    { encoding: 'utf8', windowsHide: true, timeout: 10_000 },
+  );
+  expect(compiled.error, compiled.stderr).toBeUndefined();
+  expect(compiled.status, compiled.stderr).toBe(0);
+  return {
+    path: executable,
+    cleanup() {
+      rmSync(directory, { recursive: true, force: true });
+    },
+  };
 }
 
 function nativeEnvelope(guardPath: string) {
