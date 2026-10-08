@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { exactProcessIdentity } from '../packages/shared/src/process-identity.mjs';
+import {
+  describeRecentProcessBirthProbeFailures,
+  probeExactProcessIdentity,
+} from '../packages/shared/src/process-identity.mjs';
 import { createWindowsOwnedControlStdin } from './lib/windows-owned-control-stdin.mjs';
 import {
   createWindowsOwnedProtocol,
@@ -167,13 +170,31 @@ if (command) {
       const received = protocol.receive(record);
       if (!received.ok) return abort(received.error.message);
       if (received.action === 'bound') {
-        const target = exactProcessIdentity(received.pid);
-        const guardIdentity = guard.pid
-          ? exactProcessIdentity(guard.pid)
-          : null;
+        const targetProbe = probeExactProcessIdentity(received.pid);
+        const guardProbe = guard.pid
+          ? probeExactProcessIdentity(guard.pid)
+          : { state: 'unavailable' };
+        const target =
+          targetProbe.state === 'exact' ? targetProbe.identity : null;
+        const guardIdentity =
+          guardProbe.state === 'exact' ? guardProbe.identity : null;
         if (!target || target.start !== received.processStart || !guardIdentity)
           return abort(
-            'Windows owned guard binding did not match exact identities',
+            `Windows owned guard binding did not match exact identities: ${JSON.stringify(
+              {
+                targetState: targetProbe.state,
+                targetCreationMatches: target
+                  ? target.start === received.processStart
+                  : null,
+                guardState: guardProbe.state,
+                targetProbeFailure: describeRecentProcessBirthProbeFailures(
+                  received.pid,
+                ),
+                guardProbeFailure: guard.pid
+                  ? describeRecentProcessBirthProbeFailures(guard.pid)
+                  : '',
+              },
+            )}`,
           );
         process.send?.({
           type: 'owned-command-bound',
