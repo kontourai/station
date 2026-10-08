@@ -48,7 +48,9 @@ const loadChatSettingsPanel = () =>
     default: m.ChatSettingsPanel,
   }));
 const loadNewChatModal = () =>
-  import('../modals/NewChatModal').then((m) => ({ default: m.NewChatModal }));
+  import('./DockStartComposer').then((m) => ({
+    default: m.DockStartComposer,
+  }));
 const loadSessionPickerModal = () =>
   import('../modals/SessionPickerModal').then((m) => ({
     default: m.SessionPickerModal,
@@ -75,6 +77,8 @@ interface ChatDockModalStackProps {
   projectBindable?: boolean;
   projectsLoaded?: boolean;
   projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** The sidebar's project icons, for the start composer's project chip. */
+  projectIconBySlug: ReadonlyMap<string, string>;
   recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
@@ -139,6 +143,7 @@ export function ChatDockModalStack({
   projectBindable,
   projectsLoaded,
   projectAccentBySlug,
+  projectIconBySlug,
   recentChats,
   showChatSettings,
   showSessionPicker,
@@ -192,6 +197,7 @@ export function ChatDockModalStack({
             projectBindable,
             projectsLoaded,
             projectAccentBySlug,
+            projectIconBySlug,
             startSurface: true,
             recentChats,
             activeProjectSlug:

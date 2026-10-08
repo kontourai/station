@@ -2796,6 +2796,15 @@ observations, not physical native-window or device verification.
 
 ### Get System Status
 
+`GET /api/system/resource-posture` retains its `{ success, data }` envelope and
+CPU diagnostic fields. `data.resources` adds a `sampledAt` timestamp, host
+`memory` (`totalBytes`, `freeBytes`), and answering-process `process` fields
+(`pid`, `uptimeSeconds`, `rssBytes`, `heapUsedBytes`, `heapTotalBytes`). Memory
+is observed at the request; CPU may come from the shared sampler cache and keeps
+its own sample time/age. Older hosts omit `resources`. A missing CPU probe still
+returns 503; unknown CPU load is never fabricated as zero. These observations
+do not grant execution authority or influence admission.
+
 `GET /api/system/status` returns a plain status object. It includes prerequisites
 and `prerequisitesState`, configured/detected providers, CLI observations,
 external-engine readiness, capability summaries, recommendation, build/server

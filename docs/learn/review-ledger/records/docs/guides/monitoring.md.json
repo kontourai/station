@@ -94,7 +94,15 @@
 
     "packages/sdk/src/client/station-usage.ts",
 
-    "packages/shared/src/usage-semantics.ts"
+    "packages/shared/src/usage-semantics.ts",
+
+    "src-ui/src/views/MonitoringView.tsx",
+
+    "src-ui/src/views/monitoring/ToolLatencyPanel.tsx",
+
+    "src-ui/src/views/monitoring/ContextDiagnostics.tsx",
+
+    "src-server/routes/system/resource-posture-routes.ts"
   ],
 
   "checks": [
