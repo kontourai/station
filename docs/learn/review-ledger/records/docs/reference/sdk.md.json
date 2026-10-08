@@ -574,7 +574,11 @@
 
     "packages/shared/src/usage-fold.ts",
 
-    "packages/sdk/src/query-domains/mcpPromptRun.ts"
+    "packages/sdk/src/query-domains/mcpPromptRun.ts",
+
+    "packages/sdk/src/query-domains/developerRuntime.ts",
+
+    "packages/sdk/src/query-domains/resourcePosture.ts"
   ],
 
   "checks": [
