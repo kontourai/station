@@ -51,7 +51,7 @@ export function ContextDiagnostics({
       ) : !session ? (
         <Empty
           variant="compact"
-          label="No sessions with a conversation statistics binding"
+          label="Conversation statistics binding unavailable"
           description="Open a conversation with a configured Agent to inspect its reported context."
         />
       ) : (

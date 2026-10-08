@@ -3,19 +3,3 @@
   gap: var(--k-space-2);
   margin-block: var(--k-space-3);
 }
-
-@media (min-width: 769px) and (not (pointer: coarse)) {
-  .section-navigation__picker {
-    display: none;
-  }
-  .section-navigation__links {
-    border-right: 0;
-    padding-right: 0;
-  }
-}
-
-@media (max-width: 768px), (pointer: coarse) {
-  .section-navigation__links {
-    display: none;
-  }
-}

@@ -35,33 +35,6 @@
 .monitoring-agent-toggle {
   display: none;
 }
-@media (max-width: 768px), (pointer: coarse) {
-  .monitoring-agent-toggle {
-    display: inline-flex;
-    align-self: flex-start;
-    flex-shrink: 0;
-  }
-  .monitoring-page .monitoring-page__content {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 1;
-  }
-  .monitoring-page .monitoring-page__main {
-    min-height: 0;
-    flex: 1;
-  }
-  .monitoring-page__content[data-agent-filters="false"] > .monitoring-sidebar {
-    display: none;
-  }
-  .monitoring-page .monitoring-sidebar {
-    flex: 0 0 auto;
-    max-height: 35%;
-  }
-  .monitoring-page .log-stream {
-    min-height: 0;
-  }
-}
 .monitoring-page__scroll {
   overflow: auto;
   padding: var(--k-space-4);
@@ -1434,6 +1407,43 @@
 /* ── Responsive ── */
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .monitoring-agent-toggle {
+    display: inline-flex;
+    align-self: flex-start;
+    flex-shrink: 0;
+  }
+  .monitoring-page .monitoring-page__content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+  .monitoring-page .monitoring-page__main {
+    min-height: 0;
+    flex: 1;
+  }
+  .monitoring-page__content[data-agent-filters="false"] > .monitoring-sidebar {
+    display: none;
+  }
+  .monitoring-page .monitoring-sidebar {
+    flex: 0 0 auto;
+    max-height: 35%;
+  }
+  .monitoring-page .log-stream {
+    min-height: 0;
+  }
+
+  .monitoring-page__panel {
+    flex: 0 0 auto;
+  }
+  .monitoring-page .log-stream {
+    flex: 0 0 auto;
+    height: 45vh;
+  }
+  .monitoring-page__scroll {
+    max-height: 65vh;
+  }
+
   .monitoring-page > .detail-header {
     flex-direction: column;
     /* `DetailHeader.css` wraps this row unconditionally, and on a COLUMN
@@ -1508,7 +1518,7 @@
   /* Guarantee the feed a usable height even when controls + metrics are tall,
      and keep it the dominant scroll region. */
   .log-stream {
-    min-height: 40vh;
+    min-height: 0;
   }
 
   /* The metrics panel is a secondary readout — don't let it steal the feed's

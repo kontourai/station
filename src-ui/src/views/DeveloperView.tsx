@@ -23,7 +23,7 @@ const tabs: Array<{ id: DeveloperTab; label: string; description: string }> = [
   {
     id: 'system',
     label: 'System',
-    description: 'Inspect this Station, host resources, and runtime readiness.',
+    description: 'Inspect this Station, host resources, and Engine readiness.',
   },
   {
     id: 'telemetry',

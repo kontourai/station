@@ -59,14 +59,11 @@ export function SystemServices({ apiBase }: { apiBase: string }) {
                 ))}
               </ul>
             ) : (
-              <Empty
-                variant="compact"
-                label="No engine readiness records reported"
-              />
+              <Empty variant="compact" label="Engine readiness not reported" />
             )}
           </section>
           <section className="system-tab__card">
-            <h2>Runtime capabilities</h2>
+            <h2>Capabilities</h2>
             {status.capabilities ? (
               <ul className="system-services__list">
                 {Object.entries(status.capabilities).map(
@@ -107,7 +104,7 @@ export function SystemServices({ apiBase }: { apiBase: string }) {
             )}
           </section>
           <section className="system-tab__card">
-            <h2>ACP connections</h2>
+            <h2>Engine connection status</h2>
             {status.acp?.connections.length ? (
               <ul className="system-services__list">
                 {status.acp.connections.map((connection) => (
@@ -118,10 +115,7 @@ export function SystemServices({ apiBase }: { apiBase: string }) {
                 ))}
               </ul>
             ) : (
-              <Empty
-                variant="compact"
-                label="No ACP connection records reported"
-              />
+              <Empty variant="compact" label="Connection status not reported" />
             )}
           </section>
         </>

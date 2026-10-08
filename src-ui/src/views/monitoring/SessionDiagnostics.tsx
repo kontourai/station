@@ -1,5 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { Button } from '../../components/Button';
+import { Empty } from '../../components/state';
 import { useNavigationOptional } from '../../contexts/NavigationContext';
 import { sessionRecency, sessionTitle } from '../../utils/sessionDisplay';
 
@@ -85,10 +86,10 @@ export function SessionDiagnostics({
           )}
         </div>
       ) : (
-        <p>
-          No sessions in this read report running work, a blocker, or a runtime
-          error.
-        </p>
+        <Empty
+          variant="compact"
+          label="Nothing requires attention in this session read."
+        />
       )}
     </details>
   );

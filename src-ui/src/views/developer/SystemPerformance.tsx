@@ -1,7 +1,7 @@
 import { useResourcePostureForApiBaseQuery } from '@kontourai/station-sdk/resource-posture';
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
-import { Empty, ErrorState } from '../../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 
 type Sample = { at: number; cpu?: number; memory?: number };
 
@@ -80,7 +80,9 @@ export function SystemPerformance({ apiBase }: { apiBase: string }) {
           </select>
         </label>
       </div>
-      {samples.length > 1 ? (
+      {query.isLoading && !data ? (
+        <SkeletonBlock count={1} label="Reading resources" />
+      ) : samples.length > 1 ? (
         <svg
           className="system-performance__chart"
           viewBox="0 0 600 120"
@@ -98,9 +100,7 @@ export function SystemPerformance({ apiBase }: { apiBase: string }) {
       ) : (
         <Empty
           variant="compact"
-          label={
-            query.isLoading ? 'Reading resources…' : 'Waiting for chart samples'
-          }
+          label="Waiting for chart samples"
           description="Unreported measurements are not drawn as zero."
         />
       )}

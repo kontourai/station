@@ -1,7 +1,7 @@
 import { K, OP, SPAN } from '@shared/monitoring-keys';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
-import { Empty, ErrorState } from '../../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { MonitoringEvent } from '../../contexts/MonitoringContext';
 
 function percentile(values: number[], percentile: number) {
@@ -110,15 +110,10 @@ export function ToolLatencyPanel({
           }
         />
       )}
-      {!rows.length ? (
-        <Empty
-          variant="compact"
-          label={
-            isLoading
-              ? 'Reading tool results…'
-              : 'No tool results in the loaded window'
-          }
-        />
+      {isLoading && !rows.length ? (
+        <SkeletonBlock count={1} label="Reading tool results" />
+      ) : !rows.length ? (
+        <Empty variant="compact" label="Loaded tool-result list is empty" />
       ) : (
         <div className="diagnostic-table-scroll">
           <table className="diagnostic-table">

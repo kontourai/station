@@ -4,7 +4,7 @@ import { MonitoringViewWithBoundary } from '../MonitoringView';
 export default function TelemetryTab() {
   return (
     <section
-      className="developer-tab developer-tab--telemetry"
+      className="developer-tab developer-tab--telemetry section-nav-rail__contained"
       aria-label="Monitoring"
     >
       <MonitoringViewWithBoundary />
