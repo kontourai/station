@@ -1,22 +1,44 @@
 .developer-view {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4, 1rem);
-}
-/* `flex-shrink: 0`, because the strip is a flex child of a column that fills
-   the viewport and its sibling (a log stream) is unbounded: without it the
-   nav was squashed to height 0 and the five tabs were unreachable on every
-   Developer route — present in the DOM, 0px tall, measured live. Pre-dates
-   the page frame; found while verifying it. */
-.developer-view__tabs {
-  overflow-x: auto;
-  flex: 0 0 auto;
-}
-
-/* The tab body is what scrolls, so the strip above it stays put. */
-.developer-view .developer-tab {
-  overflow-y: auto;
   min-height: 0;
+}
+.developer-view__body {
+  width: 100%;
+  min-height: 0;
+}
+@media (min-width: 769px) and (not (pointer: coarse)) {
+  .developer-view.section-nav-rail {
+    flex-direction: row;
+    align-items: stretch;
+  }
+}
+.developer-view .developer-tab {
+  padding: 0;
+}
+.developer-view .developer-tab--telemetry {
+  height: min(76vh, 900px);
+  overflow: hidden;
+}
+@media (max-width: 768px), (pointer: coarse) {
+  .developer-view {
+    display: block;
+  }
+  .developer-view .developer-tab--telemetry {
+    height: auto;
+    overflow: visible;
+  }
+  .developer-view .monitoring-page {
+    height: auto;
+  }
+  .developer-view .monitoring-page__panel {
+    flex: 0 0 auto;
+  }
+  .developer-view .log-stream {
+    flex: 0 0 auto;
+    height: 45vh;
+  }
+  .developer-view .monitoring-page__scroll {
+    max-height: 65vh;
+  }
 }
 .developer-view__loading {
   padding: var(--space-4, 1rem);

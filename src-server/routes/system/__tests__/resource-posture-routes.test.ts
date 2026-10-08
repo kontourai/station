@@ -29,7 +29,7 @@ describe('GET /resource-posture', () => {
     const body = await readJson<{ success: boolean; data: typeof posture }>(
       response,
     );
-    expect(body).toEqual({ success: true, data: posture });
+    expect(body).toMatchObject({ success: true, data: posture });
   });
 
   test('reports healthy posture the same way — the route never filters by kind', async () => {
@@ -50,7 +50,7 @@ describe('GET /resource-posture', () => {
     const body = await readJson<{ success: boolean; data: typeof posture }>(
       await app.request('/resource-posture'),
     );
-    expect(body).toEqual({ success: true, data: posture });
+    expect(body).toMatchObject({ success: true, data: posture });
   });
 
   test('degrades to 503 rather than fabricating a healthy reading when no probe is wired', async () => {
@@ -61,4 +61,30 @@ describe('GET /resource-posture', () => {
     const body = await readJson<{ success: boolean; error: string }>(response);
     expect(body.success).toBe(false);
   });
+});
+
+test('resource diagnostics describe the answering process and host memory', async () => {
+  const app = createResourcePostureRoutes({
+    resourcePosture: {
+      observe: async () => ({
+        kind: 'unavailable',
+        cpuCount: 0,
+        sampledAt: null,
+        sampleMs: null,
+        thresholdPercent: 85,
+        criticalThresholdPercent: 95,
+        source: 'test',
+      }),
+    },
+  });
+  const response = await app.request('/resource-posture');
+  const body = await response.json();
+  expect(body.data.busyPercent).toBeUndefined();
+  expect(body.data.resources.process.pid).toBe(process.pid);
+  expect(body.data.resources.process.rssBytes).toBeGreaterThan(0);
+  expect(body.data.resources.process.heapTotalBytes).toBeGreaterThanOrEqual(
+    body.data.resources.process.heapUsedBytes,
+  );
+  expect(body.data.resources.memory.totalBytes).toBeGreaterThan(0);
+  expect(body.data.resources.memory.freeBytes).toBeGreaterThanOrEqual(0);
 });

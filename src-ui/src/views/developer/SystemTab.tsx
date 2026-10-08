@@ -5,25 +5,32 @@ import {
   useSystemInstanceQuery,
 } from '@kontourai/station-sdk/developer-runtime';
 import { useResourcePostureForApiBaseQuery } from '@kontourai/station-sdk/resource-posture';
+import { useState } from 'react';
 import {
   Empty,
   ErrorState,
   SkeletonBlock,
   SkeletonList,
 } from '../../components/state';
+import { Tabs, tabElementId, tabPanelElementId } from '../../components/Tabs';
 import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
 import { BuildProvenance } from '../settings/BuildProvenance';
+import { SystemPerformance } from './SystemPerformance';
+import { SystemServices } from './SystemServices';
 import './SystemTab.css';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 
 export default function SystemTab({ apiBase }: { apiBase: string }) {
+  const [view, setView] = useState('overview');
   const { data: instance, isLoading } = useSystemInstanceQuery(apiBase);
   const { data: status } = useSystemStatusForApiBaseQuery(apiBase);
   const bootHistory = useBootHistoryQuery(apiBase);
-  const resourcePosture = useResourcePostureForApiBaseQuery(apiBase);
+  const resourcePosture = useResourcePostureForApiBaseQuery(apiBase, {
+    enabled: view === 'overview',
+  });
   const connection = useConnectionStatus({
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
@@ -31,152 +38,187 @@ export default function SystemTab({ apiBase }: { apiBase: string }) {
 
   return (
     <section className="developer-tab" aria-label="System">
-      <BuildProvenance build={status?.build} />
-      <div className="system-tab__grid">
-        <section
-          className="system-tab__card"
-          aria-labelledby="this-station-title"
-        >
-          <h2 id="this-station-title">This Station</h2>
-          <dl className="system-tab__facts">
-            <div>
-              <dt>Uptime</dt>
-              <dd>
-                {bootHistory.data
-                  ? formatDuration(bootHistory.data.currentUptimeSeconds)
-                  : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt>Boot time</dt>
-              <dd>
-                {bootHistory.data?.records[0]
-                  ? formatDate(bootHistory.data.records[0].bootTime)
-                  : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt>Current build</dt>
-              <dd>
-                {status?.build?.shortSha ??
-                  status?.build?.fullSha ??
-                  'Unavailable'}
-              </dd>
-            </div>
-          </dl>
-        </section>
-        <section
-          className="system-tab__card"
-          aria-labelledby="connection-title"
-        >
-          <h2 id="connection-title">Connection (this device)</h2>
-          <p className="system-tab__connection">
-            <strong>{connection.status}</strong>
-            {connection.reason ? ` · ${connection.reason}` : ''} · streak{' '}
-            {connection.failureStreak}
-          </p>
-          <p className="system-tab__muted">
-            Device-local view for this browser session.
-          </p>
-          {connection.failureWindows.length ? (
-            <ul className="system-tab__rows">
-              {connection.failureWindows.map((window, index) => (
-                <li key={`${window.start}-${index}`}>
-                  {formatDate(window.start)} · {window.reason} sustained failure
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty
-              label="No sustained failures in this session"
-              variant="compact"
-            />
-          )}
-        </section>
-        <section
-          className="system-tab__card"
-          aria-labelledby="cpu-diagnostics-title"
-        >
-          <h2 id="cpu-diagnostics-title">CPU diagnostics</h2>
-          <dl className="system-tab__facts">
-            <div>
-              <dt>Observed busy</dt>
-              <dd>
-                {resourcePosture.data?.busyPercent === undefined
-                  ? 'Unavailable'
-                  : `${resourcePosture.data.busyPercent}%`}
-              </dd>
-            </div>
-            <div>
-              <dt>Logical CPUs</dt>
-              <dd>{resourcePosture.data?.cpuCount ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Sample age</dt>
-              <dd>
-                {typeof resourcePosture.data?.ageMs === 'number'
-                  ? `${Math.round(resourcePosture.data.ageMs / 1000)}s`
-                  : '—'}
-              </dd>
-            </div>
-          </dl>
-          <p className="system-tab__muted">
-            Display only. Station never gates work on host CPU load.
-          </p>
-        </section>
-      </div>
-      <section
-        className="system-tab__card"
-        aria-labelledby="restart-history-title"
+      <Tabs
+        id="system-views"
+        aria-label="System views"
+        activation="automatic"
+        items={[
+          { key: 'overview', label: 'Overview' },
+          { key: 'performance', label: 'Performance' },
+          { key: 'services', label: 'Services' },
+        ]}
+        activeKey={view}
+        onSelect={setView}
+      />
+      <div
+        role="tabpanel"
+        id={tabPanelElementId('system-views', view)}
+        aria-labelledby={tabElementId('system-views', view)}
       >
-        <h2 id="restart-history-title">Restart history</h2>
-        {bootHistory.isLoading ? (
-          <SkeletonList count={3} />
-        ) : bootHistory.isError ? (
-          <ErrorState
-            title="Restart history unavailable"
-            variant="compact"
-            action={
-              <button
-                type="button"
-                className="button"
-                onClick={() => void bootHistory.refetch()}
-              >
-                Try again
-              </button>
-            }
-          />
-        ) : bootHistory.data?.records.length ? (
-          <ul className="system-tab__rows">
-            {bootHistory.data.records.map((record, index) => (
-              <li key={`${record.bootTime}-${index}`}>
-                <span>{timeAgo(record.bootTime)}</span>
-                <span>
-                  {record.shortSha ?? record.fullSha ?? 'Build unavailable'}
-                </span>
-                {record.cause ? (
-                  <span className="system-tab__cause">{record.cause}</span>
-                ) : null}
-                {record.source === 'derived' ? (
-                  <span className="system-tab__derived">derived from logs</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+        {view === 'performance' ? (
+          <SystemPerformance apiBase={apiBase} />
+        ) : view === 'services' ? (
+          <SystemServices apiBase={apiBase} />
         ) : (
-          <Empty label="No boot records yet" variant="compact" />
+          <>
+            <BuildProvenance build={status?.build} />
+            <div className="system-tab__grid">
+              <section
+                className="system-tab__card"
+                aria-labelledby="this-station-title"
+              >
+                <h2 id="this-station-title">This Station</h2>
+                <dl className="system-tab__facts">
+                  <div>
+                    <dt>Uptime</dt>
+                    <dd>
+                      {bootHistory.data
+                        ? formatDuration(bootHistory.data.currentUptimeSeconds)
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Boot time</dt>
+                    <dd>
+                      {bootHistory.data?.records[0]
+                        ? formatDate(bootHistory.data.records[0].bootTime)
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Current build</dt>
+                    <dd>
+                      {status?.build?.shortSha ??
+                        status?.build?.fullSha ??
+                        'Unavailable'}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+              <section
+                className="system-tab__card"
+                aria-labelledby="connection-title"
+              >
+                <h2 id="connection-title">Connection (this device)</h2>
+                <p className="system-tab__connection">
+                  <strong>{connection.status}</strong>
+                  {connection.reason ? ` · ${connection.reason}` : ''} · streak{' '}
+                  {connection.failureStreak}
+                </p>
+                <p className="system-tab__muted">
+                  Device-local view for this browser session.
+                </p>
+                {connection.failureWindows.length ? (
+                  <ul className="system-tab__rows">
+                    {connection.failureWindows.map((window, index) => (
+                      <li key={`${window.start}-${index}`}>
+                        {formatDate(window.start)} · {window.reason} sustained
+                        failure
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <Empty
+                    label="No sustained failures in this session"
+                    variant="compact"
+                  />
+                )}
+              </section>
+              <section
+                className="system-tab__card"
+                aria-labelledby="cpu-diagnostics-title"
+              >
+                <h2 id="cpu-diagnostics-title">CPU diagnostics</h2>
+                <dl className="system-tab__facts">
+                  <div>
+                    <dt>Observed busy</dt>
+                    <dd>
+                      {resourcePosture.data?.busyPercent === undefined
+                        ? 'Unavailable'
+                        : `${resourcePosture.data.busyPercent}%`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Logical CPUs</dt>
+                    <dd>{resourcePosture.data?.cpuCount ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Sample age</dt>
+                    <dd>
+                      {typeof resourcePosture.data?.ageMs === 'number'
+                        ? `${Math.round(resourcePosture.data.ageMs / 1000)}s`
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="system-tab__muted">
+                  Display only. Station never gates work on host CPU load.
+                </p>
+              </section>
+            </div>
+            <section
+              className="system-tab__card"
+              aria-labelledby="restart-history-title"
+            >
+              <h2 id="restart-history-title">Restart history</h2>
+              {bootHistory.isLoading ? (
+                <SkeletonList count={3} />
+              ) : bootHistory.isError ? (
+                <ErrorState
+                  title="Restart history unavailable"
+                  variant="compact"
+                  action={
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => void bootHistory.refetch()}
+                    >
+                      Try again
+                    </button>
+                  }
+                />
+              ) : bootHistory.data?.records.length ? (
+                <ul className="system-tab__rows">
+                  {bootHistory.data.records.map((record, index) => (
+                    <li key={`${record.bootTime}-${index}`}>
+                      <span>{timeAgo(record.bootTime)}</span>
+                      <span>
+                        {record.shortSha ??
+                          record.fullSha ??
+                          'Build unavailable'}
+                      </span>
+                      {record.cause ? (
+                        <span className="system-tab__cause">
+                          {record.cause}
+                        </span>
+                      ) : null}
+                      {record.source === 'derived' ? (
+                        <span className="system-tab__derived">
+                          derived from logs
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <Empty label="No boot records yet" variant="compact" />
+              )}
+            </section>
+            <details>
+              <summary>Instance identity</summary>
+              {isLoading ? (
+                <SkeletonBlock count={1} label="Loading instance details" />
+              ) : (
+                <pre className="developer-tab__pre">
+                  {instance
+                    ? JSON.stringify(instance, null, 2)
+                    : 'Instance details unavailable.'}
+                </pre>
+              )}
+            </details>
+          </>
         )}
-      </section>
-      <h2>Instance identity</h2>
-      {isLoading ? (
-        <SkeletonBlock count={1} label="Loading instance details" />
-      ) : (
-        <pre className="developer-tab__pre">
-          {instance
-            ? JSON.stringify(instance, null, 2)
-            : 'Instance details unavailable.'}
-        </pre>
-      )}
+      </div>
     </section>
   );
 }

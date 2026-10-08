@@ -3180,6 +3180,19 @@ and [API-base owner](../../packages/sdk/src/api-core.ts).
 
 ## Telemetry
 
+Developer runtime queries are available from
+`@kontourai/station-sdk/developer-runtime`. `useServerLogsQuery(apiBase, params,
+config)` scopes its cache to the supplied host and supports an opt-in numeric
+`config.refetchInterval`; it does not poll by default. Parameters include level,
+text, time bounds and limit. Its result exposes bounded-scan coverage.
+
+`@kontourai/station-sdk/resource-posture` queries retain the CPU response and
+accept optional `resources` on `ResourcePostureVM`. The resource snapshot uses
+the `HostResourceSnapshot` contract from
+`@kontourai/station-contracts/system-status`. Consumers of older servers must
+keep omitted memory/process values unknown. CPU and resource sample timestamps
+are independent.
+
 ### `telemetry`
 
 Best-effort client telemetry for plugins. `track(event, attributes?)` buffers

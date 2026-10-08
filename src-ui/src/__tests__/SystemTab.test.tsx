@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 const bootHistory = vi.hoisted(() => ({
@@ -44,7 +44,22 @@ vi.mock('@kontourai/station-sdk/developer-runtime', () => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   useSystemStatusForApiBaseQuery: () => ({
-    data: { build: { shortSha: 'dc92e26' } },
+    data: {
+      build: { shortSha: 'dc92e26' },
+      prerequisitesState: 'stale',
+      externalEngines: [
+        {
+          engineId: 'claude-code',
+          name: 'Claude Code',
+          ready: false,
+          reason: 'sign_in_required',
+        },
+      ],
+      capabilities: { terminal: { ready: false, reason: 'PTY unavailable' } },
+      developerServices: [
+        { id: 'git', name: 'Git', state: 'ready', detail: 'Git available' },
+      ],
+    },
   }),
 }));
 
@@ -52,6 +67,10 @@ vi.mock('@kontourai/station-sdk/resource-posture', () => ({
   useResourcePostureForApiBaseQuery: () => ({
     data: { busyPercent: 99, cpuCount: 12, ageMs: 1_500 },
   }),
+}));
+
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigation: () => ({ navigate: vi.fn() }),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -119,4 +138,17 @@ describe('Developer System tab (station#2642)', () => {
     // The best-effort historical row is honestly labeled.
     expect(screen.getByText('derived from logs')).toBeTruthy();
   });
+});
+
+test('Services reports readiness reasons and discovery freshness', () => {
+  renderTab();
+  fireEvent.click(screen.getByRole('tab', { name: 'Services' }));
+  expect(screen.getByText('sign in required')).toBeTruthy();
+  expect(screen.getByText('PTY unavailable')).toBeTruthy();
+  expect(
+    screen.getByText('Showing the previous discovery snapshot', {
+      exact: false,
+    }),
+  ).toBeTruthy();
+  expect(screen.queryByText('No boot records yet')).toBeNull();
 });

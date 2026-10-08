@@ -5,7 +5,7 @@ export default function TelemetryTab() {
   return (
     <section
       className="developer-tab developer-tab--telemetry"
-      aria-label="Telemetry"
+      aria-label="Monitoring"
     >
       <MonitoringViewWithBoundary />
     </section>

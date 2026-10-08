@@ -21,6 +21,28 @@ call sites, not proof of a populated collector. The startup owner needs to fix
 this binding before an enabled endpoint alone can establish metric collection:
 [#2755](https://github.com/kontourai/station/issues/2755).
 
+## Developer diagnostics
+
+Developer → Monitoring provides five views over existing Station measurements:
+
+| View | Source and limits |
+| --- | --- |
+| Activity | Live monitoring events plus bounded file history. Search and filters apply to loaded rows. The expandable session list reads canonical current session summaries independently of the event window. |
+| Tool latency | Reported `station.tool.duration_ms` on filtered tool-result events. p50/p95 use measured durations only; unreported durations and outcomes remain separate. Truncated or failed history makes the result partial. |
+| Usage | Existing usage receipt rollup and operator-only Station usage overview. Reported cost, estimates, currency and coverage retain their existing distinctions. |
+| Context | Latest statistics for a selected session with an assigned Agent and conversation identity. Missing context occupancy is "Not reported"; occupancy is not token consumption. |
+| Routing | Recent consuming and serving inference receipts, using each reader's own bounds. |
+
+Developer → System → Performance polls host CPU and memory diagnostics every
+five seconds while mounted. The CPU probe keeps its shared cache and sampling
+interval; host memory and Station-process RSS/heap have a separate observation
+time in `resources`. The chart retains up to 60 received samples during that
+mounted visit, not durable historical performance. System → Services exposes
+existing engine and capability readiness reasons. Developer → Logs offers
+optional refresh, time bounds and structured records with scan-coverage warnings.
+See the [Developer surface](../design/developer-surface.md) for implementation
+owners. None of these views requires OTel export to be enabled.
+
 ## Profile usage and paired people
 
 The [Profile page](../../src-ui/src/pages/ProfilePage.tsx) puts the current
