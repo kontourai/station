@@ -25,10 +25,10 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import {
   CredentialProfileEnvironmentError,
-  type ResolvedAppHome,
   claudeAppHomeEnv,
   codexAppHomeEnv,
   ensureAppHomeProfile,
+  type ResolvedAppHome,
 } from './app-home-profiles.js';
 import {
   credentialProfileStorageId,
@@ -131,9 +131,7 @@ export function createCredentialProfileAppHomeEnvResolver(options: {
   >;
   warn?: (message: string) => void;
   homeDir?: string;
-}): (
-  credentialProfileRef?: string,
-) => Promise<ResolvedAppHome | undefined> {
+}): (credentialProfileRef?: string) => Promise<ResolvedAppHome | undefined> {
   const homeEnvFor = APP_HOME_ENV_FOR[options.engine];
   return async (credentialProfileRef) => {
     let selectedProfileRef = credentialProfileRef;

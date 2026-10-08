@@ -135,11 +135,9 @@ import {
   readBundledClaudeCodeVersion,
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
-import {
-  createCredentialProfileAppHomeEnvResolver,
-} from '../app-home/credential-profile-env.js';
-import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import { claudeRequestDisplayText } from '../adapters/claude-adapter-events.js';
+import { createCredentialProfileAppHomeEnvResolver } from '../app-home/credential-profile-env.js';
+import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import {
   type ClaudeCanUseToolRequest,
   claudeCanUseToolFrame,

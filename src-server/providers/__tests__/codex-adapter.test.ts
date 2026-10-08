@@ -28,13 +28,11 @@ import {
 } from '../adapters/codex-adapter-transport.js';
 import { markCodexTurnTerminal } from '../adapters/codex-adapter-types.js';
 import {
-  createCredentialProfileAppHomeEnvResolver,
-} from '../app-home/credential-profile-env.js';
-import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
-import {
   CredentialProfileEnvironmentError,
   usageCredentialAccountKey,
 } from '../app-home/app-home-profiles.js';
+import { createCredentialProfileAppHomeEnvResolver } from '../app-home/credential-profile-env.js';
+import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
