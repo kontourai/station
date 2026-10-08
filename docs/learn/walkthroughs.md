@@ -24,7 +24,10 @@ establish that every part of that issue is resolved.
 
 ![A saved shared Task document and its revision history.](media/shared-task-document.png)
 
-The Project capture retains its original revision and appearance. The Task
+The Project capture retains its original revision and appearance.
+It predates the inline start composer now shown above Project activity; use
+[the getting-started guide](../user/getting-started.md) for the current controls.
+The Task
 document capture was replaced after actual single-user save/send/reopen checks.
 The current Task
 workspace leads with the objective and shared room, keeps technical identity

@@ -6,6 +6,13 @@ Normative requirements below describe what a contribution owes; command wiring
 and retained benchmarks describe different facts. A listed test, a generated
 schedule or a prior measurement is not proof that the current revision passed.
 
+Fast CI requests Veritas readiness as JSON so its existing bounded, redacted
+output artifacts retain nested evidence-check commands, exit statuses, stdout
+and stderr. Inspect those artifacts for the causal failure rather than
+rerunning a failed gate to recover its output. Capture limits still apply;
+truncated diagnostics do not establish a complete failure inventory. The JSON
+format does not change readiness requirements or promotion evidence.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
@@ -920,6 +927,11 @@ committing a new baseline until the change is intentional.
 
 #### Where the gate runs, and which renderer the baseline is bound to
 
+The gallery-wide system-status handler preserves the live status response and
+replaces only the displayed hostname with `Gallery host`. This keeps a Docker
+container's random name out of exact-pixel references without changing readiness
+or device locality. Screen-specific status fixtures retain their declared scenarios.
+
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is
 not an implementation detail: the comparator hashes a decoded RGBA buffer with
@@ -944,6 +956,22 @@ from the container. It does not prove any of them renders — nothing in this
 repository opens a font — only that the dependency is written down. Note that
 DM Sans is published in latin and latin-ext only, so this cannot be closed by
 re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
+
+Gallery and Ubuntu zsh preflight callers use
+[`install-ci-ubuntu-packages.sh`](../../scripts/install-ci-ubuntu-packages.sh).
+It replaces the known Azure Ubuntu archive URI with the canonical HTTPS
+archive in legacy lists, DEB822 sources, and the hosted runner mirror list.
+The official Ubuntu security archive also uses HTTPS with the same host and
+path. Suites, components, signing keys, and mirror priorities remain intact. APT
+index retrieval must succeed before installing the required compiler or zsh
+package; an unavailable index stops the bootstrap. The Gallery renderer image
+remains pinned by digest.
+Each caller stages that helper from the immutable workflow-definition commit
+into `RUNNER_TEMP`, independently of the application checkout. Older PR heads
+therefore receive base-workflow bootstrap fixes without needing the new helper
+in their tree. Full regression uses local reusable workflow references; those
+resolve at the caller's workflow commit, while `inputs.source_sha` continues to
+select only the application source being qualified.
 
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
 on pull requests and synthesized merge-queue candidates, in the same container

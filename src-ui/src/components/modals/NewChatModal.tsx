@@ -1,3 +1,4 @@
+import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
 import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
 import {
@@ -10,6 +11,7 @@ import React, {
   useCallback,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -63,6 +65,7 @@ import {
   StartComposer,
   type StartProjectChip,
 } from '../chat-start/StartComposer';
+import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
   buildCodingChatInitialMessage,
@@ -90,6 +93,7 @@ import {
   resolveNewChatInitialContext,
   resolveNewChatWorkspaceHint,
   scheduleSelectedAgentVisibility,
+  withProjectRunLocations,
   workspaceHintText,
 } from './new-chat-modal-utils';
 import {
@@ -132,7 +136,7 @@ const StartModelPicker = React.lazy(() =>
 /** Re-exported for callers that imported it from here before it moved. */
 export { ContextPickerOptions };
 
-const NO_ACCENTS: ReadonlyMap<string, string> = new Map();
+const NO_PROJECT_ACCENTS: ReadonlyMap<string, string> = new Map();
 
 export interface NewChatModalMode {
   kind: 'fork';
@@ -196,6 +200,16 @@ interface NewChatModalProps {
    * project in the sidebar's colour.
    */
   projectAccentBySlug?: ReadonlyMap<string, string>;
+  /**
+   * The sidebar's project icons (`useProjectIcons`, read by the dock).
+   * Required: a caller that forgot it would draw every project as a dot.
+   */
+  projectIconBySlug: ReadonlyMap<string, string>;
+  /**
+   * #3391: where each project's chats run, from the dock's run-locations
+   * read. Absent until it answers; the composer then names the stored folder.
+   */
+  projectRunLocations?: ProjectRunLocations;
 }
 
 /** "Global" sentinel for the context picker */
@@ -218,7 +232,9 @@ export function NewChatModal({
   onDraftChange,
   projectBindable = false,
   projectsLoaded = true,
-  projectAccentBySlug = NO_ACCENTS,
+  projectAccentBySlug = NO_PROJECT_ACCENTS,
+  projectIconBySlug,
+  projectRunLocations,
 }: NewChatModalProps) {
   const { namespace, status: authorityStatus } = useAuthorityPersistence();
   // In the automatic start, "Chat options" (or a start that cannot use
@@ -257,6 +273,7 @@ export function NewChatModal({
     string | undefined
   >();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const reportDraft = useEffectEvent((text: string) => onDraftChange?.(text));
   useEffect(() => {
     reportDraft(prompt);
@@ -351,9 +368,13 @@ export function NewChatModal({
     scheduleSelectedAgentVisibility(element);
   }, []);
 
+  const projectsWithRunLocations = useMemo(
+    () => withProjectRunLocations(projects, projectRunLocations),
+    [projects, projectRunLocations],
+  );
   const selectionModel = useNewChatSelectionModel({
     agents,
-    projects,
+    projects: projectsWithRunLocations,
     selectedContext,
     contextSearch,
     agentSearch,
@@ -1201,6 +1222,7 @@ export function NewChatModal({
           (isGlobal ? NO_PROJECT_LABEL : selectedContext),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(selectedContext),
+        icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
         folder: workspaceHintText(workspaceHint),
       };
   const contextSelected = Boolean(
@@ -1469,6 +1491,11 @@ export function NewChatModal({
                   <span className="new-chat-modal__context-dir">
                     <CwdBreadcrumb path={workspaceHint.path} />
                   </span>
+                  {workspaceHint.kind === 'unverified' && (
+                    <span className="new-chat-modal__context-dir">
+                      (not checked yet)
+                    </span>
+                  )}
                 </>
               )}
               {workspaceHint.kind === 'home' && (
@@ -1648,6 +1675,44 @@ export function NewChatModal({
             onPromptChange={setPrompt}
             textareaRef={promptRef}
             agent={agentChip}
+            onOpenModel={(trigger) =>
+              setChipMenu({
+                kind: 'model',
+                trigger,
+                agentSlug: draftAgent?.slug,
+              })
+            }
+            stationControl={
+              <StartStationControl
+                prompt={prompt}
+                projectSlug={viewModel.selectedProject?.slug}
+                projectName={viewModel.selectedProject?.name}
+                defaultEnvironment={
+                  viewModel.selectedProject?.defaultEnvironment
+                }
+                agentSlug={draftAgent?.slug}
+                model={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.modelId
+                    : undefined
+                }
+                disabled={
+                  submitting ||
+                  Boolean(experience) ||
+                  Boolean(draftContext) ||
+                  !selectedContextResolved
+                }
+                onPromptChange={setPrompt}
+                onStarted={(_task, station, sentPrompt) => {
+                  setPrompt((current) =>
+                    current === sentPrompt ? '' : current,
+                  );
+                  setTaskNotice(
+                    `Task started on ${station}. Open Activity to follow its progress.`,
+                  );
+                }}
+              />
+            }
             onOpenAgents={(trigger) => {
               setAgentSearch('');
               setChipMenu({ kind: 'agents', trigger });
@@ -1696,6 +1761,7 @@ export function NewChatModal({
                 : undefined
             }
           >
+            {taskNotice && <p role="status">{taskNotice}</p>}
             {(skillsOpen || experience) && (
               <SkillExperiencePicker
                 query={experienceInventory}
@@ -1997,6 +2063,8 @@ export function NewChatModal({
               selectedContext={selectedContext}
               workspaceHint={workspaceHint}
               folderlessHint={folderlessHint}
+              icons={projectIconBySlug}
+              accents={accents}
               onChoose={(value) => {
                 chooseContext(value);
                 setChipMenu(null);

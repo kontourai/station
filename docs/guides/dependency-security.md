@@ -487,6 +487,32 @@ independently. `Production` means the finding was present in the root
 The final 2026-07 policy run reports no unaccepted critical/high advisory in
 root, SDK, or shared. No exception was required.
 
+## 2026-10 VoltAgent production residuals
+
+The 2026-10-08 production audit still reaches three moderate advisories through
+VoltAgent's private dependency graph. `pnpm why --prod` identifies the pinned
+paths:
+
+| Package / version | Production path | Advisory and patched line |
+| --- | --- | --- |
+| `@opentelemetry/core@2.0.1` | `@voltagent/core@2.10.0` → `@opentelemetry/exporter-trace-otlp-http@0.203.0` | [`GHSA-8988-4f7v-96qf`](https://github.com/advisories/GHSA-8988-4f7v-96qf), fixed at `2.8.0` |
+| `@opentelemetry/core@2.1.0` | `@voltagent/core@2.10.0` → `@voltagent/logger@2.0.2` → `@opentelemetry/exporter-logs-otlp-http@0.204.0` | [`GHSA-8988-4f7v-96qf`](https://github.com/advisories/GHSA-8988-4f7v-96qf), fixed at `2.8.0` |
+| `uuid@9.0.1` | `@voltagent/core@2.10.0` | [`GHSA-w5hq-g745-h8pq`](https://github.com/advisories/GHSA-w5hq-g745-h8pq), fixed at `11.1.1` |
+
+The latest published `@voltagent/core` (`2.11.0`) still declares the `0.203`
+trace exporter, the `0.204` logs exporter, and `uuid ^9.0.1`; no compatible
+VoltAgent update currently removes these resolutions. The three exact residuals
+in [`dependency-advisory-exceptions.json`](../../scripts/dependency-advisory-exceptions.json)
+carry an owner-approved, 30-day risk acceptance through **2026-11-07**, tracked
+by [issue #3510](https://github.com/kontourai/station/issues/3510). Their
+GHSA severity remains **moderate**; the issue's P1 label prioritizes removing
+the blocker and closing the residuals, not reclassifying those advisories.
+This acceptance does not claim the paths are unreachable or fixed. Remove each
+record as soon as its compatible upstream remediation lands, and run
+`npm run audit:policy` after VoltAgent or OpenTelemetry updates. Station's own
+security-sensitive identifiers use Node crypto; that narrows the uuid impact
+but does not make the dependency unreachable.
+
 ## 2026-08 production residual inventory
 
 This section preserves the **2026-08-08 npm intake**, including then-current

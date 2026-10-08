@@ -1,0 +1,7 @@
+{
+  "revision": "c6022b8d6c7754aca8c89fabe6cae97840c03a1f",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3391 round 8: ChatDockModalStack now lazily loads DockStartComposer (renamed wrapper that reads run locations while the composer is open); the project chip bullet still holds.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockModalStack.tsx"]}
+  ]
+}

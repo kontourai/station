@@ -115,6 +115,7 @@ describe('NewChatModal connections read failure (#771)', () => {
 
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[]}
         projects={[]}
         onSelect={vi.fn()}
@@ -135,6 +136,7 @@ describe('NewChatModal connections read failure (#771)', () => {
 
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[]}
         projects={[]}
         onSelect={vi.fn()}
@@ -152,6 +154,7 @@ describe('NewChatModal connections read failure (#771)', () => {
   test('still shows the genuine empty state when nothing errored and nothing is configured', () => {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[]}
         projects={[]}
         onSelect={vi.fn()}

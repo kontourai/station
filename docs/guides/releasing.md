@@ -4,6 +4,71 @@ Station integrates small changes quickly, qualifies the combined application
 on a schedule, and publishes deliberate releases from an immutable source.
 A merged PR is integration evidence. It does not establish release readiness.
 
+## Release flow
+
+This diagram shows the implemented process. Preview is the Beta channel.
+Nightly and Preview select qualified source independently; a Nightly build is
+not a prerequisite for a Preview release.
+
+```mermaid
+flowchart TD
+    PR["PR: affected tests, security and platform checks"] --> MQ["Merge queue: combined candidate checks"]
+    MQ --> MAIN["Changes land on main"]
+    MAIN --> Q["Scheduled qualification: frozen main SHA, every six hours"]
+    Q -->|Failure| REPAIR["Bounded repair episode and normal repair PR"]
+    REPAIR --> PR
+    Q -->|Pass| RECEIPT["Exact-source qualification receipt"]
+    RECEIPT --> DECIDE["Nightly decision: source not shipped or reserved, last native ship at least 20h ago"]
+    DECIDE -->|Eligible| NIGHTLY["Build, sign, verify and publish Nightly"]
+    DECIDE -->|Deferred| WAIT["Wait for a later qualification or explicit delivery recovery"]
+    RECEIPT --> PREVIEW["Owner selects frozen source and signed Preview tag"]
+    PREVIEW --> STAGE["Stage Beta artifacts: qualification, signing and inventory"]
+    STAGE --> ACCEPT["Installation, startup, critical journeys, upgrade and rollback acceptance"]
+    ACCEPT --> BETA["Owner-approved Beta publication and dogfooding"]
+    BETA --> STABLE["Same reviewed source: Stable packaging and acceptance"]
+    STABLE --> PUBLISH["Owner-approved Stable publication"]
+```
+
+The [qualification workflow](../../.github/workflows/main-qualification.yml),
+[Nightly decision](../../scripts/nightly-qualification-decide.mjs),
+[release staging](../../.github/workflows/release.yml) and
+[release publication](../../.github/workflows/publish-release.yml) own these
+edges. Qualification receipts can be reused only under the exact-source and
+age rules below. Platform or provider failures block their delivery; a passing
+source qualification is not a publication or installed-device receipt.
+
+### Proposed faster Nightly flow
+
+**Status: design direction, not implemented.** The goal is to reduce feature
+merge-to-installed-Nightly time while preserving qualification and promotion
+boundaries. The six-hour qualification schedule and 20-hour delivery interval
+above remain the current behavior. The quiet interval and shorter publication
+interval need measured runner capacity and an explicit policy decision.
+
+```mermaid
+flowchart TD
+    MAIN["Features merge into main"] --> SNAPSHOT["After a short quiet interval, freeze one candidate SHA"]
+    SNAPSHOT --> QUALIFY["Run full source qualification"]
+    SNAPSHOT --> BUILD["Build private artifacts alongside qualification"]
+    QUALIFY -->|Failure| REPAIR["Retain causal diagnostics, repair through a PR, qualify a new candidate"]
+    QUALIFY -->|Pass| ADMIT["Admit exact-SHA receipt and signed artifact inventory"]
+    BUILD --> ADMIT
+    ADMIT --> DELIVERY["Serialized Nightly publication at a shorter configured interval"]
+    DELIVERY --> VERIFY["Verify delivery and installed startup"]
+    VERIFY --> NEXT["Latest qualified features available for dogfooding"]
+```
+
+Qualification would release its scheduling slot before delivery finishes.
+Delivery would retain its own locks, source binding, trusted publisher identity
+and bounded recovery for failed reservations. New merges would become a later
+candidate rather than restarting an active one. Beta and Stable would keep the
+owner-approved frozen-source promotion process in the implemented diagram.
+
+Maintain both diagrams with the owning workflows and decision code. Review each
+edge when cadence, receipt admission, staging, recovery or promotion changes;
+move a proposed edge into the implemented diagram only after it lands. Keep
+transient run status in GitHub rather than embedding it here.
+
 ## Delivery stages
 
 | Stage | Evidence | Failure consequence |

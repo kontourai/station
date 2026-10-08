@@ -37,6 +37,11 @@ const experienceRead = vi.hoisted(() => ({
   inventory: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
   refetch: vi.fn(),
 }));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
     namespace: 'authority-1',
@@ -196,6 +201,7 @@ function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
     onSelect,
     onClose,
     requestAuthority: authority,
+    projectIconBySlug: new Map<string, string>(),
   };
   const view = render(<ModalHarness {...defaults} {...props} />);
   return {

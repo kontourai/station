@@ -1,0 +1,7 @@
+{
+  "revision": "6a61808025ba36e3fd734ffe569080ef7f9af13f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round for #3391: re-read the Project session directory section against project-resource-resolver.ts. Starts still resolve through resolveProjectExecutionRoot with the live identity check and synchronous stats (verifyingIo); the list-only describeProjectRunLocations now reads folders via fs.promises with a per-project time box and one bindings read per request. No module-map claim changes.","inputs":["docs/architecture/module-map.md","src-server/routes/projects/projects.ts","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

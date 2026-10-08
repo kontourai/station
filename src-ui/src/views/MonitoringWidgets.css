@@ -13,6 +13,69 @@
   height: 100%;
   padding: 0;
 }
+.monitoring-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-3);
+}
+.monitoring-connection {
+  color: var(--k-text-muted);
+}
+.monitoring-connection--error {
+  color: var(--k-negative);
+}
+.monitoring-page__panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.monitoring-agent-toggle {
+  display: none;
+}
+.monitoring-page__scroll {
+  overflow: auto;
+  padding: var(--k-space-4);
+  min-height: 0;
+  flex: 1;
+}
+.monitoring-page__usage > .usage-rollup {
+  margin-bottom: var(--k-space-5);
+  padding-bottom: var(--k-space-4);
+  border-bottom: 1px solid var(--k-line);
+}
+.monitoring-sessions {
+  flex: 0 0 auto;
+  max-height: 35%;
+  overflow: auto;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+.monitoring-sessions > summary {
+  cursor: pointer;
+}
+.diagnostic-table-scroll {
+  overflow-x: auto;
+}
+.diagnostic-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: inherit;
+}
+.diagnostic-table th,
+.diagnostic-table td {
+  text-align: left;
+  padding: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.diagnostic-table thead {
+  color: var(--k-text-muted);
+}
 
 .status-badge {
   display: flex;
@@ -1344,6 +1407,43 @@
 /* ── Responsive ── */
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .monitoring-agent-toggle {
+    display: inline-flex;
+    align-self: flex-start;
+    flex-shrink: 0;
+  }
+  .monitoring-page .monitoring-page__content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+  .monitoring-page .monitoring-page__main {
+    min-height: 0;
+    flex: 1;
+  }
+  .monitoring-page__content[data-agent-filters="false"] > .monitoring-sidebar {
+    display: none;
+  }
+  .monitoring-page .monitoring-sidebar {
+    flex: 0 0 auto;
+    max-height: 35%;
+  }
+  .monitoring-page .log-stream {
+    min-height: 0;
+  }
+
+  .monitoring-page__panel {
+    flex: 0 0 auto;
+  }
+  .monitoring-page .log-stream {
+    flex: 0 0 auto;
+    height: 45vh;
+  }
+  .monitoring-page__scroll {
+    max-height: 65vh;
+  }
+
   .monitoring-page > .detail-header {
     flex-direction: column;
     /* `DetailHeader.css` wraps this row unconditionally, and on a COLUMN
@@ -1418,7 +1518,7 @@
   /* Guarantee the feed a usable height even when controls + metrics are tall,
      and keep it the dominant scroll region. */
   .log-stream {
-    min-height: 40vh;
+    min-height: 0;
   }
 
   /* The metrics panel is a secondary readout — don't let it steal the feed's

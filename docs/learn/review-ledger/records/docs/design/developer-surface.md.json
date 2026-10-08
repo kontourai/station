@@ -20,7 +20,19 @@
 
     "src-ui/src/views/MonitoringView.tsx",
 
-    "src-ui/src/views/developer/TelemetryTab.tsx"
+    "src-ui/src/views/developer/TelemetryTab.tsx",
+
+    "src-ui/src/components/SectionNavigation.tsx",
+
+    "src-ui/src/views/developer/SystemPerformance.tsx",
+
+    "src-ui/src/views/developer/SystemServices.tsx",
+
+    "src-ui/src/views/developer/LogsTab.tsx",
+
+    "src-ui/src/views/monitoring/ToolLatencyPanel.tsx",
+
+    "src-ui/src/views/monitoring/ContextDiagnostics.tsx"
   ],
 
   "checks": [

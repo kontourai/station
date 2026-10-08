@@ -1,0 +1,7 @@
+{
+  "revision": "66b2cae7dea33a87c882cda07a8108c138873c7c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed 66b2cae7 three caller literals: each bound tool approval opens the real ToolApprovalSheet whose title uses canonical Needs approval. Elicitation titles and all geometry, target reachability, dismissal/focus, busy, decline and external-resolution assertions remain unchanged. The maintained product-runner Chromium cases for short Allow Once, Deny in flight and approval resolved elsewhere passed3/3 on66b2. A clean-commit temporary RequestSheet show-callback defect failed the short approval assertion that the real dialog appears after Answer; exact owner bytes restored and the three cases passed3/3 again. Fixture policy and E2E types pass. The guide phone-sheet/session-grant claims remain accurate; this is browser fixture proof, not physical phone/keyboard or provider acknowledgement. No guide prose or PNG baseline changes needed.","inputs":["docs/conformance/tool-policy-delivery.md","tests/mobile-request-sheet.spec.ts"]}
+  ]
+}

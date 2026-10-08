@@ -1,0 +1,7 @@
+{
+  "revision": "a99f1c02384b93210c184b9306fd7ae47022f080",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Round 3 for #3391: narrowed the runsAt paragraph against project-resource-resolver.ts guardFolderChecks: the list answers within its time limit, but a hung check holds a file-system thread until the drive answers, so checks are reused per folder and capped at two stuck before new ones read unavailable at once.","inputs":["docs/reference/shared.md"]}
+  ]
+}

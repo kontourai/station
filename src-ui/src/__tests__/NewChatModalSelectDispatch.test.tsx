@@ -24,6 +24,7 @@ import type {
   SkillExperienceInventoryV1,
 } from '@kontourai/station-contracts/skill-experience';
 import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
+import type { DelegatedTaskHandle } from '@kontourai/station-sdk';
 import {
   act,
   cleanup,
@@ -35,9 +36,38 @@ import {
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import type { StartStationControl } from '../components/chat-start/StartStationControl';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
+
+const remoteRun = vi.hoisted((): { complete: (() => void) | null } => ({
+  complete: null,
+}));
+vi.mock('../components/chat-start/StartStationControl', () => ({
+  StartStationControl: ({
+    prompt,
+    onStarted,
+  }: ComponentProps<typeof StartStationControl>) => (
+    <button
+      type="button"
+      onClick={() => {
+        const handle: DelegatedTaskHandle = {
+          conversationId: 'task:remote',
+          taskId: 'task:remote',
+          sessionId: 'session:remote',
+          currentSessionId: 'session:remote',
+          status: 'dispatched',
+          environment: { kind: 'peer', id: 'env-kontour', name: 'Kontour' },
+          target: { kind: 'agent', id: agentId('assistant') },
+        };
+        remoteRun.complete = () => onStarted(handle, 'Kontour', prompt);
+      }}
+    >
+      Stage a remote task
+    </button>
+  ),
+}));
 
 const AGENT: AgentData = {
   slug: 'assistant',
@@ -87,6 +117,11 @@ const selectionModelState = {
   loading: false,
   refreshSetup: undefined as (() => Promise<void>) | undefined,
 };
+
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
 
 vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
 vi.mock('../hooks/useDevicePresentation', () => ({
@@ -223,6 +258,7 @@ beforeAll(() => {
 function renderModal(onSelect = vi.fn()) {
   render(
     <NewChatModal
+      projectIconBySlug={new Map()}
       agents={selectionModelState.agents}
       projects={[]}
       onSelect={onSelect}
@@ -241,6 +277,7 @@ function renderForkModal(
 ) {
   render(
     <NewChatModal
+      projectIconBySlug={new Map()}
       agents={selectionModelState.agents}
       projects={[]}
       onSelect={onSelect}
@@ -275,12 +312,15 @@ test('late project context preserves the preferred fork Agent', () => {
       disclosure: 'Fork independently',
     },
   };
-  const view = render(<NewChatModal {...props} projects={[]} />);
+  const view = render(
+    <NewChatModal projectIconBySlug={new Map()} {...props} projects={[]} />,
+  );
   const source = () =>
     document.querySelector('button[data-agent-slug="assistant"]')!;
   expect(source().className).toContain('new-chat-modal__agent--selected');
   view.rerender(
     <NewChatModal
+      projectIconBySlug={new Map()}
       {...props}
       projects={[
         {
@@ -396,6 +436,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -422,6 +463,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -862,6 +904,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     const view = render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -873,6 +916,7 @@ describe('start with working defaults', () => {
     expect(onSelect.mock.calls[0]?.[0]).toBe(AGENT);
     view.rerender(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -888,6 +932,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     const view = render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -899,6 +944,7 @@ describe('start with working defaults', () => {
     selectionModelState.loading = false;
     view.rerender(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -916,6 +962,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -958,6 +1005,7 @@ describe('intent-first preparation', () => {
       let view!: ReturnType<typeof render>;
       const modal = () => (
         <NewChatModal
+          projectIconBySlug={new Map()}
           agents={selectionModelState.agents}
           projects={[]}
           onSelect={onSelect}
@@ -999,6 +1047,7 @@ describe('intent-first preparation', () => {
     const prompt = 'Reply exactly GOAL READY.\nUse no tools.';
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1025,6 +1074,7 @@ describe('intent-first preparation', () => {
     const onClose = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -1050,6 +1100,7 @@ describe('intent-first preparation', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -1106,6 +1157,7 @@ describe('visual skill selection through the New Chat picker', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1143,6 +1195,7 @@ describe('visual skill selection through the New Chat picker', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1175,6 +1228,7 @@ describe('the start composer in the dock', () => {
   ) {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         startSurface
         agents={selectionModelState.agents}
         projects={[]}
@@ -1196,6 +1250,27 @@ describe('the start composer in the dock', () => {
     await screen.findByRole('dialog', { name: 'Choose agent' });
     clickAgent(slug);
   }
+
+  test.each([
+    ['new draft', 'new draft'],
+    ['submitted draft', ''],
+  ])(
+    'remote task completion preserves the latest draft (%s)',
+    (latest, expected) => {
+      remoteRun.complete = null;
+      start(undefined, { initialPrompt: 'submitted draft' });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Stage a remote task' }),
+      );
+      fireEvent.change(message(), { target: { value: latest } });
+      expect(remoteRun.complete).not.toBeNull();
+      act(() => remoteRun.complete!());
+      expect(message().value).toBe(expected);
+      expect(screen.getByRole('status').textContent).toContain(
+        'Task started on Kontour',
+      );
+    },
+  );
 
   test('typing and choosing another Agent do not open a chat; Start starts the chosen Agent once with the message', async () => {
     selectionModelState.agents = [AGENT, AUTHORED_CODEX];
@@ -1433,14 +1508,24 @@ describe('the start composer in the dock', () => {
       initialPrompt: 'From Home',
     };
     const view = render(
-      <NewChatModal {...props} projects={[]} projectsLoaded={false} />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[]}
+        projectsLoaded={false}
+      />,
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onSelect).not.toHaveBeenCalled();
     selectionModelState.isGlobal = false;
     selectionModelState.selectedProject = station;
     view.rerender(
-      <NewChatModal {...props} projects={[station]} projectsLoaded />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[station]}
+        projectsLoaded
+      />,
     );
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     expect(onSelect.mock.calls[0][1]).toBe('station');
@@ -1488,14 +1573,24 @@ describe('the start composer in the dock', () => {
       startSelection: { context: 'station', agentSlug: 'assistant' },
     };
     const view = render(
-      <NewChatModal {...props} projects={[]} projectsLoaded={false} />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[]}
+        projectsLoaded={false}
+      />,
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onSelect).not.toHaveBeenCalled();
     expect(screen.queryByText(/no longer available/)).toBeNull();
     selectionModelState.selectedProject = station;
     view.rerender(
-      <NewChatModal {...props} projects={[station]} projectsLoaded />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[station]}
+        projectsLoaded
+      />,
     );
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     expect(onSelect.mock.calls[0][1]).toBe('station');
@@ -1586,12 +1681,24 @@ describe('the start composer in the dock', () => {
       onSelect,
       onClose: vi.fn(),
     };
-    const view = render(<NewChatModal {...props} draftContext={draft()} />);
+    const view = render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        draftContext={draft()}
+      />,
+    );
     const chip = () =>
       screen.getByRole('button', { name: 'Request: Build a plugin' });
     fireEvent.click(chip());
     expect(chip().getAttribute('aria-pressed')).toBe('false');
-    view.rerender(<NewChatModal {...props} draftContext={draft()} />);
+    view.rerender(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        draftContext={draft()}
+      />,
+    );
     expect(chip().getAttribute('aria-pressed')).toBe('false');
     fireEvent.change(message(), { target: { value: 'Just this' } });
     fireEvent.click(startButton());
