@@ -8,6 +8,7 @@ dist-ui-*/
 dist-server/
 dist-server-*/
 dist-desktop/
+dist-desktop-runtime/
 dist-desktop-wix-resources/
 dist-portable-server/
 coverage/

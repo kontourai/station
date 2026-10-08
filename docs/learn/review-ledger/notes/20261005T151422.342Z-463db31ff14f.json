@@ -1,0 +1,7 @@
+{
+  "revision": "3dc718517ffcf6997f9eee8b395d76f246f2cc92",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"#3331 adds a ResponsiveDialogSurface consumer (RequestSheet) using the shared Button/ActionRow and the existing useIsMobile hook; no frontend pattern claim (query/context owners, component conventions) changed.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]}
+  ]
+}

@@ -142,6 +142,23 @@ function fulfillGalleryStationIdentity(route: Route): Promise<void> {
   });
 }
 
+async function fulfillGallerySystemStatus(route: Route): Promise<void> {
+  const response = await route.fetch();
+  const status = await response.json();
+  if (!response.ok() || !status.devicePresentation)
+    throw new Error('Gallery requires the live host presentation.');
+  await route.fulfill({
+    response,
+    json: {
+      ...status,
+      devicePresentation: {
+        ...status.devicePresentation,
+        hostName: 'Gallery host',
+      },
+    },
+  });
+}
+
 function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
   if (route.request().method() !== 'GET') return route.fallback();
   return route.fulfill({
@@ -244,7 +261,7 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    gallery ever renders a toast for
  *    (`motion-reduced-notification`).
  *  - The Profile's completed rebuild timestamp. The unavailable-time
- *    fallback stays visible; only a live "Snapshot rebuilt ..." line is hidden.
+ *    fallback stays visible; only a live "Updated ..." timestamp is hidden.
  *  - `.chat-dock__mobile-conn` (ChatDockMobileHeader.tsx via
  *    `ChatDockMobileConnection.tsx`): the mobile chat dock's OWN
  *    connected/connecting/error/needs-credential indicator — the same
@@ -271,8 +288,8 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  */
 async function hideVolatileChrome(page: Page) {
   await page
-    .locator('.profile-usage-status p')
-    .filter({ hasText: /^Snapshot rebuilt / })
+    .locator('.profile-usage-status span')
+    .filter({ hasText: /^Updated / })
     .evaluateAll((elements) => {
       for (const element of elements) element.style.visibility = 'hidden';
     });
@@ -1397,7 +1414,20 @@ const SCREENS: Screen[] = [
     title: 'Home / Coding layout',
     path: '/',
     viewport: DESKTOP,
-    afterGoto: (page) => assertNoStrayProjectModal(page),
+    afterGoto: async (page) => {
+      await assertNoStrayProjectModal(page);
+      await expect(
+        page.getByRole('heading', { name: 'What would you like to do?' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: "What's next?" }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole('button', {
+          name: 'Run a task on a Station; current Station: Gallery host',
+        }),
+      ).toBeVisible();
+    },
   },
   { name: 'agents', title: 'Agents', path: '/agents', viewport: DESKTOP },
   {
@@ -2700,6 +2730,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   });
   await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
+  await page.route('**/api/system/status', fulfillGallerySystemStatus);
 
   // station#531: a fresh temp-home seeds this same built-in vector connection,
   // but gives it `<run-specific-home>/vectordb`. Seed the established

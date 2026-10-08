@@ -462,7 +462,7 @@ export class JsonManifestRegistryProvider
   }
 
   private isLocalManifest(): boolean {
-    return this.manifestUrl.startsWith('/') || this.manifestUrl.startsWith('.');
+    return isAbsolute(this.manifestUrl) || this.manifestUrl.startsWith('.');
   }
 
   private getRegistryKey(): string {

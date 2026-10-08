@@ -14,13 +14,13 @@
 
     "packages/connect/src/__tests__/nativeApplicationTransport.test.ts",
 
-    "packages/connect/src/core/ConnectionStore.ts",
-
     "packages/connect/src/core/applicationChannel.ts",
 
     "packages/connect/src/core/brokerRouteEnrollment.ts",
 
     "packages/connect/src/core/browserPionConnection.ts",
+
+    "packages/connect/src/core/ConnectionStore.ts",
 
     "packages/connect/src/core/nativeApplicationTransport.ts",
 
@@ -30,15 +30,13 @@
 
     "packages/connect/src/index.ts",
 
-    "packages/connect/tsconfig.json",
-
-    "src-ui/src/platform/native/stationProfileStorage.ts",
+    "packages/connect/src/react/connection-manager-modal-utils.ts",
 
     "packages/connect/src/react/ConnectionManagerModal.tsx",
 
     "packages/connect/src/react/ConnectionManagerModalContent.tsx",
 
-    "packages/connect/src/react/connection-manager-modal-utils.ts",
+    "packages/connect/tsconfig.json",
 
     "src-ui/src/contexts/ApiBaseContext.tsx",
 
@@ -50,7 +48,15 @@
 
     "src-ui/src/platform/native/NativeRelayEntryBoundary.tsx",
 
-    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx"
+    "src-ui/src/platform/native/stationProfileStorage.ts",
+
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts"
   ],
 
   "checks": [

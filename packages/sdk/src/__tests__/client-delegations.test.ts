@@ -259,10 +259,12 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
         environmentId: 'env-1',
       }),
     ).resolves.toMatchObject(snapshot);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       'http://station.test/api/orchestration/delegations/task%3A1?environmentId=env-1',
-      { method: 'GET' },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('observeDelegatedTask omits the query string with no input', async () => {
@@ -275,10 +277,12 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await observeDelegatedTask('http://station.test', 'task:1');
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       'http://station.test/api/orchestration/delegations/task%3A1',
-      { method: 'GET' },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('observeDelegatedTaskEvents reads a page via the opaque cursor, never a raw integer', async () => {
@@ -306,10 +310,12 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
         limit: 25,
       }),
     ).resolves.toMatchObject(page);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       'http://station.test/api/orchestration/delegations/task%3A1/events?cursor=station-task-events%3Av1%3A2&limit=25',
-      { method: 'GET' },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('continueDelegatedTask posts the follow-up message', async () => {
@@ -495,10 +501,12 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
         limit: 10,
       }),
     ).resolves.toEqual(inventory);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       'http://station.test/api/orchestration/delegations?environmentId=env-1&limit=10',
-      { method: 'GET' },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '1' } },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('listDelegatedTasks rejects a non-2xx envelope with the server error text', async () => {

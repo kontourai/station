@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absoluteTime,
   clockTime,
+  messageTime,
   relativeTime,
   relativeTimeAgo,
 } from '../utils/relativeTime';
@@ -71,5 +72,33 @@ describe('clockTime', () => {
     });
     expect(clockTime(tomorrow, morning)).toBe(`${weekday} ${time(tomorrow)}`);
     expect(clockTime(tomorrow, morning)).not.toBe(time(tomorrow));
+  });
+});
+
+describe('messageTime', () => {
+  const time = (at: number) =>
+    new Date(at).toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  const now = new Date(2026, 9, 6, 18, 0).getTime();
+
+  it('is the bare local time on the same day', () => {
+    const morning = new Date(2026, 9, 6, 7, 36).getTime();
+    expect(messageTime(morning, now)).toBe(time(morning));
+  });
+
+  it('adds the short date on another day, and the year once it differs', () => {
+    const earlier = new Date(2026, 9, 3, 7, 36).getTime();
+    const lastYear = new Date(2025, 11, 24, 9, 5).getTime();
+    expect(messageTime(earlier, now)).toBe(
+      `${new Date(earlier).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${time(earlier)}`,
+    );
+    expect(messageTime(lastYear, now)).toContain('2025');
+  });
+
+  it('states nothing for a stamp that is not a real time', () => {
+    expect(messageTime(0, now)).toBe('');
+    expect(messageTime(Number.NaN, now)).toBe('');
   });
 });

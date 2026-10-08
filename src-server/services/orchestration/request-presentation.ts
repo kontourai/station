@@ -5,6 +5,7 @@ import {
   truncateDisplay,
 } from '@kontourai/station-shared/display-text';
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   toolRequestFromPayload,
@@ -38,6 +39,13 @@ export function presentOpenRequest(request: PresentableOpenRequest): {
       'The agent asked questions',
       rawTitle,
       questionnaire.questions[0].prompt,
+    );
+  const elicitation = readMcpElicitationForm(request.payload?.mcpElicitation);
+  if (elicitation)
+    return presentAskRequest(
+      'A tool server needs your input',
+      rawTitle,
+      elicitation.message,
     );
 
   switch (request.requestType) {

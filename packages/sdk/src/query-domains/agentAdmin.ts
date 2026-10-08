@@ -3,6 +3,7 @@ import type {
   FirstRunState,
   FirstRunTransitionRequest,
 } from '@kontourai/station-contracts/config';
+import type { AgentMcpPromptListing } from '@kontourai/station-contracts/mcp-prompts';
 import type { ConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -314,6 +315,36 @@ export function useModelsQuery(config?: QueryConfig<any>) {
     config,
   );
 }
+
+/**
+ * #3284: `GET /agents/:slug/mcp-prompts` — the MCP server prompts this agent
+ * is offered as slash commands, plus the servers whose prompts could not be
+ * read (so a missing command has a stated reason, not silence).
+ */
+export function useAgentMcpPromptsQuery(
+  agentSlug: string | null | undefined,
+  config?: QueryConfig<AgentMcpPromptListing>,
+) {
+  return useApiQuery(
+    agentMcpPromptsQueryKey(agentSlug ?? ''),
+    async () => {
+      const apiBase = await _getApiBase();
+      const response = await authenticatedFetch(
+        `${apiBase}/agents/${encodeURIComponent(agentSlug!)}/mcp-prompts`,
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success)
+        throw new Error(apiErrorMessage(result, 'Failed to list MCP prompts'));
+      return result.data as AgentMcpPromptListing;
+    },
+    { ...config, enabled: !!agentSlug && (config?.enabled ?? true) },
+  );
+}
+
+export const agentMcpPromptsQueryKey = (agentSlug: string): string[] => [
+  'agent-mcp-prompts',
+  agentSlug,
+];
 
 export interface AwsProfilesResult {
   profiles: string[];

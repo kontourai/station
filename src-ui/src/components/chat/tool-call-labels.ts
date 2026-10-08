@@ -47,6 +47,17 @@ interface KindVerbs {
   pendingVerb: string;
 }
 
+/** Kinds whose completed verb claims only that the call ran ("Ran npm
+ * test", "Read a.ts", "Searched x") — true of a call that ran and then
+ * reported an error. For a write, delete or unknown tool the completed verb
+ * claims the change itself ("Edited a.ts"), which a failed call may never
+ * have made. */
+export const RAN_EVEN_WHEN_FAILED: ReadonlySet<ToolCallKind> = new Set([
+  'exec',
+  'read',
+  'search',
+]);
+
 const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
   read: { verb: 'Read', progressiveVerb: 'Reading', pendingVerb: 'Read' },
   write: { verb: 'Edited', progressiveVerb: 'Editing', pendingVerb: 'Edit' },
@@ -67,15 +78,28 @@ const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
 /**
  * How far the call has actually got — decides the verb tense.
  *
- * `'done'` is the only phase that claims the work happened, so it is derived
- * from an OBSERVED successful completion, never used as a fallback. Anything
- * that did not complete successfully — denied by the user, blocked by Station,
- * cancelled, failed, or started and never resolved (a replayed `state: 'call'`
- * after a reconnect) — is `'unresolved'` and takes the bare infinitive. The
- * row's status badge says WHICH of those it was; the verb's only job is not to
- * claim an edit that never landed.
+ * `'done'` is the only phase that claims the work SUCCEEDED, so it is derived
+ * from an OBSERVED successful completion, never used as a fallback.
+ *
+ * `'failed'` is a plain failure: the tool was invoked and reported an error.
+ * For a command, a read or a search the row keeps the completed tense ("Ran
+ * npm test") beside its Failed badge: that verb only claims the call ran,
+ * which it did. A failed write, delete or unknown tool takes the bare verb
+ * ("Edit a.ts"): "Edited" would claim a change that may never have landed
+ * (`callLabel`). The batch summary applies the same split per kind
+ * (`summarizeCalls` in `tool-call-groups.ts`).
+ *
+ * Anything else that did not complete — denied by the user, blocked by
+ * Station, cancelled, or started and never resolved (a replayed
+ * `state: 'call'` after a reconnect) — is `'unresolved'` and takes the bare
+ * infinitive: nothing observed the tool run at all.
  */
-export type ToolCallPhase = 'done' | 'running' | 'proposed' | 'unresolved';
+export type ToolCallPhase =
+  | 'done'
+  | 'running'
+  | 'proposed'
+  | 'failed'
+  | 'unresolved';
 
 export interface ToolCallPhaseInput {
   needsApproval?: boolean;
@@ -131,7 +155,10 @@ export function toolCallPhase(part: ToolCallPhaseInput): ToolCallPhase {
     (part.state === 'completed' ||
       part.state === 'result' ||
       result !== undefined);
-  return completed ? 'done' : 'unresolved';
+  if (completed) return 'done';
+  return failed && !cancelled && !denied && !sessionUnresolved
+    ? 'failed'
+    : 'unresolved';
 }
 
 /**
@@ -645,7 +672,8 @@ function extractTarget(
 
 /** e.g. "Read app.tsx" (done), "Running npm run build:ui" (in flight),
  * "Edit approved.txt" (proposed, awaiting approval), "Edit config.json"
- * (unresolved — denied, cancelled, failed, or never resolved). */
+ * (unresolved — denied, cancelled, or never resolved), "Ran npm test" /
+ * "Edit config.json" (failed: completed verb only for non-mutating kinds). */
 export function callLabel(
   kind: ToolCallKind,
   toolName: string,
@@ -659,7 +687,9 @@ export function callLabel(
   const verb =
     resolved === 'running'
       ? cfg.progressiveVerb
-      : resolved === 'proposed' || resolved === 'unresolved'
+      : resolved === 'proposed' ||
+          resolved === 'unresolved' ||
+          (resolved === 'failed' && !RAN_EVEN_WHEN_FAILED.has(kind))
         ? cfg.pendingVerb
         : cfg.verb;
   // What a user is asked to allow is shown whole (see `commandTarget`).

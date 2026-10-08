@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed #3405 sender delta: optional internal form admission callbacks observe existing refusal, queue and receipt branches. Session HTTP endpoints, request bodies, receipt identities, adoption, cancellation and authorization are unchanged. Existing API reference remains accurate; no additional server admission proof.","inputs":["docs/reference/session-api.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

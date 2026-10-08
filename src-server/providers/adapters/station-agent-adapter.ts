@@ -3,6 +3,10 @@ import type { AgentDelegationContext } from '@kontourai/station-contracts/agent'
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type {
+  McpElicitationContent,
+  McpElicitationResult,
+} from '@kontourai/station-contracts/mcp-elicitation';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalStatus,
@@ -17,6 +21,7 @@ import {
   parseTurnProvenanceContextInjection,
   type TurnProvenanceContextInjection,
 } from '@kontourai/station-contracts/turn-provenance-context';
+import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
 import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
@@ -150,7 +155,10 @@ interface StationAgentSessionRecord {
   activeTurnId?: string;
   activeController?: AbortController;
   abortPublished?: boolean;
-  pendingRequests: Map<string, { toolName?: string; turnId?: string }>;
+  pendingRequests: Map<
+    string,
+    { toolName?: string; turnId?: string; elicitation?: true }
+  >;
   approvedTools: Set<string>;
   resolvedBeforeOpen: Map<string, ApprovalStatus>;
   /**
@@ -558,7 +566,12 @@ export function mapStationAgentStreamEvent(options: {
   outputDelta?: string;
   finishReason?: ReturnType<typeof finishReason>;
   failed?: true;
-  approvalOpened?: { requestId: string; toolName?: string };
+  approvalOpened?: {
+    requestId: string;
+    toolName?: string;
+    /** #3284: a tool server's form, answered with content, not a grant. */
+    elicitation?: true;
+  };
   /**
    * station#1569 (item 4): this chunk opened a tool call, or closed one.
    * Reported rather than recorded, because this relay is a pure translator
@@ -738,6 +751,23 @@ export function mapStationAgentStreamEvent(options: {
       },
     });
     return { approvalOpened: { requestId, ...(toolName ? { toolName } : {}) } };
+  }
+  if (event.type === 'mcp-elicitation-request') {
+    // #3284: a tool server asked the person for structured input. Same
+    // request channel as a tool approval, answered with the form's content.
+    const requestId = stringField(event.approvalId);
+    const form = readMcpElicitationForm(event.form);
+    if (!requestId || !form) return {};
+    publish({
+      ...base,
+      method: 'request.opened',
+      requestId,
+      requestType: 'approval',
+      title: `${form.serverId} needs your input`,
+      ...(form.message ? { description: form.message } : {}),
+      payload: { mcpElicitation: form },
+    });
+    return { approvalOpened: { requestId, elicitation: true } };
   }
   if (event.type === 'context-injection') {
     const contextInjection = parseTurnProvenanceContextInjection(
@@ -1240,12 +1270,33 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
-    context?: { clientOrigin?: ClientOrigin },
+    context?: {
+      clientOrigin?: ClientOrigin;
+      elicitationContent?: McpElicitationContent;
+    },
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
+    }
+    // #3284: a form's answer is the person's own action, carried whole. The
+    // orchestration command already validated accepted content against the
+    // form; the tool wrapper re-checks it before the server sees it.
+    let answer: McpElicitationResult | undefined;
+    if (pending.elicitation) {
+      if (decision === 'acceptForSession')
+        throw new Error(
+          'A tool server form is answered once, not for a session.',
+        );
+      if (decision === 'accept' && !context?.elicitationContent)
+        throw new Error('Fill in the form before sending it.');
+      answer =
+        decision === 'accept'
+          ? { action: 'accept', content: context!.elicitationContent! }
+          : { action: decision };
+    } else if (context?.elicitationContent !== undefined) {
+      throw new Error('Only a tool server form takes form content.');
     }
     this.resolutionOverrides.set(
       requestId,
@@ -1260,6 +1311,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       requestId,
       decision === 'accept' || decision === 'acceptForSession',
       context?.clientOrigin,
+      answer,
     );
     if (!resolved) {
       record.pendingRequests.delete(requestId);
@@ -1606,7 +1658,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   private trackApproval(
     record: StationAgentSessionRecord,
     turnId: string,
-    approval: { requestId: string; toolName?: string },
+    approval: { requestId: string; toolName?: string; elicitation?: true },
   ): void {
     const resolvedStatus = record.resolvedBeforeOpen.get(approval.requestId);
     if (resolvedStatus) {
@@ -1622,6 +1674,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record.pendingRequests.set(approval.requestId, {
       turnId,
       ...(approval.toolName ? { toolName: approval.toolName } : {}),
+      ...(approval.elicitation ? { elicitation: true as const } : {}),
     });
     if (
       approval.toolName &&

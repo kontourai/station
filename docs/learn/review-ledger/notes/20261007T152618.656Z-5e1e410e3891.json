@@ -1,0 +1,11 @@
+{
+  "revision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed final caller-fixture delta: existing local-dispatch/setup-return tests now state that no remote host request authority is supplied, and effort controls are opened through Options. Foreground submit and setup return assertions are retained. No start contract changes.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed final caller-fixture delta for the shared start journey and Options disclosure. Existing request and setup-return behavior remains unchanged; current guide is accurate.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the sole ToolCallDisplay runtime delta: RequestSheet title and its comment now use the canonical Needs approval wording instead of the retired Approval needed label. Approval data, response callbacks, grant controls and policy delivery are unchanged; no conformance prose correction or new enforcement claim.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

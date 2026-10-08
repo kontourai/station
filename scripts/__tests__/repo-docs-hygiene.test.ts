@@ -1,6 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
+import { publicDocsHygieneFindings } from '../public-docs-hygiene.mjs';
 import { evaluate, findingsFor, trackedDocs } from '../repo-docs-hygiene.mjs';
 
 const read = (fixtures: Record<string, string>) => (file: string) =>
@@ -226,9 +230,149 @@ describe('repo docs hygiene', () => {
     const grandfathered = JSON.parse(
       readFileSync('scripts/docs-hygiene-grandfather.json', 'utf8'),
     ) as { file: string; findings: number }[];
-    expect(grandfathered.length).toBeGreaterThan(0);
+    // The list may be empty — an empty allowlist is the strictest gate. What
+    // must hold is that no entry is stale: each one names a file that still
+    // carries exactly the findings it pins, recomputed here independently of
+    // the entry point's own staleness check.
+    for (const entry of grandfathered) {
+      expect(
+        findingsFor([entry.file]).get(entry.file) ?? [],
+        `${entry.file} must still carry its pinned findings`,
+      ).toHaveLength(entry.findings);
+    }
     const files = grandfathered.map((entry) => entry.file);
     expect([...files].sort()).toEqual(files);
+  });
+
+  // The media server's hostname and its display form (the same words split by
+  // whitespace, any case). Built from the hostname so the display form itself
+  // is not spelled out in the tree.
+  const HOST = 'brian-media';
+  const [first, second] = HOST.split('-');
+  const title = (word: string) => word[0].toUpperCase() + word.slice(1);
+  const hostnameForms = [
+    HOST,
+    HOST.toUpperCase(),
+    `${first} ${second}`,
+    `${title(first)} ${title(second)}`,
+    `${first.toUpperCase()} ${second.toUpperCase()}`,
+    `${title(first)}  ${second}`,
+    `${title(first)}\t${title(second)}`,
+    // Identifier, env-var and URL-encoded spellings of the same two words.
+    `${first}_${second}`,
+    `${first.toUpperCase()}_${second.toUpperCase()}`,
+    `${first}${second}`,
+    `${first}${title(second)}`,
+    `${title(first)}${title(second)}`,
+    `${first}.${second}`,
+    `${first}%20${second}`,
+    `${first}%2D${second}`,
+    `${title(first)}\u2013${title(second)}`,
+    `${title(first)} - ${title(second)}`,
+    `STATION_${first.toUpperCase()}_${second.toUpperCase()}_URL`,
+    `use${title(first)}${title(second)}Host`,
+  ];
+  const renamedForms = [
+    'home-media',
+    'Home media',
+    'HOME MEDIA',
+    'home_media',
+    'HomeMedia',
+  ];
+
+  it.each(hostnameForms)(
+    'rejects the private media-server name in the form %j',
+    (form) => {
+      const text = `The library is served from ${form} every night.`;
+      const { failures } = evaluate({
+        byFile: findingsFor(['docs/new.md'], read({ 'docs/new.md': text })),
+        grandfathered: [],
+      });
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toContain('private-hostname');
+      const publicFindings = publicDocsHygieneFindings(
+        [{ source: 'guide.md' }],
+        () => text,
+      );
+      expect(publicFindings).toHaveLength(1);
+      expect(publicFindings[0]).toContain('private-hostname');
+    },
+  );
+
+  it.each(renamedForms)('accepts the renamed form %j', (form) => {
+    const text = `The library is served from ${form} every night.`;
+    expect(
+      findingsFor(['docs/new.md'], read({ 'docs/new.md': text })).size,
+    ).toBe(0);
+    expect(
+      publicDocsHygieneFindings([{ source: 'guide.md' }], () => text),
+    ).toEqual([]);
+  });
+
+  describe('the real entry point in a scratch repository', () => {
+    // The gate sweeps `git ls-files` beside its own script, so it runs from a
+    // copy of its module graph inside a throwaway repository that tracks only
+    // the document under test.
+    const GATE_FILES = [
+      'scripts/repo-docs-hygiene.mjs',
+      'scripts/public-docs-hygiene.mjs',
+      'scripts/build-github-pages.mjs',
+      'scripts/lib/bounded-capture.mjs',
+      'scripts/lib/module-entry.mjs',
+    ];
+    const makeTempDir = trackTempDirs({ lifetime: 'file' });
+    let root = '';
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: root, windowsHide: true });
+    const runGate = (
+      doc: string,
+      grandfathered: { file: string; findings: number }[] = [],
+    ) => {
+      writeFileSync(join(root, 'docs/scratch.md'), `${doc}\n`);
+      writeFileSync(
+        join(root, 'scripts/docs-hygiene-grandfather.json'),
+        `${JSON.stringify(grandfathered)}\n`,
+      );
+      git('add', '--', 'docs/scratch.md');
+      return spawnSyncBounded(
+        process.execPath,
+        ['scripts/repo-docs-hygiene.mjs'],
+        { cwd: root, encoding: 'utf8', windowsHide: true },
+      );
+    };
+
+    beforeAll(() => {
+      root = makeTempDir('station-docs-hygiene-');
+      for (const file of GATE_FILES) {
+        mkdirSync(join(root, dirname(file)), { recursive: true });
+        copyFileSync(file, join(root, file));
+      }
+      mkdirSync(join(root, 'docs'));
+      git('init', '-q');
+    });
+
+    it.each(hostnameForms)('exits non-zero for a doc naming %j', (form) => {
+      const result = runGate(`The library is served from ${form} nightly.`);
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('docs/scratch.md:1 private-hostname');
+    });
+
+    it.each(renamedForms)('exits zero for a doc naming %j', (form) => {
+      const result = runGate(`The library is served from ${form} nightly.`);
+      expect(result.error).toBeUndefined();
+      expect(result.stdout).toContain('Repo docs hygiene passed');
+      expect(result.status).toBe(0);
+    });
+
+    it('exits non-zero for a stale grandfather entry', () => {
+      const result = runGate('Nothing private here.', [
+        { file: 'docs/scratch.md', findings: 1 },
+      ]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('stale grandfather entries');
+      expect(result.stderr).toContain('docs/scratch.md: file is clean or gone');
+    });
   });
 
   it('no public-projection document is ever allowlisted', async () => {

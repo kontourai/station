@@ -8,7 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -35,6 +35,7 @@ import {
 import { buildTestImpactManifest } from '../test-impact-manifest.mjs';
 import { listWorkspacePackageManifests } from '../workspace-dependency-provenance.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
+import { runWorkflowShell } from './fixtures/workflow-shell.js';
 
 const root = resolve(import.meta.dirname, '../..');
 const makeTempDir = trackTempDirs();
@@ -401,6 +402,80 @@ describe('fast-checks shard runner (in process)', () => {
     ).toMatchObject({ status: 'failed', passed: false, runAttempt: 2 });
   });
 
+  test('a failing slice annotates each failed test and keeps its reports beside the receipt (#3101 C)', async () => {
+    const cwd = inProcessFixture();
+    const lines: string[] = [];
+    const runShard = vi.fn(
+      async (_plan: unknown, _slice: unknown, _options: unknown) => ({
+        status: 'failed',
+        counts: { executed: 2, passed: 0, failed: 2, infrastructureErrors: 0 },
+        executions: [
+          {
+            resourceGroup: 'ordinary',
+            exitCode: 1,
+            failedTests: [
+              {
+                file: 'a/a.test.ts',
+                name: 'row, at 390px: wraps',
+                excerpt: 'AssertionError: 100% wrapped\n    at a.test.ts:4',
+              },
+              { file: 'a/a.test.ts', name: 'second', excerpt: 'Error: two' },
+            ],
+          },
+        ],
+      }),
+    );
+    const status = await runFastChecksShardCli(
+      ['run', '--plan=plan.json', '--shard=1/4', '--receipt=out/receipt.json'],
+      {
+        cwd,
+        env: { ...env, GITHUB_ACTIONS: 'true' },
+        runShard,
+        report: (line) => lines.push(String(line)),
+        error: () => {},
+      },
+    );
+    expect(status).toBe(1);
+    expect(runShard.mock.calls[0][2]).toMatchObject({
+      failedReportDir: join(cwd, 'out', 'vitest-reports'),
+    });
+    expect(lines.filter((line) => line.startsWith('::error'))).toEqual([
+      '::error file=a/a.test.ts,title=row%2C at 390px%3A wraps::AssertionError: 100%25 wrapped%0A    at a.test.ts:4\n',
+      '::error file=a/a.test.ts,title=second::Error: two\n',
+    ]);
+  });
+
+  test('annotations are workflow commands only on GitHub Actions', async () => {
+    const cwd = inProcessFixture();
+    const lines: string[] = [];
+    await runFastChecksShardCli(
+      ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+      {
+        cwd,
+        env,
+        runShard: async () => ({
+          status: 'failed',
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 1,
+            infrastructureErrors: 0,
+          },
+          executions: [
+            {
+              resourceGroup: 'ordinary',
+              exitCode: 1,
+              failedTests: [{ file: 'a/a.test.ts', name: 'x', excerpt: 'y' }],
+            },
+          ],
+        }),
+        report: (line) => lines.push(String(line)),
+        error: () => {},
+      },
+    );
+    expect(lines.some((line) => line.startsWith('::error'))).toBe(false);
+  });
+
   test('a non-empty shard refuses to run outside its npm entry (review F1)', async () => {
     const cwd = inProcessFixture();
     const runShard = vi.fn();
@@ -528,6 +603,45 @@ describe('fast-checks shard execution verdicts', () => {
     },
   );
 
+  test('keeps the redacted JSON report of a failing slice, and nothing for a passing one (#3101 C)', async () => {
+    const directory = makeTempDir('station-fast-checks-reports-');
+    const failing = join(directory, 'failing');
+    const contents = JSON.stringify({
+      numTotalTestSuites: 1,
+      numTotalTests: 1,
+      numPassedTests: 0,
+      numFailedTests: 1,
+      testResults: [
+        {
+          name: 'x',
+          message: `token ghp_${'A'.repeat(36)} leaked`,
+          assertionResults: [],
+        },
+      ],
+    });
+    await runChangedVerificationShard({ deferredLanes: [] }, slice, {
+      root,
+      run: fakeRun(1, contents),
+      vitestPath: 'vitest.mjs',
+      prepareExecution: boundExecution,
+      failedReportDir: failing,
+    });
+    const kept = readFileSync(join(failing, 'ordinary-0.json'), 'utf8');
+    expect(kept).toContain('numFailedTests');
+    expect(kept).toContain('[REDACTED]');
+    expect(kept).not.toContain('ghp_');
+
+    const passing = join(directory, 'passing');
+    await runChangedVerificationShard({ deferredLanes: [] }, slice, {
+      root,
+      run: fakeRun(0, report(0)),
+      vitestPath: 'vitest.mjs',
+      prepareExecution: boundExecution,
+      failedReportDir: passing,
+    });
+    expect(() => readdirSync(passing)).toThrow();
+  });
+
   test('runs the dependency provenance preflight before any Vitest child', async () => {
     const run = fakeRun(0, report(0));
     await expect(
@@ -581,12 +695,14 @@ describe('fast-checks shard execution verdicts', () => {
 });
 
 describe('sharding a real selection', () => {
+  // Repository discovery prepares the fixture; this test checks plan parity.
+  const manifest = buildTestImpactManifest({ root });
+
   test('the shards together run exactly the unsharded plan, with no duplicates', async () => {
     // Every tracked scripts test, as a real diff that touched them all: real
     // manifest routing, the real resource partition (ordinary, process-heavy
     // and the serial groups), no stubbed file list. Changed test files are
     // explicit targets, so no discovery child is needed.
-    const manifest = buildTestImpactManifest({ root });
     const paths = execFileSync(
       'git',
       ['ls-files', 'scripts/__tests__/*.test.ts'],
@@ -695,17 +811,7 @@ describe('transitional legacy path: the base-controlled shell in ci.yml (child p
     env: Record<string, string>,
   ) {
     if (!script) throw new Error('ci.yml step not found');
-    return spawnSync(
-      'bash',
-      ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script],
-      {
-        cwd,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH ?? '', ...env },
-        timeout: 30_000,
-        windowsHide: true,
-      },
-    );
+    return runWorkflowShell(script, cwd, env, 30_000);
   }
 
   function detect(withScript: boolean) {
@@ -918,7 +1024,7 @@ describe("a real shard run inherits the lane coordinator's bindings (review H1)"
     );
     mkdirSync(probeDir, { recursive: true });
     try {
-      const probe = `test-results/${probeDir.split('/').pop()}/history-ref.probe.test.ts`;
+      const probe = `test-results/${basename(probeDir)}/history-ref.probe.test.ts`;
       const observed = join(probeDir, 'observed.json');
       writeFileSync(
         join(root, probe),

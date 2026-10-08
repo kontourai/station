@@ -1,0 +1,7 @@
+{
+  "revision": "0b932ca155b02bd4ddcb9be1b1926d0bcede3b6d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Independent review portability correction: the source-staging Bash fixture now supplies sha256sum through its own transport/tool fixture using Node crypto to hash the known helper bytes, so stock macOS does not need GNU Coreutils. Production Ubuntu workflow sha256sum, trusted immutable source binding, strict APT helper and locked-image proof bytes are unchanged. Focused workflow/source keepers passed 97/97 on 0b932ca155. From that clean commit, candidate-path injection failed the missing/poisoned-head cases and ignored-fetch injection failed the stale-file refusal; exact restoration passed three source keepers after each injection. Reviewed only scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts and the owning bootstrap explanation; prior container/hosted and platform limits remain. No APT proof repeat or broader debt refresh.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts"]}
+  ]
+}

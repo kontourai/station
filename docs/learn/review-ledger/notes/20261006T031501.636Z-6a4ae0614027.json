@@ -1,0 +1,9 @@
+{
+  "revision": "86f7fde08daf4e955af352d2597627877ef1aa79",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"#3412: orchestration-service.ts only adds readSessionWorkspaceBinding (File Preview session lookup); request inspection behavior shown in this capture is untouched, so the capture stays accurate.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"#3412: orchestration-service.ts only adds readSessionWorkspaceBinding (File Preview session lookup); request inspection behavior shown in this capture is untouched, so the capture stays accurate.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

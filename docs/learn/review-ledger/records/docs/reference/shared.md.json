@@ -50,6 +50,8 @@
 
     "packages/shared/package.json",
 
+    "packages/shared/package.json#/exports/.~1native-relay-link",
+
     "packages/shared/src/__tests__/build.test.ts",
 
     "packages/shared/src/__tests__/parsers.test.ts",
@@ -73,6 +75,8 @@
     "packages/shared/src/mcp-ui-csp.ts",
 
     "packages/shared/src/mcp.ts",
+
+    "packages/shared/src/native-relay-link.ts",
 
     "packages/shared/src/notification-envelope.ts",
 
@@ -110,7 +114,13 @@
 
     "src-ui/src/core/PluginRegistry.ts",
 
-    "src-ui/src/core/pluginSharedRuntime.ts"
+    "src-ui/src/core/pluginSharedRuntime.ts",
+
+    "packages/shared/src/usage-semantics.ts",
+
+    "packages/shared/src/usage-fold.ts",
+
+    "packages/shared/src/mcp-elicitation-form.ts"
   ],
 
   "checks": [

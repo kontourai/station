@@ -1,0 +1,7 @@
+{
+  "revision": "332f27b7272ce12c5fda8a664efcb4bb9880bb88",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the exact 332f27b727 generated delta: only the static documentation digest and DeploymentAuthentication topic body changed, carrying the already reviewed canonical module-map relay-management paragraphs. Topic identities and count (107), static value-only representation, list/get/search behavior, credential-free retrieval, and lack of filesystem/network/live-state authority remain unchanged. Compared expanded generated body to canonical text; no published deployment, provider/device/runtime or release qualification is asserted. Prior manual evidence and classifications retained; bounded generated-payload source review, not a renewed all-topic semantic audit.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

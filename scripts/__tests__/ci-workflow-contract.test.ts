@@ -1902,10 +1902,15 @@ describe('CI verification workflow contracts', () => {
         jobs: Record<string, Job>;
       }
     ).jobs.ordinary.steps?.find((step) => step.name === zshName);
-    expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
+    expect(fullRegressionZsh?.run).toContain('sudo bash "$bootstrap" zsh');
     const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
     expect(shardZshIndex).toBeGreaterThan(-1);
     expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
+    expect(shardSteps[shardZshIndex].env).toEqual({
+      BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
+      BOOTSTRAP_SOURCE_SHA: `\${{ github.workflow_sha }}`,
+    });
+    expect(shardSteps[shardZshIndex].env).toEqual(fullRegressionZsh?.env);
     expect(shardSteps[shardZshIndex]['timeout-minutes']).toBe(
       fullRegressionZsh?.['timeout-minutes'],
     );

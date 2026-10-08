@@ -62,13 +62,39 @@ export function handleRequestOpenedEvent(
  * snapshot already holds it, and setting `awaiting-approval` again would
  * contradict a turn that ended after the request opened.
  */
+/**
+ * #3284: whether a request carries a tool server form, which is answered on
+ * its pending-requests card rather than by a one-click toast. Only the shape
+ * is checked here: Station's relay publishes only forms it has normalized,
+ * and the pending-requests rows read the form with the full reader before the
+ * card renders it (a payload that fails that read is shown as an ordinary
+ * request); the card validates any answer. This event path is always loaded,
+ * so it carries the shape check rather than the reader.
+ */
+export function carriesMcpElicitationForm(
+  payload: { mcpElicitation?: unknown } | null | undefined,
+): boolean {
+  const form = payload?.mcpElicitation;
+  return (
+    typeof form === 'object' &&
+    form !== null &&
+    typeof (form as { serverId?: unknown }).serverId === 'string' &&
+    Array.isArray((form as { fields?: unknown }).fields)
+  );
+}
+
 export function raiseRequestOpenedToast(
   apiBase: string,
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat || event.blocking === false) return;
-  if (readHarnessQuestionnaire(event.payload?.questionnaire)) return;
+  // A form has no one-click answer; the pending-requests card collects it.
+  if (
+    readHarnessQuestionnaire(event.payload?.questionnaire) ||
+    carriesMcpElicitationForm(event.payload)
+  )
+    return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
