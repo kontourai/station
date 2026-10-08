@@ -1,0 +1,7 @@
+{
+  "revision": "e81e0f058e923ad6eb02f1d5111c038eb6e50ddf",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed pinned changesets action branch selection and CLI-declared readers/prerelease filtering. Version PR writes use existing narrow repository App auth; actual Bash missing-token guard stops before action and App path publish-script is disabled, including dispatch with pending changesets. Workflow token/OIDC publish path, nonpersisted checkout and protected-base checks unchanged.108 composed focusPASS, two committed clean known-bad credential/publish mappings fail intendedtests and exactrestorationPASS; no hosted event/materialized checks or npm publication claimed.","inputs":["docs/guides/releasing.md",".github/workflows/publish-packages.yml","scripts/version-pr-operation.mjs","scripts/__tests__/version-pr-operation.test.ts"]}
+  ]
+}

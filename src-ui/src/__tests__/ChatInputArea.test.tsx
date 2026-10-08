@@ -1132,6 +1132,7 @@ describe('ChatInputArea', () => {
       (screen.getByPlaceholderText(/Type a message/) as HTMLTextAreaElement)
         .value,
     ).toBe('keep this draft');
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     expect(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
     ).toBeTruthy();

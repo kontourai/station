@@ -1,0 +1,11 @@
+{
+  "revision": "e29bfab6efe8503035050b2053b89cff60f0705d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed final start UI delta: custom Agents show their authored purpose in a bounded secondary line, and task completion uses the latest draft state. A deferred child callback regression failed before the atomic draft update and passes after it, with a paired unchanged-draft case. This is UI callback evidence, not peer execution proof.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/chat-start/AgentPickerRow.tsx","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed task completion against the documented draft preservation rule. The atomic state update retains newer text after a deferred task callback and clears the submitted text when unchanged. Custom Agent purpose is additional picker context; existing guide steps remain accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the NewChatModal completion-state delta: it protects newer drafts after delegated task completion. No engine setup, onboarding, discovery, authority, or setup-return behavior changes; existing scoped onboarding explanation remains accurate.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

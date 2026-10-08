@@ -108,7 +108,11 @@ request returns the same typed `403` and no engine starts.
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
-`/api/orchestration/session-control` rather than the routes above.
+`/api/orchestration/session-control` rather than the routes above. Its
+read-only companions, `list_project_activity` and `get_session_digest`, call
+`/api/orchestration/session-activity` (see
+[Station Control Project Activity](api.md#station-control-project-activity)) and
+read as the calling Session's owner within the caller's Project.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
@@ -221,6 +225,32 @@ pages of five turns, and stops as soon as every open request is found. It keeps
 a generic placeholder when the host cannot supply the request, including one
 older than that bound. Request inspection sets `requiresAnswers` so clients
 route to the Session instead of offering a generic approval button.
+
+A tool server's form elicitation during a Station-agent turn (#3284) carries a
+normalized `payload.mcpElicitation` (`serverId`, `message`, `fields`) on
+`request.opened`. Answer it with the exact `expectedRequestEventId` and one of
+`accept` (with `elicitationContent`, keyed by field name), `decline` or
+`cancel`; `acceptForSession` is refused:
+
+```json
+{
+  "type": "respondToRequest",
+  "threadId": "session-id",
+  "requestId": "elicitation-id",
+  "expectedRequestEventId": "opened-event-id",
+  "decision": "accept",
+  "elicitationContent": { "name": "Ada", "age": 36 }
+}
+```
+
+Accepted content is validated against the form the person was shown: an
+unknown or missing required field, or a value outside its type, length,
+format, range or choices, is refused with a reason before the request is
+resolved. Values are never coerced or truncated (text at most 12,000
+characters). `decline` and `cancel` cannot carry content. Inspection sets
+`requiresAnswers` for these requests too. The
+[MCP host design](../design/mcp-ui-host.md#mcp-client-feature-support) records
+the supported form subset.
 
 `acceptForSession` also grants later calls to the same tool in that Session.
 The grant never covers an escalation beyond the call. In a Claude Session, a

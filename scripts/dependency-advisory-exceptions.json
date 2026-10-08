@@ -94,6 +94,38 @@
       "trackingUrl": "https://github.com/kontourai/station/issues/1753",
       "expires": "2026-10-08",
       "recheckTrigger": "Run npm audit --omit=dev after every VoltAgent core update and when VoltAgent publishes a compatible uuid remediation."
+    },
+    {
+      "scope": "root",
+      "package": "sprintf-js",
+      "version": "1.0.3",
+      "advisory": "GHSA-hp3w-g68c-fv3c",
+      "severity": "moderate",
+      "reachability": "production",
+      "owner": "station-maintainers",
+      "disposition": "Brian explicitly approved machine-bound acceptance conditional on good/bad drift/restoration proof and independent review. These conditions passed at guard revision e319df1a89. Exact root production sprintf-js1.0.3/GHSA-hp3w-g68c-fv3c only, until2026-10-13; no automatic renewal or identity-only fallback. This is a locally remediated numeric precision primitive still reported by upstream version, not a claim of upstream remediation or proven absence of production format control.",
+      "controls": "Machine guard requires structured binding at the actual policy acceptance seam. Observes current parsed workspace+lock references, exact patch bytes/hash, accounted installed source+min formatter bytes and Node24; refuses missing/drift, package/caller-directory/file/symlink/case-equivalent shadows and unaccounted copies. Proof: six source/min CJS/global/AMD paths/66supported comparisons at228505, exact patched bytes unchanged in composed source-map1.2.2 graph29cd; guard109good/bad/restored tests and finalowner-bypass17FAIL/2PASS followed109PASS at e319, fourth independent reviewPASS. Production presence is confirmed; attacker-controlled Station format reachability remains unproven. Legacy YAML/CLI supported, oversizedprecision andg0 bounded rounding. Width/padding/parser growth remain outside scope. Actual composed installation/audit/hosted verification remain separate.",
+      "trackingUrl": "https://github.com/kontourai/station/pull/3445",
+      "expires": "2026-10-13",
+      "recheckTrigger": "Before expiry and on upstream compatible release, dependency/patch/source-or-minified artifact/hash/Node-runtime change, additional formatter entrypoint, or discovery of untrusted production format control: recheck exact applied bytes and bounded numeric plus supported-format/YAML/CLI controls, withdraw this disposition on mismatch, and remove it when compatible upstream remediation passes. No automatic renewal.",
+      "patchBinding": {
+        "schemaVersion": 1,
+        "package": "sprintf-js",
+        "version": "1.0.3",
+        "patchPath": "patches/sprintf-js-1.0.3.patch",
+        "patchSha256": "d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6",
+        "installedEntrypoints": [
+          {
+            "path": "node_modules/sprintf-js/src/sprintf.js",
+            "sha256": "99e901c0ae0e17adc28b962525031c6f432b340eba8f4d3099058869306db083"
+          },
+          {
+            "path": "node_modules/sprintf-js/dist/sprintf.min.js",
+            "sha256": "71024e953ebe9c73ccf298776c15508a328469fb68c2d8b876319b61f46017c4"
+          }
+        ],
+        "nodeMajor": 24
+      }
     }
   ]
 }

@@ -1,0 +1,11 @@
+{
+  "revision": "9bfe2a583a81b494297b24e54f3a765eba985f9e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the changed mcp-ui-host dependency: the linked package-admission/custody evidence section is unchanged; the new lazy command and form-toast paragraphs do not change journal, generation-fencing, mutation or native authority claims in this map. The corrected member-turn restriction names the existing audience gate and #3277, without claiming member execution. No module-map prose change or native/browser proof.","inputs":["docs/architecture/module-map.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the MCP elicitation helper section against the updated host design: normalized admission, strict stored-form reading and accepted-content validation remain owned by the same shared exports and server/browser validator. The toast shape check is a presentation decision, not a replacement for these readers. Public helper names and refusal bounds remain unchanged. No prose change.","inputs":["docs/reference/shared.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the updated host-design dependency against this static shipped manual. Lazy UI dispatch and toast presentation do not change the manual/topic retrieval contract, credential-free static content, Project layout or tool-server authority claims. Member turns remain unavailable under the existing audience gate; no implemented member execution is asserted here. No prose change; generation/currentness checks requested separately.","inputs":["docs/reference/station-docs.md","docs/design/mcp-ui-host.md"]}
+  ]
+}

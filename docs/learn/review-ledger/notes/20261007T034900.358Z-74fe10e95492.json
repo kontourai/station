@@ -1,0 +1,7 @@
+{
+  "revision": "1c677669887600d0e1ad99aee0d98b8eb70deed6",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the product bucket and generated manifest claims against the added mobile-request-sheet entry and retained MCP form desktop/phone journey. All three relevant specs remain product coverage; the shared sheet fixture is bounded and declares emulated keyboard and pointer swipe, not native/device proof. No unrelated bucket, account prerequisite, baseline or suite selection is widened.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]}
+  ]
+}

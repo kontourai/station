@@ -17,12 +17,30 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
+- `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
 [package README](../../packages/shared/README.md) for distribution and build
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
+
+## Native relay link codec
+
+`@kontourai/station-shared/native-relay-link` owns `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink`.
+The [canonical implementation](../../packages/shared/src/native-relay-link.ts)
+validates the closed native link envelope, channel scheme and bounded fragment
+payload. Public route intent and installation-bound invitation parsing grant
+no Station trust, Device, account or Project authority. Receiving invitation
+secrets remains the native host's responsibility.
+
+The SDK and server use this published Shared leaf; Connect's existing
+`/native-relay-link` entry re-exports it for compatibility. There is one parser,
+with the existing wire format and rejection rules. Use a package release that
+contains the new subpath and a toolchain that handles its TypeScript source;
+source availability is not publication or native delivery proof. See the
+[link contract and custody boundary](connect.md#native-relay-link-publication).
 
 ## Skill experience validation
 
@@ -54,6 +72,20 @@ proposal, preview, evaluation and revision review.
 complete answer batch and translate selected IDs to display labels/custom
 text. They do not authorize a reply or prove engine delivery. Stable types
 come from `@kontourai/station-contracts/harness-questions`.
+
+## MCP elicitation helpers
+
+`@kontourai/station-shared/mcp-elicitation` owns the browser-safe
+`mcpElicitationFormFromRequest`, `readMcpElicitationForm`,
+`validateMcpElicitationContent` and `readMcpElicitationResult` helpers. They
+normalize a form-mode `elicitation/create` request into the field subset
+Station renders, refuse anything outside it or over a bound, and validate
+accepted content against the form with a reason, never coercing or
+truncating. The server's answer path and the browser card run the same
+validator. Eager event and pending-card readers use the form-only
+`@kontourai/station-shared/mcp-elicitation-form` subpath; answer validation
+loads with the form renderer. The public facade retains the same helpers.
+Stable types come from `@kontourai/station-contracts/mcp-elicitation`.
 
 ## Request settlement
 

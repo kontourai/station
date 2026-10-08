@@ -245,10 +245,11 @@ handlers:
   `/delegations`;
 - a turn on an admitted Agent is refused with `403
   member_agent_turns_unavailable`: `/agents/:slug/invoke` and `/invoke/stream`,
-  `/api/agents/:slug/chat`, `POST /agents/:slug/tools/:toolName`, the four
+  `/api/agents/:slug/chat`, `POST /agents/:slug/tools/:toolName`,
+  `POST /agents/:slug/mcp-prompts/run`, the four
   orchestration routes above, and `.../chat/:id/continue` and
   `.../delegations/:id/continue`. Read-only leaves of an admitted Agent
-  (health, tools, workflows, binding) get the same refusal;
+  (health, tools, workflows, binding, MCP prompts) get the same refusal;
 - an Agent catalog change is refused with `403
   member_agent_catalog_read_only`: `POST /agents`,
   `POST /agents/materialize-engine`, and on an admitted Agent `PUT` and

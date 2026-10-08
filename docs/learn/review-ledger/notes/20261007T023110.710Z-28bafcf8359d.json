@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed #3405 sender/UI deltas against start/resume flow. Form-specific in-memory drafts and queueOnBusy follow-up behavior leave start composer, Agent/project choice, launch authority, route navigation and existing send-status recovery untouched. Definite visual-skill refusal is observed by the form without bypassing its existing guard. Getting-started instructions remain accurate; no new-user/live-provider qualification.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

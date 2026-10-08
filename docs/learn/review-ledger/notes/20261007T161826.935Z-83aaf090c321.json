@@ -1,0 +1,7 @@
+{
+  "revision": "fcdeaa97058c39066a325950a5fb4b96604dd36a",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed mobile approval/fold slice at fcdeaa9705: the real pending call remains outside the fold; Answer opens RequestSheet and Allow Once reaches useToolApproval -> answerOrchestrationRequest -> resolveOrchestrationRequest with the original thread, request and request.opened event identity. The mobile sheet now uses the already-imported attentionWord approval text, Needs approval, matching its marker. The guide session-grant/phone-sheet claims remain accurate; no provider/grant semantics changed. Executed 72 focused jsdom tests across fold, ToolCallDisplay and inline approval keepers. Clean-commit negative controls hiding the pending grant and removing expectedRequestEventId each failed the retained fold keeper; exact bytes restored and 72 tests passed. This scoped review does not refresh other guide inputs or establish device geometry, engine acceptance, hosted qualification or release.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx","src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx"]}
+  ]
+}

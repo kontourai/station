@@ -158,3 +158,14 @@ paths = [
   '''(^|/)docs/learn/review-ledger/notes/20261001T130629\.148Z-544c9256a5b7\.json$''',
   '''(^|/)docs/learn/review-ledger/notes/archive/[0-9a-f]{40}\.json$''',
 ]
+
+[[allowlists]]
+description = "Verified relay UX review prose; SSH/delegation is not a credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^SSH/delegation$''']
+paths = [
+  '''(^|/)docs/learn/review-ledger/notes/20261004T072744\.891Z-91c3555a3247\.json$''',
+  '''(^|/)docs/learn/review-ledger/notes/20261004T072744\.891Z-eef52c1ee93b\.json$''',
+]

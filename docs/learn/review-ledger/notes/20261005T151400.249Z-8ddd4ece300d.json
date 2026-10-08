@@ -1,0 +1,7 @@
+{
+  "revision": "3dc718517ffcf6997f9eee8b395d76f246f2cc92",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"#3331: added the phone request-sheet paragraph under Dialogs and sheets, traced against RequestSheet.tsx (ResponsiveDialogSurface consumer, layer dialog, historyMode entry, ResponsiveSurfaceActions footer, hide-only dismissal, useRequestSheet pending close) and its two callers McpElicitationCard and ToolCallDisplay. Inventory entries added for RequestSheet; McpElicitationCard and ToolCallDisplay action entries note the phone path.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]}
+  ]
+}

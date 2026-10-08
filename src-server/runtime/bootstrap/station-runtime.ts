@@ -5,6 +5,7 @@ import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollou
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
   type LoadedDeploymentAuthentication,
@@ -35,6 +36,8 @@ import {
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
+import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
@@ -502,6 +505,7 @@ export interface StationRuntimeOptions {
     ready: (application: VirtualApplication) => void;
   };
   /** Explicit self-hosted routing composition; requires virtualApplication. */
+  relayInvitationOwner?: RelayInvitationOwner;
   selfHostedBrokerConnector?: {
     /** Validated native application lane actually selected by the trusted connector factory. */
     nativeApplication?: NativeApplicationConnectorConfiguration;
@@ -535,6 +539,7 @@ export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
   private virtualApplication?: VirtualApplicationIngress;
+  private readonly relayInvitationOwner?: RelayInvitationOwner;
   private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
   private selfHostedBroker?: {
     start(): Promise<void>;
@@ -1115,6 +1120,7 @@ export class StationRuntime {
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
+    this.relayInvitationOwner = options.relayInvitationOwner;
     this.selfHostedBrokerConfiguration = options.selfHostedBrokerConnector;
     if (
       this.selfHostedBrokerConfiguration &&
@@ -3616,6 +3622,20 @@ export class StationRuntime {
           timers: this.timers,
           configLoader: this.configLoader,
           storageAdapter: this.storageAdapter,
+          resolveProjectToolServers: async (input) => {
+            const slug = input.metadata?.projectSlug;
+            if (typeof slug !== 'string' || !slug) return [];
+            const project = this.projectService.getProject(slug);
+            const roots = await this.knowledgeStoreProvider.listRoots();
+            return projectMcpServers(
+              project,
+              roots.some(
+                (root) =>
+                  root.scope.kind === 'project' &&
+                  root.scope.projectSlug === slug,
+              ),
+            );
+          },
           skillService: this.skillService,
           feedbackService: this.feedbackService,
           voiceService: this.voiceService,
@@ -4204,6 +4224,7 @@ export class StationRuntime {
       agentActivityPublisher,
       notificationDeliveryRouter,
     } = configureRuntimeRoutes({
+      relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
       ...(this.nativeDeviceProofPilot
@@ -4343,6 +4364,25 @@ export class StationRuntime {
       activeAgents: this.activeAgents,
       agentSpecs: this.agentSpecs,
       agentTools: this.agentTools,
+      loadProjectTools: createProjectNativeToolLoader({
+        agentSpecs: this.agentSpecs,
+        getProject: (slug) => this.projectService.getProject(slug),
+        listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        loadTools: (slug, spec) =>
+          this.framework.loadTools(slug, spec, {
+            configLoader: this.configLoader,
+            mcpConfigs: this.mcpConfigs,
+            mcpCustody: this.mcpCustody,
+            mcpConnectionStatus: this.mcpConnectionStatus,
+            integrationMetadata: this.integrationMetadata,
+            toolNameMapping: this.toolNameMapping,
+            toolNameReverseMapping: this.toolNameReverseMapping,
+            mcpToolProvenanceGeneration: this.mcpToolProvenanceGeneration,
+            integrationSecretResolver: this.secretBindingAdministration,
+            logger: this.logger,
+            serverPort: this.port,
+          }),
+      }),
       memoryAdapters: this.memoryAdapters,
       mcpConnectionStatus: this.mcpConnectionStatus,
       integrationMetadata: this.integrationMetadata,

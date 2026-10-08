@@ -66,6 +66,7 @@ export function SessionModelPicker({
     currentProviderId ?? 'all',
   );
   const [capabilityFilters, setCapabilityFilters] = useState<string[]>([]);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const preferences = useModelPickerPreferences();
   const favoriteKeys = useMemo(
     () => new Set(preferences.favorites),
@@ -144,7 +145,9 @@ export function SessionModelPicker({
           providerFilter === 'all' ||
           (providerFilter === 'favorites'
             ? favoriteKeys.has(preferenceKeys.get(model)!)
-            : model.providerId === providerFilter),
+            : providerFilter === 'recents'
+              ? recentIndex.has(preferenceKeys.get(model)!)
+              : model.providerId === providerFilter),
       )
       .filter((model) =>
         selectedFilters.every((filter) => filter?.matches(model)),
@@ -365,48 +368,64 @@ export function SessionModelPicker({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              {providers.length > 1 && (
-                <fieldset
-                  className="session-model-picker__providers"
-                  aria-label="Providers"
+              <fieldset
+                className="session-model-picker__providers"
+                aria-label="Providers"
+              >
+                <button
+                  type="button"
+                  aria-pressed={providerFilter === 'recents'}
+                  onClick={() => setProviderFilter('recents')}
                 >
+                  Recent
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={providerFilter === 'favorites'}
+                  onClick={() => setProviderFilter('favorites')}
+                >
+                  ★ Favorites
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={providerFilter === 'all'}
+                  onClick={() => setProviderFilter('all')}
+                >
+                  All
+                </button>
+                {providers.map((provider) => (
                   <button
                     type="button"
-                    aria-pressed={providerFilter === 'favorites'}
-                    onClick={() => setProviderFilter('favorites')}
+                    key={provider.id}
+                    aria-label={provider.name}
+                    aria-pressed={providerFilter === provider.id}
+                    disabled={!provider.available}
+                    title={
+                      provider.available
+                        ? provider.name
+                        : `${provider.name}: ${provider.detail ?? 'Unavailable'}`
+                    }
+                    onClick={() => setProviderFilter(provider.id)}
                   >
-                    ★ Favorites
+                    {provider.name}
+                    {!provider.available && (
+                      <small>{provider.detail ?? 'Unavailable'}</small>
+                    )}
                   </button>
-                  <button
-                    type="button"
-                    aria-pressed={providerFilter === 'all'}
-                    onClick={() => setProviderFilter('all')}
-                  >
-                    All
-                  </button>
-                  {providers.map((provider) => (
-                    <button
-                      type="button"
-                      key={provider.id}
-                      aria-label={provider.name}
-                      aria-pressed={providerFilter === provider.id}
-                      disabled={!provider.available}
-                      title={
-                        provider.available
-                          ? provider.name
-                          : `${provider.name}: ${provider.detail ?? 'Unavailable'}`
-                      }
-                      onClick={() => setProviderFilter(provider.id)}
-                    >
-                      {provider.name}
-                      {!provider.available && (
-                        <small>{provider.detail ?? 'Unavailable'}</small>
-                      )}
-                    </button>
-                  ))}
-                </fieldset>
-              )}
-              {availableFilters.length > 0 && (
+                ))}
+              </fieldset>
+              <button
+                type="button"
+                className="session-model-picker__options-toggle"
+                aria-expanded={optionsOpen}
+                onClick={() => setOptionsOpen((open) => !open)}
+              >
+                Options
+                {capabilityFilters.length > 0
+                  ? ` (${capabilityFilters.length} filters)`
+                  : ''}
+              </button>
+              {optionsOpen && availableFilters.length > 0 && (
                 <fieldset
                   className="session-model-picker__filters"
                   aria-label="Capabilities"
@@ -459,7 +478,9 @@ export function SessionModelPicker({
                     label={
                       providerFilter === 'favorites' && !query
                         ? 'No favorite models yet.'
-                        : 'Nothing matches your search.'
+                        : providerFilter === 'recents' && !query
+                          ? 'No recent models yet.'
+                          : 'Nothing matches your search.'
                     }
                   />
                 )}
@@ -468,13 +489,15 @@ export function SessionModelPicker({
           ) : (
             <ModelCatalogUnavailableState stale={stale} />
           )}
-          <ModelRuntimeOptionFields
-            idPrefix="session-model-picker"
-            className="session-model-picker__effort"
-            capabilities={capabilities}
-            runtimeOptions={runtimeOptions}
-            onRuntimeOptionChange={onRuntimeOptionChange}
-          />
+          {optionsOpen && (
+            <ModelRuntimeOptionFields
+              idPrefix="session-model-picker"
+              className="session-model-picker__effort"
+              capabilities={capabilities}
+              runtimeOptions={runtimeOptions}
+              onRuntimeOptionChange={onRuntimeOptionChange}
+            />
+          )}
           {currentModel && (
             <button
               type="button"

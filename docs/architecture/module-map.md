@@ -27,6 +27,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
 | [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `src-server/services/orchestration/session-message-delivery.ts` |
+| [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -130,6 +131,30 @@ consume host-supplied trust and structured peer/account operations. The ordinary
 selected native route now composes these owners for separate account sign-in,
 invitation acceptance and bounded member reads. This source integration does not
 establish physical iOS or released Nightly qualification.
+
+The [relay management routes](../../src-server/routes/system/relay-management-routes.ts)
+compose the runtime-owned [connector invitation issuer](../../src-server/services/connections/relay-invitation-owner.ts)
+with exact native-surface approval/revocation and pending Device decisions. The
+[actor currency owner](../../src-server/security/relay-management-actor.ts)
+retains the canonical human actor, account state and Device binding;
+[management authority](../../src-server/security/relay-management-authority.ts)
+rechecks explicit Device scope and provider currentness after asynchronous work.
+Target approval/revision is rechecked before issuance or revocation. Public SDK
+projections expose route/trust facts, never issuer credentials.
+
+The [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
+serves desktop and selected native relay views. `relay:manage` (**Manage remote
+access**) requires explicit operator promotion and is excluded from default
+and preset scopes. Only closed relay and Project access management leaves are
+admitted; Project `manage-members` remains independently necessary. A dedicated
+native account host operation prepares the management POSTs without widening
+the generic GET/HEAD signer. Agent, terminal and Task share/unshare authority
+are excluded. The [account-bound gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
+uses the same exact relay-leaf classifier and admits account-bound management
+only with current native proof/account binding and separate `relay:manage`.
+Credential-only account-bound Devices remain gated; capabilities are neutral
+false without management authority. This source composition has no released Nightly,
+physical-device or two-human qualification receipt.
 
 The native [account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
 is a separate foundation. It stores a software P-256 key through the existing
@@ -944,6 +969,12 @@ actual process recovery and two-person public delivery remain unqualified.
 
 ## Native relay link intake
 
+The public [link codec](../../packages/shared/src/native-relay-link.ts) belongs
+to `@kontourai/station-shared/native-relay-link`. SDK and server consumers use
+that published leaf; Connect retains a compatibility re-export of the same
+implementation. Moving its package owner preserves parsing, wire format and
+refusal rules; it does not grant trust or move native secret custody.
+
 The [host intake](../../src-desktop/src/native_relay_link_intake.rs) owns bounded
 invitation custody, public pending handles, cancellation and expiry. The
 [typed envelope](../../packages/contracts/src/native-relay-link.ts) separates a
@@ -1205,6 +1236,57 @@ and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runt
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the
 tool-level behavior.
+
+## SessionDigest
+
+An agent deciding whether a peer Session is worth a full transcript read needs
+a cheap account of it, and that account must be what Station recorded, not a
+model's summary. [SessionDigest](../../src-server/services/orchestration/session-digest.ts)
+folds the recorded facts of a conversation's turns into that account for Station
+Control's `get_session_digest`, and the
+[route](../../src-server/routes/orchestration/session-project-activity.ts) that
+serves it also serves `list_project_activity`.
+
+**Interface.** `EventStore.readTurnDigestFacts(threadIds, { beforeGlobalSequence,
+turnLimit })` selects and aggregates in SQLite the facts of a window of turns,
+newest first: the turn's `turn.started` (a steer is not a turn) with a bounded
+prompt prefix, its last terminal event, a count of `tool.started` by tool name,
+the path argument of a successful call whose own `tool.completed` reported an
+`edit`, `delete` or `move` kind (and whether any call of the turn reported a
+kind at all), and the `pull-request` rows the turn declared.
+`EventStore.listThreadIdsStartedIn(projectId)` selects the threads that could
+be in one Project's scope from their start records (`session.started` and `session.configured`, as the scope owner reads them), so the list narrows before
+it folds; it is a candidate list, never the check.
+`digestTurn(facts, children)` bounds each field and `fitDigestPage(turns)` takes
+the longest prefix under 8 KiB, refusing (`DigestTurnTooLargeError`) rather
+than serving a turn that alone exceeds it; a lineage past 500 Sessions is
+refused the same way (`TurnDigestLineageTooLongError`). `encodeDigestCursor` and `decodeDigestCursor` carry the paging
+position, the oldest returned turn's `turn.started` global sequence.
+
+**Invariants.** Nothing is summarized and nothing is named that nothing
+computes: a fact that was not recorded is absent, and a turn whose engine
+reports no tool kinds says `filesReported: false` instead of implying no files;
+and a turn with no terminal event is `open`, not
+guessed. Each field is bounded and says when it was collapsed, so a page ends
+for the byte cap, never by cutting a turn, and paging covers each turn once.
+Delegated children are the Sessions Station derived as launched from the
+conversation (`listSessionsNamingParents`, `stationDerived`) that started within
+a turn's window (the parent is recorded per conversation, not per turn), and a child the caller may not see is not counted.
+
+**Composition and evidence.** The route decides authority per Session before
+reading anything: the owner-scoped read model, the shared scope rule
+(`stationControlScopeRefusal` with the owner's Project `view` action), and no
+remote host. A Session out of scope reads as not found. The status word is
+`sessionLadderWord` in the
+[session-attention contract](../../packages/contracts/src/session-attention.ts),
+the derivation the UI's status ladder also reads. The
+[mounted matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts)
+drives every caller kind against same-Project, other-Project, global, other-owner
+and remote targets over real events, and the
+[fold tests](../../src-server/services/orchestration/__tests__/session-digest.test.ts)
+pin the bounds. Their presence is not an executed receipt against a real engine.
+See [agent configuration](../guides/self-configuring-agent.md#project-activity)
+for the tool-level behavior.
 
 ## ConversationSessionLineage
 
@@ -3762,3 +3844,16 @@ separate platform evidence. Do not revive the deleted `notification_watch.rs`
 as a second reader: it would bypass the delivery router's envelope and privacy decisions.
 See [desktop alerts](../guides/desktop-tray.md#desktop-alerts-while-the-window-is-hidden)
 for the user-facing lifecycle.
+
+## Project tool defaults
+
+[Project tool composition](../../src-server/services/projects/project-tools.ts)
+adds configured MCP IDs and detects registered Project Knowledge stores.
+The external [session resolver](../../src-server/services/orchestration/session-agent-resolution.ts)
+captures those defaults at session start. Native chats use
+[Project tool context](../../src-server/routes/chat/project-tool-context.ts) and an
+[Agent-owned tool view](../../src-server/runtime/tools/agent-tool-view.ts), retaining
+prompt, memory, hooks and configuration-generation guards. Hookless temporary
+model recovery refuses positive additions. Agent restrictions and store ACLs
+remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)
+explains the UI and opt-out behavior.

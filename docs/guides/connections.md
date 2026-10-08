@@ -167,6 +167,69 @@ with controlled provider responses. An isolated Claude CLI probe confirmed the
 browser-code prompt on macOS; these checks do not prove a completed live OAuth
 exchange, every provider plan or Windows secure-store behavior.
 
+## Invite a device to a relay Station
+
+Under **Connections → Computers**, the **Devices** list and its **Invite device**
+action appear when the selected
+Station has a configured connector and the caller can manage relay access. A
+Station operator can explicitly promote a paired Device with **Manage remote
+access** (`relay:manage`). This permission is absent from presets and default
+grants. It permits only the closed relay-management and Project access
+management routes; Project membership and its `manage-members` action remain
+independent requirements. It grants no Agent, terminal, or Task publication
+(share/unshare) authority.
+
+**Invite device** opens three steps:
+
+1. **Send the app link.** Choose the recipient app and copy its setup link. The
+   link supplies routing intent; it does not approve a Device or a Station
+   signing key.
+2. **Approve their phone.** The recipient opens the link and returns their setup
+   info. Paste it (surrounding message text is ignored); setup info for another
+   Station is refused before any write. **Approve and invite** approves that
+   exact installation and then creates its invitation. If the invitation's
+   outcome is uncertain, the action stays disabled instead of retrying; check
+   with the recipient before starting again.
+   This protection survives **Change** and closing/reopening the dialog only
+   within the current Devices panel and Station/account authority. Navigation,
+   reload, or an authority remount resets it. There is no durable invitation
+   deduplication or broker-status reconciliation; manually check with the
+   recipient before creating another invitation. Only choose **Allow another**
+   after that check.
+3. **Send the invitation.** Copy the invitation link and share the Station code
+   and key ID by a separate call or message so the recipient can confirm the
+   Station. Invitations are single-use. The default lifetime is 24 hours; choices are
+   5 minutes, 15 minutes, 1 hour, 24 hours, or **Never expires**. A non-expiring
+   invitation still permits only one redemption.
+
+After the three-step dialog, review the pending account-bound Device request
+in **Devices** and approve or decline it. Project access is a separate
+invitation and membership decision. Removing an installation approval is also
+a separate action and requires confirmation.
+
+Native registration and Project invitation acceptance accept a full Project
+invitation link or its code. They extract the token without switching the
+selected Station; the selected Station still validates it. Details about the
+separate approvals are available through the information controls.
+
+The desktop and native views use the same selected-Station authority. Native
+Project access controls require the Project's `manage-members` action, and
+writes are disabled without a current management or operate scope. The server
+rechecks Device authority, the actual human actor and account-provider
+currentness, plus the exact target approval before committing a decision.
+Connector issuer credentials stay in the runtime; these controls expose no
+issuer secret. See [the broker operator path](self-hosted-broker.md#station-invitation-controls)
+and [native verification limits](native-shell-verification.md#relay-management-source-integration).
+
+This is source integration with diagnostic checks, not a released Nightly or
+physical-device delivery receipt. For account-bound Devices, the gate admits only
+the exact native relay-management leaves with current Device proof and account
+binding/session. Management separately requires explicit `relay:manage`; a
+credential-only account-bound Device remains refused. The capabilities read
+returns `canManage: false` without management authority and grants nothing.
+Project access administration still requires Project IAM. See the
+[exact admission inventory](deployment-authentication.md#native-relay-management-admission).
+
 ## Saved Station addresses
 
 Tap the connection dot on a phone, or the connection name on desktop, to
@@ -294,12 +357,18 @@ uncertain activation needs its own status recovery; keep that setup open.
 
 
 Configured routes are not selected automatically. A configured row says
-**Device configured · not selected** until you choose **Use this Station**. A
-selected configured row distinguishes **account sign-in required** from
-**account session active** using the current native account scope; neither
+**Not in use** until you choose **Use this Station**. A selected configured row
+distinguishes **In use · sign in needed** from **In use** using the current native account scope; neither
 status says the workspace is connected. Sign in with the Station account only
 after selecting its route. Account sign-in does not approve a Device or create
 Project membership.
+
+Before account sign-in, the native member shell shows Station setup on the
+page. After sign-in, shared Projects come first and **Stations** opens the
+connection controls in a dialog. An empty Project list offers **Use a Project
+invitation** through that same dialog. Technical setup and the outbound
+delegation command stay behind **Advanced** disclosures; they do not supply
+additional authority.
 
 The selected route's **Accept account invitation** action requires that account
 session. Station returns a typed Project membership receipt with the exact
@@ -662,8 +731,13 @@ discovery lists what the proxy serves.
 The Engine's login readiness is checked under the same `env` and `configHome`:
 a proxy token such as `ANTHROPIC_AUTH_TOKEN` counts as signed in, an
 empty-string value masks the inherited key, and Codex's login probe reads the
-configured `CODEX_HOME`. Readiness does not apply the app-home opt-in or a
-selected credential profile.
+configured `CODEX_HOME`. On macOS, Claude readiness reads its selected
+Keychain namespace first, using `CLAUDE_SECURESTORAGE_CONFIG_DIR` before
+`CLAUDE_CONFIG_DIR`. It consults the selected credential file only when the
+Keychain entry is absent. An unreadable or malformed secure-store result stays
+unknown; it cannot borrow another namespace's login. These checks establish
+credential presence, rather than token validity. Readiness does not apply the
+app-home opt-in or a selected credential profile.
 
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home
@@ -812,7 +886,9 @@ one. See [Agent configuration](agents.md#agent-configuration).
 
 The chat model picker shows the resolved connection and model. Open it to
 search across ready Model connections and Engines, filter by connection or
-Favorites, and choose the exact model for this chat. Connections that still
+Favorites or Recent, and choose the exact model for this chat. Open Options
+for capability filters and the selected model's supported runtime controls.
+Connections that still
 need setup remain visible with their status, but cannot create an invalid
 selection.
 

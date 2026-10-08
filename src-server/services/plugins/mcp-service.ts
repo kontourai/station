@@ -16,7 +16,11 @@ import {
 } from '@kontourai/station-shared/mcp';
 import { mcpToolDisabled } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
-import type { Transport } from '@modelcontextprotocol/client';
+import type {
+  GetPromptResult,
+  Prompt,
+  Transport,
+} from '@modelcontextprotocol/client';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { markIntegrationEnabledExplicit } from '../../domain/config-loader-storage.js';
@@ -1276,7 +1280,7 @@ export class MCPService {
    */
   private async withMcpUiConnection<T>(
     serverId: string,
-    operation: 'connect' | 'resource-read' | 'tool-call',
+    operation: 'connect' | 'resource-read' | 'tool-call' | 'prompt-read',
     fn: (conn: MCPConnection) => Promise<T>,
   ): Promise<T> {
     const claim = this.mcpCustody.acquire(serverId, 'app');
@@ -1520,6 +1524,42 @@ export class MCPService {
     });
   }
 
+  /**
+   * #3284: the prompts a server offers, over the same Station-owned
+   * connection its tools use. A server that does not declare the `prompts`
+   * capability offers none (an empty list, not an error).
+   */
+  async listMCPPrompts(serverId: string): Promise<Prompt[]> {
+    return this.withMcpUiConnection(serverId, 'prompt-read', async (conn) => {
+      if (!conn.negotiation.serverCapabilities?.prompts) return [];
+      const prompts: Prompt[] = [];
+      let cursor: string | undefined;
+      // Bounded: a server that pages forever is refused, not truncated.
+      for (let page = 0; page < MCP_PROMPT_LIST_MAX_PAGES; page++) {
+        const result = await conn.client.listPrompts(
+          cursor ? { cursor } : undefined,
+        );
+        prompts.push(...result.prompts);
+        cursor = result.nextCursor;
+        if (!cursor) return prompts;
+      }
+      throw new StationOwnedToolServerError(
+        `MCP server '${serverId}' lists more prompt pages than Station reads (${MCP_PROMPT_LIST_MAX_PAGES}).`,
+      );
+    });
+  }
+
+  /** #3284: read one prompt with string arguments (`prompts/get`). */
+  async getMCPPrompt(
+    serverId: string,
+    name: string,
+    args: Record<string, string>,
+  ): Promise<GetPromptResult> {
+    return this.withMcpUiConnection(serverId, 'prompt-read', (conn) =>
+      conn.client.getPrompt({ name, arguments: args }),
+    );
+  }
+
   private async assertMcpUiToolEnabled(
     serverId: string,
     toolName: string,
@@ -1671,6 +1711,7 @@ function isMissingIntegrationError(error: unknown): boolean {
 // Cap UI resource text to guard against oversized/hostile resources rendering
 // in the host. ~512KB of HTML is far beyond any reasonable panel.
 const MCP_UI_RESOURCE_TEXT_CAP = 512 * 1024;
+const MCP_PROMPT_LIST_MAX_PAGES = 20;
 
 // MCP `resources/read` returns `{ contents: [{ uri, mimeType?, text?, blob? }] }`.
 // Pick the first usable content entry; tolerate a single bare content object.
