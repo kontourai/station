@@ -39,7 +39,7 @@ describe('tauri context', () => {
     );
     expect(result.error, result.stderr).toBeUndefined();
     expect(result.status).toBe(0);
-    return JSON.parse(result.stdout);
+    return { report: JSON.parse(result.stdout), probeTrace: result.stderr };
   }
 
   function contextFixture(prefix = 'station-tauri-context-') {
@@ -103,14 +103,17 @@ describe('tauri context', () => {
   }
 
   test('a report retains real npm and Tauri versions and honest failures when three independent tools stall', () => {
-    const report = reportFor(root, stalledToolEnvironment());
+    const { report, probeTrace } = reportFor(root, stalledToolEnvironment());
     const tauri = JSON.parse(
       readFileSync(
         join(root, 'node_modules/@tauri-apps/cli/package.json'),
         'utf8',
       ),
     );
-    expect(report.checks.npm.status).toBe('checked');
+    expect(
+      report.checks.npm.status,
+      JSON.stringify({ npmCheck: report.checks.npm, probeTrace }),
+    ).toBe('checked');
     expect(report.checks.npm.value).toMatch(/^\d+\.\d+\.\d+$/);
     expect(report.checks.tauriCli.status).toBe('checked');
     expect(report.checks.tauriCli.value).toBe(`tauri-cli ${tauri.version}`);
@@ -236,14 +239,17 @@ describe('tauri context', () => {
   test.skipIf(process.platform !== 'win32')(
     'reports versions from the real installed npm and local Tauri CLIs on Windows',
     () => {
-      const report = reportFor();
+      const { report, probeTrace } = reportFor();
       const tauri = JSON.parse(
         readFileSync(
           join(root, 'node_modules/@tauri-apps/cli/package.json'),
           'utf8',
         ),
       );
-      expect(report.checks.npm.status).toBe('checked');
+      expect(
+        report.checks.npm.status,
+        JSON.stringify({ npmCheck: report.checks.npm, probeTrace }),
+      ).toBe('checked');
       expect(report.checks.npm.value).toMatch(/^\d+\.\d+\.\d+$/);
       expect(report.checks.tauriCli.status).toBe('checked');
       expect(report.checks.tauriCli.value).toBe(`tauri-cli ${tauri.version}`);
@@ -259,7 +265,7 @@ describe('tauri context', () => {
         if (key.toLowerCase() === 'npm_execpath') delete env[key];
       }
       env.npm_execpath = join(directory, 'missing', 'npm-cli.js');
-      const report = reportFor(root, env);
+      const { report } = reportFor(root, env);
       expect(report.checks.npm.status).toBe('failed');
       expect(report.checks.npm.reason).toContain('cannot resolve npm CLI');
       expect(report.checks.npm.value).toBeUndefined();
@@ -273,7 +279,7 @@ describe('tauri context', () => {
     'reports a missing local Tauri CLI even when Node is available',
     () => {
       const directory = contextFixture('station-tauri-missing cli-');
-      const report = reportFor(directory);
+      const { report } = reportFor(directory);
       expect(report.checks.node.status).toBe('checked');
       expect(report.checks.tauriCli.status).toBe('skipped');
       expect(report.checks.tauriCli.reason).toBe('command-not-found');

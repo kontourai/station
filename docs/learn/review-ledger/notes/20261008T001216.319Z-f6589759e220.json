@@ -1,0 +1,7 @@
+{
+  "revision": "148d3659b8e559d2af6d8ea85a621f5c137d51cb",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Scoped review of the assertion-diagnostic change at 148d3659b8. Read the desktop guide and traced the context CLI/report/trace caller: public report shape, statuses, checked real npm/Tauri versions, 10s per-probe/30s caller bounds and cleanup are unchanged. Only the test helper now retains captured stderr separately from the unchanged parsed report; four callers destructure it and two positive npm assertions print JSON npmCheck/probeTrace on failure. No guide prose or public journey change is needed. Mac Node24.19 baseline and restored suite12PASS/3Windows-only skips. A real CLI PATH-isolation control makes npm unavailable while retaining the staged Rust tools: the old assertion only reports skipped-versus-checked, the patched assertion retains reason command-not-found plus real npm start/end trace; both controls fail only the intended positive keeper (1FAIL/11PASS/3skips), and exact committed bytes restore12PASS/3skips. Missing executable status remains honestly skipped on POSIX; this control is not a reproduction of the UNKNOWN hosted Node24.21 failed-status reason at 78ae51fe. Source production/bot/version ledger and frozen2dea baseline are unchanged; no hosted/native app/release qualification or Windows24.18 proof loan.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/tauri-context.test.ts"]}
+  ]
+}
