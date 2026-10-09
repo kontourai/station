@@ -17,6 +17,7 @@ export interface ConversationHandoffMarker {
   targetAgentId: string;
   targetEnvironmentId: string;
   targetConnectionId?: string;
+  targetExecutionAgentId?: string;
   targetModelId?: string;
   messageDigest: string;
   createdAt: string;

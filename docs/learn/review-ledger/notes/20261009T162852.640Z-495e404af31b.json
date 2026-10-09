@@ -1,0 +1,69 @@
+{
+  "revision": "00b004dd4489d1ffe4bbd4f28b974397ee0faf88",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed the cited native guide delta: resolver retries and approval uncertainty are client behavior; the dated sidecar, package and reboot evidence table retains its original limits. No new artifact or physical receipt is asserted.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Traced grouped approval presentation, full command reveal, exact request/event binding, shared pending-answer snapshots, proxy uncertainty, 15-second send and 5-second inspection, session grant mapping and notification navigation. Reviewed real SDK caller, remount and browser controls; device and provider proof remain separate.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx","src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","src-ui/src/hooks/orchestration/approvalHandlers.ts","tests/mobile-request-sheet.spec.ts","src-ui/src/components/chat/ApprovalSheetProvider.tsx","src-ui/src/components/chat/ApprovalSheetContext.ts","src-ui/src/hooks/orchestration/answerRequest.ts","src-ui/src/components/notifications/NotificationHistory.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed ChatMessageList wrapper and approval callbacks against the current UIBlock/form sender ownership paragraph. Approval grouping retains the UIBlock actions provider and normal form submission; the dated proposed bridge shapes retain their classification.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Inspected main.tsx optional extension failure presentation and the standalone share-page branch. Share still mounts above the authenticated provider and persisted-query graph; no share fetch, persistence or authorization path changed.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the notification-delivery addition about human approval actions. Its in-app decision and conversation routing do not implement Automation trigger dispatch or change unattended authority; the foundations/proposal distinction remains accurate.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed event-window pending requests feeding the status pill, failed observation withholding the cached clock, manual capability refresh and mobile approval reveal. Existing composer hierarchy, model selection and send ownership remain intact.","inputs":["docs/design/chat-composer.md","src-ui/src/components/status/chatStatus.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the cited native guide recovery paragraph and native adapters. DNS-only retry keeps the selected endpoint and authority guard; broker signaling, enrollment and encrypted application transport remain separately qualified.","inputs":["docs/design/connection-broker.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Traced approval toast decision delivery and accepted notification actions to canonical conversation navigation, including the Recent activity fallback. Reviewed in-app error summaries and status checks. Native push payloads and background lifecycle were not changed or newly qualified.","inputs":["docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed removal of notice-dismiss storage and extension notice presentation against the accepted-direction record and current trust section. Origin-bound bundle consent, native authority, content grants and proposed shell architecture retain their existing boundaries.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/core/remotePluginBundleConsent.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed Attention approval actions against this routing guide and Agent tools/approval-settings explanation. Accepted actions open the owning conversation; Agent configuration, tool availability and harness policy are unchanged.","inputs":["docs/guides/agents.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Reviewed RegistryView load-failure message and retry action against catalog/profile lifecycle requirements. The UI recovery action reloads the registry; visible catalog entries still do not install or execute bundles or grant permissions.","inputs":["docs/guides/distribution-profiles.md","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed linked SDK approval deadlines and plugin recovery guide updates against the integration routes and evidence checklist. These remain public-client and extension presentation contracts, without a hosted deployment or native delivery claim.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed the native guide delta against the lab security, account, transport and UI evidence separation. Resolver retry does not add enrollment, identity provenance or a physical two-person/native receipt.","inputs":["docs/guides/local-collaboration-lab.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Inspected native authenticated/public handshake DNS-only retries, cancellation, authority rechecks and Rust no-redirect configuration. Added source-grounded recovery and uncertainty guidance. Adapter tests and browser geometry controls remain diagnostic; an installed native app on this head is not yet qualified.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/main.tsx","src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","src-ui/src/platform/native/authenticatedTransport.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed registry bootstrap, deferred extension notification mode and owning RegistryView failure/Retry UI. Intentional remote isolation is quiet; enable and revoke still use origin-bound durable consent and existing authority warning. Removed notice-dismiss helpers confer no bundle permission.","inputs":["docs/guides/plugins.md","src-ui/src/components/registry/PluginRegistryGate.tsx","src-ui/src/components/DeferredCapabilityBoundary.tsx","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed controlled open lifecycle in ResponsiveDialogSurface, modal history/focus release, grouped sheet state retention and screen-edge containment. Named lifecycle tests and 320/390 browser controls support the scoped behavior; universal surface/device adoption is not asserted.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the referenced native transport changes against signaling invitation, signing trust and Device/account grant separation. Retry remains on the same selected request; broker recovery proposal and permission boundaries are unchanged.","inputs":["docs/guides/self-hosted-broker.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed native guide evidence limits and the repaired browser/owner tests against fixture fidelity. Response gates hold real caller HTTP completion; proxy/remount/recent-action mutations are assertion controls. The native-recovery negative check now scopes sidecar text rather than rejecting unrelated DNS delay prose.","inputs":["docs/guides/testing.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed main optional capability presentation and ResponsiveDialogSurface hidden/open behavior against palette, public design variables and local surface ownership. Theme preference and channel selection remain unchanged; grouping uses existing design variables and caller geometry evidence.","inputs":["docs/guides/theming.md","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed modal lifecycle and main extension notice changes against stream/approval owner boundaries. No route, ApprovalRegistry, audience or server persistence behavior was changed by these UI surfaces; current backend pattern claims remain accurate.","inputs":["docs/patterns/backend.md","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed shared request state subscription and canonical navigation, controlled modal lifecycle and extension-local recovery against the frontend ownership rules. Transport answer state is shared by exact identity; remote APIs continue through the SDK and existing mutation owners.","inputs":["docs/patterns/frontend.md","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed useToolApproval exact request/event resolution and confirmed-success bookkeeping against HTTP acceptance/activation distinctions. Client deadlines and uncertainty do not change route schemas, operator permissions or server approval scope.","inputs":["docs/reference/api.md","src-ui/src/hooks/useToolApproval.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed ChatDockBody event-window approval status and observation failure behavior against runtime/Agent configuration ownership. No persisted configuration field, default, engine approval setting or saved-Station address contract changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed main.tsx extension notification selection against the API-base/environment table. This change adds no environment setting and leaves injected, build-time and saved/native endpoint precedence intact.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed resolveOrchestrationRequest timeout forwarding and command ChatHttpError status/provenance preservation, plus real caller refusal/uncertainty controls. Added deadline guidance; exact request binding and public response/error fields remain the authority.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed accepted Attention action routing and exact request IDs against respondToRequest wire schema and canonical/wire ID distinction. Session decisions keep acceptForSession; this UI change does not alter provider RPC IDs or server command authorization.","inputs":["docs/reference/session-api.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed SDK orchestration command deadline/error changes against the manual service and control authority explanation. Documentation remains descriptive; no new control authority, unattended execution or shipped documentation server availability is implied.","inputs":["docs/reference/station-docs.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed native authenticated DNS retry against the connection/preparation and observed-readiness explanation. Reaching a Station remains separate from engine setup and completed work; this client repair does not create a new install or startup claim.","inputs":["docs/user/getting-started.md","src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","src-ui/src/platform/native/authenticatedTransport.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed main optional extension notifications against desktop startup/reveal and local-service recovery. Extension failures leave the usable shell in place; sidecar retry counts, native readiness and platform evidence limits remain intact.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed SDK reference deadline/error additions against these contributor instructions: public contract remains documented in the reference; cancellation and waiting-caller outcomes are exercised through the owning SDK caller.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed native guide resolver/approval section against the native evidence instructions. Source, browser, adapter and installed/device evidence remain distinct; no physical or packaged qualification is claimed from unit checks.","inputs":["src-desktop/AGENTS.md","docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed controlled ResponsiveDialogSurface lifecycle and shared identity-based approval state against canonical navigation, state primitives, design variables and caller-specific geometry requirements. The routed contributor rules remain accurate.","inputs":["src-ui/AGENTS.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]}
+  ]
+}

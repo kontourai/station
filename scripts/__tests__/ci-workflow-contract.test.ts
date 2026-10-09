@@ -873,6 +873,8 @@ describe('CI verification workflow contracts', () => {
     // Reason strings are the contract. "Publishes" means there is nothing to
     // verify before merge; "reduced PR lane" names where the PR signal lives.
     const declared: Record<string, string> = {
+      '.github/workflows/main-qualification.yml':
+        'qualifies combined main source after integration; PR: CI and the merge queue own pre-merge feedback',
       '.github/workflows/pages.yml':
         'publishes GitHub Pages from merged main; nothing to pre-verify',
       '.github/workflows/publish-packages.yml':
@@ -3392,7 +3394,12 @@ describe('hosted qualification workflow covers the full regression', () => {
     if?: string;
     needs?: string[];
     defaults?: Defaults;
-    strategy?: { matrix?: { include?: Array<Record<string, string>> } };
+    strategy?: {
+      'fail-fast'?: boolean;
+      'max-parallel'?: string;
+      matrix?: { include?: Array<Record<string, string>> };
+    };
+    'timeout-minutes'?: number;
     steps?: Step[];
     'continue-on-error'?: unknown;
   };
@@ -3509,6 +3516,23 @@ describe('hosted qualification workflow covers the full regression', () => {
     expect(shards.map(({ index }) => index).sort((a, b) => a - b)).toEqual(
       Array.from({ length: shards[0].count }, (_, index) => index + 1),
     );
+  });
+
+  it('declares bounded Free and explicit Expanded matrix fanout while retaining every leg', () => {
+    const { jobs } = document();
+    const profiles = [
+      ['ordinary', 4, 'ordinary'],
+      ['process-heavy', 2, 'heavy'],
+    ] as const;
+    for (const [name, legs, output] of profiles) {
+      const job = jobs[name];
+      expect(job.strategy?.['max-parallel'], name).toBe(
+        `\${{ fromJSON(needs.resolve.outputs.${output}) }}`,
+      );
+      expect(job.strategy?.['fail-fast'], name).toBe(false);
+      expect(job.strategy?.matrix?.include, name).toHaveLength(legs);
+      expect(job['timeout-minutes'], name).toBe(120);
+    }
   });
 
   it('runs phases only through the driver and gates on one aggregate check', () => {

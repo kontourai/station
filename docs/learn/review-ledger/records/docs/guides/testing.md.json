@@ -170,7 +170,13 @@
 
     "scripts/proof-repo-guardrails.mjs",
 
-    "scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts"
+    "scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts",
+
+    "tests/screenshots.baseline.json",
+
+    "tests/screenshots.baseline/overlay-dock-project-bound.png",
+
+    "tests/screenshots.baseline/overlay-dock-project-mismatch.png"
   ],
 
   "checks": [

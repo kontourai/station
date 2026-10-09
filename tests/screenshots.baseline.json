@@ -5,7 +5,7 @@
       "name": "agent-editor",
       "width": 1440,
       "height": 900,
-      "sha256": "1905060c1a57bc99dab1ea3b34e8b78a6608e39a6763558fa0256c752e20f775"
+      "sha256": "4fe209597c42536aaff49bcb127c79a5b1256464341386ed339740f55143e225"
     },
     {
       "name": "agent-editor-not-runnable",
@@ -17,7 +17,7 @@
       "name": "agents",
       "width": 1440,
       "height": 900,
-      "sha256": "856836f21d8e7210c984483354fa382463538a6e39efc374be1a8de9b140225a"
+      "sha256": "4bfdf8cf05df06c3cdbac74178a64ed1a173ec5b523bf97d4a4bb5614d4ee022"
     },
     {
       "name": "agents-empty",
@@ -65,7 +65,7 @@
       "name": "developer-telemetry",
       "width": 1440,
       "height": 900,
-      "sha256": "a0067c9825a53aab5257dee317839c5d5365a462d879b93abc64998a586ccba1"
+      "sha256": "4448ac7b4784829754fe2087c84010a4e164be658b5022cad014b339c5d33cec"
     },
     {
       "name": "home",
@@ -77,13 +77,13 @@
       "name": "mobile-access-request-error-320",
       "width": 320,
       "height": 844,
-      "sha256": "b4518aa8295137997b5d10150b826f1fbf4d9dc10e2445f250fc2381e745296c"
+      "sha256": "f26044b415b598660525808010100705c2f18769fec85d48c2a22a1c3c7ec97f"
     },
     {
       "name": "mobile-access-request-error-390",
       "width": 390,
       "height": 844,
-      "sha256": "a488fddb9eba9d6c9e879d5d3db454daeed314d0852e047eb636a6792a95d891"
+      "sha256": "c9bcb9c15bb0b59e3265093cc3601674f07870bf0b5a895ad802c27b48300959"
     },
     {
       "name": "mobile-activity-compact",
@@ -113,7 +113,7 @@
       "name": "mobile-agents",
       "width": 390,
       "height": 844,
-      "sha256": "cff9bce7c1ea9b9ec49e3436f1b3c63be584a7d9a7ad554d00582c2d0b9f1fc8"
+      "sha256": "0ac6c81aaeb66295c7f488b473dcbefc936581843d9d95914153902143d2d731"
     },
     {
       "name": "mobile-chat-dock-header-320",
@@ -137,13 +137,13 @@
       "name": "mobile-http-consent-320",
       "width": 320,
       "height": 844,
-      "sha256": "2fee463010fafa79aaf48b03e948f107483b7b4d46dc6a2fb5742a49f7547455"
+      "sha256": "c8bd4a61efc3fd0c1e3fe3b790128eac24decfca0371f14d5e5e3b1cc56c7216"
     },
     {
       "name": "mobile-http-consent-390",
       "width": 390,
       "height": 844,
-      "sha256": "da0ab11ab125ded2492908628dcb2ff43edde73ae301eb45a97b307d49032909"
+      "sha256": "056ac909600223da39550f5bf1dd2760df5c699e85e6340238e3ac8365684cda"
     },
     {
       "name": "mobile-onboarding-setup",
@@ -155,7 +155,7 @@
       "name": "mobile-settings-overview",
       "width": 390,
       "height": 844,
-      "sha256": "2d743bfd4e15e8766936c09111a312ff66185cff956ca93b84a215e6453c7936"
+      "sha256": "068fe8f7316ce29c3cea292692f3d3840c0799e8982216c37f5f5491a74aed5c"
     },
     {
       "name": "motion-reduced-mobile-chat",
@@ -167,7 +167,7 @@
       "name": "motion-reduced-navigation",
       "width": 1440,
       "height": 900,
-      "sha256": "856836f21d8e7210c984483354fa382463538a6e39efc374be1a8de9b140225a"
+      "sha256": "4bfdf8cf05df06c3cdbac74178a64ed1a173ec5b523bf97d4a4bb5614d4ee022"
     },
     {
       "name": "motion-reduced-notification",
@@ -215,19 +215,19 @@
       "name": "overlay-connection-banner",
       "width": 390,
       "height": 844,
-      "sha256": "785ea37b040e8d62ff1c32185d7bc00dec213ded7114325afdb2ff79dcbe6bcf"
+      "sha256": "c2810275f6538ac434ac2e4db38dc0181073bc1888c363e5e9609b79e469c95d"
     },
     {
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "f61dd060366c12e43cd2520f94824c60f1dedf7ee49338826bbed178cc08679e"
+      "sha256": "c050a3d249d582c7af521c516ff93d9bc6704ada081eb8ac9dfed4ee66454e63"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "cb5e2c5503de6b4bfd587d2fb26e694683ad97a4b4f8af040af3d6f517a598f7"
+      "sha256": "69157b389dd90b1f7ec02db72d92ed29637974925efcbc563c90ae8c72a20ff5"
     },
     {
       "name": "overlay-mobile-sheet",
@@ -311,13 +311,13 @@
       "name": "settings",
       "width": 1440,
       "height": 900,
-      "sha256": "d62e3a804f90c443944e304d769af48e4f8d3fbf6f52f57c6f2d1368a3a24c37"
+      "sha256": "c9b103f40c50fb405bfab6c94ee91284ffb9041aa2c037021b4aafc356da00d8"
     },
     {
       "name": "settings-info-tip",
       "width": 1440,
       "height": 900,
-      "sha256": "8cb95d0012f98aaa1df444323768a5dc0f9b0c51daa7597ff88e095e90775b3b"
+      "sha256": "6de4016760c4301d1d22a69cccc0073ea91f26a746eaf1e29ed79af1cfbf1eba"
     },
     {
       "name": "skills",

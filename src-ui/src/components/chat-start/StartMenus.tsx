@@ -1,6 +1,7 @@
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import React, { type RefObject, useCallback, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useExecutionStationCatalog } from '../../hooks/useExecutionStationCatalog';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import {
   type EffectiveModelSource,
@@ -14,7 +15,9 @@ import { type AgentFixRoute, agentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import {
+  GLOBAL_CONTEXT,
   modelPickerProviders,
   type NewChatModalContextOption,
   type NewChatWorkspaceHint,
@@ -227,6 +230,8 @@ export function StartProjectMenu({
   selectedContext,
   workspaceHint,
   folderlessHint,
+  icons,
+  accents,
   onChoose,
   onClose,
 }: {
@@ -237,23 +242,22 @@ export function StartProjectMenu({
   workspaceHint: NewChatWorkspaceHint;
   /** Where a project with no folder runs with the chosen Agent. */
   folderlessHint: NewChatWorkspaceHint;
+  /** The sidebar's project icons (`useProjectIcons`), from the caller. */
+  icons: ReadonlyMap<string, string>;
+  /** The sidebar's project colours (`useProjectAccents`), from the caller. */
+  accents: ReadonlyMap<string, string>;
   onChoose: (context: string) => void;
   onClose: () => void;
 }) {
   const anchorRef = useRef<HTMLElement | null>(anchor);
   const [search, setSearch] = useState('');
   const query = search.toLowerCase();
-  // TODO(project-icons): render `ProjectIcon` once feat/project-icons
-  // lands. Until then no raw `project.icon` reaches LayoutIcon here (it
-  // would hotlink a remote or path icon); every project shows the folder.
-  const safeOptions = options.map((option) =>
-    option.icon
-      ? { ...option, icon: undefined, glyph: 'folder' as const }
-      : option,
-  );
+  // Only `ProjectIcon` draws a project here: it shows an icon the contracts
+  // rule allows and never a raw `project.icon`, which `LayoutIcon` would
+  // hotlink.
   const filtered = query
-    ? safeOptions.filter((option) => option.label.toLowerCase().includes(query))
-    : safeOptions;
+    ? options.filter((option) => option.label.toLowerCase().includes(query))
+    : options;
   return (
     <ResponsiveDialogSurface
       layer={layer}
@@ -271,18 +275,35 @@ export function StartProjectMenu({
         closeLabel="Close project list"
         onClose={onClose}
       />
-      <p className="start-menu__hint">
-        {'path' in workspaceHint ? (
-          <>
-            Runs in <CwdBreadcrumb path={workspaceHint.path} />
-          </>
-        ) : (
-          workspaceHintText(workspaceHint)
-        )}
-      </p>
+      {'path' in workspaceHint ? (
+        // One line: the folder's parent gives way, its leaf stays readable.
+        <p className="start-menu__hint start-menu__hint--path">
+          <span className="start-menu__hint-lead">Runs in</span>
+          <CwdBreadcrumb path={workspaceHint.path} />
+          {workspaceHint.kind === 'unverified' && (
+            <span className="start-menu__hint-lead">(not checked yet)</span>
+          )}
+        </p>
+      ) : (
+        <p className="start-menu__hint">{workspaceHintText(workspaceHint)}</p>
+      )}
       <div className="start-menu__list">
         <ContextPickerOptions
           folderlessHint={folderlessHint}
+          renderMark={(option) =>
+            option.value === GLOBAL_CONTEXT ? undefined : (
+              <span className="start-menu__mark">
+                <ProjectIcon
+                  project={{
+                    name: option.label,
+                    icon: icons.get(option.value),
+                  }}
+                  size={24}
+                  accent={accents.get(option.value)}
+                />
+              </span>
+            )
+          }
           contextSearch={search}
           onContextSearchChange={setSearch}
           autoFocusFilter={false}
@@ -313,7 +334,11 @@ export function StartModelPicker({
   onReset,
   onRuntimeOptionChange,
   onClose,
+  profile,
+  onEnvironmentChange,
 }: {
+  profile?: AgentData;
+  onEnvironmentChange?: (environmentId: string) => void;
   anchor: HTMLElement | null;
   layer: MenuLayer;
   models: SelectableModel[];
@@ -331,6 +356,24 @@ export function StartModelPicker({
   onClose: () => void;
 }) {
   const anchorRef: RefObject<HTMLElement | null> = useRef(anchor);
+  if (profile && onEnvironmentChange)
+    return (
+      <StationScopedModelPicker
+        anchor={anchor}
+        layer={layer}
+        models={models}
+        loading={loading}
+        modelConnections={modelConnections}
+        choice={choice}
+        defaultModel={defaultModel}
+        onSelect={onSelect}
+        onReset={onReset}
+        onRuntimeOptionChange={onRuntimeOptionChange}
+        onClose={onClose}
+        profile={profile}
+        onEnvironmentChange={onEnvironmentChange}
+      />
+    );
   const loadingFrame = (
     <div className="session-model-picker__loading">
       <SkeletonList count={3} withIcon={false} label="Loading models" />
@@ -357,6 +400,7 @@ export function StartModelPicker({
             providers={modelPickerProviders(models, modelConnections)}
             currentProviderId={choice?.providerId ?? defaultModel?.providerId}
             currentModel={choice?.modelId}
+            currentExecutionAgentId={choice?.executionAgentId}
             defaultModel={defaultModel?.id ?? undefined}
             // The reset names where the default comes from, never the
             // current choice: with a Model chosen that is always the
@@ -382,6 +426,114 @@ export function StartModelPicker({
           />
         </React.Suspense>
       )}
+    </ResponsiveDialogSurface>
+  );
+}
+
+function StationScopedModelPicker(
+  props: React.ComponentProps<typeof StartModelPicker> & {
+    profile: AgentData;
+    onEnvironmentChange: (id: string) => void;
+  },
+) {
+  const environmentId = props.choice?.environmentId ?? 'current';
+  const catalog = useExecutionStationCatalog(props.profile, environmentId);
+  const remote = environmentId !== 'current';
+  const models = remote
+    ? catalog.models
+    : props.models.map((model) => ({
+        ...model,
+        stationName: catalog.stationName,
+        environmentId: 'current',
+      }));
+  const anchorRef = useRef(props.anchor);
+  return (
+    <ResponsiveDialogSurface
+      layer={props.layer}
+      ariaLabel="Engine & model"
+      onClose={props.onClose}
+      historyMode="entry"
+      anchorRef={anchorRef}
+      returnFocusTarget={props.anchor}
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      panelClassName="composer-popover-panel chat-input__model-popover-panel"
+    >
+      <React.Suspense
+        fallback={
+          <SkeletonList count={3} withIcon={false} label="Loading models" />
+        }
+      >
+        <SessionModelPicker
+          stationControl={
+            <>
+              <label className="session-model-picker__station-control">
+                Station
+                <select
+                  aria-label="Execution Station"
+                  className="editor-select"
+                  value={environmentId}
+                  onChange={(event) =>
+                    props.onEnvironmentChange(event.target.value)
+                  }
+                >
+                  {!catalog.stations.some(
+                    (station) => station.id === environmentId,
+                  ) && (
+                    <option value={environmentId}>
+                      Selected Station · unavailable
+                    </option>
+                  )}
+                  {catalog.stations.map((station) => (
+                    <option key={station.id} value={station.id}>
+                      {station.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {catalog.stationsUnavailable && (
+                <p role="status">Some Station choices could not be loaded.</p>
+              )}
+              {remote && (
+                <p className="session-model-picker__binding">
+                  Starts a task on {catalog.stationName}; this conversation
+                  stays on its owning Station.
+                </p>
+              )}
+            </>
+          }
+          models={models}
+          loading={remote ? catalog.loading : props.loading}
+          providers={modelPickerProviders(models, props.modelConnections)}
+          currentProviderId={props.choice?.providerId}
+          currentModel={props.choice?.modelId}
+          currentExecutionAgentId={props.choice?.executionAgentId}
+          defaultModel={props.defaultModel?.id ?? undefined}
+          defaultSourceLabel={
+            props.defaultModel?.source
+              ? modelSourceLabel(props.defaultModel.source).toLowerCase()
+              : 'Agent defaults'
+          }
+          runtimeOptions={props.choice?.providerOptions}
+          returnFocusTarget={props.anchor}
+          catalogNotice={
+            catalog.error
+              ? describeReadFailure(catalog.error)
+              : catalog.unmatched
+                ? 'This Agent definition cannot be verified on the selected Station. Choose another Station or manage its Agents.'
+                : undefined
+          }
+          onSelect={(model) => {
+            props.onSelect(model);
+            props.onClose();
+          }}
+          onReset={() => {
+            props.onReset();
+            props.onClose();
+          }}
+          onRuntimeOptionChange={props.onRuntimeOptionChange}
+          onClose={props.onClose}
+        />
+      </React.Suspense>
     </ResponsiveDialogSurface>
   );
 }

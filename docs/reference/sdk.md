@@ -23,7 +23,7 @@ This source addition requires a published version that exports `/agent`.
 
 | Group | Exports |
 | --- | --- |
-| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `environmentId`, `ClientRequestOptions` |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
@@ -146,6 +146,11 @@ The request-list result includes `contextVersion` and an authorized brief snapsh
 (or `null`) on supporting servers. Submission negotiates that version, forwards
 only the reference, and verifies that the acknowledgement retains its digest and
 Task incarnation. It does not substitute a newer brief on a retry.
+Optional `executionAgentId`, `expectedDefinitionFingerprint`, `modelId` and
+`providerOptions` carry explicit execution intent. Acknowledgements must retain
+the selected binding/model/fingerprint and the canonical options digest. A
+changed engine, model or options cannot replay a prior operation as success.
+Raw provider options are not persisted in the request journal.
 A fresh versioned request-list read precedes the additive delegation
 create field, so an older Station never silently receives an ordinary
 delegation instead. The response must match the Task and submitted intent.
@@ -922,6 +927,20 @@ the API base and authority key, and the HTTP reader refuses a response if that
 authority changes before the body is consumed. With `requireRequestScope`, a
 missing scope uses an isolated inert key and never exposes an older unscoped
 cache entry.
+
+### `useProjectRunLocationsQuery(config?)`
+
+Fetches `GET /api/projects/run-locations` through `listProjectRunLocations`:
+each Project's `ProjectRunsAt` by slug, or an empty map for a shared member. It
+takes the same scoped configuration as `useProjectsQuery` and keys under
+`[PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX, …]` (`'project-run-locations'`),
+outside `'projects'`, so a host that persists `'projects'` reads does not
+replay a folder answer across reloads. The Project list does not carry run
+locations, so mount this only where one is shown and fall back to the stored
+folder until it answers. Station's start composer reads it through
+`ProjectsContext`'s `useScopedProjectRunLocationsQuery`, with a 30-second
+`staleTime` and `refetchOnMount: true` (Station's client default is `false`),
+only while the composer is open.
 
 ### `useProjectQuery(slug: string, config?)`
 
@@ -3180,6 +3199,19 @@ and [API-base owner](../../packages/sdk/src/api-core.ts).
 
 ## Telemetry
 
+Developer runtime queries are available from
+`@kontourai/station-sdk/developer-runtime`. `useServerLogsQuery(apiBase, params,
+config)` scopes its cache to the supplied host and supports an opt-in numeric
+`config.refetchInterval`; it does not poll by default. Parameters include level,
+text, time bounds and limit. Its result exposes bounded-scan coverage.
+
+`@kontourai/station-sdk/resource-posture` queries retain the CPU response and
+accept optional `resources` on `ResourcePostureVM`. The resource snapshot uses
+the `HostResourceSnapshot` contract from
+`@kontourai/station-contracts/system-status`. Consumers of older servers must
+keep omitted memory/process values unknown. CPU and resource sample timestamps
+are independent.
+
 ### `telemetry`
 
 Best-effort client telemetry for plugins. `track(event, attributes?)` buffers
@@ -4113,6 +4145,16 @@ The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
 
+## Orchestration approval deadlines
+
+Orchestration command failures retain HTTP status even when the response omits
+a machine code. `resolveOrchestrationRequest` accepts an optional `timeoutMs` and forwards it
+to the command transport. Station's approval UI supplies 15 seconds and uses a
+separate 5-second exact-request inspection after a failed send. A timeout is
+not proof that a decision was refused; callers must inspect before retrying an
+uncertain mutation. The request's thread, request ID and opened-event binding
+continue to govern resolution.
+
 ## Harness question answers
 
 `respondToRequest` from `@kontourai/station-sdk/client` accepts a structured
@@ -4219,3 +4261,40 @@ authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
 on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
 request options, while the React-free client fetcher preserves HTTP refusal
 status as `StationHttpError`. These client controls confer no access.
+
+### Station peer enrollment
+
+The React-free client entry and SDK root export
+`startPeerEnrollment(apiBase, input, options?)`,
+`getPeerEnrollment(apiBase, id, options?)`,
+`completePeerEnrollment(apiBase, id, options?)`, and
+`cancelPeerEnrollment(apiBase, id, options?)`. The
+[client owner](../../packages/sdk/src/client/peer-enrollments.ts) always receives
+the controlling Station's API base explicitly. `ClientRequestOptions` carries
+its captured `requestScope` and optional cancellation signal; the remote
+destination belongs only in the enrollment input.
+
+`PeerEnrollmentInput` and secret-free `PeerEnrollment` are owned by
+`@kontourai/station-contracts/environment-security`. Start uses a caller-retained
+UUID plus `apiBase`, expected `environmentId`, and optional `label`. Reuse the
+same UUID and exact intent after a lost acknowledgement; do not create another
+request automatically. GET reads local status. Completion explicitly checks
+approval and may install the separately granted peer credential on the server.
+Cancellation affects local pending enrollment, not receiver revocation.
+
+The [query owner](../../packages/sdk/src/query-domains/peerEnrollments.ts) exports
+`usePeerEnrollmentQuery(apiBase, id, requestScope?, config?)` and
+`useStartPeerEnrollmentMutation`, `useCompletePeerEnrollmentMutation`, and
+`useCancelPeerEnrollmentMutation`, each taking `(apiBase, requestScope?)`.
+Query/cache identity includes the controlling base, authority key and enrollment
+ID. Mutations do not retry automatically; callers choose how to observe or
+reconcile their retained request. A connected result invalidates peer inventory.
+All endpoints retain operator authorization, and HTTP refusals preserve their
+status for the host's remedy. These hooks confer no operator or Project grant.
+
+Server proofs and bearers never appear in `PeerEnrollment`. Status distinguishes
+pending, connected, denied, expired, unavailable, identity-changed, failed,
+outcome-unknown, persistence-failed and cancelled. Connected means the peer
+credential was saved, not that a Project checkout, Agent or execution offer is
+ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
+for the independent Device and peer choices and current trusted-session limits.

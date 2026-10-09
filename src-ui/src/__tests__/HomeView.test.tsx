@@ -232,6 +232,11 @@ vi.mock('@kontourai/station-sdk', () => ({
       isSuccess: data !== undefined && !fixtures.projectsLoading,
     };
   },
+  useProjectRunLocationsQuery: () => ({
+    data: undefined,
+    isLoading: true,
+    isSuccess: false,
+  }),
   dispatchOrchestrationCommandWithReceipt: fixtures.discardDraft,
   useOrchestrationSessionsQuery: () => ({
     data: fixtures.sessions,
@@ -398,6 +403,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       setModelChoices: () => undefined,
       modelChoiceKey: (agent: { slug: string }) => agent.slug,
       modelsForAgent: () => [],
+      executionModelsForAgent: () => [],
       defaultEffectiveModelForAgent: () => ({
         id: undefined,
         label: fixtures.defaultModelLabel,

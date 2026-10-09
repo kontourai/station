@@ -124,6 +124,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       modelPickerAgent,
       setModelPickerAgent,
       modelsForAgent: () => models,
+      executionModelsForAgent: () => models,
       modelChoiceKey: (agent: AgentData) =>
         `${input.selectedContext}:${agent.slug}`,
       defaultEffectiveModelForAgent: () => ({
@@ -201,6 +202,7 @@ function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
     onSelect,
     onClose,
     requestAuthority: authority,
+    projectIconBySlug: new Map<string, string>(),
   };
   const view = render(<ModalHarness {...defaults} {...props} />);
   return {

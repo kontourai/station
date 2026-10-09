@@ -16,6 +16,8 @@ import type {
 import {
   EXECUTION_RESOLUTION_RECEIPT_SCHEMA_VERSION,
   environmentId,
+  executionBindingAgentId,
+  executionProfileAgentId,
 } from '@kontourai/station-contracts/execution-target';
 import {
   type EngineId,
@@ -60,6 +62,10 @@ export interface EnvironmentAccess {
 
 export interface ExecutionTargetAgentView extends Partial<AgentSpec> {
   slug?: string;
+  executionDefault?: boolean;
+  definitionFingerprint?: string;
+  engineDefault?: boolean;
+  enable?: { engineConnectionId: string };
   available?: boolean;
   unavailableReason?: string;
 }
@@ -144,6 +150,8 @@ interface ResolvedExecutionTarget {
   /** Private access authority. Never serialize this object. */
   access: EnvironmentAccess;
   agentId: AgentId;
+  executionAgentId?: AgentId;
+  expectedDefinitionFingerprint?: string;
   engine: ResolvedExecutionEngine;
   provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;
@@ -507,7 +515,7 @@ export async function resolveExecutionTarget(
   target: ExecutionTarget,
   deps: ExecutionTargetResolverDependencies,
 ): Promise<ResolvedExecutionTarget> {
-  const resolvedAgentId = agentId(String(target.agent));
+  const resolvedAgentId = agentId(executionProfileAgentId(target.agent));
   const access = await deps.resolveEnvironmentAccess(target);
   const trustedEnvironmentId = environmentId(access.environmentId);
   const agent = await deps.getAgent(access, resolvedAgentId);
@@ -522,7 +530,52 @@ export async function resolveExecutionTarget(
     );
   }
 
-  const boundConnectionId = agent.execution?.agentConnectionId;
+  const expectedDefinitionFingerprint =
+    typeof target.agent === 'string'
+      ? undefined
+      : target.agent.expectedDefinitionFingerprint;
+  if (
+    expectedDefinitionFingerprint !== undefined &&
+    agent.definitionFingerprint !== expectedDefinitionFingerprint
+  ) {
+    throw new Error(
+      'The selected Agent definition changed or cannot be verified on this Station; select it again',
+    );
+  }
+
+  const executionAgentId =
+    typeof target.agent === 'string'
+      ? undefined
+      : agentId(executionBindingAgentId(target.agent));
+  const executionAgent = executionAgentId
+    ? await deps.getAgent(access, executionAgentId)
+    : agent;
+  if (
+    executionAgentId &&
+    (executionAgent.slug !== executionAgentId ||
+      executionAgent.executionDefault !== true ||
+      (executionAgent.available === false &&
+        !(
+          executionAgent.engineDefault === true &&
+          executionAgent.enable?.engineConnectionId ===
+            executionAgent.execution?.agentConnectionId &&
+          executionAgent.enable !== undefined
+        )))
+  ) {
+    throw new Error(
+      'Execution override requires an available receiver-owned default engine Agent',
+    );
+  }
+  const boundConnectionId = executionAgent.execution?.agentConnectionId;
+  if (
+    executionAgentId &&
+    !boundConnectionId &&
+    agent.execution?.agentConnectionId
+  ) {
+    throw new Error(
+      'This execution override cannot deliver the selected Agent profile on the Station engine',
+    );
+  }
   let engine: ResolvedExecutionEngine;
   let provider: EngineId;
   if (boundConnectionId) {
@@ -548,7 +601,9 @@ export async function resolveExecutionTarget(
   // declared model is the request. Trimmed-empty on either side means "not
   // stated", never an empty model id handed to an adapter.
   const overrideModelId = target.model?.override?.trim();
-  const agentModelId = agent.execution?.modelId?.trim();
+  const agentModelId = (
+    boundConnectionId ? executionAgent.execution : agent.execution
+  )?.modelId?.trim();
   const effectiveModelId = overrideModelId || agentModelId || undefined;
 
   assertModelOptionsSupported(provider, target.model?.options, resolvedAgentId);
@@ -592,6 +647,10 @@ export async function resolveExecutionTarget(
     resolvedAt: (deps.now?.() ?? new Date()).toISOString(),
     environmentId: trustedEnvironmentId,
     agentId: resolvedAgentId,
+    ...(executionAgentId ? { executionAgentId } : {}),
+    ...(agent.definitionFingerprint
+      ? { definitionFingerprint: agent.definitionFingerprint }
+      : {}),
     engine,
     provider,
     modelLaunchPlan,
@@ -601,6 +660,8 @@ export async function resolveExecutionTarget(
   return {
     access,
     agentId: resolvedAgentId,
+    ...(executionAgentId ? { executionAgentId } : {}),
+    ...(expectedDefinitionFingerprint ? { expectedDefinitionFingerprint } : {}),
     engine,
     provider,
     modelLaunchPlan,

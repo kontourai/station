@@ -1,0 +1,7 @@
+{
+  "revision": "13e6bfa14590b8a37a8f5f045205ee2584622a9f",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"notification-delivery.md changes arrived from main's own reviewed work; re-checked this design's references against the merged notification delivery doc; unchanged by this PR.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
+  ]
+}

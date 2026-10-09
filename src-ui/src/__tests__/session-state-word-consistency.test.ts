@@ -526,7 +526,9 @@ describe('one vocabulary on the work surfaces', () => {
   const files = SURFACE_ROOTS.flatMap((root) => sourceFilesUnder(root));
 
   test('the scan reaches the surfaces it guards', () => {
-    const names = files.map((file) => relative(SRC_ROOT, file));
+    const names = files.map((file) =>
+      relative(SRC_ROOT, file).replaceAll('\\', '/'),
+    );
     for (const guarded of [
       'views/home/work-status.ts',
       'views/SessionsView.tsx',
@@ -546,7 +548,7 @@ describe('one vocabulary on the work surfaces', () => {
   test('no surface writes a retired status word, lane name, noun or time form', () => {
     const offenders: string[] = [];
     for (const file of files) {
-      const name = relative(SRC_ROOT, file);
+      const name = relative(SRC_ROOT, file).replaceAll('\\', '/');
       const source = withoutComments(readFileSync(file, 'utf8'));
       // Case-blind: a retired word is retired at the start of a label and
       // mid-sentence alike ("Awaiting approval", "2 awaiting approval").
@@ -591,7 +593,7 @@ describe('one vocabulary on the work surfaces', () => {
     ]);
     const offenders: string[] = [];
     for (const file of files) {
-      const name = relative(SRC_ROOT, file);
+      const name = relative(SRC_ROOT, file).replaceAll('\\', '/');
       if (spellers.has(name)) continue;
       const source = withoutComments(readFileSync(file, 'utf8'));
       for (const word of WORDS) {

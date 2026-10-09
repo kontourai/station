@@ -48,6 +48,11 @@ by themselves produce a complete visual dialog.
 - an overlay context, linked to the surface it was opened from, so a menu
   inside it can take a layer above it (see [Action rows](#action-rows)).
 
+A consumer may keep its content mounted with `open={false}` to preserve a
+pending decision. The closed surface is hidden and releases dialog history and
+focus; reopening captures a new return-focus target. The approval sheet uses
+this lifecycle so dismissal cannot reset an in-flight answer.
+
 Give the surface an accessible name. Do not add a second document Escape
 listener, backdrop handler, focus trap or mount-time input focus. On a phone,
 automatic input focus should follow an explicit request to type, rather than

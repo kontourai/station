@@ -226,6 +226,46 @@ describe('NotificationContainer', () => {
     ).toBeTruthy();
   });
 
+  test('#3382: an approval card shows a multi-line command whole, sanitised, next to Allow and Deny', async () => {
+    // The preview is built by the real shared reader the toast handler uses;
+    // only the toast store is stubbed here.
+    const { toolRequestPreviewFromPayload } = await import(
+      '@kontourai/station-shared/tool-request-preview'
+    );
+    const RLO = String.fromCodePoint(0x202e);
+    const NEL = String.fromCodePoint(0x85);
+    const toolPreview = toolRequestPreviewFromPayload({
+      toolName: 'Bash',
+      toolInput: { command: `echo ${RLO}a\nrm${NEL}-rf /` },
+    });
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'Claude wants to use Bash',
+        type: 'tool-approval',
+        toolPreview,
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [
+          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+          { label: 'Deny', variant: 'danger', onClick: vi.fn() },
+        ],
+      },
+    ];
+
+    render(<NotificationContainer />);
+    fireEvent.click(screen.getByRole('button', { name: '1 pending approval' }));
+
+    const shown = screen.getByText((_content, element) =>
+      Boolean(
+        element?.childElementCount === 0 &&
+          element.textContent?.startsWith('echo a'),
+      ),
+    );
+    expect(shown.textContent).toBe('echo a \u23ce rm -rf /');
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
+  });
+
   test("the pill takes the user to the request's own card on screen instead of opening a second copy", () => {
     notifications = [
       {

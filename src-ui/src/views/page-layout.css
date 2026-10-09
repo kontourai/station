@@ -722,7 +722,30 @@
   min-width: 0;
 }
 
+.section-navigation__picker {
+  display: grid;
+  gap: var(--k-space-2);
+  margin-block: var(--k-space-3);
+}
+
 @media (min-width: 769px) and (not (pointer: coarse)) {
+  .section-nav-rail__contained {
+    height: min(76vh, 900px);
+    overflow: hidden;
+  }
+
+  .section-navigation__picker {
+    display: none;
+  }
+  .section-nav.section-navigation__links {
+    border-right: 0;
+    padding-right: 0;
+  }
+
+  .section-nav-rail {
+    flex-direction: row;
+  }
+
   .section-nav-rail {
     display: flex;
     align-items: flex-start;
@@ -800,6 +823,22 @@
    target and Tabs' (not SectionNav's) scrollbar hides on touch-sized
    screens; page surfaces must not supply their own mobile rail. */
 @media (max-width: 768px), (pointer: coarse) {
+  .section-nav-rail.pane-host {
+    display: block;
+  }
+
+  .section-nav.section-navigation__links {
+    display: none;
+  }
+
+  .section-nav-rail__contained {
+    height: auto;
+    overflow: visible;
+  }
+  .section-nav-rail__contained > .pane-host {
+    height: auto;
+  }
+
   .page__tabs.tab-strip--scroll {
     scrollbar-width: none;
   }
