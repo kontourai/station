@@ -484,6 +484,12 @@ export function scanLoadingStringsFile(file, content) {
  * same reasoning as the pre-auth gate; callers override both props.
  */
 export const PRE_SHELL_LOADING_EXCLUSIONS = [
+  // The shared boot surface replaces the blank entry HTML and profile loader;
+  // no app region exists yet to skeleton. Route-level waits stay canonical.
+  {
+    file: 'src-ui/src/components/StartupScreen.tsx',
+    text: 'Opening Station…',
+  },
   {
     file: 'src-ui/src/components/LocalUiSessionGate.tsx',
     text: "Checking this browser's Station access…",

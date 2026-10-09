@@ -356,8 +356,12 @@ describe('state-primitives-ratchet', () => {
     // Waits with no shell to keep and no region to skeleton, each named by
     // file AND exact text so none can silently become a free slot for a
     // different sentence in the same file.
-    it('names exactly the pre-auth access check and the two published-SDK default waits', () => {
+    it('names exactly the shared boot, pre-auth and published-SDK default waits', () => {
       expect(PRE_SHELL_LOADING_EXCLUSIONS).toEqual([
+        {
+          file: 'src-ui/src/components/StartupScreen.tsx',
+          text: 'Opening Station…',
+        },
         {
           file: 'src-ui/src/components/LocalUiSessionGate.tsx',
           text: "Checking this browser's Station access…",
@@ -375,6 +379,16 @@ describe('state-primitives-ratchet', () => {
 
     it('subtracts the named finding and counts every other wait in that file', () => {
       const { counted, stale } = applyPreShellLoadingExclusions([
+        {
+          file: 'src-ui/src/components/StartupScreen.tsx',
+          line: 3,
+          snippet: "'Opening Station…'",
+        },
+        {
+          file: 'src-ui/src/components/StartupScreen.tsx',
+          line: 4,
+          snippet: "'Loading projects…'",
+        },
         {
           file: 'src-ui/src/components/LocalUiSessionGate.tsx',
           line: 87,
@@ -397,7 +411,7 @@ describe('state-primitives-ratchet', () => {
         },
       ]);
       expect(counted.map((finding: { line: number }) => finding.line)).toEqual([
-        96,
+        4, 96,
       ]);
       expect(stale).toEqual([]);
     });

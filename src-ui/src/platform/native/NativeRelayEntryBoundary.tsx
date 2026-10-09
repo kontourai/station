@@ -22,7 +22,7 @@ export function NativeRelayEntryBoundary({
     <LazyBoundary
       load={loadMemberShell}
       componentProps={{}}
-      pending={<StartupScreen message="Opening shared Projects…" />}
+      pending={<StartupScreen />}
     />
   );
 }

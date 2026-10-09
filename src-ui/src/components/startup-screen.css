@@ -17,6 +17,7 @@
   border-radius: 50%;
   animation: station-startup-ripple var(--motion-status-breathe, 2s)
     var(--ease-out, ease-out) infinite;
+  animation-fill-mode: forwards;
   pointer-events: none;
 }
 
@@ -85,14 +86,5 @@
   }
   to {
     transform: translateX(200%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .station-startup::before {
-    display: none;
-  }
-  .station-startup__progress::before {
-    animation: none;
   }
 }
