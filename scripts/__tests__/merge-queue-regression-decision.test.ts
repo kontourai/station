@@ -115,7 +115,7 @@ describe('the decision over real plans (child process)', () => {
     const tests = [
       ...new Set(
         TEST_IMPACT_MANIFEST.flatMap((edge) =>
-          'tests' in edge ? edge.tests ?? [] : [],
+          'tests' in edge ? (edge.tests ?? []) : [],
         ),
       ),
     ]
