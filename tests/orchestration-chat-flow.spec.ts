@@ -431,8 +431,7 @@ test.describe('Orchestration Chat Flow', () => {
     // returns focus to its surviving pane; Tab must enter that chat, not Home.
     await expect(page).toHaveURL(
       (url) =>
-        url.pathname === '/' &&
-        url.searchParams.get('chat') === 'conv-1',
+        url.pathname === '/' && url.searchParams.get('chat') === 'conv-1',
     );
     await expect
       .poll(() => page.evaluate(() => document.activeElement !== document.body))
@@ -614,45 +613,43 @@ test.describe('Orchestration Chat Flow', () => {
 
     // History, not a live emit: the strip reads the durable event window,
     // which is what a reload with a request still open presents.
-    const installApprovalWindow = () =>
-      installMockOrchestrationEventWindow(page, 'codex', {
-        'session-1': [
-          {
-            method: 'turn.started',
-            provider: 'codex',
-            threadId: 'session-1',
-            turnId: 'turn-0',
-            createdAt: '2026-04-05T11:59:58.000Z',
-            prompt: 'Set up the repo',
-          },
-          {
-            method: 'turn.completed',
-            provider: 'codex',
-            threadId: 'session-1',
-            turnId: 'turn-0',
-            createdAt: '2026-04-05T11:59:59.000Z',
-            outputText: 'Ready.',
-          },
-          {
-            method: 'request.opened',
-            provider: 'codex',
-            threadId: 'session-1',
-            createdAt: '2026-04-05T12:00:05.000Z',
-            eventId: requestEventId,
-            requestId,
-            requestType: 'permission',
-            title: 'Approve command',
-            payload: {
-              toolName: 'shell_exec',
-              toolInput: {
-                command:
-                  'npm run test:focused -- src-ui/src/components/chat/ToolCallDisplay.tsx --reporter=verbose',
-              },
+    await installMockOrchestrationEventWindow(page, 'codex', {
+      'session-1': [
+        {
+          method: 'turn.started',
+          provider: 'codex',
+          threadId: 'session-1',
+          turnId: 'turn-0',
+          createdAt: '2026-04-05T11:59:58.000Z',
+          prompt: 'Set up the repo',
+        },
+        {
+          method: 'turn.completed',
+          provider: 'codex',
+          threadId: 'session-1',
+          turnId: 'turn-0',
+          createdAt: '2026-04-05T11:59:59.000Z',
+          outputText: 'Ready.',
+        },
+        {
+          method: 'request.opened',
+          provider: 'codex',
+          threadId: 'session-1',
+          createdAt: '2026-04-05T12:00:05.000Z',
+          eventId: requestEventId,
+          requestId,
+          requestType: 'permission',
+          title: 'Approve command',
+          payload: {
+            toolName: 'shell_exec',
+            toolInput: {
+              command:
+                'npm run test:focused -- src-ui/src/components/chat/ToolCallDisplay.tsx --reporter=verbose',
             },
           },
-        ],
-      });
-    await installApprovalWindow();
+        },
+      ],
+    });
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
     await page.evaluate(() => {
       sessionStorage.setItem(
@@ -864,29 +861,49 @@ test.describe('Orchestration Chat Flow', () => {
     // `[class*="__actions"]` wrap rule does not apply) with the card in the
     // real narrow right dock. The actions must wrap inside the card rather
     // than overflow it with buttons squeezed into vertical letters.
+    await emitMockOrchestrationEvent(
+      page,
+      'orchestration:event',
+      {
+        event: {
+          method: 'request.resolved',
+          provider: 'codex',
+          threadId: 'session-1',
+          createdAt: '2026-04-05T12:00:05.500Z',
+          eventId: 'evt-resolved-2917',
+          requestId,
+          status: 'approved',
+        },
+      },
+      { sequence: 4 },
+    );
     answer = 'refuse';
     requestId = 'req-2917-desktop';
     requestEventId = 'evt-req-2917-desktop';
-    await installApprovalWindow();
-    await emitMockOrchestrationEvent(page, 'orchestration:event', {
-      event: {
-        method: 'request.opened',
-        provider: 'codex',
-        threadId: 'session-1',
-        createdAt: '2026-04-05T12:00:06.000Z',
-        eventId: requestEventId,
-        requestId,
-        requestType: 'permission',
-        title: 'Approve command',
-        payload: {
-          toolName: 'shell_exec',
-          toolInput: {
-            command:
-              'npm run test:focused -- src-ui/src/components/chat/ToolCallDisplay.tsx --reporter=verbose',
+    await emitMockOrchestrationEvent(
+      page,
+      'orchestration:event',
+      {
+        event: {
+          method: 'request.opened',
+          provider: 'codex',
+          threadId: 'session-1',
+          createdAt: '2026-04-05T12:00:06.000Z',
+          eventId: requestEventId,
+          requestId,
+          requestType: 'permission',
+          title: 'Approve command',
+          payload: {
+            toolName: 'shell_exec',
+            toolInput: {
+              command:
+                'npm run test:focused -- src-ui/src/components/chat/ToolCallDisplay.tsx --reporter=verbose',
+            },
           },
         },
       },
-    });
+      { sequence: 5 },
+    );
     await page.setViewportSize({ width: 1280, height: 800 });
     // Navigate through the app and place Chat through its public region
     // owner. A browser reload can retain the Coding pane instead of landing
