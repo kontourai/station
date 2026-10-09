@@ -172,6 +172,14 @@ describe('#3114: security gates and the native platform boundary', () => {
       'packages/contracts/src/application-session.ts',
     ]);
     expect(executed(result)).toContain(AUTHORITY_OBSERVATION);
+    const audience = select([
+      'src-server/runtime/bootstrap/agent-audience-gate.ts',
+      'packages/contracts/src/application-session.ts',
+    ]);
+    expect(executed(audience)).toContain(AUTHORITY_OBSERVATION);
+    expect(executed(audience)).toContain(
+      'src-server/runtime/routes/__tests__/runtime-routes-agent-audience.test.ts',
+    );
   });
 
   test('every runtime bootstrap gate and a request-authority module select it', () => {

@@ -716,6 +716,7 @@ const COMPOSITION_EDGES = Object.freeze([
   ...[
     'src-server/security/**',
     'src-server/runtime/bootstrap/account-bound-device-gate.ts',
+    'src-server/runtime/bootstrap/agent-audience-gate.ts',
   ].map((pattern) =>
     Object.freeze({
       pattern,
@@ -726,6 +727,16 @@ const COMPOSITION_EDGES = Object.freeze([
         'suite runs; kept explicit so an escalated diff still runs it (#3149)',
     }),
   ),
+  Object.freeze({
+    pattern: 'src-server/runtime/bootstrap/agent-audience-gate.ts',
+    supplemental: true,
+    tests: Object.freeze([
+      'src-server/runtime/routes/__tests__/runtime-routes-agent-audience.test.ts',
+    ]),
+    reason:
+      'Agent audience enforcement through the production route composition; ' +
+      'kept explicit so an escalated diff still runs its caller suite (#3149)',
+  }),
 ]);
 
 /**
