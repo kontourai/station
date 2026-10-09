@@ -3,9 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PeerCredentialStore } from '../../../services/peers/peer-credential-store.js';
+import { PeerEnrollmentService } from '../../../services/peers/peer-enrollment-service.js';
 import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 import { createPeerCredentialRoutes } from '../peer-credential-routes.js';
+
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
 
 function store() {
   const summary = {
@@ -195,6 +199,42 @@ describe('peer credential routes (station#1123 slice 2)', () => {
       expect.objectContaining({ environmentId: 'environment-existing' }),
     ]);
   });
+
+  test.each([
+    { method: 'GET', absentStatus: 404 },
+    { method: 'DELETE', absentStatus: 400 },
+  ])(
+    'returns forbidden when $method enrollment authority expires after the route admission check',
+    async ({ method, absentStatus }) => {
+      const homeDir = makeTempDir('station-peer-route-authority-');
+      const peers = new PeerCredentialStore(homeDir);
+      const enrollments = new PeerEnrollmentService(peers, 'Kontour', homeDir);
+      let checks = 0;
+      const app = createPeerCredentialRoutes(
+        peers,
+        undefined,
+        () => ++checks === 1,
+        enrollments,
+      );
+      const path = '/enrollments/11111111-1111-4111-8111-111111111111';
+      const refused = await app.request(path, { method });
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toEqual({
+        success: false,
+        error: 'Forbidden',
+      });
+      expect(peers.list()).toEqual([]);
+      const current = createPeerCredentialRoutes(
+        peers,
+        undefined,
+        () => true,
+        enrollments,
+      );
+      expect((await current.request(path, { method })).status).toBe(
+        absentStatus,
+      );
+    },
+  );
 
   // #2377 C2b: the outbound peer bearer is read only in-process, by the
   // runtime's remote forwarder. No leaf of this router answers it, attested

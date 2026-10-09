@@ -820,7 +820,7 @@ window — so that two captures of the identical build decode to identical
 pixels and exact comparison is strictly simpler, and strictly more
 trustworthy, than any threshold.
 
-Profile captures hide only the completed "Snapshot rebuilt ..." timestamp
+Profile captures hide only the completed "Updated ..." timestamp
 line. Missing-time fallbacks, usage scope, failure notices, and the rebuild
 control remain visible. These pixels do not establish accounting freshness.
 

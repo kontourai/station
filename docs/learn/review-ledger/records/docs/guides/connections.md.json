@@ -318,6 +318,14 @@
 
     "src-server/security/relay-management-authority.ts",
 
+    "src-ui/src/views/connections-hub/ConnectStationDialog.tsx",
+
+    "src-server/services/peers/peer-enrollment-service.ts",
+
+    "src-server/services/peers/__tests__/peer-enrollment-routes.test.ts",
+
+    "src-ui/src/__tests__/ConnectStationDialog.test.tsx",
+
     "packages/connect/src/react/connection-manager-modal/DeviceScopeEditor.tsx",
 
     "packages/connect/src/__tests__/DeviceScopeEditor.test.tsx",
