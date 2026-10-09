@@ -621,11 +621,11 @@ export async function initializeRuntime(
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
-    // #3429: a continued attached conversation runs as its engine's own
-    // Agent on this Station's Environment, so the dock can open it.
     readCurrentEnvironmentId: async () =>
       (await deps.environmentSecurityService.readExistingRecord())
         .environmentId,
+    // #3429: a continued attached conversation runs as its engine's own
+    // Agent on this Station's Environment, so the dock can open it.
     resolveAdoptedChildExecutionBinding:
       createAdoptedChildExecutionBindingResolver({
         configLoader,

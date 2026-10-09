@@ -2590,11 +2590,13 @@ export class OrchestrationService {
           detail.events,
         );
         // The adapter-safe metadata projection above strips the server-minted Environment identity.
-        const identityEvent = detail.events.findLast(
-          (event) =>
-            event.threadId === session.threadId &&
-            event.method === 'session.started',
-        );
+        const identityEvent = [...detail.events]
+          .reverse()
+          .find(
+            (event) =>
+              event.threadId === session.threadId &&
+              event.method === 'session.started',
+          );
         const recordedEnvironmentId =
           identityEvent?.method === 'session.started' &&
           typeof identityEvent.metadata?.environmentId === 'string'
