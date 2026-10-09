@@ -50,6 +50,7 @@ const run = {
   status: 'completed',
   conclusion: 'success',
   updated_at: new Date().toISOString(),
+  created_at: new Date().toISOString(),
 };
 
 describe('source qualification evidence', () => {
@@ -150,6 +151,10 @@ describe('source qualification evidence', () => {
             jobs: [
               {
                 name: 'qualification / Full source qualification',
+                completed_at:
+                  mode === 'live-expired'
+                    ? new Date(Date.now() - 25 * 3600000).toISOString()
+                    : new Date().toISOString(),
                 conclusion: mode === 'red-gate' ? 'failure' : 'success',
               },
               ...Array.from({ length: mode === 'missing' ? 3 : 4 }, (_, i) => ({
@@ -179,6 +184,9 @@ describe('source qualification evidence', () => {
                 head_sha: sha,
                 // A red run whose gate passed: only Main qualification, which
                 // also publishes the Nightly, may be judged by its gate.
+                ...(mode.startsWith('live-')
+                  ? { status: 'in_progress', conclusion: null }
+                  : {}),
                 ...(mode.startsWith('red-') ? { conclusion: 'failure' } : {}),
                 ...(mode === 'red-other-workflow'
                   ? { path: '.github/workflows/nightly.yml' }
@@ -204,6 +212,8 @@ describe('source qualification evidence', () => {
     try {
       for (mode of [
         'valid',
+        'live-valid',
+        'live-expired',
         'missing',
         'expired',
         'unavailable',
@@ -218,7 +228,7 @@ describe('source qualification evidence', () => {
           windowsHide: true,
         });
         expect(readFileSync(output, 'utf8')).toBe(
-          `reuse_run=${['valid', 'red-publication'].includes(mode) ? '42' : ''}\n`,
+          `reuse_run=${['valid', 'live-valid', 'red-publication', 'red-other-workflow'].includes(mode) ? '42' : ''}\n`,
         );
       }
       expect(observed.some((url) => url.includes(`head_sha=${sha}`))).toBe(

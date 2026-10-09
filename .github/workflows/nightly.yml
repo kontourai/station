@@ -152,6 +152,7 @@ jobs:
     uses: ./.github/workflows/nightly-native-cohort.yml
     with:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
+      force_rebuild: ${{ inputs.rebuild_index != '' }}
       build: ${{ needs.native-stage.outputs.build }}
       marketing_version: ${{ needs.native-stage.outputs.marketing_version }}
       bundle_version: ${{ needs.native-stage.outputs.bundle_version }}

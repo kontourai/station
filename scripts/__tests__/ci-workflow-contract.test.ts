@@ -873,6 +873,8 @@ describe('CI verification workflow contracts', () => {
     // Reason strings are the contract. "Publishes" means there is nothing to
     // verify before merge; "reduced PR lane" names where the PR signal lives.
     const declared: Record<string, string> = {
+      '.github/workflows/main-qualification.yml':
+        'qualifies combined main source after integration; PR: CI and the merge queue own pre-merge feedback',
       '.github/workflows/pages.yml':
         'publishes GitHub Pages from merged main; nothing to pre-verify',
       '.github/workflows/publish-packages.yml':
@@ -3519,13 +3521,13 @@ describe('hosted qualification workflow covers the full regression', () => {
   it('declares bounded Free and explicit Expanded matrix fanout while retaining every leg', () => {
     const { jobs } = document();
     const profiles = [
-      ['ordinary', 4, 4, 2],
-      ['process-heavy', 2, 2, 1],
+      ['ordinary', 4, 'ordinary'],
+      ['process-heavy', 2, 'heavy'],
     ] as const;
-    for (const [name, legs, expanded, free] of profiles) {
+    for (const [name, legs, output] of profiles) {
       const job = jobs[name];
       expect(job.strategy?.['max-parallel'], name).toBe(
-        `\${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE == 'expanded' && ${expanded} || ${free} }}`,
+        `\${{ fromJSON(needs.resolve.outputs.${output}) }}`,
       );
       expect(job.strategy?.['fail-fast'], name).toBe(false);
       expect(job.strategy?.matrix?.include, name).toHaveLength(legs);

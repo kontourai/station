@@ -92,7 +92,7 @@ export function validateRepairRun(run, repository) {
     run.path !== '.github/workflows/main-qualification.yml' ||
     run.head_repository?.full_name !== repository ||
     run.head_branch !== 'main' ||
-    !['schedule', 'workflow_dispatch'].includes(run.event) ||
+    !['push', 'schedule', 'workflow_dispatch'].includes(run.event) ||
     run.status !== 'completed' ||
     !/^[0-9a-f]{40}$/.test(run.head_sha) ||
     !Number.isSafeInteger(run.id)

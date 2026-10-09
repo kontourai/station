@@ -1,8 +1,14 @@
 name: "Main: Qualification"
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/reference/deploy-ledger.json'
+      - 'docs/reference/deploy-ledger.md'
+      - 'docs/learn/review-ledger/**'
   schedule:
-    - cron: '17 */6 * * *'
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       force:
@@ -14,13 +20,12 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: main-qualification
-  cancel-in-progress: false
-
 jobs:
   qualification:
     if: github.ref == 'refs/heads/main'
+    concurrency:
+      group: main-qualification-source
+      cancel-in-progress: false
     uses: ./.github/workflows/full-regression.yml
     with:
       source_sha: ${{ github.sha }}
@@ -56,7 +61,10 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
       - id: decide
-        name: Skip when a Nightly already shipped this source or shipped in the last 20 hours
+        name: Decide configured cadence and bounded terminal delivery recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATION_NIGHTLY_INTERVAL_HOURS: ${{ vars.STATION_NIGHTLY_INTERVAL_HOURS }}
         run: |
           set -euo pipefail
           # The ledger's rows land on main after a ship, so the run's own

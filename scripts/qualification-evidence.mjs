@@ -13,9 +13,9 @@ export const QUALIFICATION_JOBS = Object.freeze([
 const TRUSTED_WORKFLOWS = new Map([
   [
     '.github/workflows/main-qualification.yml',
-    ['schedule', 'workflow_dispatch'],
+    ['push', 'schedule', 'workflow_dispatch'],
   ],
-  ['.github/workflows/nightly.yml', ['schedule', 'workflow_dispatch']],
+  ['.github/workflows/nightly.yml', ['push', 'schedule', 'workflow_dispatch']],
   ['.github/workflows/release.yml', ['push']],
   ['.github/workflows/ci.yml', ['workflow_dispatch']],
   ['.github/workflows/publish-release.yml', ['workflow_dispatch']],
@@ -127,7 +127,17 @@ export async function findQualification(source, env = process.env) {
   for (const run of runs
     .filter((item) =>
       reusableRun(
-        { ...item, conclusion: 'success' },
+        {
+          ...item,
+          conclusion: 'success',
+          status:
+            [
+              '.github/workflows/main-qualification.yml',
+              '.github/workflows/nightly.yml',
+            ].includes(item.path) && item.status === 'in_progress'
+              ? 'completed'
+              : item.status,
+        },
         {
           source,
           repository: env.GITHUB_REPOSITORY,
@@ -135,7 +145,7 @@ export async function findQualification(source, env = process.env) {
         },
       ),
     )
-    .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))) {
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))) {
     const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
       env,
     });
@@ -154,7 +164,10 @@ export async function findQualification(source, env = process.env) {
     if (
       run.conclusion !== 'success' &&
       !(
-        run.path === '.github/workflows/main-qualification.yml' &&
+        [
+          '.github/workflows/main-qualification.yml',
+          '.github/workflows/nightly.yml',
+        ].includes(run.path) &&
         gate.length === 1 &&
         gate[0].conclusion === 'success'
       )
@@ -162,6 +175,12 @@ export async function findQualification(source, env = process.env) {
       continue;
     // A reused receipt does not reset the original evidence's age: only fresh
     // corpus execution is admitted as the source of another reuse.
+    if (
+      !Number.isFinite(Date.parse(gate[0]?.completed_at)) ||
+      Date.now() - Date.parse(gate[0].completed_at) < 0 ||
+      Date.now() - Date.parse(gate[0].completed_at) > MAX_AGE_MS
+    )
+      continue;
     const corpora = jobs.filter((job) => job.name.includes('Ordinary corpus '));
     const artifacts = await listGithub(
       `actions/runs/${run.id}/artifacts`,

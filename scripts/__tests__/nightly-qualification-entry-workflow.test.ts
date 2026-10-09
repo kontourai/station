@@ -19,6 +19,7 @@ type Job = {
   uses?: string;
   with?: Record<string, unknown>;
   secrets?: unknown;
+  concurrency?: { group: string; 'cancel-in-progress': boolean };
   permissions?: Record<string, string>;
   outputs?: Record<string, string>;
   steps?: Step[];
@@ -115,12 +116,16 @@ describe('Main qualification: the qualified-Nightly entry point', () => {
   });
 
   it('cannot deadlock against, or overlap with, another Nightly', () => {
-    expect(qualification.concurrency?.group).toBe('main-qualification');
+    expect(qualification.concurrency).toBeUndefined();
+    expect(qualification.jobs.qualification.concurrency).toEqual({
+      group: 'main-qualification-source',
+      'cancel-in-progress': false,
+    });
     expect(nightly.concurrency).toEqual({
       group: 'nightly',
       'cancel-in-progress': false,
     });
-    expect(qualification.concurrency?.group).not.toBe(
+    expect(qualification.jobs.qualification.concurrency?.group).not.toBe(
       nightly.concurrency?.group,
     );
   });
@@ -132,7 +137,7 @@ describe('nightly.yml: entry points', () => {
       'workflow_call',
       'workflow_dispatch',
     ]);
-    expect(qualification.on.schedule).toEqual([{ cron: '17 */6 * * *' }]);
+    expect(qualification.on.schedule).toEqual([{ cron: '17 * * * *' }]);
     expect(
       Object.keys(
         (nightly.on.workflow_dispatch as { inputs: object }).inputs,
