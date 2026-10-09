@@ -40,7 +40,9 @@ default artwork; `favicon-dev.png` is swapped into Dev by `is-dev-build` in
 `src-ui/src/index.css`.
 Mobile startup uses the same committed artwork. Android channel staging writes
 light/dark splash backgrounds alongside its API-31 theme overlays, while
-preserving the channel-specific launcher background.
+preserving the channel-specific launcher background. It also stages a centered
+mark as the window background. The Android bootstrap keeps the WebView
+transparent until its content paints, so this native mark fills the launch gap.
 `scripts/write-ios-build-manifest.mjs` restores the maintained
 `scripts/templates/ios/LaunchScreen.storyboard` after init and stages the
 favicon and light/dark background in the asset catalog. These are build inputs;

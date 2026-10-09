@@ -164,6 +164,10 @@ describe('cross-platform release channel matrix', () => {
 
   test('applies each channel identity to main and debug so source-set precedence cannot mask it', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'station-channel-icons-'));
+    const publicAssets = join(fixture, 'src-ui/public');
+    mkdirSync(publicAssets, { recursive: true });
+    writeFileSync(join(publicAssets, 'favicon.png'), 'station-mark');
+    writeFileSync(join(publicAssets, 'favicon-dev.png'), 'station-dev-mark');
     for (const [channel, identity] of Object.entries(
       ANDROID_CHANNEL_IDENTITY,
     )) {

@@ -117,6 +117,27 @@ export function applyAndroidChannelIcons(
         copyTree(join(source, density), join(destination, density));
       }
     }
+    const drawable = join(destination, 'drawable');
+    mkdirSync(drawable, { recursive: true });
+    copyFileSync(
+      join(
+        root,
+        'src-ui/public',
+        channel === 'dev' ? 'favicon-dev.png' : 'favicon.png',
+      ),
+      join(drawable, 'station_startup_logo.png'),
+    );
+    writeFileSync(
+      join(drawable, 'station_startup_background.xml'),
+      `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:drawable="@color/station_splash_background" />
+  <item android:width="64dp" android:height="64dp" android:gravity="center">
+    <bitmap android:src="@drawable/station_startup_logo" android:gravity="fill" />
+  </item>
+</layer-list>
+`,
+    );
     const values = join(destination, 'values');
     mkdirSync(values, { recursive: true });
     writeFileSync(

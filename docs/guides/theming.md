@@ -67,7 +67,8 @@ route-level waits still use the state primitives.
 The native OS launch surface follows OS appearance; it cannot read the
 WebView's saved device preference. iOS stages a centered mark and appearance-aware
 background after Tauri init; Android's channel overlay supplies a dark splash
-background in night mode. A different OS and saved app preference can still
+background in night mode, plus a centered native window mark behind the
+initially transparent WebView. A different OS and saved app preference can still
 produce a background change at that boundary.
 [ThemeToggle](../../src-ui/src/components/header/ThemeToggle.tsx) keeps it in
 sync with the device-settings store. The selected light/dark preference belongs
