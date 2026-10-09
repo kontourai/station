@@ -1,0 +1,7 @@
+{
+  "revision": "6a61808025ba36e3fd734ffe569080ef7f9af13f",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Fix round for #3391: the API reference does not document the project list shape or project update body; runsAt and its being ignored on update are documented in reference/shared.md. No claim here changes.","inputs":["docs/reference/api.md","src-server/routes/projects/projects.ts"]}
+  ]
+}

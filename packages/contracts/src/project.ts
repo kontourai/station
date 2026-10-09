@@ -58,6 +58,41 @@ export interface ProjectMetadata {
   position?: number;
 }
 
+/**
+ * The directory a project resolves to on this Station, from the records the
+ * session start reads (manifest, binding, working directory and the
+ * manifest's `executionRoot`). The start's git identity check is NOT run, so
+ * a path here is the directory the records name, not a verified checkout of
+ * the project's repository: a start may still refuse it. It is also not
+ * where every chat runs: a chat in a worktree-isolated project runs in its
+ * own worktree, and a project with no directory leaves it to the agent.
+ *
+ * - `folder`: the project's own working directory, as stored.
+ * - `execution-root`: a different directory the manifest selects, through a
+ *   binding or its `executionRoot`; absolute.
+ * - `none`: no directory; the agent decides (home, an ACP connection's
+ *   folder, or a private Station-managed one).
+ * - `unavailable`: a start would be refused (a missing folder or binding, an
+ *   execution root outside its checkout…); `reason` says why.
+ * - `unchecked`: Station did not find out this time, because the folder did
+ *   not answer in time or other folders were still being checked. Not a
+ *   refusal: the start resolves it for real. `reason` says which.
+ */
+export type ProjectRunsAt =
+  | { kind: 'folder'; path: string }
+  | { kind: 'execution-root'; path: string }
+  | { kind: 'none' }
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'unchecked'; reason: string };
+
+/**
+ * `GET /api/projects/run-locations` (#3391): each Project's {@link
+ * ProjectRunsAt} by slug, for the operator only — a shared member gets an
+ * empty map. Separate from the Project list so that list never waits on a
+ * project folder.
+ */
+export type ProjectRunLocations = Record<string, ProjectRunsAt>;
+
 export interface MemberProjectView {
   version: 'station.member-project/v1';
   kind: 'member-project';

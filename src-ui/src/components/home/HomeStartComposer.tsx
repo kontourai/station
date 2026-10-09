@@ -8,11 +8,15 @@ import React, {
 import { useAgents } from '../../contexts/AgentsContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
+import {
+  useScopedProjectRunLocationsQuery,
+  useScopedProjectsQuery,
+} from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useNewChatStartContext } from '../../hooks/useNewChatStartContext';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import {
   useBindStartProject,
   useStartSelection,
@@ -38,6 +42,7 @@ import {
   NO_PROJECT_LABEL,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
+  withProjectRunLocations,
   workspaceHintText,
 } from '../modals/new-chat-modal-utils';
 import { describeReadFailure, SkeletonList } from '../state';
@@ -230,9 +235,16 @@ export function HomeStartComposer({
       !projects.some((project) => project.slug === projectSlug),
   );
   const [agentSearch, setAgentSearch] = useState('');
+  // Where each project's chats run, merged in once that read answers; the
+  // list itself never waits on project folders (#3391).
+  const runLocations = useScopedProjectRunLocationsQuery().data;
+  const projectsWithRunLocations = useMemo(
+    () => withProjectRunLocations(projects, runLocations),
+    [projects, runLocations],
+  );
   const selection = useNewChatSelectionModel({
     agents,
-    projects,
+    projects: projectsWithRunLocations,
     selectedContext: context,
     agentSearch,
     revalidateSelection: true,
@@ -426,6 +438,7 @@ export function HomeStartComposer({
       };
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
+  const icons = useProjectIcons();
   const option = viewModel.currentContextOption;
   const isGlobal = context === GLOBAL_CONTEXT;
   const workspaceHint = resolveNewChatWorkspaceHint({
@@ -442,6 +455,7 @@ export function HomeStartComposer({
         label: option?.label ?? (isGlobal ? NO_PROJECT_LABEL : context),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(context),
+        icon: isGlobal ? undefined : icons.get(context),
         folder: workspaceHintText(workspaceHint),
       };
   const noAgentToOffer = !agent && !defaultSelection?.missingPreferredAgentSlug;
@@ -701,6 +715,8 @@ export function HomeStartComposer({
               options={viewModel.contextOptions}
               selectedContext={context}
               workspaceHint={workspaceHint}
+              icons={icons}
+              accents={accents}
               folderlessHint={resolveNewChatWorkspaceHint({
                 agent,
                 project: undefined,

@@ -1,0 +1,7 @@
+{
+  "revision": "1e2395d8589cfcb313b8fdc80020bf7564f2edac",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"#3391 round 8: runsAt left GET /api/projects and /api/boot (back to main's catalogue) for a separate operator-only GET /api/projects/run-locations (projects.ts), with SDK listProjectRunLocations/useProjectRunLocationsQuery, ProjectsContext useScopedProjectRunLocationsQuery, and the composer merging it in (HomeStartComposer, ChatDock to NewChatModal); the route is declared in pairing-route-scopes.ts and projectReadGuard refuses member-scoped callers. ProjectMetadata no longer lists runsAt (contracts project.ts); new ProjectRunLocations section documents the endpoint, its member exclusion and the folder-check limits from project-resource-resolver.ts; the boot line from the previous round is gone.","inputs":["docs/reference/shared.md","packages/contracts/src/project.ts"]}
+  ]
+}
