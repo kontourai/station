@@ -480,6 +480,13 @@ manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape ha
 The full Vitest corpus is phase-attested there, separately from the fast
 feedback loop.
 
+Hosted matrix fanout uses the repository's Free runner profile by default;
+`STATION_QUALIFICATION_RUNNER_PROFILE=expanded` selects the larger profile.
+All ordinary and process-heavy matrix legs still execute. These per-invocation
+caps reserve no organization-wide capacity and do not change evidence or
+promotion requirements. See [qualification runner profiles](releasing.md#qualification-runner-profile)
+for the caps and their limits.
+
 The `ci:fast` owner receipt requires a redacted, digest-addressed copy of the
 changed-test diagnostic under `.kontourai/verification-output/`. If the stable
 diagnostic is missing or unsafe to copy, the receipt fails closed as an

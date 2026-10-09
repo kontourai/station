@@ -150,6 +150,25 @@ notice a missing qualification schedule, but a repository-wide Actions outage
 still requires external observation. Manual qualification remains the recovery
 command above; failed-source repair stays in its existing bounded episode.
 
+### Qualification runner profile
+
+The reusable qualification workflow caps matrix fanout per invocation. The
+Free profile is the default when the Actions configuration variable
+`STATION_QUALIFICATION_RUNNER_PROFILE` is unset or unrecognized: at most two
+ordinary corpus jobs and one process-heavy job run at once. Setting the variable
+to `expanded` deliberately selects the Expanded profile, with four ordinary
+jobs and two process-heavy jobs. Every profile retains all four ordinary legs,
+both process-heavy legs, `fail-fast: false`, and their 120-minute deadlines.
+
+The static, exclusive and Android viewport jobs retain their existing scheduling,
+so the corpus and those three fixed jobs have a possible peak of six runners
+under Free or nine under Expanded for one invocation. These caps reserve no
+organization-wide slots: concurrent source SHAs multiply the possible demand,
+and other workflows share the runner pool. Queue waits and delivery latency
+still depend on available capacity; changing this profile guarantees neither.
+Qualification receipts, exact-source reuse, trusted producers, and Beta/Stable
+promotion gates retain their existing rules.
+
 ## One repair sweep per failure episode
 
 [Main: Qualification repair](../../.github/workflows/qualification-repair.yml) reacts

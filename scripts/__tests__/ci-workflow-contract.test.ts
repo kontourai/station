@@ -3392,7 +3392,12 @@ describe('hosted qualification workflow covers the full regression', () => {
     if?: string;
     needs?: string[];
     defaults?: Defaults;
-    strategy?: { matrix?: { include?: Array<Record<string, string>> } };
+    strategy?: {
+      'fail-fast'?: boolean;
+      'max-parallel'?: string;
+      matrix?: { include?: Array<Record<string, string>> };
+    };
+    'timeout-minutes'?: number;
     steps?: Step[];
     'continue-on-error'?: unknown;
   };
@@ -3509,6 +3514,23 @@ describe('hosted qualification workflow covers the full regression', () => {
     expect(shards.map(({ index }) => index).sort((a, b) => a - b)).toEqual(
       Array.from({ length: shards[0].count }, (_, index) => index + 1),
     );
+  });
+
+  it('declares bounded Free and explicit Expanded matrix fanout while retaining every leg', () => {
+    const { jobs } = document();
+    const profiles = [
+      ['ordinary', 4, 4, 2],
+      ['process-heavy', 2, 2, 1],
+    ] as const;
+    for (const [name, legs, expanded, free] of profiles) {
+      const job = jobs[name];
+      expect(job.strategy?.['max-parallel'], name).toBe(
+        `\${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE == 'expanded' && ${expanded} || ${free} }}`,
+      );
+      expect(job.strategy?.['fail-fast'], name).toBe(false);
+      expect(job.strategy?.matrix?.include, name).toHaveLength(legs);
+      expect(job['timeout-minutes'], name).toBe(120);
+    }
   });
 
   it('runs phases only through the driver and gates on one aggregate check', () => {
