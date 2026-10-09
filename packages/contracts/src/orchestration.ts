@@ -1398,6 +1398,10 @@ export interface ConversationHandoffProjection {
   idempotencyKey: string;
   targetAgentId: string;
   targetConnectionId?: string;
+  targetExecutionAgentId?: string;
+  /** Actual persisted successor binding, absent before that Session starts. */
+  targetProvider?: EngineId;
+  expectedDefinitionFingerprint?: string;
   targetModelId?: string;
   createdAt: string;
   carried: readonly ConversationHandoffCarriedField[];
@@ -1645,7 +1649,11 @@ export interface ConversationListItem {
 /** Execution facts from the same authorized current-child read, never Agent defaults. */
 export interface ConversationOpenExecution {
   sessionId: string;
+  /** Present only when this receiver verified the persisted execution owner as itself. */
+  environment?: { kind: 'current' };
   agentId: AgentId;
+  executionAgentId?: AgentId;
+  expectedDefinitionFingerprint?: string;
   provider: EngineId;
   engineConnectionId?: string;
   model?: string;

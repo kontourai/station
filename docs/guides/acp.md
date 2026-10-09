@@ -141,8 +141,8 @@ The default exists independently of probe/readiness state. The Agent row carries
 
 Sending a message to an ACP-connected agent is identical, from the UI's perspective, to sending a message to any other External agent:
 
-1. The UI selects the persisted Agent row; it does not read or submit engine connection metadata.
-2. The UI posts the Agent through `POST /api/orchestration/chat`; the server resolves the Agent's binding and supplies the ACP adapter with its connection ID — see [`docs/reference/session-api.md`](../reference/session-api.md).
+1. The UI selects the persisted Agent profile. An explicit conversation override can additionally name a receiver-owned default execution Agent; it does not submit engine URLs or credentials.
+2. The UI posts the profile and any explicit execution binding through `POST /api/orchestration/chat`; the server resolves and validates that binding and supplies the ACP adapter with its connection ID — see [`docs/reference/session-api.md`](../reference/session-api.md).
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
 

@@ -11,6 +11,8 @@ import { createPortal } from 'react-dom';
 
 export interface AutocompleteItem {
   id: string;
+  disabled?: boolean;
+  leading?: ReactNode;
   title: string;
   description?: string;
   metadata?: any;
@@ -106,7 +108,7 @@ export function AutocompleteSelector({
 
   // Reset selection when items change
   useEffect(() => {
-    setSelectedIndex(items.length ? 0 : -1);
+    setSelectedIndex(items.findIndex((item) => !item.disabled));
   }, [items]);
 
   // Scroll selected item into view
@@ -136,16 +138,24 @@ export function AutocompleteSelector({
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         e.stopPropagation();
-        setSelectedIndex((prev) =>
-          Math.min(prev + 1, itemsRef.current.length - 1),
-        );
+        setSelectedIndex((prev) => {
+          for (let next = prev + 1; next < itemsRef.current.length; next++) {
+            if (!itemsRef.current[next].disabled) return next;
+          }
+          return prev;
+        });
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         e.stopPropagation();
-        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+        setSelectedIndex((prev) => {
+          for (let next = prev - 1; next >= 0; next--) {
+            if (!itemsRef.current[next].disabled) return next;
+          }
+          return prev;
+        });
       } else if (e.key === 'Enter' || e.key === 'Tab') {
         const item = itemsRef.current[selectedIndexRef.current];
-        if (item) {
+        if (item && !item.disabled) {
           e.preventDefault();
           e.stopPropagation();
           onSelect(item);
@@ -217,18 +227,22 @@ export function AutocompleteSelector({
           role="option"
           tabIndex={-1}
           aria-selected={idx === selectedIndex}
+          aria-disabled={item.disabled || undefined}
           ref={(el) => {
             if (el) itemRefs.current.set(idx, el);
             else itemRefs.current.delete(idx);
           }}
           onMouseDown={(e) => {
             e.preventDefault(); // Prevent blur
-            onSelect(item);
+            if (!item.disabled) onSelect(item);
           }}
-          onMouseEnter={() => setSelectedIndex(idx)}
+          onMouseEnter={() => {
+            if (!item.disabled) setSelectedIndex(idx);
+          }}
           style={{
             padding: '10px 12px',
-            cursor: 'pointer',
+            cursor: item.disabled ? 'not-allowed' : 'pointer',
+            opacity: item.disabled ? 0.6 : 1,
             background:
               idx === selectedIndex ? 'var(--bg-hover)' : 'transparent',
             borderBottom:
@@ -244,8 +258,10 @@ export function AutocompleteSelector({
             gap: '12px',
           }}
         >
-          {(renderIcon || item.icon) &&
-            (renderIcon ? (
+          {(item.leading || renderIcon || item.icon) &&
+            (item.leading ? (
+              item.leading
+            ) : renderIcon ? (
               renderIcon(item)
             ) : (
               <div

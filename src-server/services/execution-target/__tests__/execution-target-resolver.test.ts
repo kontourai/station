@@ -73,6 +73,121 @@ function dependencies(
 }
 
 describe('resolveExecutionTarget', () => {
+  test.each([false, true])(
+    'explicit native binding preserves a native profile and rejects external transplantation (external=%s)',
+    async (external) => {
+      const resolve = resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: {
+            kind: 'agent-execution-override',
+            agent: agentId('writer'),
+            executionAgent: agentId('station'),
+            expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+          },
+        },
+        dependencies({
+          getAgent: async (_access, id) =>
+            id === 'writer'
+              ? {
+                  slug: 'writer',
+                  available: true,
+                  definitionFingerprint: `sha256:${'a'.repeat(64)}`,
+                  ...(external
+                    ? {
+                        execution: {
+                          agentConnectionId: engineConnectionId('claude'),
+                        },
+                      }
+                    : {}),
+                }
+              : { slug: 'station', available: true, executionDefault: true },
+        }),
+      );
+      if (external)
+        await expect(resolve).rejects.toThrow(
+          'cannot deliver the selected Agent profile on the Station engine',
+        );
+      else
+        expect((await resolve).receipt).toMatchObject({
+          agentId: 'writer',
+          executionAgentId: 'station',
+          provider: 'station-agent',
+          engine: { kind: 'station' },
+        });
+    },
+  );
+
+  test('execution defaults select their own model without changing the profile receipt identity', async () => {
+    const result = await resolveExecutionTarget(
+      {
+        environment: { kind: 'current' },
+        agent: {
+          kind: 'agent-execution-override',
+          agent: agentId('writer'),
+          executionAgent: agentId('codex'),
+        },
+      },
+      dependencies({
+        getAgent: async (_access, id) =>
+          id === 'writer'
+            ? {
+                slug: 'writer',
+                available: true,
+                execution: {
+                  agentConnectionId: engineConnectionId('claude'),
+                  modelId: 'claude-model',
+                },
+              }
+            : {
+                slug: 'codex',
+                executionDefault: true,
+                engineDefault: true,
+                enable: { engineConnectionId: 'codex' },
+                available: false,
+                execution: {
+                  agentConnectionId: engineConnectionId('codex'),
+                  modelId: 'codex-model',
+                },
+              },
+      }),
+    );
+    expect(result.receipt).toMatchObject({
+      agentId: 'writer',
+      executionAgentId: 'codex',
+      provider: 'codex',
+      engine: { kind: 'connection', connectionId: 'codex' },
+    });
+    expect(result.modelId).toBe('codex-model');
+  });
+
+  test('an unavailable execution connection refuses even when its registry default exists', async () => {
+    await expect(
+      resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: {
+            kind: 'agent-execution-override',
+            agent: agentId('writer'),
+            executionAgent: agentId('codex'),
+          },
+        },
+        dependencies({
+          getAgent: async (_access, id) => ({
+            slug: id,
+            available: true,
+            executionDefault: id === 'codex',
+            execution: { agentConnectionId: engineConnectionId('codex') },
+          }),
+          getConnection: async () => ({
+            ...connection('codex'),
+            enabled: false,
+          }),
+        }),
+      ),
+    ).rejects.toThrow('disabled');
+  });
+
   test.each([
     ['worktree', 'worktree'],
     ['shared', 'shared'],

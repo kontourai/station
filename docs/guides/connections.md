@@ -937,7 +937,10 @@ selection.
 Favorites, recent choices, hidden models, and model order are saved on this
 device. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker
-restores both the default connection and model.
+restores both the default connection and model for a model-only choice.
+An engine override instead offers **Use Agent defaults**; in an existing
+conversation this opens an explicit handoff back to the authored execution
+binding and model. It does not edit the saved Agent.
 
 ---
 

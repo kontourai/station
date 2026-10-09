@@ -36,6 +36,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import type { NativeSessionOwnership } from '../../../services/orchestration/native-session-ownership.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
 const OWNER = 'handoff-qualification-owner';
@@ -116,6 +117,16 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
         input.threadId,
       );
     const now = new Date().toISOString();
+    this.events.push({
+      eventId: `${input.threadId}:started`,
+      method: 'session.started',
+      provider: this.provider,
+      threadId: input.threadId,
+      sessionId: input.threadId,
+      createdAt: now,
+      initialState: 'created',
+      metadata: input.metadata,
+    });
     this.events.push({
       eventId: `${input.threadId}:configured`,
       method: 'session.configured',
@@ -297,6 +308,9 @@ function currentBinding(
   return {
     environmentId: metadata.environmentId,
     agentId: boundAgent,
+    ...(typeof metadata.executionAgentId === 'string'
+      ? { executionAgentId: metadata.executionAgentId }
+      : {}),
     ...(typeof metadata.connectionId === 'string'
       ? { connectionId: metadata.connectionId }
       : {}),
@@ -319,28 +333,56 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       source: CLAUDE,
       target: CODEX,
       nativeReturn: false,
+      preserveProfile: false,
     },
     {
       label: 'Codex to Claude Code',
       source: CODEX,
       target: CLAUDE,
       nativeReturn: false,
+      preserveProfile: false,
     },
     {
       label: 'Claude Code to Codex and native return',
       source: CLAUDE,
       target: CODEX,
       nativeReturn: true,
+      preserveProfile: false,
     },
     {
       label: 'Codex to Claude Code and native return',
       source: CODEX,
       target: CLAUDE,
       nativeReturn: true,
+      preserveProfile: false,
+    },
+    {
+      label: 'Same Agent from Claude Code to Codex',
+      source: CLAUDE,
+      target: CODEX,
+      preserveProfile: true,
+      nativeReturn: false,
+    },
+    {
+      label: 'Same Agent from Claude Code to Codex and native return',
+      source: CLAUDE,
+      target: CODEX,
+      preserveProfile: true,
+      nativeReturn: true,
     },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
-    async ({ source, target, nativeReturn }) => {
+    async ({ source, target, preserveProfile, nativeReturn }) => {
+      const targetProfileId = preserveProfile ? source.agent : target.agent;
+      const targetRef = preserveProfile
+        ? {
+            kind: 'agent-execution-override' as const,
+            agent: source.agent,
+            executionAgent: target.agent,
+            expectedDefinitionFingerprint:
+              'sha256:0792be2242775718be74c87d7c99dac4af95a3c3863862c9aae70629321d5bbe',
+          }
+        : target.agent;
       const root = mkdtempSync(join(tmpdir(), 'station-dd-real-handoff-'));
       roots.push(root);
       const databasePath = join(root, 'orchestration.sqlite');
@@ -352,12 +394,12 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           store.claimNativeSessionIdentity(key, id, rebind),
         retired: (id) => store.recordNativeSessionRetired(id),
       };
-      const sourceAdapter = new TerminalHandoffAdapter(
+      let sourceAdapter = new TerminalHandoffAdapter(
         source.provider,
         nativeReturn,
         ownership,
       );
-      const targetAdapter = new TerminalHandoffAdapter(
+      let targetAdapter = new TerminalHandoffAdapter(
         target.provider,
         nativeReturn,
         ownership,
@@ -366,18 +408,19 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         adapterRegistry: registry([sourceAdapter, targetAdapter]),
         eventBus,
         eventStore: store,
-        resolveSessionAgent: async (input) => {
-          const configuredAgent = input.metadata?.agentId;
-          return {
-            ...input,
-            agent: {
-              slug:
-                typeof configuredAgent === 'string'
-                  ? configuredAgent
-                  : source.agent,
-            },
-          };
-        },
+        loadAgentExecutionConfig: async (slug) => ({
+          credentialProfileRef: `${slug}-account`,
+        }),
+        resolveSessionAgent: createSessionAgentResolver({
+          loadAgentSpec: async (slug) => ({
+            name: slug,
+            prompt: `Profile instructions for ${slug}`,
+            skills: [],
+            tools: { mcpServers: [] },
+          }),
+          resolveToolServer: async () => null,
+          resolveSkillDir: async () => null,
+        }),
         logger: { debug: vi.fn(), warn: vi.fn() },
       });
       const conversationId = `conversation:handoff:${source.provider}-to-${target.provider}`;
@@ -394,8 +437,15 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         getAgent: async (_access, id) => {
           const path = pathFor(id);
           return {
-            slug: path.agent,
+            slug: id,
             available: true,
+            ...(preserveProfile && id === source.agent
+              ? {
+                  definitionFingerprint:
+                    'sha256:0792be2242775718be74c87d7c99dac4af95a3c3863862c9aae70629321d5bbe',
+                }
+              : {}),
+            executionDefault: id === source.agent || id === target.agent,
             execution: {
               agentConnectionId: engineConnectionId(path.connectionId),
             },
@@ -434,6 +484,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             {
               agentId: input.agentId,
               provider: input.provider,
+              ...(input.executionAgentId
+                ? { executionAgentId: input.executionAgentId }
+                : {}),
               environmentId: ENVIRONMENT,
               ...(input.connectionId
                 ? { connectionId: input.connectionId }
@@ -514,7 +567,10 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               : {}),
             target: {
               environment: { kind: 'current' },
-              agent: selected.agent,
+              agent:
+                preserveProfile && selected === target
+                  ? targetRef
+                  : selected.agent,
             },
             userId: OWNER,
             ...(input.idempotencyKey
@@ -532,18 +588,18 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         logger: { debug: vi.fn() },
         getUserId: () => OWNER,
         executeForegroundMessage: (input) =>
-          execute(source, {
-            message: input.message,
-            ...(input.conversationId
-              ? { conversationId: input.conversationId }
-              : {}),
-          }),
+          executeForegroundMessage({ ...input, userId: OWNER }, executionDeps),
         handoffConversation: (input) =>
-          execute(pathFor(input.target.agent), {
-            message: input.message,
-            conversationId: input.conversationId,
-            idempotencyKey: input.idempotencyKey,
-          }),
+          executeForegroundMessage(
+            {
+              ...input,
+              userId: OWNER,
+              handoffIntent: createConversationHandoffIntent(
+                input.idempotencyKey,
+              ),
+            },
+            executionDeps,
+          ),
         continueForegroundMessage: (input) =>
           execute(target, {
             message: input.message,
@@ -558,6 +614,27 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
         });
+
+      if (preserveProfile) {
+        const refused = await post('/api/orchestration/chat', {
+          message: 'An authored Agent is not an engine selector.',
+          target: {
+            environment: { kind: 'current' },
+            agent: {
+              kind: 'agent-execution-override',
+              agent: source.agent,
+              executionAgent: 'arbitrary-authored-agent',
+            },
+          },
+        });
+        expect(refused.status, await refused.clone().text()).toBe(400);
+        expect(await refused.json()).toMatchObject({
+          error: expect.stringMatching(/receiver-owned default engine Agent/),
+        });
+        expect(sourceAdapter.starts).toHaveLength(0);
+        expect(targetAdapter.starts).toHaveLength(0);
+        expect(store.conversationSessions(conversationId)).toHaveLength(0);
+      }
 
       const started = await post('/api/orchestration/chat', {
         message: `Remember ${CONTEXT_TOKEN}.`,
@@ -581,7 +658,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         idempotencyKey,
         target: {
           environment: { kind: 'current' },
-          agent: target.agent,
+          agent: targetRef,
         },
       };
       const handoff = await post(
@@ -605,6 +682,11 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         predecessorSessionId: conversationId,
         currentSessionId: handoffReceipt.data.sessionId,
         outcome: 'created',
+        target: {
+          agentId: targetProfileId,
+          provider: target.provider,
+          ...(preserveProfile ? { executionAgentId: target.agent } : {}),
+        },
         carried: [...CONVERSATION_HANDOFF_CARRIED_FIELDS],
         reset: [...CONVERSATION_HANDOFF_RESET_FIELDS],
       });
@@ -625,7 +707,14 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       const replayBody = (await replay.json()) as { data: unknown };
       expect(replayBody.data).toMatchObject({
         sessionId: handoffReceipt.data.sessionId,
-        handoff: { outcome: 'existing' },
+        handoff: {
+          outcome: 'existing',
+          target: {
+            agentId: targetProfileId,
+            provider: target.provider,
+            ...(preserveProfile ? { executionAgentId: target.agent } : {}),
+          },
+        },
       });
       await eventually(() => expect(targetAdapter.turns).toHaveLength(1));
       expect(targetAdapter.turns[0]?.ambientContext).toContain(CONTEXT_TOKEN);
@@ -680,7 +769,63 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       const lineage = store.conversationSessions(conversationId);
       expect(new Set(lineage.map((entry) => entry.sessionId))).toHaveLength(2);
       expect(lineage.map((entry) => entry.ordinal)).toEqual([0, 1]);
-      expect(currentBinding(store, conversationId)?.agentId).toBe(target.agent);
+      expect(currentBinding(store, conversationId)?.agentId).toBe(
+        targetProfileId,
+      );
+      expect(targetAdapter.starts[0]?.agent?.slug).toBe(targetProfileId);
+      expect(targetAdapter.starts[0]?.credentialProfileRef).toBe(
+        `${target.agent}-account`,
+      );
+      if (preserveProfile) {
+        expect(targetAdapter.starts[0]?.metadata?.executionAgentId).toBe(
+          target.agent,
+        );
+        expect(
+          targetAdapter.starts[0]?.metadata?.expectedDefinitionFingerprint,
+        ).toBe(
+          'sha256:0792be2242775718be74c87d7c99dac4af95a3c3863862c9aae70629321d5bbe',
+        );
+        expect(targetAdapter.turns[0]?.ambientContext).toContain(
+          `Profile instructions for ${source.agent}`,
+        );
+        expect(
+          await service.readConversationHandoffStatus(
+            conversationId,
+            idempotencyKey,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
+        ).toMatchObject({
+          marker: {
+            targetAgentId: source.agent,
+            targetExecutionAgentId: target.agent,
+            targetProvider: target.provider,
+            expectedDefinitionFingerprint:
+              targetAdapter.starts[0]?.metadata?.expectedDefinitionFingerprint,
+          },
+        });
+      }
+
+      if (preserveProfile) {
+        const fresh = await post('/api/orchestration/chat', {
+          conversationId: `${conversationId}:fresh-override`,
+          message: 'Start directly on my chosen engine.',
+          target: { environment: { kind: 'current' }, agent: targetRef },
+        });
+        expect(fresh.status, await fresh.clone().text()).toBe(200);
+        expect(await fresh.json()).toMatchObject({
+          data: {
+            resolution: {
+              agentId: source.agent,
+              executionAgentId: target.agent,
+              provider: target.provider,
+            },
+          },
+        });
+        expect(targetAdapter.starts.at(-1)?.agent?.slug).toBe(source.agent);
+        expect(targetAdapter.starts.at(-1)?.credentialProfileRef).toBe(
+          `${target.agent}-account`,
+        );
+      }
 
       let returnedSessionId: string | undefined;
       if (nativeReturn) {
@@ -754,11 +899,24 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       store.close();
       store = new EventStore(databasePath);
       eventBus = new EventBus();
+      sourceAdapter = new TerminalHandoffAdapter(source.provider);
+      targetAdapter = new TerminalHandoffAdapter(target.provider);
       service = new OrchestrationService({
-        adapterRegistry: registry([
-          new TerminalHandoffAdapter(source.provider),
-          new TerminalHandoffAdapter(target.provider),
-        ]),
+        adapterRegistry: registry([sourceAdapter, targetAdapter]),
+        loadAgentExecutionConfig: async (slug) => ({
+          credentialProfileRef: `${slug}-account`,
+        }),
+        resolveSessionAgent: createSessionAgentResolver({
+          loadAgentSpec: async (slug) => ({
+            name: slug,
+            prompt: `Profile instructions for ${slug}`,
+            skills: [],
+            tools: { mcpServers: [] },
+          }),
+          resolveToolServer: async () => null,
+          resolveSkillDir: async () => null,
+        }),
+
         eventBus,
         eventStore: store,
         logger: { debug: vi.fn(), warn: vi.fn() },
@@ -775,7 +933,15 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           predecessorSessionId: conversationId,
           sessionId: handoffReceipt.data.sessionId,
           idempotencyKey,
-          targetAgentId: target.agent,
+          targetAgentId: targetProfileId,
+          targetProvider: target.provider,
+          ...(preserveProfile
+            ? {
+                targetExecutionAgentId: target.agent,
+                expectedDefinitionFingerprint:
+                  'sha256:0792be2242775718be74c87d7c99dac4af95a3c3863862c9aae70629321d5bbe',
+              }
+            : {}),
           targetConnectionId: target.connectionId,
           carried: [...CONVERSATION_HANDOFF_CARRIED_FIELDS],
           reset: [...CONVERSATION_HANDOFF_RESET_FIELDS],
@@ -803,6 +969,29 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             entry.event.outputText?.includes(CONTEXT_TOKEN),
         ),
       ).toHaveLength(nativeReturn ? 4 : 3);
+
+      if (preserveProfile) {
+        const returned = await execute(source, {
+          message: 'Return to my Agent default engine.',
+          conversationId,
+          idempotencyKey: 'return-to-agent-default',
+        });
+        expect(returned.resolution).toMatchObject({
+          agentId: source.agent,
+          provider: source.provider,
+        });
+        expect(returned.resolution.executionAgentId).toBeUndefined();
+        expect(sourceAdapter.starts[0]?.agent?.slug).toBe(source.agent);
+        expect(
+          sourceAdapter.starts[0]?.metadata?.executionAgentId,
+        ).toBeUndefined();
+        expect(sourceAdapter.starts[0]?.credentialProfileRef).toBe(
+          `${source.agent}-account`,
+        );
+        expect(store.conversationSessions(conversationId)).toHaveLength(
+          nativeReturn ? 4 : 3,
+        );
+      }
 
       await service.shutdown();
       store.close();

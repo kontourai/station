@@ -165,6 +165,7 @@ interface DragGesture {
  * visual-viewport containment, so the sheet rides above the keyboard (R5/R6).
  */
 export function RequestSheet({
+  open = true,
   title,
   subtitle,
   onDismiss,
@@ -172,6 +173,7 @@ export function RequestSheet({
   children,
   actions,
 }: {
+  open?: boolean;
   /** Also the dialog's accessible name. */
   title: string;
   subtitle?: ReactNode;
@@ -251,6 +253,7 @@ export function RequestSheet({
 
   return (
     <ResponsiveDialogSurface
+      open={open}
       layer="dialog"
       onClose={onDismiss}
       ariaLabel={title}
@@ -283,9 +286,11 @@ export function RequestSheet({
       <div ref={bodyRef} className="request-sheet__body">
         {children}
       </div>
-      <ResponsiveSurfaceActions className="request-sheet__actions">
-        {actions}
-      </ResponsiveSurfaceActions>
+      {actions && (
+        <ResponsiveSurfaceActions className="request-sheet__actions">
+          {actions}
+        </ResponsiveSurfaceActions>
+      )}
     </ResponsiveDialogSurface>
   );
 }

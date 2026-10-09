@@ -639,6 +639,7 @@ export class ConversationLineage {
     authority: SessionReadScope,
     target: {
       agentId: string;
+      executionAgentId?: string;
       environmentId: string;
       connectionId?: string;
       modelId?: string;
@@ -659,12 +660,14 @@ export class ConversationLineage {
       throw new Error('Conversation handoff requires durable storage');
     const hasTarget = (marker: {
       targetAgentId: string;
+      targetExecutionAgentId?: string;
       targetEnvironmentId: string;
       targetConnectionId?: string;
       targetModelId?: string;
       messageDigest: string;
     }) =>
       marker.targetAgentId === target.agentId &&
+      marker.targetExecutionAgentId === target.executionAgentId &&
       marker.targetEnvironmentId === target.environmentId &&
       marker.targetConnectionId === target.connectionId &&
       marker.targetModelId === target.modelId &&
@@ -787,6 +790,9 @@ export class ConversationLineage {
           }
         : {}),
       targetAgentId: target.agentId,
+      ...(target.executionAgentId
+        ? { targetExecutionAgentId: target.executionAgentId }
+        : {}),
       targetEnvironmentId: target.environmentId,
       ...(target.connectionId
         ? { targetConnectionId: target.connectionId }
@@ -1007,7 +1013,6 @@ export class ConversationLineage {
             : store.readSessionByThread(marker.sessionId)
               ? ('indeterminate' as const)
               : ('reserved' as const);
-    const disclosure = store.describeConversationHandoff(marker, 'existing');
     let nativeResumeIdentity: NativeResumeIdentityStatus | undefined;
     for (const event of store.listEvents(marker.sessionId)) {
       const payload = event.payload;
@@ -1024,28 +1029,7 @@ export class ConversationLineage {
       conversationId,
       currentSessionId: marker.sessionId,
       status,
-      marker: {
-        predecessorSessionId: marker.predecessorSessionId,
-        sessionId: marker.sessionId,
-        idempotencyKey: marker.idempotencyKey,
-        targetAgentId: marker.targetAgentId,
-        ...(marker.targetConnectionId
-          ? { targetConnectionId: marker.targetConnectionId }
-          : {}),
-        ...(marker.targetModelId
-          ? { targetModelId: marker.targetModelId }
-          : {}),
-        createdAt: marker.createdAt,
-        carried: disclosure.carried,
-        reset: disclosure.reset,
-        ...(marker.nativeReturnSourceSessionId
-          ? {
-              nativeReturn: {
-                sourceSessionId: marker.nativeReturnSourceSessionId,
-              },
-            }
-          : {}),
-      },
+      marker: store.projectConversationHandoff(marker),
       ...(providerTurnId ? { providerTurnId } : {}),
       ...(nativeResumeIdentity ? { nativeResumeIdentity } : {}),
     };

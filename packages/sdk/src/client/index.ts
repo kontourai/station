@@ -100,6 +100,7 @@ export {
   submitTaskRoomAgentRequest,
   TaskRoomWorkNotSentError,
   TaskRoomWorkProtocolError,
+  taskRoomModelOptionsDigest,
 } from './task-room-work';
 export * from './task-tool-results';
 export * from './task-user-input-references';

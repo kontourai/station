@@ -94,8 +94,11 @@ its selected execution engine determines the available delivery mechanisms.
 
 Each engine has a capability matrix for system prompts, tool servers, skills,
 commands, and model selection. Requested authored content without a supported
-delivery channel is reported as undelivered; an absent request is not a failed
-delivery.
+delivery channel is reported as undelivered on the ordinary saved-binding path;
+an absent request is not a failed delivery. An explicit conversation engine
+override must preserve required profile delivery and refuses unsupported or
+undelivered content instead of starting a reduced profile. See
+[execution overrides](session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
 Use the [Agent guide](../guides/agents.md) and [Session API](session-api.md) for
 current setup, capability, turn, idle, terminal, and recovery behavior. A matrix
@@ -208,6 +211,9 @@ A skill is a reusable bundle of instructions and behavior that an agent adopts â
 Skills are a capability Station owns for agents it runs. For an agent bound to an external engine, whether the skill reaches the engine depends on that engine having a delivery channel for skills. Some engines do; others do not.
 
 When an engine has no channel for an authored skill, Station records that as undelivered rather than silently dropping it, and the agent editor shows the authored content read-only with a diagnostic naming the engine that cannot deliver it.
+
+Explicit conversation engine overrides refuse undeliverable required skills
+rather than starting without them. Saved Agent defaults remain unchanged.
 
 Skills are installed and browsed from the registry, like agents and tool servers.
 
