@@ -532,27 +532,30 @@ async function startPackagedRuntimeUnderLease(
   root: string,
   instanceId: string,
 ) {
-  return withDesktopRuntimeListenerLease(async () => {
-    const launched = launchDesktopServer(release, root, instanceId);
-    try {
-      const identity = await waitForDesktopIdentity(launched);
-      const port = readinessPort(launched.output());
-      if (!Number.isInteger(port)) {
-        throw new Error(
-          `Station ${instanceId} identity succeeded without its readiness port`,
+  return withDesktopRuntimeListenerLease(
+    async () => {
+      const launched = launchDesktopServer(release, root, instanceId);
+      try {
+        const identity = await waitForDesktopIdentity(launched);
+        const port = readinessPort(launched.output());
+        if (!Number.isInteger(port)) {
+          throw new Error(
+            `Station ${instanceId} identity succeeded without its readiness port`,
+          );
+        }
+        return { identity, launched, port };
+      } catch (error) {
+        const port = readinessPort(launched.output());
+        const detail = error instanceof Error ? error.message : String(error);
+        const diagnostic = new Error(
+          `Packaged Station startup failed: pid=${launched.child.pid ?? 'unknown'}, expectedBootId=${launched.expectedIdentity.bootId}, listenerBlock=${port === undefined ? 'unreported' : `${port}-${port + 3}`}, destination=${port === undefined ? 'unreported' : `http://127.0.0.1:${port}/api/system/liveness`}; ${detail}; output tail:\n${launched.output()}`,
         );
+        await terminateDesktopServer(launched.child);
+        throw diagnostic;
       }
-      return { identity, launched, port };
-    } catch (error) {
-      const port = readinessPort(launched.output());
-      const detail = error instanceof Error ? error.message : String(error);
-      const diagnostic = new Error(
-        `Packaged Station startup failed: pid=${launched.child.pid ?? 'unknown'}, expectedBootId=${launched.expectedIdentity.bootId}, listenerBlock=${port === undefined ? 'unreported' : `${port}-${port + 3}`}, destination=${port === undefined ? 'unreported' : `http://127.0.0.1:${port}/api/system/liveness`}; ${detail}; output tail:\n${launched.output()}`,
-      );
-      await terminateDesktopServer(launched.child);
-      throw diagnostic;
-    }
-  });
+    },
+    { waitMs: DESKTOP_SERVER_READINESS_TIMEOUT_MS },
+  );
 }
 
 async function terminateDesktopServer(

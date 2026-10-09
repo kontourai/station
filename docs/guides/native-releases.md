@@ -319,7 +319,8 @@ install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
 Normal operation is a Nightly started by a passing main qualification run for
-the commit it qualified, at most about once a day. Nightly has no independent
+the commit it qualified, under the configured minimum publication interval
+(six hours by default) and its separate serialized delivery lease. Nightly has no independent
 schedule; manual dispatch remains available for recovery and requires
 exact-source qualification. Both entry points use their workflow event SHA,
 never stage a source their published markers already contain, and skip
