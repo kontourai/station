@@ -17,6 +17,8 @@ export async function dispatchForeground(input: {
   apiBase: string;
   sessionId: string;
   agentSlug: string;
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
   projectSlug?: string;
   conversationId?: string;
   requestedModel?: string | null;
@@ -144,10 +146,22 @@ export async function dispatchForeground(input: {
     input.apiBase,
     {
       target: {
-        ...(!input.projectSlug
+        ...(!input.projectSlug || input.executionAgentId
           ? { environment: { kind: 'current' as const } }
           : {}),
-        agent: agentId(input.agentSlug),
+        agent: input.executionAgentId
+          ? {
+              kind: 'agent-execution-override',
+              agent: agentId(input.agentSlug),
+              executionAgent: agentId(input.executionAgentId),
+              ...(input.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      input.expectedDefinitionFingerprint,
+                  }
+                : {}),
+            }
+          : agentId(input.agentSlug),
         ...(requestedModel || Object.keys(modelOptions ?? {}).length > 0
           ? {
               model: {

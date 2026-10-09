@@ -17,7 +17,11 @@
 
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
-import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+  engineId,
+} from '@kontourai/station-contracts/agent-identity';
 import type {
   InstalledSkillExperienceV1,
   SkillExperienceDefinitionV1,
@@ -39,6 +43,11 @@ import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { StartStationControl } from '../components/chat-start/StartStationControl';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import {
+  buildLastChosenModelBindingKey,
+  getLastChosenModelMap,
+  trackLastChosenModel,
+} from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
 const remoteRun = vi.hoisted((): { complete: (() => void) | null } => ({
@@ -103,7 +112,13 @@ const AUTHORED_CODEX: AgentData = {
 } as unknown as AgentData;
 
 const selectionModelState = {
-  models: [] as Array<{ id: string; providerId?: string }>,
+  models: [] as Array<{
+    id: string;
+    providerId?: string;
+    providerType?: string;
+    executionAgentId?: string;
+    expectedDefinitionFingerprint?: string;
+  }>,
   isGlobal: true as boolean,
   selectedProject: undefined as
     | { slug: string; name: string; workingDirectory?: string }
@@ -202,6 +217,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     modelChoices: {},
     setModelChoices: vi.fn(),
     modelsForAgent: () => selectionModelState.models,
+    executionModelsForAgent: () => selectionModelState.models,
     modelChoiceKey: (agent: AgentData) => agent.slug,
     defaultEffectiveModelForAgent: () => ({
       id: undefined,
@@ -1415,6 +1431,65 @@ describe('the start composer in the dock', () => {
   // Home's composer sends what its chips show; the dock starts exactly that
   // and never substitutes its own default.
   describe("a start carrying Home's selection", () => {
+    test('starts an authored profile on the chosen engine without changing its remembered default model', async () => {
+      const fingerprint = 'a'.repeat(64);
+      const profile: AgentData = {
+        slug: agentId('reviewer'),
+        name: 'Reviewer',
+        available: true,
+        definitionFingerprint: fingerprint,
+        model: 'claude-default',
+        execution: { agentConnectionId: engineConnectionId('claude') },
+      };
+      const binding: AgentData = {
+        slug: agentId('codex'),
+        name: 'Codex',
+        available: true,
+        executionDefault: true,
+        execution: { agentConnectionId: engineConnectionId('codex') },
+      };
+      selectionModelState.agents = [profile, binding];
+      selectionModelState.recommendedAgent = profile;
+      selectionModelState.models = [
+        {
+          id: 'gpt-5.4',
+          providerId: 'codex-provider',
+          providerType: 'codex',
+          executionAgentId: binding.slug,
+          expectedDefinitionFingerprint: fingerprint,
+        },
+      ];
+      const sourceMemory = buildLastChosenModelBindingKey(profile);
+      trackLastChosenModel(sourceMemory, 'claude-default');
+      const onSelect = start(vi.fn(), {
+        startWithDefault: true,
+        initialPrompt: 'Review these changes',
+        startSelection: {
+          context: '__global__',
+          agentSlug: profile.slug,
+          model: {
+            modelId: 'gpt-5.4',
+            executionAgentId: binding.slug,
+            expectedDefinitionFingerprint: fingerprint,
+            providerId: 'codex-provider',
+            providerType: 'codex',
+            providerOptions: { reasoningEffort: 'high' },
+          },
+        },
+      });
+      await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+      const call = onSelect.mock.calls[0];
+      expect(call[0]).toBe(profile);
+      expect(call[3]).toBe('Review these changes');
+      expect(call[4]).toBe('gpt-5.4');
+      expect(call[8]).toEqual({ reasoningEffort: 'high' });
+      expect(call[9]).toBe('codex-provider');
+      expect(call[10]).toBe('codex');
+      expect(call[13]).toBe(binding.slug);
+      expect(call[14]).toBe(fingerprint);
+      expect(getLastChosenModelMap()[sourceMemory]).toBe('claude-default');
+    });
+
     test('starts the chosen Agent with the chosen Model and runtime options', async () => {
       selectionModelState.agents = [AGENT, AUTHORED_CODEX];
       selectionModelState.recommendedAgent = AGENT;

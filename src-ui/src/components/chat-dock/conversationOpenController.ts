@@ -58,6 +58,7 @@ export function conversationExecutionChanged(
     Boolean(
       execution &&
         (previous.agentSlug !== execution.agentId ||
+          previous.executionAgentId !== execution.executionAgentId ||
           previousEngine !== execution.provider ||
           previousEngineConnection !== execution.engineConnectionId),
     )
@@ -131,6 +132,10 @@ export function conversationOpenPatch(
   const executionPatch: Partial<ChatUIState> = execution
     ? {
         agentSlug: execution.agentId,
+        executionAgentId: execution.executionAgentId,
+        expectedDefinitionFingerprint: execution.executionAgentId
+          ? execution.expectedDefinitionFingerprint
+          : undefined,
         agentName: choice?.agentName ?? execution.agentId,
         projectSlug: resolution.conversation.projectSlug,
         projectName:

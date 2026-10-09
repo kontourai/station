@@ -64,6 +64,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 skipInMemoryQueueOnBusy: true,
                 dispatch: claim,
                 executionSnapshot: {
+                  executionAgentId: turn.executionAgentId,
+                  expectedDefinitionFingerprint:
+                    turn.expectedDefinitionFingerprint,
                   requestedModel: turn.requestedModel,
                   requestedProviderOptions: turn.requestedProviderOptions,
                   model: turn.model,

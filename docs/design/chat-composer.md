@@ -51,8 +51,8 @@ execution or native-shell qualification. Capture revisions and limits are in
 | Project page | ![Baseline Project page](../learn/media/project-start-before.png) | ![Project start composer](../learn/media/project-start-after.png) |
 
 These frozen comparisons record #3490's redesign at the revisions in the media
-manifest. Later Project identity marks and server run-location updates are not
-pictured; the images are not captures or visual qualification of the current
+manifest. Later Project identity marks, server run-location updates, Agent
+grouping and Engine & model overrides are not pictured; the images are not captures or visual qualification of the current
 composer.
 
 The Project comparison captures precede the removal of the header's local
@@ -69,13 +69,37 @@ filters; Options reveals capability filters and the selected model's supported
 runtime controls. Reviewed canonical model identities still own grouping across
 provider routes; similar names do not establish equivalence.
 
+Agent choices are grouped as **Station**, **Coding apps**, and **My agents**;
+recent use orders rows inside their group. Bundled engine and model marks identify
+known brands. The Engine & model picker uses one filter control and a collapsed
+Options section. Home and New Chat share its menu controller; `/model` shares
+filtering, availability and choice memory with the popup.
+
+Choosing another engine is a conversation override of the selected Agent's
+execution binding. It retains the authored profile rather than substituting the
+coding app's default profile, and does not edit saved Agent defaults. Known
+capability incompatibilities remain visible with a refusal reason; live resource
+and adapter delivery checks still decide admission. In an existing conversation,
+changing or resetting the engine opens an explicit handoff with the real draft
+and the existing context/write-identity confirmation. **Use Agent defaults**
+returns to the authored engine and model through that handoff.
+
+The Station choice scopes remote engine discovery. A remote counterpart must
+have the same Agent ID and receiver-computed definition fingerprint; names do
+not establish equivalence. The fingerprint covers the authored definition and
+referenced resource IDs, not the installed contents of those resources. An
+unverified counterpart or failed inventory read stays an explicit gap. Selecting
+a remote route opens the task launcher and its portable Project consent; it
+does not relocate an existing conversation. Runtime and native-device execution
+of these routes require separate evidence from the source and controlled tests.
+
 Home keeps a screen-reader page title while the shared composer owns the
 visible start heading. An empty Home does not add a second welcome question.
 
 The **on <host>** control names the answering Station's host projection, or
 **on Project default** when the Project has a saved execution environment. It
-opens the existing task launcher with the current message, Project and Agent,
-and with its Station/worker/model routing controls expanded. The launcher
+opens the existing task launcher with the current message, Project, Agent and
+explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher
 loads the selected environment's own worker inventory and retains portable
 Project/resource admission and the explicit no-fallback refusals. **Run task**
 starts a task; it does not place or migrate a foreground chat on a peer.

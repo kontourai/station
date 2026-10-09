@@ -1391,6 +1391,10 @@ export interface ConversationHandoffProjection {
   idempotencyKey: string;
   targetAgentId: string;
   targetConnectionId?: string;
+  targetExecutionAgentId?: string;
+  /** Actual persisted successor binding, absent before that Session starts. */
+  targetProvider?: EngineId;
+  expectedDefinitionFingerprint?: string;
   targetModelId?: string;
   createdAt: string;
   carried: readonly ConversationHandoffCarriedField[];
@@ -1592,6 +1596,8 @@ export interface ConversationListItem {
 export interface ConversationOpenExecution {
   sessionId: string;
   agentId: AgentId;
+  executionAgentId?: AgentId;
+  expectedDefinitionFingerprint?: string;
   provider: EngineId;
   engineConnectionId?: string;
   model?: string;

@@ -181,6 +181,8 @@ export type BindingStatus = {
 };
 
 export type ChatExecutionMetadata = {
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
   executionMode: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;

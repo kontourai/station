@@ -91,6 +91,8 @@ test('opening a durable conversation observes its current Claude child and recor
       agentSlug: 'claude-agent',
       projectSlug: 'original-project',
       connectionId: 'claude-connection',
+      executionAgentId: 'claude',
+      expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
     },
     createdAt: '2026-09-01T00:02:01Z',
   });
@@ -110,6 +112,8 @@ test('opening a durable conversation observes its current Claude child and recor
       agentId: 'claude-agent',
       provider: 'claude',
       engineConnectionId: 'claude-connection',
+      executionAgentId: 'claude',
+      expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
       model: 'opus-current',
     },
   });

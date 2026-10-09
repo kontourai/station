@@ -27,7 +27,6 @@ import {
 } from '../../lib/newChatIntent';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import type { AgentFixRoute } from '../AgentReadinessCell';
-import { agentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
 import {
@@ -48,19 +47,9 @@ import {
 import { describeReadFailure, SkeletonList } from '../state';
 
 // The pickers and setup guidance load on first use, outside Home's bundle.
-const StartAgentMenu = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartAgentMenu,
-  })),
-);
-const StartProjectMenu = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartProjectMenu,
-  })),
-);
-const StartModelPicker = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartModelPicker,
+const StartPickerMenus = React.lazy(() =>
+  import('../chat-start/StartPickerMenus').then((module) => ({
+    default: module.StartPickerMenus,
   })),
 );
 const ChatSetupHelper = React.lazy(() =>
@@ -261,9 +250,6 @@ export function HomeStartComposer({
     setupError,
     refreshSetup,
     agentConnections,
-    modelConnections,
-    modelsForAgent,
-    defaultEffectiveModelForAgent,
     selectedContextResolved,
   } = selection;
   const start = useStartSelection(selection, context);
@@ -427,7 +413,11 @@ export function HomeStartComposer({
     modelsLoading ||
     contextPending ||
     !selectedContextResolved;
-  const modelLabel = agent ? start.modelFor(agent).label : undefined;
+  const effectiveChoice = agent ? start.modelFor(agent) : undefined;
+  const modelLabel =
+    effectiveChoice?.engineName && effectiveChoice.executionAgentId
+      ? `${effectiveChoice.engineName} · ${effectiveChoice.label}`
+      : effectiveChoice?.label;
   const agentChip: StartAgentChip = loading
     ? { status: 'loading' }
     : {
@@ -468,11 +458,6 @@ export function HomeStartComposer({
     !runtimeFetching &&
     !modelsFetching &&
     (agent ? agentRunnability(agent).runnable : noAgentToOffer);
-  const chipMenuAgent =
-    menu?.kind === 'model'
-      ? (viewModel.flatList.find((entry) => entry.slug === menu.agentSlug) ??
-        agent)
-      : undefined;
 
   return (
     <>
@@ -496,6 +481,20 @@ export function HomeStartComposer({
             projectName={viewModel.selectedProject?.name}
             defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
             agentSlug={agent?.slug}
+            executionAgentId={
+              agent ? start.modelChoiceFor(agent)?.executionAgentId : undefined
+            }
+            expectedDefinitionFingerprint={
+              agent
+                ? start.modelChoiceFor(agent)?.expectedDefinitionFingerprint
+                : undefined
+            }
+            environmentId={
+              agent ? start.modelChoiceFor(agent)?.environmentId : undefined
+            }
+            providerOptions={
+              agent ? start.modelChoiceFor(agent)?.providerOptions : undefined
+            }
             model={agent ? start.modelChoiceFor(agent)?.modelId : undefined}
             disabled={
               pending ||
@@ -663,88 +662,23 @@ export function HomeStartComposer({
       </StartComposer>
       {menu && (
         <React.Suspense fallback={null}>
-          {menu.kind === 'agents' ? (
-            <StartAgentMenu
-              anchor={menu.trigger}
-              layer="popover"
-              groups={viewModel.groups}
-              flatList={viewModel.flatList}
-              selectedSlug={agent?.slug}
-              loading={runtimeLoading || modelsLoading}
-              error={setupError}
-              onRetry={() => void refreshSetup().catch(() => undefined)}
-              onSetUpConnections={() => handOff({ kind: 'connections' })}
-              modelLabelFor={(entry) => start.modelFor(entry).label}
-              modelUnavailableFor={(entry) =>
-                modelsForAgent(entry).length === 0 && !modelsLoading
-              }
-              // The Agent list closes for the Model picker, so the picker
-              // anchors to (and returns focus to) the Agent chip.
-              onOpenModel={(entry) =>
-                setMenu({
-                  kind: 'model',
-                  trigger: menu.trigger,
-                  agentSlug: entry.slug,
-                })
-              }
-              onChoose={(entry) => {
-                start.chooseAgent(entry.slug);
-                setFeedback(null);
-                setAgentSearch('');
-                setMenu(null);
-              }}
-              onFix={repair}
-              fixDisabledFor={(entry) =>
-                agentFixRoute(entry) === 'enable' &&
-                resolveNewChatAgentEnable(entry)
-                  ? enabler.inFlight
-                  : undefined
-              }
-              search={agentSearch}
-              onSearch={setAgentSearch}
-              notice={viewModel.compatibilityMessage}
-              onClose={() => {
-                setAgentSearch('');
-                setMenu(null);
-              }}
-            />
-          ) : menu.kind === 'project' ? (
-            <StartProjectMenu
-              anchor={menu.trigger}
-              layer="popover"
-              options={viewModel.contextOptions}
-              selectedContext={context}
-              workspaceHint={workspaceHint}
-              icons={icons}
-              accents={accents}
-              folderlessHint={resolveNewChatWorkspaceHint({
-                agent,
-                project: undefined,
-                acpConnections,
-              })}
-              onChoose={(value) => {
-                bindProject(value);
-                setMenu(null);
-              }}
-              onClose={() => setMenu(null)}
-            />
-          ) : chipMenuAgent ? (
-            <StartModelPicker
-              anchor={menu.trigger}
-              layer="popover"
-              models={modelsForAgent(chipMenuAgent)}
-              loading={modelsLoading}
-              modelConnections={modelConnections}
-              choice={start.modelChoiceFor(chipMenuAgent)}
-              defaultModel={defaultEffectiveModelForAgent(chipMenuAgent)}
-              onSelect={(model) => start.chooseModel(chipMenuAgent, model)}
-              onReset={() => start.resetModel(chipMenuAgent)}
-              onRuntimeOptionChange={(key, value) =>
-                start.setRuntimeOption(chipMenuAgent, key, value)
-              }
-              onClose={() => setMenu(null)}
-            />
-          ) : null}
+          <StartPickerMenus
+            menu={menu}
+            setMenu={setMenu}
+            layer="popover"
+            selection={selection}
+            start={start}
+            context={context}
+            search={agentSearch}
+            onSearch={setAgentSearch}
+            onFeedbackClear={() => setFeedback(null)}
+            onSetup={() => handOff({ kind: 'connections' })}
+            onRepair={repair}
+            enablePending={enabler.inFlight}
+            onChooseProject={bindProject}
+            icons={icons}
+            accents={accents}
+          />
         </React.Suspense>
       )}
     </>

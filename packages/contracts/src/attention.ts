@@ -669,6 +669,8 @@ export type AttentionInputReplyContext =
       state: 'open';
       reference: AttentionRequestReference;
       agentId: string;
+      executionAgentId?: string;
+      expectedDefinitionFingerprint?: string;
       conversationId: string;
       provider: string;
       engineId: string;

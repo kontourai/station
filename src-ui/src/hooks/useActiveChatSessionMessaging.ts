@@ -289,6 +289,8 @@ export function useSendMessage(
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
+          executionAgentId?: string;
+          expectedDefinitionFingerprint?: string;
           requestedModel?: string | null;
           requestedProviderOptions?: Record<string, unknown>;
           model?: string;
@@ -606,6 +608,12 @@ export function useSendMessage(
           apiBase,
           sessionId,
           agentSlug,
+          executionAgentId: options?.executionSnapshot
+            ? options.executionSnapshot.executionAgentId
+            : currentState?.executionAgentId,
+          expectedDefinitionFingerprint: options?.executionSnapshot
+            ? options.executionSnapshot.expectedDefinitionFingerprint
+            : currentState?.expectedDefinitionFingerprint,
           projectSlug: currentState?.projectSlug,
           setApprovalMode: carriedApprovalPick,
           setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
@@ -662,6 +670,7 @@ export function useSendMessage(
           // durable tab keyed by its conversation while routing subsequent
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
+          executionAgentId: receipt.resolution.executionAgentId,
           // #2436: the carried pick is settled only by what the server
           // reports became of it, never by the send's success alone. A
           // Station that reports nothing (an older one, or another Station
@@ -878,6 +887,9 @@ export function useSendMessage(
                 clientTurnId: resolvedTurnId,
                 sessionId,
                 agentSlug,
+                executionAgentId: currentState?.executionAgentId,
+                expectedDefinitionFingerprint:
+                  currentState?.expectedDefinitionFingerprint,
                 conversationId: latestState?.conversationId ?? conversationId,
                 content,
                 attachments,

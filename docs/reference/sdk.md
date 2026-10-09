@@ -23,7 +23,7 @@ This source addition requires a published version that exports `/agent`.
 
 | Group | Exports |
 | --- | --- |
-| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `environmentId`, `ClientRequestOptions` |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
@@ -146,6 +146,11 @@ The request-list result includes `contextVersion` and an authorized brief snapsh
 (or `null`) on supporting servers. Submission negotiates that version, forwards
 only the reference, and verifies that the acknowledgement retains its digest and
 Task incarnation. It does not substitute a newer brief on a retry.
+Optional `executionAgentId`, `expectedDefinitionFingerprint`, `modelId` and
+`providerOptions` carry explicit execution intent. Acknowledgements must retain
+the selected binding/model/fingerprint and the canonical options digest. A
+changed engine, model or options cannot replay a prior operation as success.
+Raw provider options are not persisted in the request journal.
 A fresh versioned request-list read precedes the additive delegation
 create field, so an older Station never silently receives an ordinary
 delegation instead. The response must match the Task and submitted intent.

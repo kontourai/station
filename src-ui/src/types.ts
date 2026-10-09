@@ -361,6 +361,8 @@ export interface ChatSession {
   stopPending?: boolean;
   model?: string;
   modelSource?: EffectiveModelSource;
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;

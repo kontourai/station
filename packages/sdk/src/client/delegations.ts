@@ -1,3 +1,4 @@
+import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
 /**
  * Canonical delegation fetchers (#977 Wave 2), inside the #167 DRY client
  * layer. Zero delegation fetchers existed on the portable client before this
@@ -42,7 +43,10 @@
  * this same file.
  */
 
-import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  AgentId,
+  EngineId,
+} from '@kontourai/station-contracts/agent-identity';
 import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
@@ -305,6 +309,14 @@ export interface DelegationTargetOption {
   description?: string;
   kind: 'agent';
   ready: boolean;
+  definitionFingerprint?: string;
+  profileCapabilities?: AgentProfileCapability[];
+  unsupportedProfileCapabilities?: AgentProfileCapability[];
+  executionDefault?: boolean;
+  executionReady?: boolean;
+  engineConnectionId?: string;
+  engineId?: EngineId;
+  engineName?: string;
   unavailableReason?: string;
   defaultModel?: string;
   models: Array<{ id: string; name: string; originalId: string }>;

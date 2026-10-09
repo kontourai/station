@@ -136,8 +136,18 @@ export function useChatDockActions({
       initialAttachments?: FileAttachment[],
       providerId?: string,
       providerType?: string,
+      executionAgent?: AgentData,
+      expectedDefinitionFingerprint?: string,
     ) => {
-      const execution = resolveAgentExecution(agent);
+      const execution = {
+        ...resolveAgentExecution(executionAgent ?? agent),
+        ...(executionAgent
+          ? {
+              executionAgentId: executionAgent.slug,
+              expectedDefinitionFingerprint,
+            }
+          : {}),
+      };
       const sessionExecution =
         modelOverride || providerOptions || providerId
           ? {

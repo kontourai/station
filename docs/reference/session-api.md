@@ -119,6 +119,35 @@ The response is a foreground handle containing `conversationId`, `sessionId`,
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
 Agent, engine kind, provider, and honest model launch plan.
 
+### Preserve an Agent profile with an execution override
+
+`ExecutionTarget.agent` normally contains the clean Agent ID. An explicit
+receiver-owned execution binding uses this discriminated variant:
+
+```json
+{
+  "kind": "agent-execution-override",
+  "agent": "reviewer",
+  "executionAgent": "codex",
+  "expectedDefinitionFingerprint": "<receiver-computed SHA-256>"
+}
+```
+
+`agent` remains the authored profile; `executionAgent` must be a registered
+execution default on the destination Station. It selects the engine connection
+and its account, never a caller-provided URL or credential. The profile's
+instructions, skills and tool policy must be deliverable; missing delivery is a
+refusal rather than a substituted profile. The optional fingerprint fences the
+loaded authored definition, excluding execution and display provenance. It does
+not verify installed tool or skill contents. An older string-only receiver
+rejects this object instead of silently ignoring an engine selector.
+
+Accepted execution/handoff receipts and conversation-open projections retain the
+binding and expected fingerprint. Continuation reconstructs them from persisted
+session metadata. Changing the engine on a bound conversation requires an
+explicit handoff; omitting the override on that handoff restores the authored
+binding and model default.
+
 ## Continue a conversation
 
 Continuation retains the original Environment/workspace and follows the current linked Session:
