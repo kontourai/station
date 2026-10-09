@@ -1,90 +1,53 @@
 .station-startup {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
   background: var(--k-bg);
   color: var(--k-text);
-  font-family: system-ui, sans-serif;
+  font-family: var(--k-font-ui);
 }
 
-.station-startup::before {
-  content: "";
-  position: absolute;
-  width: calc(var(--k-space-6) * 3);
-  height: calc(var(--k-space-6) * 3);
-  border: 1px solid var(--k-line-strong);
-  border-radius: 50%;
-  animation: station-startup-ripple var(--motion-status-breathe, 2s)
-    var(--ease-out, ease-out) infinite;
-  animation-fill-mode: forwards;
-  pointer-events: none;
+.station-startup__canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+}
+
+.station-startup__canvas[data-ready="true"] {
+  opacity: 1;
 }
 
 .station-startup__logo {
-  width: calc(var(--k-space-6) * 2);
-  height: calc(var(--k-space-6) * 2);
-  object-fit: contain;
-}
-
-.station-startup__status {
   position: absolute;
-  top: calc(50% + var(--k-space-6) + var(--k-space-5));
-  left: max(var(--k-space-5), env(safe-area-inset-left));
-  right: max(var(--k-space-5), env(safe-area-inset-right));
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--k-space-2);
-  text-align: center;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--k-space-6) * 3);
+  height: calc(var(--k-space-6) * 3);
+  transform: translate(-50%, -50%);
 }
 
-.station-startup__name {
-  font-size: var(--k-text-lg);
-  font-weight: 600;
+.station-startup__canvas[data-ready="true"] + .station-startup__logo {
+  display: none;
 }
 
 .station-startup__message {
-  color: var(--k-text-muted);
+  position: absolute;
+  top: var(--startup-stage-top, calc(50% + var(--k-space-6) * 4));
+  left: max(var(--k-space-5), env(safe-area-inset-left));
+  right: max(var(--k-space-5), env(safe-area-inset-right));
+  text-align: center;
   font-size: var(--k-text-md);
+  color: var(--k-text-muted);
+  animation: station-startup-stage var(--motion-slow) var(--ease-out) both;
 }
 
-.station-startup__progress {
-  width: calc(var(--k-space-6) * 2);
-  height: var(--k-space-1);
-  margin-top: var(--k-space-3);
-  background: var(--k-line-strong);
-  border-radius: var(--k-radius-control);
-  overflow: hidden;
-}
-
-.station-startup__progress::before {
-  content: "";
-  display: block;
-  width: 50%;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--k-brand);
-  animation: station-startup-stream var(--motion-status-pulse, 1.6s)
-    var(--ease-standard, ease-in-out) infinite;
-}
-
-@keyframes station-startup-ripple {
+@keyframes station-startup-stage {
   from {
-    transform: scale(0.8);
-    opacity: 0.6;
-  }
-  to {
-    transform: scale(1.6);
     opacity: 0;
-  }
-}
-
-@keyframes station-startup-stream {
-  from {
-    transform: translateX(-100%);
+    transform: translateY(var(--k-space-1));
   }
   to {
-    transform: translateX(200%);
+    opacity: 1;
+    transform: translateY(0);
   }
 }

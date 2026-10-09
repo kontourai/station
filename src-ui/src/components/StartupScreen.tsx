@@ -1,28 +1,40 @@
-/** The same first-paint surface used before and after React takes over. */
-export function StartupScreen({
-  message = 'Opening Station…',
-}: {
-  message?: string;
-}) {
+import { useEffect, useRef } from 'react';
+import { startStartupAnimation } from '../lib/startup-animation';
+
+export function StartupScreen({ message }: { message?: string }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (canvas.current) return startStartupAnimation(canvas.current);
+  }, []);
   return (
     <div
       className="station-startup"
       role="status"
-      aria-label={message}
+      aria-label={message ?? 'Station'}
       aria-busy="true"
     >
+      <canvas
+        ref={canvas}
+        className="station-startup__canvas"
+        role="img"
+        aria-label="Station"
+      />
       <img
         className="station-startup__logo"
         src="/favicon.png"
         alt=""
-        width="64"
-        height="64"
+        width="96"
+        height="96"
       />
-      <div className="station-startup__status" aria-hidden="true">
-        <span className="station-startup__name">Station</span>
-        <span className="station-startup__message">{message}</span>
-        <span className="station-startup__progress" />
-      </div>
+      {message && (
+        <span
+          key={message}
+          className="station-startup__message"
+          aria-hidden="true"
+        >
+          {message}
+        </span>
+      )}
     </div>
   );
 }

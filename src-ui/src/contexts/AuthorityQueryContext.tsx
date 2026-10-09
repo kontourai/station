@@ -575,7 +575,7 @@ export function AuthorityQueryProvider({
     <AuthorityPersistenceContext.Provider
       value={{ status: 'unavailable', namespace: null, observation: null }}
     >
-      <StartupScreen message="Verifying Station authority" />
+      <StartupScreen message="Checking Station access" />
     </AuthorityPersistenceContext.Provider>
   );
 }

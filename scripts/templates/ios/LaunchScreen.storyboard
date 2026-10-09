@@ -16,10 +16,10 @@
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
                             <imageView userInteractionEnabled="NO" contentMode="scaleAspectFit" image="StationLaunchLogo" translatesAutoresizingMaskIntoConstraints="NO" id="station-logo">
-                                <rect key="frame" x="175" y="416" width="64" height="64"/>
+                                <rect key="frame" x="159" y="400" width="96" height="96"/>
                                 <constraints>
-                                    <constraint firstAttribute="width" constant="64" id="logo-width"/>
-                                    <constraint firstAttribute="height" constant="64" id="logo-height"/>
+                                    <constraint firstAttribute="width" constant="96" id="logo-width"/>
+                                    <constraint firstAttribute="height" constant="96" id="logo-height"/>
                                 </constraints>
                             </imageView>
                         </subviews>

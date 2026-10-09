@@ -11,19 +11,16 @@
   </head>
   <body>
     <div id="root">
-      <div class="station-startup" role="status" aria-label="Opening Station…" aria-busy="true">
-        <img class="station-startup__logo" src="/favicon.png" alt="" width="64" height="64" />
-        <div class="station-startup__status" aria-hidden="true">
-          <span class="station-startup__name">Station</span>
-          <span class="station-startup__message">Opening Station…</span>
-          <span class="station-startup__progress"></span>
-        </div>
+      <div class="station-startup" role="status" aria-label="Station" aria-busy="true">
+        <canvas class="station-startup__canvas" role="img" aria-label="Station"></canvas>
+        <img class="station-startup__logo" src="/favicon.png" alt="" width="96" height="96" />
       </div>
     </div>
     <script
       data-station-csp-nonce
       nonce="__TAURI_SCRIPT_NONCE__"
     ></script>
+    <script type="module" src="/src/lib/startup-animation.ts"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

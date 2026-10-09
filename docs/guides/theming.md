@@ -61,8 +61,21 @@ envelope before the legacy theme key and falling back to dark if storage is
 unavailable. [main.tsx](../../src-ui/src/main.tsx) applies the canonical theme,
 accent and cached branding before React renders. The initial HTML and
 [StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
-centered mark and status layout through platform and authority resolution;
-route-level waits still use the state primitives.
+startup surface through platform and authority resolution. The mark begins centered,
+then moves left while Fraunces reveals `tation`, using the river as the S. The
+selected wordmark uses the Original spacing from the reviewed motion study.
+Water falls into a track and spreads across it, then remains an indeterminate
+activity signal. It does not claim a percentage or delay a ready app.
+
+[startup-animation.ts](../../src-ui/src/lib/startup-animation.ts) keeps the
+intro clock for the document, so a loader remount does not replay it. Pending
+platform setup, shared-Project entry and authority observation supply their own
+current stage text; labels use Hanken Grotesk and a small entrance transition.
+There is no timer-driven sequence of invented loading stages. Reduced motion
+uses the completed static lockup and track; hidden windows pause painting, and
+unmount removes the frame and observers. Route-level waits still use the state
+primitives. The imagery remains the committed Station mark; this splash choice
+does not finalize the broader Kontour wordmark decision.
 
 The native OS launch surface follows OS appearance; it cannot read the
 WebView's saved device preference. iOS stages a centered mark and appearance-aware

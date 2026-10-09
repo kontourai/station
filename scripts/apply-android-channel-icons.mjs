@@ -132,7 +132,7 @@ export function applyAndroidChannelIcons(
       `<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
   <item android:drawable="@color/station_splash_background" />
-  <item android:width="64dp" android:height="64dp" android:gravity="center">
+  <item android:width="96dp" android:height="96dp" android:gravity="center">
     <bitmap android:src="@drawable/station_startup_logo" android:gravity="fill" />
   </item>
 </layer-list>

@@ -460,7 +460,7 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
       />
     );
   }
-  if (!profile) return <StartupScreen />;
+  if (!profile) return <StartupScreen message="Preparing this device" />;
 
   return (
     <PlatformProfileContext.Provider value={profile}>
