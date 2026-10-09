@@ -211,6 +211,46 @@ describe('measureEntryBundle (station#1218)', () => {
     return gzipSync(Buffer.from(bytes)).byteLength;
   }
 
+  it('counts the immediately loaded app closure while excluding genuinely deferred routes', () => {
+    const dir = stageOutputDir();
+    mkdirSync(join(dir, '.vite'));
+    const boot = writeAsset(dir, 'boot.js', 'boot'.repeat(300));
+    const app = writeAsset(dir, 'app.js', 'application'.repeat(500));
+    const shared = writeAsset(dir, 'shared.js', 'shared'.repeat(300));
+    const bootCss = writeAsset(dir, 'boot.css', 'boot-style'.repeat(100));
+    const appCss = writeAsset(dir, 'app.css', 'app-style'.repeat(200));
+    writeAsset(dir, 'later.js', 'later-route'.repeat(10000));
+    writeFileSync(
+      join(dir, 'index.html'),
+      '<meta name="station-eager-entry" content="main"><script src="/boot.js"></script><link rel="modulepreload" href="/shared.js"><link rel="stylesheet" href="/boot.css">',
+    );
+    writeFileSync(
+      join(dir, '.vite/manifest.json'),
+      JSON.stringify({
+        'src/main.tsx': {
+          file: 'app.js',
+          name: 'main',
+          isDynamicEntry: true,
+          imports: ['shared'],
+          dynamicImports: ['later'],
+          css: ['app.css'],
+        },
+        shared: { file: 'shared.js', imports: ['src/main.tsx'] },
+        later: { file: 'later.js' },
+      }),
+    );
+    const measured = measureEntryBundle(dir);
+    expect(measured.entryJsGzipBytes).toBe(boot + app + shared);
+    expect(measured.entryCssGzipBytes).toBe(bootCss + appCss);
+    expect(measured.assetCount).toBe(5);
+    writeFileSync(join(dir, '.vite/manifest.json'), '{}');
+    expect(() => measureEntryBundle(dir)).toThrow(
+      'needs one dynamic chunk named main',
+    );
+    rmSync(join(dir, '.vite/manifest.json'));
+    expect(() => measureEntryBundle(dir)).toThrow();
+  });
+
   // AC4: fixtures a built index.html with MULTIPLE scripts, MULTIPLE
   // stylesheets, and MULTIPLE modulepreloads, mirroring the #926 vite
   // 8/rolldown build that triggered this issue (44 eager modulepreload

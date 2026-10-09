@@ -51,3 +51,26 @@
     transform: translateY(0);
   }
 }
+
+.station-startup__recovery {
+  position: absolute;
+  top: calc(50% + var(--k-space-6) * 2);
+  left: var(--k-space-5);
+  right: var(--k-space-5);
+  text-align: center;
+}
+
+.station-startup__recovery button {
+  min-height: 44px;
+  padding: var(--k-space-2) var(--k-space-4);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+}
+
+.station-startup__recovery button:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: var(--k-space-1);
+}
