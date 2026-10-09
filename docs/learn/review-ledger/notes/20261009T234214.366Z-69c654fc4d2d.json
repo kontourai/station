@@ -1,0 +1,7 @@
+{
+  "revision": "28c302fae6b3557ddadaa386a54dedf199b486e9",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed the actual selector and caller after final code-health cleanup: freshness constant is private, not a public API. Existing guide accurately describes observed-window/lifecycle ranking, minimum headroom, unknown fallback, all-insufficient refusal, stable order, bounded probes and post-read admission. Mutation and caller regressions exercise selection. No proactive routing or native lifecycle reporting is claimed.","inputs":["docs/guides/connections.md","src-server/services/connections/allowance-routing-policy.ts"]}
+  ]
+}
