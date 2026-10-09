@@ -399,7 +399,7 @@ at `usr/share/Station/dist-server` and `usr/share/Station/node_modules`.
 server and dependencies under `usr/share/Station`, but the
 [native host](../../src-desktop/src/lib.rs) currently joins both the registry
 bridge and sidecar entrypoint directly under Tauri's `resource_dir()/dist-server`.
-The pinned `tauri-utils` 2.9.3 resolves the AppImage resource directory under
+The pinned `tauri-utils` 2.10.1 resolves the AppImage resource directory under
 `usr/lib/<package>`. No alternate `usr/share/Station` lookup is present in those
 callers. Package-layout checks alone therefore do not establish a working
 AppImage startup; this source mismatch needs repair and an actual Linux launch.
