@@ -508,8 +508,9 @@ to the hosted qualification authority.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source through every canonical phase and the Android viewport suite.
-`Main: Qualification` runs every six hours and starts a Nightly for the commit it
-qualified at most about once a day. Nightly has no independent schedule; its
+`Main: Qualification` runs after main source changes with an hourly fallback.
+It finishes the active source and coalesces pending candidates. Eligible Nightly
+delivery uses a separate lease and a configurable interval (six hours by default). Nightly has no independent schedule; its
 manual dispatch remains available for recovery. The hourly qualification-health
 watchdog reports missed starts, stale success and failed delivery. Nightly
 and tagged Preview/Stable require that qualification, with bounded reuse of

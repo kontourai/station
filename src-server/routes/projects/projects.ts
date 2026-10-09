@@ -27,6 +27,7 @@ import {
   describeProjectSlugConflict,
   findProjectSlugConflict,
   type ProjectConfig,
+  type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
 import type {
@@ -818,6 +819,49 @@ export function createProjectRoutes(
 
   // List all projects
   app.get('/', listProjectCatalogue);
+
+  /**
+   * #3391: where each Project's chats run (`ProjectRunLocations`), for the
+   * start composer. A separate read from the catalogue on purpose: it checks
+   * project folders (async, time-boxed, at most three at once), and neither
+   * the project list nor `/api/boot` may ever wait on a folder. Operator
+   * only: a shared member's view carries no paths, so a member gets an empty
+   * map — the same answer as an operator with no Projects, which says
+   * nothing about the Station's folders.
+   */
+  app.get('/run-locations', async (c) => {
+    try {
+      const admissions = await deps.memberProjectAdmissions?.(c);
+      if (admissions) {
+        c.header('Cache-Control', 'no-store');
+        return c.json({ success: true, data: {} });
+      }
+      const describe = resolution?.resolver.describeProjectRunLocations?.bind(
+        resolution.resolver,
+      );
+      if (!describe)
+        return c.json(
+          { success: false, error: 'Project run locations are unavailable' },
+          501,
+        );
+      const slugs = (await projectService.listProjects()).map(
+        ({ slug }) => slug,
+      );
+      const locations = await describe(slugs);
+      return c.json({
+        success: true,
+        data: Object.fromEntries(locations) as ProjectRunLocations,
+      });
+    } catch (error: unknown) {
+      logger.error('Project run-location read failed', {
+        error: error instanceof Error ? error.message : 'non-Error thrown',
+      });
+      return c.json(
+        { success: false, error: 'Project storage is unavailable' },
+        500,
+      );
+    }
+  });
 
   // Create project
   app.post('/', validate(projectCreateSchema), async (c) => {

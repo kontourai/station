@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md and config.ts deltas are this PR's overlay docs plus main's settings work; checked this guide's connection and config claims against the merged sources; unchanged.","inputs":["docs/guides/machine-relationships.md","packages/connect/src/core/applicationChannel.ts","docs/guides/connections.md","src-server/routes/system/config.ts"]}
+  ]
+}

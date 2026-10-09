@@ -189,11 +189,18 @@ export {
   setClientRawEgressPolicyResolver,
 } from './client/http';
 export {
+  cancelPeerEnrollment,
+  completePeerEnrollment,
+  getPeerEnrollment,
+  startPeerEnrollment,
+} from './client/peer-enrollments';
+export {
   applyProjectLayout,
   bindProjectResource,
   closeProjectTerminal,
   getProjectResolution,
   getProjectView,
+  listProjectRunLocations,
   listProjectViews,
 } from './client/projects';
 export {
@@ -638,6 +645,7 @@ export {
   type PluginSettingField,
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
+  PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
@@ -973,6 +981,7 @@ export {
   useProjectLayoutsQuery,
   useProjectQuery,
   useProjectResolutionQuery,
+  useProjectRunLocationsQuery,
   useProjectSessionBoardQuery,
   useProjectsQuery,
   useProposedChangesQuery,
@@ -1168,6 +1177,13 @@ export {
   usePatchNotificationPreferencesMutation,
   useUpdateNotificationPreferencesMutation,
 } from './query-domains/notificationPreferences.js';
+export {
+  peerEnrollmentQueries,
+  useCancelPeerEnrollmentMutation,
+  useCompletePeerEnrollmentMutation,
+  usePeerEnrollmentQuery,
+  useStartPeerEnrollmentMutation,
+} from './query-domains/peerEnrollments';
 export type {
   PersonalLayoutCreateInput,
   PersonalLayoutUpdateInput,

@@ -12,6 +12,7 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../../contexts/active-chats-store';
+import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
@@ -110,7 +111,14 @@ export function raiseRequestOpenedToast(
   // argument bag, handled by `toolRequestPreviewFromPayload`'s fallback.
   const { toolName: payloadToolName } = toolRequestFromPayload(event.payload);
   const displayName = toolRequestDisplayName(payloadToolName);
-  const toolName = String(displayName || event.title || 'Tool request');
+  // The title fallback is adapter display text (Codex: the literal command),
+  // so it is shown in the same sanitised, bounded form as a tool name (#3382).
+  const toolName =
+    displayName ||
+    (typeof event.title === 'string'
+      ? toolRequestDisplayName(event.title)
+      : undefined) ||
+    'Tool request';
   const purpose = toolPurposeView(event) ?? toolPurposeView(event.payload);
   const preview = toolRequestPreviewFromPayload(event.payload);
   const toolPreview = [purpose ? `Why: ${purpose}` : '', preview]
@@ -156,6 +164,11 @@ function showApprovalToast(
   view: ApprovalToastView,
 ) {
   const answer = (decision: 'accept' | 'acceptForSession' | 'decline') => {
+    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    navigationStore.navigate('/', {
+      chat: chat?.conversationId ?? event.threadId,
+      dock: 'open',
+    });
     void answerFromToast(apiBase, event, view, decision);
   };
   const toastId = toastStore.showToolApproval({
@@ -248,10 +261,15 @@ async function answerFromToast(
       error instanceof Error && error.message
         ? error.message
         : 'Station did not accept this decision.';
-    // Not delivered: the request waits on the user again.
+    const unconfirmed =
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'approval_delivery_unconfirmed';
     setAnswered(event.threadId, event.requestId, false);
     toastStore.show(
-      `Your decision on ${view.toolName} was not delivered: ${reason}`,
+      unconfirmed
+        ? `Delivery of your decision on ${view.toolName} is not confirmed: ${reason}`
+        : `Your decision on ${view.toolName} was not delivered: ${reason}`,
       event.threadId,
       9000,
       undefined,
@@ -309,6 +327,11 @@ export function handleRequestDeliveryEvent(
 export function handleRequestResolvedEvent(
   event: Extract<OrchestrationEvent, { method: 'request.resolved' }>,
 ) {
+  void import('./answerRequest')
+    .then(({ forgetApprovalAnswer }) =>
+      forgetApprovalAnswer(event.threadId, event.requestId),
+    )
+    .catch(() => undefined);
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 

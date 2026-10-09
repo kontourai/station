@@ -201,6 +201,7 @@ function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
     onSelect,
     onClose,
     requestAuthority: authority,
+    projectIconBySlug: new Map<string, string>(),
   };
   const view = render(<ModalHarness {...defaults} {...props} />);
   return {

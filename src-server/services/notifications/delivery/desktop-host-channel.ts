@@ -34,6 +34,10 @@ import {
 } from '@kontourai/station-contracts/notification-preferences';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { resolveNotificationOpenHref } from '../notification-deep-link.js';
+import {
+  osNotificationBody,
+  osNotificationTitle,
+} from '../os-notification-text.js';
 import type {
   ChannelTarget,
   DeliveryChannel,
@@ -109,10 +113,12 @@ export class DesktopHostChannel implements DeliveryChannel {
         seq: 0,
         kind: 'alert',
         notificationId: notification.id,
-        title: hideContent ? HIDDEN_TITLE : notification.title,
-        ...(hideContent || notification.body === undefined
+        title: hideContent
+          ? HIDDEN_TITLE
+          : osNotificationTitle(notification.title),
+        ...(hideContent || osNotificationBody(notification.body) === undefined
           ? {}
-          : { body: notification.body }),
+          : { body: osNotificationBody(notification.body) }),
         urgency: envelope.urgency,
         link,
         at: new Date(this.#now()).toISOString(),

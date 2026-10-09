@@ -37,6 +37,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import {
   attentionKindLabel,
   isAcknowledgeableAttentionItem,
@@ -470,10 +471,17 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
             className={`attention-item__action attention-item__action--${action.variant ?? 'secondary'}`}
             disabled={mutation.isPending}
             onClick={() =>
-              mutation.mutate({
-                actionId: action.id,
-                id: item.source.notificationId,
-              })
+              mutation.mutate(
+                {
+                  actionId: action.id,
+                  id: item.source.notificationId,
+                },
+                {
+                  onSuccess: () => {
+                    if (item.openHref) openApprovalConversation(item.openHref);
+                  },
+                },
+              )
             }
           >
             {action.label}

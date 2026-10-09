@@ -35,6 +35,8 @@
     "./build": "./src/build.ts",
     "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
+    "./display-reveal": "./src/display-reveal.ts",
+    "./display-text": "./src/display-text.ts",
     "./git": "./src/git.ts",
     "./json-file-storage": "./src/json-file-storage.ts",
     "./tool-server-credential-store": "./src/tool-server-credential-store.ts",
