@@ -295,3 +295,21 @@ it('retains a just-published native platform across a ledger-only candidate with
     }),
   ).toEqual({ androidNeeded: false, desktopNeeded: true });
 });
+
+it('checks the current provider pointers without requiring retired ledger history to remain in the current Git graph', () => {
+  expect(
+    finalPublicationDecision({
+      source,
+      ledger: [
+        row('nightly-android'),
+        {
+          ...row('nightly-android', prior),
+          timestampUtc: '2020-01-01T00:00:00Z',
+        },
+      ],
+      qualification: '42',
+      ancestor: () => false,
+      now,
+    }),
+  ).toMatchObject({ androidNeeded: false });
+});

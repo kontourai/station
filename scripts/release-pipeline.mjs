@@ -229,7 +229,14 @@ export function finalPublicationDecision({
     if (!Number.isFinite(age) || age < intervalMs)
       throw new Error('native publication cadence has not elapsed');
   }
-  for (const row of native) {
+  const latestByChannel = Object.values(
+    Object.fromEntries(
+      [...native]
+        .sort((a, b) => Date.parse(a.timestampUtc) - Date.parse(b.timestampUtc))
+        .map((row) => [row.channel, row]),
+    ),
+  );
+  for (const row of latestByChannel) {
     if (
       !Number.isFinite(Date.parse(row.timestampUtc)) ||
       Date.parse(row.timestampUtc) > now
@@ -243,10 +250,10 @@ export function finalPublicationDecision({
       );
   }
   return {
-    androidNeeded: !native.some(
+    androidNeeded: !latestByChannel.some(
       (row) => row.channel === 'nightly-android' && matchesSource(row),
     ),
-    desktopNeeded: !native.some(
+    desktopNeeded: !latestByChannel.some(
       (row) => row.channel === 'nightly-desktop' && matchesSource(row),
     ),
   };
