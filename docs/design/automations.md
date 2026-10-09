@@ -37,8 +37,9 @@ Four findings shape the design.
    alternative: the scheduler already has a GitHub pull monitor
    ([contract](../../packages/contracts/src/external-monitor.ts),
    [service](../../src-server/services/scheduling/external-monitor.ts)).
-   Qualification runs every 6 hours (`17 */6 * * *`), so a 5-minute poll
-   loses nothing.
+   Qualification runs after main source changes with an hourly fallback
+   (`17 * * * *`). A five-minute poll is a proposed observation cadence,
+   not a guarantee of immediate reaction.
 2. **The episode model already exists in CI.**
    [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml)
    and [`qualification-repair.mjs`](../../scripts/qualification-repair.mjs)
