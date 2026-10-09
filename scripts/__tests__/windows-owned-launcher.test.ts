@@ -169,7 +169,7 @@ function nativeEnvelope(guardPath: string) {
   };
 }
 
-function unavailableBirthReader() {
+function unavailableBirthReader(mode: 'powershell' | 'target' | 'guard') {
   const directory = makeTempDir('station-unavailable-birth-');
   const preload = join(directory, 'unavailable-birth.cjs');
   writeFileSync(
@@ -177,14 +177,14 @@ function unavailableBirthReader() {
     [
       "const childProcess = require('node:child_process');",
       "const { syncBuiltinESMExports } = require('node:module');",
-      "const { win32 } = require('node:path');",
-      "const expected = win32.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');",
       'const original = childProcess.execFileSync;',
+      'let nativeReads = 0;',
       'childProcess.execFileSync = function(command, args, options) {',
-      '  if (command.toLowerCase() === expected.toLowerCase() && args.length === 4 &&',
-      "      args[0] === '-NoProfile' && args[1] === '-NonInteractive' && args[2] === '-Command' &&",
-      "      args[3].startsWith('$process = [System.Diagnostics.Process]::GetProcessById(') &&",
-      "      args[3].includes('$process.StartTime.ToUniversalTime()')) {",
+      "  const native = args[0] === '--identity';",
+      '  if (native) nativeReads++;',
+      `  const mode = ${JSON.stringify(mode)};`,
+      "  const refuse = mode === 'powershell' ? /powershell\\.exe$/i.test(command) : native && nativeReads === (mode === 'target' ? 1 : 2);",
+      '  if (refuse) {',
       "    if (options.timeout !== 1500) throw new Error('birth fixture expected original 1500ms bound');",
       "    throw Object.assign(new Error('controlled unavailable birth reader'), { code: 'ETIMEDOUT' });",
       '  }',
@@ -198,10 +198,13 @@ function unavailableBirthReader() {
 
 describe('Windows owned launcher exact native binding', () => {
   test.skipIf(process.platform !== 'win32')(
-    'binds and runs a known native Job target before publishing success',
+    'binds and runs a known native Job target even when PowerShell birth reads time out',
     async () => {
       const guard = nativeGuard();
-      const run = launch(nativeEnvelope(guard.path), { resumeOnBind: true });
+      const run = launch(nativeEnvelope(guard.path), {
+        birthReaderPreload: unavailableBirthReader('powershell'),
+        resumeOnBind: true,
+      });
       try {
         expect(await run.complete).toMatchObject({
           status: 0,
@@ -248,23 +251,34 @@ describe('Windows owned launcher exact native binding', () => {
     },
   );
 
-  test.skipIf(process.platform !== 'win32')(
-    'refuses an unavailable birth reader with bounded probe context and no target resume',
-    async () => {
+  test.skipIf(process.platform !== 'win32').each(['target', 'guard'] as const)(
+    'refuses an unavailable %s birth reader without resuming its native target',
+    async (reader) => {
       const guard = nativeGuard();
       const envelope = nativeEnvelope(guard.path);
       const run = launch(envelope, {
-        birthReaderPreload: unavailableBirthReader(),
+        birthReaderPreload: unavailableBirthReader(reader),
         resumeOnBind: true,
       });
       try {
         const complete = await run.complete;
         expect(complete).toMatchObject({ status: null, signal: null });
-        expect(complete.error).toContain('"targetState":"unavailable"');
-        expect(complete.error).toContain('"targetCreationMatches":null');
         expect(complete.error).toContain(
-          'powershell.exe timed out after 1500ms',
+          reader === 'target'
+            ? '"targetState":"unavailable"'
+            : '"targetState":"exact"',
         );
+        expect(complete.error).toContain(
+          reader === 'target'
+            ? '"targetCreationMatches":null'
+            : '"targetCreationMatches":true',
+        );
+        expect(complete.error).toContain(
+          reader === 'guard'
+            ? '"guardState":"unavailable"'
+            : '"guardState":"exact"',
+        );
+        expect(complete.error).toContain('controlled unavailable birth reader');
         expect(
           run.messages.some(
             (message) => message.type === 'owned-command-bound',
