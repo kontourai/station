@@ -10,6 +10,7 @@ import {
 import {
   memo,
   type ReactNode,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -440,6 +441,19 @@ function useApprovalDecision(
     reference ? readApprovalAnswerState(reference) : null,
   );
   const phase = shared?.phase ?? localPhase;
+  const previousShared = useRef(shared);
+  useEffect(() => {
+    const recovered =
+      previousShared.current?.phase === 'unconfirmed' && shared === null;
+    previousShared.current = shared;
+    if (recovered && localPhase === 'unconfirmed') {
+      admission.current = false;
+      setPhase('idle');
+      setFailure(null);
+      setChosen(undefined);
+    }
+  }, [shared, localPhase]);
+
   const [localFailure, setFailure] = useState<{
     summary: string;
     detail?: string;
@@ -507,6 +521,12 @@ function useApprovalDecision(
           message,
           code,
         }) ?? { title: 'Decision delivery failed', body: message };
+        if (
+          unconfirmed &&
+          reference &&
+          readApprovalAnswerState(reference)?.phase !== 'unconfirmed'
+        )
+          return;
         setFailure({
           summary: unconfirmed
             ? message

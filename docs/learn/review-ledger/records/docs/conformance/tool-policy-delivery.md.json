@@ -66,7 +66,15 @@
 
     "tests/orchestration-chat-flow.spec.ts",
 
-    "tests/mobile-request-sheet.spec.ts"
+    "tests/mobile-request-sheet.spec.ts",
+
+    "src-ui/src/components/chat/ApprovalSheetProvider.tsx",
+
+    "src-ui/src/components/chat/ApprovalSheetContext.ts",
+
+    "src-ui/src/hooks/orchestration/answerRequest.ts",
+
+    "src-ui/src/components/notifications/NotificationHistory.tsx"
   ],
 
   "checks": [
