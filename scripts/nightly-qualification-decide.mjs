@@ -108,6 +108,9 @@ function nativeShips(ledgerEntries) {
  * @param {unknown} input.ledgerEntries The parsed deploy ledger.
  * @param {string} input.reservationRefs `git ls-remote --refs` output.
  * @param {Date} input.now
+ * @param {number} [input.intervalMs]
+ * @param {{recover: boolean, reason?: string}} [input.recovery]
+ * @param {Record<string,string>} [input.sourceCandidates]
  * @returns {{ publish: boolean, reason: string }}
  */
 export function decideQualifiedNightly({

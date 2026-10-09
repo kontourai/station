@@ -830,3 +830,54 @@ it('retains an unqualified capacity refusal without launching a source repair ag
   expect(decision.action).toBe('update');
   expect(decision.state.repairState).toBe('capacity-deferred');
 });
+
+it('claims the first genuine source failure once after any number of capacity deferrals', () => {
+  let prior = nextRepairState(null, run, { capacityDeferred: true }).state;
+  for (let i = 0; i < 3; i++) {
+    const deferred = nextRepairState(
+      prior,
+      {
+        ...run,
+        id: 43 + i,
+        run_started_at: new Date(
+          Date.parse(run.run_started_at) + 1000 * (i + 1),
+        ).toISOString(),
+      },
+      { capacityDeferred: true },
+    );
+    expect(deferred.action).toBe('update');
+    expect(deferred.state.attemptConsumed).toBe(false);
+    prior = deferred.state;
+  }
+  const red = {
+    ...run,
+    id: 50,
+    run_started_at: new Date(
+      Date.parse(run.run_started_at) + 10_000,
+    ).toISOString(),
+  };
+  const first = nextRepairState(prior, red, { agent: true });
+  expect(first.action).toBe('claim');
+  expect(first.state.attemptConsumed).toBe(true);
+  expect(nextRepairState(first.state, red, { agent: true }).action).toBe(
+    'update',
+  );
+});
+it('a deferral after a consumed attempt never permits an implicit second claim', () => {
+  const claimed = nextRepairState(null, run, { agent: true }).state;
+  const red = {
+    ...run,
+    id: 43,
+    run_started_at: new Date(
+      Date.parse(run.run_started_at) + 1000,
+    ).toISOString(),
+  };
+  const deferred = nextRepairState(claimed, red, { capacityDeferred: true });
+  expect(deferred.state.attemptConsumed).toBe(true);
+  expect(nextRepairState(deferred.state, red, { agent: true }).action).toBe(
+    'update',
+  );
+  expect(
+    nextRepairState(deferred.state, red, { agent: true, retry: true }).action,
+  ).toBe('claim');
+});

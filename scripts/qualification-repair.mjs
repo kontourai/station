@@ -15,7 +15,9 @@ export function repairState(body) {
     !Number.isSafeInteger(state.failedRun) ||
     !/^[0-9a-f]{40}$/.test(state.failedSha) ||
     !Number.isFinite(Date.parse(state.openedAt)) ||
-    !Number.isFinite(Date.parse(state.lastStartedAt))
+    !Number.isFinite(Date.parse(state.lastStartedAt)) ||
+    (state.attemptConsumed !== undefined &&
+      typeof state.attemptConsumed !== 'boolean')
   )
     throw new Error('Invalid repair episode');
   return state;
@@ -55,6 +57,9 @@ export function nextRepairState(
     failedSha: run.head_sha,
     lastStartedAt: run.run_started_at,
     repairState: previous?.repairState || 'claimed',
+    // Legacy episodes have no reliable unconsumed-attempt proof; retain their
+    // existing no-automatic-retry behavior until explicit owner retry.
+    attemptConsumed: previous?.attemptConsumed ?? Boolean(previous),
   };
   if (capacityDeferred) {
     state.repairState = 'capacity-deferred';
@@ -65,8 +70,11 @@ export function nextRepairState(
     state.repairState = 'needs-owner';
     return { state, action: 'update' };
   }
-  const claim = !previous || retry;
-  if (claim) state.repairState = 'claimed';
+  const claim = !state.attemptConsumed || retry;
+  if (claim) {
+    state.repairState = 'claimed';
+    state.attemptConsumed = true;
+  }
   return { state, action: claim ? 'claim' : 'update' };
 }
 /**
