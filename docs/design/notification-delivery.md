@@ -21,6 +21,20 @@ is not enough: the moment you are looking at something else, the toast has
 nobody to show itself to, and the thing you are being asked to approve expires
 in five minutes.
 
+## Approval actions in the running client
+
+The in-app approval toast sends the selected decision and opens its originating
+conversation. An accepted approval action in notification history or Attention
+also opens that conversation; a runtime Activity link is converted to the chat
+dock for this decision action. Ordinary Open session links keep their original
+destination. These client actions do not add approval buttons to native push or
+change background delivery guarantees.
+
+Failed decisions remain visible with a short explanation and disclosed details.
+An uncertain answer must be inspected before sending another decision. See
+[tool-policy delivery](../conformance/tool-policy-delivery.md#answering-on-a-phone-and-recovering-delivery)
+for the shared request binding and send deadlines.
+
 ## Five historical approaches and their observed limits
 
 The following observations describe the builds and probes that motivated push.
@@ -314,8 +328,14 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   (the session the record names, the one its audience was limited by; none
   for a path target). There is no link: a tap opens that session through the
   card's tap-nonce ledger, never a URL. `NATIVE_PUSH_NOTIFICATION_TEST_VECTOR`
-  is its known-answer vector. When the phone's surface asked to hide content,
-  the title and body are replaced with generic copy before sealing. Station
+  is its known-answer vector. The title and body are sealed in display form
+  (#3382): bidi controls and invisible characters removed, controls turned
+  into spaces, the title on one line with a multi-line title's lines joined
+  by " ⏎ ", the body keeping its line breaks. Every cut to the size budget
+  re-bounds the original text, so it ends in "…" and keeps a title's
+  "(+N lines)" count. When the phone's surface asked
+  to hide content, the title and body are replaced with generic copy before
+  sealing. Station
   notifications carry no FCM collapse key: FCM keeps at most four collapse
   keys per offline or dozing device and drops the rest without saying so,
   which would lose alerts, retracts or card updates, so each message is kept

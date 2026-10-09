@@ -637,15 +637,13 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     // is kept, so a caller can tell a refusal from a transport failure.
     // Its `details` too (#1796's full-access refusal is rendered from them),
     // on the field `StationHttpError` carries them in.
-    throw typeof result.code === 'string'
-      ? new ChatHttpError(
-          new StationHttpError(response.status, message, {
-            code: result.code,
-            details: result.details ?? undefined,
-          }),
-          isStationAnswer(response, result),
-        )
-      : new Error(message);
+    throw new ChatHttpError(
+      new StationHttpError(response.status, message, {
+        code: typeof result.code === 'string' ? result.code : undefined,
+        details: result.details ?? undefined,
+      }),
+      isStationAnswer(response, result),
+    );
   }
   return result.data as T;
 }
@@ -1099,6 +1097,8 @@ export async function resolveOrchestrationRequest(input: {
   /** #3390: accepted content for a form input request. */
   content?: InputRequestContent;
   apiBase?: string;
+  /** Deadline for decision admission; a timeout does not cancel the server-side decision. */
+  timeoutMs?: number;
 }): Promise<void> {
   await dispatchOrchestrationCommand(
     {
@@ -1113,6 +1113,7 @@ export async function resolveOrchestrationRequest(input: {
       ...(input.content ? { content: input.content } : {}),
     },
     input.apiBase,
+    input.timeoutMs,
   );
 }
 

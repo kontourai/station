@@ -360,7 +360,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
-    'tests/connect-modal.spec.ts',
     'tests/connect-retry.spec.ts',
     'tests/connect-remote-auth-recovery.spec.ts',
     'tests/connect-reconnect-banner.spec.ts',
@@ -397,6 +396,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Owns real receiver pairing state and temporary credential files.
+    'tests/connect-modal.spec.ts',
     // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
     'tests/conversation-timeline.spec.ts',
     // Retains the short-viewport composer acceptance screenshot beside the

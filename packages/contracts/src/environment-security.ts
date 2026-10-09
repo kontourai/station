@@ -782,6 +782,8 @@ export interface StationClientCompatibilityPolicy {
 }
 
 export interface DevicePairingOffer {
+  /** Absent on older hosts; those offers are interactive Device grants. */
+  kind?: PairedDeviceKind;
   protocolVersion: typeof DEVICE_PAIRING_PROTOCOL_VERSION;
   environmentId: string;
   offerId: string;
@@ -794,6 +796,8 @@ export interface DevicePairingOffer {
 }
 
 interface DevicePairingRequestBase {
+  /** Receiver-owned grant category, visible before approval. */
+  kind?: PairedDeviceKind;
   requestId: string;
   offerId: string;
   deviceName: string;
@@ -838,6 +842,7 @@ export type DevicePairingConfirmation = DevicePairingRequest & {
 
 /** A public access request is pending until explicit authority confirms it. */
 export interface DevicePairingAccessRequestResponse {
+  kind?: PairedDeviceKind;
   environmentId: string;
   offerId: string;
   proof: string;
@@ -1409,4 +1414,32 @@ export interface FullAccessRevocationReport {
     }[];
     readonly total: number;
   };
+}
+
+/** Secret-free server-owned enrollment observation. Project execution consent is separate. */
+export interface PeerEnrollment {
+  id: string;
+  apiBase: string;
+  environmentId: string;
+  label: string | null;
+  status:
+    | 'pending'
+    | 'connected'
+    | 'denied'
+    | 'expired'
+    | 'unavailable'
+    | 'identity-changed'
+    | 'failed'
+    | 'outcome-unknown'
+    | 'persistence-failed'
+    | 'cancelled';
+  expiresAt: number;
+  error?: string;
+}
+
+export interface PeerEnrollmentInput {
+  id: string;
+  apiBase: string;
+  environmentId: string;
+  label?: string;
 }

@@ -14,6 +14,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import {
   claimApprovalThreads,
   OPEN_APPROVAL_QUEUE_EVENT,
+  type RevealApprovalDetail,
   revealApprovalCard,
 } from '../status/approvalReveal';
 import type { ChatStatusInput } from '../status/chatStatus';
@@ -50,11 +51,15 @@ export function useChatStatusPill({
   streamStatus,
   turnLive,
   enabled,
+  windowRequests,
+  observationUnavailable = false,
 }: {
   activeSession: ChatSession;
   streamStatus: ChatStreamStatus | undefined;
   turnLive: boolean;
   enabled: boolean;
+  windowRequests?: readonly RevealApprovalDetail[];
+  observationUnavailable?: boolean;
 }): { pill: ReactNode; statusInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
@@ -66,13 +71,23 @@ export function useChatStatusPill({
   const pendingApprovals = useMemo(
     () =>
       requestsWaitingOnUser({
-        pendingApprovals: activeSession.pendingApprovals,
+        pendingApprovals: [
+          ...new Set([
+            ...(activeSession.pendingApprovals ?? []),
+            ...(windowRequests ?? []).map((request) => request.requestId),
+          ]),
+        ],
         answeredApprovals: activeSession.answeredApprovals,
       }),
-    [activeSession.pendingApprovals, activeSession.answeredApprovals],
+    [
+      activeSession.pendingApprovals,
+      activeSession.answeredApprovals,
+      windowRequests,
+    ],
   );
   const approvalCount = pendingApprovals.length;
   const input: ChatStatusInput = {
+    observationUnavailable,
     approvalCount,
     stream: streamStatus,
     turnLive,
@@ -118,12 +133,23 @@ export function useChatStatusPill({
   const requestKey = pendingApprovals.join('\u0000');
   const latestRequests = useRef(pendingApprovals);
   latestRequests.current = pendingApprovals;
+  const latestWindowRequests = useRef(windowRequests);
+  latestWindowRequests.current = windowRequests;
+  const latestThreadId = useRef(
+    activeSession.currentSessionId ?? activeSession.id,
+  );
+  latestThreadId.current = activeSession.currentSessionId ?? activeSession.id;
   const onRevealApproval = useCallback(() => {
     const requests = latestRequests.current;
     if (requests.length === 0) return;
     const requestId = requests[next.current % requests.length]!;
     next.current += 1;
-    void revealApprovalCard({ requestId }).then((shown) => {
+    const reference = latestWindowRequests.current?.find(
+      (request) => request.requestId === requestId,
+    );
+    void revealApprovalCard(
+      reference ?? { requestId, threadId: latestThreadId.current },
+    ).then((shown) => {
       if (!shown) window.dispatchEvent(new Event(OPEN_APPROVAL_QUEUE_EVENT));
     });
   }, []);

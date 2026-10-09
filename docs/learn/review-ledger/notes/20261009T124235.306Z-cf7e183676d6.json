@@ -1,0 +1,7 @@
+{
+  "revision": "40ff4dcbc292f63bdad52b13d983ff098bb870d6",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed final native pointer admission: only the latest ledger row per native provider defines current published ancestry. Older retained ledger history is preserved and may belong to an earlier repository graph. Native cadence, exact-source qualification, per-channel ledger-only normalization and recovery fences remain mandatory. Focused current-pointer and retired-history regression passed; no provider write executed.","inputs":["docs/guides/releasing.md"]}
+  ]
+}

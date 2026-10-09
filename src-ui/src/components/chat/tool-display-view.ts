@@ -1,3 +1,8 @@
+import {
+  displayText,
+  truncateDisplay,
+} from '@kontourai/station-shared/display-text';
+
 const MAX_PURPOSE_CHARS = 240;
 
 /** Normalize known compatibility aliases once at the display boundary. */
@@ -6,7 +11,10 @@ export function toolPurposeView(value: unknown): string | undefined {
   const row = value as Record<string, unknown>;
   const raw = row.purpose ?? row.toolPurpose;
   if (typeof raw !== 'string') return undefined;
-  const purpose = raw.replace(/\s+/g, ' ').trim().slice(0, MAX_PURPOSE_CHARS);
+  // Shown as "Why: …" on the row and in the approval toast: model text, so
+  // it gets the label's `displayText` (no bidi controls, controls become
+  // spaces), cut by code point.
+  const purpose = truncateDisplay(displayText(raw), MAX_PURPOSE_CHARS);
   return purpose || undefined;
 }
 

@@ -2,9 +2,11 @@
 
 import { spawn } from 'node:child_process';
 import {
-  describeRecentProcessBirthProbeFailures,
+  isWindowsRoundTripUtcIso,
+  PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
   probeExactProcessIdentity,
 } from '../packages/shared/src/process-identity.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { createWindowsOwnedControlStdin } from './lib/windows-owned-control-stdin.mjs';
 import {
   createWindowsOwnedProtocol,
@@ -44,6 +46,41 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 if (command) {
+  // Read through a separate native process, independently of the guard's BOUND
+  // claim. PowerShell startup must not consume the short identity-read budget.
+  const probeFailures = new Map();
+  const readIdentity = (pid) =>
+    probeExactProcessIdentity(pid, {
+      lookup(candidate) {
+        try {
+          const birth = execFileSyncBounded(
+            command.guardPath,
+            ['--identity', String(candidate)],
+            {
+              encoding: 'utf8',
+              windowsHide: true,
+              timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+              killSignal: 'SIGKILL',
+              maxBuffer: 4096,
+            },
+          ).trim();
+          if (!isWindowsRoundTripUtcIso(birth)) {
+            probeFailures.set(
+              candidate,
+              'native identity reader returned no canonical start time',
+            );
+            return null;
+          }
+          return birth;
+        } catch (error) {
+          probeFailures.set(
+            candidate,
+            String(error.message).replace(/\s+/g, ' ').slice(0, 240),
+          );
+          return null;
+        }
+      },
+    });
   const protocol = createWindowsOwnedProtocol();
   let guard;
   let published = false;
@@ -170,9 +207,9 @@ if (command) {
       const received = protocol.receive(record);
       if (!received.ok) return abort(received.error.message);
       if (received.action === 'bound') {
-        const targetProbe = probeExactProcessIdentity(received.pid);
+        const targetProbe = readIdentity(received.pid);
         const guardProbe = guard.pid
-          ? probeExactProcessIdentity(guard.pid)
+          ? readIdentity(guard.pid)
           : { state: 'unavailable' };
         const target =
           targetProbe.state === 'exact' ? targetProbe.identity : null;
@@ -187,11 +224,9 @@ if (command) {
                   ? target.start === received.processStart
                   : null,
                 guardState: guardProbe.state,
-                targetProbeFailure: describeRecentProcessBirthProbeFailures(
-                  received.pid,
-                ),
+                targetProbeFailure: probeFailures.get(received.pid) ?? '',
                 guardProbeFailure: guard.pid
-                  ? describeRecentProcessBirthProbeFailures(guard.pid)
+                  ? (probeFailures.get(guard.pid) ?? '')
                   : '',
               },
             )}`,

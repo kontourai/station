@@ -428,7 +428,7 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
+  'pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
@@ -634,7 +634,7 @@ const MISSING_CALLEE_MESSAGE =
  *   pull_request (checked before the default branch), saves only in
  *   OverlayBase mode, and merge_group gets neither.
  * - pnpm/setup restores and saves a lockfile-verification log on every run,
- *   independently of its `cache` input, with no opt-out (dist at 703c526: the
+ *   independently of its `cache` input, with no opt-out (reviewed dist at fbda4c85: the
  *   post step calls the save unconditionally). That save is NOT safe on its
  *   own merits: the key is the hash of the checked-out (candidate) lockfile,
  *   the pre-upload check only confirms earlier records survived (appended

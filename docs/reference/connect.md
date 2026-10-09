@@ -433,6 +433,67 @@ URL.
 
 ## one-time device pairing
 
+The Station host's **Connect a Station** journey can save Device access without
+activating the destination. `completeVerifiedPairing` accepts `activate: false`
+on its target; persistent approval requests carry `activateConnection: false`
+through completion. Both paths preserve an existing selected Station and keep
+native credential custody with the host. Hosts that omit the option retain
+the existing activation behavior.
+
+The new journey uses `bindApprovedEndpoint: true` to bind a browser grant to its
+exact approved address before saving the credential. Setup keeps an existing
+controller's Device access, including at the same address. Use the explicit
+Stations reconnect/repair flow to replace that access. An alternate address
+cannot replace the controller's route during setup. First-device identification does not require
+an existing controller, while peer management still does.
+
+Connect's root exports `savePendingExchange` alongside `loadPendingExchange`
+and `clearPendingExchange`. A host can retain the verified destination, target
+connection and activation policy before transferring the request into persistent
+approval chrome. These are Device-flow records, not the server-held peer journal.
+
+Pairing offers and pending requests can disclose `kind: 'device' | 'delegation'`;
+absence in an older response means Device. A server's requested delegation kind
+does not grant it approval authority. The public access-request route accepts
+the delegation intent only with the fixed delegation preset and without account
+binding or client-instance inputs. The receiving trusted approver sees **Station
+peer** separately from Device access.
+
+Ordinary Device invitations keep their existing encoded payload shape: default
+Device kind is omitted so older strict invitation parsers remain usable.
+Delegation invitations remain distinguishable and cannot be saved as interactive
+Device access.
+
+The server-held peer ceremony is composed by
+[PeerEnrollmentService](../../src-server/services/peers/peer-enrollment-service.ts)
+and the [peer routes](../../src-server/routes/environments/peer-credential-routes.ts).
+The controlling operator submits a stable UUID, exact origin and expected
+environment identity. Proofs and exchanged bearers stay in private server
+records; only enrollment metadata crosses the API. A reported environment ID is
+not signing-key verification. Redirects are refused, and public addresses require
+HTTPS; private/loopback HTTP remains supported for personal setup.
+
+Enrollment mutations use a shared durable lock and refresh their records before
+reservation, exchange, cancellation and pruning. Concurrent runtimes cannot
+consume the same proof or overbook the retained-record limit. Receiver fields
+and serialized private records are bounded before writing.
+
+An explicit completion checks the same receiver and exchanges once after
+approval, then publishes to the existing peer store under current authority.
+Duplicate starts with the same UUID and intent return the same record. A restart
+or lost response during a remote effect can leave **outcome unknown**, which does
+not authorize another exchange. If publication fails after the credential is
+retained privately, completion can retry publication without exchanging again.
+Local cancellation does not revoke a receiver grant. This enrollment neither
+offers a Project resource nor implements operator elevation, reciprocal access,
+provider-process migration or foreground peer execution.
+
+After an interrupted operation, a status read can report an unknown outcome
+without replaying it. Local cancellation remains available after reacquiring the
+durable lock. If the peer was already installed before its journal acknowledgement
+failed, status reconciles to connected and cancellation directs the operator to
+remove the saved peer instead of claiming the pending request was cancelled.
+
 For a browser already open at the Station URL, choose **Connections → Request
 access to this Station**. Station creates a rate-limited, five-minute request
 for that same origin without asking for a URL, camera, code, or operator

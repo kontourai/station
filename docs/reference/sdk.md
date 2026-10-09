@@ -4140,6 +4140,16 @@ The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
 
+## Orchestration approval deadlines
+
+Orchestration command failures retain HTTP status even when the response omits
+a machine code. `resolveOrchestrationRequest` accepts an optional `timeoutMs` and forwards it
+to the command transport. Station's approval UI supplies 15 seconds and uses a
+separate 5-second exact-request inspection after a failed send. A timeout is
+not proof that a decision was refused; callers must inspect before retrying an
+uncertain mutation. The request's thread, request ID and opened-event binding
+continue to govern resolution.
+
 ## Harness question answers
 
 `respondToRequest` from `@kontourai/station-sdk/client` accepts form
@@ -4248,3 +4258,40 @@ authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
 on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
 request options, while the React-free client fetcher preserves HTTP refusal
 status as `StationHttpError`. These client controls confer no access.
+
+### Station peer enrollment
+
+The React-free client entry and SDK root export
+`startPeerEnrollment(apiBase, input, options?)`,
+`getPeerEnrollment(apiBase, id, options?)`,
+`completePeerEnrollment(apiBase, id, options?)`, and
+`cancelPeerEnrollment(apiBase, id, options?)`. The
+[client owner](../../packages/sdk/src/client/peer-enrollments.ts) always receives
+the controlling Station's API base explicitly. `ClientRequestOptions` carries
+its captured `requestScope` and optional cancellation signal; the remote
+destination belongs only in the enrollment input.
+
+`PeerEnrollmentInput` and secret-free `PeerEnrollment` are owned by
+`@kontourai/station-contracts/environment-security`. Start uses a caller-retained
+UUID plus `apiBase`, expected `environmentId`, and optional `label`. Reuse the
+same UUID and exact intent after a lost acknowledgement; do not create another
+request automatically. GET reads local status. Completion explicitly checks
+approval and may install the separately granted peer credential on the server.
+Cancellation affects local pending enrollment, not receiver revocation.
+
+The [query owner](../../packages/sdk/src/query-domains/peerEnrollments.ts) exports
+`usePeerEnrollmentQuery(apiBase, id, requestScope?, config?)` and
+`useStartPeerEnrollmentMutation`, `useCompletePeerEnrollmentMutation`, and
+`useCancelPeerEnrollmentMutation`, each taking `(apiBase, requestScope?)`.
+Query/cache identity includes the controlling base, authority key and enrollment
+ID. Mutations do not retry automatically; callers choose how to observe or
+reconcile their retained request. A connected result invalidates peer inventory.
+All endpoints retain operator authorization, and HTTP refusals preserve their
+status for the host's remedy. These hooks confer no operator or Project grant.
+
+Server proofs and bearers never appear in `PeerEnrollment`. Status distinguishes
+pending, connected, denied, expired, unavailable, identity-changed, failed,
+outcome-unknown, persistence-failed and cancelled. Connected means the peer
+credential was saved, not that a Project checkout, Agent or execution offer is
+ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
+for the independent Device and peer choices and current trusted-session limits.

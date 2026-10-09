@@ -1557,8 +1557,25 @@ station connections create --data=<json> [--api-base=<url>]
 station connections update <id> --data=<json> [--api-base=<url>]
 station connections delete <id> [--api-base=<url>]
 station connections test <id> [--api-base=<url>]
+station connections recovery <id> [--api-base=<url>]
+station connections profiles <id> [--api-base=<url>]
+station connections profile-upsert <id> --data='{"ref":"...","label":"..."}' [--api-base=<url>]
+station connections profile-env <id> <profile-ref> --data='{"env":{"NAME":"value"}}' [--api-base=<url>]
+station connections profile-delete|profile-enroll|profile-unenroll <id> <profile-ref> [--api-base=<url>]
+station connections recovery-policy <id> --automatic=<true|false> [--api-base=<url>]
+station connections profile-import <id> <profile-ref> [--include-credentials] [--api-base=<url>]
+station connections profile-apply <id> <profile-ref> --confirm [--timeout-ms=<ms>] [--api-base=<url>]
 ```
 
+`profile-env` replaces a credential profile's non-secret env overlay
+(`{"env":{}}` clears it). Credential-shaped names and values are refused by a
+heuristic (names such as `*_KEY`, `*_TOKEN`, `*_AUTH`, `*_HEADERS`, `*_PAT`;
+values with URL userinfo or an authorization header); set such a name to `""`
+to mask an inherited value. `profile-upsert` refuses an `env` field.
+`profiles` and `profile-env` print each profile's overlay, or `envInvalid`
+with the offending variable names when the saved overlay breaks the rules;
+`recovery` does not. See
+[credential profile env overlays](../guides/connections.md#give-a-credential-profile-its-own-routing).
 `create`, `update` and `delete` print the resolved target to stderr
 (`Target: station=… endpoint=… source=…`) before the request, because the
 default target can be a saved remote Station. `create` refuses an `id` that

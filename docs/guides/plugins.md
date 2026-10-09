@@ -1776,3 +1776,22 @@ For each conversion, move `displayName` to namespace `title`, make the
 supported Agent, capability, permission, and host-action declarations into the
 Station namespace. A schema-only rewrite is insufficient: installation,
 activation, each component, and real action execution must be verified together.
+
+## Extension loading and recovery in the client
+
+A remote Station's extensions are off until this device explicitly consents.
+That is a normal trust setting, not a workspace-wide failure banner. The
+Extensions screen explains it and offers Enable remote extensions, with the
+existing warning about app-wide authority before consent is stored.
+
+A failed inventory or bundle load produces a notification linking to Extensions.
+The screen retains the failure message and Retry extensions until the registry
+recovers. A failure to start the deferred registry itself produces a notification
+with Reload Station; it does not displace unrelated work with a global banner.
+Core shell and connection recovery retain their own failure surfaces.
+
+Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
+[Extensions view](../../src-ui/src/views/RegistryView.tsx), and
+[deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
+These presentation changes do not enable bundles or alter consent storage,
+origin binding, plugin permissions or native bridge authority.

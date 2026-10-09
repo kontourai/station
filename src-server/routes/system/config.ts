@@ -30,6 +30,10 @@ import {
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import {
+  persistableCredentialProfiles,
+  projectPublicCredentialProfiles,
+} from '../../providers/app-home/credential-profile-registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { mayGrantFullAccess } from '../../security/coding-authority.js';
 import {
@@ -70,7 +74,12 @@ import {
   configurationMutationStatus,
 } from './configuration-activation.js';
 
-/** Legacy-file projection only. New application authority is private SQLite. */
+/**
+ * Legacy-file projection only. New application authority is private SQLite.
+ * Credential profiles go through the registry's own projection (#2966): an
+ * invalid env overlay, possibly a pasted secret in a hand-edited app.json,
+ * is returned only as its value-free `envInvalid` marker.
+ */
 function projectPublicAppConfig(config: Record<string, any>) {
   if (!config.agentConnections) return config;
   return {
@@ -85,11 +94,35 @@ function projectPublicAppConfig(config: Record<string, any>) {
             applicationReceipts: _receipts,
             ...safe
           } = recovery;
+          if (safe.profiles !== undefined) {
+            safe.profiles = projectPublicCredentialProfiles(safe.profiles);
+          }
           return [id, { ...settings, credentialRecovery: safe }];
         },
       ),
     ),
   };
+}
+
+function persistPublicSafeProfiles(
+  agentConnections: Record<string, any>,
+): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(agentConnections).map(([id, settings]) => {
+      const recovery = settings?.credentialRecovery;
+      if (!recovery || recovery.profiles === undefined) return [id, settings];
+      return [
+        id,
+        {
+          ...settings,
+          credentialRecovery: {
+            ...recovery,
+            profiles: persistableCredentialProfiles(recovery.profiles),
+          },
+        },
+      ];
+    }),
+  );
 }
 
 /**
@@ -560,6 +593,19 @@ export function createConfigRoutes(
       }
       if (ignored.length > 0) {
         configOps.add(1, { op: 'update_app_ignored_keys' });
+      }
+      // `agentConnections` is a composite that replaces the stored value
+      // wholesale. Credential profiles written this way (including a settings
+      // import) are normalized like any registry write, so an invalid env
+      // overlay is persisted only as its value-free marker (#2966).
+      if (
+        accepted.agentConnections &&
+        typeof accepted.agentConnections === 'object' &&
+        !Array.isArray(accepted.agentConnections)
+      ) {
+        accepted.agentConnections = persistPublicSafeProfiles(
+          accepted.agentConnections as Record<string, any>,
+        );
       }
       if (
         Object.hasOwn(accepted, 'builtinAgentEngineConnectionId') &&

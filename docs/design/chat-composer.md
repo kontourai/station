@@ -78,8 +78,11 @@ opens the existing task launcher with the current message, Project and Agent,
 and with its Station/worker/model routing controls expanded. The launcher
 loads the selected environment's own worker inventory and retains portable
 Project/resource admission and the explicit no-fallback refusals. **Run task**
-starts a task; it does not place or migrate a foreground chat on a peer. Editing
-the task message updates the originating draft, so Cancel retains those edits.
+starts a task; it does not place or migrate a foreground chat on a peer.
+**Connect a Station for this task** keeps the task draft, chosen Station and
+Project resource while setup opens. Returning refreshes discovery and still
+requires an explicit **Run task** action.
+Editing the task message updates the originating draft, so Cancel retains those edits.
 A successful launch clears only the text submitted and names its captured
 Station; newly typed text stays. Remote task submission and Escape do not
 submit or dismiss the underlying foreground composer. Prepared visual skills
@@ -147,6 +150,12 @@ together in a row above the settings. In a dock too short to show the transcript
 bottom is not shown and a row left with no status takes no height. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
+
+Pending tool requests from the loaded event window also feed Needs approval,
+whose action opens the conversation's approval sheet. Failed history or
+continuation observation shows Status unavailable and withholds the cached
+working clock; the remote turn may still be running. History Retry refreshes
+the capability observation before reloading.
 
 The pill uses compact state labels such as Working, Thinking, and Reconnecting;
 it does not expand to display tool names. State changes animate its width with
