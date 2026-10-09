@@ -1,0 +1,7 @@
+{
+  "revision": "47362fc468848ab676aa7c96b6934e5354eb9eae",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed hosted Gallery defect and cascade correction: initial HTML references only splash CSS and its published fonts/tokens; index.css stays at the original main.tsx import seam, preserving mobile overrides over chat base styles. Fraunces startup, channel selection, theme semantics and readiness ownership are unchanged. No screenshot baseline edits. Whole eager closure remains accounted, including immediate app imports.","inputs":["docs/guides/theming.md","src-ui/index.html"]}
+  ]
+}
