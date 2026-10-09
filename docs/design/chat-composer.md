@@ -151,6 +151,12 @@ bottom is not shown and a row left with no status takes no height. Scroll-button
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
+Pending tool requests from the loaded event window also feed Needs approval,
+whose action opens the conversation's approval sheet. Failed history or
+continuation observation shows Status unavailable and withholds the cached
+working clock; the remote turn may still be running. History Retry refreshes
+the capability observation before reloading.
+
 The pill uses compact state labels such as Working, Thinking, and Reconnecting;
 it does not expand to display tool names. State changes animate its width with
 the shared motion token, while the clock reserves a stable text column. Running

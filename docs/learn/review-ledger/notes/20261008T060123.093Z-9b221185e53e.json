@@ -1,0 +1,7 @@
+{
+  "revision": "13e6bfa14590b8a37a8f5f045205ee2584622a9f",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"after merging main: the desktop row keeps this PR's command-line display and sanitised preview while main's mobile sheet renders the shared request card; checked the merged spec covers both; the documented one-line command display claims hold.","inputs":["docs/conformance/tool-policy-delivery.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

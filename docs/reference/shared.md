@@ -17,6 +17,8 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
+- `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
+- `@kontourai/station-shared/display-reveal` — for raw views: `revealHiddenCharacters` and friends show hidden characters as visible `«U+XXXX»` tokens (a separate subpath so the one-line display form can ship in an entry bundle without it)
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly

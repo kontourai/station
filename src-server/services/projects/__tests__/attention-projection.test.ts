@@ -742,6 +742,26 @@ describe('AttentionProjectionService', () => {
     expect(result.pendingCount).toBe(0);
   });
 
+  test('#3382: a stored approval notification is shown in display form beside its persisted actions', async () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const NEL = String.fromCodePoint(0x85);
+    const projection = makeService({
+      notifications: [
+        registryApproval({
+          title: `Allow ${RLO}exe.txt${NEL}now`,
+          body: `First line${RLO}\nrm${NEL}-rf /`,
+        }),
+      ],
+      approvalRegistry: { has: (id) => id === 'approval-registry-1' },
+    });
+
+    const [item] = (await projection.list()).items;
+
+    expect(item!.title).toBe('Allow exe.txt now');
+    // A body keeps its line breaks; only what it hides is taken out.
+    expect(item!.body).toBe('First line\nrm -rf /');
+  });
+
   test('orphan expiry: a registry-backed approval whose ApprovalRegistry entry still exists stays active', async () => {
     const projection = makeService({
       notifications: [registryApproval()],
@@ -1139,6 +1159,71 @@ describe('AttentionProjectionService', () => {
       expect(item.body).toBe(
         `Allow http_request — {"apiKey":"[REDACTED]","authorization":"Bearer [REDACTED]","body":"${'x'.repeat(92)}…`,
       );
+    });
+
+    test('#3382: an input request title and description are read in display form', async () => {
+      const RLO = String.fromCodePoint(0x202e);
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-ask',
+            lifecycleState: 'needs_input',
+          }),
+        ],
+        sessionEvents: {
+          'thread-ask': [
+            requestOpened({
+              threadId: 'thread-ask',
+              requestType: 'input',
+              title: `Pick ${RLO}a plan\nnow`,
+              description: `Free tier${RLO}\nPaid tier`,
+            }),
+          ],
+        },
+      });
+
+      const [item] = (await projection.list()).items;
+
+      expect(item!.title).toContain(
+        `Pick a plan ${String.fromCodePoint(0x23ce)} now`,
+      );
+      expect(item!.title).not.toContain(RLO);
+      expect(item!.body).toBe('Free tier\nPaid tier');
+    });
+
+    test('#3382: the notification drops bidi controls, turns C1 controls into spaces and keeps every line of a command', async () => {
+      const RLO = String.fromCodePoint(0x202e);
+      const PDF = String.fromCodePoint(0x202c);
+      const NEL = String.fromCodePoint(0x85);
+      const BEL = String.fromCodePoint(0x07);
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-bidi',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-bidi': [
+            requestOpened({
+              threadId: 'thread-bidi',
+              requestType: 'approval',
+              title: `Allow ${RLO}Bash${PDF}`,
+              payload: {
+                toolName: `Ba${RLO}sh`,
+                toolInput: {
+                  command: `echo ${RLO}a${PDF}\nrm${NEL}-rf${BEL}/`,
+                },
+              },
+            }),
+          ],
+        },
+      });
+
+      const item = (await projection.list()).items[0];
+
+      expect(item.title).toBe('Tool call awaiting approval: Bash');
+      expect(item.body).toBe('Allow Bash \u2014 echo a \u23ce rm -rf /');
     });
 
     test('a secret used as an object key (not just a value) is bounded per-key, never leaked verbatim (review finding #4)', async () => {

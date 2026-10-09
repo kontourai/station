@@ -28,6 +28,7 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
   drainQueuedMessageOnTurnCompleted,
   sendPendingMessageNow,
@@ -495,12 +496,35 @@ export function ChatDockBody({
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
+  const windowRequests = useMemo(
+    () =>
+      unansweredApprovalRequests(
+        [],
+        transcript.events.map((item) => item.event),
+      ).flatMap((request) =>
+        request.approvalId
+          ? [
+              {
+                requestId: request.approvalId,
+                threadId: request.approvalThreadId,
+              },
+            ]
+          : [],
+      ),
+    [transcript.events],
+  );
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
     streamStatus,
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
+    windowRequests,
+    observationUnavailable:
+      unverifiedOpen ||
+      Boolean(
+        transcript.enabled && (transcript.error || transcript.upgradeRequired),
+      ),
   });
   /*
    * One transitional state for the whole conversation, from the two things

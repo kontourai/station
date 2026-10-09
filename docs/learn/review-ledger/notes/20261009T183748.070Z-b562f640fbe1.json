@@ -1,0 +1,7 @@
+{
+  "revision": "49b7bca9e505a2748d07ae8828d7a9e5f6cff3e2",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the unchanged PR smoke policy and corrected orchestration fixture graph: one initial history, one old-request resolution and one new desktop opened record, with no duplicate immutable event ID in either window helper. The two viewport, focus and actual grouped-button contrast contracts remain in the same admitted spec. The corrected owning caller passed; the prior full-lane startup timeout is retained separately and is not browser qualification. No runner deadlines, retries, manifest entries or health policy changed.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}
