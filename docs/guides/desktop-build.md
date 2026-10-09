@@ -129,8 +129,8 @@ latest upstream releases:
 
 - Rust `tauri` 2.11.5
 - Rust `tauri-build` 2.6.3
-- npm `@tauri-apps/api` `^2.11.1`
-- npm `@tauri-apps/cli` `^2.11.5`
+- npm `@tauri-apps/api` `^2.12.1`
+- npm `@tauri-apps/cli` `^2.12.1`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
 Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The
@@ -138,6 +138,10 @@ manifest ranges do not by themselves identify the installed npm package version.
 Tauri's
 [dependency update guide](https://v2.tauri.app/develop/updating-dependencies/)
 before changing either side.
+
+`tauri:context` currently warns that the installed CLI 2.12.1 and Rust core
+2.11.5 use different minor release lines. The warning is a compatibility
+review lead; context checks alone do not prove a packaged shell works.
 
 ## Desktop Content Security Policy
 
