@@ -638,7 +638,10 @@ describe('one-revision native promotion contract', () => {
     ]) {
       expect(clearJob.if, id).not.toContain(`needs.${id}.result`);
     }
-    expect(clearJob.permissions).toEqual({ contents: 'write', actions: 'read' });
+    expect(clearJob.permissions).toEqual({
+      contents: 'write',
+      actions: 'read',
+    });
     const clear = namedStep(
       clearJob,
       'Remove the exact promotion fence at the end of the run that created it',
