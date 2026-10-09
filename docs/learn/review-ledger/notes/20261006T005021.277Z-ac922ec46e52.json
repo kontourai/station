@@ -1,0 +1,7 @@
+{
+  "revision": "0bc9c15d1aafa5a9591ea28516ede3c9563707f4",
+
+  "notes": [
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Merge of origin/main into #3391: runtime-routes.ts now builds the project resolution deps once and passes them to the shared project catalogue reader (createProjectCatalogueReader), so /api/boot's projects section carries runsAt like GET /api/projects (operator list only; member views unchanged). Searched this document for /api/boot, the project list and runsAt claims; none are affected.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

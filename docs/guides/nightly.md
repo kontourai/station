@@ -20,9 +20,10 @@ device receipts for current availability.
 
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
-**Cadence: about once a day, with native publication only when `main` moved.**
-`Main: Qualification` owns the schedule: it runs every six hours and a passing
-run calls Nightly for the commit it just qualified, at most about once a day.
+**Cadence: a configurable minimum interval, six hours by default.**
+`Main: Qualification` runs after main source changes with an hourly fallback. A
+passing candidate can start Nightly under a separate serialized delivery lease.
+The interval is a minimum publication spacing, not a delivery latency guarantee.
 Nightly has no independent schedule and does not rerun regression on that
 qualified path. Manual dispatch retains exact-source qualification for recovery.
 The hourly qualification-health watchdog reports stale or missing qualification

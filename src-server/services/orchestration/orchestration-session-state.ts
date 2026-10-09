@@ -1702,10 +1702,9 @@ export async function startRecoveredOrchestrationSession(options: {
       try {
         startInput = await deps.resolveSessionAgent(startInput);
       } catch (error) {
-        // Belt-and-suspenders: the resolver's own contract is never-throws
-        // (session-agent-resolution.ts), but degrading to the unresolved
-        // input on an unexpected throw is strictly safer than failing the
-        // turn outright — this is exactly what boot recovery did.
+        if (startInput.metadata?.executionAgentId) throw error;
+        // Ordinary saved bindings retain boot recovery's unresolved-input
+        // fallback. Explicit overrides above require verified profile delivery.
         deps.logger.warn(
           'resolveSessionAgent failed during session recovery; continuing without a resolved agent definition',
           {

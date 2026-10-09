@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
@@ -12,6 +14,17 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import type { NewChatModelChoice } from '../../../utils/modelCapabilities';
 import { StartModelPicker } from '../StartMenus';
+
+vi.mock('../../../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+vi.mock('../../../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => undefined,
+}));
+vi.mock('@kontourai/station-sdk', () => ({
+  useSshEnvironmentsQuery: () => ({ data: [], isSuccess: true }),
+  usePeerCredentialsQuery: () => ({ data: [], isSuccess: true }),
+}));
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -90,6 +103,7 @@ describe('StartModelPicker', () => {
       />,
     );
     // An effort change is not a finished choice: the picker stays.
+    fireEvent.click(await screen.findByRole('button', { name: 'Options' }));
     fireEvent.change(
       await screen.findByRole('combobox', { name: 'Thinking effort' }),
       { target: { value: 'low' } },
@@ -106,4 +120,33 @@ describe('StartModelPicker', () => {
     expect(onReset).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.getByText('picker closed')).toBeTruthy());
   });
+});
+
+test('the Station control remains inside the picker dismissal and focus boundary', async () => {
+  const onClose = vi.fn();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <StartModelPicker
+        anchor={null}
+        layer="dialog"
+        models={models}
+        loading={false}
+        modelConnections={[]}
+        profile={{ slug: agentId('reviewer'), name: 'Reviewer' }}
+        onEnvironmentChange={vi.fn()}
+        onSelect={vi.fn()}
+        onReset={vi.fn()}
+        onRuntimeOptionChange={vi.fn()}
+        onClose={onClose}
+      />
+    </QueryClientProvider>,
+  );
+  const station = await screen.findByRole('combobox', {
+    name: 'Execution Station',
+  });
+  fireEvent.pointerDown(station);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole('dialog', { name: 'Choose model' }).contains(station),
+  ).toBe(true);
 });

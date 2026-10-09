@@ -53,6 +53,9 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
   useHostRequestAuthorityScope: () => authorityRef.current,
 }));
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => ({ deviceClass: 'host', hostName: 'Kontour' }),
+}));
 
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
@@ -229,6 +232,11 @@ vi.mock('@kontourai/station-sdk', () => ({
       isSuccess: data !== undefined && !fixtures.projectsLoading,
     };
   },
+  useProjectRunLocationsQuery: () => ({
+    data: undefined,
+    isLoading: true,
+    isSuccess: false,
+  }),
   dispatchOrchestrationCommandWithReceipt: fixtures.discardDraft,
   useOrchestrationSessionsQuery: () => ({
     data: fixtures.sessions,
@@ -395,6 +403,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       setModelChoices: () => undefined,
       modelChoiceKey: (agent: { slug: string }) => agent.slug,
       modelsForAgent: () => [],
+      executionModelsForAgent: () => [],
       defaultEffectiveModelForAgent: () => ({
         id: undefined,
         label: fixtures.defaultModelLabel,

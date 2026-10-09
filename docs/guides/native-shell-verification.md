@@ -151,6 +151,23 @@ native adapter tests cover recovery, exhaustion, cancellation, authority
 changes, and non-replayable failures. Those tests do not establish real
 WebView IPC, packaged-shell, mobile, or physical-device behavior.
 
+## Resolver recovery and approval uncertainty
+
+Both native authenticated requests and the credential-free public handshake
+retry a host-issued `transport_dns` failure twice, after 250 and 500 ms. The
+native client disables redirects, so this resolver failure precedes HTTP
+dispatch. Each authenticated retry preserves the scoped binding and rechecks
+authority. Cancellation stops the wait; the reserved health probe is not
+retried. HTTP 503, timeouts and lost responses do not authorize replay.
+
+Manual history Retry invalidates the cached capability observation before
+loading again. Failed history or continuation observation displays Status
+unavailable instead of asserting that a cached Working timer is current.
+Approval delivery has a separate bounded send and inspection path; see
+[tool-policy delivery](../conformance/tool-policy-delivery.md#answering-on-a-phone-and-recovering-delivery).
+Adapter and browser tests are diagnostic evidence, separate from a real shell,
+physical phone, notification lifecycle or release-provider journey.
+
 ## Native foreground dispatch deadlines
 
 The native HTTP broker waits up to 60 seconds for response headers on

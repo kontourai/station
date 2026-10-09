@@ -1,0 +1,7 @@
+{
+  "revision": "54ce71b17440a30618555376b63cbbea2cfb2078",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"updated the probe-deadline paragraph to name the 30s bound for node, npm and tauri-cli alongside the unchanged 10s default; verified against the constants in scripts/tauri-context.mjs.","inputs":["docs/guides/desktop-build.md","scripts/tauri-context.mjs","scripts/__tests__/tauri-context.test.ts"]}
+  ]
+}

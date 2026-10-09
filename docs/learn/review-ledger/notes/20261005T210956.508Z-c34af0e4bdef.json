@@ -1,0 +1,7 @@
+{
+  "revision": "9281b930f3c3128a9674cc333d11a1aa086ea632",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Round 5 for #3391: added the not-checked case to the project chip claim, checked against new-chat-modal-utils.ts (unverified/unchecked hints), ContextPickerOptions.tsx (Not checked badge, never Can't start) and StartMenus.tsx (not checked yet note); Start is not gated on the hint.","inputs":["docs/design/chat-composer.md","src-ui/src/index.css"]}
+  ]
+}

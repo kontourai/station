@@ -45,6 +45,20 @@ describe('composeWebPushPayload', () => {
     expect(composed?.ttlSeconds).toBe(WAITING_TTL_MS / 1000);
   });
 
+  test('#3382: the web push title and body are in display form', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const composed = composeWebPushPayload(
+      notification({
+        title: `Approve ${RLO}echo a\nrm -rf /`,
+        body: `run${RLO} it\nnow`,
+      }),
+    );
+    expect(composed?.payload).toMatchObject({
+      title: `Approve echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+      body: 'run it\nnow',
+    });
+  });
+
   test('AC1: ranks a mixed pending batch and leads with needs-input over failed', () => {
     const failed = notification({
       id: 'job-failure-1',

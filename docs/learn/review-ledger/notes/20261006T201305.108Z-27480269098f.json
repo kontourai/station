@@ -1,0 +1,7 @@
+{
+  "revision": "a3c86d6937d5be9b6aa65fd15fca67bb2672adf3",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed retained profile-env API validation/projection alongside current connection route owner and schema. Conflict repair preserves upstream gates and adds no secret response fields; runtime resolver keeps selected profileRef custody. Focused execution pending managed dependencies.","inputs":["docs/reference/api.md","src-server/domain/config-loader.ts","src-server/routes/system/native-device-proof-binding-routes.ts","src-server/routes/system/native-device-proof-self-receipt-routes.ts","packages/cli/src/commands/surfaces.ts","src-server/routes/schemas/schema-definitions/runtime.ts","src-server/routes/system/config.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/connections/connection-service.ts"]}
+  ]
+}

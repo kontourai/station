@@ -58,7 +58,23 @@
 
     "src-ui/src/hooks/orchestration/approvalHandlers.ts",
 
-    "src-ui/src/hooks/orchestration/pendingRequestRows.ts"
+    "src-ui/src/hooks/orchestration/pendingRequestRows.ts",
+
+    "packages/shared/src/display-text.ts",
+
+    "src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx",
+
+    "tests/orchestration-chat-flow.spec.ts",
+
+    "tests/mobile-request-sheet.spec.ts",
+
+    "src-ui/src/components/chat/ApprovalSheetProvider.tsx",
+
+    "src-ui/src/components/chat/ApprovalSheetContext.ts",
+
+    "src-ui/src/hooks/orchestration/answerRequest.ts",
+
+    "src-ui/src/components/notifications/NotificationHistory.tsx"
   ],
 
   "checks": [

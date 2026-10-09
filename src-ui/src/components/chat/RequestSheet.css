@@ -1,0 +1,235 @@
+/* #3331: the shared phone surface for requests that need the person. Only a
+   phone renders it (`useIsMobile`), so nothing here sits behind a media query;
+   the visual-viewport containment and focus rules come from the shared
+   `.responsive-surface-overlay` / `.responsive-surface-panel` seam. */
+
+/* The compact transcript card (R1). */
+.request-card {
+  display: grid;
+  gap: var(--k-space-2);
+  min-width: 0;
+  padding: var(--k-space-3) var(--k-space-4);
+  color: var(--k-text);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  font-size: var(--k-text-md);
+}
+
+.request-card__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+}
+
+.request-card__heading strong {
+  overflow-wrap: anywhere;
+}
+
+.request-card__state {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.request-card[data-state="pending"] .request-card__state {
+  color: var(--k-text);
+  font-weight: 600;
+}
+
+.request-card__question {
+  margin: 0;
+  line-height: var(--k-leading-normal);
+  overflow-wrap: anywhere;
+  /* The card is a reminder, not the form: three lines, then the sheet. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+/* Beside a one-line tool row: drawn small, hit area still 44px (the same
+   pseudo-element technique ActionRow uses). Compounded to outrank the shared
+   phone `__actions > button` 44px min-height, which would redraw it full
+   size. */
+.request-sheet-trigger--compact {
+  position: relative;
+}
+
+.tool-call__actions > .request-sheet-trigger--compact.button {
+  min-width: 0;
+  min-height: 0;
+}
+
+.request-sheet-trigger--compact::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.request-card .request-sheet-trigger {
+  justify-self: start;
+  min-height: 44px;
+}
+
+/* The sheet. Compounded with the shared overlay class so it outranks the
+   shared mobile padding whatever order the bundler emits the two sheets. */
+.request-sheet__overlay.responsive-surface-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: stretch;
+  padding: max(var(--k-space-6), var(--safe-top, 0px)) 0 0;
+  background: var(--overlay-bg-darker);
+}
+
+.request-sheet.responsive-surface-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100% !important;
+  /* R2: height follows the content. A short request still opens at about
+     half the visible height (the dock's own Half detent, 0.45), so its
+     actions sit where a thumb expects them; a long one grows to the top
+     inset and its body scrolls. */
+  min-height: 45%;
+  max-height: 100% !important;
+  overflow: hidden;
+  color: var(--k-text);
+  background: var(--k-panel-raised);
+  border-top: 1px solid var(--k-line);
+  border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
+  box-shadow: var(--k-shadow);
+  transition: transform var(--motion-fast) var(--ease-emphasized);
+}
+
+/* Following the finger is geometry, not an animation. */
+.request-sheet--dragging.responsive-surface-panel {
+  transition: none;
+}
+
+.request-sheet__grab {
+  flex: 0 0 auto;
+  /* The grab strip owns vertical drags; the body below keeps native scroll. */
+  touch-action: none;
+  cursor: grab;
+  border-bottom: 1px solid var(--k-line);
+}
+
+.request-sheet__handle {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: var(--k-space-2) auto 0;
+  border-radius: 2px;
+  background: var(--k-line-strong);
+}
+
+.request-sheet__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--k-space-4);
+}
+
+/* A feature's inline card renders inside the body; the sheet already draws
+   the surface, so the card's own frame would be a box inside a box. */
+.request-sheet__body > .harness-question-card {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* A tool call's detail panel is indented and height-capped to sit under its
+   transcript row; in the sheet it is the body, and the body scrolls. */
+.request-sheet__body > .tool-call__details {
+  margin: 0;
+  max-height: none;
+}
+
+/* R5 / #2021: iOS zooms the page when a control under 16px takes focus. The
+   sheet's panel sets a 14px body size and feature cards set `font: inherit`
+   on their inputs, so the floor is restated here for every editable control. */
+.request-sheet.responsive-surface-panel
+:is(
+  input:not([type="checkbox"], [type="radio"], [type="range"]),
+  textarea,
+  select
+) {
+  font-size: 16px;
+}
+
+/* R3: pinned. Never part of the scrolling body. */
+.request-sheet__actions {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--k-space-3) var(--k-space-4)
+    max(var(--k-space-3), var(--safe-bottom, 0px));
+  border-top: 1px solid var(--k-line);
+  background: var(--k-panel-raised);
+}
+
+.request-sheet__actions > .action-row {
+  justify-content: flex-end;
+}
+
+.request-sheet__actions .button {
+  min-height: 44px;
+}
+
+.request-sheet__status {
+  margin: var(--k-space-3) 0 0;
+  font-size: var(--k-text-sm);
+}
+
+.approval-sheet__requests {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--k-space-4);
+  min-width: 0;
+}
+
+.approval-sheet__requests .tool-call {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.approval-sheet__requests .tool-call__row {
+  flex-wrap: wrap;
+}
+
+.approval-sheet__requests .tool-call__actions {
+  flex-basis: 100%;
+}
+
+.approval-sheet__requests .button {
+  min-height: 44px;
+}
+
+.approval-sheet__requests .tool-call__details {
+  margin-inline: 0;
+  max-height: none;
+}
+
+.request-sheet .tool-call__approve-error,
+.request-sheet .tool-call__approve-status {
+  contain: none;
+  width: 100%;
+  overflow-wrap: anywhere;
+  font-size: var(--k-text-sm);
+}
+
+.approval-sheet__notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+  overflow-wrap: anywhere;
+}

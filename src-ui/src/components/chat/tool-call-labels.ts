@@ -16,6 +16,12 @@
  * this doesn't invent a second naming scheme.
  */
 import {
+  displayLines,
+  displayText,
+  hiddenLinesMarker,
+  truncateDisplay,
+} from '@kontourai/station-shared/display-text';
+import {
   formatToolName,
   isProgrammaticToolName,
 } from '../../utils/chat-progress';
@@ -330,28 +336,12 @@ function filePathArgument(args: Record<string, unknown>): string | undefined {
 
 const MAX_TARGET_LENGTH = 60;
 
-/** Bidi marks, embeddings, overrides and isolates (LRM, RLM, ALM,
- * U+202A–202E, U+2066–2069). Every label target is untrusted engine or
- * model text and must not reorder what the row shows ("Trojan source"). */
-const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
-/** C0/C1 controls. Replaced by a space, not deleted, so "a\tb" does not
- * merge into one word. */
-const CONTROL_CHARACTERS = /\p{Cc}/gu;
-
-/**
- * The displayed form of untrusted text: bidi controls removed, control
- * characters turned into spaces, whitespace collapsed onto one line. Only
- * the label changes; the call's arguments, and the details view that shows
- * them, keep the raw text.
- */
-function displayText(value: string): string {
-  return value
-    .replace(BIDI_CONTROLS, '')
-    .replace(CONTROL_CHARACTERS, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
+/** Every label target is untrusted engine or model text. It is shown in
+ * its `displayText` form (shared with the approval toast and inbox preview):
+ * bidi controls removed, so it cannot reorder what the row shows ("Trojan
+ * source"); control characters turned into spaces; one line. Only the label
+ * changes; the call's arguments, and the details view that shows them, keep
+ * the raw text. */
 function safeName(value: string): string {
   return displayText(value);
 }
@@ -418,7 +408,7 @@ function patchBody(a: Record<string, unknown>): string | undefined {
 function fileCallTarget(args: unknown): string | null | undefined {
   if (typeof args === 'string') {
     const line = safeName(firstLine(args));
-    return line ? truncate(line) : undefined;
+    return line ? withHiddenLines(truncate(line), args) : undefined;
   }
   if (!args || typeof args !== 'object' || Array.isArray(args)) {
     return undefined;
@@ -553,9 +543,7 @@ export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
  * and cut by code point, so an emoji at the cut is never split into a lone
  * surrogate. */
 function truncate(value: string, max = MAX_TARGET_LENGTH): string {
-  const codePoints = Array.from(displayText(value));
-  if (codePoints.length <= max) return codePoints.join('');
-  return `${codePoints.slice(0, max - 1).join('')}…`;
+  return truncateDisplay(displayText(value), max);
 }
 
 function basename(path: string): string {
@@ -563,9 +551,26 @@ function basename(path: string): string {
   return segments.length > 0 ? segments[segments.length - 1] : path;
 }
 
+/** The first line that shows anything, split the way every approval
+ * surface splits (`displayLines`: LF, CR, CRLF, U+2028, U+2029). */
 function firstLine(value: string): string {
-  const idx = value.indexOf('\n');
-  return idx >= 0 ? value.slice(0, idx) : value;
+  return displayLines(value)[0] ?? '';
+}
+
+/**
+ * A row that shows only the first line of a multi-line value says how many
+ * it does not show: "Run echo a (+1 line)". Without it, `echo a` followed by
+ * `rm -rf /` read as a harmless `echo a` on an approval card.
+ */
+function withHiddenLines(shown: string, value: string): string {
+  const marker = hiddenLinesMarker(displayLines(value).length - 1);
+  return marker ? `${shown} ${marker}` : shown;
+}
+
+/** An argv array as the one string a label shows: its elements joined by a
+ * space, as before #3382. */
+function argvText(command: readonly unknown[]): string {
+  return command.map(String).join(' ');
 }
 
 /** One leading `NAME=value ` whose value is a plain literal: no `$`,
@@ -585,7 +590,8 @@ const INERT_ENV =
   /^(?:CI|FORCE_COLOR|NO_COLOR|CLICOLOR|CLICOLOR_FORCE|NODE_ENV|DEBUG|VERBOSE|LANG|LANGUAGE|LC_[A-Z]+|TZ|TERM|COLUMNS|LINES|RUST_LOG|RUST_BACKTRACE|PYTHONUNBUFFERED|PYTHONDONTWRITEBYTECODE|STATION_DOCS_[A-Z0-9_]+)$/;
 
 /**
- * The collapsed row's form of a shell command: its first line. For a call
+ * The collapsed row's form of a shell command: its first line, and how many
+ * more it has ("(+1 line)", `withHiddenLines`). For a call
  * that already ran, leading environment assignments are dropped so the
  * command itself is what fits (`STATION_DOCS_FRESHNESS=scoped npm run
  * docs:check` → `npm run docs:check`) — but only when every one of them is a
@@ -594,6 +600,10 @@ const INERT_ENV =
  * allow is the whole command. The expanded row prints it verbatim.
  */
 function commandTarget(command: string, trimEnv: boolean): string {
+  return withHiddenLines(firstLineTarget(command, trimEnv), command);
+}
+
+function firstLineTarget(command: string, trimEnv: boolean): string {
   const line = firstLine(command).trim();
   if (!trimEnv) return truncate(line);
   let rest = line;
@@ -624,7 +634,7 @@ function extractTarget(
     if (!args.trim()) return null;
     return kind === 'exec'
       ? commandTarget(args, trimEnv)
-      : truncate(safeName(firstLine(args)));
+      : withHiddenLines(truncate(safeName(firstLine(args))), args);
   }
   if (!args || typeof args !== 'object') return null;
   const a = args as Record<string, unknown>;
@@ -639,7 +649,10 @@ function extractTarget(
       return commandTarget(command, trimEnv);
     }
     if (Array.isArray(command) && command.length > 0) {
-      return truncate(command.join(' '));
+      // An argv array (`['bash', '-c', 'echo a\nrm -rf /']`) can carry a
+      // multi-line script in one element, so it gets the same first line and
+      // line count. Never env-trimmed: in an argv, `FOO=1` is the program.
+      return commandTarget(argvText(command), false);
     }
     return null;
   }
@@ -696,7 +709,12 @@ export function callLabel(
   // ACP title: the command line, the path) is shown as the engine wrote it,
   // env-trimmed for a command exactly like an argument would be.
   if (toolName.trim() && !isProgrammaticToolName(toolName)) {
-    return `${verb} ${kind === 'exec' ? commandTarget(toolName, trimEnv) : truncate(toolName)}`;
+    // A multi-line name keeps the same first line and count as a command.
+    return `${verb} ${
+      kind === 'exec'
+        ? commandTarget(toolName, trimEnv)
+        : withHiddenLines(truncate(firstLine(toolName)), toolName)
+    }`;
   }
   const fallbackName = formatToolName(toolName);
   return fallbackName ? `${verb} ${fallbackName}` : verb;

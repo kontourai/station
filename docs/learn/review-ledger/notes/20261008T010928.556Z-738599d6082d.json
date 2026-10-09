@@ -1,0 +1,27 @@
+{
+  "revision": "14eeeb00a0105af3df80fbace66f5f296fa2d220",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the Monitoring guide delta against its separation of local events, OTel export and usage accounting. The new diagnostic views do not change the abstraction audit findings or Knowledge scope; no prose change needed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Settings section-selector extraction and additive resource-posture response against current SectionNavigation, resource route and controller. Existing settings authority and CPU admission separation remain accurate; memory/process observations are documented in the API and Developer guide.","inputs":["docs/architecture/module-map.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Reviewed route labels and redirects, responsive section rail, Logs refresh and bounds, System host resources and services, and Monitoring Activity/latency/usage/context/routing through actual mounted owners. Focused tests pass; browser interactions and recording verified available runtime views. Context provenance and cross-host chart reset have failing-before/passing-after regressions. No native or exporter completion claim.","inputs":["docs/design/developer-surface.md","src-ui/src/views/DeveloperView.tsx","src-ui/src/views/MonitoringView.tsx","src-ui/src/views/developer/TelemetryTab.tsx","src-ui/src/components/SectionNavigation.tsx","src-ui/src/views/developer/SystemPerformance.tsx","src-ui/src/views/developer/SystemServices.tsx","src-ui/src/views/developer/LogsTab.tsx","src-ui/src/views/monitoring/ToolLatencyPanel.tsx","src-ui/src/views/monitoring/ContextDiagnostics.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the SettingsView extraction into shared SectionNavigation, stable topic and leaf URLs, search selection, mobile accessible label, unchanged draft/save/unsaved guard, and compact descriptions against registry consequences. Existing storage scopes and Project inheritance are unchanged.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/SettingDescription.tsx","src-ui/src/components/SectionNavigation.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed additive API/SDK documentation for host resource snapshots and opt-in log polling. Existing public integration, tenancy and contract-consumption guidance remains accurate; no new execution authority or SDK import of application internals.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed Developer view source populations: event history and measured tool durations, canonical session summaries, existing receipt rollups, conversation statistics provenance, host resource snapshots and scan warnings. Kept existing collector and historical completeness limits. Checked missing-source, reported-zero and partial-history focused cases and live view navigation.","inputs":["docs/guides/monitoring.md","src-ui/src/views/MonitoringView.tsx","src-ui/src/views/monitoring/ToolLatencyPanel.tsx","src-ui/src/views/monitoring/ContextDiagnostics.tsx","src-server/routes/system/resource-posture-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed resource-posture route response and HostResourceSnapshot contract. Original CPU probe failure/status semantics remain intact; memory/process snapshot is additive with independent timestamp. Real route test verifies answering process and host memory without claiming admission or native evidence.","inputs":["docs/reference/api.md","src-server/routes/system/resource-posture-routes.ts","packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed additive HostResourceSnapshot in existing system-status domain. It contains observation data only, preserves older contract members and carries no execution or admission authority.","inputs":["docs/reference/contracts.md","packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed useServerLogsQuery numeric opt-in refresh and resourcePostureVM optional resources against actual query clients and mounted Logs/Performance consumers. Default polling remains off for logs; older hosts keep missing resource values unknown. No public barrel additions required.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/developerRuntime.ts","packages/sdk/src/query-domains/resourcePosture.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed extracted shared navigation against stable topic/leaf URLs, canonical guarded navigation and row reveal/search handling. Settings section accessible label remains singular on narrow screens; existing deep-link contract remains accurate.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the SDK reference additions for developer-runtime queries and host resource contract. Existing instruction to consume published SDK surfaces and use canonical references remains accurate; no governance instruction changes.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

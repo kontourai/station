@@ -117,7 +117,10 @@ is a startup refusal with an instruction to check the integration's tools.
 Generic connected engines receive no restricted integration when their protocol
 cannot enforce its individual-tool selection. The undelivered receipt reports
 `engine-unsupported`. This is not a claim that Station controls those engines'
-own tools or configurations.
+own tools or configurations. An explicit conversation engine override instead
+refuses startup when required profile delivery is unsupported or undelivered;
+it cannot reduce the selected Agent profile to fit the engine. See
+[execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
@@ -173,8 +176,8 @@ MultiEdit, NotebookEdit) or `addDirectories`. A Bash or PowerShell command
 rule is never one, even when it names a path.
 
 One shared computation, `toolRequestSessionGrant`, decides what a session
-answer grants. The adapter honours it and the toast, inline card and inbox
-card label it:
+answer grants. The adapter honours it and the toast, inline card (on a phone,
+its request sheet's overflow item, #3331) and inbox card label it:
 
 - A plain call to a tool grants every later call to that tool ("Allow Bash for
   this session"). Only this case mints a Station tool grant.
@@ -433,14 +436,50 @@ fallback a Codex file-change approval could name no file on either surface.
 This is a best-effort presentation helper, not a completeness guarantee for
 every engine request.
 
-Two limits on "the preview", stated because a consent surface must not be read as
+Two limits on "the preview", and how it is shown, stated because a consent surface must not be read as
 promising more than it does:
 
 - **It is one field per tool family, not the whole call.** For `Bash` that is the
   command; for `Edit`/`Write`/`NotebookEdit` it is the file path and **never the
   content being written**, so the reader learns which file is about to change,
   not what it will say. It is also bounded to 160 characters on one line, so a
-  long command's tail — a trailing `; rm -rf /` — can sit past the cap.
+  long command's tail — a trailing `; rm -rf /` — can sit past the cap; a cut
+  always ends in "…". Padding cannot push it there: runs of spaces, blank
+  lines and invisible characters are collapsed before the value is cut. A
+  multi-line command (lines split on LF, CR, CRLF, U+2028 and U+2029) shows its
+  lines joined by ` ⏎ `, and when the cap hides whole lines the preview ends
+  with "(+N lines)". The transcript row and the approvals strip card show a
+  command's first line with the same count ("Run echo a (+1 line)"); Codex's
+  command approval title joins its lines the same way, and its strip card is
+  a command row. A pending approval opens its details whenever it has
+  arguments to show, so the whole command is on screen next to Allow and
+  Deny: the label can hide part of it in more ways than can be detected
+  (a first line and a count, a cut, dropped characters, a CSS ellipsis at
+  narrow widths). The user can collapse it, and that choice is kept for the
+  request.
+- **It is shown in display form.** The preview, the tool name, the "Why:"
+  purpose, a pending request's title in the session view, and the inbox row's
+  title and body drop bidi controls (U+202A–202E, U+2066–2069, LRM, RLM, ALM)
+  and invisible characters (zero-width space, word joiner, invisible
+  operators, soft hyphen, BOM, tag characters, and fillers that draw as
+  blank space: Hangul fillers, the blank braille pattern, CGJ, Mongolian and
+  other variation selectors, VS15/VS16 except after an emoji), and turn
+  control characters,
+  C1 included, into spaces (`packages/shared/src/display-text.ts`, shared with
+  the transcript label). The inbox applies this when it reads a row, so a
+  stored approval notification and an input request's title and description
+  are covered too, and OS notifications (web push, the desktop feed, APNs,
+  FCM) carry the same display form; a cut title there ends in "…" and keeps
+  its "(+N lines)" count. The details view shows the raw arguments, left to
+  right with each run of right-to-left letters isolated, and only those
+  letters (as the row's label and the details' Tool line are, so all three
+  show the same order; a Chromium layout check pins it), with ligatures and
+  contextual alternates off there and in the toast preview so `../` and `!=`
+  read as typed, except that
+  hidden characters (the ones above, ZWNJ, a ZWJ that is not joining two
+  emoji, and controls other than LF and tab) appear as visible `«U+XXXX»`
+  tokens under a "contains hidden characters" warning, so they are never
+  applied next to Allow and Deny.
 - **"Redacted" means known credential shapes.** `redactSecrets`
   (`packages/shared/src/redaction.ts`, see its docblock for the exact inventory)
   removes recognised credential patterns and `key=value` pairs whose key looks
@@ -450,6 +489,32 @@ promising more than it does:
   of the line after a redacted key, so a command with a secret in the middle can
   show its head and `[REDACTED]` and none of its tail — pre-existing behaviour,
   and in the safe direction.
+
+### Answering on a phone and recovering delivery
+
+The conversation opens one approval sheet for its current tool requests. It
+shows each command in full and gives each request its own decision controls.
+Closing the sheet hides it without answering; that prompt remains dismissed
+until Answer or Needs approval reopens it. A newly opened prompt can open the
+sheet again. Sending and failure state survive hiding the sheet.
+
+Approval toasts open the originating conversation and send the selected
+decision. Accepted approval actions in notification history and Attention also
+open the conversation. These actions preserve the request's thread and opened
+event; a session grant retains the engine's existing scope.
+
+The shared answer path coalesces concurrent answers to the same prompt. Its
+15-second send deadline is followed by a bounded 5-second inspection when the
+send fails. A resolved request is shown as settled without claiming a local
+grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
+Check status reads the request before another decision can be sent. Errors
+keep a short summary beside the controls and technical details in a disclosure.
+
+Owners: [approval sheet](../../src-ui/src/components/chat/ApprovalSheetProvider.tsx),
+[decision delivery](../../src-ui/src/hooks/orchestration/answerRequest.ts),
+[mobile browser tests](../../tests/mobile-request-sheet.spec.ts). Browser fixtures
+and native adapter tests do not establish delivery on a particular phone or
+through a real provider.
 
 ### Historical settings-isolation experiment
 

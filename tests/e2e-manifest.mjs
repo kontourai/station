@@ -360,7 +360,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
-    'tests/connect-modal.spec.ts',
     'tests/connect-retry.spec.ts',
     'tests/connect-remote-auth-recovery.spec.ts',
     'tests/connect-reconnect-banner.spec.ts',
@@ -372,6 +371,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/project-layout-render-storm.spec.ts',
     'tests/orchestration-chat-flow.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
+    'tests/mobile-request-sheet.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
     'tests/veritas-readiness-panel.spec.ts',
@@ -395,6 +395,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Owns real receiver pairing state and temporary credential files.
+    'tests/connect-modal.spec.ts',
     // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
     'tests/conversation-timeline.spec.ts',
     // Retains the short-viewport composer acceptance screenshot beside the
@@ -1449,6 +1451,15 @@ export const e2eManifest = [
     tierTarget: 'full',
     rationale:
       '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/mobile-request-sheet.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3331 shared mobile request sheet at 390x844 for a long MCP elicitation form and a short tool approval: card-to-sheet, pinned actions, content-fit height, dismissal (backdrop, swipe, Escape, close) leaving the request pending, Send with an emulated keyboard, resolution elsewhere closing the sheet, focus trap/return, reduced motion, and inline desktop at 1280.',
     exceptions: [],
   },
   {

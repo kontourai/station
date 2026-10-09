@@ -68,20 +68,20 @@ function decide(
 }
 
 describe('decideQualifiedNightly', () => {
-  it('pins the interval at 20 hours', () => {
-    expect(MIN_PUBLICATION_INTERVAL_MS).toBe(72_000_000);
+  it('defaults to a six-hour publication interval', () => {
+    expect(MIN_PUBLICATION_INTERVAL_MS).toBe(21_600_000);
   });
 
-  it('publishes a new source once the newest native ship is 20 hours old', () => {
+  it('publishes a new source once the newest native ship is six hours old', () => {
     expect(decide().publish).toBe(true);
     expect(
-      decide({ now: new Date(Date.parse(SHIPPED_AT) + 20 * HOUR) }).publish,
+      decide({ now: new Date(Date.parse(SHIPPED_AT) + 6 * HOUR) }).publish,
     ).toBe(true);
   });
 
-  it('skips while the newest native ship is younger than 20 hours', () => {
+  it('skips while the newest native ship is younger than six hours', () => {
     const decision = decide({
-      now: new Date(Date.parse(SHIPPED_AT) + 20 * HOUR - 1000),
+      now: new Date(Date.parse(SHIPPED_AT) + 6 * HOUR - 1000),
     });
     expect(decision.publish).toBe(false);
     expect(decision.reason).toMatch(/^published recently: /);
@@ -183,6 +183,19 @@ describe('decideQualifiedNightly', () => {
   });
 });
 
+it('recognizes complete native publication whose platform receipts span ledger-only event commits', () => {
+  expect(
+    decide({
+      ledgerEntries: [
+        row('nightly-android', SOURCE),
+        row('nightly-desktop', PEELED),
+      ],
+      sourceCandidates: { 'nightly-desktop': PEELED },
+      reservationRefs: reservation(PEELED),
+    }).publish,
+  ).toBe(false);
+});
+
 describe('parseReservationRefs', () => {
   it('reads the shape git ls-remote prints, ignoring the trailing newline', () => {
     expect(
@@ -220,15 +233,18 @@ describe('nightly-qualification-decide CLI entry', () => {
     'fixtures/nightly-reservation-refs.txt',
   );
 
-  it('peels ledger commit-backs up to the newest native ship before deciding', () => {
+  it('peels ledger commit-backs up to the newest native ship before deciding', async () => {
     const inspected: string[] = [];
     const io = capture();
     let status: number;
     try {
-      status = main(
+      status = await main(
         ['--source-sha', SOURCE, '--reservation-refs', reservationsFile],
         {
-          readLedger: () => [row('nightly-android', SHIPPED)],
+          readLedger: () => [
+            row('nightly-android', SHIPPED),
+            row('nightly-desktop', SHIPPED),
+          ],
           // SOURCE is a generated ledger commit whose parent is SHIPPED.
           inspectCommit: (_root: string, sha: string) => {
             inspected.push(sha);
@@ -253,11 +269,11 @@ describe('nightly-qualification-decide CLI entry', () => {
     expect(io.stdout.join('')).toContain('publish=false\nalready published');
   });
 
-  it('exits nonzero and writes no publish= when an input is malformed', () => {
+  it('exits nonzero and writes no publish= when an input is malformed', async () => {
     const io = capture();
     let status: number;
     try {
-      status = main(
+      status = await main(
         ['--source-sha', SOURCE, '--reservation-refs', reservationsFile],
         { readLedger: () => ({ entries: [] }) },
       );
@@ -268,10 +284,10 @@ describe('nightly-qualification-decide CLI entry', () => {
     expect(io.stdout.join('')).not.toContain('publish=');
   });
 
-  it('rejects an incomplete argv', () => {
+  it('rejects an incomplete argv', async () => {
     const io = capture();
     try {
-      expect(main(['--source-sha', SOURCE])).toBe(1);
+      expect(await main(['--source-sha', SOURCE])).toBe(1);
     } finally {
       io.restore();
     }

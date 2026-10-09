@@ -1,0 +1,7 @@
+{
+  "revision": "28e5469b332d7cdc0f2860edd37119c24f9f0820",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the start-composer project chip claim against StartComposer.tsx, StartMenus.tsx, HomeStartComposer.tsx and NewChatModal.tsx: chip and menu now draw ProjectIcon (icon else accent) and the folder comes from runsAt, including manifest-bound execution roots and refused starts. Projects picker icon/accent claim remains accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

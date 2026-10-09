@@ -8,7 +8,10 @@ import {
   type AgentSpec,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
-import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  parseEngineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import {
   ATTENTION_REQUEST_ID_MAX_CHARS,
   type AttentionInputReplyContext,
@@ -845,6 +848,8 @@ interface OrchestrationServiceOptions {
    * Agent and the dock cannot open it.
    */
   resolveAdoptedChildExecutionBinding?: ResolveAdoptedChildExecutionBinding;
+  /** Read-only identity of this receiver; absence leaves reopen placement unverified. */
+  readCurrentEnvironmentId?: () => Promise<string | undefined>;
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
@@ -2580,11 +2585,44 @@ export class OrchestrationService {
         const session = detail.session;
         const lineageTail =
           this.conversationLineage.currentConversationSessionId(conversationId);
-        const recordedConnection = this.readLatestSessionStartMetadata(
+        const startMetadata = this.readLatestSessionStartMetadata(
           session.threadId,
           detail.events,
-        )?.connectionId;
-        const connection = parseEngineConnectionId(recordedConnection);
+        );
+        // The adapter-safe metadata projection above strips the server-minted Environment identity.
+        const identityEvent = [...detail.events]
+          .reverse()
+          .find(
+            (event) =>
+              event.threadId === session.threadId &&
+              event.method === 'session.started',
+          );
+        const recordedEnvironmentId =
+          identityEvent?.method === 'session.started' &&
+          typeof identityEvent.metadata?.environmentId === 'string'
+            ? identityEvent.metadata.environmentId
+            : undefined;
+        const currentEnvironmentId =
+          recordedEnvironmentId &&
+          session.controlMode === 'station-owned' &&
+          !this.isPeerDelegationActivityRecord(session.threadId)
+            ? await this.options
+                .readCurrentEnvironmentId?.()
+                .catch(() => undefined)
+            : undefined;
+        const connection = parseEngineConnectionId(startMetadata?.connectionId);
+        const executionAgentId =
+          typeof startMetadata?.executionAgentId === 'string'
+            ? agentId(startMetadata.executionAgentId)
+            : undefined;
+        const expectedDefinitionFingerprint =
+          executionAgentId &&
+          typeof startMetadata?.expectedDefinitionFingerprint === 'string' &&
+          /^sha256:[0-9a-f]{64}$/.test(
+            startMetadata.expectedDefinitionFingerprint,
+          )
+            ? startMetadata.expectedDefinitionFingerprint
+            : undefined;
         const model = session.reportedModel ?? session.model;
         return {
           sessionId: session.threadId,
@@ -2601,10 +2639,18 @@ export class OrchestrationService {
             ? {
                 execution: {
                   sessionId: session.threadId,
+                  ...(currentEnvironmentId &&
+                  currentEnvironmentId === recordedEnvironmentId
+                    ? { environment: { kind: 'current' as const } }
+                    : {}),
                   agentId: publicAgentIdFromRuntimeKey(
                     session.assignedAgentSlug,
                   ),
                   provider: session.provider,
+                  ...(executionAgentId ? { executionAgentId } : {}),
+                  ...(expectedDefinitionFingerprint
+                    ? { expectedDefinitionFingerprint }
+                    : {}),
                   ...(connection ? { engineConnectionId: connection } : {}),
                   ...(model ? { model } : {}),
                   ...(session.appliedModel
@@ -3440,7 +3486,8 @@ export class OrchestrationService {
       return ref ? { ...input, credentialProfileRef: ref } : input;
     }
     if (input.credentialProfileRef) return input;
-    const agentSlug = input.metadata?.agentSlug;
+    const agentSlug =
+      input.metadata?.executionAgentId ?? input.metadata?.agentSlug;
     if (typeof agentSlug !== 'string' || !agentSlug) return input;
     if (!this.options.loadAgentExecutionConfig) return input;
     try {
@@ -4741,6 +4788,7 @@ export class OrchestrationService {
     authority: SessionReadScope,
     target: {
       agentId: string;
+      executionAgentId?: string;
       environmentId: string;
       connectionId?: string;
       modelId?: string;
@@ -5001,10 +5049,30 @@ export class OrchestrationService {
         summary.answerability?.answerable !== true
       )
         return unavailable();
+      const startMetadata = this.readLatestSessionStartMetadata(
+        reference.threadId,
+      );
+      const executionAgentId =
+        typeof startMetadata?.executionAgentId === 'string'
+          ? agentId(startMetadata.executionAgentId)
+          : undefined;
+      const expectedDefinitionFingerprint =
+        startMetadata?.expectedDefinitionFingerprint;
+      if (
+        expectedDefinitionFingerprint !== undefined &&
+        (!executionAgentId ||
+          typeof expectedDefinitionFingerprint !== 'string' ||
+          !/^sha256:[0-9a-f]{64}$/.test(expectedDefinitionFingerprint))
+      )
+        return unavailable();
       return {
         state: 'open',
         reference,
         agentId: summary.assignedAgentSlug,
+        ...(executionAgentId ? { executionAgentId } : {}),
+        ...(expectedDefinitionFingerprint
+          ? { expectedDefinitionFingerprint }
+          : {}),
         conversationId: summary.conversationId,
         provider: adapter.provider,
         engineId: engineIdForAdapter(adapter),

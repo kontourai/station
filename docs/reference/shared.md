@@ -17,6 +17,8 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
+- `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
+- `@kontourai/station-shared/display-reveal` — for raw views: `revealHiddenCharacters` and friends show hidden characters as visible `«U+XXXX»` tokens (a separate subpath so the one-line display form can ship in an entry bundle without it)
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
@@ -570,8 +572,56 @@ interface ProjectMetadata {
   layoutCount: number;
   hasKnowledge: boolean;
   defaultProviderId?: string;
+  position?: number;
 }
 ```
+
+### `ProjectRunLocations`
+
+```ts
+type ProjectRunLocations = Record<string, ProjectRunsAt>;
+
+type ProjectRunsAt =
+  | { kind: 'folder'; path: string }
+  | { kind: 'execution-root'; path: string }
+  | { kind: 'none' }
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'unchecked'; reason: string };
+```
+
+`GET /api/projects/run-locations` returns `ProjectRunLocations`: each
+Project's `ProjectRunsAt` by slug. It is a separate read from `GET
+/api/projects` and `/api/boot`'s `projects` section, which never carry it, so
+the Project list never waits on a project folder. The start composer reads it
+only while it is open and names the stored folder until it answers. It is for
+the operator only: a shared member gets an empty map.
+
+`ProjectRunsAt` is the directory the project resolves to on this Station, from
+the records the session start reads: the manifest, its binding, the working
+directory and the manifest's `executionRoot`. The identity is not verified: the
+start's git identity check is skipped, so a checkout of a different repository
+still reads as its directory here, and the start refuses it. It is not where
+every chat runs either: a chat in a worktree-isolated project runs in its own
+worktree. `none` means the project has no directory, so the agent decides: the
+home folder, an ACP connection's folder, or a private folder Station makes.
+`unavailable` means a start would be refused (a missing folder or binding, an
+execution root outside its checkout), and `reason` says why. `unchecked` means
+Station did not find out this time: the folder did not answer within the read's
+per-project time limit, or other folders were still being checked. It is not a
+refusal. The start composer shows the stored folder as not checked yet and lets
+the start resolve it.
+
+The read checks folders asynchronously and answers within that limit even when
+a drive does not respond, but a check on a drive that does not respond still
+holds one of the server's file-system threads (four by default,
+`UV_THREADPOOL_SIZE`) until the drive answers. So Station never has more than
+three folder checks out at once, which with the default pool always leaves a
+thread for the rest of the server. A check of a folder that is already being
+checked joins it, and further checks wait their turn within their project's
+limit. A project whose folder never got a turn reads `unchecked` with a reason
+that says so. While three folders on drives that do not respond are still being
+checked, no other folder gets a turn, so every project with a folder reads
+`unchecked` until one of those drives answers.
 
 ---
 

@@ -6,6 +6,13 @@ Normative requirements below describe what a contribution owes; command wiring
 and retained benchmarks describe different facts. A listed test, a generated
 schedule or a prior measurement is not proof that the current revision passed.
 
+Fast CI requests Veritas readiness as JSON so its existing bounded, redacted
+output artifacts retain nested evidence-check commands, exit statuses, stdout
+and stderr. Inspect those artifacts for the causal failure rather than
+rerunning a failed gate to recover its output. Capture limits still apply;
+truncated diagnostics do not establish a complete failure inventory. The JSON
+format does not change readiness requirements or promotion evidence.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
@@ -181,7 +188,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes; `Main:` qualification is scheduled
-on main every six hours. `Repo:` identifies housekeeping even when scheduled
+after main source changes with an hourly fallback. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
 Schedules below are cron expressions in UTC; path filters and job admission
@@ -221,7 +228,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
-| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
+| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | Main source pushes; UTC fallback: `17 * * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
@@ -472,6 +479,14 @@ qualification but cannot publish before it passes. See [the release process](rel
 manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 The full Vitest corpus is phase-attested there, separately from the fast
 feedback loop.
+
+Hosted matrix fanout uses the repository's Free runner profile by default;
+`STATION_QUALIFICATION_RUNNER_PROFILE=expanded` selects the larger profile only
+with explicitly configured hosted capacity. Unknown profiles fail admission.
+All ordinary and process-heavy matrix legs still execute. These per-invocation
+caps reserve no organization-wide capacity and do not change evidence or
+promotion requirements. See [qualification runner profiles](releasing.md#runner-admission-and-native-delivery-recovery)
+for the caps and their limits.
 
 The `ci:fast` owner receipt requires a redacted, digest-addressed copy of the
 changed-test diagnostic under `.kontourai/verification-output/`. If the stable
@@ -813,7 +828,7 @@ window — so that two captures of the identical build decode to identical
 pixels and exact comparison is strictly simpler, and strictly more
 trustworthy, than any threshold.
 
-Profile captures hide only the completed "Snapshot rebuilt ..." timestamp
+Profile captures hide only the completed "Updated ..." timestamp
 line. Missing-time fallbacks, usage scope, failure notices, and the rebuild
 control remain visible. These pixels do not establish accounting freshness.
 
@@ -920,6 +935,11 @@ committing a new baseline until the change is intentional.
 
 #### Where the gate runs, and which renderer the baseline is bound to
 
+The gallery-wide system-status handler preserves the live status response and
+replaces only the displayed hostname with `Gallery host`. This keeps a Docker
+container's random name out of exact-pixel references without changing readiness
+or device locality. Screen-specific status fixtures retain their declared scenarios.
+
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is
 not an implementation detail: the comparator hashes a decoded RGBA buffer with
@@ -944,6 +964,22 @@ from the container. It does not prove any of them renders — nothing in this
 repository opens a font — only that the dependency is written down. Note that
 DM Sans is published in latin and latin-ext only, so this cannot be closed by
 re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
+
+Gallery and Ubuntu zsh preflight callers use
+[`install-ci-ubuntu-packages.sh`](../../scripts/install-ci-ubuntu-packages.sh).
+It replaces the known Azure Ubuntu archive URI with the canonical HTTPS
+archive in legacy lists, DEB822 sources, and the hosted runner mirror list.
+The official Ubuntu security archive also uses HTTPS with the same host and
+path. Suites, components, signing keys, and mirror priorities remain intact. APT
+index retrieval must succeed before installing the required compiler or zsh
+package; an unavailable index stops the bootstrap. The Gallery renderer image
+remains pinned by digest.
+Each caller stages that helper from the immutable workflow-definition commit
+into `RUNNER_TEMP`, independently of the application checkout. Older PR heads
+therefore receive base-workflow bootstrap fixes without needing the new helper
+in their tree. Full regression uses local reusable workflow references; those
+resolve at the caller's workflow commit, while `inputs.source_sha` continues to
+select only the application source being qualified.
 
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
 on pull requests and synthesized merge-queue candidates, in the same container
@@ -1385,8 +1421,7 @@ candidate diff and the incident-owner integration pause. The separately required
 critical browser smoke; security and relevant platform checks remain required.
 The merge path does not run the full corpus.
 
-[Main: Qualification](../../.github/workflows/main-qualification.yml) runs every
-six hours outside the queue. A pass may start a Nightly for that commit
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
 failures and starts one bounded repair episode instead of repeatedly dequeuing
 unrelated PRs. See [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).

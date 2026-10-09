@@ -113,6 +113,17 @@ function AgentPickerRow({
             <EngineChip engine={engine} />
           </div>
         )}
+        <span className="new-chat-modal__agent-station">
+          on {devicePresentation?.hostName ?? 'this Station'}
+        </span>
+        {!agent.engineDefault && agent.description && (
+          <div
+            className="new-chat-modal__agent-purpose"
+            title={agent.description}
+          >
+            {agent.description}
+          </div>
+        )}
         {unavailability && (
           // Always rendered, always complete: the chip replaces the paragraph
           // VISUALLY, never in the accessibility tree. `--assistive` clips this

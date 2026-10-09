@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"api.md gained Project tool defaults, Station Operator Usage and Project Activity sections from main with their features; checked this guide's API surface references against the merged api.md; unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

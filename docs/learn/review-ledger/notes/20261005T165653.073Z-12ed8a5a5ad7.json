@@ -1,0 +1,7 @@
+{
+  "revision": "6a61808025ba36e3fd734ffe569080ef7f9af13f",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Fix round for #3391: re-read the project chip bullet against StartComposer.tsx (icon now 18px) and the narrowed ProjectRunsAt contract; the bullet's claims (icon or colour, linked checkout's folder, refusal reason instead of a folder) still hold.","inputs":["docs/user/getting-started.md","packages/contracts/src/project.ts","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/index.css"]}
+  ]
+}

@@ -36,6 +36,7 @@ import type {
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import type {
+  ConversationHandoffProjection,
   OrchestrationCommandReceipt,
   RuntimeEventElisionReason,
   SteerTurnResult,
@@ -98,6 +99,7 @@ import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/mig
 import { CONVERSATION_SESSION_LINEAGE_MIGRATION } from '../../domain/migrations/010-conversation-session-lineage.js';
 import {
   CONVERSATION_HANDOFF_MIGRATION,
+  ensureConversationHandoffExecutionAgentColumn,
   ensureConversationHandoffMessageDigestColumn,
 } from '../../domain/migrations/011-conversation-handoffs.js';
 import {
@@ -2099,6 +2101,7 @@ export class EventStore {
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
       this.db.exec(CONVERSATION_HANDOFF_MIGRATION);
       ensureConversationHandoffMessageDigestColumn(this.db);
+      ensureConversationHandoffExecutionAgentColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
@@ -9389,6 +9392,48 @@ export class EventStore {
     return this.conversationHandoffs.describe(marker, outcome);
   }
 
+  /** Browser-safe persisted binding; callers authorize the conversation before projecting it. */
+  projectConversationHandoff(
+    marker: ConversationHandoffMarker,
+  ): ConversationHandoffProjection {
+    const disclosure = this.describeConversationHandoff(marker, 'existing');
+    const targetSession = this.readSessionByThread(marker.sessionId);
+    const startEvent = this.latestEventByMethod(
+      marker.sessionId,
+      'session.started',
+    )?.payload;
+    const startMetadata =
+      startEvent?.method === 'session.started'
+        ? startEvent.metadata
+        : undefined;
+    const expectedDefinitionFingerprint =
+      marker.targetExecutionAgentId &&
+      typeof startMetadata?.expectedDefinitionFingerprint === 'string' &&
+      /^sha256:[0-9a-f]{64}$/.test(startMetadata.expectedDefinitionFingerprint)
+        ? startMetadata.expectedDefinitionFingerprint
+        : undefined;
+    return {
+      predecessorSessionId: marker.predecessorSessionId,
+      sessionId: marker.sessionId,
+      idempotencyKey: marker.idempotencyKey,
+      targetAgentId: marker.targetAgentId,
+      ...(marker.targetExecutionAgentId
+        ? { targetExecutionAgentId: marker.targetExecutionAgentId }
+        : {}),
+      ...(targetSession ? { targetProvider: targetSession.provider } : {}),
+      ...(expectedDefinitionFingerprint
+        ? { expectedDefinitionFingerprint }
+        : {}),
+      ...(marker.targetConnectionId
+        ? { targetConnectionId: marker.targetConnectionId }
+        : {}),
+      ...(marker.targetModelId ? { targetModelId: marker.targetModelId } : {}),
+      createdAt: marker.createdAt,
+      carried: disclosure.carried,
+      reset: disclosure.reset,
+    };
+  }
+
   conversationHandoffForSession(
     sessionId: string,
   ): Readonly<ConversationHandoffMarker> | undefined {
@@ -9882,6 +9927,9 @@ export class EventStore {
       sessionId: row.session_id,
       idempotencyKey: row.idempotency_key,
       targetAgentId: row.target_agent_id,
+      ...(row.target_execution_agent_id
+        ? { targetExecutionAgentId: row.target_execution_agent_id }
+        : {}),
       targetEnvironmentId: row.target_environment_id,
       ...(row.target_connection_id
         ? { targetConnectionId: row.target_connection_id }
@@ -9892,21 +9940,21 @@ export class EventStore {
     });
     const byKey = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
-              target_agent_id, target_environment_id, target_connection_id,
+              target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
               target_model_id, message_digest, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ? AND idempotency_key = ?`,
     );
     const byPredecessor = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
-              target_agent_id, target_environment_id, target_connection_id,
+              target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
               target_model_id, message_digest, created_at
        FROM orchestration_conversation_handoffs
        WHERE predecessor_session_id = ?`,
     );
     const byConversation = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
-              target_agent_id, target_environment_id, target_connection_id,
+              target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
               target_model_id, message_digest, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ?
@@ -9928,9 +9976,9 @@ export class EventStore {
     const insertMarker = this.db.prepare(
       `INSERT INTO orchestration_conversation_handoffs
         (conversation_id, predecessor_session_id, session_id, idempotency_key,
-         target_agent_id, target_environment_id, target_connection_id,
+         target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
          target_model_id, message_digest, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const sameTarget = (
       left: ConversationHandoffMarker,
@@ -9939,6 +9987,7 @@ export class EventStore {
       left.conversationId === right.conversationId &&
       left.predecessorSessionId === right.predecessorSessionId &&
       left.targetAgentId === right.targetAgentId &&
+      left.targetExecutionAgentId === right.targetExecutionAgentId &&
       left.targetEnvironmentId === right.targetEnvironmentId &&
       left.targetConnectionId === right.targetConnectionId &&
       left.targetModelId === right.targetModelId &&
@@ -10007,6 +10056,7 @@ export class EventStore {
               input.targetAgentId,
               input.targetEnvironmentId,
               input.targetConnectionId ?? null,
+              input.targetExecutionAgentId ?? null,
               input.targetModelId ?? null,
               input.messageDigest,
               input.createdAt,
@@ -10026,7 +10076,7 @@ export class EventStore {
           const row = this.db
             .prepare(
               `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
-                      target_agent_id, target_environment_id, target_connection_id,
+                      target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
                       target_model_id, message_digest, created_at
                FROM orchestration_conversation_handoffs WHERE session_id = ?`,
             )

@@ -114,24 +114,50 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-Home and the chat dock have one way to start a chat: the start composer. Write
+Home, the chat dock and operator Project pages use the same start composer. Write
 what you want done and choose **Start**. You do not need to choose anything
-first; the two chips under the text box show what **Start** will use:
+first; the controls show what **Start** will use:
 
-- The **Agent** chip shows the Agent's icon, then *Agent · Model*. Open it to
-  list the Agents this project offers, each with its readiness and its setup
-  action. An Agent's Model control opens the Model picker, including runtime
-  options such as reasoning effort. Choosing a Model for an Agent also chooses
+- The **Agent** chip shows the Agent's icon and name. Open it to
+  list **Station**, **Coding apps**, and **My agents**, with readiness and setup
+  actions. The separate **Model** control opens **Engine & model** when alternative
+  engines are available. An engine choice overrides this conversation's execution
+  while retaining the selected Agent's profile and saved defaults. Search or
+  filter by provider, **Recent**, or **Favorites**; open **Options** for
+  supported controls such as reasoning effort. Choosing a Model for an Agent also chooses
   that Agent and closes the picker; changing the effort leaves it open. Once
   you have chosen a Model, the picker's reset button names the default it
-  returns to, such as **Use project default**.
-- The **project** chip shows the project's colour and name, or **No
-  project**. Open it to choose a project. The list shows each project's
-  folder, and the folder this chat will run in. A project with no folder
+  returns to, such as **Use project default** for a model-only choice or
+  **Use Agent defaults** for an engine override. In an existing conversation,
+  changing or resetting the engine opens a handoff confirmation that keeps your draft.
+- The **project** control above the message shows the Project's icon (or
+  its colour when none is displayable) and name, or **Without a project**.
+  Open it to choose a project. The list shows each project's folder and the
+  folder this chat will run in. For a linked checkout, that is its resolved
+  execution root. An unavailable location states why Station cannot start
+  there; a folder not checked yet is marked **Not checked** and the start
+  checks it. A project with no folder
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
   Station makes for the chat; the chip and list say which.
 - **⋯** holds **Use a visual skill**.
+
+**on <host>** opens **Run on a Station** with your message, Project and any explicit
+Station/engine/model/options choice kept.
+For a saved Project execution environment, the control says **on Project default**.
+Choose a Station, worker and model there, then choose **Run task** to start a
+resumable task. Available workers come from that Station; unavailable
+destinations keep their refusal instead of falling back to this computer.
+Cancel returns to your message, including edits made in the task chooser.
+Follow a started task in Activity. A foreground chat stays on its existing
+Station; choosing a remote task destination does not move that chat.
+
+An operator's Project page has the same composer in a compact form above its
+activity. Its Project is fixed, so starting there uses that Project even when
+the chat dock is bound elsewhere. A missing Project blocks starting and keeps
+the message. This does not change Home's remembered Project. To inspect or
+change this Station's local folder, open **Settings** on the Project page;
+the folder is workspace configuration rather than the Project's identity.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
 remembered for each project and for **No project** on this browser and

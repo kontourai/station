@@ -1,0 +1,13 @@
+{
+  "revision": "13d13268fd068296aeca76841a5dec940c49391d",
+
+  "notes": [
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"#2966 delta: help.ts changed only the connections usage/detail lines; ADR concerns playbook/skills help and is unaffected. No change.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#2966 delta: connection-service changes are the profile env setter and automatic candidate selection; smoke confidence claims unaffected. No change.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#2966 fix round delta: invalid saved profile overlay kept verbatim and projected as envInvalid (names only); tightened credential heuristic (names KEYS/PAT/AUTH/HEADERS, URL userinfo, auth headers); upsert refuses env; env route body bound + 409/413 docs; resolver diagnostic log. Re-searched this document for credential-profile, env overlay, connections CLI and recovery-selection claims; none affected, no prose change.","inputs":["docs/reference/agent-smoke-confidence.md"]}
+  ]
+}
