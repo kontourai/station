@@ -906,7 +906,7 @@ jobs:
           docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}@${{ steps.image.outputs.digest }}" --raw > "$RUNNER_TEMP/station-container-manifest.json"
           node scripts/release-container-platform-digests.mjs "$RUNNER_TEMP/station-container-manifest.json" "${{ steps.image.outputs.digest }}"
       - name: Scan immutable linux/amd64 image digest with pinned Syft
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.amd64 }}
           format: cyclonedx-json
@@ -915,7 +915,7 @@ jobs:
           upload-artifact: false
           upload-release-assets: false
       - name: Scan immutable linux/arm64 image digest with pinned Syft
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.arm64 }}
           format: cyclonedx-json
