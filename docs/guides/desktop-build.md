@@ -127,8 +127,8 @@ The earlier 2026-08-15 registry review is historical. The current checkout
 requests these direct versions; this list is not a claim that they remain the
 latest upstream releases:
 
-- Rust `tauri` 2.11.5
-- Rust `tauri-build` 2.6.3
+- Rust `tauri` 2.12.1
+- Rust `tauri-build` 2.7.1
 - npm `@tauri-apps/api` `^2.12.1`
 - npm `@tauri-apps/cli` `^2.12.1`
 
@@ -139,9 +139,10 @@ Tauri's
 [dependency update guide](https://v2.tauri.app/develop/updating-dependencies/)
 before changing either side.
 
-`tauri:context` currently warns that the installed CLI 2.12.1 and Rust core
-2.11.5 use different minor release lines. The warning is a compatibility
-review lead; context checks alone do not prove a packaged shell works.
+The Rust process, deep-link, updater, haptics, and notification plugins use
+the same minor lines as their npm packages. `tauri:context` checks the selected
+toolchain and configuration; those checks alone do not prove a packaged shell
+works.
 
 ## Desktop Content Security Policy
 
