@@ -59,3 +59,12 @@ fc181b4eb5829e84839ef38ee0c87707d86005ea:docs/learn/review-ledger/notes/20261001
 # The comment above an earlier entry on this branch quoted the matched prose
 # itself; pin that one historical location (squash-merged away from main).
 e8515b04d21896ad5fe694da061187bc9ca0a809:.gitleaksignore:generic-api-key:50
+
+# #3495: maintainer-approved documentation narrative, not authentication material.
+# Exact historical fingerprint; future occurrences remain scanned.
+# Approval: T3 9b93bb96-f542-4c31-99b7-2edabdc2573f / e65fddf0-eae4-448d-b242-3dadb66e5adc.
+1b97453318c4282cddfb39af433088bff62b9c28:docs/learn/review-ledger/notes/20261007T183700.092Z-5b40e95b2203.json:generic-api-key:73
+
+# #3514: byte-identical replay of the approved #3495 note in its main squash.
+# Exact historical location only; fresh same-path controls remain scanned.
+881b20de853d8c3a7de9489121644c21c7d4aabd:docs/learn/review-ledger/notes/20261007T183700.092Z-5b40e95b2203.json:generic-api-key:73

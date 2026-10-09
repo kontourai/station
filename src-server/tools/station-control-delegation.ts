@@ -4,9 +4,14 @@ import type { AgentDelegationContext } from '@kontourai/station-contracts/agent'
 import {
   type AgentId,
   agentId,
+  parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import {
+  AGENT_PROFILE_CAPABILITIES,
+  type AgentProfileCapability,
+} from '@kontourai/station-contracts/enriched-agent';
 import type {
   EnvironmentRef,
   ExecutionModelRequest,
@@ -592,6 +597,14 @@ export interface DelegationTargetOption {
   description?: string;
   kind: 'agent';
   ready: boolean;
+  definitionFingerprint?: string;
+  profileCapabilities?: AgentProfileCapability[];
+  unsupportedProfileCapabilities?: AgentProfileCapability[];
+  executionDefault?: boolean;
+  executionReady?: boolean;
+  engineConnectionId?: string;
+  engineId?: EngineId;
+  engineName?: string;
   unavailableReason?: string;
   defaultModel?: string;
   models: ModelOption[];
@@ -626,6 +639,22 @@ export interface DelegationEnvironments {
   environments: DelegationEnvironmentOption[];
 }
 
+function safeProfileCapabilities(
+  value: unknown,
+): AgentProfileCapability[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    value.length > AGENT_PROFILE_CAPABILITIES.length ||
+    !value.every(
+      (entry): entry is AgentProfileCapability =>
+        typeof entry === 'string' &&
+        AGENT_PROFILE_CAPABILITIES.some((capability) => capability === entry),
+    )
+  )
+    return undefined;
+  return [...new Set(value)];
+}
+
 interface DelegationAgentView {
   slug: string;
   name: string;
@@ -637,7 +666,15 @@ interface DelegationAgentView {
     runtimeOptions?: Record<string, unknown>;
   };
   modelOptions?: ModelOption[] | null;
+  engineId?: EngineId;
+  engineDisplayName?: string;
   available?: boolean;
+  definitionFingerprint?: string;
+  profileCapabilities?: AgentProfileCapability[];
+  unsupportedProfileCapabilities?: AgentProfileCapability[];
+  executionDefault?: boolean;
+  engineDefault?: boolean;
+  enable?: { engineConnectionId: string };
   unavailableReason?: string;
 }
 
@@ -2935,12 +2972,26 @@ export async function discoverDelegationOptions(
           connection?.config.defaultModel,
       );
       const description = safeDescription(agent.description);
+      const profileCapabilities = agent.definitionFingerprint
+        ? safeProfileCapabilities(agent.profileCapabilities)
+        : undefined;
+      const unsupportedProfileCapabilities = safeProfileCapabilities(
+        agent.unsupportedProfileCapabilities,
+      );
       const connectionReady = connection
         ? connection.enabled &&
           connection.status === 'ready' &&
           connection.capabilities.includes('agent-runtime')
         : true;
       const ready = agent.available !== false && connectionReady;
+      const resolvedEngineId =
+        parseEngineId(agent.engineId) ??
+        (connectionReady
+          ? parseEngineId(connection?.config.engineId)
+          : undefined);
+      const engineName =
+        safeDescription(agent.engineDisplayName) ||
+        (connectionReady ? safeDescription(connection?.name) : undefined);
       const unavailableReason =
         safeDescription(agent.unavailableReason) ||
         (connection && !connectionReady
@@ -2953,6 +3004,28 @@ export async function discoverDelegationOptions(
           ...(description ? { description } : {}),
           kind: 'agent' as const,
           ready,
+          ...(profileCapabilities ? { profileCapabilities } : {}),
+          ...(unsupportedProfileCapabilities
+            ? { unsupportedProfileCapabilities }
+            : {}),
+          ...(agent.definitionFingerprint &&
+          /^sha256:[0-9a-f]{64}$/.test(agent.definitionFingerprint)
+            ? { definitionFingerprint: agent.definitionFingerprint }
+            : {}),
+          ...(agent.executionDefault === true
+            ? {
+                executionDefault: true,
+                executionReady:
+                  connectionReady &&
+                  (agent.available !== false ||
+                    (agent.engineDefault === true &&
+                      agent.enable?.engineConnectionId === connectionId &&
+                      agent.enable !== undefined)),
+              }
+            : {}),
+          ...(connectionId ? { engineConnectionId: connectionId } : {}),
+          ...(resolvedEngineId ? { engineId: resolvedEngineId } : {}),
+          ...(engineName ? { engineName } : {}),
           ...(!ready && unavailableReason ? { unavailableReason } : {}),
           ...(defaultModel ? { defaultModel } : {}),
           models,
@@ -5702,6 +5775,15 @@ export async function delegateTask(
             metadata: {
               agentId: resolved.agentId,
               agentSlug: resolved.agentId,
+              ...(resolved.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      resolved.expectedDefinitionFingerprint,
+                  }
+                : {}),
+              ...(resolved.executionAgentId
+                ? { executionAgentId: resolved.executionAgentId }
+                : {}),
               ...(resolved.engine.kind === 'connection'
                 ? { connectionId: resolved.engine.connectionId }
                 : {}),
@@ -6244,6 +6326,11 @@ export async function executeExecutionTargetMessage(
       return {
         environmentId: metadata.environmentId,
         agentId: boundTarget.id,
+        ...(reservedHandoff?.targetExecutionAgentId
+          ? { executionAgentId: reservedHandoff.targetExecutionAgentId }
+          : typeof currentMetadata?.executionAgentId === 'string'
+            ? { executionAgentId: currentMetadata.executionAgentId }
+            : {}),
         ...(typeof metadata.projectSlug === 'string'
           ? { projectSlug: metadata.projectSlug }
           : {}),
@@ -6336,6 +6423,9 @@ export async function executeExecutionTargetMessage(
         readAuthority,
         {
           agentId: handoff.agentId,
+          ...(handoff.executionAgentId
+            ? { executionAgentId: handoff.executionAgentId }
+            : {}),
           environmentId: access.environmentId,
           ...(handoff.connectionId
             ? { connectionId: handoff.connectionId }
@@ -6815,7 +6905,26 @@ export async function continueExecutionTargetMessage(
       conversationId: input.conversationId,
       target: {
         environment: { kind: 'current' },
-        agent: agentId(boundTarget.id),
+        agent: reservedHandoff?.targetExecutionAgentId
+          ? {
+              kind: 'agent-execution-override',
+              agent: agentId(boundTarget.id),
+              executionAgent: agentId(reservedHandoff.targetExecutionAgentId),
+            }
+          : typeof currentMetadata?.executionAgentId === 'string'
+            ? {
+                kind: 'agent-execution-override',
+                agent: agentId(boundTarget.id),
+                executionAgent: agentId(currentMetadata.executionAgentId),
+                ...(typeof currentMetadata.expectedDefinitionFingerprint ===
+                'string'
+                  ? {
+                      expectedDefinitionFingerprint:
+                        currentMetadata.expectedDefinitionFingerprint,
+                    }
+                  : {}),
+              }
+            : agentId(boundTarget.id),
         // archive#3421: a continuation names a conversation, and that
         // conversation already knows its workspace -- so it is rebuilt from the
         // binding, never re-supplied by the caller (the CLI deliberately sends

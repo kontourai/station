@@ -1,7 +1,7 @@
 # Computer relationships: pairing vs. remote work
 
 Station's Connections hub has one **Add computer** entry point. It routes to
-device pairing, an ordinary Station address, remote work over SSH, or native
+device invitations, a Station connection, remote work over SSH, or native
 saved broker-route preparation based on what the user wants to do. The flows differ in **direction**
 (who reaches whom), **trust model**, and **what becomes possible afterward**.
 This guide explains those relationships; [Connections](connections.md) owns the
@@ -16,6 +16,13 @@ Device, Project binding, room authority, and execution offer separate, see
 [Station topology](../design/station-topology.md).
 
 ## Device access and remote work
+
+**Connect another Station** identifies one destination, then lets you request
+Device access, Station peer access, or both. The grants have different holders
+and independent approval. Saving Device access preserves an existing selected
+Station; peer enrollment stores its credential only on the controlling server.
+The peer ceremony requires that server's operator authority and the receiver's
+trusted approval. It does not elevate an ordinary paired device.
 
 **Pair a device** — device reaches Station. Another device (a phone, a
 browser, a CLI) is granted a scoped credential and drives **this** Station.

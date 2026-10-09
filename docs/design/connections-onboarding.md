@@ -277,7 +277,11 @@ failure mode instead of an adapter-level design choice.
 
 Credential profiles extend the app-home boundary without turning it into a second
 credential vault. The persisted connection record carries only an opaque profile `ref`,
-an optional display label, explicit group/enrollment metadata, default-off
+an optional **management-only** label, an optional non-secret env overlay (#2966;
+credential-shaped names and values are refused by a heuristic, except an empty
+masking value — see the
+[connections guide](../guides/connections.md#give-a-credential-profile-its-own-routing)),
+explicit group/enrollment metadata, default-off
 automatic policy, and the current non-secret application projection. The dedicated
 engine sign-in read exposes only refs, labels, auth state and observed device-code
 support to an explicitly granted device; management metadata stays restricted. Credential material
@@ -293,8 +297,13 @@ profile home. Routes and UI return the ref/label only, never the profile directo
 keeps a profile usable even when the legacy `config.useAppHome` toggle is off: an active
 credential profile has precedence for ordinary future starts; only if there is no active
 profile does Station use the legacy base app-home opt-in or the engine's global config.
-An explicit selected-profile environment failure fails closed rather than silently falling
-back to global credentials.
+A selected-profile environment failure — an explicit ref or the connection's active
+profile, including an invalid persisted env overlay — fails closed rather than silently
+falling back to global credentials. Normalization reduces an invalid saved overlay to a
+value-free `envInvalid` marker holding the offending variable names only: its values are
+not retained by the next registry write or a `PUT /config/app` that includes the
+profiles, and the marker keeps the profile refused (an unrelated write cannot silently
+un-route it) until a valid overlay replaces it.
 
 **Capability matrix and application.** Capability is adapter-declared, never inferred
 from a provider name. Codex currently declares `restart_resume` and does not claim
@@ -324,6 +333,7 @@ adoption. Active or pending/enrolled refs cannot be deleted.
 be explicitly enrolled before it can be considered. Selection is fail-closed: only an
 *observed*, account-scoped `rate-limit` or `capacity` failure may stage a different
 enrolled profile; authentication, provider/server/unknown scope, a same-profile candidate,
+a candidate whose env overlay differs from the active profile's (`environment_mismatch`),
 or an unsupported adapter all refuse. The selected recovery restart/resume follows the
 same stage → commit-on-live-success / rollback-on-failure protocol as manual adoption.
 

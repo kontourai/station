@@ -119,13 +119,17 @@ what you want done and choose **Start**. You do not need to choose anything
 first; the controls show what **Start** will use:
 
 - The **Agent** chip shows the Agent's icon and name. Open it to
-  list the Agents this project offers, each with its readiness and its setup
-  action. The separate **Model** control opens the Model picker. Search or
+  list **Station**, **Coding apps**, and **My agents**, with readiness and setup
+  actions. The separate **Model** control opens **Engine & model** when alternative
+  engines are available. An engine choice overrides this conversation's execution
+  while retaining the selected Agent's profile and saved defaults. Search or
   filter by provider, **Recent**, or **Favorites**; open **Options** for
   supported controls such as reasoning effort. Choosing a Model for an Agent also chooses
   that Agent and closes the picker; changing the effort leaves it open. Once
   you have chosen a Model, the picker's reset button names the default it
-  returns to, such as **Use project default**.
+  returns to, such as **Use project default** for a model-only choice or
+  **Use Agent defaults** for an engine override. In an existing conversation,
+  changing or resetting the engine opens a handoff confirmation that keeps your draft.
 - The **project** control above the message shows the Project's icon (or
   its colour when none is displayable) and name, or **Without a project**.
   Open it to choose a project. The list shows each project's folder and the
@@ -138,7 +142,8 @@ first; the controls show what **Start** will use:
   Station makes for the chat; the chip and list say which.
 - **⋯** holds **Use a visual skill**.
 
-**on <host>** opens **Run on a Station** with your message and Project kept.
+**on <host>** opens **Run on a Station** with your message, Project and any explicit
+Station/engine/model/options choice kept.
 For a saved Project execution environment, the control says **on Project default**.
 Choose a Station, worker and model there, then choose **Run task** to start a
 resumable task. Available workers come from that Station; unavailable

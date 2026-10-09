@@ -19,6 +19,7 @@ type Job = {
   uses?: string;
   with?: Record<string, unknown>;
   secrets?: unknown;
+  concurrency?: { group: string; 'cancel-in-progress': boolean };
   permissions?: Record<string, string>;
   outputs?: Record<string, string>;
   steps?: Step[];
@@ -50,7 +51,7 @@ describe('Main qualification: the qualified-Nightly entry point', () => {
         "vars.STATION_QUALIFIED_NIGHTLY == 'enabled' && github.ref == 'refs/heads/main' && needs.qualification.result == 'success'",
       ),
     );
-    expect(decide.permissions).toEqual({ contents: 'read' });
+    expect(decide.permissions).toEqual({ contents: 'read', actions: 'read' });
     expect(decide.outputs).toEqual({
       publish: expr('steps.decide.outputs.publish'),
     });
@@ -115,24 +116,45 @@ describe('Main qualification: the qualified-Nightly entry point', () => {
   });
 
   it('cannot deadlock against, or overlap with, another Nightly', () => {
-    expect(qualification.concurrency?.group).toBe('main-qualification');
+    expect(qualification.concurrency).toBeUndefined();
+    expect(qualification.jobs.qualification.concurrency).toEqual({
+      group: 'main-qualification-source',
+      'cancel-in-progress': false,
+    });
     expect(nightly.concurrency).toEqual({
       group: 'nightly',
       'cancel-in-progress': false,
     });
-    expect(qualification.concurrency?.group).not.toBe(
+    expect(qualification.jobs.qualification.concurrency?.group).not.toBe(
       nightly.concurrency?.group,
     );
   });
 });
 
+it('passes Actions read permission through both publisher callers and orders platforms after settlement independently of failure', () => {
+  const cohort = read('nightly-native-cohort.yml');
+  expect(nightly.jobs['native-cohort'].permissions?.actions).toBe('read');
+  for (const name of ['promote-android', 'promote-macos'])
+    expect(cohort.jobs[name].permissions?.actions).toBe('read');
+  const stage = read('nightly-native-stage.yml');
+  for (const name of ['stage-ios', 'stage-windows']) {
+    expect(stage.jobs[name].if).toContain('always()');
+    expect(stage.jobs[name].if).toContain('!cancelled()');
+    expect(stage.jobs[name].if).toContain(
+      "needs.plan-cohort.result == 'success'",
+    );
+    expect(stage.jobs[name].if).not.toMatch(
+      /needs\.stage-(android|macos)\.result/,
+    );
+  }
+});
 describe('nightly.yml: entry points', () => {
   it('leaves scheduling to qualification and retains manual recovery and the qualified call', () => {
     expect(Object.keys(nightly.on).sort()).toEqual([
       'workflow_call',
       'workflow_dispatch',
     ]);
-    expect(qualification.on.schedule).toEqual([{ cron: '17 */6 * * *' }]);
+    expect(qualification.on.schedule).toEqual([{ cron: '17 * * * *' }]);
     expect(
       Object.keys(
         (nightly.on.workflow_dispatch as { inputs: object }).inputs,

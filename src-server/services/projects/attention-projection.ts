@@ -54,6 +54,8 @@ import {
   inputRequestReference,
 } from '../orchestration/request-inspection.js';
 import {
+  displayRequestMultilineText,
+  displayRequestText,
   MAX_DESCRIPTION_LENGTH,
   presentOpenRequest,
   truncateRequestText as truncate,
@@ -952,10 +954,7 @@ export class AttentionProjectionService {
     );
     const presentation = openRequest
       ? presentOpenRequest(openRequest)
-      : {
-          title: notification.title,
-          ...(notification.body ? { body: notification.body } : {}),
-        };
+      : storedApprovalPresentation(notification);
 
     const requestReference = openRequest
       ? attentionRequestReference(openRequest, stringValue(metadata.threadId))
@@ -1628,4 +1627,31 @@ function compareAttentionItems(
     Date.parse(right.updatedAt) - Date.parse(left.updatedAt) ||
     left.id.localeCompare(right.id)
   );
+}
+
+/** Bound on a stored approval notification's title when it is shown. */
+const MAX_STORED_APPROVAL_TITLE_LENGTH = 200;
+
+/**
+ * #3382: a stored approval notification (a registry approval, or an
+ * orchestration request that no longer resolves) shown beside its persisted
+ * Allow and Deny. Its title and body were written raw by whoever raised it,
+ * so they are put in display form here, at read time: rows stored before
+ * this change are covered too.
+ */
+function storedApprovalPresentation(notification: {
+  title: string;
+  body?: string;
+}): { title: string; body?: string } {
+  const body = notification.body
+    ? displayRequestMultilineText(notification.body, MAX_DESCRIPTION_LENGTH)
+    : undefined;
+  return {
+    title:
+      displayRequestText(
+        notification.title,
+        MAX_STORED_APPROVAL_TITLE_LENGTH,
+      ) || 'Approval requested',
+    ...(body ? { body } : {}),
+  };
 }

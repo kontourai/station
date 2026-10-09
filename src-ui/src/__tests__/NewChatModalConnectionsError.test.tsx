@@ -15,6 +15,11 @@ import { GLOBAL_CONTEXT } from '../components/modals/new-chat-modal-utils';
 
 // Minimal SDK mock: NewChatModal's Enable action posts through this mutation,
 // and a mocked `useNewChatSelectionModel` below removes every other query.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
@@ -72,6 +77,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     modelChoices: {},
     setModelChoices: vi.fn(),
     modelsForAgent: () => [],
+    executionModelsForAgent: () => [],
     modelChoiceKey: (agent: { slug: string }) => agent.slug,
     defaultEffectiveModelForAgent: () => undefined,
   }),

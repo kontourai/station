@@ -6,9 +6,10 @@
  * `main-qualification.yml` calls `nightly.yml` from inside the qualification
  * run so that the run's triggering commit — the one every attestation,
  * provenance record, and cohort verifier binds to — is the qualified commit
- * by construction. Qualification runs every six hours; this decision keeps
- * that entry point at about one Nightly a day and never re-attempts a source
- * on its own.
+ * by construction. Main pushes and the hourly fallback qualify immutable
+ * candidates; delivery has a separate lease and configurable minimum cadence.
+ * Terminal failed delivery producers permit bounded native recovery while live
+ * or unknown reservations remain held.
  *
  * Markers, all durable and all maintained by the Nightly legs themselves:
  * - the deploy ledger on `origin/main` (`docs/reference/deploy-ledger.json`):
@@ -41,17 +42,13 @@ import {
   inspectCommitFromGit,
   normalizeDeployLedgerHead,
 } from './normalize-deploy-ledger-head.mjs';
+import {
+  publicationInterval,
+  reservationRecovery,
+} from './release-pipeline.mjs';
 
-/**
- * 20 hours. Qualification starts on a six-hour grid and a Nightly ship is
- * recorded about one Nightly duration (one to two hours today) after the
- * qualification run that decided it. The same slot on the next day therefore
- * sees the last row about 24h minus that duration old, and the slot 18h later
- * sees it at most 18h old. 20h is above 18h, so at most one qualification
- * slot a day publishes, and leaves four hours for the Nightly's duration
- * before the daily slot slips to the next one.
- */
-export const MIN_PUBLICATION_INTERVAL_MS = 20 * 60 * 60 * 1000;
+/** Default minimum native publication interval; operators may configure 1–168 hours. */
+export const MIN_PUBLICATION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 const NATIVE_LEDGER_CHANNELS = Object.freeze([
   'nightly-android',
@@ -111,6 +108,9 @@ function nativeShips(ledgerEntries) {
  * @param {unknown} input.ledgerEntries The parsed deploy ledger.
  * @param {string} input.reservationRefs `git ls-remote --refs` output.
  * @param {Date} input.now
+ * @param {number} [input.intervalMs]
+ * @param {{recover: boolean, reason?: string}} [input.recovery]
+ * @param {Record<string,string>} [input.sourceCandidates]
  * @returns {{ publish: boolean, reason: string }}
  */
 export function decideQualifiedNightly({
@@ -119,18 +119,34 @@ export function decideQualifiedNightly({
   ledgerEntries,
   reservationRefs,
   now,
+  intervalMs = MIN_PUBLICATION_INTERVAL_MS,
+  recovery = { recover: false },
+  sourceCandidates = {},
 }) {
   assertSha(sourceSha, 'source SHA');
   assertSha(candidateSha, 'candidate SHA');
   if (!(now instanceof Date) || Number.isNaN(now.getTime()))
     throw new Error('now must be a valid Date');
+  if (
+    !Number.isSafeInteger(intervalMs) ||
+    intervalMs < 3_600_000 ||
+    intervalMs > 168 * 3_600_000
+  )
+    throw new Error('invalid minimum publication interval');
   const ships = nativeShips(ledgerEntries);
   const reservations = parseReservationRefs(reservationRefs);
 
-  const shipped = ships.find(
-    (ship) => ship.sha === sourceSha || ship.sha === candidateSha,
+  const sourceShips = ships.filter(
+    (ship) =>
+      ship.sha === sourceSha ||
+      ship.sha === candidateSha ||
+      sourceCandidates[ship.channel] === ship.sha,
   );
-  if (shipped)
+  const complete = NATIVE_LEDGER_CHANNELS.every((channel) =>
+    sourceShips.some((ship) => ship.channel === channel),
+  );
+  const shipped = sourceShips[0];
+  if (complete)
     return {
       publish: false,
       reason: `already published: the deploy ledger records ${shipped.channel} ${shipped.version} at ${shipped.sha}`,
@@ -139,24 +155,25 @@ export function decideQualifiedNightly({
     (reservation) =>
       reservation.sha === sourceSha || reservation.sha === candidateSha,
   );
-  if (reserved)
+  if (reserved && !recovery.recover)
     return {
       publish: false,
       reason: `already attempted: refs/tags/nightly-version-code/${reserved.code} reserves ${reserved.sha} without a native ledger row, so a Nightly at this source failed or is still running; retry by dispatching Nightly`,
     };
+  if (recovery.recover) return { publish: true, reason: recovery.reason };
   const newest = ships[0];
   if (newest) {
     const age = now.getTime() - newest.at;
-    if (age < MIN_PUBLICATION_INTERVAL_MS)
+    if (age < intervalMs)
       return {
         publish: false,
-        reason: `published recently: ${newest.channel} ${newest.version} at ${newest.sha} was recorded ${newest.timestampUtc}, less than ${MIN_PUBLICATION_INTERVAL_MS / 3_600_000}h ago`,
+        reason: `published recently: ${newest.channel} ${newest.version} at ${newest.sha} was recorded ${newest.timestampUtc}, less than ${intervalMs / 3_600_000}h ago`,
       };
   }
   return {
     publish: true,
     reason: newest
-      ? `no native Nightly in the last ${MIN_PUBLICATION_INTERVAL_MS / 3_600_000}h (newest: ${newest.channel} at ${newest.sha}, ${newest.timestampUtc}) and none at this source`
+      ? `no native Nightly in the last ${intervalMs / 3_600_000}h (newest: ${newest.channel} at ${newest.sha}, ${newest.timestampUtc}) and none at this source`
       : 'no native Nightly has been recorded',
   };
 }
@@ -193,12 +210,13 @@ function parseArgs(argv) {
   return options;
 }
 
-export function main(
+export async function main(
   argv,
   {
     readLedger = readLedgerFromGit,
     inspectCommit = inspectCommitFromGit,
     now = new Date(),
+    env = process.env,
   } = {},
 ) {
   const options = parseArgs(argv);
@@ -211,17 +229,50 @@ export function main(
     assertSha(options.sourceSha, 'source SHA');
     const ledgerEntries = readLedger(options.repoRoot, options.ledgerRef);
     const newest = nativeShips(ledgerEntries)[0];
+    const commits = new Map();
+    const inspect = (sha) => {
+      if (!commits.has(sha))
+        commits.set(sha, inspectCommit(options.repoRoot, sha));
+      return commits.get(sha);
+    };
     const candidateSha = normalizeDeployLedgerHead(
       options.sourceSha,
-      (sha) => inspectCommit(options.repoRoot, sha),
+      inspect,
       newest?.sha ?? '',
     );
+    const sourceCandidates = Object.fromEntries(
+      NATIVE_LEDGER_CHANNELS.map((channel) => {
+        const last = nativeShips(ledgerEntries).find(
+          (row) => row.channel === channel,
+        );
+        return [
+          channel,
+          normalizeDeployLedgerHead(
+            options.sourceSha,
+            inspect,
+            last?.sha || '',
+          ),
+        ];
+      }),
+    );
+    let recovery = { recover: false };
+    const reserved = parseReservationRefs(
+      readFileSync(options.reservationRefsPath, 'utf8'),
+    ).find(
+      (entry) => entry.sha === options.sourceSha || entry.sha === candidateSha,
+    );
+    if (reserved && env.GITHUB_REPOSITORY && env.GH_TOKEN) {
+      recovery = await reservationRecovery(reserved.sha, env);
+    }
     decision = decideQualifiedNightly({
       sourceSha: options.sourceSha,
       candidateSha,
       ledgerEntries,
       reservationRefs: readFileSync(options.reservationRefsPath, 'utf8'),
       now,
+      intervalMs: publicationInterval(env),
+      recovery,
+      sourceCandidates,
     });
   } catch (error) {
     console.error(`::error::${error.message}`);
@@ -240,5 +291,5 @@ export function main(
 }
 
 if (invokedDirectly(import.meta.url)) {
-  process.exit(main(process.argv.slice(2)));
+  process.exitCode = await main(process.argv.slice(2));
 }

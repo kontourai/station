@@ -55,7 +55,7 @@ export async function checkQualificationHealth(
         run.path === '.github/workflows/main-qualification.yml' &&
         run.head_repository?.full_name === env.GITHUB_REPOSITORY &&
         run.head_branch === 'main' &&
-        ['schedule', 'workflow_dispatch'].includes(run.event),
+        ['push', 'schedule', 'workflow_dispatch'].includes(run.event),
     )
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   const observed = [];
@@ -183,11 +183,11 @@ export async function checkQualificationHealth(
   const reasons = [];
   if (!started || now - started.started > 8 * HOUR)
     reasons.push(
-      'No qualification job has started within 8 hours (six-hour cadence plus two-hour grace).',
+      'No qualification job has started within 8 hours (conservative start freshness bound).',
     );
   if (!green || now - green.completed > 14 * HOUR)
     reasons.push(
-      'No successful source qualification within 14 hours (two cadence intervals plus two-hour grace).',
+      'No successful source qualification within 14 hours (conservative successful-source freshness bound).',
     );
   if (
     observed.some(

@@ -217,6 +217,9 @@ export interface ForegroundMessageHandle {
     outcome: 'created' | 'existing';
     target: {
       agentId: AgentId;
+      executionAgentId?: AgentId;
+      provider?: EngineId;
+      expectedDefinitionFingerprint?: string;
       engine: ResolvedExecutionEngine;
       modelId?: string;
     };
@@ -282,6 +285,7 @@ function mayHaveStartedForegroundSession(error: unknown): boolean {
 export interface ExecutionSessionBinding {
   environmentId: string;
   agentId: string;
+  executionAgentId?: string;
   connectionId?: string;
   userId?: string;
   projectSlug?: string;
@@ -419,6 +423,7 @@ export interface ExecutionTargetExecutionDependencies
     input: {
       conversationId: string;
       agentId: AgentId;
+      executionAgentId?: AgentId;
       connectionId?: string;
       modelId?: string;
       idempotencyKey: string;
@@ -536,6 +541,8 @@ export async function executeForegroundMessage(
         attachments: input.attachments ?? [],
         ambientContext: input.ambientContext ?? '',
         provider: resolved.provider,
+        executionAgentId: resolved.executionAgentId,
+        expectedDefinitionFingerprint: resolved.expectedDefinitionFingerprint,
         engine: resolved.engine,
         modelId: resolved.modelId ?? null,
         modelLaunchPlan: resolved.modelLaunchPlan,
@@ -583,6 +590,9 @@ export async function executeForegroundMessage(
     ? await deps.prepareConversationHandoff?.(resolved.access, {
         conversationId,
         agentId: resolved.agentId,
+        ...(resolved.executionAgentId
+          ? { executionAgentId: resolved.executionAgentId }
+          : {}),
         ...(resolved.engine.kind === 'connection'
           ? { connectionId: resolved.engine.connectionId }
           : {}),
@@ -615,7 +625,20 @@ export async function executeForegroundMessage(
     (handoff.targetConnectionId === undefined ||
       (resolved.engine.kind === 'connection' &&
         handoff.targetConnectionId === resolved.engine.connectionId));
-  if (binding && binding.agentId !== resolved.agentId && !validHandoff) {
+  const changedOverride =
+    binding &&
+    (binding.executionAgentId !== undefined ||
+      resolved.executionAgentId !== undefined) &&
+    (binding.executionAgentId !== resolved.executionAgentId ||
+      binding.connectionId !==
+        (resolved.engine.kind === 'connection'
+          ? resolved.engine.connectionId
+          : undefined));
+  if (
+    binding &&
+    (binding.agentId !== resolved.agentId || changedOverride) &&
+    !validHandoff
+  ) {
     throw new Error(
       'The requested conversation belongs to a different Environment, Agent, or Station user',
     );
@@ -646,6 +669,16 @@ export async function executeForegroundMessage(
           outcome: 'existing',
           target: {
             agentId: resolved.agentId,
+            provider: resolved.provider,
+            ...(resolved.executionAgentId
+              ? { executionAgentId: resolved.executionAgentId }
+              : {}),
+            ...(resolved.expectedDefinitionFingerprint
+              ? {
+                  expectedDefinitionFingerprint:
+                    resolved.expectedDefinitionFingerprint,
+                }
+              : {}),
             engine: resolved.engine,
             ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
           },
@@ -827,6 +860,15 @@ export async function executeForegroundMessage(
         metadata: {
           agentId: resolved.agentId,
           agentSlug: resolved.agentId,
+          ...(resolved.expectedDefinitionFingerprint
+            ? {
+                expectedDefinitionFingerprint:
+                  resolved.expectedDefinitionFingerprint,
+              }
+            : {}),
+          ...(resolved.executionAgentId
+            ? { executionAgentId: resolved.executionAgentId }
+            : {}),
           // Continuations validate this canonical Environment + Agent binding
           // before they can reuse a persisted conversation. Keep it alongside
           // the legacy agent fields so a foreground-created session is as
@@ -1081,6 +1123,16 @@ export async function executeForegroundMessage(
             outcome: preparedHandoff.outcome,
             target: {
               agentId: resolved.agentId,
+              provider: resolved.provider,
+              ...(resolved.executionAgentId
+                ? { executionAgentId: resolved.executionAgentId }
+                : {}),
+              ...(resolved.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      resolved.expectedDefinitionFingerprint,
+                  }
+                : {}),
               engine: resolved.engine,
               ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
             },

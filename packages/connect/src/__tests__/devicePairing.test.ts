@@ -34,7 +34,7 @@ function offer(): DevicePairingOffer {
 
 describe('device pairing QR payload', () => {
   test('round-trips only a short-lived offer without the manual fallback or a credential', () => {
-    const source = offer();
+    const source = { ...offer(), kind: 'device' as const };
     const payload = encodeDevicePairingPayload(source);
 
     expect(payload).toMatch(/^station-pairing:v1:/);

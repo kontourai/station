@@ -88,7 +88,10 @@ import {
 } from '../sessions/session-source-affinity.js';
 import { readLeadingLine } from '../sessions/transcript-file-io.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
-import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
+import {
+  assertExecutionOverrideDelivery,
+  mergeCapabilityDeliveryMetadata,
+} from './capability-delivery-metadata.js';
 import {
   codexRunningChildTurnId,
   codexRunningChildTurns,
@@ -147,10 +150,12 @@ interface CodexAdapterOptions {
   /**
    * App-home profile env (archive#896 wave 2, agent-engine-unification.md §6.1's
    * overlay model, channel 2) — `undefined` when the codex
-   * connection has not opted in (`config.useAppHome`) or on any resolution
-   * failure; the caller degrades to `undefined` rather than throwing.
-   * Applied at `startSession` only — model discovery deliberately keeps
-   * today's byte-identical global env (Ambiguity C).
+   * connection has not opted in (`config.useAppHome`). For a selected
+   * credential profile it is the profile's env overlay under its `CODEX_HOME`
+   * (#2966), and a failure throws `CredentialProfileEnvironmentError`,
+   * which `resolveAppHomeEnv` never degrades. Applied at `startSession` and
+   * quota reads only — model discovery deliberately keeps today's
+   * byte-identical global env (Ambiguity C).
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
@@ -1814,6 +1819,10 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.transport.handleProcess(record);
 
     try {
+      assertExecutionOverrideDelivery(
+        input.metadata,
+        toolServers.report?.undelivered ?? [],
+      );
       await this.transport.sendRequest(record, 'initialize', {
         clientInfo: {
           name: 'station',

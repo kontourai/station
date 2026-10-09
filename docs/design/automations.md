@@ -1,10 +1,17 @@
 # Station Automations
 
-> **Reading status: proposal.** Nothing here is implemented. The sources named
-> below own current behavior; this document records a design checked against
-> `origin/main` at `14c83da3cd` by source inspection only. No slice has been
-> built, no GitHub delivery was sent, and no test was run for these claims.
-> Section 9 records the owner decisions.
+> **Reading status: retained proposal with implemented foundations.** The
+> [Automation contract](../../packages/contracts/src/automation.ts),
+> [configuration store](../../src-server/services/automation/automation-store.ts),
+> [SQLite ledger](../../src-server/services/automation/automation-ledger.ts), and
+> [unattended principal context](../../src-server/runtime/agents/unattended-principal-context.ts)
+> now exist. Configuration is stored in `security/automations.json`. The runtime
+> does not yet compose Automation intake or dispatch through those stores.
+> The design below retains the original proposal checked at `14c83da3cd`,
+> including its proposed broader source kinds and file layout; current
+> foundation shapes belong to the linked sources. This status review inspected
+> source only and reran no tests or GitHub delivery. Section 9 records the owner
+> decisions; the foundations do not prove the complete automation journey.
 
 Status: **proposal.** It extends the existing
 [inbound webhook](../../src-server/routes/webhooks/inbound-webhooks.ts) and
@@ -30,8 +37,9 @@ Four findings shape the design.
    alternative: the scheduler already has a GitHub pull monitor
    ([contract](../../packages/contracts/src/external-monitor.ts),
    [service](../../src-server/services/scheduling/external-monitor.ts)).
-   Qualification runs every 6 hours (`17 */6 * * *`), so a 5-minute poll
-   loses nothing.
+   Qualification runs after main source changes with an hourly fallback
+   (`17 * * * *`). A five-minute poll is a proposed observation cadence,
+   not a guarantee of immediate reaction.
 2. **The episode model already exists in CI.**
    [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml)
    and [`qualification-repair.mjs`](../../scripts/qualification-repair.mjs)

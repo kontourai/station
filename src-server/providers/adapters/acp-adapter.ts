@@ -138,7 +138,10 @@ import {
   engineToolKind,
 } from './acp-tool-update-supervisor.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
-import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
+import {
+  assertExecutionOverrideDelivery,
+  mergeCapabilityDeliveryMetadata,
+} from './capability-delivery-metadata.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 
 /** Matches the `any`-typed logger threaded through the existing ACP substrate (acp-manager.ts, acp-connection.ts, ACPProcessOptions.logger). */
@@ -1141,6 +1144,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           detail: errorMessage(error),
         });
       }
+      assertExecutionOverrideDelivery(input.metadata, capabilityUndelivered);
       for (const entry of capabilityUndelivered) {
         agentCapabilityUndelivered.add(1, {
           provider: this.provider,

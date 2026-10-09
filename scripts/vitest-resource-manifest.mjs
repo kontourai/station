@@ -580,6 +580,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reads the ledger from origin/main, peels real ledger commit-backs with
   // git, and its exit status. Bounded, single-shot children.
   'scripts/__tests__/nightly-qualification-decide.cli.test.ts',
+  // Bounded real CLI with local Actions HTTP responses; no corpus or provider effects.
+  'scripts/__tests__/release-pipeline.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a

@@ -11,11 +11,12 @@
  * - the project chip rebinds the dock, so both surfaces open on it.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderView,
   screen,
   waitFor,
   within,
@@ -41,6 +42,15 @@ import {
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
+function render(ui: Parameters<typeof renderView>[0]) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
+
 const state = vi.hoisted(() => ({
   agents: [] as unknown[],
   projects: [] as unknown[],
@@ -63,6 +73,16 @@ vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useSshEnvironmentsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
+  usePeerCredentialsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
   useAgentsQuery: () => ({
     data: state.agents,
     isFetching: false,

@@ -145,6 +145,8 @@
 
 .monitoring-header-actions {
   display: flex;
+  margin-left: auto;
+  flex-shrink: 0;
   gap: 0.5rem;
   align-items: center;
 }
@@ -1592,7 +1594,7 @@
   /* The header time controls live in .monitoring-header-actions; let them wrap and
      fill the row width so nothing overflows on a narrow viewport. */
   .time-filter-wrapper {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
     min-width: 0;
   }
 
