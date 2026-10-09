@@ -231,7 +231,7 @@ describe('returned New Chat uses current canonical rows within caller scope', ()
       setup: { state: 'ready', detected: true, configured: true },
       runtimeCatalog: {
         source: 'live',
-        models: [{ id: 'model', name: 'Model' }],
+        models: [{ id: 'model', name: 'Model', originalId: 'model' }],
         builtInModels: [],
       },
     });
