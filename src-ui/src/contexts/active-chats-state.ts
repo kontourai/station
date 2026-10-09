@@ -570,6 +570,7 @@ export type ChatUIState = {
    * override, and `null` is an explicit request to use the engine default.
    */
   executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
@@ -687,6 +688,7 @@ export type ActiveChatMetadata = {
   model?: string;
   modelSource?: EffectiveModelSource;
   executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
@@ -726,6 +728,7 @@ export type PersistedActiveChat = {
   model?: string;
   modelSource?: EffectiveModelSource;
   executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
@@ -1009,6 +1012,8 @@ export function hydrateActiveChats(
       model: text(session.model),
       modelSource: text(session.modelSource) as EffectiveModelSource,
       executionAgentId: text(session.executionAgentId),
+      executionOnCurrentStation:
+        session.executionOnCurrentStation === true ? true : undefined,
       expectedDefinitionFingerprint: text(
         session.expectedDefinitionFingerprint,
       ),
@@ -1208,6 +1213,7 @@ export function serializeActiveChats(
       model: chat.model,
       modelSource: chat.modelSource,
       executionAgentId: chat.executionAgentId,
+      executionOnCurrentStation: chat.executionOnCurrentStation,
       expectedDefinitionFingerprint: chat.expectedDefinitionFingerprint,
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
@@ -1413,6 +1419,8 @@ export function mergeChatUpdates(
     'executionScope' in nextUpdates ||
     'agentConnectionId' in nextUpdates ||
     'executionAgentId' in nextUpdates ||
+    'executionOnCurrentStation' in nextUpdates ||
+    'expectedDefinitionFingerprint' in nextUpdates ||
     'providerId' in nextUpdates ||
     'defaultProviderId' in nextUpdates ||
     'model' in nextUpdates ||

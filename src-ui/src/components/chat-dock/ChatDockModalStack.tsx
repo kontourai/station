@@ -103,6 +103,7 @@ interface ChatDockModalStackProps {
     sendInitialMessage?: boolean,
     executionAgentId?: string,
     expectedDefinitionFingerprint?: string,
+    executionOnCurrentStation?: boolean,
   ) => void;
   onCloseNewChat: () => void;
   onNewTaskStarted?: () => void;

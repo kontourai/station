@@ -1431,6 +1431,34 @@ describe('the start composer in the dock', () => {
   // Home's composer sends what its chips show; the dock starts exactly that
   // and never substitutes its own default.
   describe("a start carrying Home's selection", () => {
+    test('carries an explicit This Station selection for a plain Agent without fabricating an engine override', async () => {
+      selectionModelState.agents = [AGENT];
+      selectionModelState.recommendedAgent = AGENT;
+      selectionModelState.models = [
+        { id: 'chosen-model', providerId: 'provider' },
+      ];
+      const onSelect = start(vi.fn(), {
+        startWithDefault: true,
+        initialPrompt: 'Run here',
+        startSelection: {
+          context: '__global__',
+          agentSlug: AGENT.slug,
+          model: {
+            modelId: 'chosen-model',
+            providerId: 'provider',
+            providerOptions: {},
+            environmentId: 'current',
+          },
+        },
+      });
+      await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+      const call = onSelect.mock.calls[0];
+      expect(call[0]).toBe(AGENT);
+      expect(call[13]).toBeUndefined();
+      expect(call[14]).toBeUndefined();
+      expect(call[15]).toBe(true);
+    });
+
     test('starts an authored profile on the chosen engine without changing its remembered default model', async () => {
       const fingerprint = 'a'.repeat(64);
       const profile: AgentData = {

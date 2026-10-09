@@ -175,12 +175,7 @@ export function useStartSelection(selection: SelectionModel, context: string) {
 
   const resetModel = (target: AgentData) => {
     const key = modelKey(target);
-    const environmentId = modelChoiceFor(target)?.environmentId;
-    changeStartChoices(() =>
-      environmentId && environmentId !== 'current'
-        ? startChoices.models.set(key, { environmentId, providerOptions: {} })
-        : startChoices.models.delete(key),
-    );
+    changeStartChoices(() => startChoices.models.delete(key));
     clearLastChosenModel(buildLastChosenModelBindingKey(target));
   };
 

@@ -69,6 +69,7 @@ export function acceptConversationHandoffUiState(
   return {
     ...execution,
     executionAgentId: receipt.target.executionAgentId,
+    executionOnCurrentStation: true,
     expectedDefinitionFingerprint: receipt.target.executionAgentId
       ? receipt.target.expectedDefinitionFingerprint
       : undefined,

@@ -17,6 +17,10 @@ import {
 } from '../hooks/lastChosenModel';
 import { useNewChatSelectionModel } from '../hooks/useNewChatSelectionModel';
 import { trackContextAgent } from '../hooks/useRecentAgents';
+import {
+  resetStartChoicesForTests,
+  useStartSelection,
+} from '../hooks/useStartSelection';
 
 const state = vi.hoisted(() => ({
   agents: [] as unknown[],
@@ -97,6 +101,7 @@ const PROJECT = {
   layoutCount: 0,
 } as ProjectMetadata;
 beforeEach(() => {
+  resetStartChoicesForTests();
   state.reconciling = false;
   state.readRevision = 0;
   state.refetchAgents.mockReset();
@@ -198,6 +203,50 @@ describe('returned New Chat uses current canonical rows within caller scope', ()
     expect(view.result.current.viewModel.selectedProject).toBeUndefined();
     expect(view.result.current.viewModel.currentContextOption).toBeUndefined();
     expect(view.result.current.viewModel.isGlobal).toBe(false);
+  });
+
+  test('resetting a remote start choice restores configured defaults without an orphaned Environment', () => {
+    const profile: AgentData = {
+      slug: agentId('remote-reset-reviewer'),
+      name: 'Reviewer',
+      available: true,
+      model: 'configured-default',
+      modelOptions: [
+        {
+          id: 'configured-default',
+          name: 'Configured default',
+          originalId: 'configured-default',
+        },
+      ],
+    };
+    const view = renderHook(() => {
+      const selection = useNewChatSelectionModel({
+        agents: [profile],
+        projects: [],
+        selectedContext: GLOBAL_CONTEXT,
+      });
+      return useStartSelection(selection, GLOBAL_CONTEXT);
+    });
+    act(() =>
+      view.result.current.chooseModel(profile, {
+        id: 'remote-model',
+        name: 'Remote model',
+        executionAgentId: 'remote-codex',
+        environmentId: 'saved-station',
+        expectedDefinitionFingerprint: 'owned-profile',
+        providerId: 'remote-provider',
+      }),
+    );
+    expect(view.result.current.startSelection(profile).model).toMatchObject({
+      environmentId: 'saved-station',
+      executionAgentId: 'remote-codex',
+    });
+    act(() => view.result.current.resetModel(profile));
+    expect(view.result.current.startSelection(profile)).toEqual({
+      context: GLOBAL_CONTEXT,
+      agentSlug: profile.slug,
+    });
+    expect(view.result.current.modelFor(profile).id).toBe('configured-default');
   });
 
   test('offered cross-engine routes refuse known profile capability loss while leaving unknown support undecided', () => {

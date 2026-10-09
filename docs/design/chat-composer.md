@@ -82,7 +82,11 @@ capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
 changing or resetting the engine opens an explicit handoff with the real draft
 and the existing context/write-identity confirmation. **Use Agent defaults**
-returns to the authored engine and model through that handoff.
+returns to the authored engine and model through that handoff. In a new-start
+picker, resetting also clears an explicit Station choice, restoring configured
+placement defaults rather than leaving a remote destination without its verified
+binding. An explicit This Station choice is carried independently of engine
+selection, including for a plain Agent whose Project has a remote default.
 
 The Station choice scopes remote engine discovery. A remote counterpart must
 have the same Agent ID and receiver-computed definition fingerprint; names do

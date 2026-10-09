@@ -1457,6 +1457,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       providerType?: string,
       executionAgent?: AgentData,
       expectedDefinitionFingerprint?: string,
+      executionOnCurrentStation?: boolean,
     ) => {
       if (routeToScopedChatProject(targetProjectSlug)) return;
       const effectiveProjectSlug = hasImmutableProjectScope
@@ -1482,6 +1483,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         providerType,
         executionAgent,
         expectedDefinitionFingerprint,
+        executionOnCurrentStation,
       );
       if (!hasImmutableProjectScope && effectiveProjectSlug) {
         setActiveProjectSlug(effectiveProjectSlug);
@@ -3062,6 +3064,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             sendInitialMessage,
             executionAgentId,
             expectedDefinitionFingerprint,
+            executionOnCurrentStation,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3098,6 +3101,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 ? agents.find((entry) => entry.slug === executionAgentId)
                 : undefined,
               expectedDefinitionFingerprint,
+              executionOnCurrentStation,
             );
             if (sessionId && experienceDraft)
               updateChat(sessionId, {

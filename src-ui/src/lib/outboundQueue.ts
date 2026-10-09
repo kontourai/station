@@ -31,6 +31,7 @@ export interface QueuedOutboundTurn {
   sessionId: string;
   agentSlug: string;
   executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
   conversationId?: string;
   content: string;

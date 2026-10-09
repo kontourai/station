@@ -148,6 +148,13 @@ session metadata. Changing the engine on a bound conversation requires an
 explicit handoff; omitting the override on that handoff restores the authored
 binding and model default.
 
+The optional conversation-open `execution.environment: { kind: "current" }`
+requires the authorized current child's persisted start Environment identity to
+match this receiver's existing Environment record. Peer activity, foreign,
+legacy/unknown or unavailable identities omit it. It does not consult mutable
+Project defaults or borrow the predecessor's identity. The UI uses this fact to
+restore current-Station placement without reinterpreting an existing binding.
+
 ## Continue a conversation
 
 Continuation retains the original Environment/workspace and follows the current linked Session:

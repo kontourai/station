@@ -444,6 +444,7 @@ function StationScopedModelPicker(
     : props.models.map((model) => ({
         ...model,
         stationName: catalog.stationName,
+        environmentId: 'current',
       }));
   const anchorRef = useRef(props.anchor);
   return (

@@ -165,6 +165,7 @@ interface NewChatModalProps {
     sendInitialMessage?: boolean,
     executionAgentId?: string,
     expectedDefinitionFingerprint?: string,
+    executionOnCurrentStation?: boolean,
   ) => void | Promise<void>;
   onClose: () => void;
   onTaskStarted?: () => void;
@@ -879,19 +880,33 @@ export function NewChatModal({
               },
             }
           : undefined;
-      const startOptions: [SkillExperienceDraft?, boolean?, string?, string?] =
-        choice?.executionAgentId
+      const startOptions: [
+        SkillExperienceDraft?,
+        boolean?,
+        string?,
+        string?,
+        boolean?,
+      ] =
+        choice?.environmentId === 'current'
           ? [
               experienceDraft,
               sendInitialMessage,
               choice.executionAgentId,
               choice.expectedDefinitionFingerprint,
+              true,
             ]
-          : sendInitialMessage
-            ? [experienceDraft, true]
-            : experienceDraft
-              ? [experienceDraft]
-              : [];
+          : choice?.executionAgentId
+            ? [
+                experienceDraft,
+                sendInitialMessage,
+                choice.executionAgentId,
+                choice.expectedDefinitionFingerprint,
+              ]
+            : sendInitialMessage
+              ? [experienceDraft, true]
+              : experienceDraft
+                ? [experienceDraft]
+                : [];
       try {
         if (composer && submitInFlight.current) return;
         if (composer) {

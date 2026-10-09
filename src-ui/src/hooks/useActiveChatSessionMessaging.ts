@@ -290,6 +290,7 @@ export function useSendMessage(
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
           executionAgentId?: string;
+          executionOnCurrentStation?: boolean;
           expectedDefinitionFingerprint?: string;
           requestedModel?: string | null;
           requestedProviderOptions?: Record<string, unknown>;
@@ -611,6 +612,9 @@ export function useSendMessage(
           executionAgentId: options?.executionSnapshot
             ? options.executionSnapshot.executionAgentId
             : currentState?.executionAgentId,
+          executionOnCurrentStation: options?.executionSnapshot
+            ? options.executionSnapshot.executionOnCurrentStation
+            : currentState?.executionOnCurrentStation,
           expectedDefinitionFingerprint: options?.executionSnapshot
             ? options.executionSnapshot.expectedDefinitionFingerprint
             : currentState?.expectedDefinitionFingerprint,
@@ -888,6 +892,8 @@ export function useSendMessage(
                 sessionId,
                 agentSlug,
                 executionAgentId: currentState?.executionAgentId,
+                executionOnCurrentStation:
+                  currentState?.executionOnCurrentStation,
                 expectedDefinitionFingerprint:
                   currentState?.expectedDefinitionFingerprint,
                 conversationId: latestState?.conversationId ?? conversationId,

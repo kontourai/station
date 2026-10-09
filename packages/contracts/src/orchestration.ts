@@ -1595,6 +1595,8 @@ export interface ConversationListItem {
 /** Execution facts from the same authorized current-child read, never Agent defaults. */
 export interface ConversationOpenExecution {
   sessionId: string;
+  /** Present only when this receiver verified the persisted execution owner as itself. */
+  environment?: { kind: 'current' };
   agentId: AgentId;
   executionAgentId?: AgentId;
   expectedDefinitionFingerprint?: string;

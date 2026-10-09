@@ -848,6 +848,8 @@ interface OrchestrationServiceOptions {
    * Agent and the dock cannot open it.
    */
   resolveAdoptedChildExecutionBinding?: ResolveAdoptedChildExecutionBinding;
+  /** Read-only identity of this receiver; absence leaves reopen placement unverified. */
+  readCurrentEnvironmentId?: () => Promise<string | undefined>;
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
@@ -2587,6 +2589,25 @@ export class OrchestrationService {
           session.threadId,
           detail.events,
         );
+        // The adapter-safe metadata projection above strips the server-minted Environment identity.
+        const identityEvent = detail.events.findLast(
+          (event) =>
+            event.threadId === session.threadId &&
+            event.method === 'session.started',
+        );
+        const recordedEnvironmentId =
+          identityEvent?.method === 'session.started' &&
+          typeof identityEvent.metadata?.environmentId === 'string'
+            ? identityEvent.metadata.environmentId
+            : undefined;
+        const currentEnvironmentId =
+          recordedEnvironmentId &&
+          session.controlMode === 'station-owned' &&
+          !this.isPeerDelegationActivityRecord(session.threadId)
+            ? await this.options
+                .readCurrentEnvironmentId?.()
+                .catch(() => undefined)
+            : undefined;
         const connection = parseEngineConnectionId(startMetadata?.connectionId);
         const executionAgentId =
           typeof startMetadata?.executionAgentId === 'string'
@@ -2616,6 +2637,10 @@ export class OrchestrationService {
             ? {
                 execution: {
                   sessionId: session.threadId,
+                  ...(currentEnvironmentId &&
+                  currentEnvironmentId === recordedEnvironmentId
+                    ? { environment: { kind: 'current' as const } }
+                    : {}),
                   agentId: publicAgentIdFromRuntimeKey(
                     session.assignedAgentSlug,
                   ),

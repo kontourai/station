@@ -362,6 +362,7 @@ export interface ChatSession {
   model?: string;
   modelSource?: EffectiveModelSource;
   executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
   requestedModel?: string;
   requestedModelSource?: EffectiveModelSource;

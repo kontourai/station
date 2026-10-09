@@ -262,6 +262,8 @@ export function conversationOpenPatch(
     conversationOpenState: resolution,
     title: resolution.conversation.title,
     ...executionPatch,
+    executionOnCurrentStation:
+      execution?.environment?.kind === 'current' ? true : undefined,
     currentSessionId: undefined,
     orchestrationSessionStarted: false,
     // `resolved` means the conversation is BOUND and continuable, not that

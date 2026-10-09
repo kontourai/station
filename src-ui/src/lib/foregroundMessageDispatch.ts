@@ -18,6 +18,7 @@ export async function dispatchForeground(input: {
   sessionId: string;
   agentSlug: string;
   executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
   projectSlug?: string;
   conversationId?: string;
@@ -146,7 +147,9 @@ export async function dispatchForeground(input: {
     input.apiBase,
     {
       target: {
-        ...(!input.projectSlug || input.executionAgentId
+        ...(!input.projectSlug ||
+        input.executionAgentId ||
+        input.executionOnCurrentStation
           ? { environment: { kind: 'current' as const } }
           : {}),
         agent: input.executionAgentId

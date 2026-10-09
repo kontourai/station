@@ -138,9 +138,13 @@ export function useChatDockActions({
       providerType?: string,
       executionAgent?: AgentData,
       expectedDefinitionFingerprint?: string,
+      executionOnCurrentStation?: boolean,
     ) => {
       const execution = {
         ...resolveAgentExecution(executionAgent ?? agent),
+        ...(executionOnCurrentStation
+          ? { executionOnCurrentStation: true }
+          : {}),
         ...(executionAgent
           ? {
               executionAgentId: executionAgent.slug,
