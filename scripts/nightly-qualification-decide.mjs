@@ -6,9 +6,10 @@
  * `main-qualification.yml` calls `nightly.yml` from inside the qualification
  * run so that the run's triggering commit — the one every attestation,
  * provenance record, and cohort verifier binds to — is the qualified commit
- * by construction. Qualification runs every six hours; this decision keeps
- * that entry point at about one Nightly a day and never re-attempts a source
- * on its own.
+ * by construction. Main pushes and the hourly fallback qualify immutable
+ * candidates; delivery has a separate lease and configurable minimum cadence.
+ * Terminal failed delivery producers permit bounded native recovery while live
+ * or unknown reservations remain held.
  *
  * Markers, all durable and all maintained by the Nightly legs themselves:
  * - the deploy ledger on `origin/main` (`docs/reference/deploy-ledger.json`):

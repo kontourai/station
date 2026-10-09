@@ -188,7 +188,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes; `Main:` qualification is scheduled
-on main every six hours. `Repo:` identifies housekeeping even when scheduled
+after main source changes with an hourly fallback. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
 Schedules below are cron expressions in UTC; path filters and job admission
@@ -228,7 +228,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
-| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
+| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | Main source pushes; UTC fallback: `17 * * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
@@ -1421,8 +1421,7 @@ candidate diff and the incident-owner integration pause. The separately required
 critical browser smoke; security and relevant platform checks remain required.
 The merge path does not run the full corpus.
 
-[Main: Qualification](../../.github/workflows/main-qualification.yml) runs every
-six hours outside the queue. A pass may start a Nightly for that commit
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
 failures and starts one bounded repair episode instead of repeatedly dequeuing
 unrelated PRs. See [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
