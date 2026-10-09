@@ -605,11 +605,7 @@ function ApprovalDecisionStatus({
             {failure.summary}
           </p>
           {phase === 'unconfirmed' && check && (
-            <Button
-              pending={checking}
-              pendingLabel="Checking…"
-              onClick={() => void check()}
-            >
+            <Button pending={checking} onClick={() => void check()}>
               Check status
             </Button>
           )}
