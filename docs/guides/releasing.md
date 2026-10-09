@@ -95,6 +95,12 @@ whose consumers only the queue runs. Every other candidate takes the fast path
 `fast-checks`, security, Windows portable floor and relevant iOS checks retain
 their integration protections.
 
+The reusable regression performs the same capacity admission as main
+qualification. Insufficient observed capacity stops before fanout and remains
+a failed required queue check; it is not successful regression evidence. Keep
+the admission receipt when diagnosing a dequeue. A genuine capacity change
+needs a fresh assessment before another attempt, rather than a blind rerun.
+
 ## Qualification cadence and evidence reuse
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
