@@ -503,7 +503,7 @@ event; a session grant retains the engine's existing scope.
 The shared answer path coalesces concurrent answers to the same prompt. Its
 15-second send deadline is followed by a bounded 5-second inspection when the
 send fails. A resolved request is shown as settled without claiming a local
-grant. If a lost response cannot be inspected, delivery remains unconfirmed:
+grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
 Check status reads the request before another decision can be sent. Errors
 keep a short summary beside the controls and technical details in a disclosure.
 

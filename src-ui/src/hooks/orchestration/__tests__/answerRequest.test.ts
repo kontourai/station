@@ -14,7 +14,9 @@
  * versa — a harmless no-op instead of a thrown error the second surface would
  * have to surface to the user.
  */
+
 import { resolveOrchestrationRequest } from '@kontourai/station-sdk';
+import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const inspectAttentionRequest = vi.fn();
@@ -88,6 +90,8 @@ describe('answerOrchestrationRequest', () => {
     new TypeError('Response lost'),
     Object.assign(new Error('Unavailable'), { status: 503 }),
     new SyntaxError('Invalid response'),
+    new ChatHttpError(408, 'Proxy timeout', undefined, false),
+    new ChatHttpError(403, 'Proxy refusal', undefined, false),
   ])(
     'coalesces decisions and holds %s until inspection confirms the request',
     async (failure) => {
@@ -130,4 +134,23 @@ describe('answerOrchestrationRequest', () => {
       expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
     },
   );
+  test('a verified Station refusal remains a refusal when inspection is unavailable', async () => {
+    const refused = new ChatHttpError(
+      403,
+      'Station refused this decision',
+      'permission_denied',
+      true,
+    );
+    vi.mocked(resolveOrchestrationRequest).mockRejectedValue(refused);
+    inspectAttentionRequest.mockRejectedValue(
+      new Error('Inspection unavailable'),
+    );
+    await expect(
+      answerOrchestrationRequest('http://api', request),
+    ).rejects.toBe(refused);
+    await expect(
+      answerOrchestrationRequest('http://api', request),
+    ).rejects.toBe(refused);
+    expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
+  });
 });

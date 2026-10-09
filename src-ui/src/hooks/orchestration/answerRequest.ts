@@ -2,7 +2,10 @@ import {
   inspectAttentionRequest,
   resolveOrchestrationRequest,
 } from '@kontourai/station-sdk';
-import { StationRequestTimeoutError } from '@kontourai/station-sdk/client';
+import {
+  ChatHttpError,
+  StationRequestTimeoutError,
+} from '@kontourai/station-sdk/client';
 
 class ApprovalDeliveryUnconfirmedError extends Error {
   readonly code = 'approval_delivery_unconfirmed';
@@ -10,13 +13,33 @@ class ApprovalDeliveryUnconfirmedError extends Error {
 
 /** How an answer the server did not refuse ended. */
 export type OrchestrationAnswerOutcome = 'answered' | 'already-settled';
+export interface ApprovalAnswerReference {
+  apiBase: string;
+  threadId: string;
+  requestId: string;
+  requestEventId?: string;
+}
+interface ApprovalAnswerState {
+  phase: 'sending' | 'unconfirmed';
+  decision: 'accept' | 'acceptForSession' | 'decline';
+  error?: Error;
+}
+const answerListeners = new Set<() => void>();
+export function subscribeApprovalAnswers(listener: () => void) {
+  answerListeners.add(listener);
+  return () => {
+    answerListeners.delete(listener);
+  };
+}
+const notifyAnswers = () => {
+  for (const listener of answerListeners) listener();
+};
 const pendingAnswers = new Map<
   string,
   {
-    decision: string;
+    state: ApprovalAnswerState;
     threadId: string;
     requestId: string;
-    unconfirmed?: boolean;
     result: Promise<OrchestrationAnswerOutcome>;
   }
 >();
@@ -31,10 +54,19 @@ const answerKey = (
     request.requestEventId,
   ]);
 
+export function readApprovalAnswerState(
+  reference: ApprovalAnswerReference,
+): ApprovalAnswerState | null {
+  return (
+    pendingAnswers.get(answerKey(reference.apiBase, reference))?.state ?? null
+  );
+}
+
 export function forgetApprovalAnswer(threadId: string, requestId: string) {
   for (const [key, value] of pendingAnswers)
     if (value.threadId === threadId && value.requestId === requestId)
       pendingAnswers.delete(key);
+  notifyAnswers();
 }
 
 export async function inspectApprovalAnswer(
@@ -49,6 +81,7 @@ export async function inspectApprovalAnswer(
     (inspection.state === 'open' && inspection.canRespond)
   ) {
     pendingAnswers.delete(answerKey(apiBase, reference));
+    notifyAnswers();
     return inspection.state === 'resolved' ? 'already-settled' : 'pending';
   }
   throw new ApprovalDeliveryUnconfirmedError(
@@ -80,7 +113,8 @@ export function answerOrchestrationRequest(
   const key = answerKey(apiBase, request);
   const pending = pendingAnswers.get(key);
   if (pending)
-    return pending.unconfirmed || pending.decision === request.decision
+    return pending.state.phase === 'unconfirmed' ||
+      pending.state.decision === request.decision
       ? pending.result
       : Promise.reject(
           new Error('A decision for this request is still being sent.'),
@@ -93,18 +127,25 @@ export function answerOrchestrationRequest(
     );
   const result = sendAnswer(apiBase, request);
   pendingAnswers.set(key, {
-    decision: request.decision,
+    state: { phase: 'sending', decision: request.decision },
     threadId: request.threadId,
     requestId: request.requestId,
     result,
   });
+  notifyAnswers();
   const release = () => {
-    if (pendingAnswers.get(key)?.result === result) pendingAnswers.delete(key);
+    if (pendingAnswers.get(key)?.result === result) {
+      pendingAnswers.delete(key);
+      notifyAnswers();
+    }
   };
   void result.then(release, (error: unknown) => {
     if (error instanceof ApprovalDeliveryUnconfirmedError) {
       const current = pendingAnswers.get(key);
-      if (current?.result === result) current.unconfirmed = true;
+      if (current?.result === result) {
+        current.state = { ...current.state, phase: 'unconfirmed', error };
+        notifyAnswers();
+      }
     } else release();
   });
   return result;
@@ -152,6 +193,7 @@ async function sendAnswer(
       !inspected &&
       ((error instanceof StationRequestTimeoutError &&
         error.mutation !== false) ||
+        (error instanceof ChatHttpError && !error.stationEnvelope) ||
         error instanceof TypeError ||
         error instanceof SyntaxError ||
         (error instanceof Error &&

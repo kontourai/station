@@ -23,11 +23,13 @@ const identity = (request: PendingApprovalRequest) =>
 
 export function ApprovalSheetProvider({
   requests,
+  apiBase,
   onApprove,
   onCheck,
   children,
 }: {
   requests: readonly PendingApprovalRequest[];
+  apiBase?: string;
   onApprove(
     request: PendingApprovalRequest,
     action: 'once' | 'trust' | 'deny',
@@ -101,12 +103,12 @@ export function ApprovalSheetProvider({
     [requests, onCheck],
   );
   const context = useMemo(
-    () => ({ insideSheet: false, show, check }),
-    [show, check],
+    () => ({ apiBase, insideSheet: false, show, check }),
+    [apiBase, show, check],
   );
   const sheetContext = useMemo(
-    () => ({ insideSheet: true, show, check }),
-    [show, check],
+    () => ({ apiBase, insideSheet: true, show, check }),
+    [apiBase, show, check],
   );
   const dismiss = () => {
     for (const request of requests) dismissed.add(identity(request));

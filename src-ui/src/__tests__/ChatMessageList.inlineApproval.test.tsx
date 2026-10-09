@@ -212,6 +212,7 @@ function renderCard(session = chatSession()) {
   const rendered = render(tree(session));
   // Re-renders the SAME mount (the window's events are read at render).
   return {
+    unmount: rendered.unmount,
     rerender: (next: ChatSession = session) => rendered.rerender(tree(next)),
   };
 }
@@ -231,6 +232,40 @@ describe('#2316 inline approval card', () => {
     windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
+  });
+
+  test('remounting an uncertain approval keeps decisions locked and status checking visible', async () => {
+    const calls = stubFetch((call) =>
+      call.method === 'POST'
+        ? Promise.reject(new TypeError('Reply lost'))
+        : Response.json({
+            success: true,
+            data: {
+              state: 'unavailable',
+              reference: {
+                threadId: 'claude-child-b',
+                requestId: 'req-claude-b',
+                requestEventId: 'evt-3',
+              },
+              message: 'Inspection unavailable',
+            },
+          }),
+    );
+    const first = renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    await screen.findByText(/Delivery is not confirmed/);
+    first.unmount();
+    renderCard();
+    expect(
+      (await screen.findByRole('button', { name: 'Allow Once' })).hasAttribute(
+        'disabled',
+      ),
+    ).toBe(true);
+    expect(
+      screen.getByRole('button', { name: 'Deny' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
+    expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
   });
 
   test.each([

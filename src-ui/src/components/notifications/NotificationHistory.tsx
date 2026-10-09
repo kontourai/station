@@ -146,17 +146,38 @@ export function NotificationHistory({
 
   const itemCount = attentionItems.length + recentNotifications.length;
   const act = (notificationId: string, actionId: string) => {
+    const item = attentionItems.find(
+      (candidate) =>
+        candidate.kind === 'approval' &&
+        candidate.source.notificationId === notificationId,
+    );
+    const notification = notifications.find(
+      (candidate) => candidate.id === notificationId,
+    );
+    const metadata = notification?.metadata;
+    const ownApproval =
+      notification?.source === 'approval-inbox' &&
+      notification.category === 'approval-request';
+    const ownLink =
+      ownApproval && typeof metadata?.link === 'string'
+        ? metadata.link
+        : undefined;
+    const ownThread =
+      ownApproval && typeof metadata?.threadId === 'string'
+        ? metadata.threadId
+        : undefined;
+    const href =
+      item?.openHref ??
+      ownLink ??
+      (ownThread
+        ? `/?chat=${encodeURIComponent(ownThread)}&dock=open`
+        : undefined);
     actionMutation.mutate(
       { actionId, id: notificationId },
       {
         onSuccess: () => {
-          const item = attentionItems.find(
-            (candidate) =>
-              candidate.kind === 'approval' &&
-              candidate.source.notificationId === notificationId,
-          );
-          if (item?.openHref) {
-            openApprovalConversation(item.openHref);
+          if (href) {
+            openApprovalConversation(href);
             onClose();
           }
         },

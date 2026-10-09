@@ -884,3 +884,31 @@ test('an accepted approval opens its conversation rather than the Activity sessi
   expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
   expect(close).toHaveBeenCalledTimes(1);
 });
+
+test('a recent approval opens its own conversation while Attention has no projection', () => {
+  sessionsSettled = false;
+  listsLoading = true;
+  notifications = [
+    {
+      id: 'recent-approval',
+      source: 'approval-inbox',
+      category: 'approval-request',
+      title: 'Recent approval',
+      status: 'delivered',
+      priority: 'high',
+      createdAt: '2026-10-09T00:00:00Z',
+      updatedAt: '2026-10-09T00:00:00Z',
+      actions: [{ id: 'accept', label: 'Approve recent' }],
+      metadata: { link: '/?surface=activity&session=recent-approval-thread' },
+    },
+  ];
+  const close = vi.fn();
+  render(<NotificationHistory isOpen onClose={close} onViewAll={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Approve recent' }));
+  action.mock.calls.at(-1)?.[1].onSuccess();
+  expect(navigationStore.getSnapshot().activeChat).toBe(
+    'recent-approval-thread',
+  );
+  expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+  expect(close).toHaveBeenCalledTimes(1);
+});

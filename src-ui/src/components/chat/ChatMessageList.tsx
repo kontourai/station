@@ -1008,6 +1008,7 @@ function ChatMessageListComponent({
 
   return (
     <ApprovalSheetProvider
+      apiBase={apiBase}
       requests={sheetRequests}
       onCheck={async (request) => {
         if (

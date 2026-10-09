@@ -7,7 +7,19 @@ import {
   toolRequestGrantLabel,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
-import { memo, type ReactNode, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import {
+  type ApprovalAnswerReference,
+  readApprovalAnswerState,
+  subscribeApprovalAnswers,
+} from '../../hooks/orchestration/answerRequest';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import { attentionWord } from '../../views/home/work-status';
@@ -73,6 +85,7 @@ export interface ToolCallData {
   approvalId?: string;
   /** #2316: the thread of the request that set `approvalId`. */
   approvalThreadId?: string;
+  approvalEventId?: string;
   /** See `MessagePart.approvalToolName` — what the session grant names. */
   approvalToolName?: string;
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
@@ -343,6 +356,7 @@ function ToolCallDisplayComponent({
               request={{
                 requestId: toolCall.approvalId ?? '',
                 threadId: toolCall.approvalThreadId,
+                requestEventId: toolCall.approvalEventId,
               }}
               onApprove={onApprove}
               grantToolName={grantToolName}
@@ -417,15 +431,39 @@ type ApprovalPhase =
 function useApprovalDecision(
   onApprove: ToolApprovalHandler,
   onCheck?: () => Promise<'pending' | 'already-settled'>,
+  reference?: ApprovalAnswerReference,
 ) {
   const admission = useRef(false);
   const [checking, setChecking] = useState(false);
-  const [phase, setPhase] = useState<ApprovalPhase>('idle');
-  const [failure, setFailure] = useState<{
+  const [localPhase, setPhase] = useState<ApprovalPhase>('idle');
+  const shared = useSyncExternalStore(subscribeApprovalAnswers, () =>
+    reference ? readApprovalAnswerState(reference) : null,
+  );
+  const phase = shared?.phase ?? localPhase;
+  const [localFailure, setFailure] = useState<{
     summary: string;
     detail?: string;
   } | null>(null);
-  const [chosen, setChosen] = useState<'once' | 'trust' | 'deny'>();
+  const [localChosen, setChosen] = useState<'once' | 'trust' | 'deny'>();
+  const chosen = shared
+    ? shared.decision === 'decline'
+      ? 'deny'
+      : shared.decision === 'acceptForSession'
+        ? 'trust'
+        : 'once'
+    : localChosen;
+  const failure =
+    localFailure ??
+    (shared?.phase === 'unconfirmed'
+      ? {
+          summary:
+            shared.error?.message ?? 'Station has not confirmed this decision.',
+          detail:
+            shared.error?.cause instanceof Error
+              ? shared.error.cause.message
+              : undefined,
+        }
+      : null);
   const decide = (action: 'once' | 'trust' | 'deny') => {
     if (phase !== 'idle' || admission.current) return;
     admission.current = true;
@@ -561,6 +599,7 @@ function ApprovalDecisionStatus({
 
 interface ToolApprovalControlProps {
   onApprove: ToolApprovalHandler;
+  reference?: ApprovalAnswerReference;
   onCheck?: () => Promise<'pending' | 'already-settled'>;
   /** The request's reported tool name — never the row's display name. */
   grantToolName?: string;
@@ -582,15 +621,27 @@ function ToolApprovalControls({
 }: ToolApprovalControlProps & {
   summary: ReactNode;
   details: ReactNode;
-  request: { requestId: string; threadId?: string };
+  request: { requestId: string; threadId?: string; requestEventId?: string };
 }) {
   const isMobile = useIsMobile();
   const approvalSheet = useApprovalSheet();
+  const reference =
+    approvalSheet?.apiBase !== undefined &&
+    request.threadId &&
+    request.requestEventId
+      ? {
+          apiBase: approvalSheet.apiBase,
+          threadId: request.threadId,
+          requestId: request.requestId,
+          requestEventId: request.requestEventId,
+        }
+      : undefined;
   const check = approvalSheet ? () => approvalSheet.check(request) : undefined;
   if (approvalSheet?.insideSheet)
     return (
       <ToolApprovalSheet
         {...props}
+        reference={reference}
         onCheck={check}
         summary={summary}
         details={null}
@@ -601,17 +652,19 @@ function ToolApprovalControls({
   return isMobile ? (
     <ToolApprovalSheet
       {...props}
+      reference={reference}
       onCheck={check}
       summary={summary}
       details={details}
       openGrouped={() => approvalSheet?.show(request) ?? false}
     />
   ) : (
-    <ToolApprovalButtons {...props} onCheck={check} />
+    <ToolApprovalButtons {...props} reference={reference} onCheck={check} />
   );
 }
 
 function ToolApprovalSheet({
+  reference,
   onApprove,
   onCheck,
   grantToolName,
@@ -627,7 +680,7 @@ function ToolApprovalSheet({
   grouped?: boolean;
 }) {
   const { phase, failure, decide, chosen, busy, check, checking } =
-    useApprovalDecision(onApprove, onCheck);
+    useApprovalDecision(onApprove, onCheck, reference);
   const sheet = useRequestSheet(true);
   // Accepted but not yet settled reads as in progress, not as a frozen
   // sheet: the row stays until the durable `request.resolved` removes it.
@@ -716,6 +769,7 @@ function ToolApprovalSheet({
 }
 
 function ToolApprovalButtons({
+  reference,
   onApprove,
   onCheck,
   grantToolName,
@@ -724,6 +778,7 @@ function ToolApprovalButtons({
   const { phase, failure, decide, check, checking } = useApprovalDecision(
     onApprove,
     onCheck,
+    reference,
   );
   const busy = phase !== 'idle';
   // #2915/#2916: undefined where no session grant is offered.
