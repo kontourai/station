@@ -55,8 +55,20 @@ shared value upstream when it belongs to the public design system.
 
 ## Device preference and accents
 
-[main.tsx](../../src-ui/src/main.tsx) resolves the saved device theme before
-render and sets `data-theme` on the document element.
+[startup-theme.js](../../src-ui/public/startup-theme.js) selects the saved
+light/dark preference before the entry HTML paints, reading the device-settings
+envelope before the legacy theme key and falling back to dark if storage is
+unavailable. [main.tsx](../../src-ui/src/main.tsx) applies the canonical theme,
+accent and cached branding before React renders. The initial HTML and
+[StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
+centered mark and status layout through platform and authority resolution;
+route-level waits still use the state primitives.
+
+The native OS launch surface follows OS appearance; it cannot read the
+WebView's saved device preference. iOS stages a centered mark and appearance-aware
+background after Tauri init; Android's channel overlay supplies a dark splash
+background in night mode. A different OS and saved app preference can still
+produce a background change at that boundary.
 [ThemeToggle](../../src-ui/src/components/header/ThemeToggle.tsx) keeps it in
 sync with the device-settings store. The selected light/dark preference belongs
 to the Device; changing a server or Project is not a separate theme choice.

@@ -123,6 +123,12 @@ export function applyAndroidChannelIcons(
       join(values, 'ic_launcher_background.xml'),
       channelValues(identity),
     );
+    const nightValues = join(destination, 'values-night');
+    mkdirSync(nightValues, { recursive: true });
+    writeFileSync(
+      join(nightValues, 'station_splash_background.xml'),
+      '<?xml version="1.0" encoding="utf-8"?>\n<resources><color name="station_splash_background">#FF0A0E13</color></resources>\n',
+    );
     const stringsPath = join(values, 'strings.xml');
     writeFileSync(
       stringsPath,

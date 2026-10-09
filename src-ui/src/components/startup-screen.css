@@ -1,0 +1,60 @@
+@import url("@kontourai/ui/tokens");
+
+.station-startup {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-family: system-ui, sans-serif;
+}
+
+.station-startup__logo {
+  width: calc(var(--k-space-6) * 2);
+  height: calc(var(--k-space-6) * 2);
+  object-fit: contain;
+}
+
+.station-startup__status {
+  position: absolute;
+  top: calc(50% + var(--k-space-6) + var(--k-space-5));
+  left: max(var(--k-space-5), env(safe-area-inset-left));
+  right: max(var(--k-space-5), env(safe-area-inset-right));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-space-2);
+  text-align: center;
+}
+
+.station-startup__name {
+  font-size: var(--k-text-lg);
+  font-weight: 600;
+}
+
+.station-startup__message {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-md);
+}
+
+.station-startup__progress {
+  width: var(--k-space-6);
+  height: var(--k-space-1);
+  margin-top: var(--k-space-3);
+  background: var(--k-text-faint);
+  border-radius: var(--k-radius-control);
+  animation: station-startup-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes station-startup-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .station-startup__progress {
+    animation: none;
+  }
+}

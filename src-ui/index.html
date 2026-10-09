@@ -5,9 +5,20 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Station</title>
+    <script src="/startup-theme.js"></script>
+    <link rel="stylesheet" href="/src/components/startup-screen.css" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="station-startup" role="status" aria-label="Opening Station…" aria-busy="true">
+        <img class="station-startup__logo" src="/favicon.png" alt="" width="64" height="64" />
+        <div class="station-startup__status" aria-hidden="true">
+          <span class="station-startup__name">Station</span>
+          <span class="station-startup__message">Opening Station…</span>
+          <span class="station-startup__progress"></span>
+        </div>
+      </div>
+    </div>
     <script
       data-station-csp-nonce
       nonce="__TAURI_SCRIPT_NONCE__"

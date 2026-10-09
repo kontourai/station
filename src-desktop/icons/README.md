@@ -38,6 +38,13 @@ its actual output instead of assuming that every init preserves the intended
 icons. Stable keeps the approved
 default artwork; `favicon-dev.png` is swapped into Dev by `is-dev-build` in
 `src-ui/src/index.css`.
+Mobile startup uses the same committed artwork. Android channel staging writes
+a night-mode splash background alongside its API-31 theme overlays.
+`scripts/write-ios-build-manifest.mjs` restores the maintained
+`scripts/templates/ios/LaunchScreen.storyboard` after init and stages the
+favicon and light/dark background in the asset catalog. These are build inputs;
+a packaged launch must still be checked on the target platform.
+
 Generate icons only when deliberately changing the artwork:
 
 1. Replace `assets/brand/reference.jpg`, then:

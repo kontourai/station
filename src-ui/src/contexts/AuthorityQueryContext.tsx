@@ -128,7 +128,7 @@ import {
   notifyPluginCommandEffectAuthoritySwitch,
   notifyPluginCommandEffectCookieAuthEligibility,
 } from '../components/plugin-command-effect-switch-signal';
-import { SkeletonBlock } from '../components/state';
+import { StartupScreen } from '../components/StartupScreen';
 import {
   useConnectionSwitchScope,
   useInvalidateCachesOnConnectionSwitch,
@@ -575,7 +575,7 @@ export function AuthorityQueryProvider({
     <AuthorityPersistenceContext.Provider
       value={{ status: 'unavailable', namespace: null, observation: null }}
     >
-      <SkeletonBlock label="Verifying Station authority" />
+      <StartupScreen message="Verifying Station authority" />
     </AuthorityPersistenceContext.Provider>
   );
 }

@@ -1,7 +1,7 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ReactNode } from 'react';
 import { LazyBoundary } from '../../components/LazyBoundary';
-import { SkeletonBlock } from '../../components/state';
+import { StartupScreen } from '../../components/StartupScreen';
 import { usePlatformProfile } from '../PlatformProfileContext';
 
 const loadMemberShell = () =>
@@ -22,7 +22,7 @@ export function NativeRelayEntryBoundary({
     <LazyBoundary
       load={loadMemberShell}
       componentProps={{}}
-      pending={<SkeletonBlock label="Opening shared Projects" />}
+      pending={<StartupScreen message="Opening shared Projects…" />}
     />
   );
 }
