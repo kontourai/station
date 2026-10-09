@@ -52,6 +52,12 @@ emits public metadata and opaque handles only. An iOS source check includes
 those platform branches; a desktop Rust test does not compile the callback
 module. Neither check proves installed delivery or OS storage.
 
+Pinned Tao 0.37.1 registers its scene-configuration callback even when the
+app has no scene manifest. The intake hook validates that callback's actual
+class and ABI before wrapping it; manifest absence does not mean the method
+is absent. Keep this contract aligned with the resolved Tao source when
+upgrading Tauri. A source match does not replace the installed launch checks.
+
 Qualification requires the same installed app identity, channel and actual
 proof-key surface as the operator-approved native v2 invitation. Exercise
 cold and warm launches, explicit cancel then return to the original invitation,
