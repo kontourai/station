@@ -151,6 +151,7 @@ describe('one-revision native promotion contract', () => {
     expect(caller?.if).toContain("needs['native-stage'].result == 'success'");
     expect(caller?.permissions).toEqual({
       contents: 'write',
+      actions: 'read',
       'id-token': 'write',
       attestations: 'write',
     });
@@ -636,7 +637,7 @@ describe('one-revision native promotion contract', () => {
     ]) {
       expect(clearJob.if, id).not.toContain(`needs.${id}.result`);
     }
-    expect(clearJob.permissions).toEqual({ contents: 'write' });
+    expect(clearJob.permissions).toEqual({ contents: 'write', actions: 'read' });
     const clear = namedStep(
       clearJob,
       'Remove the exact promotion fence at the end of the run that created it',
@@ -1021,7 +1022,7 @@ describe('one-revision native promotion contract', () => {
     expect(dependencyStep).toBeGreaterThanOrEqual(0);
     expect(planStep).toBeGreaterThan(dependencyStep ?? -1);
     for (const action of [
-      'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
+      'anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c',
       'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
     ])
       expect(source).toContain(action);
