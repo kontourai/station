@@ -11,18 +11,12 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
-import {
-  BANNER_IDS,
-  BANNER_PRIORITY,
-  bannerStore,
-} from '../../contexts/banner-store';
+import { BANNER_IDS, bannerStore } from '../../contexts/banner-store';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { toastStore } from '../../contexts/ToastContext';
 import { pluginRegistry } from '../../core/PluginRegistry';
-import { EXTENSIONS_UNAVAILABLE_LABEL } from '../../core/pluginRegistryCopy';
 import {
-  remoteIsolationDismissalIsStored,
   remotePluginBundlesAllowed,
-  storeRemoteIsolationDismissal,
   subscribeRemotePluginBundleConsent,
 } from '../../core/remotePluginBundleConsent';
 import {
@@ -117,100 +111,43 @@ export function PluginRegistryBootstrap() {
     }
   }, [connectionStatus, loadStatus]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConnectionId is the trigger — the previous profile's banner must drop exactly when the profile changes.
-  useEffect(
-    () => () => {
-      // One chrome banner is shared across profiles. Remove the previous
-      // profile's instance before the next profile projects its own state.
-      bannerStore.dismiss(BANNER_IDS.pluginRegistry);
-    },
-    [activeConnectionId],
-  );
-
+  const notifiedIncident = useRef<string | null>(null);
   useEffect(() => {
-    const connectionCausedFailure =
-      loadStatus.failure !== 'remote-isolation' &&
-      (connectionStatus !== 'connected' || justReconnected);
-    if (loadStatus.state === 'ready' || connectionCausedFailure) {
-      bannerStore.dismiss(BANNER_IDS.pluginRegistry);
+    bannerStore.dismiss(BANNER_IDS.pluginRegistry);
+    if (pluginRegistry.getLoadStatus() !== loadStatus) return;
+    if (loadStatus.state === 'ready') {
+      notifiedIncident.current = null;
       return;
     }
-    if (loadStatus.state === 'loading') return;
-
-    if (allowRemoteBundles && loadStatus.failure === 'remote-isolation') {
-      bannerStore.dismiss(BANNER_IDS.pluginRegistry);
-      return;
-    }
-
     if (
-      loadStatus.failure === 'remote-isolation' &&
-      remoteIsolationDismissalIsStored(activeConnectionId)
-    ) {
-      bannerStore.dismiss(BANNER_IDS.pluginRegistry);
+      loadStatus.state === 'loading' ||
+      loadStatus.failure === 'remote-isolation' ||
+      connectionStatus !== 'connected' ||
+      justReconnected
+    )
       return;
-    }
-
-    const failedPluginNames = loadStatus.failedPluginNames.join(', ');
+    const incident = JSON.stringify([
+      connectionKey,
+      loadStatus.failure,
+      loadStatus.failedPluginNames,
+    ]);
+    if (notifiedIncident.current === incident) return;
+    notifiedIncident.current = incident;
     const message =
-      loadStatus.failure === 'remote-isolation'
-        ? 'Extensions are off for this remote Station on this device. You can turn them on from the Registry, which explains the trade-off first.'
-        : loadStatus.failure === 'bundle-load-failure' && failedPluginNames
-          ? `Station could not load the extension bundle for ${failedPluginNames}. Its plugin-provided panes and capabilities remain unavailable until the bundle loads.`
-          : 'Station could not load the plugin registry. Plugin-provided panes and capabilities remain unavailable until it reconnects.';
-    bannerStore.present({
-      id: BANNER_IDS.pluginRegistry,
-      priority: BANNER_PRIORITY.capabilityFailure,
-      tone: 'warning',
-      badge: EXTENSIONS_UNAVAILABLE_LABEL,
+      loadStatus.failure === 'bundle-load-failure' &&
+      loadStatus.failedPluginNames.length
+        ? `Station could not load extensions: ${loadStatus.failedPluginNames.join(', ')}.`
+        : 'Station could not load extensions.';
+    const noticeId = toastStore.show(
       message,
-      occurrence:
-        loadStatus.failure === 'remote-isolation'
-          ? activeConnectionId
-          : undefined,
-      actions:
-        loadStatus.failure === 'remote-isolation'
-          ? [
-              {
-                label: 'Review in Registry',
-                onClick: () => navigate('/registry'),
-              },
-            ]
-          : [
-              {
-                label: 'Retry extensions',
-                onClick: () => void pluginRegistry.reload(),
-              },
-            ],
-      // Genuine registry incidents remain active capability invariants and
-      // clear only after a confirmed ready reload. Remote isolation is a
-      // permanent property of this profile, so remember a user's notice.
-      dismissible: loadStatus.failure === 'remote-isolation',
-      dismissAriaLabel:
-        loadStatus.failure === 'remote-isolation'
-          ? 'Dismiss extensions unavailable notice'
-          : undefined,
-      onDismiss:
-        loadStatus.failure === 'remote-isolation'
-          ? () => {
-              storeRemoteIsolationDismissal(activeConnectionId);
-            }
-          : undefined,
-    });
-  }, [
-    activeConnectionId,
-    allowRemoteBundles,
-    connectionStatus,
-    justReconnected,
-    loadStatus,
-    navigate,
-  ]);
-
-  useEffect(
-    () => () => {
-      bannerStore.dismiss(BANNER_IDS.pluginRegistry);
-    },
-    [],
-  );
+      undefined,
+      9000,
+      [{ label: 'Open Extensions', onClick: () => navigate('/registry') }],
+      undefined,
+      'warning',
+    );
+    return () => toastStore.dismiss(noticeId);
+  }, [connectionKey, connectionStatus, justReconnected, loadStatus, navigate]);
 
   return null;
 }

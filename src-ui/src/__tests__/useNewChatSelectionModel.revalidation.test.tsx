@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { GLOBAL_CONTEXT } from '../components/modals/new-chat-modal-utils';
 import type { AgentData } from '../contexts/AgentsContext';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
@@ -11,6 +17,10 @@ import {
 } from '../hooks/lastChosenModel';
 import { useNewChatSelectionModel } from '../hooks/useNewChatSelectionModel';
 import { trackContextAgent } from '../hooks/useRecentAgents';
+import {
+  resetStartChoicesForTests,
+  useStartSelection,
+} from '../hooks/useStartSelection';
 
 const state = vi.hoisted(() => ({
   agents: [] as unknown[],
@@ -91,6 +101,7 @@ const PROJECT = {
   layoutCount: 0,
 } as ProjectMetadata;
 beforeEach(() => {
+  resetStartChoicesForTests();
   state.reconciling = false;
   state.readRevision = 0;
   state.refetchAgents.mockReset();
@@ -194,6 +205,119 @@ describe('returned New Chat uses current canonical rows within caller scope', ()
     expect(view.result.current.viewModel.isGlobal).toBe(false);
   });
 
+  test('resetting a remote start choice restores configured defaults without an orphaned Environment', () => {
+    const profile: AgentData = {
+      slug: agentId('remote-reset-reviewer'),
+      name: 'Reviewer',
+      available: true,
+      model: 'configured-default',
+      modelOptions: [
+        {
+          id: 'configured-default',
+          name: 'Configured default',
+          originalId: 'configured-default',
+        },
+      ],
+    };
+    const view = renderHook(() => {
+      const selection = useNewChatSelectionModel({
+        agents: [profile],
+        projects: [],
+        selectedContext: GLOBAL_CONTEXT,
+      });
+      return useStartSelection(selection, GLOBAL_CONTEXT);
+    });
+    act(() =>
+      view.result.current.chooseModel(profile, {
+        id: 'remote-model',
+        name: 'Remote model',
+        executionAgentId: 'remote-codex',
+        environmentId: 'saved-station',
+        expectedDefinitionFingerprint: 'owned-profile',
+        providerId: 'remote-provider',
+      }),
+    );
+    expect(view.result.current.startSelection(profile).model).toMatchObject({
+      environmentId: 'saved-station',
+      executionAgentId: 'remote-codex',
+    });
+    act(() => view.result.current.resetModel(profile));
+    expect(view.result.current.startSelection(profile)).toEqual({
+      context: GLOBAL_CONTEXT,
+      agentSlug: profile.slug,
+    });
+    expect(view.result.current.modelFor(profile).id).toBe('configured-default');
+  });
+
+  test('offered cross-engine routes refuse known profile capability loss while leaving unknown support undecided', () => {
+    const profile: AgentData = {
+      slug: agentId('reviewer'),
+      name: 'Reviewer',
+      available: true,
+      profileCapabilities: ['instructions', 'toolSelection'],
+      execution: { agentConnectionId: engineConnectionId('claude') },
+    };
+    const initialBinding: AgentData = {
+      slug: agentId('codex'),
+      name: 'Codex',
+      available: true,
+      engineDefault: true,
+      executionDefault: true,
+      unsupportedProfileCapabilities: ['toolSelection'],
+      execution: { agentConnectionId: engineConnectionId('codex') },
+    };
+    let binding = initialBinding;
+    const connection = (id: string): AgentConnectionView => ({
+      id: engineConnectionId(id),
+      kind: 'agent',
+      type: id,
+      name: id,
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: true },
+      runtimeCatalog: {
+        source: 'live',
+        models: [{ id: 'model', name: 'Model', originalId: 'model' }],
+        builtInModels: [],
+      },
+    });
+    state.picker = {
+      agentConnections: [connection('claude'), connection('codex')],
+      modelConnections: [],
+    };
+    const view = renderHook(() =>
+      useNewChatSelectionModel({
+        agents: [profile, binding],
+        projects: [],
+        selectedContext: GLOBAL_CONTEXT,
+      }),
+    );
+    const blocked = view.result.current
+      .executionModelsForAgent(profile)
+      .find((model) => model.executionAgentId === binding.slug);
+    expect(blocked?.available).toBe(false);
+    expect(blocked?.unavailableReason).toContain('tool restrictions');
+    binding = { ...initialBinding, unsupportedProfileCapabilities: [] };
+    view.rerender();
+    const supported = view.result.current
+      .executionModelsForAgent(profile)
+      .find((model) => model.executionAgentId === binding.slug);
+    expect(supported).toBeDefined();
+    expect(supported?.available).not.toBe(false);
+    expect(supported?.unavailableReason).toBeUndefined();
+    binding = { ...initialBinding, unsupportedProfileCapabilities: undefined };
+    view.rerender();
+    const unknown = view.result.current
+      .executionModelsForAgent(profile)
+      .find((model) => model.executionAgentId === binding.slug);
+    expect(unknown).toBeDefined();
+    expect(unknown?.available).not.toBe(false);
+    expect(unknown?.unavailableReason).toBeUndefined();
+  });
+
   test('model list comes from the persisted picker catalog, not raw connections', () => {
     const agent = {
       ...OLD,
@@ -258,7 +382,7 @@ describe('the default selection stays current for a mounted surface', () => {
       useNewChatSelectionModel({
         agents: [TWO_MODELS],
         projects: [PROJECT],
-        selectedContext: '__global__',
+        selectedContext: GLOBAL_CONTEXT,
       }),
     );
     expect(view.result.current.defaultSelection.effectiveModel.id).toBe('old');
@@ -285,7 +409,7 @@ describe('the default selection stays current for a mounted surface', () => {
         useNewChatSelectionModel({
           agents: [OLD, OTHER],
           projects: [PROJECT],
-          selectedContext: '__global__',
+          selectedContext: GLOBAL_CONTEXT,
         }),
       { wrapper },
     );

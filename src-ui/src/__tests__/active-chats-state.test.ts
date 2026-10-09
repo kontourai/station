@@ -169,6 +169,7 @@ describe('active chat state helpers', () => {
         agentSlug: 'planner',
         conversationId: 'cool-conversation',
         currentSessionId: 'cool-conversation:child:2',
+        executionOnCurrentStation: true,
         conversationOpenState: {
           status: 'resolved',
           conversation: {
@@ -193,10 +194,12 @@ describe('active chat state helpers', () => {
 
     expect(persisted).toMatchObject({
       currentSessionId: 'cool-conversation:child:2',
+      executionOnCurrentStation: true,
     });
     expect(persisted).not.toHaveProperty('conversationOpenState');
     expect(hydrateActiveChats([persisted])['chat:749']).toMatchObject({
       currentSessionId: 'cool-conversation:child:2',
+      executionOnCurrentStation: true,
       conversationOpenPending: true,
     });
     expect(hydrateActiveChats([persisted])['chat:749']).not.toHaveProperty(

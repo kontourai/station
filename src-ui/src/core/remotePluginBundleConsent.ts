@@ -1,42 +1,10 @@
 const REMOTE_BUNDLES_ALLOWED_KEY_PREFIX =
   'station:plugin-registry:remote-bundles-allowed';
 
-const REMOTE_ISOLATION_DISMISSAL_KEY_PREFIX =
-  'station:plugin-registry:remote-isolation-dismissed';
-
 const listeners = new Set<() => void>();
 
 export function remotePluginBundlesAllowedKey(connectionId: string): string {
   return `${REMOTE_BUNDLES_ALLOWED_KEY_PREFIX}:${connectionId}`;
-}
-
-// These helpers take the semantic id, never a raw storage key: this module is
-// allowlisted by the raw-localStorage policy gate, so an export accepting an
-// arbitrary key would let any caller write outside this module's prefixes
-// through the allowlist ( 2 finding).
-export function remoteIsolationDismissalIsStored(
-  connectionId: string,
-): boolean {
-  try {
-    return (
-      window.localStorage.getItem(
-        `${REMOTE_ISOLATION_DISMISSAL_KEY_PREFIX}:${connectionId}`,
-      ) === '1'
-    );
-  } catch {
-    return false;
-  }
-}
-
-export function storeRemoteIsolationDismissal(connectionId: string): void {
-  try {
-    window.localStorage.setItem(
-      `${REMOTE_ISOLATION_DISMISSAL_KEY_PREFIX}:${connectionId}`,
-      '1',
-    );
-  } catch {
-    // Session-only dismissal; the banner returns next launch.
-  }
 }
 
 function consentedOrigin(apiBase: string): string | null {

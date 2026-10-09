@@ -228,6 +228,12 @@ async function mockTaskFirstHome(
       await route.fulfill(json([project]));
       return;
     }
+    // #3391: the start composer's run-location read. Empty: the composer
+    // names each project's stored folder, as before this read existed.
+    if (path === '/api/projects/run-locations') {
+      await route.fulfill(json({}));
+      return;
+    }
     if (
       path === '/api/projects/station/plugin-publish' &&
       route.request().method() === 'GET'

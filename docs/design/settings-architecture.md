@@ -178,6 +178,11 @@ Notifications & voice, Keyboard shortcuts, Devices, Privacy & sharing,
 My knowledge, and Advanced. General is the default. The topic inventory in
 [`settings-pages.ts`](../../src-ui/src/views/settings/settings-pages.ts) groups
 existing sections without changing their row identities or persistence scopes.
+Settings and Developer share [SectionNavigation](../../src-ui/src/components/SectionNavigation.tsx),
+including the desktop rail and narrow-screen selector. Search keeps its selected
+topic while suppressing the active-link highlight. Longer registry explanations
+remain in expandable Details beneath a concise consequence sentence; the full
+definition is retained by [SettingDescription](../../src-ui/src/views/settings/SettingDescription.tsx).
 Existing leaf-section URLs still work, and `?view=overview` retains the full
 inventory. Search spans all topics; clearing it returns to the selected topic.
 The project selector appears only alongside model/workspace defaults and

@@ -50,6 +50,11 @@ execution or native-shell qualification. Capture revisions and limits are in
 | New chat | ![Baseline new chat](../learn/media/new-chat-start-before.png) | ![Redesigned new chat](../learn/media/new-chat-start-after.png) |
 | Project page | ![Baseline Project page](../learn/media/project-start-before.png) | ![Project start composer](../learn/media/project-start-after.png) |
 
+These frozen comparisons record #3490's redesign at the revisions in the media
+manifest. Later Project identity marks, server run-location updates, Agent
+grouping and Engine & model overrides are not pictured; the images are not captures or visual qualification of the current
+composer.
+
 The Project comparison captures precede the removal of the header's local
 folder controls. Their capture revisions remain recorded; folder details now
 live in Settings.
@@ -64,17 +69,48 @@ filters; Options reveals capability filters and the selected model's supported
 runtime controls. Reviewed canonical model identities still own grouping across
 provider routes; similar names do not establish equivalence.
 
+Agent choices are grouped as **Station**, **Coding apps**, and **My agents**;
+recent use orders rows inside their group. Bundled engine and model marks identify
+known brands. The Engine & model picker uses one filter control and a collapsed
+Options section. Home and New Chat share its menu controller; `/model` shares
+filtering, availability and choice memory with the popup.
+
+Choosing another engine is a conversation override of the selected Agent's
+execution binding. It retains the authored profile rather than substituting the
+coding app's default profile, and does not edit saved Agent defaults. Known
+capability incompatibilities remain visible with a refusal reason; live resource
+and adapter delivery checks still decide admission. In an existing conversation,
+changing or resetting the engine opens an explicit handoff with the real draft
+and the existing context/write-identity confirmation. **Use Agent defaults**
+returns to the authored engine and model through that handoff. In a new-start
+picker, resetting also clears an explicit Station choice, restoring configured
+placement defaults rather than leaving a remote destination without its verified
+binding. An explicit This Station choice is carried independently of engine
+selection, including for a plain Agent whose Project has a remote default.
+
+The Station choice scopes remote engine discovery. A remote counterpart must
+have the same Agent ID and receiver-computed definition fingerprint; names do
+not establish equivalence. The fingerprint covers the authored definition and
+referenced resource IDs, not the installed contents of those resources. An
+unverified counterpart or failed inventory read stays an explicit gap. Selecting
+a remote route opens the task launcher and its portable Project consent; it
+does not relocate an existing conversation. Runtime and native-device execution
+of these routes require separate evidence from the source and controlled tests.
+
 Home keeps a screen-reader page title while the shared composer owns the
 visible start heading. An empty Home does not add a second welcome question.
 
 The **on <host>** control names the answering Station's host projection, or
 **on Project default** when the Project has a saved execution environment. It
-opens the existing task launcher with the current message, Project and Agent,
-and with its Station/worker/model routing controls expanded. The launcher
+opens the existing task launcher with the current message, Project, Agent and
+explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher
 loads the selected environment's own worker inventory and retains portable
 Project/resource admission and the explicit no-fallback refusals. **Run task**
-starts a task; it does not place or migrate a foreground chat on a peer. Editing
-the task message updates the originating draft, so Cancel retains those edits.
+starts a task; it does not place or migrate a foreground chat on a peer.
+**Connect a Station for this task** keeps the task draft, chosen Station and
+Project resource while setup opens. Returning refreshes discovery and still
+requires an explicit **Run task** action.
+Editing the task message updates the originating draft, so Cancel retains those edits.
 A successful launch clears only the text submitted and names its captured
 Station; newly typed text stays. Remote task submission and Escape do not
 submit or dismiss the underlying foreground composer. Prepared visual skills
@@ -91,7 +127,13 @@ ambient dock binding. An unavailable fixed Project blocks starting and keeps
 the message. Returned drafts are scoped to that Project and Station authority.
 A project with no folder can still be chosen and runs where the server puts it:
 the home folder, or for an ACP engine its connection folder or a private
-Station-managed workspace. The project menu states the run-location hint.
+Station-managed workspace. The Project control draws its chosen icon, or a
+12px accent dot when none is displayable. The project menu states the
+server-resolved run location from `GET /api/projects/run-locations`; the
+Project catalogue and boot do not wait on folder checks. Until the separate
+read answers, the stored folder is shown. A manifest-bound Project names its
+execution root, an unavailable location states the refusal reason, and an
+unchecked location keeps Start available for the real start-time check.
 Up to five recent chats from the
 selected project or No project follow; with none, the composer stands alone.
 A start or hand-off from Home is taken only by the ambient dock, which says
@@ -136,6 +178,12 @@ together in a row above the settings. In a dock too short to show the transcript
 bottom is not shown and a row left with no status takes no height. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
+
+Pending tool requests from the loaded event window also feed Needs approval,
+whose action opens the conversation's approval sheet. Failed history or
+continuation observation shows Status unavailable and withholds the cached
+working clock; the remote turn may still be running. History Retry refreshes
+the capability observation before reloading.
 
 The pill uses compact state labels such as Working, Thinking, and Reconnecting;
 it does not expand to display tool names. State changes animate its width with

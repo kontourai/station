@@ -5,7 +5,7 @@
 
   "state": "classified",
 
-  "summary": "Proposal for Station Automations (event sources, rules, actions, episodes and grants), verified against origin/main 14c83da3cd by source inspection. Nothing is implemented; owner decisions are pending.",
+  "summary": "Retained Station Automations proposal with Section 9 owner decisions and implemented contract, private configuration/ledger and unattended principal foundations. Runtime intake/dispatch and the complete automation journey remain unqualified. Original design was checked at 14c83da3cd; updated foundation status is source inspection only.",
 
   "limits": "Proposal only. Cited owners were confirmed to exist, but no claim about current behavior was exercised by a test, live GitHub delivery or device. Purpose classification is separate from whole-document semantic review.",
 

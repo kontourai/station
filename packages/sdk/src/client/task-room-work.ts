@@ -10,6 +10,28 @@ import {
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 
+/** Stable option identity shared by the request sender and durable reservation owner. */
+export async function taskRoomModelOptionsDigest(
+  options: Readonly<Record<string, unknown>>,
+): Promise<string> {
+  const canonical = JSON.stringify(options, (_key, value) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.entries(value).sort(([left], [right]) =>
+            left < right ? -1 : left > right ? 1 : 0,
+          ),
+        )
+      : value,
+  );
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(canonical),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 export class TaskRoomWorkProtocolError extends Error {}
 export class TaskRoomWorkNotSentError extends Error {
   constructor(
@@ -51,6 +73,20 @@ function workRecord(
   return (
     value.version === TASK_ROOM_WORK_VERSION &&
     value.taskId === taskId &&
+    (value.expectedDefinitionFingerprint === undefined ||
+      (typeof value.expectedDefinitionFingerprint === 'string' &&
+        /^sha256:[0-9a-f]{64}$/.test(value.expectedDefinitionFingerprint))) &&
+    (value.modelId === undefined ||
+      (typeof value.modelId === 'string' &&
+        value.modelId.length > 0 &&
+        value.modelId.length <= 512)) &&
+    (value.modelOptionsDigest === undefined ||
+      (typeof value.modelOptionsDigest === 'string' &&
+        /^[0-9a-f]{64}$/.test(value.modelOptionsDigest))) &&
+    (value.executionAgentId === undefined ||
+      (typeof value.executionAgentId === 'string' &&
+        value.executionAgentId.length > 0 &&
+        value.executionAgentId.length <= 64)) &&
     (value.context === undefined || contextSnapshot(value.context)) &&
     [
       'projectId',
@@ -122,6 +158,15 @@ export async function submitTaskRoomAgentRequest(
   input: TaskRoomWorkInput,
   options?: ClientRequestOptions,
 ): Promise<TaskRoomWorkOutcome> {
+  if (input.expectedDefinitionFingerprint && !input.executionAgentId)
+    throw new TaskRoomWorkNotSentError(
+      'A verified Agent definition requires an explicit execution binding. Nothing was sent.',
+    );
+  const modelId = input.model?.override?.trim() || undefined;
+  const modelOptionsDigest =
+    input.model?.options === undefined
+      ? undefined
+      : await taskRoomModelOptionsDigest(input.model.options);
   try {
     const supported = await fetchTaskRoomAgentRequests(
       apiBase,
@@ -146,7 +191,20 @@ export async function submitTaskRoomAgentRequest(
       prompt: input.prompt,
       target: {
         environment: { kind: 'current' },
-        agent: input.agentId,
+        agent: input.executionAgentId
+          ? {
+              kind: 'agent-execution-override',
+              agent: input.agentId,
+              executionAgent: input.executionAgentId,
+              ...(input.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      input.expectedDefinitionFingerprint,
+                  }
+                : {}),
+            }
+          : input.agentId,
+        ...(input.model ? { model: input.model } : {}),
         workspace: { kind: 'project', projectSlug },
       },
       taskRoomRequest: {
@@ -188,6 +246,11 @@ export async function submitTaskRoomAgentRequest(
     workRecord(value.record, taskId) &&
     value.record.operationId === input.operationId &&
     value.record.agentId === input.agentId &&
+    value.record.executionAgentId === input.executionAgentId &&
+    value.record.expectedDefinitionFingerprint ===
+      input.expectedDefinitionFingerprint &&
+    value.record.modelId === modelId &&
+    value.record.modelOptionsDigest === modelOptionsDigest &&
     value.record.prompt === input.prompt.trim() &&
     value.record.taskCreatedAt === taskCreatedAt &&
     value.record.context?.digest === input.context?.digest

@@ -8,7 +8,10 @@ import type {
   NewChatModelChoice,
   SelectableModel,
 } from '../utils/modelCapabilities';
-import { sanitizeRuntimeOptionsForModel } from '../utils/modelCapabilities';
+import {
+  resolveModelChoice,
+  sanitizeRuntimeOptionsForModel,
+} from '../utils/modelCapabilities';
 import {
   buildLastChosenModelBindingKey,
   clearLastChosenModel,
@@ -87,7 +90,7 @@ export function useStartSelection(selection: SelectionModel, context: string) {
     defaultSelection,
     modelChoiceKey,
     defaultEffectiveModelForAgent,
-    modelsForAgent,
+    executionModelsForAgent,
   } = selection;
   const flatList = viewModel.flatList;
   const scopedAgents = viewModel.scopedAgents ?? [];
@@ -123,26 +126,12 @@ export function useStartSelection(selection: SelectionModel, context: string) {
   const modelChoiceFor = (target: AgentData) =>
     startChoices.models.get(modelKey(target));
 
-  const modelFor = (target: AgentData) => {
-    const choice = modelChoiceFor(target);
-    const effective = defaultEffectiveModelForAgent(target);
-    const selected = choice?.modelId
-      ? modelsForAgent(target).find(
-          (model) =>
-            model.id === choice.modelId &&
-            (!choice.providerId || model.providerId === choice.providerId),
-        )
-      : undefined;
-    return {
-      id: choice?.modelId ?? effective.id ?? undefined,
-      label: choice?.modelId
-        ? (selected?.name ?? choice.modelId)
-        : effective.label,
-      source: choice?.modelId
-        ? ('session override' as const)
-        : effective.source,
-    };
-  };
+  const modelFor = (target: AgentData) =>
+    resolveModelChoice(
+      modelChoiceFor(target),
+      defaultEffectiveModelForAgent(target),
+      executionModelsForAgent(target),
+    );
 
   const updateModelChoice = (
     target: AgentData,
@@ -161,6 +150,9 @@ export function useStartSelection(selection: SelectionModel, context: string) {
     updateModelChoice(target, (current) => ({
       ...current,
       modelId: model.id,
+      executionAgentId: model.executionAgentId,
+      environmentId: model.environmentId,
+      expectedDefinitionFingerprint: model.expectedDefinitionFingerprint,
       providerId: model.providerId,
       providerType: model.providerType,
       providerOptions: sanitizeRuntimeOptionsForModel(
@@ -168,7 +160,8 @@ export function useStartSelection(selection: SelectionModel, context: string) {
         current.providerOptions,
       ),
     }));
-    trackLastChosenModel(buildLastChosenModelBindingKey(target), model.id);
+    if (!model.executionAgentId)
+      trackLastChosenModel(buildLastChosenModelBindingKey(target), model.id);
     // A Model picked on an Agent's row means that Agent.
     chooseAgent(target.slug);
   };
@@ -176,6 +169,9 @@ export function useStartSelection(selection: SelectionModel, context: string) {
   /** A choice handed over from another surface, as it was made there. */
   const seedModelChoice = (target: AgentData, choice: NewChatModelChoice) =>
     updateModelChoice(target, () => choice);
+
+  const setExecutionEnvironment = (target: AgentData, environmentId: string) =>
+    updateModelChoice(target, () => ({ environmentId, providerOptions: {} }));
 
   const resetModel = (target: AgentData) => {
     const key = modelKey(target);
@@ -209,6 +205,7 @@ export function useStartSelection(selection: SelectionModel, context: string) {
     seedModelChoice,
     resetModel,
     setRuntimeOption,
+    setExecutionEnvironment,
     startSelection,
   };
 }

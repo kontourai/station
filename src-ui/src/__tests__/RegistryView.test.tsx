@@ -193,7 +193,11 @@ const pluginRegistryListeners = new Set<() => void>();
 let pluginRegistryStatus: {
   state: 'ready' | 'degraded';
   failedPluginNames: readonly string[];
-  failure: 'remote-isolation' | undefined;
+  failure:
+    | 'remote-isolation'
+    | 'registry-unavailable'
+    | 'bundle-load-failure'
+    | undefined;
 } = {
   state: 'ready',
   failedPluginNames: [],
@@ -1257,3 +1261,32 @@ describe('RegistryView', () => {
     expect(screen.getByText('Install Preview')).toBeTruthy();
   });
 });
+
+test.each(['registry-unavailable', 'bundle-load-failure'] as const)(
+  'the Extensions screen owns %s and its Retry action',
+  (failure) => {
+    pluginRegistryStatus = {
+      state: 'degraded',
+      failedPluginNames:
+        failure === 'bundle-load-failure' ? ['broken-extension'] : [],
+      failure,
+    };
+    render(<RegistryView />);
+    expect(screen.getByRole('alert').textContent).toContain(
+      "Couldn't load extensions",
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
+    expect(pluginRegistryReload).toHaveBeenCalledTimes(1);
+    act(() => {
+      pluginRegistryStatus = {
+        state: 'ready',
+        failedPluginNames: [],
+        failure: undefined,
+      };
+      for (const listener of pluginRegistryListeners) listener();
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Retry extensions' }),
+    ).toBeNull();
+  },
+);

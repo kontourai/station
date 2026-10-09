@@ -62,7 +62,7 @@ describe('dispatchForeground target', () => {
     attachmentQueueImported.mockClear();
   });
 
-  test('a project-scoped turn carries workspace and NO environment', async () => {
+  test('a Project turn without explicit placement leaves its configured Environment authoritative', async () => {
     await dispatchForeground(baseInput({ projectSlug: 'alpha' }));
 
     const target = dispatchedTarget();
@@ -70,9 +70,18 @@ describe('dispatchForeground target', () => {
       agent: 'claude',
       workspace: { kind: 'project', projectSlug: 'alpha' },
     });
-    // The exclusivity is the point: a turn bound to a project must not also
-    // claim the current environment.
     expect(target).not.toHaveProperty('environment');
+  });
+
+  test('an explicit This Station choice preserves a plain authored Agent and Project workspace', async () => {
+    await dispatchForeground(
+      baseInput({ projectSlug: 'alpha', executionOnCurrentStation: true }),
+    );
+    expect(dispatchedTarget()).toMatchObject({
+      agent: 'claude',
+      workspace: { kind: 'project', projectSlug: 'alpha' },
+      environment: { kind: 'current' },
+    });
   });
 
   test('an unbound turn carries environment and NO workspace', async () => {

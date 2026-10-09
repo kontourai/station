@@ -50,6 +50,7 @@ import { useRecoveryConfig } from '../hooks/useRecoveryConfig';
 import { useSystemStatus } from '../hooks/useSystemStatus';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import {
+  CONNECTION_SETUP_RETURN_EVENT,
   consumePendingConnectionsModal,
   OPEN_CONNECTIONS_MODAL_EVENT,
   type OpenConnectionsModalDetail,
@@ -118,6 +119,11 @@ function NativeRelayRouteSetupFooter() {
   );
 }
 
+const loadConnectStationDialog = () =>
+  import('../views/connections-hub/ConnectStationDialog').then((module) => ({
+    default: module.ConnectStationDialog,
+  }));
+
 const PAIRING_APPROVAL_BANNER_ID = 'chrome:onboarding:pairing-approval';
 /**
  * Module-scope loaders (archive#2605 keeps these out of render), handed to
@@ -163,6 +169,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const { showToast } = useToast();
   const bootstrapRecoveryError = nativeProfileBootstrapRecoveryError();
   const [showModal, setShowModal] = useState(false);
+  const [stationSetup, setStationSetup] =
+    useState<OpenConnectionsModalDetail | null>(null);
+  const [stationSetupOpen, setStationSetupOpen] = useState(false);
+  const [stationSetupSession, setStationSetupSession] = useState(0);
   const showModalRef = useRef(false);
   useEffect(() => {
     showModalRef.current = showModal;
@@ -358,6 +368,14 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const showConnections = (detail?: OpenConnectionsModalDetail) => {
+      if (detail?.mode === 'connect-station') {
+        setShowModal(false);
+        setStationSetup(detail);
+        setStationSetupSession((session) => session + 1);
+        setStationSetupOpen(true);
+        return;
+      }
+      setStationSetupOpen(false);
       // Anything unrecognized falls back to the list, which is the only
       // panel that is correct for every connection state.
       setConnectionModalMode(
@@ -868,6 +886,34 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       {usageTelemetryDisclosureMounted ? (
         <UsageTelemetryDisclosure firstRun />
       ) : null}
+      {stationSetup ? (
+        <LazyBoundary
+          key={stationSetupSession}
+          load={loadConnectStationDialog}
+          componentProps={{
+            isOpen: stationSetupOpen,
+            intent: stationSetup,
+            onClose: () => {
+              setStationSetupOpen(false);
+              if (stationSetup.setupRequestId) {
+                window.dispatchEvent(
+                  new CustomEvent(CONNECTION_SETUP_RETURN_EVENT, {
+                    detail: { setupRequestId: stationSetup.setupRequestId },
+                  }),
+                );
+              }
+            },
+            onReopen: () => setStationSetupOpen(true),
+            onApprovalPending: (pending: PendingPairingExchange) => {
+              setPairingFailure(null);
+              setPendingExchange(pending);
+              setIgnoredPendingRequestId(null);
+              setWaitingForTransport(false);
+            },
+          }}
+          pending={null}
+        />
+      ) : null}
       <ConnectionManagerModal
         isOpen={showModal}
         onClose={() => {
@@ -894,6 +940,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         pairingClientChannel={
           profile.channel === 'dev' ? 'stable' : profile.channel
         }
+        onConnectStation={() => {
+          setShowModal(false);
+          setStationSetup({ mode: 'connect-station' });
+          setStationSetupSession((session) => session + 1);
+          setStationSetupOpen(true);
+        }}
         initialPanel={connectionModalMode}
         listFooterContent={
           profile.isTauri ? <NativeRelayRouteSetupFooter /> : undefined

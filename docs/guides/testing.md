@@ -188,7 +188,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes; `Main:` qualification is scheduled
-on main every six hours. `Repo:` identifies housekeeping even when scheduled
+after main source changes with an hourly fallback. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
 Schedules below are cron expressions in UTC; path filters and job admission
@@ -228,7 +228,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
-| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
+| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | Main source pushes; UTC fallback: `17 * * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
@@ -402,6 +402,13 @@ instead of running them inline, so one shared-helper edit cannot exceed the
 the other changed files keep their related discovery and only the deferring
 file leaves the inline run. Any other deferral, such as an escalation or an
 unavailable related path, still defers the whole related selection.
+A third kind is derived per diff, from its base content: when a `package.json`
+dependency section or a `pnpm-lock.yaml` importer's resolved version changes
+for a sibling `@kontourai/*` package that is not a workspace package, the
+suites that import that package by name are selected (#3149). A version bump
+changes no source file, and both files escalate, so these explicit targets are
+what such a diff runs. Transitive lockfile changes are not followed, and a
+package imported by more than 16 suites defers them to `test-full`.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
@@ -479,6 +486,14 @@ qualification but cannot publish before it passes. See [the release process](rel
 manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 The full Vitest corpus is phase-attested there, separately from the fast
 feedback loop.
+
+Hosted matrix fanout uses the repository's Free runner profile by default;
+`STATION_QUALIFICATION_RUNNER_PROFILE=expanded` selects the larger profile only
+with explicitly configured hosted capacity. Unknown profiles fail admission.
+All ordinary and process-heavy matrix legs still execute. These per-invocation
+caps reserve no organization-wide capacity and do not change evidence or
+promotion requirements. See [qualification runner profiles](releasing.md#runner-admission-and-native-delivery-recovery)
+for the caps and their limits.
 
 The `ci:fast` owner receipt requires a redacted, digest-addressed copy of the
 changed-test diagnostic under `.kontourai/verification-output/`. If the stable
@@ -820,7 +835,7 @@ window — so that two captures of the identical build decode to identical
 pixels and exact comparison is strictly simpler, and strictly more
 trustworthy, than any threshold.
 
-Profile captures hide only the completed "Snapshot rebuilt ..." timestamp
+Profile captures hide only the completed "Updated ..." timestamp
 line. Missing-time fallbacks, usage scope, failure notices, and the rebuild
 control remain visible. These pixels do not establish accounting freshness.
 
@@ -1438,8 +1453,7 @@ too, because it is skipped only when the decision is exactly `false`. Pull
 requests never run it. In this workflow, `pull_request_target` only reports
 the skipped required context.
 
-[Main: Qualification](../../.github/workflows/main-qualification.yml) runs every
-six hours outside the queue. A pass may start a Nightly for that commit
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
 failures and starts one bounded repair episode instead of repeatedly dequeuing
 unrelated PRs. See [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).

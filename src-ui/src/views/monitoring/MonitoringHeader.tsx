@@ -1,5 +1,3 @@
-import { DetailHeader } from '../../components/DetailHeader';
-
 export function MonitoringHeader({
   sessionCounts,
   sessionReadStatus,
@@ -22,20 +20,13 @@ export function MonitoringHeader({
   children: React.ReactNode;
 }) {
   return (
-    <DetailHeader
-      title="Monitoring"
-      subtitle="Live agent activity, health, and usage"
-      icon={
-        <div
-          className="status-badge"
-          role="status"
-          aria-label={`Monitoring connection ${connectionStatus}`}
-          title={`Monitoring connection ${connectionStatus}`}
-        >
-          <span className={`status-dot status-dot-${connectionStatus}`}></span>
-        </div>
-      }
-    >
+    <div className="monitoring-toolbar">
+      <span
+        className={`monitoring-connection monitoring-connection--${connectionStatus}`}
+        role="status"
+      >
+        Event stream: {connectionStatus}
+      </span>
       <div className="monitoring-summary">
         {/* audit 6-OPS-26: a number here is a claim about this Station.
             Until the read succeeds there is no number to make — `—` while it
@@ -73,6 +64,6 @@ export function MonitoringHeader({
         )}
       </div>
       <div className="monitoring-header-actions">{children}</div>
-    </DetailHeader>
+    </div>
   );
 }

@@ -148,7 +148,19 @@
 
     "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
 
-    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx"
+    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
+
+    "src-server/services/peers/peer-enrollment-service.ts",
+
+    "src-server/routes/environments/peer-credential-routes.ts",
+
+    "src-ui/src/views/connections-hub/ConnectStationDialog.tsx",
+
+    "src-ui/src/components/PendingPairingReconciler.tsx",
+
+    "src-server/services/peers/__tests__/peer-enrollment-routes.test.ts",
+
+    "src-ui/src/__tests__/ConnectStationDialog.test.tsx"
   ],
 
   "checks": [

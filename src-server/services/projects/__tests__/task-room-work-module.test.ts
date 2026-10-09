@@ -61,29 +61,109 @@ test('concurrent submissions through independent store instances start one execu
   ).toEqual({ kind: 'refused', reason: 'conflict' });
 });
 
-test('a lost execution acknowledgement remains indeterminate and is not reinvoked', async () => {
-  const path = await file();
-  const start = vi.fn(async () => {
-    throw new Error('response lost after execution started');
-  });
-  const module = new TaskRoomWorkModule(path);
-  expect(
-    await module.submit('task', 'alice', input, async () => scope, start),
-  ).toMatchObject({ kind: 'recorded', record: { state: 'indeterminate' } });
-  const replay = await new TaskRoomWorkModule(path).submit(
-    'task',
-    'alice',
-    input,
-    async () => scope,
-    start,
-  );
-  expect(replay).toMatchObject({
-    kind: 'recorded',
-    replayed: true,
-    record: { state: 'indeterminate' },
-  });
-  expect(start).toHaveBeenCalledOnce();
-});
+test.each([undefined, 'codex'])(
+  'a lost execution acknowledgement for binding %s remains indeterminate and is not reinvoked',
+  async (executionAgentId) => {
+    const model = executionAgentId
+      ? {
+          override: 'model-a',
+          options: {
+            reasoningEffort: 'high',
+            nested: { a: 1, b: 2 },
+            privateHint: 'not-for-storage',
+          },
+        }
+      : undefined;
+    const intent = {
+      ...input,
+      ...(executionAgentId
+        ? {
+            executionAgentId,
+            expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+          }
+        : {}),
+      ...(model ? { model } : {}),
+    };
+    const path = await file();
+    const start = vi.fn(async () => {
+      throw new Error('response lost after execution started');
+    });
+    const module = new TaskRoomWorkModule(path);
+    expect(
+      await module.submit('task', 'alice', intent, async () => scope, start),
+    ).toMatchObject({ kind: 'recorded', record: { state: 'indeterminate' } });
+    expect(await readFile(path, 'utf8')).not.toContain('not-for-storage');
+    const replay = await new TaskRoomWorkModule(path).submit(
+      'task',
+      'alice',
+      model
+        ? {
+            ...intent,
+            model: {
+              override: 'model-a',
+              options: {
+                privateHint: 'not-for-storage',
+                nested: { b: 2, a: 1 },
+                reasoningEffort: 'high',
+              },
+            },
+          }
+        : intent,
+      async () => scope,
+      start,
+    );
+    expect(replay).toMatchObject({
+      kind: 'recorded',
+      replayed: true,
+      record: {
+        state: 'indeterminate',
+        ...(executionAgentId ? { executionAgentId } : {}),
+      },
+    });
+    expect(start).toHaveBeenCalledOnce();
+    expect(
+      await new TaskRoomWorkModule(path).submit(
+        'task',
+        'alice',
+        {
+          ...intent,
+          executionAgentId: executionAgentId === 'codex' ? 'claude' : 'codex',
+        },
+        async () => scope,
+        start,
+      ),
+    ).toEqual({ kind: 'refused', reason: 'conflict' });
+    if (executionAgentId) {
+      expect(
+        await new TaskRoomWorkModule(path).submit(
+          'task',
+          'alice',
+          {
+            ...intent,
+            expectedDefinitionFingerprint: `sha256:${'b'.repeat(64)}`,
+          },
+          async () => scope,
+          start,
+        ),
+      ).toEqual({ kind: 'refused', reason: 'conflict' });
+    }
+    for (const changedModel of [
+      { override: 'model-b', options: model?.options },
+      { override: model?.override, options: { reasoningEffort: 'low' } },
+    ]) {
+      expect(
+        await new TaskRoomWorkModule(path).submit(
+          'task',
+          'alice',
+          { ...intent, model: changedModel },
+          async () => scope,
+          start,
+        ),
+      ).toEqual({ kind: 'refused', reason: 'conflict' });
+    }
+    expect(start).toHaveBeenCalledOnce();
+  },
+);
 
 test('permission loss after reservation prevents execution and cannot expose a replayed request', async () => {
   const path = await file();
