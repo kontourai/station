@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { StartComposer } from '../components/chat-start/StartComposer';
 
@@ -52,6 +52,8 @@ let identityError: unknown = Object.assign(
   { status: 404 },
 );
 let scopeStale = false;
+let overrideFixture = false;
+const overrideFingerprint = `sha256:${'a'.repeat(64)}`;
 
 // Per-invocation authority the launcher must freeze into every dispatch:
 // the mocked `useHostRequestAuthorityScope` above always reports Home
@@ -164,6 +166,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
                   name: input.environmentId ? 'Remote Codex' : 'Codex',
                   ready: true,
                   defaultModel: 'gpt-5.6-sol',
+                  executionDefault: true,
+                  executionReady: true,
                   models: [
                     {
                       id: 'gpt-5.6-sol',
@@ -182,6 +186,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
                   id: 'reviewer',
                   kind: 'agent',
                   name: 'Reviewer',
+                  ...(overrideFixture
+                    ? {
+                        defaultModel: 'reviewer-default',
+                        definitionFingerprint: overrideFingerprint,
+                      }
+                    : {}),
                   ready: true,
                   models: [],
                   capabilities: {
@@ -240,6 +250,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     // non-operator browser session receives.
     usePeerCredentialsQuery: () => ({
       data: peerCredentials,
+      refetch: vi.fn(),
       isSuccess: peerCredentials !== undefined,
       isError: peerCredentials === undefined,
     }),
@@ -253,6 +264,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
 });
 
 describe('DelegationLauncher', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     mutateAsync.mockReset();
     reset.mockReset();
@@ -279,6 +291,7 @@ describe('DelegationLauncher', () => {
       { status: 404 },
     );
     scopeStale = false;
+    overrideFixture = false;
     peerCredentials = undefined;
     mutateAsync.mockResolvedValue({
       taskId: 'task:1',
@@ -288,6 +301,40 @@ describe('DelegationLauncher', () => {
       target: { kind: 'agent', id: 'codex' },
       resumable: true,
     });
+  });
+
+  test('clearing an override model shows the execution binding default and sends inherited model intent', async () => {
+    overrideFixture = true;
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        currentAgentId="reviewer"
+        executionAgentId="codex"
+        expectedDefinitionFingerprint={overrideFingerprint}
+        initialEnvironmentId="current"
+        currentModel="explicit-model"
+        initialPrompt="Review this change"
+        routingExpanded
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Model' }), {
+      target: { value: '' },
+    });
+    expect(screen.getByText('Resolved model: GPT-5.6 Sol')).toBeTruthy();
+    expect(screen.queryByText(/reviewer-default/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    const target = mutateAsync.mock.calls[0][0].input.target;
+    expect(target.agent).toEqual({
+      kind: 'agent-execution-override',
+      agent: 'reviewer',
+      executionAgent: 'codex',
+      expectedDefinitionFingerprint: overrideFingerprint,
+    });
+    expect(target).not.toHaveProperty('model');
   });
 
   test('keeps the common path task-first and summarizes resolved routing', () => {
@@ -1733,5 +1780,92 @@ describe('DelegationLauncher', () => {
     // Explicit retry dispatches exactly once more — never automatically.
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
+  });
+  test('without randomUUID, connection setup returns to the same task draft and explicit Station without dispatching', async () => {
+    vi.stubGlobal('crypto', {
+      getRandomValues: crypto.getRandomValues.bind(crypto),
+    });
+    const { consumePendingConnectionsModal, CONNECTION_SETUP_RETURN_EVENT } =
+      await import('../lib/connectionModalEvents');
+    projectIdentity = singleRepoIdentity();
+    const resource = 'https://git.example.test/docs.git';
+    projectIdentity.identity.repos.push({
+      kind: 'git',
+      id: resource,
+      canonicalRemote: resource,
+      label: 'Docs',
+    });
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Original task"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Task'), {
+      target: { value: 'Keep my edited draft' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    fireEvent.change(screen.getByLabelText('Project resource'), {
+      target: { value: resource },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Connect a Station for this task' }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const request = consumePendingConnectionsModal();
+    expect(request).toEqual(
+      expect.objectContaining({
+        mode: 'connect-station',
+        peerOnly: true,
+        projectName: 'Station',
+      }),
+    );
+    expect(request?.setupRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    fireEvent(
+      window,
+      new CustomEvent(CONNECTION_SETUP_RETURN_EVENT, {
+        detail: { setupRequestId: 'another-task' },
+      }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent(
+      window,
+      new CustomEvent(CONNECTION_SETUP_RETURN_EVENT, {
+        detail: { setupRequestId: request?.setupRequestId },
+      }),
+    );
+    expect(screen.getByLabelText('Task')).toHaveProperty(
+      'value',
+      'Keep my edited draft',
+    );
+    expect(screen.getByLabelText('Station')).toHaveProperty(
+      'value',
+      'env-peer-b',
+    );
+    expect(screen.getByLabelText('Project resource')).toHaveProperty(
+      'value',
+      resource,
+    );
+    expect(mutateAsync).not.toHaveBeenCalled();
   });
 });

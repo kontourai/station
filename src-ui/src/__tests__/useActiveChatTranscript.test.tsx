@@ -7,6 +7,7 @@ import type { ChatSession } from '../types';
 const fetchCapability = vi.fn();
 const fetchWindow = vi.fn();
 const fetchConversationWindow = vi.fn();
+const invalidateCapability = vi.fn();
 // Models the SDK budget contract the production module owns: three automatic
 // recoveries per host/session, replenished only by an explicit reset. An
 // always-true mock here silently disables the cap the recovery tests assert.
@@ -50,6 +51,8 @@ vi.mock('@kontourai/station-sdk', async () => ({
   resetSessionEventWindowCapabilityRecovery: (...args: unknown[]) =>
     resetRecovery(...(args as [string, string])),
   resetSessionEventWindowCapabilityCache: vi.fn(),
+  invalidateSessionEventWindowCapabilityCache: (...args: unknown[]) =>
+    invalidateCapability(...args),
   SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS: 30_000,
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
 }));
@@ -1213,6 +1216,44 @@ describe('useActiveChatTranscript', () => {
     );
     expect(result.current.upgradeRequired).toBe(false);
     expect(fetchWindow).not.toHaveBeenCalled();
+  });
+
+  test('manual history Retry clears a cached handshake failure and loads the transcript', async () => {
+    let cachedFailure = true;
+    fetchCapability.mockImplementation(async () =>
+      cachedFailure ? undefined : true,
+    );
+    invalidateCapability.mockImplementation(() => {
+      cachedFailure = false;
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', {
+          turnId: 'turn-1',
+          prompt: 'Recovered chat',
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.error).toBeDefined());
+    expect(fetchWindow).not.toHaveBeenCalled();
+    act(() => {
+      result.current.reload();
+    });
+    await waitFor(() =>
+      expect(
+        result.current.messages.some(
+          (message) => message.content === 'Recovered chat',
+        ),
+      ).toBe(true),
+    );
+    expect(result.current.error).toBeUndefined();
+    invalidateCapability.mockReset();
   });
 
   test('reports a responding host without the capability as requiring an upgrade', async () => {

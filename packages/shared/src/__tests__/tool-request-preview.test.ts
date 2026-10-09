@@ -928,12 +928,12 @@ describe('toolRequestPreview', () => {
         toolRequestPreview('Bash', {
           command: 'NAME=bob\nPASSWORD=hunter2',
         }),
-      ).toBe('NAME=bob PASSWORD=[REDACTED]');
+      ).toBe('NAME=bob ⏎ PASSWORD=[REDACTED]');
       expect(
         toolRequestPreview('Bash', {
           command: 'echo one\n--password=hunter2',
         }),
-      ).toBe('echo one --password=[REDACTED]');
+      ).toBe('echo one ⏎ --password=[REDACTED]');
     });
 
     test('does not cut a length-anchored token in half at the pre-redaction slice', () => {
@@ -945,7 +945,8 @@ describe('toolRequestPreview', () => {
       const command = `password=${'j'.repeat(4052)};ghp_${'A'.repeat(40)} rest`;
       const preview = toolRequestPreview('Bash', { command });
 
-      expect(preview).toBe('password=[REDACTED];');
+      // #3382: a value cut at the coarse slice says so with "…".
+      expect(preview).toBe('password=[REDACTED];…');
       expect(preview).not.toContain('ghp_');
     });
 
@@ -973,12 +974,14 @@ describe('toolRequestPreview', () => {
 
     test('collapses newlines and control characters into one line', () => {
       // A multi-line value must not be able to push a toast's buttons out of
-      // view, and a second command below a newline must stay readable.
+      // view, and a second command below a newline must stay readable — as a
+      // separate line (#3382): joined by a space, it read as `echo`'s
+      // arguments.
       expect(
         toolRequestPreview('Bash', {
           command: 'echo one\nrm -rf /tmp/x\r\n\tsecond',
         }),
-      ).toBe('echo one rm -rf /tmp/x second');
+      ).toBe('echo one ⏎ rm -rf /tmp/x ⏎ second');
       // An ANSI escape is inert in a React text node but renders as a gap
       // that hides what follows it.
       expect(
@@ -1204,5 +1207,221 @@ describe('the server-wide Station browser grant', () => {
       }),
     ).toBe('none');
     expect(toolRequestServerGrantFromPayload(undefined)).toBe('none');
+  });
+});
+
+// #3382: the preview is shown next to Allow and Deny (the toast) and in the
+// durable inbox row, so it gets the transcript label's display form.
+// Escapes are built from code points so the source stays plain ASCII.
+describe('toolRequestPreview — display form (#3382)', () => {
+  const RLO = String.fromCodePoint(0x202e);
+  const PDF = String.fromCodePoint(0x202c);
+  const LRI = String.fromCodePoint(0x2066);
+  const RLM = String.fromCodePoint(0x200f);
+  const NEL = String.fromCodePoint(0x85);
+  const BEL = String.fromCodePoint(0x07);
+  const LINE_SEPARATOR = String.fromCodePoint(0x2028);
+  const PARAGRAPH_SEPARATOR = String.fromCodePoint(0x2029);
+  const RETURN_SYMBOL = String.fromCodePoint(0x23ce);
+  const codePoints = (value: string) => Array.from(value).length;
+
+  test('removes bidi overrides, isolates and marks', () => {
+    expect(
+      toolRequestPreview('Bash', {
+        command: `cat ${RLO}gnp.exe${PDF} ${LRI}x${RLM}`,
+      }),
+    ).toBe('cat gnp.exe x');
+  });
+
+  test('turns C1 and BEL controls into spaces, never deleting them', () => {
+    expect(
+      toolRequestPreview('Bash', { command: `rm${NEL}-rf${BEL}/tmp/x` }),
+    ).toBe('rm -rf /tmp/x');
+  });
+
+  test('keeps every line apart, whatever splits them', () => {
+    for (const command of [
+      'echo a\nrm -rf /',
+      'echo a\rrm -rf /',
+      'echo a\r\nrm -rf /',
+      `echo a${LINE_SEPARATOR}rm -rf /`,
+      `echo a${PARAGRAPH_SEPARATOR}rm -rf /`,
+    ]) {
+      expect(toolRequestPreview('Bash', { command })).toBe(
+        `echo a ${RETURN_SYMBOL} rm -rf /`,
+      );
+    }
+  });
+
+  test('a cut that hides whole lines says how many, inside the bound', () => {
+    const preview = toolRequestPreview('Bash', {
+      command: `echo ${'x'.repeat(300)}\nrm -rf /\nls`,
+    })!;
+    expect(preview.startsWith('echo xxx')).toBe(true);
+    expect(preview.endsWith('… (+2 lines)')).toBe(true);
+    expect(preview).not.toContain('rm -rf');
+    expect(codePoints(preview)).toBeLessThanOrEqual(
+      MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+    );
+    // A line that starts inside the cut is shown, so it is not counted.
+    const second = toolRequestPreview('Bash', {
+      command: `echo a\nrm ${'y'.repeat(300)}\nls`,
+    })!;
+    expect(second.startsWith(`echo a ${RETURN_SYMBOL} rm yyy`)).toBe(true);
+    expect(second.endsWith('… (+1 line)')).toBe(true);
+  });
+
+  test('cuts by code point, so an emoji at the cut is never split', () => {
+    const preview = toolRequestPreview('Bash', {
+      command: `echo ${'\u{1F600}'.repeat(200)}`,
+    })!;
+    expect(codePoints(preview)).toBe(MAX_TOOL_REQUEST_PREVIEW_LENGTH);
+    for (const char of preview) {
+      const code = char.codePointAt(0)!;
+      expect(code >= 0xd800 && code <= 0xdfff).toBe(false);
+    }
+  });
+
+  test('the tool name in "wants to use" and in the grant button is sanitised too', () => {
+    expect(toolRequestDisplayName(`Ba${RLO}sh${BEL}`)).toBe('Bash');
+    expect(toolRequestGrantLabel(`Ba${RLO}sh${NEL}`, 'tool')).toBe(
+      'Allow Bash for this session',
+    );
+  });
+});
+
+describe('revealHiddenCharacters (#3382)', () => {
+  test('tokens every hidden character and leaves LF, tab and text as written', async () => {
+    const { revealHiddenCharactersText, hasHiddenCharacters } = await import(
+      '../display-reveal.js'
+    );
+    const open = String.fromCodePoint(0xab);
+    const close = String.fromCodePoint(0xbb);
+    const hidden = [
+      0x202e, 0x2066, 0x200f, 0x061c, 0x200b, 0x2060, 0xfeff, 0x85, 0x07, 0x0d,
+    ];
+    for (const codePoint of hidden) {
+      const value = `a${String.fromCodePoint(codePoint)}b`;
+      const hex = codePoint.toString(16).toUpperCase().padStart(4, '0');
+      expect(revealHiddenCharactersText(value)).toBe(
+        `a${open}U+${hex}${close}b`,
+      );
+      expect(hasHiddenCharacters(value)).toBe(true);
+    }
+    expect(revealHiddenCharactersText('a\n\tb  c')).toBe('a\n\tb  c');
+    expect(hasHiddenCharacters('a\n\tb  c')).toBe(false);
+  });
+});
+
+// #3382 review F1/F10: padding cannot push a command past the coarse cut,
+// and a cut is always visible.
+describe('toolRequestPreview — padding and cuts (#3382)', () => {
+  const RLO = String.fromCodePoint(0x202e);
+  const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+  const RETURN_SYMBOL = String.fromCodePoint(0x23ce);
+  const ELLIPSIS = String.fromCodePoint(0x2026);
+  const codePoints = (value: string) => Array.from(value).length;
+
+  test('5000 spaces between two commands do not hide the second', () => {
+    expect(
+      toolRequestPreview('Bash', {
+        command: `echo a${' '.repeat(5000)}; rm -rf /`,
+      }),
+    ).toBe('echo a ; rm -rf /');
+  });
+
+  test('5000 RLOs or zero-width spaces do not hide it either', () => {
+    expect(
+      toolRequestPreview('Bash', {
+        command: `echo a${RLO.repeat(5000)}; rm -rf /`,
+      }),
+    ).toBe('echo a; rm -rf /');
+    expect(
+      toolRequestPreview('Bash', {
+        command: `echo a${ZERO_WIDTH_SPACE.repeat(5000)}; rm -rf /`,
+      }),
+    ).toBe('echo a; rm -rf /');
+  });
+
+  test('5000 blank lines collapse to one line break', () => {
+    expect(
+      toolRequestPreview('Bash', {
+        command: `echo a${'\n'.repeat(5000)}rm -rf /`,
+      }),
+    ).toBe(`echo a ${RETURN_SYMBOL} rm -rf /`);
+  });
+
+  test('a cut inside line 1 ends in "…" and counts the lines after it', () => {
+    const preview = toolRequestPreview('Bash', {
+      command: `echo ${'x'.repeat(5000)}\nrm -rf /`,
+    })!;
+    expect(preview.endsWith(`${ELLIPSIS} (+1 line)`)).toBe(true);
+    expect(preview).not.toContain('rm -rf');
+    expect(codePoints(preview)).toBeLessThanOrEqual(
+      MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+    );
+  });
+
+  test('a value the coarse cut shortens ends in "…" even when what is left fits', () => {
+    // Redaction shortens the kept prefix to well under the bound.
+    const preview = toolRequestPreview('Bash', {
+      command: `password=${'j'.repeat(5000)} && rm -rf /`,
+    })!;
+    expect(preview.endsWith(ELLIPSIS)).toBe(true);
+  });
+
+  test('a line whose first character falls exactly at the cut is counted as hidden', () => {
+    // 145 + " ⏎ " puts BBBB's first character at code point 148, the first
+    // one the 160 bound less " (+2 lines)" and "…" cannot show.
+    const preview = toolRequestPreview('Bash', {
+      command: `${'a'.repeat(145)}\nBBBB\n${'c'.repeat(50)}`,
+    })!;
+    expect(preview.endsWith('(+2 lines)')).toBe(true);
+    expect(preview).not.toContain('B');
+  });
+});
+
+describe('display form strips more invisible characters (#3382)', () => {
+  test('zero-width space, word joiner, soft hyphen, BOM and tag characters are removed from a preview', async () => {
+    const invisible = [0x200b, 0x2060, 0xad, 0xfeff, 0x2062, 0xe0061].map(
+      (codePoint) => String.fromCodePoint(codePoint),
+    );
+    for (const char of invisible) {
+      expect(toolRequestPreview('Bash', { command: `r${char}m -rf /` })).toBe(
+        'rm -rf /',
+      );
+    }
+  });
+
+  test('a ZWJ between two emoji is left alone; one between letters is revealed', async () => {
+    const { revealHiddenCharactersText } = await import('../display-reveal.js');
+    const zwj = String.fromCodePoint(0x200d);
+    const emoji = String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb);
+    expect(revealHiddenCharactersText(emoji)).toBe(emoji);
+    expect(revealHiddenCharactersText(`a${zwj}b`)).toBe(
+      `a${String.fromCodePoint(0xab)}U+200D${String.fromCodePoint(0xbb)}b`,
+    );
+  });
+});
+
+describe('blank fillers cannot pad a preview (#3382)', () => {
+  test('each filler is removed, so the tail stays in view', () => {
+    const fillers = [
+      0x3164, 0x2800, 0xfe00, 0xe0100, 0x034f, 0x180b, 0x115f, 0x1160, 0xffa0,
+    ].map((codePoint) => String.fromCodePoint(codePoint));
+    for (const filler of fillers) {
+      expect(
+        toolRequestPreview('Bash', {
+          command: `echo a${filler.repeat(5000)}; rm -rf /`,
+        }),
+      ).toBe('echo a; rm -rf /');
+    }
+  });
+
+  test('VS16 after an emoji is kept in a preview', () => {
+    const heart = String.fromCodePoint(0x2764, 0xfe0f);
+    expect(toolRequestPreview('Bash', { command: `echo ${heart}` })).toBe(
+      `echo ${heart}`,
+    );
   });
 });

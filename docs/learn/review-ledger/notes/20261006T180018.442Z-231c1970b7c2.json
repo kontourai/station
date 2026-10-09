@@ -1,0 +1,7 @@
+{
+  "revision": "bcf8d789f97c29af5a21c5f20f875a990ffe11a6",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"project-resource-resolver.ts only made RUN_LOCATION_TIMEOUT_MS module-private (it had no outside caller); its value and behaviour are unchanged. This doc's claims about project resolution and run locations still hold; no prose change.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

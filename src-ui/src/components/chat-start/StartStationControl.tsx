@@ -20,6 +20,10 @@ export function StartStationControl({
   defaultEnvironment,
   agentSlug,
   model,
+  executionAgentId,
+  expectedDefinitionFingerprint,
+  environmentId,
+  providerOptions,
   disabled,
   onPromptChange,
   onStarted,
@@ -30,6 +34,10 @@ export function StartStationControl({
   defaultEnvironment?: EnvironmentRef;
   agentSlug?: string;
   model?: string;
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
+  environmentId?: string;
+  providerOptions?: Record<string, unknown>;
   disabled?: boolean;
   onPromptChange: (prompt: string) => void;
   onStarted: (
@@ -41,9 +49,11 @@ export function StartStationControl({
   const scope = useHostRequestAuthorityScope();
   const device = useDevicePresentation();
   const destination =
-    defaultEnvironment?.kind === 'saved'
-      ? 'Project default'
-      : (device?.hostName ?? 'This Station');
+    environmentId && environmentId !== 'current'
+      ? 'Selected Station'
+      : !environmentId && defaultEnvironment?.kind === 'saved'
+        ? 'Project default'
+        : (device?.hostName ?? 'This Station');
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const close = () => {
@@ -75,6 +85,10 @@ export function StartStationControl({
             projectName={projectName}
             currentAgentId={agentSlug}
             currentModel={model}
+            executionAgentId={executionAgentId}
+            expectedDefinitionFingerprint={expectedDefinitionFingerprint}
+            initialEnvironmentId={environmentId}
+            providerOptions={providerOptions}
             initialPrompt={prompt}
             onDraftChange={onPromptChange}
             title="Run on a Station"

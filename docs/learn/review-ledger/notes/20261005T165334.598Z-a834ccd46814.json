@@ -1,0 +1,17 @@
+{
+  "revision": "6e6ec17030e0ca5158625be5751e6946d08c2f90",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3382 review round: re-read the preview and display-form bullets against tool-request-preview.ts boundedPreviewLine (compactDisplaySource before the coarse cut; boundedJoinedLines adds the ellipsis on any cut and the line marker), codex-adapter-events.ts commandApprovalTitle (lines joined, marker), pendingRequestRows.ts commandOnlyArgs (Codex plain command approvals only), MutableSessionDetail pending title, attention-projection storedApprovalPresentation and request-presentation presentAskRequest (read-time display form), the four OS notification channels via os-notification-text.ts, and ToolCallDisplay (dir=ltr, bdi per RTL word, auto-open on hidden characters, wider reveal set). Rewrote both bullets to match. Each claim has a fault-injected test.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/__tests__/tool-request-preview.test.ts","packages/shared/src/display-text.ts","packages/shared/src/tool-request-preview.ts","src-server/services/orchestration/request-presentation.ts","src-ui/src/components/chat/ToolCallDisplay.tsx","src-ui/src/hooks/orchestration/pendingRequestRows.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#3382 review round: display-text gained compactDisplaySource, boundedJoinedLines, boundedDisplayText and displayMultilineText and a wider invisible/hidden set; the subpath bullet's summary (display form, line split, code-point truncation, revealHiddenCharacters for raw views) still describes it accurately. No prose change.","inputs":["docs/reference/shared.md","packages/shared/src/display-text.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"#3382 review round: apns-alert-channel composeApnsAlertPlaintext and fcm-alert-channel deliver now pass title and body through os-notification-text (display form) before fitting and sealing; added that sentence. Plaintext fields, budgets, hide-content substitution and collapse-key claims unchanged.","inputs":["docs/design/notification-delivery.md","src-server/services/notifications/delivery/apns-alert-channel.ts","src-server/services/notifications/delivery/fcm-alert-channel.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#3382 review round: composeWebPushPayload now sends title and body in display form (os-notification-text); added a sentence. attention-projection change (stored approval rows in display form at read time) does not touch the routing, TTL or hide-content claims here.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/push-payload-composer.ts","src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"#3382 review round: attention-projection now shows stored approval notifications in display form at read time; this guide's approval-guardian and autoApprove claims do not describe inbox text rendering. No prose change.","inputs":["docs/guides/agents.md","src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3382 review round: attention-projection's stored-approval and input-request text is now display form at read time; the API reference's request, escalation and delegation claims (including the 512-code-point title cut on the delegation record) are unaffected. No prose change.","inputs":["docs/reference/session-api.md","src-server/services/projects/attention-projection.ts"]}
+  ]
+}

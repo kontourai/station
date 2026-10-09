@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -54,8 +54,14 @@ describe('bounded synchronous capture (#2787)', () => {
       code: 'ENOBUFS',
       maxBuffer: 67_108_864,
     });
+    const nodeName = basename(process.execPath).replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&',
+    );
     expect(result.error?.message).toMatch(
-      /^node -e .* wrote more than 67108864 bytes to stdout or stderr/,
+      new RegExp(
+        `^${nodeName} -e .* wrote more than 67108864 bytes to stdout or stderr`,
+      ),
     );
     expect(result.error?.message).toContain('Raise maxBuffer');
     // The truncated capture must not be mistakable for a complete one.

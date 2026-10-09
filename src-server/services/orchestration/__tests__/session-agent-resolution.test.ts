@@ -45,6 +45,52 @@ function baseInput(
 }
 
 describe('createSessionAgentResolver', () => {
+  test.each(['claude', 'station-agent'])(
+    'verified %s execution rechecks the freshly loaded authored definition before delivering it',
+    async (provider) => {
+      let prompt = 'Keep my profile';
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => agentSpec({ prompt }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+      const input = baseInput({
+        provider,
+        metadata: {
+          agentSlug: 'writer',
+          executionAgentId: provider === 'station-agent' ? 'station' : 'claude',
+          expectedDefinitionFingerprint:
+            'sha256:07e2f1010053306310f0e32b8a29e56261d824ef38ed1242506656d5a531ebbd',
+        },
+      });
+      const result = await resolver(input);
+      if (provider === 'station-agent')
+        expect(result.metadata?.agentSlug).toBe('writer');
+      else expect(result.agent?.systemPrompt).toBe('Keep my profile');
+      prompt = 'Changed after catalog discovery';
+      await expect(resolver(input)).rejects.toThrow(
+        'definition changed before execution',
+      );
+    },
+  );
+
+  test('an engine override refuses a missing authored skill instead of starting a reduced profile', async () => {
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({ prompt: 'Keep my profile', skills: ['required-skill'] }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    await expect(
+      resolver(
+        baseInput({
+          provider: 'claude',
+          metadata: { agentSlug: 'writer', executionAgentId: 'claude' },
+        }),
+      ),
+    ).rejects.toThrow('skills:required-skill (not-found)');
+  });
+
   test.each([
     {
       tools: { mcpServers: [], mcpMode: 'add' as const, available: [] },

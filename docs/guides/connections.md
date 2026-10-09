@@ -232,6 +232,48 @@ Project access administration still requires Project IAM. See the
 
 ## Saved Station addresses
 
+Choose **Manage Stations**, then **Connect a Station**. Enter its address, a pairing code,
+or scan a QR code. Station checks compatibility and displays the destination's
+reported identity. That public response is not a signing-key trust decision.
+In a browser, the destination must permit the current page's exact origin
+through its existing `--allowed-origin` startup setting. HTTPS pages may also
+block an HTTP destination. If identification fails, no access request has been
+submitted. Use the native app or open the destination directly for Device
+pairing when the browser cannot read its response. The current receiver also
+checks browser pairing-request provenance separately: Chromium requests from
+another page origin are refused even when discovery is allowed. That refusal
+does not create a pending request. Use the native app to request Device access,
+or open the receiver's own page; peer setup still belongs to the sending
+Station's trusted session.
+
+Choose either or both access requests:
+
+- **Use the destination from this device** saves this device's approved access.
+- **Let the current Station send work to the destination** requests a separate,
+  server-held delegation grant.
+
+Each request needs its own receiver approval. Peer enrollment also requires an
+operator-authorized session on the controlling Station; ordinary paired-device
+access cannot manage peer credentials. If that authority is unavailable, the
+dialog explains the limitation instead of asking for an operator key. Existing
+trusted approval surfaces remain the remedy; this flow does not implement
+remote operator elevation.
+
+Device access saves without replacing an existing selected Station. From a
+Project's Delegate dialog, setup preserves the draft and resource selection and
+returns there without submitting work. Peer approval and completion do not grant
+Project execution: the receiver must offer the exact resource, and its Agent
+must be available. Foreground peer threads remain unsupported in the Project
+default picker.
+
+Once the sending Station confirms a peer request, **Check approval** completes
+that existing enrollment. Before confirmation, **Retry this same request** keeps
+its retained identity and destination. Each state offers cancellation separately;
+retry does not create a replacement automatically. If an exchange outcome is unknown, inspect or
+revoke the receiver's grant before starting again. Cancelling a local pending
+request does not revoke an already approved receiver grant. A saved peer
+credential establishes permission, not observed reachability or Project readiness.
+
 Tap the connection dot on a phone, or the connection name on desktop, to
 choose a Station. A checkmark identifies the current Station, whose status is
 live. The chooser does not probe inactive Stations; they say **Not checked**
@@ -759,6 +801,75 @@ unknown. If a proxied connection fails with a client-version error, update
 the proxy first; Station cannot rewrite what the proxy sends upstream, and
 unproxied connections are unaffected.
 
+### Give a credential profile its own routing
+
+A connection's `env` applies to every session of that Engine. A **credential
+profile** (a separate, Station-managed engine home per account) can also carry
+its own non-secret env overlay, so one account can run through a proxy while
+another talks to the provider directly. Set it with
+`station connections profile-env <engine> <profile-ref> --data=<json>` or
+`PUT /api/connections/agent/<engine>/credential-recovery/profiles/<profile-ref>/env`;
+the body replaces the whole overlay and `{"env":{}}` clears it. For example,
+to route a Claude Code profile through a local proxy and hide an inherited
+API key:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8318",
+    "ANTHROPIC_API_KEY": ""
+  }
+}
+```
+
+The overlay is meant for non-secret values, and Station refuses values that
+look like credentials. This is a heuristic, not a secret detector: a non-empty
+value is refused when its name ends in `KEY(S)`, `TOKEN(S)`, `SECRET(S)`,
+`PASSWORD(S)`, `PASSWD`, `CREDENTIAL(S)`, `AUTH`, `HEADER(S)` or `_PAT` (any
+case), or when the value carries URL userinfo (`http://user:pass@host`), an
+authorization or API-key header, or a `Bearer`/`Basic` credential. An empty
+string is allowed under any name so the profile can mask an inherited
+credential. `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `TMPDIR`, and Station-internal
+names are refused too. The whole overlay is refused rather than trimmed when
+any entry breaks these rules. A proxy token therefore cannot be set on a
+profile today: keep it in the profile's own engine home (its sign-in), or in
+the connection `env`, which applies to every profile.
+
+A session running under a profile sees, from lowest to highest precedence: the
+server's environment, the connection `env`, the profile overlay, the profile's
+own config-home key, then Station's engine temp directory
+([resolver](../../src-server/providers/app-home/credential-profile-env.ts)). The profile is the
+one an Agent pins, the one credential recovery is trying, or else the
+connection's active profile. The overlay reaches Claude Code and Codex session
+starts and Codex quota reads for that profile. It is not applied to model
+discovery, adopted sessions and source-home resumes, login readiness checks,
+login/enrolment into the profile, or the per-profile usage read
+(`GET /api/connections/agent/<engine>/credential-usage`), which reads the
+profile home directly.
+
+If a saved overlay is invalid (for example after hand-editing
+`config/app.json`), or the connection's active profile cannot otherwise be
+prepared, the session start fails instead of running on the global engine
+configuration. Station does not keep the invalid values: the next profile
+change (or a settings save or import that includes the profiles) rewrites
+the overlay as an `envInvalid` marker that holds only the offending variable
+names, and `GET /config/app` never returns them. Until then a hand-edited
+value stays in `config/app.json`. The
+marker keeps the profile refused, so other profile changes cannot quietly
+un-route it. `station connections profiles` shows such a profile with
+`envInvalid` and the offending variable names, and the server log names them
+too. Replace the overlay with `profile-env` to repair
+it. Automatic credential recovery only switches to an enrolled
+profile whose overlay is identical to the active profile's; when every
+enrolled candidate differs, it refuses with `environment_mismatch`. Choosing
+a profile by hand, or pinning one on an Agent, is not restricted this way.
+
+The overlay is not secret. It is visible to the engine and to every tool it
+runs (an agent can read these variables, for example from a shell), and to
+anyone who can read this Station's connection settings, not only to holders
+of the `access:manage` scope that the dedicated route requires. Do not put
+anything there that should stay private.
+
 ---
 
 ## OpenAI-compatible endpoints
@@ -826,7 +937,10 @@ selection.
 Favorites, recent choices, hidden models, and model order are saved on this
 device. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker
-restores both the default connection and model.
+restores both the default connection and model for a model-only choice.
+An engine override instead offers **Use Agent defaults**; in an existing
+conversation this opens an explicit handoff back to the authored execution
+binding and model. It does not edit the saved Agent.
 
 ---
 
@@ -836,7 +950,9 @@ Connections has one clear home for each relationship:
 
 - **Computers** combines saved Station and SSH relationships. Its rows distinguish
   authorization from observed reachability. **Add computer** asks whether to
-  pair a device, reach another Station, or run work over SSH.
+  invite a device, connect another Station, or run work over SSH. Connecting a
+  Station opens the same destination and independent-access journey as
+  **Connect a Station** in the Station manager.
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
   or tool availability.

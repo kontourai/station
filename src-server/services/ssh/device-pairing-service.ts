@@ -1168,7 +1168,7 @@ export class DevicePairingService {
    *   offer emits the byte-identical string it always did and never picks up
    *   a newly-added scope such as `inference:invoke`.
    * @param input.kind archive#1123: `'device'` (default) or
-   *   `'delegation'` — a host-side label only, never encoded into the
+   *   `'delegation'` — a receiver-owned category disclosed in the
    *   wire {@link DevicePairingOffer} the joiner scans/types. Carried
    *   through to the exchanged {@link PairedDevice.kind} so a delegation
    *   grant is visibly distinct from an ordinary device in the same list.
@@ -1293,6 +1293,7 @@ export class DevicePairingService {
         provenance,
       ),
       scope: offer.scope,
+      kind: offer.kind,
       createdAt: this.#now(),
       expiresAt: offer.expiresAt,
       ...provenance,
@@ -1316,6 +1317,7 @@ export class DevicePairingService {
       deviceName: string;
       clientInstanceId?: string;
       scope?: string;
+      kind?: PairedDeviceKind;
       requesterPosition: PairingRequesterPosition;
       accountCandidate?: DeviceAccountBindingCandidate;
       accountCandidateSessionId?: string;
@@ -1325,6 +1327,7 @@ export class DevicePairingService {
     const offer = this.createOffer({
       endpoint: input.endpoint,
       scope: input.scope,
+      kind: input.kind,
     });
     try {
       const provenance = pairingProvenance({
@@ -1344,6 +1347,7 @@ export class DevicePairingService {
       });
       return {
         environmentId: offer.environmentId,
+        kind: input.kind ?? 'device',
         offerId: offer.offerId,
         proof: offer.challenge,
         requestId: request.requestId,
@@ -3154,12 +3158,9 @@ export class DevicePairingService {
   }
 
   #publicOffer(offer: PairingOfferState): DevicePairingOffer {
-    // `kind` is a host-side label — never part of the wire DevicePairingOffer
-    // a joiner scans/types (archive#1123).
     const {
       status: _status,
       request: _request,
-      kind: _kind,
       clientInstanceId: _clientInstanceId,
       ...safe
     } = offer;
