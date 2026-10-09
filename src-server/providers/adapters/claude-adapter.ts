@@ -855,10 +855,11 @@ export interface ClaudeAdapterOptions {
   /**
    * App-home profile env (archive#896, agent-engine-unification.md §6.1's overlay
    * model, channel 2) — `undefined` when the claude connection has
-   * not opted in (`config.useAppHome`) or on any resolution failure; the
-   * caller degrades to `undefined` rather than throwing. Applied at
-   * `startSession` only — see `adoptSession`'s doc comment for why
-   * adoption deliberately never applies it.
+   * not opted in (`config.useAppHome`). For a selected credential profile it
+   * is the profile's env overlay under its `CLAUDE_CONFIG_DIR` (#2966), and a
+   * failure throws `CredentialProfileEnvironmentError`, which
+   * `resolveAppHomeEnv` never degrades. Applied at `startSession` only — see
+   * `adoptSession`'s doc comment for why adoption deliberately never applies it.
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,

@@ -35,7 +35,14 @@ describe('tauri context', () => {
         '--root',
         contextRoot,
       ],
-      { encoding: 'utf8', timeout: 30_000, windowsHide: true, env },
+      {
+        encoding: 'utf8',
+        // Above the version probes' 30s bound so a slow-but-healthy probe
+        // never turns into a harness timeout of the whole report.
+        timeout: 60_000,
+        windowsHide: true,
+        env,
+      },
     );
     expect(result.error, result.stderr).toBeUndefined();
     expect(result.status).toBe(0);

@@ -31,6 +31,8 @@ import {
   CredentialProfileEnvironmentError,
   usageCredentialAccountKey,
 } from '../app-home/app-home-profiles.js';
+import { createCredentialProfileAppHomeEnvResolver } from '../app-home/credential-profile-env.js';
+import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
@@ -5890,6 +5892,102 @@ describe('CodexAdapter', () => {
       expect(processFactory).toHaveBeenCalledWith({
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         CODEX_HOME: '/profiles/a',
+      });
+    });
+
+    describe('#2966: credential profile env overlay', () => {
+      const makeTempDir = trackTempDirs();
+      const connectionEnv = async () => ({
+        OPENAI_BASE_URL: 'http://connection.example.internal',
+        CODEX_HOME: '/Users/brian/.codex_vibe',
+        CONNECTION_ONLY: 'kept',
+      });
+      const resolverFor = (homeDir: string, env: Record<string, string>) =>
+        createCredentialProfileAppHomeEnvResolver({
+          engine: 'codex',
+          homeDir,
+          loadConnectionSettings: async () => ({
+            credentialRecovery: {
+              profiles: [{ ref: 'proxy', env }],
+              activeProfileRef: 'proxy',
+            },
+          }),
+        });
+
+      test('startSession hands the process factory the overlay over the connection env, under the profile CODEX_HOME', async () => {
+        const homeDir = makeTempDir('station-codex-profile-env-');
+        processHandle = new FakeCodexProcess();
+        const processFactory = vi.fn(() => processHandle!);
+        const adapter = new CodexAdapter({
+          processFactory,
+          getAppHomeEnv: resolverFor(homeDir, {
+            OPENAI_BASE_URL: 'http://127.0.0.1:9000',
+            OPENAI_API_KEY: '',
+          }),
+          getConnectionEnv: connectionEnv,
+        } as any);
+
+        const startSessionPromise = adapter.startSession({
+          provider: 'codex',
+          threadId: 'thread-profile-overlay',
+          cwd: '/tmp/project',
+          modelId: 'gpt-5-codex',
+        });
+        // The real resolver creates the profile home before the spawn.
+        await vi.waitFor(() => expect(processFactory).toHaveBeenCalled());
+        await flushIo();
+        writeServerMessage(adapter, 'thread-profile-overlay', {
+          id: '1',
+          result: { userAgent: 'test' },
+        });
+        await flushIo();
+        writeServerMessage(adapter, 'thread-profile-overlay', {
+          id: '2',
+          result: {
+            thread: { id: 'codex-thread-profile-overlay' },
+            model: 'gpt-5-codex',
+          },
+        });
+        await withTimeout(startSessionPromise, 'startSession');
+
+        expect(processFactory).toHaveBeenCalledWith(
+          {
+            OPENAI_BASE_URL: 'http://127.0.0.1:9000',
+            OPENAI_API_KEY: '',
+            CONNECTION_ONLY: 'kept',
+            CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy', homeDir),
+          },
+          undefined,
+        );
+        await adapter.stopAll();
+      });
+
+      test('an invalid overlay on the active profile rejects startSession and the quota read without a ref, spawning nothing', async () => {
+        const homeDir = makeTempDir('station-codex-profile-env-');
+        // A spawn here is the defect: fail fast rather than await a handshake.
+        const processFactory = vi.fn((): FakeCodexProcess => {
+          throw new Error('spawned despite an invalid profile overlay');
+        });
+        const adapter = new CodexAdapter({
+          processFactory,
+          getAppHomeEnv: resolverFor(homeDir, {
+            OPENAI_API_KEY: 'canary-secret',
+          }),
+          getConnectionEnv: connectionEnv,
+        } as any);
+
+        await expect(
+          adapter.startSession({
+            provider: 'codex',
+            threadId: 'thread-profile-overlay-invalid',
+            cwd: '/tmp/project',
+            modelId: 'gpt-5-codex',
+          }),
+        ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+        await expect(
+          adapter.readQuotaSnapshot({ connectionId: 'codex' }),
+        ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+        expect(processFactory).not.toHaveBeenCalled();
       });
     });
   });

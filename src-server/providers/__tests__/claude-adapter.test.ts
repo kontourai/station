@@ -136,6 +136,8 @@ import {
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
 import { claudeRequestDisplayText } from '../adapters/claude-adapter-events.js';
+import { createCredentialProfileAppHomeEnvResolver } from '../app-home/credential-profile-env.js';
+import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import {
   type ClaudeCanUseToolRequest,
   claudeCanUseToolFrame,
@@ -9473,6 +9475,95 @@ echo '{"loggedIn":true}'
         vi.unstubAllEnvs();
         rmSync(home, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('#2966: credential profile env overlay at the SDK spawn seam', () => {
+    const makeTempDir = trackTempDirs();
+    const connectionEnv = async () => ({
+      ANTHROPIC_BASE_URL: 'http://connection.example.internal',
+      CLAUDE_CONFIG_DIR: '/user/chosen/home',
+      CONNECTION_ONLY: 'kept',
+    });
+
+    test('the real resolver layers the profile overlay over the connection env, under the profile home key and TMPDIR', async () => {
+      const homeDir = makeTempDir('station-claude-profile-env-');
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
+          engine: 'claude',
+          homeDir,
+          loadConnectionSettings: async () => ({
+            credentialRecovery: {
+              profiles: [
+                {
+                  ref: 'proxy',
+                  env: {
+                    ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+                    ANTHROPIC_API_KEY: '',
+                  },
+                },
+              ],
+              activeProfileRef: 'proxy',
+            },
+          }),
+        }),
+        getConnectionEnv: connectionEnv,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-profile-overlay',
+        cwd: '/workspace/project',
+      });
+
+      const env = mockQuery.mock.calls.at(-1)?.[0].options.env;
+      expect(env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:8318');
+      expect(env.ANTHROPIC_API_KEY).toBe('');
+      expect(env.CONNECTION_ONLY).toBe('kept');
+      expect(env.CLAUDE_CONFIG_DIR).toBe(
+        credentialProfileAppHomeDir('claude', 'proxy', homeDir),
+      );
+      expect(env.TMPDIR).toBe(engineSpawnTmpDirPath());
+      await iterator.next();
+      await iterator.next();
+    });
+
+    test("an invalid overlay on the connection's active profile (no explicit ref) fails the start instead of running on global credentials", async () => {
+      const homeDir = makeTempDir('station-claude-profile-env-');
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const warn = vi.fn();
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
+          engine: 'claude',
+          homeDir,
+          loadConnectionSettings: async () => ({
+            credentialRecovery: {
+              profiles: [
+                {
+                  ref: 'proxy',
+                  env: { ANTHROPIC_AUTH_TOKEN: 'canary-secret' },
+                },
+              ],
+              activeProfileRef: 'proxy',
+            },
+          }),
+        }),
+        getConnectionEnv: connectionEnv,
+        logger: { warn },
+      });
+      mockQuery.mockClear();
+
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-profile-overlay-invalid',
+          cwd: '/workspace/project',
+        }),
+      ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+      expect(mockQuery).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
     });
   });
 
