@@ -110,7 +110,14 @@ export function raiseRequestOpenedToast(
   // argument bag, handled by `toolRequestPreviewFromPayload`'s fallback.
   const { toolName: payloadToolName } = toolRequestFromPayload(event.payload);
   const displayName = toolRequestDisplayName(payloadToolName);
-  const toolName = String(displayName || event.title || 'Tool request');
+  // The title fallback is adapter display text (Codex: the literal command),
+  // so it is shown in the same sanitised, bounded form as a tool name (#3382).
+  const toolName =
+    displayName ||
+    (typeof event.title === 'string'
+      ? toolRequestDisplayName(event.title)
+      : undefined) ||
+    'Tool request';
   const purpose = toolPurposeView(event) ?? toolPurposeView(event.payload);
   const preview = toolRequestPreviewFromPayload(event.payload);
   const toolPreview = [purpose ? `Why: ${purpose}` : '', preview]

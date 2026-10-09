@@ -953,4 +953,173 @@ test.describe('Orchestration Chat Flow', () => {
     await expectLegibleButtons('desktop right dock no longer open');
     browserHealth.assertHealthy();
   });
+
+  /**
+   * #3382: right-to-left letters in a pending command must not move the
+   * text around them. Measured in Chromium's own layout: each character's
+   * box, read left to right line by line, must equal the logical text with
+   * only the right-to-left run itself reversed. Isolating a whole word moved
+   * its Latin part too (`echo שלום;rm` read as "echo rm;…").
+   */
+  test('a pending command with right-to-left letters keeps its visual order in the label and the details (#3382)', async ({
+    page,
+  }) => {
+    const hebrew = String.fromCodePoint(0x5e9, 0x5dc, 0x5d5, 0x5dd);
+    const reversed = [...hebrew].reverse().join('');
+    const lineOne = `echo ${hebrew};rm -rf /tmp/x`;
+    const lineTwo = `cat ${hebrew}/../../etc/passwd`;
+    // Two runs separated only by a space: unisolated, they swap places.
+    const world = String.fromCodePoint(0x5e2, 0x5d5, 0x5dc, 0x5dd);
+    const worldReversed = [...world].reverse().join('');
+    const lineThree = `cp ${hebrew} ${world} x != y`;
+    await installMockOrchestrationEventWindow(page, 'codex', {
+      'session-1': [
+        {
+          method: 'turn.started',
+          provider: 'codex',
+          threadId: 'session-1',
+          turnId: 'turn-0',
+          createdAt: '2026-04-05T11:59:58.000Z',
+          prompt: 'Set up the repo',
+        },
+        {
+          method: 'turn.completed',
+          provider: 'codex',
+          threadId: 'session-1',
+          turnId: 'turn-0',
+          createdAt: '2026-04-05T11:59:59.000Z',
+          outputText: 'Ready.',
+        },
+        {
+          method: 'request.opened',
+          provider: 'codex',
+          threadId: 'session-1',
+          createdAt: '2026-04-05T12:00:05.000Z',
+          eventId: 'evt-req-rtl',
+          requestId: 'req-rtl',
+          requestType: 'approval',
+          title: 'Approve command',
+          payload: {
+            toolName: 'Bash',
+            toolInput: { command: `${lineOne}\n${lineTwo}\n${lineThree}` },
+          },
+        },
+      ],
+    });
+    await page.route('**/api/system/status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ready: true,
+          acp: { connected: false, connections: [] },
+          clis: {},
+          prerequisites: [],
+          providers: {
+            configured: [
+              {
+                id: 'codex',
+                type: 'codex',
+                enabled: true,
+                capabilities: ['llm'],
+              },
+            ],
+            detected: { ollama: false, bedrock: false },
+          },
+          capabilities: { chat: { ready: true, source: 'codex' } },
+        }),
+      });
+    });
+    await page.goto('/projects/dev/layouts/code?chat=conv-1');
+    await page.evaluate(() => {
+      sessionStorage.setItem(
+        'activeChats',
+        JSON.stringify([
+          {
+            sessionId: 'session-1',
+            conversationId: 'conv-1',
+            agentSlug: 'dev-agent',
+            model: 'claude-sonnet',
+            provider: 'codex',
+            providerOptions: { reasoningEffort: 'high', fastMode: false },
+            orchestrationSessionStarted: true,
+            ephemeralMessages: [],
+            inputHistory: [],
+          },
+        ]),
+      );
+    });
+    await page.reload();
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await waitForMockOrchestrationSse(page);
+    await expect(page.getByText('Ready.', { exact: true })).toBeVisible();
+    const card = page
+      .getByRole('region', { name: 'Approvals waiting on you' })
+      .locator('.tool-call');
+    const block = card.locator('.tool-call__code--command');
+    // Multi-line, so the details are open beside Allow and Deny.
+    await expect(block).toBeVisible();
+
+    /** The element's characters as laid out: left to right, line by line. */
+    const visualText = (locator: Locator) =>
+      locator.evaluate((element) => {
+        const boxes: Array<{ top: number; left: number; char: string }> = [];
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const text = node.textContent ?? '';
+          for (let index = 0; index < text.length; index += 1) {
+            if (text[index] === '\n') continue;
+            const range = document.createRange();
+            range.setStart(node, index);
+            range.setEnd(node, index + 1);
+            const rect = range.getBoundingClientRect();
+            boxes.push({
+              top: Math.round(rect.top),
+              left: rect.left,
+              char: text[index]!,
+            });
+          }
+        }
+        const lines = new Map<number, typeof boxes>();
+        for (const box of boxes) {
+          const line = [...lines.keys()].find(
+            (top) => Math.abs(top - box.top) <= 3,
+          );
+          lines.set(line ?? box.top, [
+            ...(lines.get(line ?? box.top) ?? []),
+            box,
+          ]);
+        }
+        return [...lines.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([, line]) =>
+            line
+              .sort((a, b) => a.left - b.left)
+              .map((box) => box.char)
+              .join(''),
+          );
+      });
+
+    expect(await visualText(card.locator('.tool-call__label'))).toEqual([
+      `Run echo ${reversed};rm -rf /tmp/x (+2 lines)`,
+    ]);
+    expect(await visualText(block)).toEqual([
+      `echo ${reversed};rm -rf /tmp/x`,
+      `cat ${reversed}/../../etc/passwd`,
+      `cp ${reversed} ${worldReversed} x != y`,
+    ]);
+    // Read literally: no ligatures or contextual alternates, which redraw
+    // `../` after right-to-left text and turn `!=` into a symbol.
+    const typography = await block.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        ligatures: style.fontVariantLigatures,
+        features: style.fontFeatureSettings,
+      };
+    });
+    expect(typography.ligatures).toBe('none');
+    expect(typography.features).toContain('"calt" 0');
+    expect(typography.features).toContain('"liga" 0');
+  });
 });

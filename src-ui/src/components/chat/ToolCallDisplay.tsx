@@ -1,4 +1,8 @@
 import {
+  hasHiddenCharacters,
+  revealHiddenCharacters,
+} from '@kontourai/station-shared/display-reveal';
+import {
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
   toolRequestSessionGrant,
@@ -36,6 +40,7 @@ import {
   toolCallPhase,
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
+import './ToolCallDetails.css';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by
@@ -141,7 +146,18 @@ function ToolCallDisplayComponent({
   onApprove,
   showDetails = true,
 }: ToolCallDisplayProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // `null` until the user toggles the row: until then it follows
+  // `openByDefault` below, so a pending multi-line command opens and the row
+  // closes again once the request settles. A toggle on a pending request is
+  // remembered by request, so it survives the strip card becoming the
+  // transcript row (a different component instance).
+  const toggleKey =
+    toolCall.needsApproval && toolCall.approvalId
+      ? `${toolCall.approvalThreadId ?? ''}:${toolCall.approvalId}`
+      : undefined;
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(() =>
+    toggleKey ? (approvalToggles.get(toggleKey) ?? null) : null,
+  );
 
   const id = toolCall.toolCallId || '';
   // Identity-keyed one-shot entrance (archive#2651): keyed to the tool call
@@ -202,13 +218,27 @@ function ToolCallDisplayComponent({
   const hasDetail = Boolean(hasArgs) || result !== undefined || Boolean(error);
   const allowDetails = showDetails || (awaitingApproval && Boolean(onApprove));
 
+  // #3382: every pending call that has something to show opens its details,
+  // so what is being approved is on screen next to Allow and Deny. The label
+  // can hide part of it in too many ways to detect them all: a first line
+  // with "(+N lines)", a cut ("…"), characters it drops, and a CSS ellipsis
+  // at narrow widths. The user can still collapse it (remembered per request).
+  const openByDefault = awaitingApproval && Boolean(onApprove) && hasDetail;
+  const isExpanded = userExpanded ?? openByDefault;
+  const toggleExpanded = () => {
+    setUserExpanded(!isExpanded);
+    if (toggleKey) rememberToggle(toggleKey, !isExpanded);
+  };
+
   const Glyph = KIND_GLYPH[kind];
   const lineContent = (
     <>
       <span className="tool-call__glyph" aria-hidden="true">
         <Glyph />
       </span>
-      <span className="tool-call__label">{label}</span>
+      {/* Right-to-left words isolated, as in the details, so the label and
+          the details show the same word order. */}
+      <span className="tool-call__label">{isolateRightToLeft(label, 0)}</span>
       {purpose && <span className="tool-call__purpose">Why: {purpose}</span>}
       {running && <span className="tool-call__pulse" aria-hidden="true" />}
       {failed &&
@@ -294,7 +324,7 @@ function ToolCallDisplayComponent({
             type="button"
             className="tool-call__line"
             aria-expanded={isExpanded}
-            onClick={() => setIsExpanded((expanded) => !expanded)}
+            onClick={toggleExpanded}
           >
             {lineContent}
             <span className="tool-call__chevron" aria-hidden="true">
@@ -673,20 +703,43 @@ function ToolCallDetails({
           ? 'Success'
           : null;
 
+  const showArgs = commandValue === undefined || hasRemainingArgs;
+  // #3382: the raw views are what an approval is decided from, so a bidi
+  // override or zero-width character in them is shown, never applied.
+  const hiddenWarning =
+    commandValue !== undefined && hasHiddenCharacters(commandValue)
+      ? 'This command contains hidden characters, shown below as «U+…».'
+      : showArgs &&
+          typeof argsJson === 'string' &&
+          hasHiddenCharacters(argsJson)
+        ? 'These arguments contain hidden characters, shown below as «U+…».'
+        : undefined;
+
   return (
     <div className="tool-call__details">
+      {hiddenWarning && (
+        <p className="tool-call__hidden-warning" role="note">
+          {hiddenWarning}
+        </p>
+      )}
       {commandValue !== undefined && (
         <div className="tool-call__section">
           <strong>Command:</strong>
-          <pre className="tool-call__code tool-call__code--command">
-            {commandValue}
+          <pre className="tool-call__code tool-call__code--command" dir="ltr">
+            <RevealedText text={commandValue} />
           </pre>
         </div>
       )}
-      {(commandValue === undefined || hasRemainingArgs) && (
+      {showArgs && (
         <div className="tool-call__section">
           <strong>Arguments:</strong>
-          <pre className="tool-call__code">{argsJson}</pre>
+          <pre className="tool-call__code" dir="ltr">
+            {typeof argsJson === 'string' ? (
+              <RevealedText text={argsJson} />
+            ) : (
+              argsJson
+            )}
+          </pre>
         </div>
       )}
       {result !== undefined && (
@@ -745,7 +798,8 @@ function ToolCallDetails({
         )}
         {toolName && (
           <span>
-            <strong>Tool:</strong> <code>{toolName}</code>
+            <strong>Tool:</strong>{' '}
+            <code dir="ltr">{isolateRightToLeft(toolName, 0)}</code>
           </span>
         )}
         {originalName && originalName !== `${server}_${toolName}` && (
@@ -769,6 +823,75 @@ function ToolCallDetails({
       </div>
     </div>
   );
+}
+
+/**
+ * #3382: raw text exactly as written, except that each hidden character (a
+ * bidi control, a zero-width character, a control other than LF and tab) is
+ * shown as its own muted «U+XXXX» token instead of being applied. The DOM
+ * text is then the value in logical order.
+ */
+function RevealedText({ text }: { text: string }) {
+  const segments = useMemo(() => revealHiddenCharacters(text), [text]);
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === 'text' ? (
+          isolateRightToLeft(segment.text, index)
+        ) : (
+          <span
+            // Segments are positions in one string and never reorder.
+            key={index}
+            className="tool-call__hidden-char"
+            title={`Hidden character: ${segment.name}. Shown here instead of being applied.`}
+          >
+            {segment.token}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+/** A maximal run of right-to-left letters (Hebrew, Arabic, Syriac, Thaana,
+ * N'Ko, …), with their combining marks. Nothing else: no spaces, digits,
+ * punctuation or Latin. */
+const RIGHT_TO_LEFT_RUN =
+  /([\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]+)/u;
+
+/**
+ * #3382: each run of right-to-left letters in its own `<bdi>`, inside a
+ * left-to-right block, so the run reads right to left inside itself and
+ * nothing else moves. Only the letters are isolated: wrapping a whole word
+ * moved its Latin part too, so `echo שלום;rm` read as "echo rm;…" and
+ * `שלום/../../etc/passwd` as "etc/passwd/../../…". Unisolated, the runs
+ * reorder their neighbours (`cp שלום עולם` shows its arguments swapped).
+ */
+function isolateRightToLeft(text: string, key: number): React.ReactNode {
+  const parts = text.split(RIGHT_TO_LEFT_RUN);
+  if (parts.length === 1) return text;
+  return parts.map((part, index) =>
+    // `split` with a capture puts every run at an odd index.
+    index % 2 === 1 ? (
+      // Parts are positions in one string and never reorder.
+      <bdi key={`${key}:${index}`}>{part}</bdi>
+    ) : (
+      part
+    ),
+  );
+}
+
+/** Remembered expand/collapse choices on pending requests, by request. */
+const approvalToggles = new Map<string, boolean>();
+const MAX_REMEMBERED_TOGGLES = 100;
+
+function rememberToggle(key: string, expanded: boolean): void {
+  approvalToggles.delete(key);
+  approvalToggles.set(key, expanded);
+  if (approvalToggles.size > MAX_REMEMBERED_TOGGLES) {
+    const oldest = approvalToggles.keys().next().value;
+    if (oldest !== undefined) approvalToggles.delete(oldest);
+  }
 }
 
 export const ToolCallDisplay = memo(ToolCallDisplayComponent);

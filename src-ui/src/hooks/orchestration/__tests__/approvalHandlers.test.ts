@@ -118,6 +118,43 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     ]);
   });
 
+  test('#3382: the preview and "Why:" drop bidi controls, turn C1 controls into spaces and keep every line', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const PDF = String.fromCodePoint(0x202c);
+    const NEL = String.fromCodePoint(0x85);
+    const BEL = String.fromCodePoint(0x07);
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({
+        toolName: `Ba${RLO}sh${BEL}`,
+        toolPurpose: `Tidy${NEL}up ${RLO}txt.exe${PDF}`,
+        toolInput: { command: `echo a${RLO}b${PDF}\nrm${NEL}-rf${BEL}/` },
+      }),
+    );
+
+    const toast = approvalToast();
+    expect(toast.toolName).toBe('Bash');
+    // ⏎: the lines stay apart. Joined by a space, `rm -rf /` read as
+    // part of what `echo` prints.
+    expect(toast.toolPreview).toBe(
+      'Why: Tidy up txt.exe \u00b7 echo ab \u23ce rm -rf /',
+    );
+    expect(toast.actions.map((action) => action.label)).toContain(
+      'Allow Bash for this session',
+    );
+  });
+
+  test('#3382: a title shown in place of a tool name is sanitised too', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const NEL = String.fromCodePoint(0x85);
+    handleRequestOpenedEvent('http://localhost:1', {
+      ...requestOpened({ command: 'ls' }),
+      title: `echo ${RLO}a${NEL}b\nrm -rf /`,
+    } as Parameters<typeof handleRequestOpenedEvent>[1]);
+
+    expect(approvalToast().toolName).toBe('echo a b \u23ce rm -rf /');
+  });
+
   test('#2916: a plan exit offers no session grant', () => {
     handleRequestOpenedEvent(
       'http://localhost:1',
