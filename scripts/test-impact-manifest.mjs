@@ -2142,7 +2142,7 @@ export function dependencyChangeEdges({
   },
   testFiles,
 }) {
-  const changes = changedDependencies({ paths, readBase, readHead });
+  const changes = changedDependencies({ root, paths, readBase, readHead });
   if (!changes.size) return Object.freeze([]);
   const importers = directImporterTests({
     root,

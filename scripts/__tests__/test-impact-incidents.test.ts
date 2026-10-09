@@ -118,13 +118,18 @@ describe('#3200: a sibling dependency bump selects the suites importing it', () 
     expect(dependencyReasons(result)).toEqual([]);
   });
 
-  test('a third-party bump does not select its importers', () => {
-    const result = select(['package.json'], (path) => {
-      const manifest = JSON.parse(head(path) as string);
-      manifest.devDependencies.vitest = '0.0.1';
-      return JSON.stringify(manifest);
-    });
-    expect(dependencyReasons(result)).toEqual([]);
+  test('third-party and workspace bumps do not select external importers', () => {
+    for (const [section, name] of [
+      ['devDependencies', 'vitest'],
+      ['dependencies', '@kontourai/station-sdk'],
+    ]) {
+      const result = select(['package.json'], (path) => {
+        const manifest = JSON.parse(head(path) as string);
+        manifest[section][name] = '0.0.1';
+        return JSON.stringify(manifest);
+      });
+      expect(dependencyReasons(result), name).toEqual([]);
+    }
   });
 });
 

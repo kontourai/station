@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import ts from 'typescript';
 import { readPnpmLockfile } from './pnpm-lockfile.mjs';
 import { collectCorpusTestFiles } from './spawned-script-scan.mjs';
+import { workspaceManifestPaths } from './workspace-dependency-satisfaction.mjs';
 
 /**
  * #3149: dependency changes the selector could not see.
@@ -108,13 +109,19 @@ function diffKeyedValues(before, after, nameOf, source, changes) {
  * that show it. Workspace packages and names outside the scope are dropped.
  *
  * @param {{
+ *   root?: string,
  *   paths: readonly string[],
  *   readBase: (path: string) => string | null,
  *   readHead: (path: string) => string | null,
  * }} options `null` means the file does not exist on that side.
  * @returns {Map<string, Set<string>>}
  */
-export function changedDependencies({ paths, readBase, readHead }) {
+export function changedDependencies({
+  root = process.cwd(),
+  paths,
+  readBase,
+  readHead,
+}) {
   const changes = new Map();
   for (const path of paths) {
     if (!isManifestPath(path)) continue;
@@ -126,7 +133,25 @@ export function changedDependencies({ paths, readBase, readHead }) {
       diffKeyedValues(left, right, (name) => name, path, changes);
     }
   }
-  let workspaceNames = new Set();
+  const workspaceNames = new Set();
+  const rootManifest = parseManifest('package.json', readHead('package.json'));
+  if (rootManifest.workspaces !== undefined) {
+    for (const absolute of workspaceManifestPaths(root, rootManifest)) {
+      const path = relative(root, absolute).split(sep).join('/');
+      if (path === '..' || path.startsWith('../') || isAbsolute(path))
+        throw new Error(
+          'dependency impact: workspace manifest is outside root',
+        );
+      const text = path === 'package.json' ? undefined : readHead(path);
+      if (text === null)
+        throw new Error(
+          `dependency impact: workspace manifest ${path} is missing`,
+        );
+      const manifest =
+        path === 'package.json' ? rootManifest : parseManifest(path, text);
+      if (typeof manifest.name === 'string') workspaceNames.add(manifest.name);
+    }
+  }
   if (paths.includes(LOCKFILE)) {
     const before = parseLockfile(`${LOCKFILE} at base`, readBase(LOCKFILE));
     const after = parseLockfile(LOCKFILE, readHead(LOCKFILE));
@@ -137,7 +162,7 @@ export function changedDependencies({ paths, readBase, readHead }) {
       LOCKFILE,
       changes,
     );
-    workspaceNames = new Set(
+    for (const name of new Set(
       Object.keys(after.importers ?? {}).flatMap((importer) => {
         const manifest = readHead(
           importer === '.' ? 'package.json' : `${importer}/package.json`,
@@ -145,7 +170,8 @@ export function changedDependencies({ paths, readBase, readHead }) {
         const name = manifest === null ? undefined : JSON.parse(manifest).name;
         return typeof name === 'string' ? [name] : [];
       }),
-    );
+    ))
+      workspaceNames.add(name);
   }
   // A manifest-only change (no lockfile in the diff) still names workspace
   // packages by `workspace:` specifiers; drop those too.
