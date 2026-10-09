@@ -52,6 +52,8 @@ let identityError: unknown = Object.assign(
   { status: 404 },
 );
 let scopeStale = false;
+let overrideFixture = false;
+const overrideFingerprint = `sha256:${'a'.repeat(64)}`;
 
 // Per-invocation authority the launcher must freeze into every dispatch:
 // the mocked `useHostRequestAuthorityScope` above always reports Home
@@ -164,6 +166,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
                   name: input.environmentId ? 'Remote Codex' : 'Codex',
                   ready: true,
                   defaultModel: 'gpt-5.6-sol',
+                  executionDefault: true,
+                  executionReady: true,
                   models: [
                     {
                       id: 'gpt-5.6-sol',
@@ -182,6 +186,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
                   id: 'reviewer',
                   kind: 'agent',
                   name: 'Reviewer',
+                  ...(overrideFixture
+                    ? {
+                        defaultModel: 'reviewer-default',
+                        definitionFingerprint: overrideFingerprint,
+                      }
+                    : {}),
                   ready: true,
                   models: [],
                   capabilities: {
@@ -281,6 +291,7 @@ describe('DelegationLauncher', () => {
       { status: 404 },
     );
     scopeStale = false;
+    overrideFixture = false;
     peerCredentials = undefined;
     mutateAsync.mockResolvedValue({
       taskId: 'task:1',
@@ -290,6 +301,40 @@ describe('DelegationLauncher', () => {
       target: { kind: 'agent', id: 'codex' },
       resumable: true,
     });
+  });
+
+  test('clearing an override model shows the execution binding default and sends inherited model intent', async () => {
+    overrideFixture = true;
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        currentAgentId="reviewer"
+        executionAgentId="codex"
+        expectedDefinitionFingerprint={overrideFingerprint}
+        initialEnvironmentId="current"
+        currentModel="explicit-model"
+        initialPrompt="Review this change"
+        routingExpanded
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Model' }), {
+      target: { value: '' },
+    });
+    expect(screen.getByText('Resolved model: GPT-5.6 Sol')).toBeTruthy();
+    expect(screen.queryByText(/reviewer-default/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    const target = mutateAsync.mock.calls[0][0].input.target;
+    expect(target.agent).toEqual({
+      kind: 'agent-execution-override',
+      agent: 'reviewer',
+      executionAgent: 'codex',
+      expectedDefinitionFingerprint: overrideFingerprint,
+    });
+    expect(target).not.toHaveProperty('model');
   });
 
   test('keeps the common path task-first and summarizes resolved routing', () => {

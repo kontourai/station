@@ -294,6 +294,8 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'gate:evidence-check-execution']],
       ['npm', ['run', 'install-script:check']],
       ['npm', ['run', 'mobile:permissions:gate']],
+      // #3149: a renderer-wide scan no path edge can select.
+      ['npm', ['run', 'native-platform:ratchet']],
       ['npm', ['run', 'agent-plugin:validators:gate']],
       ['npm', ['run', 'settings:registry:gate']],
       ['npm', ['run', 'content:integrity']],

@@ -22,6 +22,11 @@ import { navigationStore } from '../contexts/navigation-store';
 // NewChatModal's Enable posts to `/agents/materialize-engine` through this
 // SDK mutation; a minimal mock keeps react-query's provider requirement out
 // of this render tree.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
@@ -113,6 +118,29 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
         { modelId?: string; providerOptions: Record<string, unknown> }
       >
     >({});
+    const modelsForAgent = (agent: AgentData) =>
+      agent.slug === NATIVE_OPENCODE.slug
+        ? [
+            {
+              id: 'shared-model',
+              name: 'Shared model · Provider one',
+              providerId: 'provider-one',
+              providerName: 'Provider one',
+              providerType: 'bedrock',
+              capabilities: {
+                supportsEffort: true,
+                supportedEffortLevels: ['low', 'high'],
+              },
+            },
+            {
+              id: 'shared-model',
+              name: 'Shared model · Provider two',
+              providerId: 'provider-two',
+              providerName: 'Provider two',
+              providerType: 'ollama',
+            },
+          ]
+        : (agent.modelOptions ?? []);
     return {
       viewModel: {
         isGlobal: true,
@@ -128,20 +156,17 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
           label: 'No workspace',
           glyph: 'globe',
         },
-        // Native and ACP entries with the same engine name converge into one
-        // group (§8.3, new-chat-modal-utils.test.ts covers the grouping logic
-        // itself) — this mock reflects that converged shape.
         groups: [
+          { label: 'Station', glyph: 'engine', agents: [STATION_AGENT] },
           {
-            label: 'OpenCode',
+            label: 'Coding apps',
             glyph: 'engine',
             agents: [NATIVE_OPENCODE, ACP_OPENCODE],
           },
           {
-            label: 'Global',
+            label: 'My agents',
             glyph: 'globe',
             agents: [
-              STATION_AGENT,
               MANAGED_BEDROCK,
               CUSTOM_CONFIG_AGENT,
               UNKNOWN_UNAVAILABLE_AGENT,
@@ -178,29 +203,8 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       setModelPickerAgent,
       modelChoices,
       setModelChoices,
-      modelsForAgent: (agent: AgentData) =>
-        agent.slug === NATIVE_OPENCODE.slug
-          ? [
-              {
-                id: 'shared-model',
-                name: 'Shared model · Provider one',
-                providerId: 'provider-one',
-                providerName: 'Provider one',
-                providerType: 'bedrock',
-                capabilities: {
-                  supportsEffort: true,
-                  supportedEffortLevels: ['low', 'high'],
-                },
-              },
-              {
-                id: 'shared-model',
-                name: 'Shared model · Provider two',
-                providerId: 'provider-two',
-                providerName: 'Provider two',
-                providerType: 'ollama',
-              },
-            ]
-          : (agent.modelOptions ?? []),
+      modelsForAgent,
+      executionModelsForAgent: modelsForAgent,
       modelChoiceKey: (agent: AgentData) => agent.slug,
       defaultEffectiveModelForAgent: (agent: AgentData) => ({
         id: agent.model,
@@ -252,14 +256,23 @@ describe('NewChatModal engine chips', () => {
     ).toBeTruthy();
     expect(await screen.findByPlaceholderText('Search models…')).toBeTruthy();
     expect(
+      (
+        screen.getByRole('combobox', {
+          name: 'Filter models',
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe('all');
+    expect(
       screen
-        .getByRole('button', { name: 'Provider two' })
-        .getAttribute('aria-pressed'),
+        .getByRole('option', { name: /Shared model · Provider two/ })
+        .getAttribute('aria-selected'),
     ).toBe('true');
     expect(
       screen.queryByRole('combobox', { name: 'Thinking effort' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
+      target: { value: 'provider-one' },
+    });
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
@@ -288,7 +301,9 @@ describe('NewChatModal engine chips', () => {
       },
     );
     expect(screen.getByRole('dialog', { name: 'Choose model' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Provider two' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
+      target: { value: 'provider-two' },
+    });
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider two/ }),
     );
@@ -327,7 +342,9 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('button', { name: /^Model: historical-model/ }),
     );
     await screen.findByRole('dialog', { name: 'Choose model' });
-    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
+      target: { value: 'provider-one' },
+    });
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
@@ -617,12 +634,14 @@ describe('NewChatModal row hierarchy', () => {
       document.querySelectorAll('.new-chat-modal__group-label'),
     );
     expect(labels.map((label) => label.textContent?.trim())).toEqual([
-      'OpenCode',
-      'Global',
+      'Station',
+      'Coding apps',
+      'My agents',
     ]);
     const divided = 'new-chat-modal__group-label--divided';
     // The hairline separates groups, so the first header must not draw one.
     expect(labels[0]?.className.includes(divided)).toBe(false);
     expect(labels[1]?.className.includes(divided)).toBe(true);
+    expect(labels[2]?.className.includes(divided)).toBe(true);
   });
 });

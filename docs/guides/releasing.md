@@ -209,6 +209,13 @@ it. Setting the variable to `codex` opts in to the bounded Codex attempt below
 (it needs the `OPENAI_API_KEY` secret and spends OpenAI credits); any other
 value fails the prepare step and starts nothing. Closing on green is unchanged.
 
+The pinned Codex action uses Linux `drop-sudo` on a disposable Ubuntu runner.
+It requires `/usr/bin/setpriv`, `/usr/bin/setfacl` (the `acl` package), and ACL
+support on `/run`. It denies the runner access to privileged sockets while
+preserving access for system services, and refuses to launch if that boundary
+cannot be verified. These prerequisites must be checked when changing the
+runner image; source review alone does not prove an executed repair attempt.
+
 With `codex` selected, the first failure starts one bounded agent attempt. Further failures update the
 same episode without starting another agent. Out-of-order older successes cannot
 close a newer failure. After a repair lands and main CI succeeds, [Main: Qualify landed repair](../../.github/workflows/qualification-after-repair.yml)

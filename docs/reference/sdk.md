@@ -23,7 +23,7 @@ This source addition requires a published version that exports `/agent`.
 
 | Group | Exports |
 | --- | --- |
-| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `environmentId`, `ClientRequestOptions` |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
@@ -146,6 +146,11 @@ The request-list result includes `contextVersion` and an authorized brief snapsh
 (or `null`) on supporting servers. Submission negotiates that version, forwards
 only the reference, and verifies that the acknowledgement retains its digest and
 Task incarnation. It does not substitute a newer brief on a retry.
+Optional `executionAgentId`, `expectedDefinitionFingerprint`, `modelId` and
+`providerOptions` carry explicit execution intent. Acknowledgements must retain
+the selected binding/model/fingerprint and the canonical options digest. A
+changed engine, model or options cannot replay a prior operation as success.
+Raw provider options are not persisted in the request journal.
 A fresh versioned request-list read precedes the additive delegation
 create field, so an older Station never silently receives an ordinary
 delegation instead. The response must match the Task and submitted intent.
@@ -4139,6 +4144,16 @@ uncertain dispatched mutation must not be retried automatically.
 The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
+
+## Orchestration approval deadlines
+
+Orchestration command failures retain HTTP status even when the response omits
+a machine code. `resolveOrchestrationRequest` accepts an optional `timeoutMs` and forwards it
+to the command transport. Station's approval UI supplies 15 seconds and uses a
+separate 5-second exact-request inspection after a failed send. A timeout is
+not proof that a decision was refused; callers must inspect before retrying an
+uncertain mutation. The request's thread, request ID and opened-event binding
+continue to govern resolution.
 
 ## Harness question answers
 

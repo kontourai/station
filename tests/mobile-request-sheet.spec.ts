@@ -226,6 +226,7 @@ async function openChatWith(
   page: Page,
   events: Record<string, unknown>[],
   viewport: { width: number; height: number },
+  keepAutomaticSheet = false,
 ) {
   await seedActiveChats(page, [
     {
@@ -297,6 +298,21 @@ async function openChatWith(
   if (viewport.width < 1280) {
     await page.setViewportSize(viewport);
     await expect(page.locator('#chat-dock')).toBeVisible();
+    if (
+      events.some(
+        (event) =>
+          event.method === 'request.opened' && event.requestId === 'approval-1',
+      )
+    ) {
+      const automaticSheet = page.getByRole('dialog', {
+        name: /Needs approval/,
+      });
+      await expect(automaticSheet).toBeVisible();
+      if (!keepAutomaticSheet)
+        await automaticSheet
+          .getByRole('button', { name: 'Close and answer later' })
+          .click();
+    }
   }
   return posted;
 }
@@ -618,6 +634,131 @@ test.describe('Mobile request sheet (#3331)', () => {
     expect(answers(posted)).toEqual([]);
   });
 
+  for (const width of [320, 390]) {
+    test(`grouped approvals auto-open, wrap commands/errors, and reopen from status at ${width}px`, async ({
+      page,
+    }, testInfo) => {
+      const command = `printf '${'long-command-'.repeat(24)}'\nprintf 'second line'`;
+      const second = {
+        ...APPROVAL_EVENTS[2],
+        eventId: 'evt-approval-2',
+        requestId: 'approval-2',
+        title: 'Approve second command',
+        payload: { toolName: 'shell_exec', toolInput: { command } },
+      };
+      const posted = await openChatWith(
+        page,
+        [...APPROVAL_EVENTS, second],
+        { width, height: 844 },
+        true,
+      );
+      const dialog = page.getByRole('dialog', { name: 'Needs approval (2)' });
+      await expect(dialog).toBeVisible();
+      await settled(dialog);
+      await expect(dialog.locator('.tool-call')).toHaveCount(2);
+      await expect(
+        dialog.locator('.tool-call__code--command').last(),
+      ).toContainText('second line');
+      expect(
+        await dialog
+          .locator('.tool-call__code--command')
+          .last()
+          .evaluate(
+            (element) => element.scrollWidth <= element.clientWidth + 1,
+          ),
+      ).toBe(true);
+      let inspectPending = false;
+      await page.route(
+        '**/api/orchestration/sessions/session-1/requests/approval-1?*',
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                state: inspectPending ? 'open' : 'unavailable',
+                ...(inspectPending
+                  ? {
+                      canRespond: true,
+                      requiresAnswers: false,
+                      requestType: 'approval',
+                      provider: 'codex',
+                      openedAt: '2026-10-09T00:00:00.000Z',
+                      answerability: { answerable: true },
+                      title: 'Approve Bash',
+                    }
+                  : {}),
+                reference: {
+                  threadId: 'session-1',
+                  requestId: 'approval-1',
+                  requestEventId: 'evt-approval-1',
+                },
+                message: 'The decision could not be inspected.',
+              },
+            }),
+          }),
+      );
+      await page.route('**/api/orchestration/commands', async (route) => {
+        posted.push(route.request().postDataJSON());
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: false,
+            error: `Station temporarily unavailable: ${'diagnostic-'.repeat(35)}`,
+            code: 'service_unavailable',
+          }),
+        });
+      });
+      await dialog.getByRole('button', { name: 'Allow Once' }).first().click();
+      const error = dialog.getByRole('alert');
+      await expect(error).toContainText('Delivery is not confirmed');
+      await expect(error.locator('details')).not.toHaveAttribute('open');
+      for (const content of [
+        error,
+        dialog.locator('.tool-call__code--command').last(),
+      ]) {
+        const bounds = await content.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.x).toBeGreaterThanOrEqual(0);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
+      }
+      expect(
+        await error.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      ).toBe(true);
+      await expect(
+        dialog.getByRole('button', { name: 'Allow Once' }).first(),
+      ).toBeDisabled();
+      expect(answers(posted)).toHaveLength(1);
+      await shot(page, `grouped-approval-error-${width}`, testInfo);
+      await dialog
+        .getByRole('button', { name: 'Close and answer later' })
+        .click();
+      await expect(dialog).toBeHidden();
+      await page
+        .getByRole('button', { name: /Needs approval.*show the requests/ })
+        .click();
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByRole('button', { name: 'Allow Once' }).first(),
+      ).toBeDisabled();
+      inspectPending = true;
+      await dialog.getByRole('button', { name: 'Check status' }).click();
+      await expect(
+        dialog.getByRole('button', { name: 'Allow Once' }).first(),
+      ).toBeEnabled();
+      expect(answers(posted)).toHaveLength(1);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+    });
+  }
+
   test('short approval: the row opens a half-height sheet; dismissal never denies; Allow Once answers', async ({
     page,
   }, testInfo) => {
@@ -626,7 +767,9 @@ test.describe('Mobile request sheet (#3331)', () => {
 
     // R1: the tool row is the card; on a phone it carries Answer, not the
     // three inline decision buttons.
-    const row = page.locator('.tool-call[data-approval-id="approval-1"]');
+    const row = page.locator(
+      '.chat-messages .tool-call[data-approval-id="approval-1"]',
+    );
     await expect(row).toBeVisible();
     await expect(
       row.getByRole('img', { name: 'Needs approval' }),
@@ -696,8 +839,8 @@ test.describe('Mobile request sheet (#3331)', () => {
     const allowing = dialog.getByRole('button', { name: 'Allowing…' });
     await expect(allowing).toBeVisible();
     await expect(allowing).toHaveAttribute('aria-busy', 'true');
-    await expect(dialog.getByRole('button', { name: 'Deny' })).toBeDisabled();
     await expect.poll(() => answers(posted).length).toBe(1);
+    await expect(dialog).toBeHidden();
     expect(answers(posted)[0]).toMatchObject({
       type: 'respondToRequest',
       threadId: 'session-1',
@@ -707,10 +850,42 @@ test.describe('Mobile request sheet (#3331)', () => {
     browserHealth.assertHealthy();
   });
 
+  test('the session option in the approval overflow sends the exact session decision', async ({
+    page,
+  }) => {
+    const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE, true);
+    const dialog = page.getByRole('dialog', { name: 'Needs approval' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'More approval options' }).click();
+    await page.getByRole('menuitem', { name: /for this session/ }).click();
+    await expect.poll(() => answers(posted).length).toBe(1);
+    expect(answers(posted)[0]).toMatchObject({
+      type: 'respondToRequest',
+      threadId: 'session-1',
+      requestId: 'approval-1',
+      expectedRequestEventId: 'evt-approval-1',
+      decision: 'acceptForSession',
+    });
+    await expect(dialog).toBeHidden();
+  });
+
   test('Deny in flight says so, and the settled request closes the sheet', async ({
     page,
   }) => {
     const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE);
+    let releaseResponse!: () => void;
+    const responseReady = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    await page.route('**/api/orchestration/commands', async (route) => {
+      posted.push(route.request().postDataJSON());
+      await responseReady;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: {} }),
+      });
+    });
     const row = page.locator('.tool-call[data-approval-id="approval-1"]');
     await row.getByRole('button', { name: 'Answer', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Needs approval' });
@@ -723,6 +898,7 @@ test.describe('Mobile request sheet (#3331)', () => {
       dialog.getByRole('button', { name: 'Allow Once' }),
     ).toBeDisabled();
     await expect.poll(() => answers(posted).length).toBe(1);
+    releaseResponse();
     expect(answers(posted)[0]).toMatchObject({
       requestId: 'approval-1',
       decision: 'decline',

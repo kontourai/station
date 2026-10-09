@@ -5,7 +5,7 @@
       "name": "agent-editor",
       "width": 1440,
       "height": 900,
-      "sha256": "1905060c1a57bc99dab1ea3b34e8b78a6608e39a6763558fa0256c752e20f775"
+      "sha256": "4fe209597c42536aaff49bcb127c79a5b1256464341386ed339740f55143e225"
     },
     {
       "name": "agent-editor-not-runnable",
@@ -17,7 +17,7 @@
       "name": "agents",
       "width": 1440,
       "height": 900,
-      "sha256": "856836f21d8e7210c984483354fa382463538a6e39efc374be1a8de9b140225a"
+      "sha256": "4bfdf8cf05df06c3cdbac74178a64ed1a173ec5b523bf97d4a4bb5614d4ee022"
     },
     {
       "name": "agents-empty",
@@ -65,7 +65,7 @@
       "name": "developer-telemetry",
       "width": 1440,
       "height": 900,
-      "sha256": "36861266dfcb82cb7d8ec407de5e7b51851c24aa1de682a11307a3e7bf326474"
+      "sha256": "4448ac7b4784829754fe2087c84010a4e164be658b5022cad014b339c5d33cec"
     },
     {
       "name": "home",
@@ -113,7 +113,7 @@
       "name": "mobile-agents",
       "width": 390,
       "height": 844,
-      "sha256": "cff9bce7c1ea9b9ec49e3436f1b3c63be584a7d9a7ad554d00582c2d0b9f1fc8"
+      "sha256": "0ac6c81aaeb66295c7f488b473dcbefc936581843d9d95914153902143d2d731"
     },
     {
       "name": "mobile-chat-dock-header-320",
@@ -167,7 +167,7 @@
       "name": "motion-reduced-navigation",
       "width": 1440,
       "height": 900,
-      "sha256": "856836f21d8e7210c984483354fa382463538a6e39efc374be1a8de9b140225a"
+      "sha256": "4bfdf8cf05df06c3cdbac74178a64ed1a173ec5b523bf97d4a4bb5614d4ee022"
     },
     {
       "name": "motion-reduced-notification",
@@ -227,7 +227,7 @@
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "583ceeecfb270a04a995239d1cd9cd5ee826925634d85eeac82ee452a9561ad1"
+      "sha256": "69157b389dd90b1f7ec02db72d92ed29637974925efcbc563c90ae8c72a20ff5"
     },
     {
       "name": "overlay-mobile-sheet",

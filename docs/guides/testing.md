@@ -402,6 +402,13 @@ instead of running them inline, so one shared-helper edit cannot exceed the
 the other changed files keep their related discovery and only the deferring
 file leaves the inline run. Any other deferral, such as an escalation or an
 unavailable related path, still defers the whole related selection.
+A third kind is derived per diff, from its base content: when a `package.json`
+dependency section or a `pnpm-lock.yaml` importer's resolved version changes
+for a sibling `@kontourai/*` package that is not a workspace package, the
+suites that import that package by name are selected (#3149). A version bump
+changes no source file, and both files escalate, so these explicit targets are
+what such a diff runs. Transitive lockfile changes are not followed, and a
+package imported by more than 16 suites defers them to `test-full`.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,

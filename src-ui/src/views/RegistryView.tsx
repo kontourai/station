@@ -13,6 +13,7 @@ import {
   useReloadPluginsMutation,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { KitCatalog } from '../components/registry/KitCatalog';
 import { MarketplaceSources } from '../components/registry/MarketplaceSources';
@@ -540,6 +541,19 @@ export function RegistryView({
   return (
     <div className="registry-view">
       {remoteIsolationActive && remoteBundlesSection}
+      {pluginRegistryStatus.state === 'degraded' &&
+        pluginRegistryStatus.failure !== 'remote-isolation' && (
+          <div className="page__message" role="alert">
+            <p>
+              {pluginRegistryStatus.failedPluginNames.length
+                ? `Couldn't load extensions: ${pluginRegistryStatus.failedPluginNames.join(', ')}.`
+                : "Couldn't load extensions for this Station."}
+            </p>
+            <Button onClick={() => void pluginRegistry.reload()}>
+              Retry extensions
+            </Button>
+          </div>
+        )}
       <MarketplaceSources
         selected={selectedSource}
         onSelect={setSelectedSource}

@@ -149,7 +149,7 @@
 
 .session-model-picker__models [role="option"] {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   justify-items: start;
   gap: 2px var(--k-space-2);
   min-height: 52px;
@@ -162,7 +162,7 @@
 }
 
 .session-model-picker__models [role="option"] small {
-  grid-column: 1;
+  grid-column: 2;
   overflow: hidden;
   max-width: 100%;
   text-overflow: ellipsis;
@@ -178,7 +178,7 @@
   [role="option"]
   .session-model-picker__model-check {
   display: flex;
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1 / -1;
   align-items: center;
   justify-content: center;
@@ -279,4 +279,45 @@
 .session-model-picker__options-toggle:focus-visible {
   outline: 2px solid var(--k-focus);
   outline-offset: 2px;
+}
+
+.session-model-picker__models [role="option"] > .brand-icon {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  align-self: center;
+}
+.session-model-picker__model-name {
+  grid-column: 2;
+}
+.session-model-picker__toolbar {
+  display: flex;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-3) var(--k-space-2);
+}
+.session-model-picker__toolbar select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+}
+.session-model-picker__toolbar .session-model-picker__options-toggle {
+  margin: 0;
+}
+.session-model-picker__binding {
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.session-model-picker__station-control {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  color: var(--k-text-muted);
+}
+.session-model-picker__station-control select {
+  min-width: 0;
+  flex: 1;
+  min-height: 44px;
 }

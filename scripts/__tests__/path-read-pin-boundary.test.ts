@@ -518,10 +518,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/test-impact-incidents.test.ts':
+    'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
-  'packages/sdk/src/__tests__/client-entry-portability.test.ts':
-    'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',

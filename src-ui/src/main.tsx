@@ -329,6 +329,7 @@ function renderApp(): void {
                               </PermissionManager>
                               <DeferredCapabilityBoundary
                                 id="extension-registry"
+                                failurePresentation="notification"
                                 load={loadPluginRegistryBootstrap}
                                 copy={{
                                   failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,

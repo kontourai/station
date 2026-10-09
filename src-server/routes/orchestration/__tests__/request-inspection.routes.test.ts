@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { ATTENTION_REQUEST_MAX_BYTES } from '@kontourai/station-contracts/attention';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -16,6 +17,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
+import { executeForegroundMessage } from '../../../services/execution-target/execution-target-execution.js';
 import { EventBus } from '../../../services/orchestration/event-bus';
 import { EventStore } from '../../../services/orchestration/event-store';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service';
@@ -51,7 +53,10 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
-async function fixture(hosted = false) {
+async function fixture(
+  hosted = false,
+  initialRequestType: 'permission' | 'input' = 'permission',
+) {
   const directory = mkdtempSync(join(tmpdir(), 'station-exact-request-'));
   const store = new EventStore(join(directory, 'events.sqlite'));
   const adapter = new GateTestAdapter();
@@ -109,7 +114,7 @@ async function fixture(hosted = false) {
     createdAt: NOW,
     metadata: { userId: 'owner' },
   });
-  store.appendEvent(opened());
+  store.appendEvent({ ...opened(), requestType: initialRequestType });
   let user = 'owner';
   let principalCurrent = true;
   const app = createOrchestrationRoutes(service, {
@@ -211,6 +216,187 @@ describe('exact attention request route and immediate response guard', () => {
     f.revoke();
     expect((await f.app.request(path)).status).toBe(404);
   });
+
+  test.each([false, true])(
+    'input reply retains its persisted execution override and rejects retargeting (explicit=%s)',
+    async (explicit) => {
+      const f = await fixture(false, 'input');
+      const fingerprint = `sha256:${'a'.repeat(64)}`;
+      f.store.appendEvent({
+        eventId: 'override-started',
+        provider: 'claude',
+        threadId: 'session-a',
+        sessionId: 'session-a',
+        method: 'session.started',
+        createdAt: NOW,
+        metadata: {
+          userId: 'owner',
+          agentId: 'agent-a',
+          agentSlug: 'agent-a',
+          conversationId: 'session-a',
+          environmentId: 'environment-a',
+          connectionId: 'claude-override',
+          executionAgentId: 'claude-override',
+          expectedDefinitionFingerprint: fingerprint,
+        },
+      });
+      f.store.appendEvent({ ...opened('input-a'), requestType: 'input' });
+      const authority = sessionReadAuthorityFromRequest(
+        'owner',
+        undefined,
+        undefined,
+      );
+      const sendTurn = vi.spyOn(f.adapter, 'sendTurn');
+      const startSession = vi.fn(async () => {
+        throw new Error('Input reply must not start a new session');
+      });
+      const app = createOrchestrationRoutes(f.service, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        getUserId: () => 'owner',
+        isRequestPrincipalCurrent: () => true,
+        executeForegroundMessage: (input) =>
+          executeForegroundMessage(input, {
+            resolveEnvironmentAccess: async () => ({
+              apiBase: 'http://current.station',
+              environmentId: 'environment-a',
+              environmentName: 'Current',
+              kind: 'current',
+            }),
+            getAgent: async (_access, id) => ({
+              slug: id,
+              available: true,
+              definitionFingerprint: fingerprint,
+              executionDefault: id === 'claude-override',
+              execution: {
+                agentConnectionId: engineConnectionId(
+                  id === 'agent-a' ? 'profile-default' : id,
+                ),
+              },
+            }),
+            getConnection: async (_access, id) => ({
+              id,
+              name: id,
+              kind: 'agent',
+              type: 'claude',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['agent-runtime'],
+              prerequisites: [],
+              config: { provider: 'claude' },
+            }),
+            getProject: async () => undefined,
+            getProviderAdapter: (provider) =>
+              f.service.getProviderAdapter(provider),
+            readSessionBinding: async () => {
+              const event = f.store.latestEventByMethod(
+                'session-a',
+                'session.started',
+              )?.payload;
+              if (event?.method !== 'session.started')
+                throw new Error('Missing persisted start');
+              const metadata = event.metadata;
+              if (
+                typeof metadata?.agentId !== 'string' ||
+                typeof metadata.environmentId !== 'string' ||
+                typeof metadata.connectionId !== 'string' ||
+                typeof metadata.executionAgentId !== 'string'
+              )
+                throw new Error('Missing execution binding');
+              return {
+                agentId: metadata.agentId,
+                environmentId: metadata.environmentId,
+                connectionId: metadata.connectionId,
+                executionAgentId: metadata.executionAgentId,
+                userId: 'owner',
+              };
+            },
+            resolveConversationSession: async (
+              _access,
+              conversationId,
+              requested,
+            ) =>
+              f.service.resolveConversationContinuation(
+                conversationId,
+                authority,
+                requested,
+              ),
+            startSession,
+            sendTurn: async (_access, turn) => {
+              const result = await f.service.dispatchWithReceipt(
+                { type: 'sendTurn', input: turn },
+                { userId: 'owner' },
+              );
+              if (!result.result || !('turnId' in result.result))
+                throw new Error('Missing turn acceptance');
+              return { turnId: result.result.turnId };
+            },
+          }),
+      });
+      const target = {
+        kind: 'agent-execution-override',
+        agent: 'agent-a',
+        executionAgent: 'claude-override',
+        expectedDefinitionFingerprint: fingerprint,
+      };
+      const body = {
+        message: 'The requested answer',
+        conversationId: 'session-a',
+        clientTurnId: 'input-answer',
+        expectedInputRequest: { ...REFERENCE, requestEventId: 'input-a' },
+        target: {
+          environment: { kind: 'current' },
+          agent: explicit ? target : 'agent-a',
+        },
+      };
+      const post = (value: unknown) =>
+        app.request('/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(value),
+        });
+      expect(
+        (
+          await post({
+            ...body,
+            target: {
+              ...body.target,
+              agent: { ...target, executionAgent: 'different-engine' },
+            },
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await post({
+            ...body,
+            target: { ...body.target, model: { override: 'different-model' } },
+          })
+        ).status,
+      ).toBe(409);
+      expect(sendTurn).not.toHaveBeenCalled();
+      const response = await post(body);
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(await response.json()).toMatchObject({
+        data: {
+          sessionId: 'session-a',
+          resolution: {
+            agentId: 'agent-a',
+            executionAgentId: 'claude-override',
+          },
+        },
+      });
+      expect(sendTurn).toHaveBeenCalledOnce();
+      expect(sendTurn.mock.calls[0][0]).toMatchObject({
+        threadId: 'session-a',
+        input: 'The requested answer',
+      });
+      expect(sendTurn.mock.calls[0][0]).not.toHaveProperty(
+        'expectedInputRequest',
+      );
+      expect(startSession).not.toHaveBeenCalled();
+    },
+  );
 
   test('sendTurn carries files for the exact open input and strips the guard from provider input', async () => {
     const f = await fixture();
