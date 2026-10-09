@@ -196,7 +196,7 @@ jobs:
                 tail -100 "$log" >&2 || true
                 return 1
               fi
-              if curl --noproxy '*' --silent --fail --head \                --connect-timeout 1 --max-time 2 "$url" >/dev/null; then
+              if curl --noproxy '*' --silent --fail --head --connect-timeout 1 --max-time 2 "$url" >/dev/null; then
                 echo "Fixture $label ready (pid=$pid)."
                 return 0
               fi
