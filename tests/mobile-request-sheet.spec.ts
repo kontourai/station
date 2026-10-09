@@ -839,8 +839,8 @@ test.describe('Mobile request sheet (#3331)', () => {
     const allowing = dialog.getByRole('button', { name: 'Allowing…' });
     await expect(allowing).toBeVisible();
     await expect(allowing).toHaveAttribute('aria-busy', 'true');
-    await expect(dialog.getByRole('button', { name: 'Deny' })).toBeDisabled();
     await expect.poll(() => answers(posted).length).toBe(1);
+    await expect(dialog).toBeHidden();
     expect(answers(posted)[0]).toMatchObject({
       type: 'respondToRequest',
       threadId: 'session-1',
@@ -848,6 +848,25 @@ test.describe('Mobile request sheet (#3331)', () => {
     });
     expect(answers(posted)[0].decision).not.toBe('deny');
     browserHealth.assertHealthy();
+  });
+
+  test('the session option in the approval overflow sends the exact session decision', async ({
+    page,
+  }) => {
+    const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE, true);
+    const dialog = page.getByRole('dialog', { name: 'Needs approval' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'More approval options' }).click();
+    await page.getByRole('menuitem', { name: /for this session/ }).click();
+    await expect.poll(() => answers(posted).length).toBe(1);
+    expect(answers(posted)[0]).toMatchObject({
+      type: 'respondToRequest',
+      threadId: 'session-1',
+      requestId: 'approval-1',
+      expectedRequestEventId: 'evt-approval-1',
+      decision: 'acceptForSession',
+    });
+    await expect(dialog).toBeHidden();
   });
 
   test('Deny in flight says so, and the settled request closes the sheet', async ({
