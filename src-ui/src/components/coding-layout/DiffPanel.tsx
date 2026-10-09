@@ -7,7 +7,6 @@ import {
   useDiffCommentsQuery,
 } from '@kontourai/station-sdk';
 import {
-  ALTERNATE_FILE_NAMES_GIT,
   type DiffLineAnnotation,
   type FileDiffMetadata,
   GIT_DIFF_FILE_BREAK_REGEX,
@@ -169,23 +168,17 @@ function parseDiffFiles(patch: string): FileDiffMetadata[] {
  * marker line, so a binary file parses with an empty `hunks` array and
  * whatever `type` its other header lines implied (typically `change`),
  * indistinguishable from an empty text file. This recovers that fact from
- * the raw patch text using the SAME per-file split and header-name regexes
- * `parsePatchFiles` itself uses internally (`GIT_DIFF_FILE_BREAK_REGEX`,
- * `ALTERNATE_FILE_NAMES_GIT`, both public exports) — not a hand-rolled diff
- * parser, so it can't drift from what the real parser considers a file
- * boundary or a file name.
+ * the raw patch text using the library's file boundaries and parsed names.
+ * This keeps quoted and renamed paths aligned with the metadata CodeView uses.
  */
 function binaryFileNames(patch: string): Set<string> {
   const names = new Set<string>();
   for (const block of patch.split(GIT_DIFF_FILE_BREAK_REGEX)) {
     if (!/^Binary files /m.test(block)) continue;
-    const header = block.match(/^diff --git .*$/m)?.[0];
-    const match = header ? ALTERNATE_FILE_NAMES_GIT.exec(header) : null;
-    if (!match) continue;
-    const oldName = match[1] ?? match[2];
-    const newName = match[3] ?? match[4];
-    if (oldName) names.add(oldName);
-    if (newName) names.add(newName);
+    for (const file of parseDiffFiles(block)) {
+      names.add(file.name);
+      if (file.prevName) names.add(file.prevName);
+    }
   }
   return names;
 }
