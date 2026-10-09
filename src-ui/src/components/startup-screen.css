@@ -1,3 +1,6 @@
+@import url("@kontourai/ui/fonts.css");
+@import url("@kontourai/ui/tokens");
+
 .station-startup {
   position: fixed;
   inset: 0;

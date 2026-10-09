@@ -63,7 +63,7 @@ accent and cached branding before React renders. The initial HTML and
 [StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
 startup surface through platform and authority resolution. The lightweight
 [boot entry](../../src-ui/src/boot.ts) starts painting before it imports the full
-app. A failed app import releases animation and provides a reload action. The
+app. A failed app import releases animation and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
 bundle budget still counts the immediately loaded app's static JS/CSS closure
 through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
 then moves left while Fraunces reveals `tation`, using the river as the S. The
