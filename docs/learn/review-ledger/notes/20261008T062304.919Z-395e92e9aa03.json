@@ -1,0 +1,7 @@
+{
+  "revision": "5a194aab20dbb6b67819346c6cbd9dafb1c639c5",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"tauri-context.mjs delta: node/npm/tauri-cli version probes widened to a 30s bound for cold Windows starts; this guide's build claims do not name probe deadlines; unchanged.","inputs":["docs/guides/android-build.md","scripts/tauri-context.mjs"]}
+  ]
+}
