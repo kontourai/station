@@ -118,6 +118,19 @@ updates liveness without advancing the event replay cursor.
 running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
 
+## Allowance observations and recovery ordering
+
+`connection-quota` retains raw provider reset values and adds optional
+`resetDeadlineAt` only when an adapter can normalize a declared wire unit.
+`subscriptionEnd` carries its own observation time and explicit renewal state;
+missing lifecycle data is not inferred from a provider plan string. Sparse
+updates preserve prior lifecycle observations without refreshing their timestamp.
+
+`connection-recovery` owns optional `allowancePreference` (window ID and minimum
+remaining percentage). It ranks existing eligible recovery accounts, grants no
+new enrollment or execution authority, and preserves ordinary ordering when
+expiry facts are unknown. See [account recovery ordering](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery).
+
 ## Import examples
 
 The [package export map](../../packages/contracts/package.json) is the available

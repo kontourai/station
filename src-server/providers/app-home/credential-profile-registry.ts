@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type {
+  AllowanceRoutingPreference,
   CredentialProfile,
   CredentialProfileApplicationCapability,
   CredentialProfileApplicationOutcome,
@@ -146,6 +147,25 @@ function profileRecord(
   return Object.keys(validation.env).length > 0
     ? { ...base, env: { ...validation.env } }
     : base;
+}
+
+function normalizeAllowancePreference(
+  value: unknown,
+): AllowanceRoutingPreference | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const preference = value as Record<string, unknown>;
+  return typeof preference.windowId === 'string' &&
+    preference.windowId.length > 0 &&
+    preference.windowId.length <= 128 &&
+    typeof preference.minimumRemainingPercent === 'number' &&
+    Number.isFinite(preference.minimumRemainingPercent) &&
+    preference.minimumRemainingPercent >= 1 &&
+    preference.minimumRemainingPercent <= 100
+    ? {
+        windowId: preference.windowId,
+        minimumRemainingPercent: preference.minimumRemainingPercent,
+      }
+    : undefined;
 }
 
 function normalizeProfiles(value: unknown): RegistryCredentialProfile[] {
@@ -316,6 +336,17 @@ export function normalizeCredentialProfileRegistry(
     profiles,
     group: normalizeGroup(raw.group, knownRefs),
     policy: {
+      ...(raw.policy &&
+      typeof raw.policy === 'object' &&
+      normalizeAllowancePreference(
+        (raw.policy as Record<string, unknown>).allowancePreference,
+      )
+        ? {
+            allowancePreference: normalizeAllowancePreference(
+              (raw.policy as Record<string, unknown>).allowancePreference,
+            ),
+          }
+        : {}),
       automatic:
         raw.policy !== null &&
         typeof raw.policy === 'object' &&
@@ -436,11 +467,25 @@ export function setCredentialProfileEnrollment(
 export function setCredentialRecoveryAutomaticPolicy(
   value: unknown,
   automatic: boolean,
+  allowancePreference?: AllowanceRoutingPreference | null,
 ): CredentialProfileRegistryTransitionResult {
   const state = stateOf(value);
   if (typeof automatic !== 'boolean') return rejected(state);
   return {
-    state: withState({ ...state, policy: { automatic } }),
+    state: withState({
+      ...state,
+      policy: {
+        automatic,
+        ...(allowancePreference === null
+          ? {}
+          : (allowancePreference ?? state.policy.allowancePreference)
+            ? {
+                allowancePreference:
+                  allowancePreference ?? state.policy.allowancePreference,
+              }
+            : {}),
+      },
+    }),
     transition: 'ignored',
   };
 }
@@ -536,6 +581,9 @@ export function projectCredentialProfileRegistry(
     },
     policy: {
       automatic: isAutomaticCredentialRecoveryEnabled(state.policy),
+      ...(state.policy.allowancePreference
+        ? { allowancePreference: state.policy.allowancePreference }
+        : {}),
     },
     application: {
       capability,

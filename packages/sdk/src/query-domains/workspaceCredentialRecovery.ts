@@ -1,4 +1,5 @@
 import type {
+  AllowanceRoutingPreference,
   CredentialProfileApplicationProjection,
   CredentialRecoveryGroupProjection,
 } from '@kontourai/station-contracts/connection-recovery';
@@ -29,6 +30,7 @@ export interface CredentialProfileEnrollmentInput {
 export interface CredentialRecoveryPolicyInput {
   id: string;
   automatic: boolean;
+  allowancePreference?: AllowanceRoutingPreference | null;
 }
 
 export interface ImportCredentialProfileSnapshotInput {
@@ -195,13 +197,18 @@ export function useSetCredentialRecoveryAutomaticPolicyMutation(
     CredentialRecoveryGroupProjection,
     CredentialRecoveryPolicyInput
   >(
-    (apiBase, { id, automatic }) =>
+    (apiBase, { id, automatic, allowancePreference }) =>
       authenticatedFetch(
         `${apiBase}/api/connections/agent/${encodeURIComponent(id)}/credential-recovery/policy`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ automatic }),
+          body: JSON.stringify({
+            automatic,
+            ...(allowancePreference === undefined
+              ? {}
+              : { allowancePreference }),
+          }),
         },
       ),
     'Failed to update credential recovery policy',

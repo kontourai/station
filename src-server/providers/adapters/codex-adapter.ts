@@ -606,7 +606,14 @@ export function projectCodexQuotaUpdate(
         observedAt,
         ...(label ? { label } : {}),
         ...(windowDurationMins === undefined ? {} : { windowDurationMins }),
-        ...(resetsAt === undefined ? {} : { resetsAt }),
+        ...(resetsAt === undefined
+          ? {}
+          : {
+              resetsAt,
+              ...(Number.isFinite(new Date(resetsAt * 1_000).getTime())
+                ? { resetDeadlineAt: new Date(resetsAt * 1_000).toISOString() }
+                : {}),
+            }),
       },
     ];
   });

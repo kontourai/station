@@ -3,8 +3,10 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ConnectionQuotaSnapshot } from '@kontourai/station-contracts/connection-quota';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentRegistry } from '../../../domain/agent-registry.js';
+import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 
 /**
  * `vi.mock` factories are hoisted above imports, so the fixtures below cannot
@@ -3619,6 +3621,7 @@ describe('ConnectionService', () => {
       { ref: 'canary-profile-ref', label: 'Canary Account Label' },
       { ref: 'profile-c', label: 'Superseding account' },
     ],
+    readQuotaSnapshot?: ProviderAdapterShape['readQuotaSnapshot'],
   ) {
     let appConfig: any = {
       defaultModel: 'model-a',
@@ -3663,6 +3666,7 @@ describe('ConnectionService', () => {
               runtimeId: 'codex',
               recovery: { sameSession: true, application },
             },
+            ...(readQuotaSnapshot ? { readQuotaSnapshot } : {}),
           },
         ] as any,
       async () => [],
@@ -3885,6 +3889,218 @@ describe('ConnectionService', () => {
       store.close();
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  describe('opt-in allowance ordering at credential application', () => {
+    test.each([
+      { kind: 'fresh', expected: 'profile-c' },
+      { kind: 'stale', expected: 'canary-profile-ref' },
+      { kind: 'exhausted', expected: 'canary-profile-ref' },
+      { kind: 'unknown', expected: 'canary-profile-ref' },
+      { kind: 'low-headroom', expected: 'canary-profile-ref' },
+      { kind: 'expired', expected: 'canary-profile-ref' },
+      { kind: 'global', expected: 'canary-profile-ref' },
+      { kind: 'all-exhausted', expected: undefined },
+      { kind: 'subscription-end', expected: 'canary-profile-ref' },
+      { kind: 'renewing', expected: 'profile-c' },
+      { kind: 'unknown-renewal', expected: 'profile-c' },
+    ] as const)(
+      '$kind observations choose $expected without bypassing enrollment',
+      async ({ kind, expected }) => {
+        const now = Date.now();
+        const quota = vi.fn<
+          NonNullable<ProviderAdapterShape['readQuotaSnapshot']>
+        >(async (input) => {
+          if (kind === 'unknown')
+            return { kind: 'unavailable', reason: 'provider-error' };
+          const preferred = input.credentialProfileRef === 'profile-c';
+          const snapshot: ConnectionQuotaSnapshot = {
+            connectionId: 'codex',
+            provider: engineId('codex'),
+            source: 'provider-reported',
+            accountScope: kind === 'global' ? 'global' : 'profile',
+            observedAt: new Date(now).toISOString(),
+            ...(kind === 'subscription-end' ||
+            kind === 'renewing' ||
+            kind === 'unknown-renewal'
+              ? {
+                  subscriptionEnd: {
+                    observedAt: new Date(now).toISOString(),
+                    value: {
+                      endsAt: new Date(
+                        now + (preferred ? 7_200_000 : 600_000),
+                      ).toISOString(),
+                      renewal:
+                        kind === 'subscription-end'
+                          ? ('non-renewing' as const)
+                          : kind === 'renewing'
+                            ? ('renewing' as const)
+                            : ('unknown' as const),
+                    },
+                  },
+                }
+              : {}),
+            windows: [
+              {
+                id: 'primary',
+                usedPercent: 10,
+                observedAt: new Date(now).toISOString(),
+                resetDeadlineAt: new Date(
+                  now + (preferred ? 600_000 : 60_000),
+                ).toISOString(),
+              },
+              {
+                id: 'secondary',
+                usedPercent:
+                  (preferred && kind === 'exhausted') ||
+                  kind === 'all-exhausted'
+                    ? 100
+                    : preferred && kind === 'low-headroom'
+                      ? 85
+                      : 30,
+                observedAt: new Date(
+                  now - (kind === 'stale' ? 120_000 : 0),
+                ).toISOString(),
+                resetDeadlineAt: new Date(
+                  now +
+                    (preferred && kind === 'expired'
+                      ? -1_000
+                      : preferred
+                        ? 3_600_000
+                        : 7_200_000),
+                ).toISOString(),
+              },
+            ],
+          };
+          return { kind: 'snapshot', snapshot };
+        });
+        const { service } = createCredentialProfileApplyFixture(
+          vi.fn<ConnectionSmokeRunner>(),
+          'restart_resume',
+          undefined,
+          undefined,
+          quota,
+        );
+        await service.setCredentialRecoveryAutomaticPolicy('codex', true, {
+          windowId: 'secondary',
+          minimumRemainingPercent: 20,
+        });
+        const attempt =
+          await service.stageAutomaticCredentialProfileApplication('codex', {
+            kind: 'capacity',
+            scope: 'account',
+            timing: {},
+          });
+        expect(attempt?.candidateProfileRef).toBe(expected);
+        expect(
+          (await service.getCredentialRecovery('codex')).application
+            .pendingProfileRef,
+        ).toBe(expected);
+        expect(
+          quota.mock.calls.map(([input]) => input.credentialProfileRef).sort(),
+        ).toEqual(['canary-profile-ref', 'profile-c']);
+      },
+    );
+
+    test('bounds quota probes while observing every enrolled candidate', async () => {
+      let active = 0;
+      let peak = 0;
+      const quota = vi.fn<
+        NonNullable<ProviderAdapterShape['readQuotaSnapshot']>
+      >(async () => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return { kind: 'unavailable', reason: 'provider-error' };
+      });
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        undefined,
+        quota,
+      );
+      for (const ref of [
+        'additional-d',
+        'additional-e',
+        'additional-f',
+        'additional-g',
+      ]) {
+        await service.upsertCredentialProfile('codex', { ref });
+        await service.setCredentialProfileEnrollment('codex', ref, true);
+      }
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true, {
+        windowId: 'secondary',
+        minimumRemainingPercent: 20,
+      });
+      expect(
+        (
+          await service.stageAutomaticCredentialProfileApplication('codex', {
+            kind: 'capacity',
+            scope: 'account',
+            timing: {},
+          })
+        )?.candidateProfileRef,
+      ).toBe('canary-profile-ref');
+      expect(quota).toHaveBeenCalledTimes(6);
+      expect(peak).toBeLessThanOrEqual(4);
+    });
+
+    test('refuses staging when recovery authority changes during a quota probe', async () => {
+      const quota = vi.fn<
+        NonNullable<ProviderAdapterShape['readQuotaSnapshot']>
+      >(async () => {
+        getAppConfig().agentConnections.codex.credentialRecovery.policy.automatic = false;
+        return { kind: 'unavailable', reason: 'provider-error' };
+      });
+      const { service, getAppConfig } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        undefined,
+        quota,
+      );
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true, {
+        windowId: 'secondary',
+        minimumRemainingPercent: 20,
+      });
+      expect(
+        await service.stageAutomaticCredentialProfileApplication('codex', {
+          kind: 'capacity',
+          scope: 'account',
+          timing: {},
+        }),
+      ).toBeUndefined();
+      expect(
+        (await service.getCredentialRecovery('codex')).application
+          .pendingProfileRef,
+      ).toBeUndefined();
+    });
+
+    test('absent preference retains enrollment order and does not read quotas', async () => {
+      const quota = vi.fn<
+        NonNullable<ProviderAdapterShape['readQuotaSnapshot']>
+      >(async () => ({ kind: 'unavailable', reason: 'timeout' }));
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        undefined,
+        quota,
+      );
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true);
+      expect(
+        (
+          await service.stageAutomaticCredentialProfileApplication('codex', {
+            kind: 'capacity',
+            scope: 'account',
+            timing: {},
+          })
+        )?.candidateProfileRef,
+      ).toBe('canary-profile-ref');
+      expect(quota).not.toHaveBeenCalled();
+    });
   });
 
   describe('#2966 automatic candidate selection honors routing env', () => {

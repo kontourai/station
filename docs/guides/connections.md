@@ -864,6 +864,51 @@ profile whose overlay is identical to the active profile's; when every
 enrolled candidate differs, it refuses with `environment_mismatch`. Choosing
 a profile by hand, or pinning one on an Agent, is not restricted this way.
 
+### Prefer allowance that expires sooner during account recovery
+
+Automatic recovery keeps enrollment order unless you explicitly add an
+`allowancePreference` to its existing policy. This ranks already-enrolled,
+authorized accounts after an observed account-scoped capacity or rate-limit
+failure; it does not switch a healthy running Session or override an Agent's
+explicit credential choice.
+
+```json
+{
+  "automatic": true,
+  "allowancePreference": {
+    "windowId": "secondary",
+    "minimumRemainingPercent": 20
+  }
+}
+```
+
+Send that body to `PUT /api/connections/agent/<engine>/credential-recovery/policy`.
+Choose the window ID actually reported by your engine. Station compares that
+window's qualified reset deadline, rather than allowing a short rolling reset
+to outweigh the longer window you selected. Fresh provider-reported
+non-renewing subscription ends can also shorten the deadline. Current native
+engines do not report subscription-end/renewal facts through this quota
+contract, so Station does not infer them from a plan name.
+
+The selected window's remaining percentage must meet your threshold, and a
+fresh exhausted window disqualifies the account. Observations older than one
+minute, future-dated observations, unqualified deadlines, global-account
+fallbacks and missing quota data cannot earn expiry priority. Unknown evidence
+retains enrollment order among candidates that are not known to have
+insufficient allowance; if every candidate has insufficient observed allowance,
+no application is staged. Equal deadlines retain enrollment order.
+
+Account probes are limited to four at once. Station rechecks profile routing,
+enrollment and policy after probing; intervening changes refuse staging.
+Existing recovery admission, durable application, cancellation and provider
+acceptance remain authoritative. Choosing a candidate does not prove that an
+engine applied it or that the resumed turn succeeded.
+
+Omitting `allowancePreference` from a policy update preserves the saved
+preference; send `"allowancePreference": null` to clear it. The existing SDK
+`useSetCredentialRecoveryAutomaticPolicyMutation` accepts the same optional
+field. This policy remains opt-in and automatic recovery remains off by default.
+
 The overlay is not secret. It is visible to the engine and to every tool it
 runs (an agent can read these variables, for example from a shell), and to
 anyone who can read this Station's connection settings, not only to holders
