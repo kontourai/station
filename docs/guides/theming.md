@@ -61,7 +61,11 @@ envelope before the legacy theme key and falling back to dark if storage is
 unavailable. [main.tsx](../../src-ui/src/main.tsx) applies the canonical theme,
 accent and cached branding before React renders. The initial HTML and
 [StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
-startup surface through platform and authority resolution. The mark begins centered,
+startup surface through platform and authority resolution. The lightweight
+[boot entry](../../src-ui/src/boot.ts) starts painting before it imports the full
+app. A failed app import releases animation and provides a reload action. The
+bundle budget still counts the immediately loaded app's static JS/CSS closure
+through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
 then moves left while Fraunces reveals `tation`, using the river as the S. The
 selected wordmark uses the Original spacing from the reviewed motion study.
 Water falls into a track and spreads across it, then remains an indeterminate
