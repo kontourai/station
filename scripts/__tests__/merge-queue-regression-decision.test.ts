@@ -113,7 +113,11 @@ describe('the decision over real plans (child process)', () => {
   test('a deferred plan that dropped its explicit tests over the 32 cap runs the full regression', async () => {
     // 33 real suites the manifest already names, changed in one diff.
     const tests = [
-      ...new Set(TEST_IMPACT_MANIFEST.flatMap((edge) => edge.tests ?? [])),
+      ...new Set(
+        TEST_IMPACT_MANIFEST.flatMap((edge) =>
+          'tests' in edge ? edge.tests ?? [] : [],
+        ),
+      ),
     ]
       .filter(
         (path) =>
@@ -239,7 +243,8 @@ describe('mergeQueueRegression impact edges', () => {
       /merge-queue\s+full\s+regression/.test(edge.reason ?? ''),
     ).map((edge) => edge.pattern);
     const flagged = TEST_IMPACT_MANIFEST.filter(
-      (edge) => edge.mergeQueueRegression === true,
+      (edge) =>
+        'mergeQueueRegression' in edge && edge.mergeQueueRegression === true,
     ).map((edge) => edge.pattern);
     expect(flagged.sort()).toEqual(claimed.sort());
     // Pinned independently of the manifest: the nine #2301/#2326/#2458/#2610
@@ -266,8 +271,8 @@ describe('mergeQueueRegression impact edges', () => {
     ['testless', { related: true }],
     ['non-boolean', { mergeQueueRegression: 'yes', tests: ['a/a.test.ts'] }],
   ])('a %s queue-regression edge is refused', (_name, shape) => {
-    const errors = validateTestImpactManifest([
-      { pattern: 'x.ts', mergeQueueRegression: true, ...shape },
+    const errors = Reflect.apply(validateTestImpactManifest, undefined, [
+      [{ pattern: 'x.ts', mergeQueueRegression: true, ...shape }],
     ]);
     expect(errors.join('\n')).toContain(
       'a merge-queue regression edge must be an unconditional boundary edge with tests: x.ts',
