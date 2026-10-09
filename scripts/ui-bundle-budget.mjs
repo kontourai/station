@@ -52,7 +52,7 @@
  * small boot entry immediately imports the app; `station-eager-entry` names
  * that named chunk so its static JS/CSS closure still pays this same budget.
  */
-import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
@@ -227,13 +227,26 @@ export function measureEntryBundle(outputDir) {
   const appEntry = findTags(html, 'meta').find((tag) =>
     /\bname="station-eager-entry"/.test(tag),
   );
+  const manifestPath = join(outputDir, '.vite/manifest.json');
+  const manifest = existsSync(manifestPath)
+    ? JSON.parse(readFileSync(manifestPath, 'utf8'))
+    : null;
+  if (
+    !appEntry &&
+    manifest &&
+    Object.values(manifest).some(
+      (chunk) => chunk.name === 'main' && chunk.isDynamicEntry === true,
+    )
+  )
+    throw new Error(
+      'Station boot output is missing station-eager-entry metadata.',
+    );
   if (appEntry) {
     const entry = appEntry.match(/\bcontent="([^"]+)"/)?.[1];
     if (!entry)
       throw new Error('Station eager entry is missing its chunk name.');
-    const manifest = JSON.parse(
-      readFileSync(join(outputDir, '.vite/manifest.json'), 'utf8'),
-    );
+    if (!manifest)
+      throw new Error('Station eager entry is missing its Vite manifest.');
     const visited = new Set();
     const visit = (key) => {
       if (visited.has(key)) return;

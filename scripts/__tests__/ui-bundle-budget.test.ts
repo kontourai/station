@@ -243,6 +243,17 @@ describe('measureEntryBundle (station#1218)', () => {
     expect(measured.entryJsGzipBytes).toBe(boot + app + shared);
     expect(measured.entryCssGzipBytes).toBe(bootCss + appCss);
     expect(measured.assetCount).toBe(5);
+    writeFileSync(
+      join(dir, 'index.html'),
+      '<script src="/boot.js"></script><link rel="stylesheet" href="/boot.css">',
+    );
+    expect(() => measureEntryBundle(dir)).toThrow(
+      'missing station-eager-entry metadata',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      '<meta name="station-eager-entry" content="main"><script src="/boot.js"></script><link rel="stylesheet" href="/boot.css">',
+    );
     writeFileSync(join(dir, '.vite/manifest.json'), '{}');
     expect(() => measureEntryBundle(dir)).toThrow(
       'needs one dynamic chunk named main',
