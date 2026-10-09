@@ -801,6 +801,75 @@ unknown. If a proxied connection fails with a client-version error, update
 the proxy first; Station cannot rewrite what the proxy sends upstream, and
 unproxied connections are unaffected.
 
+### Give a credential profile its own routing
+
+A connection's `env` applies to every session of that Engine. A **credential
+profile** (a separate, Station-managed engine home per account) can also carry
+its own non-secret env overlay, so one account can run through a proxy while
+another talks to the provider directly. Set it with
+`station connections profile-env <engine> <profile-ref> --data=<json>` or
+`PUT /api/connections/agent/<engine>/credential-recovery/profiles/<profile-ref>/env`;
+the body replaces the whole overlay and `{"env":{}}` clears it. For example,
+to route a Claude Code profile through a local proxy and hide an inherited
+API key:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8318",
+    "ANTHROPIC_API_KEY": ""
+  }
+}
+```
+
+The overlay is meant for non-secret values, and Station refuses values that
+look like credentials. This is a heuristic, not a secret detector: a non-empty
+value is refused when its name ends in `KEY(S)`, `TOKEN(S)`, `SECRET(S)`,
+`PASSWORD(S)`, `PASSWD`, `CREDENTIAL(S)`, `AUTH`, `HEADER(S)` or `_PAT` (any
+case), or when the value carries URL userinfo (`http://user:pass@host`), an
+authorization or API-key header, or a `Bearer`/`Basic` credential. An empty
+string is allowed under any name so the profile can mask an inherited
+credential. `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `TMPDIR`, and Station-internal
+names are refused too. The whole overlay is refused rather than trimmed when
+any entry breaks these rules. A proxy token therefore cannot be set on a
+profile today: keep it in the profile's own engine home (its sign-in), or in
+the connection `env`, which applies to every profile.
+
+A session running under a profile sees, from lowest to highest precedence: the
+server's environment, the connection `env`, the profile overlay, the profile's
+own config-home key, then Station's engine temp directory
+([resolver](../../src-server/providers/app-home/credential-profile-env.ts)). The profile is the
+one an Agent pins, the one credential recovery is trying, or else the
+connection's active profile. The overlay reaches Claude Code and Codex session
+starts and Codex quota reads for that profile. It is not applied to model
+discovery, adopted sessions and source-home resumes, login readiness checks,
+login/enrolment into the profile, or the per-profile usage read
+(`GET /api/connections/agent/<engine>/credential-usage`), which reads the
+profile home directly.
+
+If a saved overlay is invalid (for example after hand-editing
+`config/app.json`), or the connection's active profile cannot otherwise be
+prepared, the session start fails instead of running on the global engine
+configuration. Station does not keep the invalid values: the next profile
+change (or a settings save or import that includes the profiles) rewrites
+the overlay as an `envInvalid` marker that holds only the offending variable
+names, and `GET /config/app` never returns them. Until then a hand-edited
+value stays in `config/app.json`. The
+marker keeps the profile refused, so other profile changes cannot quietly
+un-route it. `station connections profiles` shows such a profile with
+`envInvalid` and the offending variable names, and the server log names them
+too. Replace the overlay with `profile-env` to repair
+it. Automatic credential recovery only switches to an enrolled
+profile whose overlay is identical to the active profile's; when every
+enrolled candidate differs, it refuses with `environment_mismatch`. Choosing
+a profile by hand, or pinning one on an Agent, is not restricted this way.
+
+The overlay is not secret. It is visible to the engine and to every tool it
+runs (an agent can read these variables, for example from a shell), and to
+anyone who can read this Station's connection settings, not only to holders
+of the `access:manage` scope that the dedicated route requires. Do not put
+anything there that should stay private.
+
 ---
 
 ## OpenAI-compatible endpoints

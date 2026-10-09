@@ -94,6 +94,8 @@
 
     "src-server/providers/adapters/codex-approval-mode.ts",
 
+    "src-server/providers/app-home/credential-profile-env.ts",
+
     "src-server/providers/auth/claude-auth.ts",
 
     "src-server/providers/llm/bedrock-credentials.ts",
