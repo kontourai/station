@@ -192,7 +192,7 @@ describe('qualification health through the GitHub API', () => {
       },
     });
     expect(result.reasons).toEqual([
-      'No successful source qualification within 14 hours (two cadence intervals plus two-hour grace).',
+      'No successful source qualification within 14 hours (conservative successful-source freshness bound).',
     ]);
   });
 

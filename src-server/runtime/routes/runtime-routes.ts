@@ -1,3 +1,4 @@
+import { hostname } from 'node:os';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
@@ -153,6 +154,7 @@ import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
   type DevicePrincipalBinding,
   type FullAccessRevocationReport,
+  PAIRING_SCOPE_PRESETS,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
@@ -535,6 +537,7 @@ import { projectSessionLifecycle } from '../../services/orchestration/session-li
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
+import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import { IntegrationIconAssets } from '../../services/plugins/integration-icon-assets.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
@@ -5692,6 +5695,11 @@ export function configureRuntimeRoutes(
               environment.profile.environmentId === environmentId,
           ),
       isRequestPrincipalCurrent,
+      new PeerEnrollmentService(
+        peerCredentialStore,
+        hostname(),
+        context.configLoader.getProjectHomeDir(),
+      ),
     ),
   );
   // station#1423: the operator's own answer-share management family. The base
@@ -8000,6 +8008,12 @@ export function configureDevicePairingPublicRoutes(
     if (
       !body ||
       typeof body.deviceName !== 'string' ||
+      (body.kind !== undefined &&
+        body.kind !== 'device' &&
+        body.kind !== 'delegation') ||
+      (body.kind === 'delegation' &&
+        (body.requireAccountBinding !== undefined ||
+          body.clientInstanceId !== undefined)) ||
       (body.requireAccountBinding !== undefined &&
         body.requireAccountBinding !== true) ||
       (body.clientInstanceId !== undefined &&
@@ -8074,6 +8088,12 @@ export function configureDevicePairingPublicRoutes(
         : (directIngressOrigin ?? requestUrl.origin);
       const accessInput = {
         endpoint: requestOrigin,
+        ...(body.kind === 'delegation'
+          ? {
+              kind: 'delegation' as const,
+              scope: PAIRING_SCOPE_PRESETS.delegation.join(' '),
+            }
+          : {}),
         deviceName: body.deviceName,
         clientInstanceId: body.clientInstanceId as string | undefined,
         requesterPosition: pairingRequesterPosition(c),

@@ -3512,6 +3512,12 @@ The promotion satisfies the pending-request route scope without granting
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
 
+Sender-side Station peer enrollment is a separate operator-only workflow under
+`/api/environments/peers/enrollments`. Its safe status response never returns the
+exchange proof or outbound bearer. See [the SDK route and lifecycle contract](sdk.md#station-peer-enrollment)
+and [the trust boundary](../security/remote-access-threat-model.md#server-owned-station-peer-enrollment).
+Receiver approval above does not establish Project membership or execution consent.
+
 ## Operator passkey administration (host)
 
 `GET /api/pairing/operator-passkeys` lists enrollment availability, active

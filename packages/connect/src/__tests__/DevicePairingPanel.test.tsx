@@ -59,6 +59,71 @@ afterEach(() => {
 });
 
 describe('device pairing panels', () => {
+  test('a peer invitation cannot start interactive Device pairing', () => {
+    const payload = encodeDevicePairingPayload({
+      kind: 'delegation',
+      protocolVersion: 1,
+      environmentId: 'peer-station',
+      offerId: 'peer-offer',
+      challenge: 'peer-challenge',
+      manualCode: 'ABCDE12345',
+      endpoint: 'https://peer.example.test',
+      scope: pairingScopePresetString('delegation'),
+      expiresAt: Date.now() + 60_000,
+    });
+    const transport = vi.spyOn(globalThis, 'fetch');
+    render(
+      <JoinDevicePairingPanel
+        initialPairingPayload={payload}
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toContain('peer Station');
+    expect(
+      screen.getByRole('button', { name: 'Request access' }),
+    ).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  test('receiver approval names a peer grant separately from Device access', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests')
+        return response({
+          requests: [
+            {
+              kind: 'delegation',
+              requestId: 'peer-request',
+              deviceName: 'Kontour',
+              scope: pairingScopePresetString('delegation'),
+              status: 'pending',
+              source: 'same-origin',
+              expiresAt: Date.now() + 60_000,
+            },
+          ],
+        });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://receiver.example.test"
+        publicEndpoint="https://receiver.example.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByText('Peer Station access');
+    expect(
+      screen.getByText(
+        'Lets this Station send work here. Project resource consent is separate.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+  });
+
   test('reviews a supplied pairing payload before it sends an access request', async () => {
     const payload = encodeDevicePairingPayload({
       protocolVersion: 1,

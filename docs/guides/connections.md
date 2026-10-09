@@ -232,6 +232,48 @@ Project access administration still requires Project IAM. See the
 
 ## Saved Station addresses
 
+Choose **Manage Stations**, then **Connect a Station**. Enter its address, a pairing code,
+or scan a QR code. Station checks compatibility and displays the destination's
+reported identity. That public response is not a signing-key trust decision.
+In a browser, the destination must permit the current page's exact origin
+through its existing `--allowed-origin` startup setting. HTTPS pages may also
+block an HTTP destination. If identification fails, no access request has been
+submitted. Use the native app or open the destination directly for Device
+pairing when the browser cannot read its response. The current receiver also
+checks browser pairing-request provenance separately: Chromium requests from
+another page origin are refused even when discovery is allowed. That refusal
+does not create a pending request. Use the native app to request Device access,
+or open the receiver's own page; peer setup still belongs to the sending
+Station's trusted session.
+
+Choose either or both access requests:
+
+- **Use the destination from this device** saves this device's approved access.
+- **Let the current Station send work to the destination** requests a separate,
+  server-held delegation grant.
+
+Each request needs its own receiver approval. Peer enrollment also requires an
+operator-authorized session on the controlling Station; ordinary paired-device
+access cannot manage peer credentials. If that authority is unavailable, the
+dialog explains the limitation instead of asking for an operator key. Existing
+trusted approval surfaces remain the remedy; this flow does not implement
+remote operator elevation.
+
+Device access saves without replacing an existing selected Station. From a
+Project's Delegate dialog, setup preserves the draft and resource selection and
+returns there without submitting work. Peer approval and completion do not grant
+Project execution: the receiver must offer the exact resource, and its Agent
+must be available. Foreground peer threads remain unsupported in the Project
+default picker.
+
+Once the sending Station confirms a peer request, **Check approval** completes
+that existing enrollment. Before confirmation, **Retry this same request** keeps
+its retained identity and destination. Each state offers cancellation separately;
+retry does not create a replacement automatically. If an exchange outcome is unknown, inspect or
+revoke the receiver's grant before starting again. Cancelling a local pending
+request does not revoke an already approved receiver grant. A saved peer
+credential establishes permission, not observed reachability or Project readiness.
+
 Tap the connection dot on a phone, or the connection name on desktop, to
 choose a Station. A checkmark identifies the current Station, whose status is
 live. The chooser does not probe inactive Stations; they say **Not checked**
@@ -905,7 +947,9 @@ Connections has one clear home for each relationship:
 
 - **Computers** combines saved Station and SSH relationships. Its rows distinguish
   authorization from observed reachability. **Add computer** asks whether to
-  pair a device, reach another Station, or run work over SSH.
+  invite a device, connect another Station, or run work over SSH. Connecting a
+  Station opens the same destination and independent-access journey as
+  **Connect a Station** in the Station manager.
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
   or tool availability.

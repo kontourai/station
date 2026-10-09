@@ -1,29 +1,8 @@
 /**
- * archive#1134 — one "Add a computer" entry point that asks the GOAL
- * first, then routes into the flow that serves it. Three mechanisms exist
- * and the audit found all three reachable by differently-shaped affordances
- * within 300px of each other (CI-R9):
- *   - "control this Station" -> device pairing, via the STABLE recovery
- *     shell's `ConnectionManagerModal` at its `pair-host` panel (create an
- *     offer, approve requests, manage paired devices — `HostDevicePairingPanel`
- *     in `@kontourai/station-connect`). This chooser lives in the
- *     replaceable protected tree, so it must NOT mount its own modal
- *     instance here: an authority activation transition (adding the very
- *     Station being paired, a credential change) would unmount the open
- *     access-request flow mid-exchange. It fires `openConnectionsModal`
- *     and closes; the recovery shell owns the one modal state machine.
- *   - "reach another Station" -> `StationAddressDialog`, which absorbs the
- *     sibling inline "Add Station" form this replaced.
- *   - "run work over SSH" -> `SshComputerCreatorDialog` (D7), which replaced
- *     `SshEnvironmentSetupModal`: that one dead-ended in the browser and, on
- *     desktop, created a saved connection rather than the SSH environment
- *     profile this section lists (CI-R1).
- *
- * The underlying flows stay distinct on purpose (per the issue: "the flows
- * can stay distinct underneath; the decision should not be the user's to
- * reverse-engineer") — this component only removes the guesswork of which
- * one to open. See docs/guides/machine-relationships.md for the direction /
- * trust / unlock model this copy encodes.
+ * The chooser lives below the replaceable authority tree. Station setup and
+ * Device invitations hand off to the stable recovery shell so an access change
+ * cannot discard an in-flight exchange. SSH and broker routes retain their
+ * transport-specific setup owners.
  */
 
 import { useState } from 'react';
@@ -33,7 +12,6 @@ import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import './AddMachineModal.css';
 import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import { SshComputerCreatorDialog } from './SshComputerCreatorDialog';
-import { StationAddressDialog } from './StationAddressDialog';
 
 export type AddMachineGoal = 'control' | 'station' | 'delegate' | 'relay';
 
@@ -44,12 +22,6 @@ interface AddMachineGoalOption {
   unlocks: string;
 }
 
-/**
- * The two goals, and the exact "what this unlocks" copy (archive#1134
- * "the highest-value part of the whole issue"). Each line names the
- * direction and the capability it grants, never a liveness claim —
- * both flows below still gate the real "ready"/"connected" state themselves.
- */
 export const ADD_MACHINE_GOAL_OPTIONS: readonly AddMachineGoalOption[] = [
   {
     goal: 'control',
@@ -60,10 +32,10 @@ export const ADD_MACHINE_GOAL_OPTIONS: readonly AddMachineGoalOption[] = [
   },
   {
     goal: 'station',
-    title: 'Reach another Station',
+    title: 'Connect a Station',
     detail:
-      'Save the address of a Station running on another computer, so you can open it from here.',
-    unlocks: 'This device can open that Station.',
+      'Choose a Station, then approve access for this device, remote work, or both.',
+    unlocks: 'Device access and permission to send work stay separate.',
   },
   {
     goal: 'delegate',
@@ -105,6 +77,11 @@ export function AddMachineModal({
    * by the time the shell's modal opens.
    */
   function chooseGoal(option: AddMachineGoal) {
+    if (option === 'station') {
+      openConnectionsModal({ mode: 'connect-station' });
+      close();
+      return;
+    }
     if (option === 'control') {
       openConnectionsModal({ mode: 'pair-host' });
       close();
@@ -114,10 +91,6 @@ export function AddMachineModal({
   }
 
   if (!isOpen) return null;
-
-  if (goal === 'station') {
-    return <StationAddressDialog onClose={close} />;
-  }
 
   if (goal === 'relay') {
     return <RelayRouteProfileDialog onClose={close} />;
