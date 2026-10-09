@@ -69,6 +69,7 @@ import {
   resolveBootTheme,
 } from './lib/device-settings-store';
 import { stationQueryDefaults } from './lib/queryDefaults';
+import { releaseInitialStartupAnimation } from './lib/startup-animation';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -229,6 +230,7 @@ if (_bootBrandingTheme)
   applyBrandingTheme(document.documentElement, _bootBrandingTheme);
 
 function renderApp(): void {
+  releaseInitialStartupAnimation();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>

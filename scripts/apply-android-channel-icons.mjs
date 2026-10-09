@@ -123,7 +123,7 @@ export function applyAndroidChannelIcons(
       join(
         root,
         'src-ui/public',
-        channel === 'dev' ? 'favicon-dev.png' : 'favicon.png',
+        channel === 'stable' ? 'favicon.png' : `favicon-${channel}.png`,
       ),
       join(drawable, 'station_startup_logo.png'),
     );

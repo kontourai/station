@@ -35,8 +35,7 @@ function trackPath(
 
 /** Paints the boot surface without owning readiness or delaying its removal. */
 export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
-  firstPaintCleanup?.();
-  firstPaintCleanup = undefined;
+  releaseInitialStartupAnimation();
   const candidate = canvas.getContext('2d');
   const parent = canvas.parentElement;
   if (!candidate || !parent) return () => {};
@@ -78,8 +77,12 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
 
   function loadMark() {
     const next = new Image();
-    next.src = document.documentElement.classList.contains('is-dev-build')
-      ? '/favicon-dev.png'
+    const channel = document.documentElement.dataset.appChannel;
+    const variant = document.documentElement.classList.contains('is-dev-build')
+      ? 'dev'
+      : channel;
+    next.src = ['dev', 'beta', 'nightly'].includes(variant ?? '')
+      ? `/favicon-${variant}.png`
       : '/favicon.png';
     if (next.src === image.src) return;
     ready = false;
@@ -285,7 +288,11 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
       dispose();
       return;
     }
-    if (ready && !document.hidden && now - lastPaint >= 1000 / 30) {
+    if (
+      ready &&
+      !document.hidden &&
+      (motion.matches || now - lastPaint >= 1000 / 30)
+    ) {
       startedAt ??= now;
       draw(motion.matches ? 3 : (now - startedAt) / 1000);
       canvas.dataset.ready = 'true';
@@ -320,6 +327,11 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
     schedule();
   });
   return dispose;
+}
+
+export function releaseInitialStartupAnimation(): void {
+  firstPaintCleanup?.();
+  firstPaintCleanup = undefined;
 }
 
 const firstPaintCanvas = document.querySelector<HTMLCanvasElement>(
