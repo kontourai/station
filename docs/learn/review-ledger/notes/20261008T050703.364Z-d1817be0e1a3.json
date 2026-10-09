@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"connection-service.ts delta is this PR's env-overlay plumbing; the smoke-confidence claims cite suites that still exist and still run; unchanged.","inputs":["docs/reference/agent-smoke-confidence.md","docs/learn/media/connections-models.png","src-server/services/connections/connection-service.ts"]}
+  ]
+}

@@ -1163,6 +1163,62 @@ removes saved overrides and unregisters the engine connection from the Agent
 registry. This does not uninstall the engine executable. A pending runtime
 reconciliation can return 202 with `configurationActivation`.
 
+### Set a Credential Profile's Env Overlay
+
+```http
+PUT /api/connections/agent/:id/credential-recovery/profiles/:ref/env
+```
+
+The body is `{"env": {"NAME": "value", ...}}`. It replaces the profile's
+non-secret env overlay wholesale; `{"env": {}}` clears it. The
+[request schema](../../src-server/routes/schemas/schema-definitions/runtime.ts)
+applies the [profile env rules](../../src-server/services/connections/connection-env.ts)
+and refuses the whole body with 400 when any entry breaks them: an invalid
+name, a non-string value, NUL, a value over 32,768 JavaScript string code
+units, more than 64 entries, `TMPDIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, a
+Station-internal name, or a non-empty value that looks like a credential.
+That last check is a heuristic, not a secret detector: it refuses names
+ending in `KEY(S)`, `TOKEN(S)`, `SECRET(S)`, `PASSWORD(S)`, `PASSWD`,
+`CREDENTIAL(S)`, `AUTH`, or `HEADER(S)`, or equal to or ending in `_PAT`, and
+values carrying URL userinfo (`scheme://user:pass@host`), an
+`Authorization`/`Proxy-Authorization` or API-key header, or a `Bearer`/`Basic`
+credential. An empty string is allowed under any name so a profile can mask an
+inherited credential. Error details name the variable, never its value.
+
+A body larger than 2 MiB + 64 KiB is refused with 413 before it is parsed.
+That admits an overlay at the entry and value caps (64 values of 32,768
+characters) when every value is printable ASCII needing no JSON escaping and
+the names total at most 65,143 bytes in compact JSON; a near-cap overlay of
+multi-byte or escaped text can exceed it.
+
+An unknown profile returns 404, and an Agent App without credential recovery
+returns 404. A 409 means the registry did not end up holding the requested
+overlay (for example a concurrent change) or the write failed; re-read the
+profiles before retrying. On success the response is `{success: true, data}`
+with the credential-recovery projection: `profiles[].env` carries a valid
+overlay, and `profiles[].envInvalid.names` lists the offending variable names
+of a saved overlay that breaks the rules (sessions under that profile fail
+until it is replaced).
+
+This dedicated route requires the `access:manage` pairing scope, like the rest
+of the `/api/connections/agent/:id/credential-recovery` family
+([route mapping](../../src-server/security/pairing-route-scopes.ts)). The
+overlay is not secret: it is also readable at `orchestration:read` through the
+connection listings and `GET /config/app`, and the whole credential-recovery
+registry, overlay included, can be written through `PUT /config/app` at
+`orchestration:operate`. That write does not refuse an invalid overlay, but it
+normalizes the profiles it is given, so it persists such an overlay only as
+its `envInvalid` marker. A saved overlay that breaks the rules (for example
+after hand-editing `config/app.json`) makes sessions under that profile fail
+closed; `GET /config/app` and the `PUT /config/app` response show it only as
+`envInvalid` with variable names, and the next registry write, or a
+`PUT /config/app` that includes the profiles, persists only that marker. Until
+then the hand-edited values remain in the file.
+
+`POST /api/connections/agent/:id/credential-recovery/profiles` (profile upsert)
+manages the ref and label only; a body that includes `env` is refused with 400
+naming this route.
+
 ### Test a Connection
 
 `POST /api/connections/:id/test` returns `{success: true, data}` with
