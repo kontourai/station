@@ -1,7 +1,7 @@
 import type { ConnectionQuotaSnapshot } from '@kontourai/station-contracts/connection-quota';
 import type { AllowanceRoutingPreference } from '@kontourai/station-contracts/connection-recovery';
 
-export const ALLOWANCE_OBSERVATION_MAX_AGE_MS = 60_000;
+const ALLOWANCE_OBSERVATION_MAX_AGE_MS = 60_000;
 
 /** Ranks already-authorized candidates; it neither enrolls nor applies one. */
 export function selectExpiringAllowance(input: {
