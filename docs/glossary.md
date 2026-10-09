@@ -202,7 +202,7 @@ connection). Trust grants (e.g. remote extension bundles) are stored **per
 Station on this device**, so trusting one Station never extends to another.
 
 - **The user-facing noun is just "Station."** The switcher and manager list
-  *Stations*; the affordances are "Add a Station", "Edit Station", and
+  *Stations*; the affordances are "Connect a Station", "Edit Station", and
   **"Forget Station"** — the Wi-Fi pattern: *forget* says the removal is
   local to this device, so no separate record-noun ("profile", "host",
   "connection") is needed to distinguish the entry from the server.

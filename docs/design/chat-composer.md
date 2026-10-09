@@ -78,8 +78,11 @@ opens the existing task launcher with the current message, Project and Agent,
 and with its Station/worker/model routing controls expanded. The launcher
 loads the selected environment's own worker inventory and retains portable
 Project/resource admission and the explicit no-fallback refusals. **Run task**
-starts a task; it does not place or migrate a foreground chat on a peer. Editing
-the task message updates the originating draft, so Cancel retains those edits.
+starts a task; it does not place or migrate a foreground chat on a peer.
+**Connect a Station for this task** keeps the task draft, chosen Station and
+Project resource while setup opens. Returning refreshes discovery and still
+requires an explicit **Run task** action.
+Editing the task message updates the originating draft, so Cancel retains those edits.
 A successful launch clears only the text submitted and names its captured
 Station; newly typed text stays. Remote task submission and Escape do not
 submit or dismiss the underlying foreground composer. Prepared visual skills
