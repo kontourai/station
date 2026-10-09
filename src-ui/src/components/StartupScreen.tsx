@@ -1,5 +1,3 @@
-import './startup-screen.css';
-
 /** The same first-paint surface used before and after React takes over. */
 export function StartupScreen({
   message = 'Opening Station…',

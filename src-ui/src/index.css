@@ -18,6 +18,7 @@
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 @import url("@kontourai/ui/react/styles.css");
+@import url("./components/startup-screen.css");
 
 /* A development build installs alongside a real one — same name, same window,
    one letter of difference in the application id. Retinting the brand token is
