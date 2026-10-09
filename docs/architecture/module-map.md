@@ -1447,6 +1447,13 @@ An automatic profile change is a compensation protocol, not a switch followed by
 
 **Code and evidence.** `OrchestrationService` composes RecoveryLedger, `RecoveryDispatchAdapter`, credential profile Adapter, session restore/quarantine functions, and clock. `SessionRecoveryCoordinator` routes profile recovery to it. Real lifecycle, compensation, two-instance, and provider-truth coverage is in `src-server/services/orchestration/__tests__/credential-recovery-module.test.ts` and `session-recovery-coordinator.test.ts`. **Do not reintroduce:** credential callbacks on the coordinator, profile policy in a provider Adapter, broad rollback for linked work, or ad-hoc restart maps.
 
+The existing connection recovery policy can optionally rank eligible accounts
+with [allowance routing](../../src-server/services/connections/allowance-routing-policy.ts).
+ConnectionService supplies current, authorized profile quota observations and
+rechecks admission after probing. The selector adds no credential custody or
+scheduler; ordinary application and provider settlement stay with the owners
+above. Missing quota/lifecycle facts remain unknown.
+
 ## ConnectionInspector
 
 [ConnectionInspector](../../src-server/services/connections/connection-inspector.ts)
