@@ -14,7 +14,9 @@ import { type AgentFixRoute, agentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import {
+  GLOBAL_CONTEXT,
   modelPickerProviders,
   type NewChatModalContextOption,
   type NewChatWorkspaceHint,
@@ -227,6 +229,8 @@ export function StartProjectMenu({
   selectedContext,
   workspaceHint,
   folderlessHint,
+  icons,
+  accents,
   onChoose,
   onClose,
 }: {
@@ -237,23 +241,22 @@ export function StartProjectMenu({
   workspaceHint: NewChatWorkspaceHint;
   /** Where a project with no folder runs with the chosen Agent. */
   folderlessHint: NewChatWorkspaceHint;
+  /** The sidebar's project icons (`useProjectIcons`), from the caller. */
+  icons: ReadonlyMap<string, string>;
+  /** The sidebar's project colours (`useProjectAccents`), from the caller. */
+  accents: ReadonlyMap<string, string>;
   onChoose: (context: string) => void;
   onClose: () => void;
 }) {
   const anchorRef = useRef<HTMLElement | null>(anchor);
   const [search, setSearch] = useState('');
   const query = search.toLowerCase();
-  // TODO(project-icons): render `ProjectIcon` once feat/project-icons
-  // lands. Until then no raw `project.icon` reaches LayoutIcon here (it
-  // would hotlink a remote or path icon); every project shows the folder.
-  const safeOptions = options.map((option) =>
-    option.icon
-      ? { ...option, icon: undefined, glyph: 'folder' as const }
-      : option,
-  );
+  // Only `ProjectIcon` draws a project here: it shows an icon the contracts
+  // rule allows and never a raw `project.icon`, which `LayoutIcon` would
+  // hotlink.
   const filtered = query
-    ? safeOptions.filter((option) => option.label.toLowerCase().includes(query))
-    : safeOptions;
+    ? options.filter((option) => option.label.toLowerCase().includes(query))
+    : options;
   return (
     <ResponsiveDialogSurface
       layer={layer}
@@ -271,18 +274,35 @@ export function StartProjectMenu({
         closeLabel="Close project list"
         onClose={onClose}
       />
-      <p className="start-menu__hint">
-        {'path' in workspaceHint ? (
-          <>
-            Runs in <CwdBreadcrumb path={workspaceHint.path} />
-          </>
-        ) : (
-          workspaceHintText(workspaceHint)
-        )}
-      </p>
+      {'path' in workspaceHint ? (
+        // One line: the folder's parent gives way, its leaf stays readable.
+        <p className="start-menu__hint start-menu__hint--path">
+          <span className="start-menu__hint-lead">Runs in</span>
+          <CwdBreadcrumb path={workspaceHint.path} />
+          {workspaceHint.kind === 'unverified' && (
+            <span className="start-menu__hint-lead">(not checked yet)</span>
+          )}
+        </p>
+      ) : (
+        <p className="start-menu__hint">{workspaceHintText(workspaceHint)}</p>
+      )}
       <div className="start-menu__list">
         <ContextPickerOptions
           folderlessHint={folderlessHint}
+          renderMark={(option) =>
+            option.value === GLOBAL_CONTEXT ? undefined : (
+              <span className="start-menu__mark">
+                <ProjectIcon
+                  project={{
+                    name: option.label,
+                    icon: icons.get(option.value),
+                  }}
+                  size={24}
+                  accent={accents.get(option.value)}
+                />
+              </span>
+            )
+          }
           contextSearch={search}
           onContextSearchChange={setSearch}
           autoFocusFilter={false}

@@ -580,7 +580,11 @@
 
     "packages/sdk/src/query-domains/peerEnrollments.ts",
 
-    "packages/sdk/src/__tests__/peerEnrollmentRequestAuthority.test.ts"
+    "packages/sdk/src/__tests__/peerEnrollmentRequestAuthority.test.ts",
+
+    "packages/sdk/src/query-domains/developerRuntime.ts",
+
+    "packages/sdk/src/query-domains/resourcePosture.ts"
   ],
 
   "checks": [

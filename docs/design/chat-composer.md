@@ -50,6 +50,11 @@ execution or native-shell qualification. Capture revisions and limits are in
 | New chat | ![Baseline new chat](../learn/media/new-chat-start-before.png) | ![Redesigned new chat](../learn/media/new-chat-start-after.png) |
 | Project page | ![Baseline Project page](../learn/media/project-start-before.png) | ![Project start composer](../learn/media/project-start-after.png) |
 
+These frozen comparisons record #3490's redesign at the revisions in the media
+manifest. Later Project identity marks and server run-location updates are not
+pictured; the images are not captures or visual qualification of the current
+composer.
+
 The Project comparison captures precede the removal of the header's local
 folder controls. Their capture revisions remain recorded; folder details now
 live in Settings.
@@ -94,7 +99,13 @@ ambient dock binding. An unavailable fixed Project blocks starting and keeps
 the message. Returned drafts are scoped to that Project and Station authority.
 A project with no folder can still be chosen and runs where the server puts it:
 the home folder, or for an ACP engine its connection folder or a private
-Station-managed workspace. The project menu states the run-location hint.
+Station-managed workspace. The Project control draws its chosen icon, or a
+12px accent dot when none is displayable. The project menu states the
+server-resolved run location from `GET /api/projects/run-locations`; the
+Project catalogue and boot do not wait on folder checks. Until the separate
+read answers, the stored folder is shown. A manifest-bound Project names its
+execution root, an unavailable location states the refusal reason, and an
+unchecked location keeps Start available for the real start-time check.
 Up to five recent chats from the
 selected project or No project follow; with none, the composer stands alone.
 A start or hand-off from Home is taken only by the ambient dock, which says

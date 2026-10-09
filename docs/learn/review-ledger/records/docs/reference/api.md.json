@@ -410,7 +410,11 @@
 
     "src-server/analytics/__tests__/usage-observation-projection.test.ts",
 
-    "src-server/adapters/file/memory-adapter-messages.ts"
+    "src-server/adapters/file/memory-adapter-messages.ts",
+
+    "src-server/routes/system/resource-posture-routes.ts",
+
+    "packages/contracts/src/system-status.ts"
   ],
 
   "checks": [

@@ -4,6 +4,7 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
+import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { Skeleton } from '../state';
 import './StartComposer.css';
 
@@ -34,6 +35,8 @@ export type StartProjectChip =
       label: string;
       /** The project's accent (the sidebar's), absent for No project. */
       accent?: string;
+      /** The project icon, when its stored value is displayable. */
+      icon?: string;
       isGlobal: boolean;
       /** The folder the chat runs in, as the project menu also states. */
       folder?: string;
@@ -188,6 +191,13 @@ export function StartComposer({
             disabled={projectFixed}
             onClick={(event) => onOpenProject(event.currentTarget)}
           >
+            {!project.isGlobal && (
+              <ProjectIcon
+                project={{ name: project.label, icon: project.icon }}
+                size={displayableProjectIcon(project.icon) ? 18 : 24}
+                accent={project.accent}
+              />
+            )}
             <span>
               {project.isGlobal ? 'Without a project' : `in ${project.label}`}
             </span>

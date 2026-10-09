@@ -279,6 +279,8 @@ export async function seedDailyDriverShell(
       return route.fulfill(json({ success: true, data: [] }));
     if (path === '/api/projects')
       return route.fulfill(json({ success: true, data: [] }));
+    if (path === '/api/projects/run-locations')
+      return route.fulfill(json({ success: true, data: {} }));
     if (path === '/api/models/capabilities' || path === '/api/models')
       return route.fulfill(json({ success: true, data: [] }));
     if (path === '/api/config/app')
