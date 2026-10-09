@@ -203,7 +203,7 @@ describe('one-revision native promotion contract', () => {
     });
     // iOS is built and audited during staging and only uploaded by the
     // publishing cohort from the same run's staged bytes (#1454).
-    expect(iosStageCaller?.needs).toBe('plan-cohort');
+    expect(iosStageCaller?.needs).toEqual(['plan-cohort', 'stage-macos']);
     expect((iosStageCaller as any)?.uses).toBe(
       './.github/workflows/testflight-delivery.yml',
     );
