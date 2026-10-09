@@ -1,0 +1,7 @@
+{
+  "revision": "19d2e6914b48dba1f6aeaf49a64df7f7a00af163",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Round 6 for #3391: the threadpool sentence now says four threads by default (UV_THREADPOOL_SIZE) and that the limit of three leaves a thread free with the default pool, matching MAX_UNSETTLED_FOLDER_CHECKS in project-resource-resolver.ts.","inputs":["docs/reference/shared.md"]}
+  ]
+}

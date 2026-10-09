@@ -101,6 +101,7 @@ beforeAll(() => {
 function renderModal() {
   render(
     <NewChatModal
+      projectIconBySlug={new Map()}
       agents={[ACP_AGENT]}
       projects={[]}
       onSelect={vi.fn()}
@@ -145,6 +146,24 @@ describe('NewChatModal workspace hint (#1089)', () => {
     const fallback = screen.getByText('Home folder');
     expect(fallback).toBeDefined();
     expect(fallback.getAttribute('title')).toContain('~');
+  });
+
+  test('a folder the server did not check says so beside the stored folder (#3391)', () => {
+    selectionModelState.isGlobal = false;
+    selectionModelState.selectedProject = {
+      slug: 'slow',
+      name: 'Slow',
+      workingDirectory: '/work/slow',
+      runsAt: { kind: 'unchecked', reason: 'busy' },
+    };
+    selectionModelState.acpConnections = [];
+
+    renderModal();
+
+    expect(
+      screen.getByLabelText('Working directory: /work/slow'),
+    ).toBeDefined();
+    expect(screen.getByText('(not checked yet)')).toBeDefined();
   });
 
   test('an unbound chat names the connection directory rather than claiming the home directory', () => {

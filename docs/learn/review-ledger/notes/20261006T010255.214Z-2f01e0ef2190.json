@@ -1,0 +1,7 @@
+{
+  "revision": "0bc9c15d1aafa5a9591ea28516ede3c9563707f4",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3391 merge and dock-icon pin: NewChatModal and ChatDockModalStack require projectIconBySlug; the merged project chip bullet (icon or colour, Not checked, refusal reason) and main's Model picker sentence both still hold.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "2a8eff6e776caee7cee82ede9a18541ccc120e84",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Updated ProjectMetadata (position, runsAt) and documented ProjectRunsAt against packages/contracts/src/project.ts and the list route/resolver: operator list only, records without git identity check, none/unavailable semantics.","inputs":["docs/reference/shared.md","packages/contracts/src/project.ts"]}
+  ]
+}
