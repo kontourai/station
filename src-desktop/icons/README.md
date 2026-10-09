@@ -39,7 +39,8 @@ icons. Stable keeps the approved
 default artwork; `favicon-dev.png` is swapped into Dev by `is-dev-build` in
 `src-ui/src/index.css`.
 Mobile startup uses the same committed artwork. Android channel staging writes
-a night-mode splash background alongside its API-31 theme overlays.
+light/dark splash backgrounds alongside its API-31 theme overlays, while
+preserving the channel-specific launcher background.
 `scripts/write-ios-build-manifest.mjs` restores the maintained
 `scripts/templates/ios/LaunchScreen.storyboard` after init and stages the
 favicon and light/dark background in the asset catalog. These are build inputs;

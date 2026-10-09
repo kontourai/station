@@ -42,7 +42,7 @@ function channelValues({ accent, splashBackground }) {
 <resources>
   <color name="ic_launcher_background">${splashBackground}</color>
   <color name="station_channel_accent">${accent}</color>
-  <color name="station_splash_background">${splashBackground}</color>
+  <color name="station_splash_background">#FFF5F4EF</color>
 </resources>
 `;
 }
