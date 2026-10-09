@@ -50,8 +50,8 @@
  * main, 1 otherwise.
  */
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ZERO = /^0+$/;
@@ -70,7 +70,7 @@ export const CLASSIFIER_GIT_ENV = Object.freeze({
 });
 
 function defaultGit(args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     encoding: 'utf8',
     env: { ...process.env, ...CLASSIFIER_GIT_ENV },
     stdio: ['ignore', 'pipe', 'pipe'],
