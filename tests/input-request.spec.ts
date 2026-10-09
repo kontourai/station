@@ -441,10 +441,16 @@ for (const [label, viewport] of VIEWPORTS) {
       await expect(record).toContainText('Waiting for you');
       let decisions: Locator = strip;
       if (phone) {
+        decisions = page.getByRole('dialog', { name: 'Needs approval' });
+        await expect(decisions).toBeVisible();
+        await decisions
+          .getByRole('button', { name: 'Close and answer later' })
+          .click();
+        await expect(decisions).toBeHidden();
+        expect(answers(posted)).toEqual([]);
         await strip
           .getByRole('button', { name: 'Answer', exact: true })
           .click();
-        decisions = page.getByRole('dialog', { name: 'Approval needed' });
         await expect(decisions).toBeVisible();
         await expect(
           decisions.getByRole('button', { name: 'Deny' }),

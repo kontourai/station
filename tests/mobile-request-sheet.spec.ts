@@ -841,13 +841,30 @@ test.describe('Mobile request sheet (#3331)', () => {
     ).toBeVisible();
 
     await open();
+    let releaseResponse!: () => void;
+    const responseReady = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    await page.route('**/api/orchestration/commands', async (route) => {
+      posted.push(route.request().postDataJSON());
+      await responseReady;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: { result: null, receipt: { status: 'accepted' } },
+        }),
+      });
+    });
     await allow.click();
-    // Accepted, not yet settled: the pressed button says so instead of the
-    // sheet sitting there with every control silently disabled.
+    // Hold the response while checking the visible in-flight state.
     const allowing = dialog.getByRole('button', { name: 'Allowing…' });
     await expect(allowing).toBeVisible();
     await expect(allowing).toHaveAttribute('aria-busy', 'true');
+    await expect(deny).toBeDisabled();
     await expect.poll(() => answers(posted).length).toBe(1);
+    releaseResponse();
     await expect(dialog).toBeHidden();
     expect(answers(posted)[0]).toMatchObject({
       type: 'respondToRequest',
