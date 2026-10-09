@@ -117,7 +117,10 @@ is a startup refusal with an instruction to check the integration's tools.
 Generic connected engines receive no restricted integration when their protocol
 cannot enforce its individual-tool selection. The undelivered receipt reports
 `engine-unsupported`. This is not a claim that Station controls those engines'
-own tools or configurations.
+own tools or configurations. An explicit conversation engine override instead
+refuses startup when required profile delivery is unsupported or undelivered;
+it cannot reduce the selected Agent profile to fit the engine. See
+[execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
