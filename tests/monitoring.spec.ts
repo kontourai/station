@@ -190,6 +190,30 @@ async function seedMonitoringRoutes(page: Page) {
 }
 
 test.describe('Monitoring', () => {
+  test('keeps Live and Clear All in place when the time range changes', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await seedMonitoringRoutes(page);
+    await page.goto('/developer/telemetry');
+    const live = page.getByRole('button', { name: 'LIVE', exact: true });
+    const clear = page.getByRole('button', { name: 'CLEAR ALL', exact: true });
+    await expect(live).toBeVisible();
+    const initialLive = await live.boundingBox();
+    const initialClear = await clear.boundingBox();
+    expect(initialLive).not.toBeNull();
+    expect(initialClear).not.toBeNull();
+
+    await page.getByRole('button', { name: /Last 5 min/i }).click();
+    await page.getByRole('button', { name: 'Relative', exact: true }).click();
+    await page.getByRole('button', { name: /Last 30 days/i }).click();
+    await expect(page.locator('.time-filter-button')).toContainText(
+      'Last 30 days',
+    );
+    await expect.poll(() => live.boundingBox()).toEqual(initialLive);
+    await expect.poll(() => clear.boundingBox()).toEqual(initialClear);
+  });
+
   test('monitoring covers history, filters, search, sidebar, metrics, and time ranges', async ({
     page,
   }) => {
