@@ -25,6 +25,7 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 
 function count(value, field) {
   if (!Number.isSafeInteger(value) || value < 0)
@@ -153,10 +154,22 @@ export async function runFallowAnalysis(
       result.signal ||
       ![0, 1].includes(result.status) ||
       output.truncated
-    )
+    ) {
+      let reason = result.error?.message ?? output.stderr.text;
+      if (!output.truncated) {
+        try {
+          // Fallow emits runtime refusals as JSON on stdout, not stderr.
+          const refusal = JSON.parse(output.stdout.text);
+          if (refusal?.error === true && typeof refusal.message === 'string')
+            reason = refusal.message;
+        } catch {
+          // Interrupted output may not contain a complete error envelope.
+        }
+      }
       throw new Error(
-        `Fallow ${command} did not complete: ${result.error?.message ?? output.stderr.text}`,
+        `Fallow ${command} did not complete (status=${result.status ?? 'unknown'}, signal=${result.signal ?? 'none'}, interrupted=${interrupted}, truncated=${output.truncated}): ${redactVerificationOutput(reason).slice(0, 1200)}`,
       );
+    }
     if (statSync(outputFile).size > 32 * 1024 * 1024)
       throw new Error('Fallow report exceeds the 32 MiB read budget');
     return JSON.parse(readFileSync(outputFile, 'utf8'));

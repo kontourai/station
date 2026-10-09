@@ -93,6 +93,23 @@ describe('fallow audit base snapshots (#2529)', () => {
     expect(listing(systemTemp)).toEqual([]);
   }, 60_000);
 
+  test('a real analyzer refusal retains its status and structured reason and releases its run directory', async () => {
+    const repo = join(scratch, 'invalid-config');
+    mkdirSync(repo);
+    writeFileSync(
+      join(repo, 'package.json'),
+      '{"name":"invalid-config","type":"module"}\n',
+    );
+    writeFileSync(join(repo, '.fallowrc.json'), '{"entry":');
+    const stationRoot = join(scratch, 'station-root');
+    process.env.STATION_TEMP_ROOT = stationRoot;
+
+    await expect(
+      runFallowAnalysis(repo, 'audit', join(scratch, 'refused-audit.json')),
+    ).rejects.toThrow(/status=2[\s\S]*Failed to parse config file/);
+    expect(listing(join(stationRoot, 'fallow'))).toEqual([]);
+  });
+
   test('a run directory is removed when released, even if fallow left files in it', () => {
     process.env.STATION_TEMP_ROOT = join(scratch, 'station-root');
     const run = prepareFallowRun();
