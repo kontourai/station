@@ -99,7 +99,7 @@ jobs:
         run: npm run dependencies:ci
         timeout-minutes: 15
       - name: Repair collected failures once
-        uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675
         timeout-minutes: 40
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
