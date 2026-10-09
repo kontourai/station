@@ -49,6 +49,7 @@ interface ConnectionListPanelProps {
   onSaveEdit: () => void;
   onCancelEdit: () => void;
   onAddManual: () => void;
+  addStationLabel?: string;
   /** Re-run the pairing/access-request exchange for one saved-but-unpaired connection. */
   onRequestAccess: (connection?: SavedConnection) => void;
   /** Explicit host-default action; omitted outside a shared-profile desktop. */
@@ -587,6 +588,7 @@ export function ConnectionListPanel({
   onSaveEdit,
   onCancelEdit,
   onAddManual,
+  addStationLabel = 'Add a Station address',
   onRequestAccess,
   onMakeDefaultProfile,
   onRestartInjectedConnection,
@@ -813,7 +815,7 @@ export function ConnectionListPanel({
             onClick={onAddManual}
             className="station-connect-btn station-connect-btn--secondary"
           >
-            Add a Station address
+            {addStationLabel}
           </button>
           <button
             type="button"

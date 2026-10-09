@@ -210,7 +210,12 @@ export function useNewChatSelectionModel({
             const current = (
               projectCatalog.data as ProjectMetadata[] | undefined
             )?.find((candidate) => candidate.slug === project.slug);
-            return current ? [current] : [];
+            if (!current) return [];
+            // `runsAt` comes from the separate run-locations read (#3391),
+            // never from the catalogue, so the fresh record keeps it.
+            return [
+              project.runsAt ? { ...current, runsAt: project.runsAt } : current,
+            ];
           })
         : projects,
     [projects, projectCatalog.data, revalidateSelection],

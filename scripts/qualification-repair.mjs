@@ -15,7 +15,9 @@ export function repairState(body) {
     !Number.isSafeInteger(state.failedRun) ||
     !/^[0-9a-f]{40}$/.test(state.failedSha) ||
     !Number.isFinite(Date.parse(state.openedAt)) ||
-    !Number.isFinite(Date.parse(state.lastStartedAt))
+    !Number.isFinite(Date.parse(state.lastStartedAt)) ||
+    (state.attemptConsumed !== undefined &&
+      typeof state.attemptConsumed !== 'boolean')
   )
     throw new Error('Invalid repair episode');
   return state;
@@ -39,7 +41,7 @@ export function repairAgent(value) {
 export function nextRepairState(
   previous,
   run,
-  { retry = false, agent = true } = {},
+  { retry = false, agent = true, capacityDeferred = false } = {},
 ) {
   if (
     previous &&
@@ -55,14 +57,24 @@ export function nextRepairState(
     failedSha: run.head_sha,
     lastStartedAt: run.run_started_at,
     repairState: previous?.repairState || 'claimed',
+    // Legacy episodes have no reliable unconsumed-attempt proof; retain their
+    // existing no-automatic-retry behavior until explicit owner retry.
+    attemptConsumed: previous?.attemptConsumed ?? Boolean(previous),
   };
+  if (capacityDeferred) {
+    state.repairState = 'capacity-deferred';
+    return { state, action: 'update' };
+  }
   // Without an agent nothing owns the episode: record needs-owner, never a claim.
   if (!agent) {
     state.repairState = 'needs-owner';
     return { state, action: 'update' };
   }
-  const claim = !previous || retry;
-  if (claim) state.repairState = 'claimed';
+  const claim = !state.attemptConsumed || retry;
+  if (claim) {
+    state.repairState = 'claimed';
+    state.attemptConsumed = true;
+  }
   return { state, action: claim ? 'claim' : 'update' };
 }
 /**
@@ -92,7 +104,7 @@ export function validateRepairRun(run, repository) {
     run.path !== '.github/workflows/main-qualification.yml' ||
     run.head_repository?.full_name !== repository ||
     run.head_branch !== 'main' ||
-    !['schedule', 'workflow_dispatch'].includes(run.event) ||
+    !['push', 'schedule', 'workflow_dispatch'].includes(run.event) ||
     run.status !== 'completed' ||
     !/^[0-9a-f]{40}$/.test(run.head_sha) ||
     !Number.isSafeInteger(run.id)
@@ -169,10 +181,30 @@ async function prepare() {
   if (issue?.state === 'open' && !previous)
     throw new Error('Open repair issue has no valid episode');
   const jobs = await listGithub(`actions/runs/${id}/jobs`, 'jobs');
+  if (
+    run.conclusion === 'cancelled' &&
+    !jobs.some((job) => job.name.endsWith('Full source qualification'))
+  ) {
+    output('claim', 'false');
+    return;
+  }
+  const capacityDeferred = jobs.some(
+    (job) =>
+      job.conclusion === 'failure' &&
+      job.steps?.some(
+        (step) =>
+          step.name === 'Admit fresh qualification before expensive fanout' &&
+          step.conclusion === 'failure',
+      ),
+  );
   const decision = nextRepairState(
     previous,
     { ...run, conclusion: qualificationConclusion(run, jobs) },
-    { retry: process.env.RETRY === 'true', agent: Boolean(agent) },
+    {
+      retry: process.env.RETRY === 'true',
+      agent: Boolean(agent),
+      capacityDeferred,
+    },
   );
   output('claim', 'false');
   if (['ignore', 'stale'].includes(decision.action)) return;
@@ -184,7 +216,10 @@ async function prepare() {
       });
     return;
   }
-  const body = issueBody(decision.state, run, jobs, agent);
+  const body =
+    (capacityDeferred
+      ? 'Capacity admission deferred before corpus execution. No automated source-repair attempt is launched; source remains unqualified.\n\n'
+      : '') + issueBody(decision.state, run, jobs, agent);
   const saved = await github(issue ? `issues/${issue.number}` : 'issues', {
     method: issue ? 'PATCH' : 'POST',
     body: { title: TITLE, body, state: 'open', labels: ['bug', 'P1'] },

@@ -47,6 +47,7 @@ import {
   isRepositoryBusyError,
   listProjectIconCandidates,
   listProjectLayouts,
+  listProjectRunLocations,
   listProjectViews,
   listProjectWorkspacePanes,
   type ProjectWorkspacePaneCatalog,
@@ -206,6 +207,55 @@ export function useProjectsQuery(config?: ProjectReadQueryConfig<any>) {
         });
       const apiBase = await _getApiBase();
       return listProjectViews(apiBase, { signal });
+    },
+    { ...config, enabled: !unavailable && (config?.enabled ?? true) },
+  );
+}
+
+/**
+ * The run-locations read's cache-key prefix. Deliberately NOT under
+ * `'projects'`: a host persisting `'projects'` reads (Station's IndexedDB
+ * cache) must not replay a folder answer across reloads — it is live state,
+ * not last-loaded shell data.
+ */
+export const PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX = 'project-run-locations';
+
+/**
+ * `GET /api/projects/run-locations` (#3391), scoped like {@link
+ * useProjectsQuery}. A separate read from the Project list so the list never
+ * waits on project folders; callers mount it only where a run location is
+ * shown (the start composer) and fall back to the stored folder until it
+ * answers.
+ */
+export function useProjectRunLocationsQuery(
+  config?: ProjectReadQueryConfig<any>,
+) {
+  const requestScope = captureProjectScope(config?.requestScope);
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? [PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX, 'unavailable']
+    : scoped
+      ? [
+          PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
+          requestScope.apiBase,
+          stableAuthoritySegment(
+            requestScope.authorityKey,
+            config?.durableAuthorityId,
+          ),
+        ]
+      : [PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX];
+  return useApiQuery(
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return listProjectRunLocations(requestScope.apiBase, {
+          requestScope,
+          signal,
+        });
+      const apiBase = await _getApiBase();
+      return listProjectRunLocations(apiBase, { signal });
     },
     { ...config, enabled: !unavailable && (config?.enabled ?? true) },
   );

@@ -669,6 +669,7 @@ describe('delegated engine sign-in HTTP admission', () => {
             upsertCredentialProfile: mutations,
             deleteCredentialProfile: mutations,
             setCredentialProfileEnrollment: mutations,
+            setCredentialProfileEnv: mutations,
             setCredentialRecoveryAutomaticPolicy: mutations,
             applyCredentialProfile: async () => ({
               capability: 'unsupported',

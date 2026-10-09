@@ -79,6 +79,7 @@ export * from './integrations';
 export * from './knowledge';
 export * from './learning-source';
 export * from './orchestration';
+export * from './peer-enrollments';
 export { getPluginHeaders } from './plugin-headers';
 export * from './plugins';
 export * from './project-task-rooms';

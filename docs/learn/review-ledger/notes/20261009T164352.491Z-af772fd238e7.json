@@ -1,0 +1,7 @@
+{
+  "revision": "eada284e93eacc3fd37094ece72c78b9037ffd00",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed shared pending-answer recovery across the kept-mounted grouped card and transcript: authoritative pending inspection clears stale local phase, admission and failure on every copy; late error translation cannot restore an obsolete uncertain failure. The actual two-surface keeper failed on the pre-fix source and passes after recovery; 48 focused tests and UI typecheck passed. No additional decision POST is produced by the status check.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

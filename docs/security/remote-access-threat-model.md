@@ -481,7 +481,7 @@ default to the historical four-token grant rather than Standard:
   an explicit scope, so this fallback is reached only by a caller bypassing
   the UI (or a pre-#1098 integration) and exists to keep that path
   functioning rather than silently narrowing it.
-- The same-origin "Request access" continuity flow (the short-lived access
+- The Device same-origin "Request access" continuity flow (the short-lived access
   request a browser makes directly from the Station origin, described below)
   requests the four-token default and has no UI path to ask for less: it exists
   for the operator's own already-authenticated browser to persist a session,
@@ -1515,6 +1515,65 @@ shell history, or shared note. The preferred bootstrap is an already-authorized
 host confirming a one-time pairing request. Revealing the operator credential
 into Station Connect's masked advanced field is the recovery fallback, not
 normal browser onboarding.
+
+### Server-owned Station peer enrollment
+
+A Station peer grant is separate from the browser or native Device grant. The
+[enrollment routes](../../src-server/routes/environments/peer-credential-routes.ts)
+start, observe, complete and locally cancel a retained enrollment under
+`/api/environments/peers/enrollments`. Mutations retain the existing operator-only
+peer-store boundary and recheck current request authority after lock acquisition
+and when publishing the outbound credential. A Device's `access:approve`
+promotion permits deciding a receiver's pending request; it does not permit
+configuring the sender's outbound peer credentials.
+
+The [server owner](../../src-server/services/peers/peer-enrollment-service.ts)
+requests access from the chosen receiver using `kind: "delegation"`. The
+[receiver route](../../src-server/runtime/routes/runtime-routes.ts) chooses exactly
+`orchestration:read orchestration:operate`; arbitrary requested scopes,
+account binding and Device replacement IDs do not upgrade that request. The
+receiver-owned kind is disclosed on the pending request before the existing
+operator approval. The sender's display name is a label, not verified identity.
+Device grants are never copied into the outbound peer store, and reciprocal
+access requires its own independent grant.
+
+The sender pins the selected bare origin and expected environment ID, checks
+the public handshake around exchange, refuses redirects and validates the
+issued kind and exact scope. These checks preserve origin and environment-ID
+continuity; they do not establish independently approved signing-key trust.
+Public addresses require HTTPS; the owner's explicit local/private HTTP profile
+is a transport allowance, not approval or Project authorization. The server
+HTTP seam declares the canonical client API protocol header.
+
+Exchange proofs and issued credentials stay in the server's bounded enrollment
+records under `security/peer-enrollments`, outside renderer responses and saved
+Device profiles. Responses and serialized records are limited to 16 KiB;
+accepted offer IDs, proofs, request IDs and credentials have bounded v1 shapes.
+POSIX directory/file modes are `0700`/`0600`, with symlink/hardlink refusal and
+atomic publication. This source does not establish Windows ACL qualification.
+A common durable file lock serializes reservations, exchange, cancellation and
+publication across runtimes sharing a home. Mutations reload current records,
+cap retained enrollments at 32 and prune after offer expiry plus 15 minutes.
+
+A stable client enrollment ID reconciles the same intent without another
+receiver request. A missing receipt or abandoned remote-operation phase is an
+unknown outcome, not permission to repeat a single-use exchange. An issued
+grant is retained privately for a bounded local publication retry; an exact
+credential/origin/scope match in the peer store is reported as connected even
+if the enrollment journal's final acknowledgement failed. Local cancellation
+clears pending sender state and warns to reconcile or revoke any receiver
+grant; it does not revoke that grant. An already-installed matching peer cannot
+be cancelled as pending. Removing a local peer and revoking receiver access
+remain separate actions.
+
+This enrollment grants neither Project membership nor receiver resource
+execution consent, and it does not enable unsupported foreground peer routing.
+See [Device access and remote work](../guides/machine-relationships.md) and
+[the SDK enrollment contract](../reference/sdk.md#station-peer-enrollment).
+The [route keeper](../../src-server/services/peers/__tests__/peer-enrollment-routes.test.ts)
+exercises the HTTP/approval/publication seams and transport faults; it does not
+establish a packaged-client, physical-device or complete Project execution
+journey.
 
 ## Attached terminal transcripts
 

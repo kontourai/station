@@ -1,0 +1,7 @@
+{
+  "revision": "19d2e6914b48dba1f6aeaf49a64df7f7a00af163",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Round 6 for #3391: ChatDock now passes the project icon map (projectIconBySlug, already computed for the inbox) through ChatDockModalStack to NewChatModal, which forwards icons and accents to StartProjectMenu instead of reading the project list itself; the dock's Workspace button adds '(not checked yet)' for an unchecked folder. No API claim changes.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

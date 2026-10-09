@@ -32,6 +32,7 @@ import { NotificationHistoryItem } from './NotificationHistoryItem';
 import './NotificationHistory.css';
 import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { openApprovalConversation } from '../../lib/openApprovalConversation';
 
 interface NotificationHistoryProps {
   isOpen: boolean;
@@ -145,7 +146,43 @@ export function NotificationHistory({
 
   const itemCount = attentionItems.length + recentNotifications.length;
   const act = (notificationId: string, actionId: string) => {
-    actionMutation.mutate({ actionId, id: notificationId });
+    const item = attentionItems.find(
+      (candidate) =>
+        candidate.kind === 'approval' &&
+        candidate.source.notificationId === notificationId,
+    );
+    const notification = notifications.find(
+      (candidate) => candidate.id === notificationId,
+    );
+    const metadata = notification?.metadata;
+    const ownApproval =
+      notification?.source === 'approval-inbox' &&
+      notification.category === 'approval-request';
+    const ownLink =
+      ownApproval && typeof metadata?.link === 'string'
+        ? metadata.link
+        : undefined;
+    const ownThread =
+      ownApproval && typeof metadata?.threadId === 'string'
+        ? metadata.threadId
+        : undefined;
+    const href =
+      item?.openHref ??
+      ownLink ??
+      (ownThread
+        ? `/?chat=${encodeURIComponent(ownThread)}&dock=open`
+        : undefined);
+    actionMutation.mutate(
+      { actionId, id: notificationId },
+      {
+        onSuccess: () => {
+          if (href) {
+            openApprovalConversation(href);
+            onClose();
+          }
+        },
+      },
+    );
   };
   /**
    * Dismiss collapses the row in place and holds it for an undo window instead
@@ -184,6 +221,22 @@ export function NotificationHistory({
     <div ref={dropdownRef} className="notification-history" tabIndex={-1}>
       <div className="notification-history__title">Notifications</div>
       <div className="notification-history__content">
+        {actionMutation.error && (
+          <div className="attention-error" role="alert">
+            <p>
+              Station could not confirm this decision. Open the conversation to
+              check its status.
+            </p>
+            <details>
+              <summary>Details</summary>
+              <p>
+                {actionMutation.error instanceof Error
+                  ? actionMutation.error.message
+                  : 'Station did not confirm the action.'}
+              </p>
+            </details>
+          </div>
+        )}
         {itemCount === 0 ? (
           listsLoading ? (
             <SkeletonList count={3} label="Loading notifications" />

@@ -1,0 +1,7 @@
+{
+  "revision": "bf4e35daf3bf4de68208fe34e1003c5545e31519",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the browser smoke repair against current approval handlers, grouped sheet controls and exact request-state delivery. Notification approval navigates to the canonical conversation; focus survives the removed queue trigger and Tab enters that chat. The legibility fixture now dismisses the auto-open sheet before measuring the transcript, marks its definitive Station refusal, and uses a fresh opened request for the desktop case instead of reviving a settled prompt. Existing unconfirmed-delivery and session-grant semantics remain unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

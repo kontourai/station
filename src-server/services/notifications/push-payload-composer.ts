@@ -33,6 +33,10 @@ import {
   rankNotificationContent,
 } from '@kontourai/station-shared/notification-priority';
 import { resolveNotificationOpenHref } from './notification-deep-link.js';
+import {
+  osNotificationBody,
+  osNotificationTitle,
+} from './os-notification-text.js';
 import type { WebPushPayload } from './web-push-service.js';
 
 const NOTIFICATIONS_DEEP_LINK = '/notifications';
@@ -78,8 +82,8 @@ export function composeWebPushPayload(
 
   return {
     payload: {
-      title: lead.notification.title,
-      body: lead.notification.body,
+      title: osNotificationTitle(lead.notification.title),
+      body: osNotificationBody(lead.notification.body),
       category: lead.notification.category,
       notificationId: lead.notification.id,
       url,

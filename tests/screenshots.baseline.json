@@ -137,13 +137,13 @@
       "name": "mobile-http-consent-320",
       "width": 320,
       "height": 844,
-      "sha256": "79f37decd036883bd748852f8cde829150db9d9e493d1664c57eea83427bf3c2"
+      "sha256": "c8bd4a61efc3fd0c1e3fe3b790128eac24decfca0371f14d5e5e3b1cc56c7216"
     },
     {
       "name": "mobile-http-consent-390",
       "width": 390,
       "height": 844,
-      "sha256": "08e40fde167893f2be785fd2a94b1257f7eca1ce00cb4bf35457bb41adcdec1c"
+      "sha256": "056ac909600223da39550f5bf1dd2760df5c699e85e6340238e3ac8365684cda"
     },
     {
       "name": "mobile-onboarding-setup",
@@ -221,13 +221,13 @@
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "f61dd060366c12e43cd2520f94824c60f1dedf7ee49338826bbed178cc08679e"
+      "sha256": "c050a3d249d582c7af521c516ff93d9bc6704ada081eb8ac9dfed4ee66454e63"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "cb5e2c5503de6b4bfd587d2fb26e694683ad97a4b4f8af040af3d6f517a598f7"
+      "sha256": "583ceeecfb270a04a995239d1cd9cd5ee826925634d85eeac82ee452a9561ad1"
     },
     {
       "name": "overlay-mobile-sheet",
