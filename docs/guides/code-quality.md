@@ -50,6 +50,12 @@ scale once and exports it to every step (see the
 [testing guide](testing.md#host-pressure-liveness-scale-3302)); it never changes
 a budget or assertion.
 
+A push that only adds clean merges of `origin/main` onto the tip the remote
+already holds skips the transfer, static-gate, SDK-barrel, readiness and
+typecheck rows; the other three still run, and every row runs for a conflict
+resolution, an edited merge or any new commit of the author's
+([testing guide](testing.md#pre-push-orchestration-transfer-gate)).
+
 The transfer check has a finite capture **liveness timeout**, which only bounds
 a hung subprocess; it is not a performance score or a product budget. It
 measures against a baseline at the merge base of `origin/main` and the

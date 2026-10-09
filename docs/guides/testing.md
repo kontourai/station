@@ -616,7 +616,21 @@ Both roots must be clean, at the exact SHAs, with dependencies matching their
 lockfiles; the gate never installs anything. The suggested baseline is a
 sibling of the primary checkout under `station-worktrees/`, never nested
 inside a checkout. Because the baseline is the merge base, `origin/main`
-moving does not invalidate it; merging `origin/main` into the candidate does.
+moving does not invalidate it; merging `origin/main` into the candidate does,
+unless the push is a pure merge of main (below).
+
+**A pure merge of main skips the expensive lanes (#3101).** When every pushed
+ref only adds clean merges of `origin/main` on top of the tip the remote
+already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
+barrel, Veritas readiness and typecheck; biome, the governance proof and the
+commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
+the remote ref is the record of the last push the hook accepted, each merge's
+second parent must be on `main` as the remote itself reports it (`git
+ls-remote`, never a local ref such as `origin/main`), and each merge's tree
+must equal the conflict-free automatic merge of its parents. Replace objects
+and grafts are disabled for every Git read. A conflict resolution, an edit
+amended into the merge, a new non-merge commit, a new branch, a tag, or any
+Git or network failure runs every lane. The required CI checks still gate the combined head.
 
 **Slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (#1279).** Each
 capture is bounded by a liveness timeout that defaults to 60 000 ms,
