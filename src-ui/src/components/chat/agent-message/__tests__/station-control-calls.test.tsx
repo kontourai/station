@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ToolCallDisplay } from '../../ToolCallDisplay';
@@ -163,6 +164,32 @@ describe('a send waiting on a grant keeps its approval row', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(document.querySelector('.agent-outgoing')).toBeNull();
+  });
+});
+
+describe('a denied Session send keeps its terminal approval outcome', () => {
+  test.each([
+    ['user-denied', 'User denied'],
+    ['policy-denied', 'Blocked by Station'],
+  ])('%s does not claim the message is sending', (approvalStatus, label) => {
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { enabled: false } } })
+        }
+      >
+        <ToolCallDisplay
+          toolCall={call({
+            needsApproval: false,
+            approvalId: 'approval-1',
+            state: 'awaiting-approval',
+            approvalStatus,
+          })}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText(label)).toBeTruthy();
     expect(document.querySelector('.agent-outgoing')).toBeNull();
   });
 });

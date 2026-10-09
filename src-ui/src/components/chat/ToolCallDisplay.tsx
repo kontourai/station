@@ -1070,7 +1070,9 @@ function ToolCallDetails({
  */
 function ToolCallDisplayComponent(props: ToolCallDisplayProps) {
   return hasStationControlCallRow(props.toolCall) &&
-    !isToolCallAwaitingApproval(props.toolCall) ? (
+    !isToolCallAwaitingApproval(props.toolCall) &&
+    props.toolCall.approvalStatus !== 'user-denied' &&
+    props.toolCall.approvalStatus !== 'policy-denied' ? (
     <OutgoingSessionMessage toolCall={props.toolCall} />
   ) : (
     <ToolCallRow {...props} />
