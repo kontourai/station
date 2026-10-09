@@ -485,7 +485,7 @@ Hosted matrix fanout uses the repository's Free runner profile by default;
 with explicitly configured hosted capacity. Unknown profiles fail admission.
 All ordinary and process-heavy matrix legs still execute. These per-invocation
 caps reserve no organization-wide capacity and do not change evidence or
-promotion requirements. See [qualification runner profiles](releasing.md#qualification-runner-profile)
+promotion requirements. See [qualification runner profiles](releasing.md#runner-admission-and-native-delivery-recovery)
 for the caps and their limits.
 
 The `ci:fast` owner receipt requires a redacted, digest-addressed copy of the
