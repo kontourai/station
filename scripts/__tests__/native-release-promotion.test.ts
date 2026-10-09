@@ -157,6 +157,7 @@ describe('one-revision native promotion contract', () => {
     });
     expect((caller as any)?.with).toEqual({
       source_sha: '$' + '{{ needs.test-gate.outputs.source_sha }}',
+      force_rebuild: '$' + "{{ inputs.rebuild_index != '' }}",
       build: '$' + '{{ needs.native-stage.outputs.build }}',
       marketing_version:
         '$' + '{{ needs.native-stage.outputs.marketing_version }}',
