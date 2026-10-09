@@ -4,7 +4,7 @@ import {
 } from '@kontourai/station-sdk';
 import { StationRequestTimeoutError } from '@kontourai/station-sdk/client';
 
-export class ApprovalDeliveryUnconfirmedError extends Error {
+class ApprovalDeliveryUnconfirmedError extends Error {
   readonly code = 'approval_delivery_unconfirmed';
 }
 

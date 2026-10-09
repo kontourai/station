@@ -873,6 +873,19 @@ test.describe('Mobile request sheet (#3331)', () => {
     page,
   }) => {
     const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE);
+    let releaseResponse!: () => void;
+    const responseReady = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    await page.route('**/api/orchestration/commands', async (route) => {
+      posted.push(route.request().postDataJSON());
+      await responseReady;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: {} }),
+      });
+    });
     const row = page.locator('.tool-call[data-approval-id="approval-1"]');
     await row.getByRole('button', { name: 'Answer', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Needs approval' });
@@ -885,6 +898,7 @@ test.describe('Mobile request sheet (#3331)', () => {
       dialog.getByRole('button', { name: 'Allow Once' }),
     ).toBeDisabled();
     await expect.poll(() => answers(posted).length).toBe(1);
+    releaseResponse();
     expect(answers(posted)[0]).toMatchObject({
       requestId: 'approval-1',
       decision: 'decline',
