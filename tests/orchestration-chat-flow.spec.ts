@@ -1,3 +1,7 @@
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import { expect, type Locator } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
 import { openCodingView } from './helpers/coding-stack';
@@ -423,42 +427,23 @@ test.describe('Orchestration Chat Flow', () => {
     await page.getByRole('button', { name: 'Allow Once' }).click();
     await expect(approvalQueue).toBeHidden();
 
-    /**
-     * archive#1259, in a real browser. Approving the last pending request is
-     * the popover's own primary action, and it unmounts the queue element with
-     * the trigger inside it — the surface destroying the control it owes focus
-     * back to. Nothing restored on this path before, so focus landed on
-     * `<body>`, archive#1126's outcome, on the most ordinary approval there is.
-     *
-     * This has to be asserted here rather than in vitest: jsdom reports
-     * `.focus()` on an element that cannot take focus as successful, so the
-     * walk's browser-side verification is invisible to it. The unit suite
-     * covers the removal-and-walk half; this covers the half only Chromium can
-     * answer.
-     *
-     * The trigger is now the chat pane's status pill, which stops being a
-     * button once the request is answered. The walk's substitute is the
-     * nearest surviving ancestor on the path the trigger occupied, so focus
-     * stays inside the chat pane rather than falling back to the app root.
-     */
+    // The notification decision opens its conversation. The removed trigger
+    // returns focus to its surviving pane; Tab must enter that chat, not Home.
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === '/' &&
+        url.searchParams.get('chat') === 'conv-1',
+    );
     await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const active = document.activeElement;
-          if (!active || active === document.body) return 'body';
-          return active.closest('.chat-dock__body')
-            ? 'inside the chat pane'
-            : active.id || active.tagName;
-        }),
-      )
-      .toBe('inside the chat pane');
+      .poll(() => page.evaluate(() => document.activeElement !== document.body))
+      .toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#chat-dock :focus')).toHaveCount(1);
 
     await page.setViewportSize({ width: 1280, height: 720 });
-    // Back on a wide screen the centre takes Chat and the phone's dock
-    // unmounts: let that settle, or `openChatRegion` reads the dock that is
-    // about to vanish (the mirror of the 390px wait above).
-    await expect(page.locator('#chat-workspace-pane')).toBeVisible();
-    await expect(page.locator('#chat-dock')).toHaveCount(0);
+    // Notification navigation left the Coding layout for the canonical dock.
+    await expect(page.locator('#chat-dock')).toBeVisible();
+    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
     await openChatRegion(page);
 
     await expect
@@ -559,6 +544,8 @@ test.describe('Orchestration Chat Flow', () => {
   }) => {
     const browserHealth = await monitorBrowserHealth(page);
     let answer: 'refuse' | 'settled' = 'refuse';
+    let requestId = 'req-2917';
+    let requestEventId = 'evt-req-2917';
     await page.route('**/api/system/status', async (route) => {
       await route.fulfill({
         status: 200,
@@ -591,6 +578,7 @@ test.describe('Orchestration Chat Flow', () => {
     await page.route('**/api/orchestration/commands', async (route) => {
       await route.fulfill({
         status: 409,
+        headers: { [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE },
         contentType: 'application/json',
         body: JSON.stringify({
           success: false,
@@ -599,7 +587,7 @@ test.describe('Orchestration Chat Flow', () => {
       });
     });
     await page.route(
-      /\/api\/orchestration\/sessions\/session-1\/requests\/req-2917(?:\?|$)/,
+      /\/api\/orchestration\/sessions\/session-1\/requests\/req-2917(?:-desktop)?(?:\?|$)/,
       async (route) => {
         await route.fulfill({
           status: 200,
@@ -612,8 +600,8 @@ test.describe('Orchestration Chat Flow', () => {
                     state: 'resolved',
                     reference: {
                       threadId: 'session-1',
-                      requestId: 'req-2917',
-                      requestEventId: 'evt-req-2917',
+                      requestId,
+                      requestEventId,
                     },
                     message: 'Answered elsewhere.',
                   },
@@ -626,43 +614,45 @@ test.describe('Orchestration Chat Flow', () => {
 
     // History, not a live emit: the strip reads the durable event window,
     // which is what a reload with a request still open presents.
-    await installMockOrchestrationEventWindow(page, 'codex', {
-      'session-1': [
-        {
-          method: 'turn.started',
-          provider: 'codex',
-          threadId: 'session-1',
-          turnId: 'turn-0',
-          createdAt: '2026-04-05T11:59:58.000Z',
-          prompt: 'Set up the repo',
-        },
-        {
-          method: 'turn.completed',
-          provider: 'codex',
-          threadId: 'session-1',
-          turnId: 'turn-0',
-          createdAt: '2026-04-05T11:59:59.000Z',
-          outputText: 'Ready.',
-        },
-        {
-          method: 'request.opened',
-          provider: 'codex',
-          threadId: 'session-1',
-          createdAt: '2026-04-05T12:00:05.000Z',
-          eventId: 'evt-req-2917',
-          requestId: 'req-2917',
-          requestType: 'permission',
-          title: 'Approve command',
-          payload: {
-            toolName: 'shell_exec',
-            toolInput: {
-              command:
-                'npm run test:focused -- src-ui/src/components/chat/ToolCallDisplay.tsx --reporter=verbose',
+    const installApprovalWindow = () =>
+      installMockOrchestrationEventWindow(page, 'codex', {
+        'session-1': [
+          {
+            method: 'turn.started',
+            provider: 'codex',
+            threadId: 'session-1',
+            turnId: 'turn-0',
+            createdAt: '2026-04-05T11:59:58.000Z',
+            prompt: 'Set up the repo',
+          },
+          {
+            method: 'turn.completed',
+            provider: 'codex',
+            threadId: 'session-1',
+            turnId: 'turn-0',
+            createdAt: '2026-04-05T11:59:59.000Z',
+            outputText: 'Ready.',
+          },
+          {
+            method: 'request.opened',
+            provider: 'codex',
+            threadId: 'session-1',
+            createdAt: '2026-04-05T12:00:05.000Z',
+            eventId: requestEventId,
+            requestId,
+            requestType: 'permission',
+            title: 'Approve command',
+            payload: {
+              toolName: 'shell_exec',
+              toolInput: {
+                command:
+                  'npm run test:focused -- src-ui/src/components/chat/ToolCallDisplay.tsx --reporter=verbose',
+              },
             },
           },
-        },
-      ],
-    });
+        ],
+      });
+    await installApprovalWindow();
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
     await page.evaluate(() => {
       sessionStorage.setItem(
@@ -824,6 +814,10 @@ test.describe('Orchestration Chat Flow', () => {
     // back on screen in the dock before its geometry is read.
     await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
     await expect(page.locator('#chat-dock')).toBeVisible();
+    const sheet = page.getByRole('dialog', { name: 'Needs approval' });
+    await expect(sheet).toBeVisible();
+    await sheet.getByRole('button', { name: 'Close and answer later' }).click();
+    await expect(sheet).toBeHidden();
     const answerControl = card.getByRole('button', {
       name: 'Answer',
       exact: true,
@@ -834,8 +828,10 @@ test.describe('Orchestration Chat Flow', () => {
     await expectLegibleButtons('pending row', answerControl);
 
     await answerControl.click();
-    const sheet = page.getByRole('dialog', { name: 'Needs approval' });
-    const sheetActions = sheet.locator('.request-sheet__actions button');
+    const sheetActions = sheet.getByRole('button', {
+      name: /^(Allow Once|Deny)$/,
+    });
+    await expect(sheetActions).toHaveCount(2);
     const sheetAllow = sheet.getByRole('button', {
       name: 'Allow Once',
       exact: true,
@@ -869,6 +865,28 @@ test.describe('Orchestration Chat Flow', () => {
     // real narrow right dock. The actions must wrap inside the card rather
     // than overflow it with buttons squeezed into vertical letters.
     answer = 'refuse';
+    requestId = 'req-2917-desktop';
+    requestEventId = 'evt-req-2917-desktop';
+    await installApprovalWindow();
+    await emitMockOrchestrationEvent(page, 'orchestration:event', {
+      event: {
+        method: 'request.opened',
+        provider: 'codex',
+        threadId: 'session-1',
+        createdAt: '2026-04-05T12:00:06.000Z',
+        eventId: requestEventId,
+        requestId,
+        requestType: 'permission',
+        title: 'Approve command',
+        payload: {
+          toolName: 'shell_exec',
+          toolInput: {
+            command:
+              'npm run test:focused -- src-ui/src/components/chat/ToolCallDisplay.tsx --reporter=verbose',
+          },
+        },
+      },
+    });
     await page.setViewportSize({ width: 1280, height: 800 });
     // Navigate through the app and place Chat through its public region
     // owner. A browser reload can retain the Coding pane instead of landing
