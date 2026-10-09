@@ -25,7 +25,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     inspectAttentionRequest(...args),
 }));
 
-import { answerOrchestrationRequest } from '../answerRequest';
+import {
+  answerOrchestrationRequest,
+  forgetApprovalAnswer,
+  inspectApprovalAnswer,
+} from '../answerRequest';
 
 const request = {
   threadId: 'thread-1',
@@ -36,6 +40,7 @@ const request = {
 
 describe('answerOrchestrationRequest', () => {
   beforeEach(() => {
+    forgetApprovalAnswer(request.threadId, request.requestId);
     vi.mocked(resolveOrchestrationRequest).mockReset();
     inspectAttentionRequest.mockReset();
   });
@@ -49,11 +54,15 @@ describe('answerOrchestrationRequest', () => {
     const outcome = await answerOrchestrationRequest('http://api', request);
 
     expect(outcome).toBe('already-settled');
-    expect(inspectAttentionRequest).toHaveBeenCalledWith('http://api', {
-      threadId: 'thread-1',
-      requestId: 'req-1',
-      requestEventId: 'evt-1',
-    });
+    expect(inspectAttentionRequest).toHaveBeenCalledWith(
+      'http://api',
+      {
+        threadId: 'thread-1',
+        requestId: 'req-1',
+        requestEventId: 'evt-1',
+      },
+      { timeoutMs: 5_000 },
+    );
   });
 
   test('a genuine failure while the request is STILL open stays loud (not swallowed as already-settled)', async () => {
@@ -75,4 +84,50 @@ describe('answerOrchestrationRequest', () => {
     expect(outcome).toBe('answered');
     expect(inspectAttentionRequest).not.toHaveBeenCalled();
   });
+  test.each([
+    new TypeError('Response lost'),
+    Object.assign(new Error('Unavailable'), { status: 503 }),
+    new SyntaxError('Invalid response'),
+  ])(
+    'coalesces decisions and holds %s until inspection confirms the request',
+    async (failure) => {
+      let rejectSend!: (error: Error) => void;
+      vi.mocked(resolveOrchestrationRequest).mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectSend = reject;
+          }),
+      );
+      inspectAttentionRequest.mockRejectedValue(new Error('Read unavailable'));
+      const first = answerOrchestrationRequest('http://api', request);
+      const second = answerOrchestrationRequest('http://api', request);
+      const firstFailure = expect(first).rejects.toMatchObject({
+        code: 'approval_delivery_unconfirmed',
+      });
+      const secondFailure = expect(second).rejects.toMatchObject({
+        code: 'approval_delivery_unconfirmed',
+      });
+      rejectSend(failure);
+      await Promise.all([firstFailure, secondFailure]);
+      await expect(
+        answerOrchestrationRequest('http://api', {
+          ...request,
+          decision: 'decline',
+        }),
+      ).rejects.toMatchObject({ code: 'approval_delivery_unconfirmed' });
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(1);
+      inspectAttentionRequest.mockResolvedValue({
+        state: 'open',
+        canRespond: true,
+      });
+      expect(await inspectApprovalAnswer('http://api', request)).toBe(
+        'pending',
+      );
+      vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined);
+      expect(await answerOrchestrationRequest('http://api', request)).toBe(
+        'answered',
+      );
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
+    },
+  );
 });

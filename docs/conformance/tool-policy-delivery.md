@@ -487,6 +487,32 @@ promising more than it does:
   show its head and `[REDACTED]` and none of its tail — pre-existing behaviour,
   and in the safe direction.
 
+### Answering on a phone and recovering delivery
+
+The conversation opens one approval sheet for its current tool requests. It
+shows each command in full and gives each request its own decision controls.
+Closing the sheet hides it without answering; that prompt remains dismissed
+until Answer or Needs approval reopens it. A newly opened prompt can open the
+sheet again. Sending and failure state survive hiding the sheet.
+
+Approval toasts open the originating conversation and send the selected
+decision. Accepted approval actions in notification history and Attention also
+open the conversation. These actions preserve the request's thread and opened
+event; a session grant retains the engine's existing scope.
+
+The shared answer path coalesces concurrent answers to the same prompt. Its
+15-second send deadline is followed by a bounded 5-second inspection when the
+send fails. A resolved request is shown as settled without claiming a local
+grant. If a lost response cannot be inspected, delivery remains unconfirmed:
+Check status reads the request before another decision can be sent. Errors
+keep a short summary beside the controls and technical details in a disclosure.
+
+Owners: [approval sheet](../../src-ui/src/components/chat/ApprovalSheetProvider.tsx),
+[decision delivery](../../src-ui/src/hooks/orchestration/answerRequest.ts),
+[mobile browser tests](../../tests/mobile-request-sheet.spec.ts). Browser fixtures
+and native adapter tests do not establish delivery on a particular phone or
+through a real provider.
+
 ### Historical settings-isolation experiment
 
 Narrowing to `settingSources: ['user']` was built and reverted. The option is

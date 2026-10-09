@@ -10,6 +10,11 @@ const showToolApproval = vi.fn((_options: ApprovalToastOptions) => 'toast-1');
 const showToast = vi.fn();
 const getChatForExecutionSession = vi.fn();
 const updateChat = vi.fn();
+const navigate = vi.fn();
+
+vi.mock('../../../contexts/NavigationContext', () => ({
+  navigationStore: { navigate },
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   resolveOrchestrationRequest: vi.fn().mockResolvedValue(undefined),
@@ -27,6 +32,14 @@ const {
   handleRequestDeliveryEvent,
   handleRequestResolvedEvent,
 } = await import('../approvalHandlers');
+const { forgetApprovalAnswer } = await import('../answerRequest');
+beforeEach(() => {
+  forgetApprovalAnswer('thread-1', 'req-1');
+  vi.mocked(resolveOrchestrationRequest)
+    .mockReset()
+    .mockResolvedValue(undefined);
+});
+
 const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
   '@kontourai/station-sdk'
 );
@@ -406,6 +419,11 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
         requestId: 'req-1',
         expectedRequestEventId: 'evt-1',
         decision,
+        timeoutMs: 15_000,
+      });
+      expect(navigate).toHaveBeenCalledWith('/', {
+        chat: 'thread-1',
+        dock: 'open',
       });
     },
   );
@@ -523,11 +541,15 @@ describe('#2344: the toast reports what happened to its answer', () => {
       ),
     );
     // Read from the request itself, bound to the prompt the toast showed.
-    expect(inspectAttentionRequest).toHaveBeenCalledWith('http://localhost:1', {
-      threadId: 'thread-1',
-      requestId: 'req-1',
-      requestEventId: 'evt-1',
-    });
+    expect(inspectAttentionRequest).toHaveBeenCalledWith(
+      'http://localhost:1',
+      {
+        threadId: 'thread-1',
+        requestId: 'req-1',
+        requestEventId: 'evt-1',
+      },
+      { timeoutMs: 5_000 },
+    );
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToolApproval).toHaveBeenCalledTimes(1);
   });

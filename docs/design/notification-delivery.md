@@ -21,6 +21,20 @@ is not enough: the moment you are looking at something else, the toast has
 nobody to show itself to, and the thing you are being asked to approve expires
 in five minutes.
 
+## Approval actions in the running client
+
+The in-app approval toast sends the selected decision and opens its originating
+conversation. An accepted approval action in notification history or Attention
+also opens that conversation; a runtime Activity link is converted to the chat
+dock for this decision action. Ordinary Open session links keep their original
+destination. These client actions do not add approval buttons to native push or
+change background delivery guarantees.
+
+Failed decisions remain visible with a short explanation and disclosed details.
+An uncertain answer must be inspected before sending another decision. See
+[tool-policy delivery](../conformance/tool-policy-delivery.md#answering-on-a-phone-and-recovering-delivery)
+for the shared request binding and send deadlines.
+
 ## Five historical approaches and their observed limits
 
 The following observations describe the builds and probes that motivated push.

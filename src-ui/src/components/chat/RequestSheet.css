@@ -188,3 +188,42 @@
   margin: var(--k-space-3) 0 0;
   font-size: var(--k-text-sm);
 }
+
+.approval-sheet__requests {
+  display: grid;
+  gap: var(--k-space-4);
+  min-width: 0;
+}
+
+.approval-sheet__requests .tool-call__row {
+  flex-wrap: wrap;
+}
+
+.approval-sheet__requests .tool-call__actions {
+  flex-basis: 100%;
+}
+
+.approval-sheet__requests .button {
+  min-height: 44px;
+}
+
+.approval-sheet__requests .tool-call__details {
+  margin-inline: 0;
+  max-height: none;
+}
+
+.request-sheet .tool-call__approve-error,
+.request-sheet .tool-call__approve-status {
+  contain: none;
+  width: 100%;
+  overflow-wrap: anywhere;
+  font-size: var(--k-text-sm);
+}
+
+.approval-sheet__notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+  overflow-wrap: anywhere;
+}

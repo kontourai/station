@@ -7,7 +7,7 @@ import {
   toolRequestGrantLabel,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
-import { memo, type ReactNode, useMemo, useState } from 'react';
+import { memo, type ReactNode, useMemo, useRef, useState } from 'react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import { attentionWord } from '../../views/home/work-status';
@@ -22,6 +22,7 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { useApprovalSheet } from './ApprovalSheetContext';
 import {
   boundedToolResultText,
   formatWithheldBytes,
@@ -339,6 +340,10 @@ function ToolCallDisplayComponent({
         {awaitingApproval && onApprove && (
           <div className="tool-call__actions">
             <ToolApprovalControls
+              request={{
+                requestId: toolCall.approvalId ?? '',
+                threadId: toolCall.approvalThreadId,
+              }}
               onApprove={onApprove}
               grantToolName={grantToolName}
               sessionGrant={
@@ -396,20 +401,34 @@ function ToolCallDisplayComponent({
 /**
  * #2316: a decision is not done until Station accepts it. While it is in
  * flight the buttons are disabled (a second click would answer a request the
- * first may already have settled); a rejected decision re-enables them and
- * names the failure, because the request is still open and still waiting on
- * the user. After success they stay disabled until the durable
+ * first may already have settled). A confirmed refusal re-enables them; an
+ * uncertain delivery stays disabled until inspection confirms the request.
+ * After success they stay disabled until the durable
  * `request.resolved` settles the row and unmounts this control.
  */
-type ApprovalPhase = 'idle' | 'sending' | 'sent' | 'already-settled';
+type ApprovalPhase =
+  | 'idle'
+  | 'sending'
+  | 'sent'
+  | 'already-settled'
+  | 'unconfirmed';
 
 /** The decision lifecycle above, shared by the inline buttons and the sheet. */
-function useApprovalDecision(onApprove: ToolApprovalHandler) {
+function useApprovalDecision(
+  onApprove: ToolApprovalHandler,
+  onCheck?: () => Promise<'pending' | 'already-settled'>,
+) {
+  const admission = useRef(false);
+  const [checking, setChecking] = useState(false);
   const [phase, setPhase] = useState<ApprovalPhase>('idle');
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{
+    summary: string;
+    detail?: string;
+  } | null>(null);
   const [chosen, setChosen] = useState<'once' | 'trust' | 'deny'>();
   const decide = (action: 'once' | 'trust' | 'deny') => {
-    if (phase !== 'idle') return;
+    if (phase !== 'idle' || admission.current) return;
+    admission.current = true;
     setChosen(action);
     setPhase('sending');
     setFailure(null);
@@ -426,25 +445,83 @@ function useApprovalDecision(onApprove: ToolApprovalHandler) {
     Promise.resolve(sent).then(
       (outcome) =>
         setPhase(outcome === 'already-settled' ? 'already-settled' : 'sent'),
-      (error: unknown) => {
-        setPhase('idle');
-        setFailure(
-          error instanceof Error && error.message
+      async (error: unknown) => {
+        const unconfirmed =
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'approval_delivery_unconfirmed';
+        setPhase(unconfirmed ? 'unconfirmed' : 'idle');
+        admission.current = unconfirmed;
+        const translation = await import(
+          '../../utils/chatErrorTranslation'
+        ).catch(() => undefined);
+        const message =
+          error instanceof Error
             ? error.message
-            : 'Station did not accept this decision.',
-        );
+            : 'Station did not accept this decision.';
+        const code =
+          error instanceof Error &&
+          'code' in error &&
+          typeof error.code === 'string'
+            ? error.code
+            : undefined;
+        const translated = translation?.translateChatError({
+          message,
+          code,
+        }) ?? { title: 'Decision delivery failed', body: message };
+        setFailure({
+          summary: unconfirmed
+            ? message
+            : `${translated.title}. ${translated.hint ?? translated.body}`,
+          detail:
+            error instanceof Error && error.cause instanceof Error
+              ? error.cause.message
+              : message,
+        });
       },
     );
   };
-  return { phase, failure, decide, chosen, busy: phase !== 'idle' };
+  const check = onCheck
+    ? async () => {
+        if (checking) return;
+        setChecking(true);
+        try {
+          const outcome = await onCheck();
+          setPhase(outcome === 'pending' ? 'idle' : 'already-settled');
+          admission.current = outcome !== 'pending';
+          setFailure(null);
+        } catch (error) {
+          setFailure({
+            summary:
+              'Station still could not confirm this decision. Reconnect and check again.',
+            detail: error instanceof Error ? error.message : undefined,
+          });
+        } finally {
+          setChecking(false);
+        }
+      }
+    : undefined;
+  return {
+    phase,
+    failure,
+    decide,
+    chosen,
+    checking,
+    check,
+    busy: phase !== 'idle',
+  };
 }
 
 function ApprovalDecisionStatus({
   phase,
   failure,
+  check,
+  checking,
 }: {
   phase: ApprovalPhase;
-  failure: string | null;
+  failure: { summary: string; detail?: string } | null;
+  check?: () => Promise<void>;
+  checking?: boolean;
 }) {
   return (
     <>
@@ -454,9 +531,29 @@ function ApprovalDecisionStatus({
         </p>
       )}
       {failure && (
-        <p className="tool-call__approve-error" role="alert">
-          Your decision was not delivered: {failure}
-        </p>
+        <div className="tool-call__approve-error" role="alert">
+          <p>
+            {phase === 'unconfirmed'
+              ? 'Delivery is not confirmed.'
+              : 'Your decision was not delivered.'}{' '}
+            {failure.summary}
+          </p>
+          {phase === 'unconfirmed' && check && (
+            <Button
+              pending={checking}
+              pendingLabel="Checking…"
+              onClick={() => void check()}
+            >
+              Check status
+            </Button>
+          )}
+          {failure.detail && (
+            <details>
+              <summary>Details</summary>
+              <p>{failure.detail}</p>
+            </details>
+          )}
+        </div>
       )}
     </>
   );
@@ -464,6 +561,7 @@ function ApprovalDecisionStatus({
 
 interface ToolApprovalControlProps {
   onApprove: ToolApprovalHandler;
+  onCheck?: () => Promise<'pending' | 'already-settled'>;
   /** The request's reported tool name — never the row's display name. */
   grantToolName?: string;
   sessionGrant: ToolRequestSessionGrant;
@@ -479,36 +577,125 @@ interface ToolApprovalControlProps {
 function ToolApprovalControls({
   summary,
   details,
+  request,
   ...props
-}: ToolApprovalControlProps & { summary: ReactNode; details: ReactNode }) {
+}: ToolApprovalControlProps & {
+  summary: ReactNode;
+  details: ReactNode;
+  request: { requestId: string; threadId?: string };
+}) {
   const isMobile = useIsMobile();
+  const approvalSheet = useApprovalSheet();
+  const check = approvalSheet ? () => approvalSheet.check(request) : undefined;
+  if (approvalSheet?.insideSheet)
+    return (
+      <ToolApprovalSheet
+        {...props}
+        onCheck={check}
+        summary={summary}
+        details={null}
+        openGrouped={() => false}
+        grouped
+      />
+    );
   return isMobile ? (
-    <ToolApprovalSheet {...props} summary={summary} details={details} />
+    <ToolApprovalSheet
+      {...props}
+      onCheck={check}
+      summary={summary}
+      details={details}
+      openGrouped={() => approvalSheet?.show(request) ?? false}
+    />
   ) : (
-    <ToolApprovalButtons {...props} />
+    <ToolApprovalButtons {...props} onCheck={check} />
   );
 }
 
 function ToolApprovalSheet({
   onApprove,
+  onCheck,
   grantToolName,
   sessionGrant,
   summary,
   details,
-}: ToolApprovalControlProps & { summary: ReactNode; details: ReactNode }) {
-  const { phase, failure, decide, chosen, busy } =
-    useApprovalDecision(onApprove);
+  openGrouped,
+  grouped = false,
+}: ToolApprovalControlProps & {
+  summary: ReactNode;
+  details: ReactNode;
+  openGrouped: () => boolean;
+  grouped?: boolean;
+}) {
+  const { phase, failure, decide, chosen, busy, check, checking } =
+    useApprovalDecision(onApprove, onCheck);
   const sheet = useRequestSheet(true);
   // Accepted but not yet settled reads as in progress, not as a frozen
   // sheet: the row stays until the durable `request.resolved` removes it.
   const inFlight = phase === 'sending' || phase === 'sent';
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
-  const status = <ApprovalDecisionStatus phase={phase} failure={failure} />;
+  const status = (
+    <ApprovalDecisionStatus
+      phase={phase}
+      failure={failure}
+      check={check}
+      checking={checking}
+    />
+  );
+  const actions = (
+    <ActionRow
+      overflowLabel="More approval options"
+      secondary={
+        <Button
+          variant="danger-outline"
+          disabled={busy}
+          pending={inFlight && chosen === 'deny'}
+          pendingLabel="Denying…"
+          onClick={() => decide('deny')}
+        >
+          Deny
+        </Button>
+      }
+      primary={
+        <Button
+          variant="primary"
+          disabled={busy}
+          // The session grant is an allow too; its overflow item
+          // cannot show progress, so Allow carries it.
+          pending={inFlight && chosen !== 'deny'}
+          pendingLabel="Allowing…"
+          onClick={() => decide('once')}
+        >
+          Allow Once
+        </Button>
+      }
+      overflow={
+        grantLabel
+          ? [
+              {
+                key: 'trust',
+                label: grantLabel,
+                disabled: busy,
+                onSelect: () => decide('trust'),
+              },
+            ]
+          : []
+      }
+    />
+  );
+  if (grouped)
+    return (
+      <>
+        {actions}
+        {status}
+      </>
+    );
   return (
     <>
       <RequestSheetTrigger
         ref={sheet.triggerRef}
-        onClick={sheet.show}
+        onClick={() => {
+          if (!openGrouped()) sheet.show();
+        }}
         compact
       />
       {!sheet.open && status}
@@ -518,47 +705,7 @@ function ToolApprovalSheet({
           subtitle={summary}
           onDismiss={sheet.dismiss}
           returnFocusTarget={sheet.triggerRef.current}
-          actions={
-            <ActionRow
-              overflowLabel="More approval options"
-              secondary={
-                <Button
-                  variant="danger-outline"
-                  disabled={busy}
-                  pending={inFlight && chosen === 'deny'}
-                  pendingLabel="Denying…"
-                  onClick={() => decide('deny')}
-                >
-                  Deny
-                </Button>
-              }
-              primary={
-                <Button
-                  variant="primary"
-                  disabled={busy}
-                  // The session grant is an allow too; its overflow item
-                  // cannot show progress, so Allow carries it.
-                  pending={inFlight && chosen !== 'deny'}
-                  pendingLabel="Allowing…"
-                  onClick={() => decide('once')}
-                >
-                  Allow Once
-                </Button>
-              }
-              overflow={
-                grantLabel
-                  ? [
-                      {
-                        key: 'trust',
-                        label: grantLabel,
-                        disabled: busy,
-                        onSelect: () => decide('trust'),
-                      },
-                    ]
-                  : []
-              }
-            />
-          }
+          actions={actions}
         >
           {details ?? <p className="request-sheet__status">{summary}</p>}
           {status}
@@ -570,10 +717,14 @@ function ToolApprovalSheet({
 
 function ToolApprovalButtons({
   onApprove,
+  onCheck,
   grantToolName,
   sessionGrant,
 }: ToolApprovalControlProps) {
-  const { phase, failure, decide } = useApprovalDecision(onApprove);
+  const { phase, failure, decide, check, checking } = useApprovalDecision(
+    onApprove,
+    onCheck,
+  );
   const busy = phase !== 'idle';
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
@@ -608,7 +759,12 @@ function ToolApprovalButtons({
       >
         Deny
       </button>
-      <ApprovalDecisionStatus phase={phase} failure={failure} />
+      <ApprovalDecisionStatus
+        phase={phase}
+        failure={failure}
+        check={check}
+        checking={checking}
+      />
     </>
   );
 }

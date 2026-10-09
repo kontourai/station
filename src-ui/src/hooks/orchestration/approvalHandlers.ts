@@ -12,6 +12,7 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../../contexts/active-chats-store';
+import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
@@ -163,6 +164,11 @@ function showApprovalToast(
   view: ApprovalToastView,
 ) {
   const answer = (decision: 'accept' | 'acceptForSession' | 'decline') => {
+    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    navigationStore.navigate('/', {
+      chat: chat?.conversationId ?? event.threadId,
+      dock: 'open',
+    });
     void answerFromToast(apiBase, event, view, decision);
   };
   const toastId = toastStore.showToolApproval({
@@ -255,10 +261,15 @@ async function answerFromToast(
       error instanceof Error && error.message
         ? error.message
         : 'Station did not accept this decision.';
-    // Not delivered: the request waits on the user again.
+    const unconfirmed =
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'approval_delivery_unconfirmed';
     setAnswered(event.threadId, event.requestId, false);
     toastStore.show(
-      `Your decision on ${view.toolName} was not delivered: ${reason}`,
+      unconfirmed
+        ? `Delivery of your decision on ${view.toolName} is not confirmed: ${reason}`
+        : `Your decision on ${view.toolName} was not delivered: ${reason}`,
       event.threadId,
       9000,
       undefined,
@@ -316,6 +327,11 @@ export function handleRequestDeliveryEvent(
 export function handleRequestResolvedEvent(
   event: Extract<OrchestrationEvent, { method: 'request.resolved' }>,
 ) {
+  void import('./answerRequest')
+    .then(({ forgetApprovalAnswer }) =>
+      forgetApprovalAnswer(event.threadId, event.requestId),
+    )
+    .catch(() => undefined);
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 

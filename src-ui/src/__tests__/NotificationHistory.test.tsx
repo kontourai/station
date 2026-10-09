@@ -13,6 +13,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { navigationStore } from '../contexts/NavigationContext';
 
 const dismiss = vi.fn();
 const action = vi.fn();
@@ -130,10 +131,13 @@ describe('NotificationHistory', () => {
     expect(screen.getByText('View all notifications')).toBeTruthy();
     fireEvent.click(screen.getByText('Deny'));
 
-    expect(action).toHaveBeenCalledWith({
-      actionId: 'decline',
-      id: 'notif-1',
-    });
+    expect(action).toHaveBeenCalledWith(
+      {
+        actionId: 'decline',
+        id: 'notif-1',
+      },
+      { onSuccess: expect.any(Function) },
+    );
     // Acting on one notification must NOT tear down the list being triaged —
     // the popover stays open and the row animates instead.
     expect(onClose).not.toHaveBeenCalled();
@@ -711,10 +715,13 @@ describe('NotificationHistory answerability annotation', () => {
     sessions = [strandedSession({ answerable: true })];
     open();
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
-    expect(action).toHaveBeenCalledWith({
-      actionId: 'decline',
-      id: 'notif-stranded',
-    });
+    expect(action).toHaveBeenCalledWith(
+      {
+        actionId: 'decline',
+        id: 'notif-stranded',
+      },
+      { onSuccess: expect.any(Function) },
+    );
   });
 
   test('a session the settled read does not list renders the explicit unknown gap, actions untouched', () => {
@@ -841,4 +848,39 @@ describe('NotificationHistory error state (Review H1)', () => {
     expect(refetchNotifications).toHaveBeenCalledTimes(1);
     expect(refetchAttention).toHaveBeenCalledTimes(1);
   });
+});
+
+test('an accepted approval opens its conversation rather than the Activity session detail', async () => {
+  const timestamp = '2026-10-09T00:00:00.000Z';
+  attention = {
+    pendingCount: 1,
+    items: [
+      {
+        id: 'approval:open-chat',
+        kind: 'approval',
+        title: 'Approval needed',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        openHref: '/?surface=activity&session=approval-owning-thread',
+        source: {
+          notificationId: 'open-chat',
+          notificationSource: 'approval-inbox',
+        },
+        actions: [{ id: 'accept', label: 'Approve', variant: 'primary' }],
+      },
+    ],
+  };
+  const close = vi.fn();
+  render(<NotificationHistory isOpen onClose={close} onViewAll={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  expect(navigationStore.getSnapshot().activeChat).not.toBe(
+    'approval-owning-thread',
+  );
+  const options = action.mock.calls.at(-1)?.[1];
+  options.onSuccess();
+  expect(navigationStore.getSnapshot().activeChat).toBe(
+    'approval-owning-thread',
+  );
+  expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+  expect(close).toHaveBeenCalledTimes(1);
 });
