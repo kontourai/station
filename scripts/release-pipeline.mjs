@@ -3,6 +3,10 @@ import { appendFileSync } from 'node:fs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { readLedgerFromGit } from './nightly-cohort-decide.mjs';
+import {
+  inspectCommitFromGit,
+  normalizeDeployLedgerHead,
+} from './normalize-deploy-ledger-head.mjs';
 import { findQualification, listGithub } from './qualification-evidence.mjs';
 
 export function runnerProfile(env = process.env) {
@@ -206,6 +210,7 @@ export function finalPublicationDecision({
   ledger,
   ancestor,
   qualification,
+  sourceCandidates = {},
   now = Date.now(),
   intervalMs = publicationInterval(),
 }) {
@@ -217,7 +222,9 @@ export function finalPublicationDecision({
   const latest = [...native].sort(
     (a, b) => Date.parse(b.timestampUtc) - Date.parse(a.timestampUtc),
   )[0];
-  if (latest && latest.sha !== source) {
+  const matchesSource = (row) =>
+    row.sha === source || sourceCandidates[row.channel] === row.sha;
+  if (latest && !matchesSource(latest)) {
     const age = now - Date.parse(latest.timestampUtc);
     if (!Number.isFinite(age) || age < intervalMs)
       throw new Error('native publication cadence has not elapsed');
@@ -237,10 +244,10 @@ export function finalPublicationDecision({
   }
   return {
     androidNeeded: !native.some(
-      (row) => row.channel === 'nightly-android' && row.sha === source,
+      (row) => row.channel === 'nightly-android' && matchesSource(row),
     ),
     desktopNeeded: !native.some(
-      (row) => row.channel === 'nightly-desktop' && row.sha === source,
+      (row) => row.channel === 'nightly-desktop' && matchesSource(row),
     ),
   };
 }
@@ -267,10 +274,29 @@ async function publisherAdmission(env = process.env) {
     ...env,
     GITHUB_RUN_ID: '0',
   });
+  const ledger = readLedgerFromGit(process.cwd(), 'origin/main');
+  const sourceCandidates = Object.fromEntries(
+    ['nightly-android', 'nightly-desktop'].map((channel) => {
+      const latest = ledger
+        .filter((row) => row.channel === channel)
+        .sort(
+          (a, b) => Date.parse(b.timestampUtc) - Date.parse(a.timestampUtc),
+        )[0];
+      return [
+        channel,
+        normalizeDeployLedgerHead(
+          source,
+          (sha) => inspectCommitFromGit(process.cwd(), sha),
+          latest?.sha || '',
+        ),
+      ];
+    }),
+  );
   const decision = finalPublicationDecision({
     source,
     qualification,
-    ledger: readLedgerFromGit(process.cwd(), 'origin/main'),
+    ledger,
+    sourceCandidates,
     ancestor: (prior, candidate) => {
       try {
         execFileSyncBounded(

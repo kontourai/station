@@ -154,8 +154,18 @@ describe('source qualification evidence', () => {
                 completed_at:
                   mode === 'live-expired'
                     ? new Date(Date.now() - 25 * 3600000).toISOString()
-                    : new Date().toISOString(),
-                conclusion: mode === 'red-gate' ? 'failure' : 'success',
+                    : new Date(
+                        Date.now() -
+                          (mode === 'retry-after-green' &&
+                          req.url?.includes('/42/')
+                            ? 10_000
+                            : 0),
+                      ).toISOString(),
+                conclusion:
+                  mode === 'red-gate' ||
+                  (mode === 'retry-after-green' && req.url?.includes('/41/'))
+                    ? 'failure'
+                    : 'success',
               },
               ...Array.from({ length: mode === 'missing' ? 3 : 4 }, (_, i) => ({
                 name: `qualification / Ordinary corpus ${i}`,
@@ -179,6 +189,18 @@ describe('source qualification evidence', () => {
         res.end(
           JSON.stringify({
             workflow_runs: [
+              ...(mode === 'retry-after-green'
+                ? [
+                    {
+                      ...run,
+                      id: 41,
+                      head_sha: sha,
+                      created_at: new Date(Date.now() - 100_000).toISOString(),
+                      run_attempt: 2,
+                      conclusion: 'failure',
+                    },
+                  ]
+                : []),
               {
                 ...run,
                 head_sha: sha,
@@ -214,6 +236,7 @@ describe('source qualification evidence', () => {
         'valid',
         'live-valid',
         'live-expired',
+        'retry-after-green',
         'missing',
         'expired',
         'unavailable',

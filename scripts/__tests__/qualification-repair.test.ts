@@ -821,3 +821,12 @@ fi
     }
   });
 });
+
+it('retains an unqualified capacity refusal without launching a source repair agent', () => {
+  const decision = nextRepairState(null, run, {
+    agent: true,
+    capacityDeferred: true,
+  });
+  expect(decision.action).toBe('update');
+  expect(decision.state.repairState).toBe('capacity-deferred');
+});

@@ -118,6 +118,7 @@ export function decideQualifiedNightly({
   now,
   intervalMs = MIN_PUBLICATION_INTERVAL_MS,
   recovery = { recover: false },
+  sourceCandidates = {},
 }) {
   assertSha(sourceSha, 'source SHA');
   assertSha(candidateSha, 'candidate SHA');
@@ -133,7 +134,10 @@ export function decideQualifiedNightly({
   const reservations = parseReservationRefs(reservationRefs);
 
   const sourceShips = ships.filter(
-    (ship) => ship.sha === sourceSha || ship.sha === candidateSha,
+    (ship) =>
+      ship.sha === sourceSha ||
+      ship.sha === candidateSha ||
+      sourceCandidates[ship.channel] === ship.sha,
   );
   const complete = NATIVE_LEDGER_CHANNELS.every((channel) =>
     sourceShips.some((ship) => ship.channel === channel),
@@ -222,19 +226,40 @@ export async function main(
     assertSha(options.sourceSha, 'source SHA');
     const ledgerEntries = readLedger(options.repoRoot, options.ledgerRef);
     const newest = nativeShips(ledgerEntries)[0];
+    const commits = new Map();
+    const inspect = (sha) => {
+      if (!commits.has(sha))
+        commits.set(sha, inspectCommit(options.repoRoot, sha));
+      return commits.get(sha);
+    };
     const candidateSha = normalizeDeployLedgerHead(
       options.sourceSha,
-      (sha) => inspectCommit(options.repoRoot, sha),
+      inspect,
       newest?.sha ?? '',
+    );
+    const sourceCandidates = Object.fromEntries(
+      NATIVE_LEDGER_CHANNELS.map((channel) => {
+        const last = nativeShips(ledgerEntries).find(
+          (row) => row.channel === channel,
+        );
+        return [
+          channel,
+          normalizeDeployLedgerHead(
+            options.sourceSha,
+            inspect,
+            last?.sha || '',
+          ),
+        ];
+      }),
     );
     let recovery = { recover: false };
     const reserved = parseReservationRefs(
       readFileSync(options.reservationRefsPath, 'utf8'),
-    ).some(
+    ).find(
       (entry) => entry.sha === options.sourceSha || entry.sha === candidateSha,
     );
     if (reserved && env.GITHUB_REPOSITORY && env.GH_TOKEN) {
-      recovery = await reservationRecovery(options.sourceSha, env);
+      recovery = await reservationRecovery(reserved.sha, env);
     }
     decision = decideQualifiedNightly({
       sourceSha: options.sourceSha,
@@ -244,6 +269,7 @@ export async function main(
       now,
       intervalMs: publicationInterval(env),
       recovery,
+      sourceCandidates,
     });
   } catch (error) {
     console.error(`::error::${error.message}`);

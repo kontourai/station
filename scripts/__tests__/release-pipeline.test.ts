@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { main as decideMain } from '../nightly-qualification-decide.mjs';
 import {
   finalPublicationDecision,
   publicationInterval,
@@ -197,4 +198,100 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
   } finally {
     await new Promise<void>((done) => server.close(() => done()));
   }
+});
+
+it('recovers the reserved producer after a partial ship adds a ledger-only event commit', async () => {
+  const makeTempDir = trackTempDirs();
+  const root = makeTempDir('station-ledger-recovery-');
+  const refs = join(root, 'refs');
+  writeFileSync(refs, `${prior}\trefs/tags/nightly-version-code/123\n`);
+  const observed: string[] = [];
+  const server = createServer((request, response) => {
+    observed.push(request.url || '');
+    response.setHeader('content-type', 'application/json');
+    response.end(
+      JSON.stringify(
+        request.url?.includes('/jobs')
+          ? {
+              jobs: [
+                {
+                  name: 'qualification / Full source qualification',
+                  conclusion: 'success',
+                },
+              ],
+            }
+          : {
+              workflow_runs: [
+                {
+                  ...producer,
+                  head_sha: prior,
+                  head_repository: { full_name: 'owner/repo' },
+                },
+              ],
+            },
+      ),
+    );
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('HTTP fixture unavailable');
+  try {
+    const status = await decideMain(
+      ['--source-sha', source, '--reservation-refs', refs],
+      {
+        env: {
+          GITHUB_REPOSITORY: 'owner/repo',
+          GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          GITHUB_RUN_ID: '99',
+          GH_TOKEN: 'fixture-token',
+        },
+        now: new Date(now),
+        readLedger: () => [row('nightly-android', prior)],
+        inspectCommit: (_root: string, sha: string) =>
+          sha === prior
+            ? {
+                parents: [],
+                subject: 'feat: source',
+                changedPaths: ['real-source'],
+              }
+            : {
+                parents: [prior],
+                subject:
+                  'docs(ledger): record nightly-android 0.1.11-nightly.2466.3 from run 42',
+                changedPaths: [
+                  'docs/reference/deploy-ledger.json',
+                  'docs/reference/deploy-ledger.md',
+                ],
+              },
+      },
+    );
+    expect(status).toBe(0);
+    expect(observed.some((url) => url.includes(`head_sha=${prior}`))).toBe(
+      true,
+    );
+    expect(observed.some((url) => url.includes(`head_sha=${source}`))).toBe(
+      false,
+    );
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it('retains a just-published native platform across a ledger-only candidate without imposing another cadence wait', () => {
+  expect(
+    finalPublicationDecision({
+      source,
+      sourceCandidates: { 'nightly-android': prior },
+      ledger: [
+        {
+          ...row('nightly-android', prior),
+          timestampUtc: new Date(now - 1000).toISOString(),
+        },
+      ],
+      qualification: '42',
+      ancestor: () => true,
+      now,
+    }),
+  ).toEqual({ androidNeeded: false, desktopNeeded: true });
 });

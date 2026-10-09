@@ -183,6 +183,19 @@ describe('decideQualifiedNightly', () => {
   });
 });
 
+it('recognizes complete native publication whose platform receipts span ledger-only event commits', () => {
+  expect(
+    decide({
+      ledgerEntries: [
+        row('nightly-android', SOURCE),
+        row('nightly-desktop', PEELED),
+      ],
+      sourceCandidates: { 'nightly-desktop': PEELED },
+      reservationRefs: reservation(PEELED),
+    }).publish,
+  ).toBe(false);
+});
+
 describe('parseReservationRefs', () => {
   it('reads the shape git ls-remote prints, ignoring the trailing newline', () => {
     expect(

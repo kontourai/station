@@ -47,7 +47,7 @@ jobs:
     if: ${{ vars.STATION_QUALIFIED_NIGHTLY == 'enabled' && github.ref == 'refs/heads/main' && needs.qualification.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
-    permissions: { contents: read }
+    permissions: { contents: read, actions: read }
     outputs:
       publish: ${{ steps.decide.outputs.publish }}
     steps:

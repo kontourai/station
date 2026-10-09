@@ -39,7 +39,7 @@ export function repairAgent(value) {
 export function nextRepairState(
   previous,
   run,
-  { retry = false, agent = true } = {},
+  { retry = false, agent = true, capacityDeferred = false } = {},
 ) {
   if (
     previous &&
@@ -56,6 +56,10 @@ export function nextRepairState(
     lastStartedAt: run.run_started_at,
     repairState: previous?.repairState || 'claimed',
   };
+  if (capacityDeferred) {
+    state.repairState = 'capacity-deferred';
+    return { state, action: 'update' };
+  }
   // Without an agent nothing owns the episode: record needs-owner, never a claim.
   if (!agent) {
     state.repairState = 'needs-owner';
@@ -169,10 +173,30 @@ async function prepare() {
   if (issue?.state === 'open' && !previous)
     throw new Error('Open repair issue has no valid episode');
   const jobs = await listGithub(`actions/runs/${id}/jobs`, 'jobs');
+  if (
+    run.conclusion === 'cancelled' &&
+    !jobs.some((job) => job.name.endsWith('Full source qualification'))
+  ) {
+    output('claim', 'false');
+    return;
+  }
+  const capacityDeferred = jobs.some(
+    (job) =>
+      job.conclusion === 'failure' &&
+      job.steps?.some(
+        (step) =>
+          step.name === 'Admit fresh qualification before expensive fanout' &&
+          step.conclusion === 'failure',
+      ),
+  );
   const decision = nextRepairState(
     previous,
     { ...run, conclusion: qualificationConclusion(run, jobs) },
-    { retry: process.env.RETRY === 'true', agent: Boolean(agent) },
+    {
+      retry: process.env.RETRY === 'true',
+      agent: Boolean(agent),
+      capacityDeferred,
+    },
   );
   output('claim', 'false');
   if (['ignore', 'stale'].includes(decision.action)) return;
@@ -184,7 +208,10 @@ async function prepare() {
       });
     return;
   }
-  const body = issueBody(decision.state, run, jobs, agent);
+  const body =
+    (capacityDeferred
+      ? 'Capacity admission deferred before corpus execution. No automated source-repair attempt is launched; source remains unqualified.\n\n'
+      : '') + issueBody(decision.state, run, jobs, agent);
   const saved = await github(issue ? `issues/${issue.number}` : 'issues', {
     method: issue ? 'PATCH' : 'POST',
     body: { title: TITLE, body, state: 'open', labels: ['bug', 'P1'] },

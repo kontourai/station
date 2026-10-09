@@ -464,7 +464,7 @@ jobs:
   stage-ios:
     name: Build iOS
     needs: [plan-cohort, stage-macos]
-    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    if: ${{ always() && !cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -493,7 +493,7 @@ jobs:
   stage-windows:
     name: Build Windows NSIS installer (updater sign + verify)
     needs: [plan-cohort, stage-android]
-    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    if: ${{ always() && !cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     runs-on: windows-latest
     environment: native-release
     timeout-minutes: 120

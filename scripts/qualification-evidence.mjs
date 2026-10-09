@@ -124,77 +124,69 @@ export async function findQualification(source, env = process.env) {
     'workflow_runs',
     { env },
   );
-  for (const run of runs
-    .filter((item) =>
-      reusableRun(
-        {
-          ...item,
-          conclusion: 'success',
-          status:
-            [
-              '.github/workflows/main-qualification.yml',
-              '.github/workflows/nightly.yml',
-            ].includes(item.path) && item.status === 'in_progress'
-              ? 'completed'
-              : item.status,
-        },
-        {
-          source,
-          repository: env.GITHUB_REPOSITORY,
-          currentRun: env.GITHUB_RUN_ID,
-        },
-      ),
-    )
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))) {
+  const candidates = runs.filter((item) =>
+    reusableRun(
+      {
+        ...item,
+        conclusion: 'success',
+        status:
+          [
+            '.github/workflows/main-qualification.yml',
+            '.github/workflows/nightly.yml',
+          ].includes(item.path) && item.status === 'in_progress'
+            ? 'completed'
+            : item.status,
+      },
+      {
+        source,
+        repository: env.GITHUB_REPOSITORY,
+        currentRun: env.GITHUB_RUN_ID,
+      },
+    ),
+  );
+  const observations = [];
+  for (const run of candidates) {
     const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
       env,
     });
     const gate = jobs.filter(
       (job) => job.name.split(' / ').at(-1) === 'Full source qualification',
     );
-    if (
-      gate.some(
-        (job) => job.conclusion === 'failure' || job.conclusion === 'timed_out',
-      )
-    )
+    if (gate.length !== 1) continue;
+    const completed = Date.parse(gate[0].completed_at);
+    if (!Number.isFinite(completed) || completed > Date.now()) return '';
+    observations.push({ run, jobs, gate: gate[0], completed });
+  }
+  observations.sort((a, b) => b.completed - a.completed);
+  for (const { run, jobs, gate, completed } of observations) {
+    if (['failure', 'timed_out', 'cancelled'].includes(gate.conclusion))
       return '';
-    // A Main qualification run also publishes the Nightly from the commit it
-    // qualified, so a red publication must not discard a passing gate: that
-    // run is judged by its gate job, every other workflow by its conclusion.
+    if (gate.conclusion !== 'success' || Date.now() - completed > MAX_AGE_MS)
+      continue;
     if (
       run.conclusion !== 'success' &&
-      !(
-        [
-          '.github/workflows/main-qualification.yml',
-          '.github/workflows/nightly.yml',
-        ].includes(run.path) &&
-        gate.length === 1 &&
-        gate[0].conclusion === 'success'
-      )
-    )
-      continue;
-    // A reused receipt does not reset the original evidence's age: only fresh
-    // corpus execution is admitted as the source of another reuse.
-    if (
-      !Number.isFinite(Date.parse(gate[0]?.completed_at)) ||
-      Date.now() - Date.parse(gate[0].completed_at) < 0 ||
-      Date.now() - Date.parse(gate[0].completed_at) > MAX_AGE_MS
+      ![
+        '.github/workflows/main-qualification.yml',
+        '.github/workflows/nightly.yml',
+      ].includes(run.path)
     )
       continue;
     const corpora = jobs.filter((job) => job.name.includes('Ordinary corpus '));
+    if (
+      corpora.length !== 4 ||
+      corpora.some((job) => job.conclusion !== 'success')
+    )
+      continue;
     const artifacts = await listGithub(
       `actions/runs/${run.id}/artifacts`,
       'artifacts',
       { env },
     );
     if (
-      gate.length === 1 &&
-      gate[0].conclusion === 'success' &&
-      corpora.length === 4 &&
-      corpora.every((job) => job.conclusion === 'success') &&
       artifacts.some(
-        (a) =>
-          a.name === `source-qualification-${source}-${run.id}` && !a.expired,
+        (artifact) =>
+          artifact.name === `source-qualification-${source}-${run.id}` &&
+          !artifact.expired,
       )
     )
       return String(run.id);
