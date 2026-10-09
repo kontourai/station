@@ -101,8 +101,12 @@ interface ChatDockModalStackProps {
     providerType?: string,
     experienceDraft?: SkillExperienceDraft,
     sendInitialMessage?: boolean,
+    executionAgentId?: string,
+    expectedDefinitionFingerprint?: string,
+    executionOnCurrentStation?: boolean,
   ) => void;
   onCloseNewChat: () => void;
+  onNewTaskStarted?: () => void;
   onCloseSettings: () => void;
   onCloseSessionPicker: () => void;
   onSessionPickerSelect: (
@@ -154,6 +158,7 @@ export function ChatDockModalStack({
   autoHideEnabled,
   onSelectNewChat,
   onCloseNewChat,
+  onNewTaskStarted,
   onCloseSettings,
   onCloseSessionPicker,
   onSessionPickerSelect,
@@ -204,6 +209,7 @@ export function ChatDockModalStack({
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,
             onClose: onCloseNewChat,
+            onTaskStarted: onNewTaskStarted,
             draftContext: forkMode
               ? undefined
               : composerDraftContext(newChatProjectOverride?.composerDraft),

@@ -88,6 +88,24 @@ export interface ExecutionModelRequest {
   options?: Readonly<Record<string, unknown>>;
 }
 
+/** An override names a receiver-owned default engine Agent, preserving the profile. */
+export type ExecutionAgentRef =
+  | AgentId
+  | {
+      kind: 'agent-execution-override';
+      agent: AgentId;
+      executionAgent: AgentId;
+      expectedDefinitionFingerprint?: string;
+    };
+
+export function executionProfileAgentId(ref: ExecutionAgentRef): AgentId {
+  return typeof ref === 'string' ? ref : ref.agent;
+}
+
+export function executionBindingAgentId(ref: ExecutionAgentRef): AgentId {
+  return typeof ref === 'string' ? ref : ref.executionAgent;
+}
+
 /**
  * Canonical cross-surface address for foreground chat and durable delegation.
  *
@@ -97,7 +115,7 @@ export interface ExecutionModelRequest {
  */
 export interface ExecutionTarget {
   environment: EnvironmentRef;
-  agent: AgentId;
+  agent: ExecutionAgentRef;
   model?: ExecutionModelRequest;
   workspace?: WorkspaceTarget;
 }
@@ -132,6 +150,9 @@ export interface ExecutionResolutionReceipt {
   resolvedAt: string;
   environmentId: EnvironmentId;
   agentId: AgentId;
+  /** Receiver-owned execution default used instead of the profile binding. */
+  executionAgentId?: AgentId;
+  definitionFingerprint?: string;
   engine: ResolvedExecutionEngine;
   provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;

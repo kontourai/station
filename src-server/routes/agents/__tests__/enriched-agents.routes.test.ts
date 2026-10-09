@@ -1,11 +1,13 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   engineConnectionId,
   engineId,
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -569,6 +571,82 @@ describe('registry-backed enriched Agent routes', () => {
     } finally {
       nowSpy.mockRestore();
     }
+  });
+
+  test('authored definition fingerprints survive binding and icon changes but distinguish changed capabilities', async () => {
+    let spec: AgentSpec = {
+      name: 'Writer',
+      prompt: 'Write.',
+      skills: ['review'],
+      tools: { mcpServers: ['editor'] },
+      commands: {
+        revise: {
+          name: 'revise',
+          description: 'Review',
+          prompt: 'Revise carefully.',
+        },
+      },
+    };
+    const { app } = setup({
+      loadAgent: async (slug: string) => {
+        if (slug === 'writer') return spec;
+        throw new Error('No authored Agent');
+      },
+    });
+    const read = async () =>
+      (
+        await json<{ data: EnrichedAgentProjection }>(
+          await app.request('/writer'),
+        )
+      ).data;
+    const initial = await read();
+    const original = initial.definitionFingerprint;
+    expect(initial.profileCapabilities).toEqual([
+      'instructions',
+      'skills',
+      'toolServers',
+    ]);
+    expect(initial.unsupportedProfileCapabilities).toEqual([]);
+    expect(original).toMatch(/^sha256:[0-9a-f]{64}$/);
+    spec = {
+      ...spec,
+      execution: { agentConnectionId: engineConnectionId('codex') },
+      icon: 'different-icon',
+      provenance: {
+        origin: 'engine-detection',
+        engineId: 'codex',
+        detectedAt: '2026-10-09T00:00:00Z',
+      },
+    };
+    const codex = await read();
+    expect(codex.definitionFingerprint).toBe(original);
+    expect(codex.unsupportedProfileCapabilities).toEqual(['skills']);
+    spec = {
+      ...spec,
+      commands: {
+        revise: {
+          name: 'revise',
+          description: 'Review',
+          prompt: 'Rewrite the meaning.',
+        },
+      },
+    };
+    expect((await read()).definitionFingerprint).not.toBe(original);
+    spec = {
+      ...spec,
+      execution: { agentConnectionId: engineConnectionId('unknown-engine') },
+    };
+    expect((await read()).unsupportedProfileCapabilities).toBeUndefined();
+    const catalog = await json<{ data: EnrichedAgentProjection[] }>(
+      await app.request('/'),
+    );
+    expect(
+      catalog.data.find((agent) => agent.slug === 'codex')
+        ?.definitionFingerprint,
+    ).toBeUndefined();
+    expect(
+      catalog.data.find((agent) => agent.slug === 'codex')?.executionDefault,
+    ).toBe(true);
   });
 
   test('lists exact registry defaults even when their engine is unavailable', async () => {

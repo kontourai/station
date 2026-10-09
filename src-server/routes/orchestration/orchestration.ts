@@ -28,6 +28,7 @@ import {
   type ExecutionModelRequest,
   type ExecutionTarget,
   environmentId,
+  executionProfileAgentId,
 } from '@kontourai/station-contracts/execution-target';
 import type {
   TerminalProcessDetail,
@@ -594,7 +595,20 @@ const workspaceTargetSchema = z.discriminatedUnion('kind', [
 
 const executionTargetSchema = z.object({
   environment: environmentRefSchema.optional(),
-  agent: z.string().min(1).max(64),
+  agent: z.union([
+    z.string().min(1).max(64),
+    z
+      .object({
+        kind: z.literal('agent-execution-override'),
+        agent: z.string().min(1).max(64),
+        executionAgent: z.string().min(1).max(64),
+        expectedDefinitionFingerprint: z
+          .string()
+          .regex(/^sha256:[0-9a-f]{64}$/)
+          .optional(),
+      })
+      .strict(),
+  ]),
   model: z
     .object({
       override: z.string().min(1).max(512).optional(),
@@ -615,7 +629,14 @@ function normalizeExecutionTarget(
       selectedEnvironment.kind === 'saved'
         ? { kind: 'saved', id: environmentId(selectedEnvironment.id) }
         : { kind: 'current' },
-    agent: agentId(target.agent),
+    agent:
+      typeof target.agent === 'string'
+        ? agentId(target.agent)
+        : {
+            ...target.agent,
+            agent: agentId(target.agent.agent),
+            executionAgent: agentId(target.agent.executionAgent),
+          },
   };
 }
 
@@ -2087,7 +2108,11 @@ export function createOrchestrationRoutes(
           deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
           context.state !== 'open' ||
           context.conversationId !== body.conversationId ||
-          context.agentId !== body.target.agent ||
+          context.agentId !== executionProfileAgentId(resolvedTarget.agent) ||
+          (typeof resolvedTarget.agent !== 'string' &&
+            (resolvedTarget.agent.executionAgent !== context.executionAgentId ||
+              resolvedTarget.agent.expectedDefinitionFingerprint !==
+                context.expectedDefinitionFingerprint)) ||
           body.target.environment?.kind !== 'current' ||
           body.target.workspace ||
           body.target.model
@@ -2102,6 +2127,19 @@ export function createOrchestrationRoutes(
             409,
           );
         }
+        resolvedTarget.agent = context.executionAgentId
+          ? {
+              kind: 'agent-execution-override',
+              agent: agentId(context.agentId),
+              executionAgent: agentId(context.executionAgentId),
+              ...(context.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      context.expectedDefinitionFingerprint,
+                  }
+                : {}),
+            }
+          : agentId(context.agentId);
       }
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
@@ -2888,7 +2926,21 @@ export function createOrchestrationRoutes(
           userId,
           {
             operationId: roomRequest.operationId,
-            agentId: body.target.agent,
+            ...(body.target.model ? { model: body.target.model } : {}),
+            agentId: executionProfileAgentId(
+              normalizeExecutionTarget(body.target).agent,
+            ),
+            ...(typeof body.target.agent !== 'string'
+              ? {
+                  executionAgentId: body.target.agent.executionAgent,
+                  ...(body.target.agent.expectedDefinitionFingerprint
+                    ? {
+                        expectedDefinitionFingerprint:
+                          body.target.agent.expectedDefinitionFingerprint,
+                      }
+                    : {}),
+                }
+              : {}),
             prompt: body.prompt,
             ...(roomRequest.context ? { context: roomRequest.context } : {}),
           },

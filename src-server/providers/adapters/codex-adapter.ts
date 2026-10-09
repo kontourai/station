@@ -85,7 +85,10 @@ import {
 } from '../sessions/session-source-affinity.js';
 import { readLeadingLine } from '../sessions/transcript-file-io.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
-import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
+import {
+  assertExecutionOverrideDelivery,
+  mergeCapabilityDeliveryMetadata,
+} from './capability-delivery-metadata.js';
 import {
   codexRunningChildTurnId,
   codexRunningChildTurns,
@@ -1813,6 +1816,10 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.transport.handleProcess(record);
 
     try {
+      assertExecutionOverrideDelivery(
+        input.metadata,
+        toolServers.report?.undelivered ?? [],
+      );
       await this.transport.sendRequest(record, 'initialize', {
         clientInfo: {
           name: 'station',

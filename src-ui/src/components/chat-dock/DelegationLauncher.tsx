@@ -1,3 +1,4 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import {
@@ -41,6 +42,10 @@ interface DelegationLauncherProps {
   projectName?: string | null;
   currentAgentId?: string;
   currentModel?: string | null;
+  initialEnvironmentId?: string;
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
+  providerOptions?: Record<string, unknown>;
   parentTaskId?: string;
   parentTaskLabel?: string;
   initialPrompt?: string;
@@ -155,6 +160,10 @@ export function DelegationLauncher({
   projectName,
   currentAgentId,
   currentModel,
+  initialEnvironmentId,
+  executionAgentId,
+  expectedDefinitionFingerprint,
+  providerOptions,
   parentTaskId,
   parentTaskLabel,
   initialPrompt = '',
@@ -236,7 +245,9 @@ export function DelegationLauncher({
 
   // Null follows the Project default; an explicit choice survives inventory
   // refreshes. Missing inventory must never substitute the current machine.
-  const [chosenEnvironmentId, setEnvironmentId] = useState<string | null>(null);
+  const [chosenEnvironmentId, setEnvironmentId] = useState<string | null>(
+    initialEnvironmentId ?? null,
+  );
   const environmentId = chosenEnvironmentId ?? configuredEnvironmentId;
   // Only an unset choice follows the default. An unavailable explicit choice
   // stays selected until the user chooses a replacement.
@@ -347,7 +358,7 @@ export function DelegationLauncher({
     if (isOpen && !wasOpenRef.current) {
       setPrompt(initialPrompt);
       setTarget(defaultTarget);
-      setEnvironmentId(null);
+      setEnvironmentId(initialEnvironmentId ?? null);
       setChosenResourceId(null);
       setAuthorityStale(false);
       setModel(defaultTarget === currentTarget ? (currentModel ?? '') : '');
@@ -365,6 +376,7 @@ export function DelegationLauncher({
     currentModel,
     currentTarget,
     defaultTarget,
+    initialEnvironmentId,
     initialPrompt,
     isOpen,
     mutation.reset,
@@ -465,9 +477,31 @@ export function DelegationLauncher({
     ? (identityResources.find((resource) => resource.id === resourceId)?.name ??
       resourceId)
     : null;
-  const resolvedModelId = model.trim() || selectedTarget?.defaultModel || '';
+  const overrideSelected = Boolean(
+    executionAgentId && selectedTarget?.id === currentAgentId,
+  );
+  const engineBinding = overrideSelected
+    ? delegationOptions?.targets.find(
+        (entry) => entry.id === executionAgentId && entry.executionDefault,
+      )
+    : undefined;
+  const targetModels = overrideSelected
+    ? (engineBinding?.models ?? [])
+    : (selectedTarget?.models ?? []);
+  const overrideUnavailable =
+    overrideSelected &&
+    (!engineBinding?.executionReady ||
+      (expectedDefinitionFingerprint &&
+        delegationOptions?.targets.find((entry) => entry.id === currentAgentId)
+          ?.definitionFingerprint !== expectedDefinitionFingerprint));
+  const resolvedModelId =
+    model.trim() ||
+    (overrideSelected
+      ? engineBinding?.defaultModel
+      : selectedTarget?.defaultModel) ||
+    '';
   const resolvedModelName = resolvedModelId
-    ? (selectedTarget?.models.find(
+    ? (targetModels.find(
         (option) =>
           option.id === resolvedModelId ||
           option.originalId === resolvedModelId,
@@ -484,6 +518,7 @@ export function DelegationLauncher({
     event.preventDefault();
     if (
       !selectedTarget?.ready ||
+      overrideUnavailable ||
       !prompt.trim() ||
       environmentUnavailable ||
       portableBlocked ||
@@ -538,8 +573,25 @@ export function DelegationLauncher({
               capturedEnvironmentId === 'current'
                 ? { kind: 'current' }
                 : { kind: 'saved', id: toEnvironmentId(capturedEnvironmentId) },
-            agent: capturedTargetId,
-            ...(capturedModel ? { model: { override: capturedModel } } : {}),
+            agent:
+              overrideSelected && executionAgentId
+                ? {
+                    kind: 'agent-execution-override',
+                    agent: capturedTargetId,
+                    executionAgent: agentId(executionAgentId),
+                    ...(expectedDefinitionFingerprint
+                      ? { expectedDefinitionFingerprint }
+                      : {}),
+                  }
+                : capturedTargetId,
+            ...(capturedModel
+              ? {
+                  model: {
+                    override: capturedModel,
+                    ...(providerOptions ? { options: providerOptions } : {}),
+                  },
+                }
+              : {}),
             ...(capturedWorkspace ? { workspace: capturedWorkspace } : {}),
           },
           ...(capturedParentTaskId
@@ -960,9 +1012,9 @@ export function DelegationLauncher({
                   list="delegation-launcher-models"
                   onChange={(event) => setModel(event.target.value)}
                 />
-                {selectedTarget?.models.length ? (
+                {targetModels.length ? (
                   <datalist id="delegation-launcher-models">
-                    {selectedTarget.models.map((option) => (
+                    {targetModels.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.name}
                       </option>
@@ -1015,6 +1067,7 @@ export function DelegationLauncher({
               Boolean(discoveryError) ||
               !prompt.trim() ||
               !selectedTarget?.ready ||
+              overrideUnavailable ||
               environmentUnavailable ||
               portableBlocked ||
               sshProjectBlocked

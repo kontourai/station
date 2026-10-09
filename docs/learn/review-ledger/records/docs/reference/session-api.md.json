@@ -78,7 +78,11 @@
 
     "src-server/providers/sessions/grok-session-index.ts",
 
-    "src-server/services/acp/managed-acp-workspace.ts"
+    "src-server/services/acp/managed-acp-workspace.ts",
+
+    "src-server/services/agents/agent-definition-fingerprint.ts",
+
+    "src-server/services/agents/agent-profile-capabilities.ts"
   ],
 
   "checks": [

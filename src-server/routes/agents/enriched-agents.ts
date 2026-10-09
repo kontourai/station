@@ -21,6 +21,11 @@ import type {
 } from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import { selectEngineAgentAdoption } from '../../domain/agent-registry.js';
+import { agentDefinitionFingerprint } from '../../services/agents/agent-definition-fingerprint.js';
+import {
+  agentProfileCapabilities,
+  unsupportedAgentProfileCapabilities,
+} from '../../services/agents/agent-profile-capabilities.js';
 import type { AgentMetadata } from '../../services/agents/agent-service.js';
 import { sessionAgentStartUnavailableReason } from '../../services/orchestration/session-agent-resolution.js';
 import type { Logger } from '../../utils/logger.js';
@@ -447,12 +452,19 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
     const identity = agentConnectionId
       ? engineIdentitiesById.get(agentConnectionId)
       : undefined;
+    const unsupportedProfileCapabilities = unsupportedAgentProfileCapabilities(
+      agentConnectionId,
+      identity ?? connection,
+    );
     const activationFailure = deps.getActivationFailure?.(metadata.slug);
     const ownership = knownProjectSlugs
       ? agentOwnershipFinding(spec.project, knownProjectSlugs)
       : undefined;
     return {
       slug: agentId(metadata.slug),
+      ...(unsupportedProfileCapabilities
+        ? { unsupportedProfileCapabilities }
+        : {}),
       name: metadata.name,
       prompt: spec.prompt,
       description: spec.description,
@@ -621,14 +633,23 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
     // itself in round 1, which is precisely what left `/:slug/binding` and the
     // save-response validation reading the raw record.
 
-    const payload = buildAgentPayload(
-      metadata,
-      spec,
-      runtimeConnectionsById,
-      engineIdentitiesById,
-      knownProjectSlugs,
-      engineDefault,
-    );
+    const payload = {
+      ...buildAgentPayload(
+        metadata,
+        spec,
+        runtimeConnectionsById,
+        engineIdentitiesById,
+        knownProjectSlugs,
+        engineDefault,
+      ),
+      executionDefault: registryDefault,
+      ...(!engineDefault
+        ? {
+            definitionFingerprint: agentDefinitionFingerprint(spec),
+            profileCapabilities: agentProfileCapabilities(spec, metadata.slug),
+          }
+        : {}),
+    };
     const connection = spec.execution?.agentConnectionId
       ? runtimeConnectionsById.get(spec.execution.agentConnectionId)
       : undefined;

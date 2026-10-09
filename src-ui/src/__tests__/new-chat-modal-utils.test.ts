@@ -468,7 +468,7 @@ describe('new-chat-modal-utils', () => {
     });
   });
 
-  test('buildNewChatModalViewModel groups runtime, layout, ACP, and global agents', () => {
+  test('keeps authored profiles in My agents with recency ordering and no layout duplication', () => {
     const viewModel = buildNewChatModalViewModel({
       agents: [
         {
@@ -518,7 +518,7 @@ describe('new-chat-modal-utils', () => {
       layoutName: 'Workspace Layout',
       layoutIcon: '🧩',
       providerManagedAgentSlugs: [],
-      recentSlugs: ['alpha'],
+      recentSlugs: ['beta', 'alpha'],
     });
 
     expect(viewModel.isGlobal).toBe(true);
@@ -529,18 +529,13 @@ describe('new-chat-modal-utils', () => {
       glyph: 'globe',
     });
     expect(viewModel.filteredContextOptions).toHaveLength(2);
-    // DESIGN.md §5: two bands, the same two the Agents list uses. `Recent`
-    // and a layout's own group are CONTEXT groupings and survive above them.
-    expect(viewModel.groups.map((group) => group.label)).toEqual([
-      'Recent',
-      'Workspace Layout',
-      'AI apps',
-    ]);
+    expect(viewModel.groups.map((group) => group.label)).toEqual(['My agents']);
     expect(viewModel.flatList.map((agent) => agent.slug)).toEqual([
-      'alpha',
       'beta',
+      'alpha',
       'gamma',
     ]);
+    expect(new Set(viewModel.flatList.map((agent) => agent.slug)).size).toBe(3);
     expect(viewModel.compatibilityMessage).toBeUndefined();
   });
 
@@ -633,18 +628,19 @@ describe('new-chat-modal-utils', () => {
       recentSlugs: [],
     });
 
-    // DESIGN.md §5: the engine rows share ONE band. What this test is
-    // actually about is DEDUPE — each engine appears once, carrying the
-    // server-backed row's own description — and that is unchanged.
     const engineBand = viewModel.groups.find(
-      (group) => group.label === 'AI apps',
+      (group) => group.label === 'Coding apps',
     );
 
     expect(engineBand?.agents.map((agent) => agent.slug).sort()).toEqual([
       'claude',
       'codex',
-      'station',
     ]);
+    expect(
+      viewModel.groups
+        .find((group) => group.label === 'Station')
+        ?.agents.map((agent) => agent.slug),
+    ).toEqual(['station']);
     expect(
       viewModel.flatList.filter((agent) => agent.slug === 'claude'),
     ).toHaveLength(1);
@@ -658,7 +654,7 @@ describe('new-chat-modal-utils', () => {
       engineBand?.agents.find((agent) => agent.slug === 'codex')?.description,
     ).toBe('server-backed codex runtime row');
     expect(
-      viewModel.groups.find((group) => group.label === 'Your agents'),
+      viewModel.groups.find((group) => group.label === 'My agents'),
     ).toBeUndefined();
   });
 
@@ -719,7 +715,7 @@ describe('new-chat-modal-utils', () => {
       recentSlugs: ['station', 'station'],
     });
 
-    expect(viewModel.groups.map((group) => group.label)).toEqual(['Recent']);
+    expect(viewModel.groups.map((group) => group.label)).toEqual(['Station']);
     expect(viewModel.flatList.map((agent) => agent.slug)).toEqual(['station']);
     expect(
       viewModel.groups.flatMap((group) =>
@@ -763,9 +759,7 @@ describe('new-chat-modal-utils', () => {
       recentSlugs: [],
     });
 
-    expect(viewModel.groups.map((group) => group.label)).toEqual([
-      'Your agents',
-    ]);
+    expect(viewModel.groups.map((group) => group.label)).toEqual(['Station']);
     expect(viewModel.flatList.map((agent) => agent.slug)).toEqual(['station']);
     expect(viewModel.groups[0]?.agents[0]).toEqual(
       expect.objectContaining({ slug: 'station', name: 'Station' }),
@@ -1116,13 +1110,11 @@ describe('new-chat-modal-utils', () => {
       recentSlugs: [],
     });
 
-    expect(viewModel.groups.map((group) => group.label)).toEqual([
-      'Your agents',
-    ]);
+    expect(viewModel.groups.map((group) => group.label)).toEqual(['My agents']);
     expect(viewModel.flatList.map((agent) => agent.slug)).toEqual(['alpha']);
   });
 
-  test('hides recent runtime agents from the runtime section and keeps runtime chat last', () => {
+  test('keeps a recent authored engine-bound profile in My agents without synthesizing cached engine rows', () => {
     const viewModel = buildNewChatModalViewModel({
       agents: [
         {
@@ -1176,7 +1168,7 @@ describe('new-chat-modal-utils', () => {
       recentSlugs: ['codex'],
     });
 
-    expect(viewModel.groups.map((group) => group.label)).toEqual(['Recent']);
+    expect(viewModel.groups.map((group) => group.label)).toEqual(['My agents']);
     expect(viewModel.groups[0]?.agents.map((agent) => agent.slug)).toEqual([
       'codex',
     ]);
@@ -1295,7 +1287,7 @@ describe('new-chat-modal-utils', () => {
       expect(viewModel.flatList.map((agent) => agent.slug)).toEqual([]);
     });
 
-    test('groups a persisted default Agent inside its engine group, not Global', () => {
+    test('groups a persisted execution default inside Coding apps', () => {
       const viewModel = buildNewChatModalViewModel({
         agents: [defaultClaudeCode()],
         projects: [],
@@ -1311,9 +1303,11 @@ describe('new-chat-modal-utils', () => {
         recentSlugs: [],
       });
 
-      expect(viewModel.groups.map((group) => group.label)).toEqual(['AI apps']);
+      expect(viewModel.groups.map((group) => group.label)).toEqual([
+        'Coding apps',
+      ]);
       expect(
-        viewModel.groups.find((group) => group.label === 'Your agents'),
+        viewModel.groups.find((group) => group.label === 'My agents'),
       ).toBeUndefined();
     });
 
@@ -1333,7 +1327,9 @@ describe('new-chat-modal-utils', () => {
         recentSlugs: ['claude-code'],
       });
 
-      expect(viewModel.groups.map((group) => group.label)).toEqual(['Recent']);
+      expect(viewModel.groups.map((group) => group.label)).toEqual([
+        'Coding apps',
+      ]);
       expect(viewModel.groups[0]?.agents.map((agent) => agent.slug)).toEqual([
         'claude-code',
       ]);
@@ -1375,7 +1371,7 @@ describe('new-chat-modal-utils', () => {
     });
   });
 
-  test('converges a native connection and an ACP connection with the same engine name into one group', () => {
+  test('keeps an authored ACP profile in My agents beside an engine default for the same app', () => {
     const viewModel = buildNewChatModalViewModel({
       agents: [
         {
@@ -1434,16 +1430,18 @@ describe('new-chat-modal-utils', () => {
       recentSlugs: [],
     });
 
-    // Convergence is now structural: a native engine row and an ACP engine
-    // row share ONE band, so two connections for one engine cannot open two
-    // headings whatever they are called.
     const engineGroups = viewModel.groups.filter(
-      (group) => group.label === 'AI apps',
+      (group) => group.label === 'Coding apps',
     );
     expect(engineGroups).toHaveLength(1);
-    expect(engineGroups[0]?.agents.map((agent) => agent.slug).sort()).toEqual(
-      ['opencode', 'opencode-mode'].sort(),
-    );
+    expect(engineGroups[0]?.agents.map((agent) => agent.slug)).toEqual([
+      'opencode',
+    ]);
+    expect(
+      viewModel.groups
+        .find((group) => group.label === 'My agents')
+        ?.agents.map((agent) => agent.slug),
+    ).toEqual(['opencode-mode']);
   });
 
   describe('engine enable (#3027)', () => {

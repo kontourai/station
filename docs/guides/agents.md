@@ -76,6 +76,9 @@ its native `enabled_tools` / `disabled_tools` configuration. Station Control als
 filters its served catalog and calls to the session's selection. Engines reached
 through the generic connected-engine protocol cannot deliver individual-tool
 selection: a restricted integration is reported undelivered rather than widened.
+An explicit conversation engine override refuses required profile capabilities
+that cannot actually be delivered; it does not start with a reduced profile.
+See [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 External policy delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
 
 ```json

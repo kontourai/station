@@ -124,6 +124,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       modelPickerAgent,
       setModelPickerAgent,
       modelsForAgent: () => models,
+      executionModelsForAgent: () => models,
       modelChoiceKey: (agent: AgentData) =>
         `${input.selectedContext}:${agent.slug}`,
       defaultEffectiveModelForAgent: () => ({

@@ -19,9 +19,8 @@
  * `ResolvedAgentDefinition.systemPrompt`'s doc comment).
  *
  * Pure(ish), mirroring `acp-mcp-passthrough.ts`'s style: the only I/O is the
- * three injected callbacks. The resolver itself never throws — resolution is
- * defensive enrichment, matching the same defensive-isolation contract as
- * `acp-adapter.ts`'s passthrough resolution. Its OUTPUT is load-bearing,
+ * three injected callbacks. Ordinary resolution is defensive enrichment; an
+ * explicit execution override refuses unresolved or undeliverable capabilities. Its OUTPUT is load-bearing,
  * though (archive#3027): whether a definition was attached feeds
  * `sessionAgentStartUnavailableReason` below, which
  * `resolveSessionAgentForStart` (orchestration-service.ts) enforces as a
@@ -63,6 +62,7 @@ import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tool
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
+import { agentDefinitionFingerprint } from '../agents/agent-definition-fingerprint.js';
 import { withProjectToolDefaults } from '../projects/project-tools.js';
 
 interface SessionAgentResolverOptions {
@@ -287,18 +287,44 @@ export function createSessionAgentResolver(
       return input;
     }
     const channels = sessionDeliveryChannels(input.provider);
-    if (!channels) {
-      return input;
-    }
+    if (!channels && !input.metadata?.executionAgentId) return input;
 
     try {
-      let spec = captured
+      const authored = captured
         ? captured.agentId === slug
           ? structuredClone(captured.spec)
           : null
-        : withBuiltinStationAgentCapabilities(slug, await loadAgentSpec(slug));
+        : await loadAgentSpec(slug);
+      const expectedFingerprint = input.metadata?.expectedDefinitionFingerprint;
+      if (
+        expectedFingerprint !== undefined &&
+        (!authored ||
+          agentDefinitionFingerprint(authored) !== expectedFingerprint)
+      ) {
+        throw new Error(
+          'The selected Agent definition changed before execution; select it again',
+        );
+      }
+      let spec = captured
+        ? authored
+        : withBuiltinStationAgentCapabilities(slug, authored);
       if (!spec) {
+        if (input.metadata?.executionAgentId)
+          throw new Error(
+            'Execution override could not resolve the selected Agent profile',
+          );
         return input;
+      }
+
+      if (!channels) {
+        if (
+          input.provider === 'station-agent' &&
+          !spec.execution?.agentConnectionId
+        )
+          return input;
+        throw new Error(
+          'Execution override cannot deliver the selected Agent capabilities',
+        );
       }
 
       if (options.resolveProjectToolServers) {
@@ -608,6 +634,18 @@ export function createSessionAgentResolver(
         logger?.warn?.(report.modelFieldWarning);
       }
 
+      if (input.metadata?.executionAgentId) {
+        const undelivered = [
+          report.systemPrompt,
+          report.skills,
+          report.toolServers,
+        ].flatMap((capability) => capability?.undelivered ?? []);
+        if (undelivered.length) {
+          throw new Error(
+            `Execution override cannot deliver the selected Agent capabilities: ${undelivered.map((entry) => `${entry.capability}:${entry.id} (${entry.reason})`).join(', ')}`,
+          );
+        }
+      }
       return {
         ...input,
         agent: definition,
@@ -617,6 +655,7 @@ export function createSessionAgentResolver(
         },
       };
     } catch (error) {
+      if (input.metadata?.executionAgentId) throw error;
       logger?.warn?.(
         `Session agent resolution failed for agent '${slug}'; continuing without a resolved agent definition.`,
         error,
