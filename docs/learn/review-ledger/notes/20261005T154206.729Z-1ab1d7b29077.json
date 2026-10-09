@@ -1,0 +1,7 @@
+{
+  "revision": "2a8eff6e776caee7cee82ede9a18541ccc120e84",
+
+  "notes": [
+    {"path":"docs/guides/distribution-profiles.md","note":"Reviewed the layout/profile route claims against projects.ts; this diff changes only the project list response (adds runsAt) and none of the layout catalogue or profile behavior the guide describes.","inputs":["docs/guides/distribution-profiles.md","src-server/routes/projects/projects.ts"]}
+  ]
+}

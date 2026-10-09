@@ -1,5 +1,18 @@
 import type { EngineConnectionId, EngineId } from './agent-identity.js';
 
+/** Point-in-time resources on the answering Station host, not the viewing device. */
+export interface HostResourceSnapshot {
+  sampledAt: number;
+  memory: { totalBytes: number; freeBytes: number };
+  process: {
+    pid: number;
+    uptimeSeconds: number;
+    rssBytes: number;
+    heapUsedBytes: number;
+    heapTotalBytes: number;
+  };
+}
+
 /** One external engine's readiness and optional public navigation identity. */
 export interface ExternalEngineReadinessProjection {
   engineId: EngineId;

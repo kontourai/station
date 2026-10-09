@@ -61,11 +61,11 @@
       "severity": "moderate",
       "reachability": "production",
       "owner": "station-maintainers",
-      "disposition": "Reachable through @voltagent/core@2.9.2's transitive telemetry graph; npm audit offers no compatible upstream remediation for this nested version.",
-      "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0; retain telemetry input validation and do not force a cross-major override into VoltAgent's private dependency graph.",
-      "trackingUrl": "https://github.com/kontourai/station/issues/1753",
-      "expires": "2026-10-08",
-      "recheckTrigger": "Run npm audit --omit=dev after every VoltAgent core update and when VoltAgent publishes a compatible OpenTelemetry remediation."
+      "disposition": "Production-reachable through @voltagent/core@2.10.0 -> @opentelemetry/exporter-trace-otlp-http@0.203.0, which pins this exact OpenTelemetry core version. The latest published @voltagent/core still uses the 0.203 exporter line; no compatible upstream remediation is published. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
+      "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0, but that does not mitigate VoltAgent's distinct production graph. Do not force a version override across the upstream OpenTelemetry package set's exact pins. Reassess this reachable baggage-propagation path on upstream release.",
+      "trackingUrl": "https://github.com/kontourai/station/issues/3510",
+      "expires": "2026-11-07",
+      "recheckTrigger": "Run npm run audit:policy after every VoltAgent or OpenTelemetry update and remove this exact residual when a compatible upstream package set resolves core to 2.8.0 or newer."
     },
     {
       "scope": "root",
@@ -75,11 +75,11 @@
       "severity": "moderate",
       "reachability": "production",
       "owner": "station-maintainers",
-      "disposition": "Reachable through @voltagent/logger@2.0.2's transitive telemetry graph; npm audit offers no compatible upstream remediation for this nested version.",
-      "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0; retain telemetry input validation and do not force a cross-major override into VoltAgent's private dependency graph.",
-      "trackingUrl": "https://github.com/kontourai/station/issues/1753",
-      "expires": "2026-10-08",
-      "recheckTrigger": "Run npm audit --omit=dev after every VoltAgent logger update and when VoltAgent publishes a compatible OpenTelemetry remediation."
+      "disposition": "Production-reachable through @voltagent/core@2.10.0 -> @voltagent/logger@2.0.2 -> @opentelemetry/exporter-logs-otlp-http@0.204.0, which pins this exact OpenTelemetry core version. The latest published VoltAgent packages still use the 0.204 logger exporter line; no compatible upstream remediation is published. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
+      "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0, but that does not mitigate VoltAgent's distinct production graph. Do not force a version override across the upstream OpenTelemetry package set's exact pins. Reassess this reachable baggage-propagation path on upstream release.",
+      "trackingUrl": "https://github.com/kontourai/station/issues/3510",
+      "expires": "2026-11-07",
+      "recheckTrigger": "Run npm run audit:policy after every VoltAgent or OpenTelemetry update and remove this exact residual when a compatible upstream package set resolves core to 2.8.0 or newer."
     },
     {
       "scope": "root",
@@ -89,11 +89,11 @@
       "severity": "moderate",
       "reachability": "production",
       "owner": "station-maintainers",
-      "disposition": "Reachable only through @voltagent/core@2.9.2; npm audit offers no compatible upstream remediation for its nested uuid dependency.",
+      "disposition": "Production-reachable through @voltagent/core@2.10.0 -> uuid@9.0.1. The latest published @voltagent/core still declares uuid ^9.0.1, and no patched 9.x version exists; the advisory's first patched release is 11.1.1. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
       "controls": "Station generates its security-sensitive identifiers through Node crypto and does not rely on VoltAgent's nested uuid package for pairing or credential secrets.",
-      "trackingUrl": "https://github.com/kontourai/station/issues/1753",
-      "expires": "2026-10-08",
-      "recheckTrigger": "Run npm audit --omit=dev after every VoltAgent core update and when VoltAgent publishes a compatible uuid remediation."
+      "trackingUrl": "https://github.com/kontourai/station/issues/3510",
+      "expires": "2026-11-07",
+      "recheckTrigger": "Run npm run audit:policy after every VoltAgent core update and remove this exact residual when VoltAgent publishes a compatible uuid remediation."
     },
     {
       "scope": "root",

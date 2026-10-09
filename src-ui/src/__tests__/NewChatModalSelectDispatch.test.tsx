@@ -258,6 +258,7 @@ beforeAll(() => {
 function renderModal(onSelect = vi.fn()) {
   render(
     <NewChatModal
+      projectIconBySlug={new Map()}
       agents={selectionModelState.agents}
       projects={[]}
       onSelect={onSelect}
@@ -276,6 +277,7 @@ function renderForkModal(
 ) {
   render(
     <NewChatModal
+      projectIconBySlug={new Map()}
       agents={selectionModelState.agents}
       projects={[]}
       onSelect={onSelect}
@@ -310,12 +312,15 @@ test('late project context preserves the preferred fork Agent', () => {
       disclosure: 'Fork independently',
     },
   };
-  const view = render(<NewChatModal {...props} projects={[]} />);
+  const view = render(
+    <NewChatModal projectIconBySlug={new Map()} {...props} projects={[]} />,
+  );
   const source = () =>
     document.querySelector('button[data-agent-slug="assistant"]')!;
   expect(source().className).toContain('new-chat-modal__agent--selected');
   view.rerender(
     <NewChatModal
+      projectIconBySlug={new Map()}
       {...props}
       projects={[
         {
@@ -431,6 +436,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -457,6 +463,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -897,6 +904,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     const view = render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -908,6 +916,7 @@ describe('start with working defaults', () => {
     expect(onSelect.mock.calls[0]?.[0]).toBe(AGENT);
     view.rerender(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -923,6 +932,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     const view = render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -934,6 +944,7 @@ describe('start with working defaults', () => {
     selectionModelState.loading = false;
     view.rerender(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -951,6 +962,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -993,6 +1005,7 @@ describe('intent-first preparation', () => {
       let view!: ReturnType<typeof render>;
       const modal = () => (
         <NewChatModal
+          projectIconBySlug={new Map()}
           agents={selectionModelState.agents}
           projects={[]}
           onSelect={onSelect}
@@ -1034,6 +1047,7 @@ describe('intent-first preparation', () => {
     const prompt = 'Reply exactly GOAL READY.\nUse no tools.';
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1060,6 +1074,7 @@ describe('intent-first preparation', () => {
     const onClose = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -1085,6 +1100,7 @@ describe('intent-first preparation', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -1141,6 +1157,7 @@ describe('visual skill selection through the New Chat picker', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1178,6 +1195,7 @@ describe('visual skill selection through the New Chat picker', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1210,6 +1228,7 @@ describe('the start composer in the dock', () => {
   ) {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         startSurface
         agents={selectionModelState.agents}
         projects={[]}
@@ -1489,14 +1508,24 @@ describe('the start composer in the dock', () => {
       initialPrompt: 'From Home',
     };
     const view = render(
-      <NewChatModal {...props} projects={[]} projectsLoaded={false} />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[]}
+        projectsLoaded={false}
+      />,
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onSelect).not.toHaveBeenCalled();
     selectionModelState.isGlobal = false;
     selectionModelState.selectedProject = station;
     view.rerender(
-      <NewChatModal {...props} projects={[station]} projectsLoaded />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[station]}
+        projectsLoaded
+      />,
     );
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     expect(onSelect.mock.calls[0][1]).toBe('station');
@@ -1544,14 +1573,24 @@ describe('the start composer in the dock', () => {
       startSelection: { context: 'station', agentSlug: 'assistant' },
     };
     const view = render(
-      <NewChatModal {...props} projects={[]} projectsLoaded={false} />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[]}
+        projectsLoaded={false}
+      />,
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onSelect).not.toHaveBeenCalled();
     expect(screen.queryByText(/no longer available/)).toBeNull();
     selectionModelState.selectedProject = station;
     view.rerender(
-      <NewChatModal {...props} projects={[station]} projectsLoaded />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[station]}
+        projectsLoaded
+      />,
     );
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     expect(onSelect.mock.calls[0][1]).toBe('station');
@@ -1642,12 +1681,24 @@ describe('the start composer in the dock', () => {
       onSelect,
       onClose: vi.fn(),
     };
-    const view = render(<NewChatModal {...props} draftContext={draft()} />);
+    const view = render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        draftContext={draft()}
+      />,
+    );
     const chip = () =>
       screen.getByRole('button', { name: 'Request: Build a plugin' });
     fireEvent.click(chip());
     expect(chip().getAttribute('aria-pressed')).toBe('false');
-    view.rerender(<NewChatModal {...props} draftContext={draft()} />);
+    view.rerender(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        draftContext={draft()}
+      />,
+    );
     expect(chip().getAttribute('aria-pressed')).toBe('false');
     fireEvent.change(message(), { target: { value: 'Just this' } });
     fireEvent.click(startButton());

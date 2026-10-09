@@ -162,12 +162,6 @@
   outline: 2px solid var(--k-focus);
   outline-offset: 2px;
 }
-.start-composer__swatch {
-  width: 12px;
-  height: 12px;
-  flex: none;
-  border-radius: 999px;
-}
 .start-composer__start {
   min-height: 44px;
 }
@@ -237,6 +231,22 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
+.start-menu__hint--path {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3em;
+  min-width: 0;
+  white-space: nowrap;
+}
+.start-menu__hint-lead {
+  flex: none;
+}
+.start-menu__hint--path .new-chat-modal__cwd-breadcrumb {
+  flex: 1 1 auto;
+}
+.start-menu__hint--path .new-chat-modal__dir-parent {
+  white-space: nowrap;
+}
 .start-menu__search {
   width: auto;
   box-sizing: border-box;
@@ -254,6 +264,31 @@
 /* Every project row is a 44px target, on every pointer. */
 .start-menu__list .new-chat-modal__dropdown-item {
   min-height: 44px;
+  /* A row's badge never touches its folder. */
+  gap: var(--k-space-2);
+}
+/* The name keeps its width and the folder gives way: a long folder used to
+   squeeze the name's box below its text, which then drew over the folder. */
+.start-menu__list .new-chat-modal__dropdown-item-main {
+  flex: 1 1 auto;
+}
+.start-menu__list .new-chat-modal__dropdown-item-label {
+  flex: 0 0 auto;
+  max-width: 60%;
+}
+/* An icon and a colour dot take the same 24px column, so names line up. */
+.start-menu__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+.start-menu__list .new-chat-modal__dropdown-item-label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* In the Agent menu a row keeps its Model beside the name at every width:
    the sheet is the row's whole width, so the phone list's stacked row (the

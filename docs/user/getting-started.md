@@ -126,9 +126,13 @@ first; the controls show what **Start** will use:
   that Agent and closes the picker; changing the effort leaves it open. Once
   you have chosen a Model, the picker's reset button names the default it
   returns to, such as **Use project default**.
-- The **project** control above the message names the selected Project, or
-  **Without a project**. Open it to choose a project. The list shows each project's
-  folder, and the folder this chat will run in. A project with no folder
+- The **project** control above the message shows the Project's icon (or
+  its colour when none is displayable) and name, or **Without a project**.
+  Open it to choose a project. The list shows each project's folder and the
+  folder this chat will run in. For a linked checkout, that is its resolved
+  execution root. An unavailable location states why Station cannot start
+  there; a folder not checked yet is marked **Not checked** and the start
+  checks it. A project with no folder
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
   Station makes for the chat; the chip and list say which.
