@@ -666,6 +666,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
               name: 'Claude Code',
               execution: { agentConnectionId: 'claude' },
               available: false,
+              executionDefault: true,
+              unsupportedProfileCapabilities: [],
+              engineDefault: true,
+              enable: { engineConnectionId: 'claude' },
               unavailableReason:
                 "Agent 'claude' has no authored Agent definition, so Station cannot start new sessions or continue existing conversations with it. Enable this engine by creating an Agent for it — new chats will run as that Agent; existing conversations stay readable.",
             },
@@ -685,6 +689,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
         {
           id: 'claude',
           ready: false,
+          unsupportedProfileCapabilities: [],
+          executionDefault: true,
+          executionReady: true,
+          engineConnectionId: 'claude',
           unavailableReason:
             "Agent 'claude' has no authored Agent definition, so Station cannot start new sessions or continue existing conversations with it. Enable this engine by creating an Agent for it — new chats will run as that Agent; existing conversations stay readable.",
         },

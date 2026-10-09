@@ -16,6 +16,7 @@ import React, {
   useState,
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
@@ -43,6 +44,7 @@ import {
 } from '../../utils/execution';
 import {
   type NewChatModelChoice,
+  resolveModelChoice,
   sanitizeRuntimeOptionsForModel,
 } from '../../utils/modelCapabilities';
 import {
@@ -112,24 +114,19 @@ const RecentChatList = React.lazy(() =>
   })),
 );
 
+const DelegationLauncher = React.lazy(() =>
+  import('../chat-dock/DelegationLauncher').then((module) => ({
+    default: module.DelegationLauncher,
+  })),
+);
 const SessionModelPicker = React.lazy(() =>
   import('../session/SessionModelPicker').then((module) => ({
     default: module.SessionModelPicker,
   })),
 );
-const StartAgentMenu = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartAgentMenu,
-  })),
-);
-const StartProjectMenu = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartProjectMenu,
-  })),
-);
-const StartModelPicker = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartModelPicker,
+const StartPickerMenus = React.lazy(() =>
+  import('../chat-start/StartPickerMenus').then((module) => ({
+    default: module.StartPickerMenus,
   })),
 );
 
@@ -166,8 +163,12 @@ interface NewChatModalProps {
     providerType?: string,
     experienceDraft?: SkillExperienceDraft,
     sendInitialMessage?: boolean,
+    executionAgentId?: string,
+    expectedDefinitionFingerprint?: string,
+    executionOnCurrentStation?: boolean,
   ) => void | Promise<void>;
   onClose: () => void;
+  onTaskStarted?: () => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
@@ -219,6 +220,7 @@ export function NewChatModal({
   activeProjectSlug,
   onSelect,
   onClose,
+  onTaskStarted,
   draftContext = null,
   mode,
   requestAuthority,
@@ -305,6 +307,12 @@ export function NewChatModal({
     kind: 'agents' | 'project' | 'model';
     trigger: HTMLElement | null;
     agentSlug?: string;
+  } | null>(null);
+  const taskScope = useHostRequestAuthorityScope();
+  const [remoteLaunch, setRemoteLaunch] = useState<{
+    profile: AgentData;
+    choice: NewChatModelChoice;
+    prompt: string;
   } | null>(null);
   const [agentSearch, setAgentSearch] = useState('');
   const preservedAgentSlug = useRef<string | undefined>(undefined);
@@ -772,17 +780,37 @@ export function NewChatModal({
       (composer
         ? start.modelChoiceFor(agent)
         : modelChoices[modelChoiceKey(agent)]);
+    if (choice?.environmentId && choice.environmentId !== 'current') {
+      if (
+        experience ||
+        !choice.executionAgentId ||
+        !choice.expectedDefinitionFingerprint ||
+        choice.expectedDefinitionFingerprint !== agent.definitionFingerprint
+      ) {
+        setSelectFeedback(
+          'Choose a verified engine on that Station before starting a task. Visual skills stay in the foreground chat.',
+        );
+        setShowChatOptions(true);
+        return;
+      }
+      setRemoteLaunch({ profile: agent, choice, prompt: initialMessage ?? '' });
+      setShowChatOptions(true);
+      return;
+    }
     // A Model chosen before this dialog (Home's chip, or before a setup
     // journey) can have gone meanwhile: check it before starting on it.
     if (
       (returnedFromSetup || options.choice !== undefined) &&
       choice?.modelId &&
-      !modelsForAgent(agent).some(
-        (model) =>
-          model.id === choice.modelId &&
-          model.available !== false &&
-          (!choice.providerId || model.providerId === choice.providerId),
-      )
+      !selectionModel
+        .executionModelsForAgent(agent)
+        .some(
+          (model) =>
+            model.id === choice.modelId &&
+            model.available !== false &&
+            (!choice.providerId || model.providerId === choice.providerId) &&
+            model.executionAgentId === choice.executionAgentId,
+        )
     ) {
       setSelectFeedback(
         'The Model you selected is no longer available. Choose a Model to continue.',
@@ -852,11 +880,33 @@ export function NewChatModal({
               },
             }
           : undefined;
-      const startOptions: [SkillExperienceDraft?, boolean?] = sendInitialMessage
-        ? [experienceDraft, true]
-        : experienceDraft
-          ? [experienceDraft]
-          : [];
+      const startOptions: [
+        SkillExperienceDraft?,
+        boolean?,
+        string?,
+        string?,
+        boolean?,
+      ] =
+        choice?.environmentId === 'current'
+          ? [
+              experienceDraft,
+              sendInitialMessage,
+              choice.executionAgentId,
+              choice.expectedDefinitionFingerprint,
+              true,
+            ]
+          : choice?.executionAgentId
+            ? [
+                experienceDraft,
+                sendInitialMessage,
+                choice.executionAgentId,
+                choice.expectedDefinitionFingerprint,
+              ]
+            : sendInitialMessage
+              ? [experienceDraft, true]
+              : experienceDraft
+                ? [experienceDraft]
+                : [];
       try {
         if (composer && submitInFlight.current) return;
         if (composer) {
@@ -932,36 +982,18 @@ export function NewChatModal({
   // composer shows, and a fork's local one otherwise.
   const pickerChoiceFor = (agent: AgentData) =>
     showStart ? start.modelChoiceFor(agent) : modelChoiceFor(agent);
-  const modelFor = (agent: AgentData) => {
-    const choice = modelChoiceFor(agent);
-    const effective = defaultEffectiveModelForAgent(agent);
-    const selected = choice?.modelId
-      ? modelsForAgent(agent).find(
-          (model) =>
-            model.id === choice.modelId &&
-            (!choice.providerId || model.providerId === choice.providerId),
-        )
-      : undefined;
-    const sourceModel =
+  const modelFor = (agent: AgentData) =>
+    resolveModelChoice(
+      modelChoiceFor(agent),
+      defaultEffectiveModelForAgent(agent),
+      modelsForAgent(agent),
       mode?.kind === 'fork' &&
-      agent.slug === mode.preferredAgentSlug &&
-      !choice?.modelId
+        agent.slug === mode.preferredAgentSlug &&
+        !modelChoiceFor(agent)?.modelId
         ? mode.sourceModel
-        : undefined;
-    return {
-      id: choice?.modelId ?? sourceModel ?? effective.id ?? undefined,
-      label: choice?.modelId
-        ? (selected?.name ?? choice.modelId)
-        : sourceModel
-          ? sourceModel
-          : effective.label,
-      source: choice?.modelId
-        ? 'session override'
-        : sourceModel
-          ? 'source turn'
-          : effective.source,
-    };
-  };
+        : undefined,
+    );
+
   const updateModelChoice = (
     agent: AgentData,
     update: (
@@ -1194,9 +1226,11 @@ export function NewChatModal({
   // The composer's chips: a skeleton while the start path cannot yet say
   // what it will use, never a guess.
   const accents = projectAccentBySlug;
-  const draftModelLabel = draftAgent
-    ? start.modelFor(draftAgent).label
-    : undefined;
+  const draftModel = draftAgent ? start.modelFor(draftAgent) : undefined;
+  const draftModelLabel =
+    draftModel?.engineName && draftModel.executionAgentId
+      ? `${draftModel.engineName} · ${draftModel.label}`
+      : draftModel?.label;
   const agentChip: StartAgentChip =
     runtimeLoading ||
     modelsLoading ||
@@ -1254,12 +1288,6 @@ export function NewChatModal({
     // switcher does, so Home and the dock open on the same project next.
     if (projectBindable) bindProject(value);
   };
-  const chipMenuAgent =
-    chipMenu?.kind === 'model'
-      ? (flatList.find((agent) => agent.slug === chipMenu.agentSlug) ??
-        draftAgent)
-      : undefined;
-
   const closeChatRequest = () => {
     if (setupReturn.close()) requestActive.current = false;
   };
@@ -1691,6 +1719,27 @@ export function NewChatModal({
                   viewModel.selectedProject?.defaultEnvironment
                 }
                 agentSlug={draftAgent?.slug}
+                executionAgentId={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.executionAgentId
+                    : undefined
+                }
+                expectedDefinitionFingerprint={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)
+                        ?.expectedDefinitionFingerprint
+                    : undefined
+                }
+                environmentId={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.environmentId
+                    : undefined
+                }
+                providerOptions={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.providerOptions
+                    : undefined
+                }
                 model={
                   draftAgent
                     ? start.modelChoiceFor(draftAgent)?.modelId
@@ -2002,92 +2051,60 @@ export function NewChatModal({
       )}
       {showStart && chipMenu && (
         <React.Suspense fallback={null}>
-          {chipMenu.kind === 'agents' ? (
-            <StartAgentMenu
-              anchor={chipMenu.trigger}
-              layer="dialog"
-              groups={groups}
-              flatList={flatList}
-              selectedSlug={draftAgent?.slug}
-              loading={runtimeLoading || modelsLoading}
-              error={runtimeError ?? modelsError}
-              onRetry={() => {
-                if (refreshSetup) void refreshSetup().catch(() => undefined);
-                else {
-                  void refetchAgentConnections?.();
-                  void refetchModelConnections?.();
-                }
-              }}
-              onSetUpConnections={() => beginSetup('/connections')}
-              modelLabelFor={(agent) => start.modelFor(agent).label}
-              modelUnavailableFor={(agent) =>
-                modelsForAgent(agent).length === 0 && !modelsLoading
-              }
-              // The Agent list closes for the Model picker, so the picker
-              // anchors to (and returns focus to) the Agent chip, not the
-              // row's trigger that goes with the list.
-              onOpenModel={(agent) =>
-                setChipMenu({
-                  kind: 'model',
-                  trigger: chipMenu.trigger,
-                  agentSlug: agent.slug,
-                })
-              }
-              onChoose={(agent) => {
-                start.chooseAgent(agent.slug);
-                setSelectFeedback(null);
-                setAgentSearch('');
-                setChipMenu(null);
-              }}
-              onFix={repairAgent}
-              fixDisabledFor={(agent) =>
-                agentFixRoute(agent) === 'enable' &&
-                resolveNewChatAgentEnable(agent)
-                  ? enableInFlight
-                  : undefined
-              }
-              interactionDisabled={checkingSetup || setupReturn.pending}
-              search={agentSearch}
-              onSearch={setAgentSearch}
-              notice={compatibilityMessage}
-              onClose={() => {
-                setAgentSearch('');
-                setChipMenu(null);
-              }}
-            />
-          ) : chipMenu.kind === 'project' ? (
-            <StartProjectMenu
-              anchor={chipMenu.trigger}
-              layer="dialog"
-              options={viewModel.contextOptions ?? filteredContextOptions}
-              selectedContext={selectedContext}
-              workspaceHint={workspaceHint}
-              folderlessHint={folderlessHint}
-              icons={projectIconBySlug}
-              accents={accents}
-              onChoose={(value) => {
-                chooseContext(value);
-                setChipMenu(null);
-              }}
-              onClose={() => setChipMenu(null)}
-            />
-          ) : chipMenuAgent ? (
-            <StartModelPicker
-              anchor={chipMenu.trigger}
-              layer="dialog"
-              models={modelsForAgent(chipMenuAgent)}
-              loading={modelsLoading}
-              modelConnections={modelConnections}
-              choice={start.modelChoiceFor(chipMenuAgent)}
-              defaultModel={defaultEffectiveModelForAgent(chipMenuAgent)}
-              onSelect={(model) => start.chooseModel(chipMenuAgent, model)}
-              onReset={() => start.resetModel(chipMenuAgent)}
-              onRuntimeOptionChange={(key, value) =>
-                start.setRuntimeOption(chipMenuAgent, key, value)
-              }
-              onClose={() => setChipMenu(null)}
-            />
-          ) : null}
+          <StartPickerMenus
+            menu={chipMenu}
+            setMenu={setChipMenu}
+            layer="dialog"
+            selection={selectionModel}
+            start={start}
+            context={selectedContext}
+            search={agentSearch}
+            onSearch={setAgentSearch}
+            onFeedbackClear={() => setSelectFeedback(null)}
+            onSetup={() => beginSetup('/connections')}
+            onRepair={repairAgent}
+            enablePending={enableInFlight}
+            interactionDisabled={checkingSetup || setupReturn.pending}
+            onChooseProject={chooseContext}
+            icons={projectIconBySlug}
+            accents={accents}
+          />
+        </React.Suspense>
+      )}
+      {remoteLaunch && taskScope && (
+        <React.Suspense
+          fallback={<SkeletonList count={1} label="Loading task placement" />}
+        >
+          <DelegationLauncher
+            isOpen
+            apiBase={taskScope.apiBase}
+            projectSlug={selectedProject?.slug}
+            projectName={selectedProject?.name}
+            currentAgentId={remoteLaunch.profile.slug}
+            currentModel={remoteLaunch.choice.modelId}
+            executionAgentId={remoteLaunch.choice.executionAgentId}
+            expectedDefinitionFingerprint={
+              remoteLaunch.choice.expectedDefinitionFingerprint
+            }
+            initialEnvironmentId={remoteLaunch.choice.environmentId}
+            providerOptions={remoteLaunch.choice.providerOptions}
+            initialPrompt={remoteLaunch.prompt}
+            onDraftChange={setPrompt}
+            title="Run on a Station"
+            submitLabel="Run task"
+            routingExpanded
+            onClose={() => {
+              setRemoteLaunch(null);
+              setShowChatOptions(true);
+            }}
+            onDelegated={(_task, _target, placement) => {
+              setRemoteLaunch(null);
+              setPrompt((current) =>
+                current === placement.prompt ? '' : current,
+              );
+              onTaskStarted?.();
+            }}
+          />
         </React.Suspense>
       )}
       {modelPickerAgent && (
@@ -2119,6 +2136,9 @@ export function NewChatModal({
                   modelPickerDefault?.providerId
                 }
                 currentModel={pickerChoiceFor(modelPickerAgent)?.modelId}
+                currentExecutionAgentId={
+                  pickerChoiceFor(modelPickerAgent)?.executionAgentId
+                }
                 defaultModel={modelPickerDefault?.id ?? undefined}
                 // Names what reset restores: a fork's preferred Agent returns
                 // to the source turn's Model, not the Agent default.

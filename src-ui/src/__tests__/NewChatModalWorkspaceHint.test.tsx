@@ -38,6 +38,11 @@ const selectionModelState = {
 // NewChatModal's Enable posts to `/agents/materialize-engine` through this
 // SDK mutation; a minimal mock keeps react-query's provider requirement out
 // of this render tree.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
@@ -75,6 +80,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     modelChoices: {},
     setModelChoices: vi.fn(),
     modelsForAgent: () => [],
+    executionModelsForAgent: () => [],
     modelChoiceKey: (agent: AgentData) => agent.slug,
     defaultEffectiveModelForAgent: () => ({
       id: undefined,

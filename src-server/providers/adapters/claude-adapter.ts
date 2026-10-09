@@ -118,7 +118,10 @@ import {
 } from '../sessions/chat-attachments.js';
 import { snapshotSessionSourceAffinity } from '../sessions/session-source-affinity.js';
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
-import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
+import {
+  assertExecutionOverrideDelivery,
+  mergeCapabilityDeliveryMetadata,
+} from './capability-delivery-metadata.js';
 import {
   type ClaudeChildWorkState,
   clearClaudeChildStopRequested,
@@ -1504,6 +1507,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const engineProcess = createClaudeEngineProcess();
     let sdkQuery: ReturnType<typeof query>;
     try {
+      assertExecutionOverrideDelivery(input.metadata, [
+        ...(skillsReport?.undelivered ?? []),
+        ...(toolServers.report?.undelivered ?? []),
+      ]);
       // After station-control, so the browser server reuses its credential.
       const builtinServers = this.resolveStationBrowser(input);
       sdkQuery = query({

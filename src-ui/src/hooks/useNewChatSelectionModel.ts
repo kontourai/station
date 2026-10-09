@@ -45,6 +45,7 @@ import type {
   NewChatModelChoice,
   SelectableModel,
 } from '../utils/modelCapabilities';
+import { profileCompatibilityReason } from '../utils/modelCapabilities';
 import { useLastChosenModelMap } from './lastChosenModel';
 
 const EMPTY_CONNECTIONS: never[] = [];
@@ -464,6 +465,61 @@ export function useNewChatSelectionModel({
       providerType: connection?.type,
     }));
   };
+  const executionModelsForAgent = (profile: AgentData): SelectableModel[] => {
+    const describe = (
+      binding: AgentData,
+      override: boolean,
+    ): SelectableModel[] => {
+      const connection = agentConnections.find(
+        (entry) => entry.id === binding.execution?.agentConnectionId,
+      );
+      const stationEngine = !binding.execution?.agentConnectionId;
+      const ready =
+        stationEngine || (connection?.enabled && connection.status === 'ready');
+      const incompatibility = override
+        ? profileCompatibilityReason(
+            profile.profileCapabilities,
+            binding.unsupportedProfileCapabilities,
+          )
+        : undefined;
+      const unavailableReason =
+        profile.available === false
+          ? (profile.unavailableReason ?? 'This Agent is not ready.')
+          : incompatibility
+            ? incompatibility
+            : override && stationEngine
+              ? 'This Station engine cannot apply an external Agent profile as an override.'
+              : !ready
+                ? 'Engine connection is not ready.'
+                : undefined;
+      return modelsForAgent(binding).map((model) => ({
+        ...model,
+        ...(override
+          ? {
+              executionAgentId: binding.slug,
+              expectedDefinitionFingerprint: profile.definitionFingerprint,
+            }
+          : {}),
+        engineId: binding.engineId,
+        engineName: binding.engineDisplayName ?? connection?.name ?? 'Station',
+        available: unavailableReason ? false : model.available,
+        unavailableReason: unavailableReason ?? model.unavailableReason,
+      }));
+    };
+    const defaults = describe(profile, false);
+    const boundConnection = profile.execution?.agentConnectionId;
+    const alternatives = modalAgents.filter(
+      (binding) =>
+        binding.executionDefault &&
+        binding.slug !== profile.slug &&
+        binding.execution?.agentConnectionId !== boundConnection,
+    );
+    return [
+      ...defaults,
+      ...alternatives.flatMap((binding) => describe(binding, true)),
+    ];
+  };
+
   const modelChoiceKey = (agent: AgentData) =>
     buildNewChatModelOverrideKey(agent, selectedContext);
   const defaultEffectiveModelForAgent = (agent: AgentData) => {
@@ -591,6 +647,7 @@ export function useNewChatSelectionModel({
     modelPickerAgent,
     setModelPickerAgent,
     modelsForAgent,
+    executionModelsForAgent,
     modelChoiceKey,
     defaultEffectiveModelForAgent,
   };

@@ -113,6 +113,9 @@ function AgentPickerRow({
             <EngineChip engine={engine} />
           </div>
         )}
+        <span className="new-chat-modal__agent-station">
+          on {devicePresentation?.hostName ?? 'this Station'}
+        </span>
         {!agent.engineDefault && agent.description && (
           <div
             className="new-chat-modal__agent-purpose"

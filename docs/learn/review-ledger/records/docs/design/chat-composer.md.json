@@ -122,7 +122,19 @@
 
     "src-ui/src/views/project-page/ProjectPageHeader.tsx",
 
-    "src-ui/src/__tests__/ProjectPageHeader.test.tsx"
+    "src-ui/src/__tests__/ProjectPageHeader.test.tsx",
+
+    "src-ui/src/components/chat-start/StartPickerMenus.tsx",
+
+    "src-ui/src/hooks/useExecutionStationCatalog.ts",
+
+    "src-ui/src/settings/modelPickerSelection.ts",
+
+    "src-ui/src/components/icons/ModelIcon.tsx",
+
+    "src-ui/src/components/ModelSelector.tsx",
+
+    "src-ui/src/components/AutocompleteSelector.tsx"
   ],
 
   "checks": [

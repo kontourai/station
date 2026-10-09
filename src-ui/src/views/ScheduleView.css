@@ -1138,7 +1138,6 @@
 }
 
 .agent-picker__dropdown {
-  position: fixed;
   z-index: calc(var(--layer-dialog) + 1);
   background: var(--bg-elevated);
   border: 1px solid var(--border-primary);

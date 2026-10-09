@@ -1,4 +1,5 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type {
   AgentConnectionView,
@@ -23,11 +24,7 @@ import type {
   ModelProviderOption,
   SelectableModel,
 } from '../../utils/modelCapabilities';
-import {
-  AUTHORED_BAND_LABEL,
-  ENGINE_BAND_LABEL,
-  isEngineProvenanceAgent,
-} from '../agent-provenance';
+import { isEngineProvenanceAgent } from '../agent-provenance';
 import { AGENT_NOT_SET_UP_LABEL, agentRunnability } from '../agent-runnability';
 import { selectProjectScopedChatAgents } from '../agent-selection-policy';
 import { displayableProjectIcon } from '../icons/ProjectIcon';
@@ -527,9 +524,6 @@ export function buildNewChatModalViewModel({
   contextSearch,
   agentSearch,
   selectedProjectAgentFilter,
-  layoutAvailableAgents,
-  layoutName,
-  layoutIcon,
   providerManagedAgentSlugs = [],
   recentSlugs,
 }: {
@@ -605,102 +599,36 @@ export function buildNewChatModalViewModel({
         agent.slug.toLowerCase().includes(query)),
   );
 
-  const isLayoutAgent = (agent: AgentData) => {
-    if (agent.engineConnectionType === 'acp') return false;
-    if (layoutAvailableAgents.includes(agent.slug)) return true;
-    if (agent.plugin) return true;
-    return false;
-  };
-
-  // Registry-owned defaults join their engine group by explicit marker.
-  // Presentation only — see `findAuthoredAgentForEngineConnection`.
-  const engineGroupSlugs = new Set(
-    filtered
-      .filter((agent) => isEngineProvenanceAgent(agent))
-      .map((agent) => agent.slug),
+  const recentOrder = new Map(recentSlugs.map((slug, index) => [slug, index]));
+  const ordered = [...filtered].sort(
+    (a, b) =>
+      (recentOrder.get(a.slug) ?? Number.MAX_SAFE_INTEGER) -
+      (recentOrder.get(b.slug) ?? Number.MAX_SAFE_INTEGER),
   );
-
-  const isAcpAgent = (agent: AgentData) => agent.engineConnectionType === 'acp';
-  const engineAgents = filtered.filter(
-    (agent) => engineGroupSlugs.has(agent.slug) && !isAcpAgent(agent),
-  );
-  const wsAgents = filtered.filter(
-    (agent) => !engineGroupSlugs.has(agent.slug) && isLayoutAgent(agent),
-  );
-  const globalAgents = filtered.filter(
-    (agent) =>
-      !isAcpAgent(agent) &&
-      !engineGroupSlugs.has(agent.slug) &&
-      !isLayoutAgent(agent),
-  );
-  const acpAgents = filtered.filter(isAcpAgent);
-
-  const seenRecentSlugs = new Set<string>();
-  const recentAgents = agentSearch
-    ? []
-    : recentSlugs
-        .map((slug) => filtered.find((agent) => agent.slug === slug))
-        .filter((agent): agent is AgentData => {
-          if (!agent) return false;
-          if (seenRecentSlugs.has(agent.slug)) return false;
-          seenRecentSlugs.add(agent.slug);
-          return true;
-        });
-  const recentSet = new Set(recentAgents.map((agent) => agent.slug));
-
-  const groups: NewChatModalAgentGroup[] = [];
-
-  if (recentAgents.length > 0) {
-    groups.push({ label: 'Recent', glyph: 'time', agents: recentAgents });
-  }
-  const visibleEngineAgents = engineAgents.filter(
-    (agent) => !recentSet.has(agent.slug) || !!agentSearch,
-  );
-
-  const showLayoutAgents = isGlobal || (selectedProject?.layoutCount ?? 0) > 0;
-  if (showLayoutAgents && wsAgents.length > 0) {
-    groups.push({
-      label: layoutName || 'Layout',
-      icon: layoutIcon,
-      agents: wsAgents.filter(
-        (agent) => !recentSet.has(agent.slug) || !!agentSearch,
-      ),
-    });
-  }
-
-  /*
-   * DESIGN.md §5: the picker is grouped "the same two ways" the Agents list
-   * is — `Engines on this machine` (the `engineDefault` provenance marker,
-   * command-backed engines included) and `Your agents`. It used to open one
-   * group PER ENGINE DISPLAY NAME plus a `Global` group, so a fresh install
-   * showed four one-row groups and an authored agent sat under a heading
-   * ("Global") that names a scope, not a kind. `engineDefault` is the same
-   * field `buildAgentsViewItems` bands on, so the two surfaces cannot band
-   * the same agent differently.
-   *
-   * `Recent` and a project layout's own group survive above them: those are
-   * CONTEXT groupings (what you used last here, what this layout offers),
-   * orthogonal to what an agent IS, and the list has no equivalent because
-   * it is not opened inside a context.
-   */
-  const notRecent = (agent: AgentData) =>
-    !recentSet.has(agent.slug) || !!agentSearch;
-  const engineBand = [...visibleEngineAgents, ...acpAgents.filter(notRecent)];
-  if (engineBand.length > 0) {
-    groups.push({
-      label: ENGINE_BAND_LABEL,
+  const groups: NewChatModalAgentGroup[] = [
+    {
+      label: 'Station',
       glyph: 'engine',
-      agents: engineBand,
-    });
-  }
-  const authoredBand = globalAgents.filter(notRecent);
-  if (authoredBand.length > 0) {
-    groups.push({
-      label: AUTHORED_BAND_LABEL,
+      agents: ordered.filter((agent) => isStationAgentIdentity(agent.slug)),
+    },
+    {
+      label: 'Coding apps',
+      glyph: 'engine',
+      agents: ordered.filter(
+        (agent) =>
+          !isStationAgentIdentity(agent.slug) && isEngineProvenanceAgent(agent),
+      ),
+    },
+    {
+      label: 'My agents',
       glyph: 'globe',
-      agents: authoredBand,
-    });
-  }
+      agents: ordered.filter(
+        (agent) =>
+          !isStationAgentIdentity(agent.slug) &&
+          !isEngineProvenanceAgent(agent),
+      ),
+    },
+  ];
 
   const visibleGroups = groups.filter((group) => group.agents.length > 0);
   // Only warn about genuinely-degraded runtimes — not optional ones that are

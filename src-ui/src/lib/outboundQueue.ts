@@ -30,6 +30,9 @@ export interface QueuedOutboundTurn {
   clientTurnId: string;
   sessionId: string;
   agentSlug: string;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   conversationId?: string;
   content: string;
   attachments?: FileAttachment[];
