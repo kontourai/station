@@ -446,7 +446,15 @@ function useApprovalDecision(
     const recovered =
       previousShared.current?.phase === 'unconfirmed' && shared === null;
     previousShared.current = shared;
-    if (recovered && localPhase === 'unconfirmed') {
+    if (
+      shared?.phase === 'already-settled' &&
+      localPhase !== 'already-settled'
+    ) {
+      admission.current = true;
+      setPhase('already-settled');
+      setFailure(null);
+      setChosen(undefined);
+    } else if (recovered && localPhase === 'unconfirmed') {
       admission.current = false;
       setPhase('idle');
       setFailure(null);

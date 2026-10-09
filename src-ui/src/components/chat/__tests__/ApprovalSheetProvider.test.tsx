@@ -162,60 +162,78 @@ describe('the conversation approval sheet', () => {
     expect(approve).toHaveBeenCalledTimes(1);
   });
 
-  test('checking from the transcript recovers the same kept-mounted grouped card', async () => {
-    const pending = request('cross-surface-recovery');
-    const reference = {
-      threadId: pending.approvalThreadId!,
-      requestId: pending.approvalId!,
-      requestEventId: pending.approvalEventId!,
-    };
-    const apiBase = 'http://cross-surface.test';
-    const {
-      answerOrchestrationRequest,
-      inspectApprovalAnswer,
-      forgetApprovalAnswer,
-    } = await import('../../../hooks/orchestration/answerRequest');
-    forgetApprovalAnswer(reference.threadId, reference.requestId);
-    transport.resolve
-      .mockReset()
-      .mockRejectedValue(new TypeError('Reply lost'));
-    transport.inspect
-      .mockReset()
-      .mockRejectedValue(new Error('Inspection unavailable'));
-    const approve = () =>
-      answerOrchestrationRequest(apiBase, { ...reference, decision: 'accept' });
-    render(
-      <ApprovalSheetProvider
-        apiBase={apiBase}
-        requests={[pending]}
-        onApprove={approve}
-        onCheck={() => inspectApprovalAnswer(apiBase, reference)}
-      >
-        <ToolCallDisplay toolCall={pending} onApprove={approve} />
-      </ApprovalSheetProvider>,
-    );
-    const sheet = await screen.findByRole('dialog');
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow Once' }));
-    await within(sheet).findByText(/Delivery is not confirmed/);
-    fireEvent.click(
-      within(sheet).getByRole('button', { name: 'Close and answer later' }),
-    );
-    transport.inspect.mockResolvedValue({ state: 'open', canRespond: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull(),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
-    const reopened = await screen.findByRole('dialog');
-    expect(
-      within(reopened)
-        .getByRole('button', { name: 'Allow Once' })
-        .hasAttribute('disabled'),
-    ).toBe(false);
-    expect(within(reopened).queryByRole('alert')).toBeNull();
-    expect(transport.resolve).toHaveBeenCalledTimes(1);
-    forgetApprovalAnswer(reference.threadId, reference.requestId);
-  });
+  test.each(['open', 'resolved'] as const)(
+    'checking %s from the transcript updates the kept-mounted grouped card',
+    async (state) => {
+      const pending = request(`cross-surface-recovery-${state}`);
+      const reference = {
+        threadId: pending.approvalThreadId!,
+        requestId: pending.approvalId!,
+        requestEventId: pending.approvalEventId!,
+      };
+      const apiBase = 'http://cross-surface.test';
+      const {
+        answerOrchestrationRequest,
+        inspectApprovalAnswer,
+        forgetApprovalAnswer,
+      } = await import('../../../hooks/orchestration/answerRequest');
+      forgetApprovalAnswer(reference.threadId, reference.requestId);
+      transport.resolve
+        .mockReset()
+        .mockRejectedValue(new TypeError('Reply lost'));
+      transport.inspect
+        .mockReset()
+        .mockRejectedValue(new Error('Inspection unavailable'));
+      const approve = () =>
+        answerOrchestrationRequest(apiBase, {
+          ...reference,
+          decision: 'accept',
+        });
+      render(
+        <ApprovalSheetProvider
+          apiBase={apiBase}
+          requests={[pending]}
+          onApprove={approve}
+          onCheck={() => inspectApprovalAnswer(apiBase, reference)}
+        >
+          <ToolCallDisplay toolCall={pending} onApprove={approve} />
+        </ApprovalSheetProvider>,
+      );
+      const sheet = await screen.findByRole('dialog');
+      fireEvent.click(
+        within(sheet).getByRole('button', { name: 'Allow Once' }),
+      );
+      await within(sheet).findByText(/Delivery is not confirmed/);
+      fireEvent.click(
+        within(sheet).getByRole('button', { name: 'Close and answer later' }),
+      );
+      transport.inspect.mockResolvedValue(
+        state === 'open'
+          ? { state: 'open', canRespond: true }
+          : { state: 'resolved' },
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: 'Check status' }),
+        ).toBeNull(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
+      const reopened = await screen.findByRole('dialog');
+      expect(
+        within(reopened)
+          .getByRole('button', { name: 'Allow Once' })
+          .hasAttribute('disabled'),
+      ).toBe(state === 'resolved');
+      if (state === 'resolved')
+        expect(
+          within(reopened).getByText('This request is no longer open.'),
+        ).toBeTruthy();
+      expect(within(reopened).queryByRole('alert')).toBeNull();
+      expect(transport.resolve).toHaveBeenCalledTimes(1);
+      forgetApprovalAnswer(reference.threadId, reference.requestId);
+    },
+  );
 
   test('leaves both decisions available after a transport refusal and exposes details', async () => {
     const approve = vi.fn(async () => {

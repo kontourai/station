@@ -20,7 +20,7 @@ export interface ApprovalAnswerReference {
   requestEventId?: string;
 }
 interface ApprovalAnswerState {
-  phase: 'sending' | 'unconfirmed';
+  phase: 'sending' | 'unconfirmed' | 'already-settled';
   decision: 'accept' | 'acceptForSession' | 'decline';
   error?: Error;
 }
@@ -76,13 +76,22 @@ export async function inspectApprovalAnswer(
   const inspection = await inspectAttentionRequest(apiBase, reference, {
     timeoutMs: 5_000,
   });
-  if (
-    inspection.state === 'resolved' ||
-    (inspection.state === 'open' && inspection.canRespond)
-  ) {
-    pendingAnswers.delete(answerKey(apiBase, reference));
+  const key = answerKey(apiBase, reference);
+  if (inspection.state === 'resolved') {
+    const current = pendingAnswers.get(key);
+    if (current) {
+      current.state = {
+        phase: 'already-settled',
+        decision: current.state.decision,
+      };
+      notifyAnswers();
+    }
+    return 'already-settled';
+  }
+  if (inspection.state === 'open' && inspection.canRespond) {
+    pendingAnswers.delete(key);
     notifyAnswers();
-    return inspection.state === 'resolved' ? 'already-settled' : 'pending';
+    return 'pending';
   }
   throw new ApprovalDeliveryUnconfirmedError(
     'Station has not confirmed whether this decision was received.',
@@ -112,6 +121,8 @@ export function answerOrchestrationRequest(
 ): Promise<OrchestrationAnswerOutcome> {
   const key = answerKey(apiBase, request);
   const pending = pendingAnswers.get(key);
+  if (pending?.state.phase === 'already-settled')
+    return Promise.resolve('already-settled');
   if (pending)
     return pending.state.phase === 'unconfirmed' ||
       pending.state.decision === request.decision
@@ -119,6 +130,14 @@ export function answerOrchestrationRequest(
       : Promise.reject(
           new Error('A decision for this request is still being sent.'),
         );
+  if (pendingAnswers.size >= 256) {
+    for (const [settledKey, entry] of pendingAnswers) {
+      if (entry.state.phase !== 'already-settled') continue;
+      pendingAnswers.delete(settledKey);
+      if (pendingAnswers.size < 256) break;
+    }
+    notifyAnswers();
+  }
   if (pendingAnswers.size >= 256)
     return Promise.reject(
       new Error(
@@ -139,15 +158,20 @@ export function answerOrchestrationRequest(
       notifyAnswers();
     }
   };
-  void result.then(release, (error: unknown) => {
-    if (error instanceof ApprovalDeliveryUnconfirmedError) {
-      const current = pendingAnswers.get(key);
-      if (current?.result === result) {
-        current.state = { ...current.state, phase: 'unconfirmed', error };
-        notifyAnswers();
-      }
-    } else release();
-  });
+  void result.then(
+    (outcome) => {
+      if (outcome !== 'already-settled') release();
+    },
+    (error: unknown) => {
+      if (error instanceof ApprovalDeliveryUnconfirmedError) {
+        const current = pendingAnswers.get(key);
+        if (current?.result === result) {
+          current.state = { ...current.state, phase: 'unconfirmed', error };
+          notifyAnswers();
+        }
+      } else release();
+    },
+  );
   return result;
 }
 
