@@ -167,7 +167,7 @@ export async function runFallowAnalysis(
         }
       }
       throw new Error(
-        `Fallow ${command} did not complete (status=${result.status ?? 'unknown'}, signal=${result.signal ?? 'none'}, interrupted=${interrupted}, truncated=${output.truncated}): ${redactVerificationOutput(reason).slice(0, 1200)}`,
+        `Fallow ${command} did not complete (status=${result.status ?? 'unknown'}, signal=${result.signal ?? 'none'}, errorCode=${typeof result.error?.code === 'string' ? redactVerificationOutput(result.error.code).slice(0, 80) : 'none'}, interrupted=${interrupted}, truncated=${output.truncated}): ${redactVerificationOutput(reason).slice(0, 1200)}`,
       );
     }
     if (statSync(outputFile).size > 32 * 1024 * 1024)
