@@ -97,6 +97,7 @@ import {
   CONVERSATION_HANDOFF_MIGRATION,
   ensureConversationHandoffExecutionAgentColumn,
   ensureConversationHandoffMessageDigestColumn,
+  ensureConversationHandoffNativeReturnColumn,
 } from '../../domain/migrations/011-conversation-handoffs.js';
 import {
   CONVERSATION_CONTEXT_BOUNDARY_MIGRATION,
@@ -200,6 +201,7 @@ import {
   type NativeInvocationStarter,
   releaseNativeInvocationOwner,
 } from './native-invocation-runs.js';
+import { NATIVE_SESSION_OWNERSHIP_MIGRATION } from './native-session-ownership.js';
 import {
   type ConversationDraftFacts,
   clientOriginIdentity,
@@ -2095,7 +2097,9 @@ export class EventStore {
       this.ensureUsageReceiptIndex();
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
       this.db.exec(CONVERSATION_HANDOFF_MIGRATION);
+      this.db.exec(NATIVE_SESSION_OWNERSHIP_MIGRATION);
       ensureConversationHandoffMessageDigestColumn(this.db);
+      ensureConversationHandoffNativeReturnColumn(this.db);
       ensureConversationHandoffExecutionAgentColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
@@ -9387,6 +9391,146 @@ export class EventStore {
     return this.conversationHandoffs.reserve(input);
   }
 
+  assertNativeSessionMutable(sessionId: string): void {
+    const row = this.db
+      .prepare(`SELECT owners.owner_session_id, owners.pending_session_id
+      FROM orchestration_native_session_bindings binding
+      JOIN orchestration_native_session_owners owners USING(identity_key)
+      WHERE binding.session_id = ?`)
+      .get(sessionId) as
+      | { owner_session_id: string; pending_session_id: string | null }
+      | undefined;
+    if (row && (row.owner_session_id !== sessionId || row.pending_session_id)) {
+      throw new Error(
+        'The native conversation is owned by another execution Session.',
+      );
+    }
+  }
+
+  nativeSessionOwnedBy(sessionId: string): boolean {
+    const row = this.db
+      .prepare(`SELECT 1 FROM orchestration_native_session_bindings binding
+      JOIN orchestration_native_session_owners owners USING(identity_key)
+      WHERE binding.session_id = ? AND owners.owner_session_id = ? AND owners.pending_session_id IS NULL`)
+      .get(sessionId, sessionId);
+    return row !== undefined;
+  }
+
+  nativeSessionReservedFor(
+    sourceSessionId: string,
+    targetSessionId: string,
+  ): boolean {
+    return (
+      this.db
+        .prepare(`SELECT 1 FROM orchestration_native_session_bindings binding
+      JOIN orchestration_native_session_owners owners USING(identity_key)
+      WHERE binding.session_id = ? AND
+        ((owners.owner_session_id = ? AND owners.pending_session_id = ?) OR
+         (owners.owner_session_id = ? AND owners.pending_session_id IS NULL))`)
+        .get(
+          sourceSessionId,
+          sourceSessionId,
+          targetSessionId,
+          targetSessionId,
+        ) !== undefined
+    );
+  }
+
+  claimNativeSessionIdentity(
+    identityKey: string,
+    sessionId: string,
+    allowProfileRebind = false,
+  ): void {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const binding = this.db
+        .prepare(
+          'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
+        )
+        .get(sessionId) as { identity_key: string } | undefined;
+      this.assertNativeSessionMutable(sessionId);
+      if (
+        binding &&
+        binding.identity_key !== identityKey &&
+        !allowProfileRebind
+      ) {
+        throw new Error(
+          'An execution Session cannot silently change native identity.',
+        );
+      }
+      const owner = this.db
+        .prepare(
+          'SELECT owner_session_id, pending_session_id FROM orchestration_native_session_owners WHERE identity_key = ?',
+        )
+        .get(identityKey) as
+        | { owner_session_id: string; pending_session_id: string | null }
+        | undefined;
+      if (owner?.pending_session_id)
+        throw new Error(
+          'Native ownership transfer is waiting for confirmed retirement.',
+        );
+      if (owner && owner.owner_session_id !== sessionId) {
+        const lineage = this.conversationForSession(sessionId);
+        const prior = this.db
+          .prepare(
+            'SELECT identity_key, retired FROM orchestration_native_session_bindings WHERE session_id = ?',
+          )
+          .get(owner.owner_session_id) as
+          | { identity_key: string; retired: number }
+          | undefined;
+        if (
+          lineage?.predecessorSessionId !== owner.owner_session_id ||
+          prior?.identity_key !== identityKey ||
+          prior.retired !== 1
+        ) {
+          throw new Error(
+            'The native conversation is owned by another execution Session.',
+          );
+        }
+      }
+      this.db
+        .prepare(`INSERT INTO orchestration_native_session_owners(identity_key, owner_session_id)
+        VALUES (?, ?) ON CONFLICT(identity_key) DO UPDATE SET owner_session_id=excluded.owner_session_id`)
+        .run(identityKey, sessionId);
+      this.db
+        .prepare(`INSERT INTO orchestration_native_session_bindings(session_id, identity_key, retired)
+        VALUES (?, ?, 0) ON CONFLICT(session_id) DO UPDATE SET identity_key=excluded.identity_key, retired=0`)
+        .run(sessionId, identityKey);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  recordNativeSessionRetired(sessionId: string): void {
+    this.db
+      .prepare(
+        'UPDATE orchestration_native_session_bindings SET retired=1 WHERE session_id=?',
+      )
+      .run(sessionId);
+  }
+
+  completeNativeReturnRetirement(handoffSessionId: string): void {
+    const marker = this.conversationHandoffForSession(handoffSessionId);
+    if (!marker?.nativeReturnSourceSessionId)
+      throw new Error('Native return reservation was not found.');
+    this.db
+      .prepare(`UPDATE orchestration_native_session_owners
+      SET owner_session_id=?, pending_session_id=NULL
+      WHERE pending_session_id=? AND owner_session_id=? AND identity_key IN
+        (SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id=? AND retired=1)`)
+      .run(
+        handoffSessionId,
+        handoffSessionId,
+        marker.nativeReturnSourceSessionId,
+        marker.nativeReturnSourceSessionId,
+      );
+    if (!this.nativeSessionOwnedBy(handoffSessionId)) {
+      throw new Error('The source native engine has not confirmed retirement.');
+    }
+  }
+
   describeConversationHandoff(
     marker: ConversationHandoffMarker,
     outcome: 'created' | 'existing',
@@ -9433,6 +9577,13 @@ export class EventStore {
       createdAt: marker.createdAt,
       carried: disclosure.carried,
       reset: disclosure.reset,
+      ...(marker.nativeReturnSourceSessionId
+        ? {
+            nativeReturn: {
+              sourceSessionId: marker.nativeReturnSourceSessionId,
+            },
+          }
+        : {}),
     };
   }
 
@@ -9938,26 +10089,32 @@ export class EventStore {
         : {}),
       ...(row.target_model_id ? { targetModelId: row.target_model_id } : {}),
       messageDigest: row.message_digest,
+      ...(row.native_return_source_session_id
+        ? { nativeReturnSourceSessionId: row.native_return_source_session_id }
+        : {}),
+      ...(row.native_return_source_event_id
+        ? { nativeReturnSourceEventId: row.native_return_source_event_id }
+        : {}),
       createdAt: row.created_at,
     });
     const byKey = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ? AND idempotency_key = ?`,
     );
     const byPredecessor = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
        FROM orchestration_conversation_handoffs
        WHERE predecessor_session_id = ?`,
     );
     const byConversation = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ?
        ORDER BY created_at ASC, session_id ASC`,
@@ -9979,8 +10136,8 @@ export class EventStore {
       `INSERT INTO orchestration_conversation_handoffs
         (conversation_id, predecessor_session_id, session_id, idempotency_key,
          target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-         target_model_id, message_digest, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const sameTarget = (
       left: ConversationHandoffMarker,
@@ -9993,7 +10150,9 @@ export class EventStore {
       left.targetEnvironmentId === right.targetEnvironmentId &&
       left.targetConnectionId === right.targetConnectionId &&
       left.targetModelId === right.targetModelId &&
-      left.messageDigest === right.messageDigest;
+      left.messageDigest === right.messageDigest &&
+      left.nativeReturnSourceSessionId === right.nativeReturnSourceSessionId &&
+      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId;
     return createConversationHandoffModule({
       persistence: {
         listByConversation: (conversationId) =>
@@ -10061,8 +10220,36 @@ export class EventStore {
               input.targetExecutionAgentId ?? null,
               input.targetModelId ?? null,
               input.messageDigest,
+              input.nativeReturnSourceSessionId ?? null,
+              input.nativeReturnSourceEventId ?? null,
               input.createdAt,
             );
+            if (input.nativeReturnSourceSessionId) {
+              const binding = this.db
+                .prepare(
+                  'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id=?',
+                )
+                .get(input.nativeReturnSourceSessionId) as
+                | { identity_key: string }
+                | undefined;
+              if (
+                !binding ||
+                !this.nativeSessionOwnedBy(input.nativeReturnSourceSessionId)
+              )
+                throw new Error(
+                  'The earlier Session no longer owns its native conversation.',
+                );
+              this.db
+                .prepare(
+                  'UPDATE orchestration_native_session_owners SET pending_session_id=? WHERE identity_key=?',
+                )
+                .run(input.sessionId, binding.identity_key);
+              this.db
+                .prepare(
+                  'INSERT INTO orchestration_native_session_bindings(session_id, identity_key, retired) VALUES (?, ?, 0)',
+                )
+                .run(input.sessionId, binding.identity_key);
+            }
             this.db.exec('COMMIT');
             return { marker: input, outcome: 'created' as const };
           } catch (error) {
@@ -10079,7 +10266,7 @@ export class EventStore {
             .prepare(
               `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
                       target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-                      target_model_id, message_digest, created_at
+                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
                FROM orchestration_conversation_handoffs WHERE session_id = ?`,
             )
             .get(sessionId);

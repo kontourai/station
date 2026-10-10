@@ -77,6 +77,40 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+`ProviderContinuityCapabilities.resumeIdentity` is an additive adapter opt-in
+to `require-match`. Foreground native-cursor continuations set
+`ProviderSessionStartInput.requireNativeResumeIdentity` only for that declaration.
+An older adapter that omits it retains its existing resume behavior.
+Claude compares its SDK `init.session_id`; Codex compares the `thread/resume`
+response identity. A match emits server-owned `nativeResumeIdentity: matched`
+metadata. A queued prompt, requested cursor, or process start does not establish
+a match. An exact-resume identity mismatch stops that activation; it does not
+silently claim a fresh thread has continued the original one.
+`nativeReturn: 'same-binding'` additionally permits an explicit Agent handoff
+back to an earlier native thread in this Conversation. Station requires the
+same Agent, Environment, connection, working directory and opaque configuration
+binding, a completed accepted turn, and confirmed engine retirement. Durable
+ownership fences prevent the earlier execution Session from writing or deleting
+the transferred native thread. Missing bindings use the existing bounded replay
+path; a known identity mismatch refuses the activation.
+
+The resumed thread receives a bounded context seed from the execution Sessions
+between departure and return. The handoff's `nativeReturn.sourceSessionId`
+records the requested return; `nativeResumeIdentity: matched` records the
+provider-observed identity separately. Neither proves that every historical
+message fit in context, that a turn completed, or that cross-machine migration
+worked. Private resume-enforcement inputs are excluded from public start inputs.
+
+`ConversationReadPage` retains compact message Session attribution and optional
+model attribution, with `provider-reported` or `selected` provenance. Its
+versioned `provenance` reports ordered execution Sessions, provider handoffs and
+optional explicit fork ancestry. Missing provenance on an older server, or
+`status: 'unavailable'`, means unknown. A parent reference grants no read access.
+See the [provider contract](../../packages/contracts/src/provider.ts),
+[foreground caller](../../src-server/services/execution-target/execution-target-execution.ts),
+[Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts), and
+[Codex adapter](../../src-server/providers/adapters/codex-adapter.ts).
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
