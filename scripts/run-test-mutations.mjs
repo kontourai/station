@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -55,6 +55,91 @@ export function removeEmptyRender(source) {
   return source.slice(0, start) + 'null' + source.slice(end);
 }
 export const MUTATIONS = [
+  {
+    id: 'telemetry-hosted-first-write',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'automatic telemetry import refuses hosted absent home with writable parent before writes',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  assertHostedPersistenceBeforeSchemaSync(homeDir, env);',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-implicit-log-export',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with persisted identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(source, '    logRecordProcessors: [],', ''),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-provider-registration',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with persisted identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+            '  await identity;\n  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-unidentified-export',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with failed identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const identity = Promise.resolve(\n    resourceAttributes[OTEL_INSTALLATION_ID_ATTRIBUTE],\n  );',
+            "  const identity = Promise.resolve('bypassed');",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-completed-startup-boundary',
+    test: 'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
+    failure:
+      'restores disclosure and emits completed startup only after policy publication: failed (#2015/#2833)',
+    files: [
+      {
+        path: 'src-server/runtime/bootstrap/station-runtime.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              '      void this.usageTelemetry?.stationStarted();',
+              '',
+            ),
+            '    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
+            '    void this.usageTelemetry.stationStarted();\n    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
+          ),
+      },
+    ],
+  },
   {
     id: 'ci-health-concurrency-threshold',
     test: 'scripts/__tests__/ci-health.test.ts',

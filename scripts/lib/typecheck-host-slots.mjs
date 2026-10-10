@@ -20,11 +20,10 @@
  * (`packages/shared/src/process-identity.mjs`), so a recycled pid is not
  * mistaken for the original holder.
  *
- * The holder is the process that runs `tsc` itself (`scripts/tsc-slot.mjs`
- * loads the compiler in-process), so the slot's lifetime is exactly the
- * compiler's: a normal exit or `process.exit` releases it from an `exit`
- * hook, and a crash, SIGKILL or OOM kill leaves a record whose pid is dead,
- * which the next waiter reclaims.
+ * On POSIX, `scripts/tsc-slot.mjs` replaces itself with the native compiler;
+ * the next waiter reclaims its record after any exit. On Windows, the holder
+ * owns a Job that kills its compiler when the holder dies; a normal settled
+ * exit releases the slot, and a dead holder's record is reclaimed.
  *
  * ## What it does not guarantee
  *

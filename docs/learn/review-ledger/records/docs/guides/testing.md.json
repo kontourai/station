@@ -176,7 +176,17 @@
 
     "tests/screenshots.baseline/overlay-dock-project-bound.png",
 
-    "tests/screenshots.baseline/overlay-dock-project-mismatch.png"
+    "tests/screenshots.baseline/overlay-dock-project-mismatch.png",
+
+    "scripts/tsc-slot.mjs",
+
+    "scripts/lib/typecheck-host-slots.mjs",
+
+    "scripts/__tests__/typecheck-host-slots.test.ts",
+
+    "scripts/install-smoke-file-server.mjs",
+
+    "scripts/__tests__/install-smoke-file-server.test.ts"
   ],
 
   "checks": [

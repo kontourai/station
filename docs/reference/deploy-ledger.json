@@ -1,5 +1,146 @@
 [
   {
+    "timestampUtc": "2026-10-10T17:31:33Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2474.1",
+    "sha": "bcd808979a4b8d439f3d47bead4b59498a982db7",
+    "artifactBuiltAt": "2026-10-10T16:58:53.511Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38067157478",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38067157478)"
+    ],
+    "changelog": {
+      "previousSha": "8a8f38298ef2e0a64c8fb1e1c48b312099f088cb",
+      "groups": {
+        "feat": [
+          "[#3499](https://github.com/kontourai/station/pull/3499) feat(continuity): resume native threads and expose provider history",
+          "[#3410](https://github.com/kontourai/station/pull/3410) feat(chat): one input-request contract for questions, elicitation and approvals (#3390)",
+          "[#3360](https://github.com/kontourai/station/pull/3360) feat(service): the Windows service updates through the supervised launcher (#2675 W3)",
+          "[#3262](https://github.com/kontourai/station/pull/3262) feat(prepush): lighter path for a pure merge of main; ratchets judged at the merge base (#3101)",
+          "[#3517](https://github.com/kontourai/station/pull/3517) feat(chat): unify execution pickers and preserve Agent engine overrides",
+          "[#3514](https://github.com/kontourai/station/pull/3514) feat(ci): consolidate faster qualified Nightly delivery and recovery",
+          "[#3495](https://github.com/kontourai/station/pull/3495) feat(connections): unify Device and Station peer access setup",
+          "[#2978](https://github.com/kontourai/station/pull/2978) feat(connections): credential profiles carry a non-secret env overlay (route one profile through a model proxy)",
+          "[#3391](https://github.com/kontourai/station/pull/3391) feat(start): project icons in the composer and the real run location (#3370)",
+          "[#3500](https://github.com/kontourai/station/pull/3500) feat(developer): make runtime diagnostics useful and unify section navigation"
+        ],
+        "fix": [
+          "[#3524](https://github.com/kontourai/station/pull/3524) fix(ios): synchronize the canonical launch storyboard",
+          "[#3523](https://github.com/kontourai/station/pull/3523) fix(qualification): restore SDK, workspace, storage, and pairing callers",
+          "[#3520](https://github.com/kontourai/station/pull/3520) fix(ci): restore current-main qualification contracts",
+          "[#3515](https://github.com/kontourai/station/pull/3515) fix(mobile): ship the Fraunces river startup transition",
+          "[#3334](https://github.com/kontourai/station/pull/3334) fix(ci): select the suites #3149's incidents broke but their PR checks skipped",
+          "[#3516](https://github.com/kontourai/station/pull/3516) fix(approvals): repair mobile decisions and notification recovery",
+          "[#3512](https://github.com/kontourai/station/pull/3512) fix(tooling): read owned Windows identities without PowerShell startup",
+          "[#3502](https://github.com/kontourai/station/pull/3502) fix(tooling): widen the node version probes' timeout budget for cold Windows starts",
+          "[#3511](https://github.com/kontourai/station/pull/3511) fix(security): renew exact VoltAgent residuals with P1 follow-up"
+        ],
+        "ci": [
+          "[#3345](https://github.com/kontourai/station/pull/3345) ci: run the full regression in the merge queue for ci-fast and test-full deferrals"
+        ],
+        "docs": [],
+        "other": [
+          "[#3507](https://github.com/kontourai/station/pull/3507) chore(deps): bump the runtime-and-ui-minor-patch group across 1 directory with 51 updates",
+          "[#3504](https://github.com/kontourai/station/pull/3504) chore(deps): bump the github-actions-minor-patch group with 3 updates",
+          "[#3505](https://github.com/kontourai/station/pull/3505) chore(deps): bump pnpm/setup from 2.1.0 to 3.0.0",
+          "[#3506](https://github.com/kontourai/station/pull/3506) chore(deps): bump kontourai/flow-agents/.github/actions/codex-pr-review"
+        ]
+      },
+      "note": null,
+      "commitCount": 24
+    }
+  },
+  {
+    "timestampUtc": "2026-10-10T17:31:30Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2474.1",
+    "sha": "bcd808979a4b8d439f3d47bead4b59498a982db7",
+    "artifactBuiltAt": "2026-10-10T16:58:42.106Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38067157478",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38067157478)"
+    ],
+    "changelog": {
+      "previousSha": "8a8f38298ef2e0a64c8fb1e1c48b312099f088cb",
+      "groups": {
+        "feat": [
+          "[#3499](https://github.com/kontourai/station/pull/3499) feat(continuity): resume native threads and expose provider history",
+          "[#3410](https://github.com/kontourai/station/pull/3410) feat(chat): one input-request contract for questions, elicitation and approvals (#3390)",
+          "[#3360](https://github.com/kontourai/station/pull/3360) feat(service): the Windows service updates through the supervised launcher (#2675 W3)",
+          "[#3262](https://github.com/kontourai/station/pull/3262) feat(prepush): lighter path for a pure merge of main; ratchets judged at the merge base (#3101)",
+          "[#3517](https://github.com/kontourai/station/pull/3517) feat(chat): unify execution pickers and preserve Agent engine overrides",
+          "[#3514](https://github.com/kontourai/station/pull/3514) feat(ci): consolidate faster qualified Nightly delivery and recovery",
+          "[#3495](https://github.com/kontourai/station/pull/3495) feat(connections): unify Device and Station peer access setup",
+          "[#2978](https://github.com/kontourai/station/pull/2978) feat(connections): credential profiles carry a non-secret env overlay (route one profile through a model proxy)",
+          "[#3391](https://github.com/kontourai/station/pull/3391) feat(start): project icons in the composer and the real run location (#3370)",
+          "[#3500](https://github.com/kontourai/station/pull/3500) feat(developer): make runtime diagnostics useful and unify section navigation"
+        ],
+        "fix": [
+          "[#3524](https://github.com/kontourai/station/pull/3524) fix(ios): synchronize the canonical launch storyboard",
+          "[#3523](https://github.com/kontourai/station/pull/3523) fix(qualification): restore SDK, workspace, storage, and pairing callers",
+          "[#3520](https://github.com/kontourai/station/pull/3520) fix(ci): restore current-main qualification contracts",
+          "[#3515](https://github.com/kontourai/station/pull/3515) fix(mobile): ship the Fraunces river startup transition",
+          "[#3334](https://github.com/kontourai/station/pull/3334) fix(ci): select the suites #3149's incidents broke but their PR checks skipped",
+          "[#3516](https://github.com/kontourai/station/pull/3516) fix(approvals): repair mobile decisions and notification recovery",
+          "[#3512](https://github.com/kontourai/station/pull/3512) fix(tooling): read owned Windows identities without PowerShell startup",
+          "[#3502](https://github.com/kontourai/station/pull/3502) fix(tooling): widen the node version probes' timeout budget for cold Windows starts",
+          "[#3511](https://github.com/kontourai/station/pull/3511) fix(security): renew exact VoltAgent residuals with P1 follow-up"
+        ],
+        "ci": [
+          "[#3345](https://github.com/kontourai/station/pull/3345) ci: run the full regression in the merge queue for ci-fast and test-full deferrals"
+        ],
+        "docs": [],
+        "other": [
+          "[#3507](https://github.com/kontourai/station/pull/3507) chore(deps): bump the runtime-and-ui-minor-patch group across 1 directory with 51 updates",
+          "[#3504](https://github.com/kontourai/station/pull/3504) chore(deps): bump the github-actions-minor-patch group with 3 updates",
+          "[#3505](https://github.com/kontourai/station/pull/3505) chore(deps): bump pnpm/setup from 2.1.0 to 3.0.0",
+          "[#3506](https://github.com/kontourai/station/pull/3506) chore(deps): bump kontourai/flow-agents/.github/actions/codex-pr-review"
+        ]
+      },
+      "note": null,
+      "commitCount": 24
+    }
+  },
+  {
+    "timestampUtc": "2026-10-10T16:59:49Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2474.38067157478",
+    "sha": "bcd808979a4b8d439f3d47bead4b59498a982db7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38067157478",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2474.38067157478 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "67a1355378d159451db79764aba856520391faf9",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3524](https://github.com/kontourai/station/pull/3524) fix(ios): synchronize the canonical launch storyboard"
+        ],
+        "ci": [
+          "[#3345](https://github.com/kontourai/station/pull/3345) ci: run the full regression in the merge queue for ci-fast and test-full deferrals"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-10T13:42:56Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2474.38054322896",

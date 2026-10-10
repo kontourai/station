@@ -1,52 +1,86 @@
 /**
- * Optional OpenTelemetry bootstrap. Await provider registration before creating
- * instruments; importing this module first is insufficient (#2755).
+ * Register configured providers synchronously; exporters wait for the persisted
+ * installation identity without holding up Station startup.
  */
 
 import { platform } from 'node:os';
-import type { NodeSDK } from '@opentelemetry/sdk-node';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { AwsInstrumentation } from '@opentelemetry/instrumentation-aws-sdk';
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import {
+  defaultResource,
+  resourceFromAttributes,
+} from '@opentelemetry/resources';
+import {
+  AggregationTemporality,
+  PeriodicExportingMetricReader,
+} from '@opentelemetry/sdk-metrics';
+import { core, NodeSDK } from '@opentelemetry/sdk-node';
+import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
+import { assertHostedPersistenceBeforeSchemaSync } from './runtime/bootstrap/hosted-persistence-boundary.js';
 import { persistedRandomIdentifierHash } from './services/persisted-random-identifier.js';
 import { resolveHomeDir } from './utils/paths.js';
 
 export const OTEL_INSTALLATION_ID_ATTRIBUTE = 'service.installation.id';
 
 type TelemetrySdk = Pick<NodeSDK, 'start' | 'shutdown'>;
-const activeTelemetrySdks = new Set<TelemetrySdk>();
+type TelemetryResourceAttributes = Record<string, string | Promise<string>>;
+const activeTelemetrySdks = new Set<Pick<TelemetrySdk, 'shutdown'>>();
 export interface InitializeTelemetryOptions {
   env?: NodeJS.ProcessEnv;
   homeDir?: string;
   createSdk?: (
-    resourceAttributes: Record<string, string>,
+    resourceAttributes: TelemetryResourceAttributes,
     endpoint: string,
   ) => TelemetrySdk;
   log?: (message: string) => void;
 }
 
-async function createSdk(
-  resourceAttributes: Record<string, string>,
+function createSdk(
+  resourceAttributes: TelemetryResourceAttributes,
   endpoint: string,
-): Promise<NodeSDK> {
-  const [
-    { OTLPMetricExporter },
-    { OTLPTraceExporter },
-    { AwsInstrumentation },
-    { HttpInstrumentation },
-    { defaultResource, resourceFromAttributes },
-    { AggregationTemporality, PeriodicExportingMetricReader },
-    { NodeSDK },
-  ] = await Promise.all([
-    import('@opentelemetry/exporter-metrics-otlp-http'),
-    import('@opentelemetry/exporter-trace-otlp-http'),
-    import('@opentelemetry/instrumentation-aws-sdk'),
-    import('@opentelemetry/instrumentation-http'),
-    import('@opentelemetry/resources'),
-    import('@opentelemetry/sdk-metrics'),
-    import('@opentelemetry/sdk-node'),
-  ]);
+): NodeSDK {
   const telemetryApiKey = process.env.STATION_TELEMETRY_API_KEY;
   const headers = telemetryApiKey
     ? { 'x-api-key': telemetryApiKey }
     : undefined;
+  const identity = Promise.resolve(
+    resourceAttributes[OTEL_INSTALLATION_ID_ATTRIBUTE],
+  );
+  const traceExporter = new OTLPTraceExporter({
+    url: `${endpoint}/v1/traces`,
+    headers,
+  });
+  const metricExporter = new OTLPMetricExporter({
+    url: `${endpoint}/v1/metrics`,
+    headers,
+    temporalityPreference: AggregationTemporality.DELTA,
+  });
+  // Resource rejection omits an attribute in OTel. Never export an unidentified
+  // payload when Station could not persist its installation identity.
+  const exportTraces = traceExporter.export.bind(traceExporter);
+  traceExporter.export = (spans, callback) => {
+    void identity.then(
+      () => exportTraces(spans, callback),
+      (error: unknown) =>
+        callback({
+          code: core.ExportResultCode.FAILED,
+          error: error instanceof Error ? error : new Error(String(error)),
+        }),
+    );
+  };
+  const exportMetrics = metricExporter.export.bind(metricExporter);
+  metricExporter.export = (data, callback) => {
+    void identity.then(
+      () => exportMetrics(data, callback),
+      (error: unknown) =>
+        callback({
+          code: core.ExportResultCode.FAILED,
+          error: error instanceof Error ? error : new Error(String(error)),
+        }),
+    );
+  };
   return new NodeSDK({
     serviceName: process.env.OTEL_SERVICE_NAME || 'station',
     resource: defaultResource().merge(
@@ -54,16 +88,11 @@ async function createSdk(
         ...resourceAttributes,
       }),
     ),
-    traceExporter: new OTLPTraceExporter({
-      url: `${endpoint}/v1/traces`,
-      headers,
-    }),
+    traceExporter,
+    // Station's durable logger is separate; NodeSDK otherwise enables OTLP logs.
+    logRecordProcessors: [],
     metricReader: new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter({
-        url: `${endpoint}/v1/metrics`,
-        headers,
-        temporalityPreference: AggregationTemporality.DELTA,
-      }),
+      exporter: metricExporter,
       exportIntervalMillis: 30_000,
     }),
     instrumentations: [
@@ -82,7 +111,7 @@ async function createSdk(
   });
 }
 
-/** Starts configured OTel after its non-identifying installation id is ready. */
+/** Providers register before the first await; export waits for identity I/O. */
 export async function initializeTelemetry(
   options: InitializeTelemetryOptions = {},
 ): Promise<void> {
@@ -91,19 +120,34 @@ export async function initializeTelemetry(
   // No endpoint means no identity file I/O, preserving inert-install behavior.
   if (!endpoint) return;
 
-  // The exact non-identifying attributes attached to every OTel signal.
+  const homeDir = options.homeDir ?? resolveHomeDir();
+  assertHostedPersistenceBeforeSchemaSync(homeDir, env);
+  ensureStationHomeSchemaSync(homeDir);
+  const identity = persistedRandomIdentifierHash(
+    homeDir,
+    'otel-installation-id',
+  );
+  // Handle rejection even if SDK construction/start fails before the await.
+  void identity.catch(() => {});
   const resourceAttributes = {
-    [OTEL_INSTALLATION_ID_ATTRIBUTE]: await persistedRandomIdentifierHash(
-      options.homeDir ?? resolveHomeDir(),
-      'otel-installation-id',
-    ),
+    [OTEL_INSTALLATION_ID_ATTRIBUTE]: identity,
     'os.type': platform(),
   };
-  const sdk = options.createSdk
-    ? options.createSdk(resourceAttributes, endpoint)
-    : await createSdk(resourceAttributes, endpoint);
+  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);
   sdk.start();
-  activeTelemetrySdks.add(sdk);
+  let shutdown: Promise<void> | undefined;
+  const shutdownOwner = { shutdown: () => (shutdown ??= sdk.shutdown()) };
+  activeTelemetrySdks.add(shutdownOwner);
+  try {
+    await identity;
+  } catch (error) {
+    void shutdownOwner
+      .shutdown()
+      .finally(() => activeTelemetrySdks.delete(shutdownOwner))
+      .catch(() => {});
+    throw error;
+  }
+  if (shutdown) return;
   (options.log ?? console.log)(
     `[telemetry] OTel exporting to ${endpoint} (installation identity configured)`,
   );

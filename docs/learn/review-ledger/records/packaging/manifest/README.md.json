@@ -32,7 +32,9 @@
 
     ".github/workflows/install-smoke.yml",
 
-    ".github/workflows/portable-nightly-publish.yml"
+    ".github/workflows/portable-nightly-publish.yml",
+
+    "scripts/install-smoke-file-server.mjs"
   ],
 
   "checks": [

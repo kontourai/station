@@ -224,7 +224,6 @@
     "scripts/__tests__/windows-owned-protocol.test.ts": 3,
     "scripts/__tests__/workspace-dependency-provenance.test.ts": 11,
     "scripts/__tests__/worktree-hygiene-git.test.ts": 1,
-    "src-server/__tests__/telemetry.test.ts": 1,
     "src-server/adapters/file/__tests__/memory-adapter-conversation-store.test.ts": 1,
     "src-server/adapters/file/__tests__/memory-adapter-conversation-update.test.ts": 1,
     "src-server/adapters/file/__tests__/memory-adapter-message-atomicity.test.ts": 1,

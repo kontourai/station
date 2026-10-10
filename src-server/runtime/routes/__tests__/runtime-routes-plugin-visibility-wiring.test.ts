@@ -45,7 +45,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 
