@@ -1140,6 +1140,16 @@ async function runVitest(
       execution.infrastructureError = Boolean(
         child.error || child.status === null || child.signal,
       );
+      if (execution.infrastructureError) {
+        execution.error = boundedRedactedText(
+          child.error instanceof Error
+            ? child.error.message
+            : child.signal
+              ? `Vitest child terminated by signal ${child.signal}`
+              : 'Vitest child ended without an exit status',
+          FAILURE_EXCERPT_LIMIT,
+        );
+      }
       if (!execution.infrastructureError) {
         try {
           Object.assign(

@@ -494,8 +494,26 @@ describe('bounded ci:fast runner', () => {
       }),
     ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
     expect(output).toEqual([
-      `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${cause}\n`,
+      `\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${cause}\n`,
     ]);
+  });
+
+  it('separates the owner verdict from nested stderr without a trailing newline', () => {
+    let stderr = 'nested stack without a newline';
+    const cause = 'ci:fast exceeded its feedback budget';
+    expect(
+      runCiFastCli({
+        run: () => {
+          throw new CiFastInfrastructureError(cause);
+        },
+        error: (message) => {
+          stderr += message;
+        },
+      }),
+    ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
+    expect(stderr.split('\n')).toContain(
+      `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${cause}`,
+    );
   });
 
   it('classifies a signal-terminated nested command as infrastructure', () => {
@@ -513,7 +531,7 @@ describe('bounded ci:fast runner', () => {
       }),
     ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
     expect(output).toEqual([
-      `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
+      `\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
     ]);
   });
 

@@ -34,6 +34,7 @@ function readYaml(path, readFile) {
   return structuredClone(value);
 }
 
+/** @param {string} root @param {(path: string, encoding: 'utf8') => string} [readFile] */
 export function readPnpmWorkspace(root, readFile = readFileSync) {
   const workspace = readYaml(resolve(root, 'pnpm-workspace.yaml'), readFile);
   if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace))
@@ -41,6 +42,7 @@ export function readPnpmWorkspace(root, readFile = readFileSync) {
   return workspace;
 }
 
+/** @param {string} root @param {(path: string, encoding: 'utf8') => string} [readFile] */
 export function readPnpmLockfile(root, readFile = readFileSync) {
   const lock = readYaml(resolve(root, 'pnpm-lock.yaml'), readFile);
   if (
