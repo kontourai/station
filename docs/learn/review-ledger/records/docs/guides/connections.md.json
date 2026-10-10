@@ -330,7 +330,9 @@
 
     "packages/connect/src/__tests__/DeviceScopeEditor.test.tsx",
 
-    "packages/connect/src/__tests__/deviceActivity.test.ts"
+    "packages/connect/src/__tests__/deviceActivity.test.ts",
+
+    "src-server/services/connections/allowance-routing-policy.ts"
   ],
 
   "checks": [

@@ -90,6 +90,15 @@ and default-Agent migration remain separately tracked by #1372.
 
 ---
 
+## Account-recovery allowance preference
+
+`useSetCredentialRecoveryAutomaticPolicyMutation` forwards optional
+`allowancePreference: { windowId, minimumRemainingPercent }` to the existing
+credential-recovery policy endpoint. Omit the field to preserve the saved
+preference, or pass `null` to clear it. The mutation does not enroll accounts,
+probe quota by itself, apply credentials, or prove a recovery succeeded. See
+[the policy and evidence boundaries](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery).
+
 ## Credential-profile device-code login
 
 The `@kontourai/station-sdk/device-code-login` subpath exports

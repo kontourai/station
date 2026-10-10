@@ -7,8 +7,12 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
-import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type {
+  ConnectionQuotaResult,
+  ConnectionQuotaSnapshot,
+} from '@kontourai/station-contracts/connection-quota';
+import type {
+  AllowanceRoutingPreference,
   CredentialProfile,
   CredentialProfileApplicationCapability,
   CredentialProfileApplicationProjection,
@@ -116,6 +120,7 @@ import {
 import type { CredentialApplicationHandle } from '../orchestration/credential-application-ledger.js';
 import type { CredentialProfileRecoveryAdapter } from '../orchestration/credential-recovery-module.js';
 import type { EventStore } from '../orchestration/event-store.js';
+import { selectExpiringAllowance } from './allowance-routing-policy.js';
 import { createConnectionInspector } from './connection-inspector.js';
 import { deriveConnectionReadinessEvidence } from './connection-readiness-evidence.js';
 import type {
@@ -2369,6 +2374,7 @@ export class ConnectionService {
   async setCredentialRecoveryAutomaticPolicy(
     connectionId: string,
     automatic: boolean,
+    allowancePreference?: AllowanceRoutingPreference | null,
   ): Promise<CredentialRecoveryGroupProjection> {
     if (
       automatic &&
@@ -2380,7 +2386,12 @@ export class ConnectionService {
     }
     return this.mutateCredentialRecovery(
       connectionId,
-      (state) => setCredentialRecoveryAutomaticPolicy(state, automatic).state,
+      (state) =>
+        setCredentialRecoveryAutomaticPolicy(
+          state,
+          automatic,
+          allowancePreference,
+        ).state,
     );
   }
 
@@ -2629,10 +2640,92 @@ export class ConnectionService {
     const profileOf = (ref: string | undefined) =>
       state.profiles.find((profile) => profile.ref === ref);
     const active = profileOf(state.activeProfileRef);
+    const adapter = this.credentialRecoveryAdapter(connectionId);
+    const eligible = candidates.filter(
+      (ref) =>
+        selectCredentialRecoveryCandidate({
+          capability: adapter?.metadata.recovery,
+          failure,
+          policy: state.policy,
+          group: state.group,
+          activeProfileRef: state.activeProfileRef,
+          candidateProfileRef: ref,
+          profiles: state.profiles,
+        }).outcome === 'selected',
+    );
+    const observations: Array<{
+      profileRef: string;
+      snapshot?: ConnectionQuotaSnapshot;
+    }> = [];
+    const readQuota = adapter?.readQuotaSnapshot?.bind(adapter);
+    if (state.policy.allowancePreference && readQuota) {
+      const pending = [...eligible];
+      const byProfile = new Map<string, ConnectionQuotaSnapshot>();
+      await Promise.all(
+        Array.from({ length: Math.min(4, pending.length) }, async () => {
+          for (;;) {
+            const profileRef = pending.shift();
+            if (profileRef === undefined) return;
+            try {
+              const result = await readQuota({
+                connectionId,
+                credentialProfileRef: profileRef,
+              });
+              if (result.kind === 'snapshot')
+                byProfile.set(profileRef, result.snapshot);
+            } catch {
+              /* Unavailable evidence preserves enrollment order. */
+            }
+          }
+        }),
+      );
+      observations.push(
+        ...eligible.map((profileRef) => ({
+          profileRef,
+          snapshot: byProfile.get(profileRef),
+        })),
+      );
+    }
+    if (observations.length > 0) {
+      const current = await this.readCredentialRecoveryState(connectionId);
+      const admission = (value: typeof state) =>
+        JSON.stringify({
+          activeProfileRef: value.activeProfileRef,
+          profiles: value.profiles.map(({ ref, env, envInvalid }) => ({
+            ref,
+            env,
+            envInvalid,
+          })),
+          group: value.group,
+          policy: value.policy,
+        });
+      if (admission(current) !== admission(state))
+        return { refusalReason: 'conflict' };
+    }
+    const allowance =
+      state.policy.allowancePreference && adapter
+        ? selectExpiringAllowance({
+            candidates: observations,
+            preference: state.policy.allowancePreference,
+            connectionId,
+            provider: adapter.provider,
+            now: Date.now(),
+          })
+        : undefined;
+    const preferred = allowance?.preferredProfileRef;
+    const eligibleFallbacks = eligible.filter(
+      (ref) => !allowance?.excludedProfileRefs.includes(ref),
+    );
+    if (eligible.length > 0 && eligibleFallbacks.length === 0)
+      return { refusalReason: 'insufficient_allowance' };
     const candidateProfileRef =
+      preferred ??
+      eligibleFallbacks[0] ??
       candidates.find((ref) =>
         credentialProfilesRouteAlike(profileOf(ref), active),
-      ) ?? candidates[0];
+      ) ??
+      candidates[0];
+
     const selection = selectCredentialRecoveryCandidate({
       capability:
         this.credentialRecoveryAdapter(connectionId)?.metadata.recovery,
@@ -2645,6 +2738,10 @@ export class ConnectionService {
     });
     if (selection.outcome !== 'selected')
       return { refusalReason: selection.reason };
+    if (state.policy.allowancePreference)
+      logger.debug('Credential recovery candidate ordering resolved', {
+        reason: preferred ? 'allowance-expiry' : 'allowance-unavailable',
+      });
     const attempt: CredentialProfileApplicationAttempt = {
       connectionId,
       attemptId,

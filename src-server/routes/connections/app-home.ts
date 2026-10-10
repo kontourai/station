@@ -784,7 +784,13 @@ export function createAppHomeRoutes(deps?: {
       try {
         const context = await credentialRecoveryContext(param(c, 'id'));
         if (!context) return c.json(credentialRecoveryUnavailable(), 404);
-        const body = getBody(c) as { automatic: boolean };
+        const body = getBody(c) as {
+          automatic: boolean;
+          allowancePreference?: {
+            windowId: string;
+            minimumRemainingPercent: number;
+          } | null;
+        };
         if (
           body.automatic &&
           context.recovery.application.capability === 'unsupported'
@@ -802,6 +808,7 @@ export function createAppHomeRoutes(deps?: {
         const data = await context.service.setCredentialRecoveryAutomaticPolicy(
           param(c, 'id'),
           body.automatic,
+          body.allowancePreference,
         );
         if (data.policy.automatic !== body.automatic) {
           return c.json(credentialRecoveryConflict(), 409);

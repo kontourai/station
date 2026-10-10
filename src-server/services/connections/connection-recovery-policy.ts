@@ -34,7 +34,8 @@ export type CredentialRecoverySelectionRefusalReason =
   | 'same_profile'
   /** The candidate would route sessions differently from the active profile. */
   | 'environment_mismatch'
-  | 'unsupported';
+  | 'unsupported'
+  | 'insufficient_allowance';
 
 type CredentialRecoveryCandidateSelection =
   | { outcome: 'selected'; candidateProfileRef: string }

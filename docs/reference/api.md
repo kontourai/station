@@ -3330,6 +3330,17 @@ can carry it without that preflight condition.
 ---
 
 
+## Account-recovery allowance preference
+
+`PUT /api/connections/agent/:id/credential-recovery/policy` retains its
+`access:manage` authority and required boolean `automatic`. Optional
+`allowancePreference: {windowId, minimumRemainingPercent}` configures ordering
+within already eligible account recovery. Omit it to preserve the saved
+preference; use `null` to clear it. The minimum is a finite percentage from 1
+through 100. This mutation does not enroll an account or apply a credential.
+See [recovery ordering](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery)
+for freshness, refusal and provider-observation limits.
+
 ## Engine accounts and usage
 
 `GET /api/connections/agent/:id/accounts` projects the default account plus saved
