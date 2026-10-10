@@ -52,6 +52,23 @@ function mainWindowActions(lib: string) {
 
 const DEEP_LINK_ACTIVATION = 'app.handle().deep_link().on_open_url';
 
+const DEADLINE_ARM = '&& now_ms >= next.deadline_ms =>';
+
+/**
+ * Process or phase effects inside the readiness deadline arm. A deadline only
+ * marks the epoch overdue; restarting there killed slow cold boots forever.
+ */
+function deadlineRestartRoutes(readiness: string) {
+  const arm = rustBlock(readiness, DEADLINE_ARM);
+  return [
+    'restart_readiness(',
+    'RestartOwnedSidecar',
+    'ReprobeCurrentTicket',
+    'next.phase =',
+    'next.epoch +=',
+  ].filter((route) => arm.includes(route));
+}
+
 describe('desktop startup readiness static boundary', () => {
   it('keeps release main windows hidden in every desktop channel config', () => {
     for (const path of [
@@ -109,9 +126,11 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('sync_channel(1)');
     expect(lib).toContain('apply_native_cover_until_current');
     expect(lib).toContain('ack_rx.recv()');
-    expect(lib).toContain('with_native_startup_cover(&window, target.covered)');
-    expect(lib).toContain('request_native_cover(app, true)');
-    expect(lib).toContain('request_native_cover(app, false)');
+    expect(lib).toMatch(
+      /with_native_startup_cover\(\s*&window,\s*&main_app,\s*target\.cover,?\s*\)/,
+    );
+    expect(lib).toContain('request_native_cover(app, Some(content))');
+    expect(lib).toContain('request_native_cover(app, None)');
     expect(lib).toContain('.on_page_load(|webview, payload|');
     expect(lib).toContain(
       'observe_native_startup_page(webview.app_handle(), webview.label(), payload.event())',
@@ -228,22 +247,58 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('request_main_window_activation(app);');
   });
 
-  it('routes timeout recovery through the existing readiness authority', () => {
+  // The Rust state tests in startup_readiness.rs run only on the
+  // paths-filtered Desktop Rust lane. These merge-blocking pins keep the
+  // slow-boot fix: an elapsed deadline never restarts a sidecar or leaves the
+  // admitting Waiting phase, and only an explicit Restart/Quit acts.
+  it('keeps slow sidecar boots alive and routes recovery only through explicit choices', () => {
     const lib = read('src-desktop/src/lib.rs');
-    const activation = lib.indexOf(
-      'pub(crate) fn request_main_window_activation',
-    );
-    const deadline = lib.indexOf('fn arm_startup_deadline');
+    const readiness = read('src-desktop/src/startup_readiness.rs');
+    expect(deadlineRestartRoutes(readiness)).toEqual([]);
 
-    expect(activation).toBeGreaterThanOrEqual(0);
-    expect(deadline).toBeGreaterThan(activation);
-    expect(lib.slice(activation, deadline)).toContain(
+    const deadline = rustBlock(lib, 'fn arm_startup_deadline(');
+    for (const forbidden of [
+      'continue_startup_readiness',
+      'SupervisorMessage::Restart',
+      'ReadinessInput::Retry',
+    ]) {
+      expect(deadline).not.toContain(forbidden);
+    }
+    // macOS shows recovery inside the native cover; the dialog is only the
+    // fallback for hosts without one.
+    const presented = deadline.indexOf(
+      'Some(StartupRecoveryPresentation::Presented) => return',
+    );
+    expect(presented).toBeGreaterThanOrEqual(0);
+    expect(deadline.indexOf('.dialog()')).toBeGreaterThan(presented);
+    expect(deadline).toContain('resolve_slow_startup(');
+
+    const resolve = rustBlock(lib, 'fn resolve_slow_startup(');
+    expect(resolve).toContain(
       'continue_startup_readiness(app, state.inner(), &effects);',
     );
-    expect(lib.slice(deadline)).toContain(
-      'continue_startup_readiness(&app, state.inner(), &effects);',
+    expect(resolve).toContain('startup_readiness::overdue_for_epoch(');
+    expect(resolve.indexOf('overdue_for_epoch(')).toBeLessThan(
+      resolve.indexOf('app.exit(1)'),
     );
-    expect(lib.slice(deadline)).toContain('readiness.epoch == epoch');
+
+    const activation = rustBlock(
+      lib,
+      'pub(crate) fn request_main_window_activation(',
+    );
+    expect(activation).toContain('transition_startup_readiness_presenting(');
+    expect(activation).not.toContain('continue_startup_readiness');
+
+    const coverActions = rustBlock(lib, 'mod startup_cover_actions');
+    expect(coverActions).toMatch(
+      /method\(restart:\)\)\]\s*fn restart[\s\S]*?SlowStartupChoice::Restart/,
+    );
+    expect(coverActions).toMatch(
+      /method\(quit:\)\)\]\s*fn quit[\s\S]*?SlowStartupChoice::Quit/,
+    );
+    expect(coverActions).toContain(
+      'resolve_slow_startup(&ivars.app, ivars.epoch, choice)',
+    );
   });
 
   it('registers the updater exactly once only for usable release configuration', () => {
@@ -288,6 +343,23 @@ describe('desktop startup readiness static boundary', () => {
 
   it('fails its structural probes when a direct reveal or Apple-event route is removed', () => {
     const lib = read('src-desktop/src/lib.rs');
+    const readiness = read('src-desktop/src/startup_readiness.rs');
+    const killingDeadline = replaceInRustBlock(
+      readiness,
+      DEADLINE_ARM,
+      'if !next.overdue {',
+      'effects.push(restart_readiness(&mut next, 0, 0));\n            if !next.overdue {',
+    );
+    expect(deadlineRestartRoutes(killingDeadline)).toEqual([
+      'restart_readiness(',
+    ]);
+    const failingDeadline = replaceInRustBlock(
+      readiness,
+      DEADLINE_ARM,
+      'next.overdue = true;',
+      'next.overdue = true; next.phase = ReadinessPhase::Ready;',
+    );
+    expect(deadlineRestartRoutes(failingDeadline)).toEqual(['next.phase =']);
     for (const action of ['show', 'unminimize', 'set_focus']) {
       const injected = `${lib}\nfn injected() { app.get_webview_window("main").unwrap().${action}().unwrap(); }`;
       expect(mainWindowActions(injected)).toHaveLength(2);

@@ -10005,11 +10005,12 @@ impl PendingMainWindowActivation {
 #[cfg(target_os = "macos")]
 const NATIVE_STARTUP_COVER_IDENTIFIER: &str = "io.kontourai.station.startup-cover";
 
+/// The latest requested native cover. `None` removes the cover (reveal).
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct NativeCoverDesired {
     generation: u64,
-    covered: bool,
+    cover: Option<startup_readiness::StartupCoverContent>,
 }
 
 #[cfg(target_os = "macos")]
@@ -10022,13 +10023,13 @@ struct NativeCoverDispatcher {
 fn update_native_cover_desired(
     desired: &Mutex<NativeCoverDesired>,
     wake: &SyncSender<()>,
-    covered: bool,
+    cover: Option<startup_readiness::StartupCoverContent>,
 ) {
     let mut target = desired
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     target.generation = target.generation.wrapping_add(1);
-    target.covered = covered;
+    target.cover = cover;
     drop(target);
 
     match wake.try_send(()) {
@@ -10066,7 +10067,7 @@ fn apply_native_cover_until_current(
 fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
     let desired = Arc::new(Mutex::new(NativeCoverDesired {
         generation: 0,
-        covered: false,
+        cover: None,
     }));
     let (wake, receiver) = sync_channel(1);
     let worker_desired = Arc::clone(&desired);
@@ -10087,7 +10088,11 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
                                         );
                                         return false;
                                     };
-                                    match with_native_startup_cover(&window, target.covered) {
+                                    match with_native_startup_cover(
+                                        &window,
+                                        &main_app,
+                                        target.cover,
+                                    ) {
                                         Ok(()) => true,
                                         Err(error) => {
                                             log::error!("native cover task failed: {error}");
@@ -10138,28 +10143,105 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
     Some(NativeCoverDispatcher { desired, wake })
 }
 
+/// Returns whether the request reached the cover dispatcher.
 #[cfg(target_os = "macos")]
-fn request_native_cover(app: &AppHandle, covered: bool) {
+fn request_native_cover(
+    app: &AppHandle,
+    cover: Option<startup_readiness::StartupCoverContent>,
+) -> bool {
     let Some(dispatcher) = app.try_state::<NativeCoverDispatcher>() else {
         log::error!("native cover dispatcher state is unavailable");
-        return;
+        return false;
     };
-    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, covered);
+    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, cover);
+    true
+}
+
+/// Waiting copy, matching the short labels of the renderer startup screen.
+#[cfg(target_os = "macos")]
+const NATIVE_STARTUP_COVER_WAITING_TEXT: &str = "Starting Station";
+#[cfg(target_os = "macos")]
+const NATIVE_STARTUP_COVER_OVERDUE_TEXT: &str = "Station is taking longer than usual to start.";
+
+#[cfg(target_os = "macos")]
+mod startup_cover_actions {
+    use super::{resolve_slow_startup, AppHandle, SlowStartupChoice};
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
+    use objc2_foundation::NSObject;
+
+    pub(super) struct Ivars {
+        app: AppHandle,
+        epoch: u64,
+    }
+
+    define_class!(
+        // SAFETY: NSObject has no subclassing requirements, and this class
+        // does not implement Drop.
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "StationStartupCoverActions"]
+        #[ivars = Ivars]
+        pub(super) struct StartupCoverActions;
+
+        impl StartupCoverActions {
+            #[unsafe(method(restart:))]
+            fn restart(&self, _sender: Option<&AnyObject>) {
+                self.choose(SlowStartupChoice::Restart);
+            }
+
+            #[unsafe(method(quit:))]
+            fn quit(&self, _sender: Option<&AnyObject>) {
+                self.choose(SlowStartupChoice::Quit);
+            }
+        }
+    );
+
+    impl StartupCoverActions {
+        pub(super) fn new(app: AppHandle, epoch: u64, marker: MainThreadMarker) -> Retained<Self> {
+            let this = Self::alloc(marker).set_ivars(Ivars { app, epoch });
+            unsafe { msg_send![super(this), init] }
+        }
+
+        fn choose(&self, choice: SlowStartupChoice) {
+            let ivars = self.ivars();
+            // Never unwind across the Objective-C action boundary.
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                resolve_slow_startup(&ivars.app, ivars.epoch, choice)
+            }))
+            .is_err()
+            {
+                log::error!("native startup cover {choice:?} action panicked");
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+thread_local! {
+    /// NSButton targets are weak. The overdue cover's action target lives on
+    /// the main thread for exactly as long as that cover's buttons do.
+    static NATIVE_STARTUP_COVER_ACTIONS: std::cell::RefCell<
+        Option<objc2::rc::Retained<startup_cover_actions::StartupCoverActions>>,
+    > = const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(target_os = "macos")]
 fn with_native_startup_cover(
     window: &tauri::WebviewWindow,
-    covered: bool,
+    app: &AppHandle,
+    cover_content_request: Option<startup_readiness::StartupCoverContent>,
 ) -> Result<(), tauri::Error> {
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
         NSAccessibilityLayoutChangedNotification, NSAccessibilityPostNotification,
-        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment, NSTextField,
-        NSUserInterfaceItemIdentification, NSView,
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSUserInterfaceItemIdentification,
+        NSView,
     };
-    use objc2_foundation::{ns_string, NSObjectProtocol, NSPoint, NSRect, NSSize};
+    use objc2_foundation::{ns_string, NSObjectProtocol};
 
+    let app = app.clone();
     window.with_webview(move |webview| {
         let marker = MainThreadMarker::new()
             .expect("Tauri executes native webview access on the macOS main thread");
@@ -10182,47 +10264,30 @@ fn with_native_startup_cover(
                 .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
         });
 
-        if covered {
+        if let Some(cover_kind) = cover_content_request {
             if let Some(existing) = existing {
                 if !existing.isKindOfClass(NSBox::class()) {
                     log::error!("refusing to replace an unexpected native startup cover view");
                     return;
                 }
-            } else {
-                let cover = NSBox::new(marker);
-                cover.setFrame(content.bounds());
-                cover.setAutoresizingMask(
-                    NSAutoresizingMaskOptions::ViewWidthSizable
-                        | NSAutoresizingMaskOptions::ViewHeightSizable,
-                );
-                cover.setBoxType(NSBoxType::Custom);
-                cover.setFillColor(&NSColor::windowBackgroundColor());
-                cover.setTitle(ns_string!(""));
-                cover.setIdentifier(Some(cover_identifier));
-                if let Some(cover_content) = cover.contentView() {
-                    let label_text = ns_string!("Station is preparing its protected workspace…");
-                    let label = NSTextField::labelWithString(label_text, marker);
-                    let bounds = cover_content.bounds();
-                    label.setFrame(NSRect::new(
-                        NSPoint::new(24.0, ((bounds.size.height - 30.0) / 2.0).max(0.0)),
-                        NSSize::new((bounds.size.width - 48.0).max(0.0), 30.0),
-                    ));
-                    label.setAutoresizingMask(
-                        NSAutoresizingMaskOptions::ViewWidthSizable
-                            | NSAutoresizingMaskOptions::ViewMinYMargin
-                            | NSAutoresizingMaskOptions::ViewMaxYMargin,
-                    );
-                    label.setAlignment(NSTextAlignment(2));
-                    label.setFont(Some(&NSFont::boldSystemFontOfSize(17.0)));
-                    label.setTextColor(Some(&NSColor::labelColor()));
-                    unsafe {
-                        let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
-                        let _: () = objc2::msg_send![&*label, setAccessibilityLabel: label_text];
-                    }
-                    cover_content.addSubview(&label);
-                }
-                content.addSubview(&cover);
+                // Waiting and overdue content are rebuilt in place within one
+                // main-thread turn, so AppKit never draws the uncovered WebView.
+                existing.removeFromSuperview();
             }
+            let cover = NSBox::new(marker);
+            cover.setFrame(content.bounds());
+            cover.setAutoresizingMask(
+                NSAutoresizingMaskOptions::ViewWidthSizable
+                    | NSAutoresizingMaskOptions::ViewHeightSizable,
+            );
+            cover.setBoxType(NSBoxType::Custom);
+            cover.setFillColor(&NSColor::windowBackgroundColor());
+            cover.setTitle(ns_string!(""));
+            cover.setIdentifier(Some(cover_identifier));
+            let focus = cover.contentView().and_then(|cover_content| {
+                populate_native_startup_cover(&cover_content, cover_kind, &app, marker)
+            });
+            content.addSubview(&cover);
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
                 // Keep WebKit executing the readiness proof. Accessibility is
@@ -10233,9 +10298,21 @@ fn with_native_startup_cover(
                 // setter-authored list is later assigned nil (#869).
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
             }
-            ns_window.makeFirstResponder(None);
+            match focus {
+                // Keyboard and VoiceOver land on the default recovery action.
+                Some(restart) => {
+                    ns_window.makeFirstResponder(Some(&restart));
+                }
+                None => {
+                    ns_window.makeFirstResponder(None);
+                }
+            }
             ns_window.deminiaturize(None);
             ns_window.makeKeyAndOrderFront(None);
+            unsafe {
+                // Waiting and overdue content replace each other in place.
+                NSAccessibilityPostNotification(&content, NSAccessibilityLayoutChangedNotification);
+            }
         } else {
             if let Some(cover) = existing {
                 if !cover.isKindOfClass(NSBox::class()) {
@@ -10244,6 +10321,7 @@ fn with_native_startup_cover(
                 }
                 cover.removeFromSuperview();
             }
+            NATIVE_STARTUP_COVER_ACTIONS.with(|actions| actions.borrow_mut().take());
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
             }
@@ -10261,17 +10339,173 @@ fn with_native_startup_cover(
     })
 }
 
+/// Lays out the cover like the renderer's startup screen: a centered 96 pt
+/// application mark and a centered status line 128 pt below center. Overdue
+/// content adds Restart (default) and Quit below the status line. Returns the
+/// control that should receive keyboard focus.
 #[cfg(target_os = "macos")]
-fn present_startup_recovery_surface(app: &AppHandle) {
-    if desktop_companion::background(app) {
-        return;
+fn populate_native_startup_cover(
+    cover_content: &objc2_app_kit::NSView,
+    content: startup_readiness::StartupCoverContent,
+    app: &AppHandle,
+    marker: objc2::MainThreadMarker,
+) -> Option<objc2::rc::Retained<objc2_app_kit::NSButton>> {
+    use objc2_app_kit::{
+        NSApplication, NSAutoresizingMaskOptions, NSButton, NSColor, NSFont, NSImageScaling,
+        NSImageView, NSTextAlignment, NSTextField,
+    };
+    use objc2_foundation::{ns_string, NSPoint, NSRect, NSSize, NSString};
+
+    const MARK_SIZE: f64 = 96.0;
+    const STATUS_TOP_BELOW_CENTER: f64 = 128.0;
+    const STATUS_HEIGHT: f64 = 20.0;
+    const BUTTON_GAP: f64 = 12.0;
+    const BUTTON_TOP_BELOW_STATUS: f64 = 16.0;
+    const BUTTON_MIN_WIDTH: f64 = 96.0;
+
+    let centered = NSAutoresizingMaskOptions::ViewMinXMargin
+        | NSAutoresizingMaskOptions::ViewMaxXMargin
+        | NSAutoresizingMaskOptions::ViewMinYMargin
+        | NSAutoresizingMaskOptions::ViewMaxYMargin;
+    let bounds = cover_content.bounds();
+    let mid_x = bounds.size.width / 2.0;
+    let mid_y = bounds.size.height / 2.0;
+
+    // The application icon carries the channel art (Nightly/Beta/Stable).
+    if let Some(image) = NSApplication::sharedApplication(marker).applicationIconImage() {
+        let mark = NSImageView::imageViewWithImage(&image, marker);
+        mark.setFrame(NSRect::new(
+            NSPoint::new(mid_x - MARK_SIZE / 2.0, mid_y - MARK_SIZE / 2.0),
+            NSSize::new(MARK_SIZE, MARK_SIZE),
+        ));
+        mark.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
+        mark.setAutoresizingMask(centered);
+        unsafe {
+            let _: () = objc2::msg_send![&*mark, setAccessibilityLabel: ns_string!("Station")];
+        }
+        cover_content.addSubview(&mark);
     }
-    request_native_cover(app, true);
+
+    let label_text = NSString::from_str(match content {
+        startup_readiness::StartupCoverContent::Waiting => NATIVE_STARTUP_COVER_WAITING_TEXT,
+        startup_readiness::StartupCoverContent::Overdue { .. } => NATIVE_STARTUP_COVER_OVERDUE_TEXT,
+    });
+    let label = NSTextField::labelWithString(&label_text, marker);
+    let status_y = (mid_y - STATUS_TOP_BELOW_CENTER - STATUS_HEIGHT).max(0.0);
+    label.setFrame(NSRect::new(
+        NSPoint::new(24.0, status_y),
+        NSSize::new((bounds.size.width - 48.0).max(0.0), STATUS_HEIGHT),
+    ));
+    label.setAutoresizingMask(
+        NSAutoresizingMaskOptions::ViewWidthSizable
+            | NSAutoresizingMaskOptions::ViewMinYMargin
+            | NSAutoresizingMaskOptions::ViewMaxYMargin,
+    );
+    // NSTextAlignment's raw values differ by ABI (arm64 macOS uses the iOS
+    // values, where 2 is Right). Only the named constant is portable.
+    label.setAlignment(NSTextAlignment::Center);
+    label.setFont(Some(&NSFont::systemFontOfSize(14.0)));
+    label.setTextColor(Some(&NSColor::secondaryLabelColor()));
+    unsafe {
+        let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
+        let _: () = objc2::msg_send![&*label, setAccessibilityLabel: &*label_text];
+    }
+    cover_content.addSubview(&label);
+
+    let startup_readiness::StartupCoverContent::Overdue { epoch } = content else {
+        NATIVE_STARTUP_COVER_ACTIONS.with(|actions| actions.borrow_mut().take());
+        return None;
+    };
+    let actions = startup_cover_actions::StartupCoverActions::new(app.clone(), epoch, marker);
+    let target: &objc2::runtime::AnyObject = &actions;
+    let (quit, restart) = unsafe {
+        (
+            NSButton::buttonWithTitle_target_action(
+                ns_string!("Quit"),
+                Some(target),
+                Some(objc2::sel!(quit:)),
+                marker,
+            ),
+            NSButton::buttonWithTitle_target_action(
+                ns_string!("Restart"),
+                Some(target),
+                Some(objc2::sel!(restart:)),
+                marker,
+            ),
+        )
+    };
+    // Return activates Restart, the default action.
+    restart.setKeyEquivalent(ns_string!("\r"));
+    unsafe {
+        let _: () =
+            objc2::msg_send![&*restart, setAccessibilityLabel: ns_string!("Restart Station")];
+        let _: () = objc2::msg_send![&*quit, setAccessibilityLabel: ns_string!("Quit Station")];
+    }
+    quit.sizeToFit();
+    restart.sizeToFit();
+    let quit_size = NSSize::new(
+        quit.frame().size.width.max(BUTTON_MIN_WIDTH),
+        quit.frame().size.height,
+    );
+    let restart_size = NSSize::new(
+        restart.frame().size.width.max(BUTTON_MIN_WIDTH),
+        restart.frame().size.height,
+    );
+    let row_width = quit_size.width + BUTTON_GAP + restart_size.width;
+    let row_height = quit_size.height.max(restart_size.height);
+    let row_y = (status_y - BUTTON_TOP_BELOW_STATUS - row_height).max(0.0);
+    let row_x = mid_x - row_width / 2.0;
+    // macOS places the default button last (rightmost).
+    quit.setFrame(NSRect::new(NSPoint::new(row_x, row_y), quit_size));
+    restart.setFrame(NSRect::new(
+        NSPoint::new(row_x + quit_size.width + BUTTON_GAP, row_y),
+        restart_size,
+    ));
+    quit.setAutoresizingMask(centered);
+    restart.setAutoresizingMask(centered);
+    cover_content.addSubview(&quit);
+    cover_content.addSubview(&restart);
+    NATIVE_STARTUP_COVER_ACTIONS.with(|slot| *slot.borrow_mut() = Some(actions));
+    Some(restart)
+}
+
+/// How a request to show startup recovery was handled.
+#[cfg(not(mobile))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StartupRecoveryPresentation {
+    /// The native cover will show this content.
+    Presented,
+    /// A background (tray-only) launch keeps its window hidden; a later
+    /// activation presents the then-current content.
+    Deferred,
+    /// No cover exists on this host; use the native dialog.
+    Unavailable,
+}
+
+#[cfg(target_os = "macos")]
+fn present_startup_recovery_surface(
+    app: &AppHandle,
+    content: startup_readiness::StartupCoverContent,
+) -> StartupRecoveryPresentation {
+    if desktop_companion::background(app) {
+        return StartupRecoveryPresentation::Deferred;
+    }
+    if request_native_cover(app, Some(content)) {
+        StartupRecoveryPresentation::Presented
+    } else {
+        StartupRecoveryPresentation::Unavailable
+    }
 }
 
 #[cfg(all(not(mobile), not(target_os = "macos")))]
-fn present_startup_recovery_surface(_app: &AppHandle) {
-    // Other desktop hosts retain the established hidden-until-ticket behavior.
+fn present_startup_recovery_surface(
+    _app: &AppHandle,
+    _content: startup_readiness::StartupCoverContent,
+) -> StartupRecoveryPresentation {
+    // Other desktop hosts retain the established hidden-until-ticket window;
+    // slow-start recovery uses the native dialog there.
+    StartupRecoveryPresentation::Unavailable
 }
 
 #[cfg(not(mobile))]
@@ -10281,7 +10515,7 @@ fn reveal_main_window(app: &AppHandle) {
     }
     #[cfg(target_os = "macos")]
     {
-        request_native_cover(app, false);
+        request_native_cover(app, None);
         return;
     }
     #[cfg(not(target_os = "macos"))]
@@ -10304,6 +10538,46 @@ fn transition_startup_readiness(
     let (next, effects) = startup_readiness::transition(&readiness, input);
     *readiness = next;
     effects
+}
+
+/// Applies a readiness input and, while still holding the readiness lock,
+/// hands the matching cover content to the native cover when the transition
+/// asks for the recovery surface (or `present` is set for an accepted retry).
+/// Holding the lock orders this cover request before any later Ready
+/// transition, whose reveal request then wins: a cover is never re-applied
+/// over a window that readiness already admitted.
+#[cfg(not(mobile))]
+fn transition_startup_readiness_presenting(
+    app: &AppHandle,
+    state: &DesktopServerState,
+    input: startup_readiness::ReadinessInput,
+    present: bool,
+) -> (
+    Vec<startup_readiness::ReadinessEffect>,
+    Option<StartupRecoveryPresentation>,
+) {
+    let mut readiness = state
+        .readiness
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (next, effects) = startup_readiness::transition(&readiness, input);
+    *readiness = next;
+    let requested = (present && !effects.is_empty())
+        || effects.iter().any(|effect| {
+            matches!(
+                effect,
+                startup_readiness::ReadinessEffect::PresentStartupRecoverySurface
+                    | startup_readiness::ReadinessEffect::ShowSlowStartRecovery { .. }
+            )
+        });
+    let presentation = if requested {
+        startup_readiness::startup_cover_content(&readiness)
+            .map(|content| present_startup_recovery_surface(app, content))
+    } else {
+        None
+    };
+    drop(readiness);
+    (effects, presentation)
 }
 
 #[cfg(not(mobile))]
@@ -10374,18 +10648,19 @@ pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return false;
     };
-    let effects = transition_startup_readiness(
+    // Activation asks to see the app; it never restarts or reprobes. While
+    // waiting (including overdue) it presents the cover with its current
+    // content, and only readiness proof reveals application content.
+    let (effects, _) = transition_startup_readiness_presenting(
+        app,
         state.inner(),
         startup_readiness::ReadinessInput::ActivationRequested,
+        false,
     );
-    if effects.contains(&startup_readiness::ReadinessEffect::PresentStartupRecoverySurface) {
-        present_startup_recovery_surface(app);
-    }
     let revealed = effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow);
     if revealed {
         reveal_main_window(app);
     }
-    continue_startup_readiness(app, state.inner(), &effects);
     revealed
 }
 
@@ -10524,6 +10799,64 @@ fn observe_startup_loss(app: &AppHandle, generation: u64) {
     );
 }
 
+/// The user's answer to the slow-start recovery offered for one epoch.
+#[cfg(not(mobile))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SlowStartupChoice {
+    Restart,
+    Quit,
+}
+
+/// Applies a Restart/Quit chosen on the slow-start recovery surface (the
+/// macOS cover buttons or the native dialog) for `epoch`. Both choices are
+/// inert once readiness moved on: a late reveal or a newer epoch wins.
+#[cfg(not(mobile))]
+fn resolve_slow_startup(app: &AppHandle, epoch: u64, choice: SlowStartupChoice) {
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        return;
+    };
+    match choice {
+        SlowStartupChoice::Quit => {
+            let still_overdue_for_epoch = startup_readiness::overdue_for_epoch(
+                &state
+                    .readiness
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                epoch,
+            );
+            if still_overdue_for_epoch {
+                log::info!("desktop startup recovery chose Quit for epoch {epoch}");
+                app.exit(1);
+            } else {
+                log::info!("desktop startup recovery ignored a stale Quit for epoch {epoch}");
+            }
+        }
+        SlowStartupChoice::Restart => {
+            // An explicit user choice: reprobe a current ticket first, else
+            // restart only the owned sidecar. The cover returns to waiting.
+            let (effects, _) = transition_startup_readiness_presenting(
+                app,
+                state.inner(),
+                startup_readiness::ReadinessInput::Retry {
+                    epoch,
+                    now_ms: 0,
+                    timeout_ms: 30_000,
+                },
+                true,
+            );
+            if effects.is_empty() {
+                log::info!("desktop startup recovery ignored a stale Restart for epoch {epoch}");
+            } else {
+                log::info!("desktop startup recovery chose Restart for epoch {epoch}: {effects:?}");
+            }
+            continue_startup_readiness(app, state.inner(), &effects);
+        }
+    }
+}
+
+/// Arms one readiness deadline. Elapsing only marks the epoch overdue and
+/// offers recovery; it never restarts or signals the sidecar, which may still
+/// be booting and can reveal the window late on its own.
 #[cfg(not(mobile))]
 fn arm_startup_deadline(app: AppHandle, epoch: u64) {
     let _ = thread::Builder::new()
@@ -10531,33 +10864,43 @@ fn arm_startup_deadline(app: AppHandle, epoch: u64) {
         .spawn(move || {
             thread::sleep(Duration::from_secs(30));
             let Some(state) = app.try_state::<DesktopServerState>() else { return };
-            let effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::DeadlineElapsed { epoch, now_ms: 30_000 });
-            if effects.iter().any(|effect| matches!(effect,
-                startup_readiness::ReadinessEffect::ReprobeCurrentTicket
-                    | startup_readiness::ReadinessEffect::RestartOwnedSidecar
-                    | startup_readiness::ReadinessEffect::RecommitRecoverySurface
-            )) {
-                continue_startup_readiness(&app, state.inner(), &effects);
+            let (effects, presentation) = transition_startup_readiness_presenting(
+                &app,
+                state.inner(),
+                startup_readiness::ReadinessInput::DeadlineElapsed { epoch, now_ms: 30_000 },
+                false,
+            );
+            if !effects.contains(&startup_readiness::ReadinessEffect::ShowSlowStartRecovery { epoch }) {
                 return;
             }
-            if !effects.contains(&startup_readiness::ReadinessEffect::ShowDiagnostic { epoch }) { return; }
+            log::warn!(
+                "desktop startup readiness is overdue for epoch {epoch}; the sidecar keeps booting and recovery is offered"
+            );
+            match presentation {
+                Some(StartupRecoveryPresentation::Presented) => return,
+                Some(StartupRecoveryPresentation::Deferred) => {
+                    log::info!(
+                        "desktop startup recovery for epoch {epoch} is deferred until the main window is activated"
+                    );
+                    return;
+                }
+                Some(StartupRecoveryPresentation::Unavailable) | None => {}
+            }
+            // Hosts without a native cover (Windows, Linux, or a macOS cover
+            // dispatcher that failed to start) keep the native dialog.
             use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-            log::warn!("desktop startup readiness timed out for epoch {epoch}");
-            let retry = app.dialog().message("Station is still preparing its protected workspace. Retry safely resumes the selected local recovery surface.").title("Station is not ready").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom("Retry".into(), "Exit".into())).blocking_show();
-            if !retry {
-                let still_failed_for_dialog_epoch = {
-                    let readiness = state
-                    .readiness
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    readiness.phase == startup_readiness::ReadinessPhase::Failed
-                        && readiness.epoch == epoch
-                };
-                if still_failed_for_dialog_epoch { let _ = app.exit(1); }
-                return;
-            }
-            let retry_effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::Retry { now_ms: 0, timeout_ms: 30_000 });
-            continue_startup_readiness(&app, state.inner(), &retry_effects);
+            let restart = app
+                .dialog()
+                .message("Station will open automatically when it is ready. Restart tries the start again; Quit closes Station.")
+                .title("Station is taking longer than usual to start")
+                .kind(MessageDialogKind::Warning)
+                .buttons(MessageDialogButtons::OkCancelCustom("Restart".into(), "Quit".into()))
+                .blocking_show();
+            resolve_slow_startup(
+                &app,
+                epoch,
+                if restart { SlowStartupChoice::Restart } else { SlowStartupChoice::Quit },
+            );
         });
 }
 
@@ -14221,13 +14564,21 @@ mod tests {
     fn native_cover_requests_are_bounded_and_latest_state_wins_before_dispatch() {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 0,
-            covered: false,
+            cover: None,
         });
         let (wake, receiver) = sync_channel(1);
 
-        update_native_cover_desired(&desired, &wake, true);
-        update_native_cover_desired(&desired, &wake, true);
-        update_native_cover_desired(&desired, &wake, false);
+        update_native_cover_desired(
+            &desired,
+            &wake,
+            Some(startup_readiness::StartupCoverContent::Waiting),
+        );
+        update_native_cover_desired(
+            &desired,
+            &wake,
+            Some(startup_readiness::StartupCoverContent::Overdue { epoch: 1 }),
+        );
+        update_native_cover_desired(&desired, &wake, None);
 
         assert_eq!(receiver.try_iter().count(), 1, "repeated requests coalesce");
         let mut applied = Vec::new();
@@ -14239,7 +14590,7 @@ mod tests {
             applied,
             vec![NativeCoverDesired {
                 generation: 3,
-                covered: false,
+                cover: None,
             }],
             "an unread cover must be superseded by the newer exact reveal"
         );
@@ -14258,8 +14609,19 @@ mod tests {
             .expect("native startup cover ends before recovery composition");
         let cover = &source[start..end];
 
-        assert!(cover.contains("NSTextField::labelWithString(label_text, marker)"));
-        assert!(cover.contains("setAccessibilityLabel: label_text"));
+        assert!(cover.contains("NSTextField::labelWithString(&label_text, marker)"));
+        assert!(cover.contains("setAccessibilityLabel: &*label_text"));
+        // arm64 macOS uses the iOS NSTextAlignment values (2 is Right); the
+        // status line must use the named constant to stay centered.
+        assert!(cover.contains("label.setAlignment(NSTextAlignment::Center)"));
+        assert!(!cover.contains("NSTextAlignment("));
+        // Overdue recovery: labelled native buttons, Return activates Restart,
+        // and keyboard focus lands on it instead of the hidden WebView.
+        assert!(cover.contains("setAccessibilityLabel: ns_string!(\"Restart Station\")"));
+        assert!(cover.contains("setAccessibilityLabel: ns_string!(\"Quit Station\")"));
+        assert!(cover.contains("restart.setKeyEquivalent(ns_string!(\"\\r\"))"));
+        assert!(cover.contains("ns_window.makeFirstResponder(Some(&restart))"));
+        assert!(cover.contains("applicationIconImage()"));
         assert!(!cover.contains("setAccessibilityChildren:"));
         assert!(!cover.contains("NSArray::arrayWithObject"));
         assert!(cover.contains("NSAccessibilityLayoutChangedNotification"));
@@ -14290,8 +14652,9 @@ mod tests {
         let visible = cover
             .find("setAlphaValue: 1.0f64")
             .expect("reveal restores the WebView visual state");
-        let notify = cover
+        let notify = cover[visible..]
             .find("NSAccessibilityPostNotification(")
+            .map(|offset| visible + offset)
             .expect("reveal notifies assistive clients after clearing the override");
         assert!(
             remove < unhide && unhide < visible && visible < notify,
@@ -14308,15 +14671,15 @@ mod tests {
     fn native_cover_dispatch_serializes_cover_before_a_fast_reveal() {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
-            covered: true,
+            cover: Some(startup_readiness::StartupCoverContent::Waiting),
         });
         let (wake, _receiver) = sync_channel(1);
         let mut applied = Vec::new();
 
         assert!(apply_native_cover_until_current(&desired, |target| {
-            applied.push(target.covered);
-            if target.covered {
-                update_native_cover_desired(&desired, &wake, false);
+            applied.push(target.cover.is_some());
+            if target.cover.is_some() {
+                update_native_cover_desired(&desired, &wake, None);
             }
             true
         }));
@@ -14332,7 +14695,7 @@ mod tests {
     fn native_cover_dispatch_stops_on_a_failed_main_thread_task() {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
-            covered: true,
+            cover: Some(startup_readiness::StartupCoverContent::Waiting),
         });
         let mut attempts = 0;
         assert!(!apply_native_cover_until_current(&desired, |_| {
@@ -14719,7 +15082,6 @@ mod tests {
         ));
         for terminal in [
             startup_readiness::ReadinessPhase::Ready,
-            startup_readiness::ReadinessPhase::Failed,
             startup_readiness::ReadinessPhase::Bypassed,
         ] {
             assert!(!startup_readiness_accepts_retry(terminal));
