@@ -5,13 +5,21 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Station</title>
+    <meta name="station-eager-entry" content="main" />
+    <script src="/startup-theme.js"></script>
+    <link rel="stylesheet" href="/src/components/startup-screen.css" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="station-startup" role="status" aria-label="Station" aria-busy="true">
+        <canvas class="station-startup__canvas" role="img" aria-label="Station"></canvas>
+        <img class="station-startup__logo" src="/favicon.png" alt="" width="96" height="96" />
+      </div>
+    </div>
     <script
       data-station-csp-nonce
       nonce="__TAURI_SCRIPT_NONCE__"
     ></script>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/boot.ts"></script>
   </body>
 </html>

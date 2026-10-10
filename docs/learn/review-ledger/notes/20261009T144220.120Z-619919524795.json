@@ -1,0 +1,7 @@
+{
+  "revision": "03793b5c35582243a6017c5de658ef9cfa7b7954",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"Reviewed maintained iOS launch storyboard and asset staging after Tauri init, Android night-qualified splash background, existing channel icon generation/apply/verify callers and favicon dev override. Added launch-input explanation; artwork generation and channel icon receipts are unchanged. Executed storyboard compile and channel-platform tests; packaged launch remains separate evidence.","inputs":["src-desktop/icons/README.md","scripts/apply-android-channel-icons.mjs","src-ui/src/index.css"]}
+  ]
+}
