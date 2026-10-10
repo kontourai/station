@@ -80,7 +80,7 @@ type PathApi = Pick<typeof posix, 'dirname' | 'join'>;
  * installer-owned archive: beside `current`, outside every version, so it
  * outlives the updates it performs.
  */
-export function serviceLauncherPath(
+function serviceLauncherPath(
   installRoot: string,
   path: PathApi = posix,
 ): string {

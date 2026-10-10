@@ -53,7 +53,6 @@
     "packages/shared/src/__tests__/cloud-move.test.ts": 1,
     "packages/shared/src/__tests__/durable-json-directory-fsync.test.ts": 1,
     "packages/shared/src/__tests__/durable-json-file.test.ts": 1,
-    "packages/shared/src/__tests__/fs-windows-compat.test.ts": 5,
     "packages/shared/src/__tests__/instance-registry-claim.test.ts": 1,
     "packages/shared/src/__tests__/instance-registry.test.ts": 3,
     "packages/shared/src/__tests__/json-file-storage.test.ts": 1,

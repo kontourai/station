@@ -2,14 +2,13 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   renameSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   fsyncDirectorySync,
   fsyncFileSync,
@@ -18,9 +17,11 @@ import {
   rmDirSyncRetrying,
 } from '../fs-windows-compat.js';
 
+const makeTempDir = trackTempDirs();
+
 describe('fsyncFileSync (#2675 W3)', () => {
   test('flushes a writable file on every platform rule', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-fsync-file-'));
+    const dir = makeTempDir('station-fsync-file-');
     const file = join(dir, 'data');
     writeFileSync(file, 'x');
     expect(() => fsyncFileSync(file, 'win32')).not.toThrow();
@@ -28,7 +29,7 @@ describe('fsyncFileSync (#2675 W3)', () => {
   });
 
   test('the Windows rule opens for writing, and leaves a read-only file unflushed', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-fsync-file-'));
+    const dir = makeTempDir('station-fsync-file-');
     const file = join(dir, 'data');
     writeFileSync(file, 'x');
     chmodSync(file, 0o444);
@@ -50,7 +51,7 @@ describe('fsyncFileSync (#2675 W3)', () => {
   });
 
   test('the Windows rule throws a refusal that is not the read-only case', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-fsync-file-'));
+    const dir = makeTempDir('station-fsync-file-');
     const locked = join(dir, 'locked');
     mkdirSync(locked);
     const file = join(locked, 'data');
@@ -71,14 +72,8 @@ describe('fsyncFileSync (#2675 W3)', () => {
 });
 
 describe('fsyncDirectorySync', () => {
-  let dir: string;
-
-  afterEach(() => {
-    if (dir) rmDirSyncRetrying(dir);
-  });
-
   test('runs the identity check on every platform', () => {
-    dir = mkdtempSync(join(tmpdir(), 'fs-windows-compat-'));
+    const dir = makeTempDir('fs-windows-compat-');
     let sawIdentity = false;
     fsyncDirectorySync(dir, (stat) => {
       sawIdentity = true;
@@ -88,7 +83,7 @@ describe('fsyncDirectorySync', () => {
   });
 
   test('propagates a failing identity check instead of swallowing it', () => {
-    dir = mkdtempSync(join(tmpdir(), 'fs-windows-compat-'));
+    const dir = makeTempDir('fs-windows-compat-');
     expect(() =>
       fsyncDirectorySync(dir, () => {
         throw new Error('identity mismatch');
@@ -99,7 +94,7 @@ describe('fsyncDirectorySync', () => {
 
 describe('rmDirSyncRetrying', () => {
   test('removes a populated directory tree', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'fs-windows-compat-rm-'));
+    const dir = makeTempDir('fs-windows-compat-rm-');
     mkdirSync(join(dir, 'nested'), { recursive: true });
     writeFileSync(join(dir, 'nested', 'file.txt'), 'content');
 
@@ -109,14 +104,14 @@ describe('rmDirSyncRetrying', () => {
   });
 
   test('does not throw when the directory is already gone', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'fs-windows-compat-rm-'));
+    const dir = makeTempDir('fs-windows-compat-rm-');
     rmDirSyncRetrying(dir);
     expect(() => rmDirSyncRetrying(dir)).not.toThrow();
   });
 });
 
 test('rename retry never hides an absent source or removes the existing destination', () => {
-  const root = mkdtempSync(join(tmpdir(), 'station-rename-fault-'));
+  const root = makeTempDir('station-rename-fault-');
   const destination = join(root, 'target.json');
   writeFileSync(destination, 'original');
   const waiting = vi.spyOn(Atomics, 'wait');
@@ -139,7 +134,7 @@ describe('renamePathSyncRetrying (#3363)', () => {
     });
 
   test('retries a transient Windows refusal of a real directory rename until it clears', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-rename-'));
+    const dir = makeTempDir('station-rename-');
     const source = join(dir, '.incoming.1');
     mkdirSync(source);
     writeFileSync(join(source, 'file'), 'x');
