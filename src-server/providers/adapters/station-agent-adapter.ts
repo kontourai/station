@@ -4,9 +4,9 @@ import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
-  McpElicitationContent,
-  McpElicitationResult,
-} from '@kontourai/station-contracts/mcp-elicitation';
+  InputRequestContent,
+  InputRequestResponse,
+} from '@kontourai/station-contracts/input-request';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalStatus,
@@ -21,7 +21,7 @@ import {
   parseTurnProvenanceContextInjection,
   type TurnProvenanceContextInjection,
 } from '@kontourai/station-contracts/turn-provenance-context';
-import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
+import { readInputRequestForm } from '@kontourai/station-shared/input-request';
 import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
@@ -756,16 +756,16 @@ export function mapStationAgentStreamEvent(options: {
     // #3284: a tool server asked the person for structured input. Same
     // request channel as a tool approval, answered with the form's content.
     const requestId = stringField(event.approvalId);
-    const form = readMcpElicitationForm(event.form);
-    if (!requestId || !form) return {};
+    const form = readInputRequestForm(event.inputRequest);
+    if (!requestId || !form?.source.startsWith('mcp:')) return {};
     publish({
       ...base,
       method: 'request.opened',
       requestId,
       requestType: 'approval',
-      title: `${form.serverId} needs your input`,
+      title: `${form.requester} needs your input`,
       ...(form.message ? { description: form.message } : {}),
-      payload: { mcpElicitation: form },
+      payload: { inputRequest: form },
     });
     return { approvalOpened: { requestId, elicitation: true } };
   }
@@ -1272,7 +1272,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
     context?: {
       clientOrigin?: ClientOrigin;
-      elicitationContent?: McpElicitationContent;
+      inputContent?: InputRequestContent;
     },
   ): Promise<void> {
     const record = this.requireSession(threadId);
@@ -1283,19 +1283,19 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     // #3284: a form's answer is the person's own action, carried whole. The
     // orchestration command already validated accepted content against the
     // form; the tool wrapper re-checks it before the server sees it.
-    let answer: McpElicitationResult | undefined;
+    let answer: InputRequestResponse | undefined;
     if (pending.elicitation) {
       if (decision === 'acceptForSession')
         throw new Error(
           'A tool server form is answered once, not for a session.',
         );
-      if (decision === 'accept' && !context?.elicitationContent)
+      if (decision === 'accept' && !context?.inputContent)
         throw new Error('Fill in the form before sending it.');
       answer =
         decision === 'accept'
-          ? { action: 'accept', content: context!.elicitationContent! }
+          ? { action: 'accept', content: context!.inputContent! }
           : { action: decision };
-    } else if (context?.elicitationContent !== undefined) {
+    } else if (context?.inputContent !== undefined) {
       throw new Error('Only a tool server form takes form content.');
     }
     this.resolutionOverrides.set(

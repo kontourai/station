@@ -207,6 +207,7 @@
     "./relay-enrollment": "./src/relay-enrollment.ts",
     "./registry-trust": "./src/registry-trust.ts",
     "./harness-questions": "./src/harness-questions.ts",
+    "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
     "./mcp-prompts": "./src/mcp-prompts.ts"
   },

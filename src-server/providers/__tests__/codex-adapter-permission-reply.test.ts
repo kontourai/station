@@ -972,7 +972,7 @@ test('question answers reach numeric RPC id zero, and invalid submissions leave 
     const context = { expectedRequestEventId: opened.eventId };
     await expect(
       adapter.respondToRequest(THREAD, opened.requestId, 'accept', context),
-    ).rejects.toThrow('Answer every question');
+    ).rejects.toThrow('The answer must be a set of fields.');
     await expect(
       adapter.respondToRequest(
         THREAD,
@@ -985,10 +985,7 @@ test('question answers reach numeric RPC id zero, and invalid submissions leave 
     const secret = ' private-answer-canary ';
     await adapter.respondToRequest(THREAD, opened.requestId, 'accept', {
       ...context,
-      answers: {
-        deployment: { optionIds: ['1'] },
-        credential: { optionIds: [], custom: secret },
-      },
+      inputContent: { deployment: '1', credential: secret },
     });
     expect(repliesTo(process, 0)).toEqual([
       expect.objectContaining({

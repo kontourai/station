@@ -227,9 +227,13 @@ requests through simulated process streams; they are not a live Codex receipt.
 }
 ```
 
-Harness questions carry a normalized `payload.questionnaire` on
-`request.opened`. To answer, send `decision: 'accept'`, the exact
-`expectedRequestEventId`, and `answers`, keyed by question ID:
+Harness questions and a tool server's form elicitation carry a
+`station.input-request/v1` form as `payload.inputRequest` on `request.opened`
+(see [shared input request helpers](shared.md#input-request-helpers)). An
+event stored before #3390 carries `payload.questionnaire` instead and is read
+as the same form. To answer, send the exact `expectedRequestEventId` and one
+of `accept` (with `content`, keyed by field name), `decline` or `cancel`;
+`acceptForSession` is refused:
 
 ```json
 {
@@ -238,19 +242,28 @@ Harness questions carry a normalized `payload.questionnaire` on
   "requestId": "request-id",
   "expectedRequestEventId": "opened-event-id",
   "decision": "accept",
-  "answers": {
-    "question-id": { "optionIds": ["option-id"], "custom": "Optional text" }
+  "content": {
+    "target": "0",
+    "checks": ["1", { "custom": "Smoke tests" }],
+    "name": "Ada"
   }
 }
 ```
 
-Every question must have a valid answer. Unknown or repeated choices,
-incomplete batches, stale events, bare acceptance and session grants are
-refused before resolving the pending question. Custom text is preserved;
-limits are 16 questions, 32 choices per question and 12,000 characters per
-custom answer. Claude answers map back to question text; Codex answers retain
-question IDs and the original RPC ID. Cancellation sends Codex an empty answer
-map. `blocking: false` means an optional question: opening or resolving it does
+A choice field takes an option value, a multi-choice field a list of them,
+and a field with `allowCustom` also takes `{ "custom": "text" }` in an
+option's place. Accepted content is validated against the form the person was
+shown: an unknown or missing required field, or a value outside its type,
+length, format, range or choices, is refused with a reason before the
+request is resolved; nothing is coerced or cut to fit. Limits are 32 fields,
+64 options per field and 12,000 characters per text answer. A decline or
+cancel cannot carry content. Claude answers map back to question text; Codex
+answers retain question IDs and the original RPC ID; cancellation sends Codex
+an empty answer map.
+
+The pre-#3390 `answers` field (`{ "question-id": { "optionIds": [...],
+"custom": "..." } }`) is deprecated since 0.9.0 and removed in 0.10.0. It is
+translated to `content` and validated the same way; never send both. `blocking: false` means an optional question: opening or resolving it does
 not change turn progress. Snapshots expose `blockingOpenRequestIds` separately
 from all `openRequestIds`; older hosts omit that field and retain the legacy
 blocking interpretation. A snapshot carries ids only, so after a reload a
@@ -262,11 +275,8 @@ a generic placeholder when the host cannot supply the request, including one
 older than that bound. Request inspection sets `requiresAnswers` so clients
 route to the Session instead of offering a generic approval button.
 
-A tool server's form elicitation during a Station-agent turn (#3284) carries a
-normalized `payload.mcpElicitation` (`serverId`, `message`, `fields`) on
-`request.opened`. Answer it with the exact `expectedRequestEventId` and one of
-`accept` (with `elicitationContent`, keyed by field name), `decline` or
-`cancel`; `acceptForSession` is refused:
+A tool server's form elicitation during a Station-agent turn (#3284) is the
+same form request, with source `mcp:<serverId>`:
 
 ```json
 {
@@ -275,7 +285,7 @@ normalized `payload.mcpElicitation` (`serverId`, `message`, `fields`) on
   "requestId": "elicitation-id",
   "expectedRequestEventId": "opened-event-id",
   "decision": "accept",
-  "elicitationContent": { "name": "Ada", "age": 36 }
+  "content": { "name": "Ada", "age": 36 }
 }
 ```
 

@@ -1,0 +1,7 @@
+{
+  "revision": "4f51aed38ec2a5f05747fedf924de9e1ebd4d100",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed current chat-native UIBlock form claims after normal integration of main6e and this input-request branch. Relative to6e, StreamingMessage and MessageContent add a separate InputRequestRecordRow case; their UIBlockRenderer instanceKey paths remain unchanged. Traced uiBlockIdentity result-event/tool/message fallback and result-local UI-block ordinal: input-request parts are not counted, so added request history cannot change form identity. UIBlockRenderer still uses chatFormDraftsStore in the normal chat scope and sender acceptance/retry lifecycle; canonical input requests use their own typed request reader and outcome-only history rather than chat-native form follow-up dispatch. Existing historical/proposed sections remain labelled and current form draft prose remains accurate; no prose change needed. Current4f51 caller suite283PASS includes ChatMessageList.formDrafts lifecycle cases; browser23PASS and current masked-secret/default/history renders inspected. These controls do not prove a live provider, native/device or released Nightly.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/StreamingMessage.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}
