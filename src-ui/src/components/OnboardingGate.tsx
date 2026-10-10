@@ -282,11 +282,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const credentialNoticeDismissed =
     dismissedCredentialNotice === connectionEvidence;
 
-  // The native bootstrap has already completed its one bounded recovery
-  // attempt. If its replacement credential could not be written, this is not
-  // a network failure and retrying the generic connection UI cannot repair
-  // it; surface the keychain action exactly once when the shell becomes
-  // available.
+  // The native bootstrap has completed its credential recovery attempt (or
+  // released the loader for a stopped/failed sidecar and will finish only
+  // after an explicit Restart). If its replacement credential could not be
+  // written, this is not a network failure and retrying the generic
+  // connection UI cannot repair it; surface the keychain action exactly once
+  // when the shell becomes available.
   const reportedBootstrapRecoveryError = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (

@@ -72,21 +72,64 @@ describe('bundled local profile bootstrap', () => {
     expect(run.getBundledServerStatus.mock.calls.length).toBeLessThan(700);
   });
 
-  test('a failed owned sidecar is still awaited, so an explicit Restart that later runs completes the bootstrap', async () => {
+  test.each(['failed', 'stopped', 'stopping'])(
+    'a reload while the owned sidecar is %s releases the loader to the recovery UI at once',
+    async (phase) => {
+      const run = await bootstrapOnVirtualClock(() => phase, 0);
+      expect(run.settled()).toBe(true);
+      const result = await run.result;
+      expect(result.continuation).toBeInstanceOf(Promise);
+      expect(run.invoke).not.toHaveBeenCalled();
+      expect(run.repository.authorizeActiveConnection).not.toHaveBeenCalled();
+      // A sidecar that never recovers keeps the continuation pending; it never
+      // authors a profile or blocks the shell.
+      let resumed = false;
+      void result.continuation?.then(() => {
+        resumed = true;
+      });
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(resumed).toBe(false);
+      expect(run.invoke).not.toHaveBeenCalled();
+    },
+  );
+
+  test('an explicit Restart after a failed owned sidecar completes the deferred bootstrap', async () => {
     const run = await bootstrapOnVirtualClock(
       (elapsed) =>
         elapsed < 40_000
-          ? 'starting'
-          : elapsed < 120_000
-            ? 'failed'
+          ? 'failed'
+          : elapsed < 100_000
+            ? 'starting'
             : 'running',
-      125_000,
+      0,
     );
     expect(run.settled()).toBe(true);
+    const result = await run.result;
+    expect(run.invoke).not.toHaveBeenCalled();
+    let resumed = false;
+    void result.continuation?.then(() => {
+      resumed = true;
+    });
+    await vi.advanceTimersByTimeAsync(105_000);
+    expect(resumed).toBe(true);
     expect(run.invoke).toHaveBeenCalledWith(
       'station_ensure_bundled_local_profile',
     );
-    expect(run.repository.authorizeActiveConnection).toHaveBeenCalled();
+    expect(run.repository.authorizeActiveConnection).toHaveBeenCalledWith(
+      'station-profile:local',
+    );
+  });
+
+  test('restarting is waited for and settles to the recovery UI once the supervisor reports failed', async () => {
+    const run = await bootstrapOnVirtualClock(
+      (elapsed) => (elapsed < 20_000 ? 'restarting' : 'failed'),
+      19_000,
+    );
+    expect(run.settled()).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(run.settled()).toBe(true);
+    await expect(run.result).resolves.toHaveProperty('continuation');
+    expect(run.invoke).not.toHaveBeenCalled();
   });
 
   test('does not author a profile while the owned sidecar is not running', async () => {

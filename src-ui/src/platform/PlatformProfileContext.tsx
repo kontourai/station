@@ -179,6 +179,7 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
  */
 let profileRepository: NativeStationProfileStorage | null = null;
 let nativeBootstrapRecoveryError: string | undefined;
+const bootstrapResumedListeners = new Set<() => void>();
 
 export function nativeProfileRepository(): NativeStationProfileStorage {
   if (!profileRepository)
@@ -215,6 +216,14 @@ const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
           invoke: invokeTauri,
         });
         nativeBootstrapRecoveryError = bootstrap.recoveryError;
+        // A terminal owned sidecar released the loader to the recovery UI.
+        // If an explicit Restart later brings it up, finish the bootstrap
+        // then and remount the connection subtree with the authorized
+        // profile.
+        void bootstrap.continuation?.then((resumed) => {
+          nativeBootstrapRecoveryError ??= resumed.recoveryError;
+          for (const listener of bootstrapResumedListeners) listener();
+        });
       }
       // Rust's active-profile authority is process-local. Desktop bootstrap
       // already selected this runtime's owner (or the confirmed-unowned shared
@@ -317,6 +326,17 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [profile, profileBootstrapError]);
+
+  // A deferred desktop bootstrap that completes after an explicit Restart
+  // authored or authorized a profile; reload the connection subtree.
+  useEffect(() => {
+    if (!profile?.isDesktop) return;
+    const listener = () => setProfileStoreEpoch((epoch) => epoch + 1);
+    bootstrapResumedListeners.add(listener);
+    return () => {
+      bootstrapResumedListeners.delete(listener);
+    };
+  }, [profile?.isDesktop]);
 
   // Repository refresh also publishes host-enrolled metadata on mobile;
   // reload the actual ConnectionStore without remounting the sign-in flow.
