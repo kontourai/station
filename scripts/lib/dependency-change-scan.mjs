@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { readPnpmLockfile } from './pnpm-lockfile.mjs';
 import { collectCorpusTestFiles } from './spawned-script-scan.mjs';
 import { workspaceManifestPaths } from './workspace-dependency-satisfaction.mjs';

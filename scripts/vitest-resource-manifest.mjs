@@ -1,7 +1,7 @@
 import { spawnSync as defaultSpawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 
 /**

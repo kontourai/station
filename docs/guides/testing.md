@@ -1208,6 +1208,14 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 
 ### Host typecheck slots and incremental compiles
 
+Station uses the pinned native TypeScript 7 compiler for type checks and
+package declaration builds. `typescript-api` is an alias for TypeScript 5.9.3,
+retained only for policy scanners and tests using its JavaScript AST API;
+TypeScript 7's package does not expose that API. Do not use the alias to compile
+Station. Package build/watch scripts retain their standalone `tsc` entry point, backed
+by TypeScript 7. Package builds do not enable incremental reuse; typecheck lanes
+keep their caches.
+
 Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
 one of N host-wide slots for the life of the compiler and adds `--incremental`
 with a per-project build info file under the ignored
@@ -1220,13 +1228,41 @@ pool with its own N. N is one slot per 8 GiB of RAM, rounded, between 1 and 4
 (2 on a ~15.6 GiB hosted runner, 4 on a 48 GB workstation); the `typecheck`
 aggregate prints it once per run and never runs more lanes at once than there
 are slots. `--watch`, `--help`, `--version` and similar non-compiling modes take
-no slot. A crashed or killed compiler's slot is reclaimed from its dead pid.
+no slot. On macOS and Linux the runner replaces itself with the compiler, and
+the next waiter reclaims its record after exit. On Windows an owned Job binds
+the compiler to the runner and settles before releasing the slot; a killed
+holder's record is reclaimed from its dead pid.
+
 Overrides: `STATION_TYPECHECK_SLOTS` (count), `STATION_TYPECHECK_SLOT_WAIT_MS`
 (bounded wait, default 45 minutes, then the lane fails naming the holders),
 `STATION_TYPECHECK_SLOT_DIR` (set it identically for every caller), and
 `STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
 same diagnostics as a cold one: TypeScript checks every input's content hash
 and replays stored errors for unchanged files.
+
+#### Optional Bun diagnostics
+
+For a cold check with a second implementation, install Bun **1.4.3** separately
+and run an explicit project through the same host slot pool:
+
+```sh
+npm run diagnostic:typecheck:bun -- -p src-ui/tsconfig.json
+npm run diagnostic:typecheck:bun -- -p tsconfig.tests.json
+```
+
+`STATION_BUN_EXECUTABLE` may name an absolute Bun executable when it is not on
+`PATH`. The runner refuses other Bun versions or a checker other than TypeScript
+7.0.2, requires an explicit project, and caps each Bun process at four threads
+and its share of available CPUs across the host's compiler slots. It writes no
+build metadata or declaration output. Run `npm run dist:freshness` first when
+the selected project consumes package builds.
+
+This command is diagnostic; pre-push, `ci:fast`, and required hosted checks use
+TypeScript 7. Bun has no persistent incremental cache, and a single project
+check does not replace the twelve-lane aggregate or the scripts coverage gate.
+Do not add `@types/bun` to Station's Node/browser projects to make a check pass.
+Compare diagnostics before treating a disagreement as a Station defect.
+
 
 The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start

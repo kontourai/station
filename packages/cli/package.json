@@ -43,7 +43,8 @@
     "@kontourai/station-shared": "^0.8.0",
     "commander": "^15.0.0",
     "esbuild": "^0.28.2",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "typescript-api": "npm:typescript@5.9.3"
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.0",
