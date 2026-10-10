@@ -1,0 +1,7 @@
+{
+  "revision": "c4b9f0ba5d207b69fc684bfc679b088835405890",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"Reviewed Android day/night splash values against the shared UI skin: day is f5f4ef and night is 0a0e13, while ic_launcher_background retains each channel's identity value. Existing API-31 day/night theme selection and generated resource precedence remain unchanged. iOS asset staging uses the same two skin backgrounds. Source does not imply physical-device or store delivery proof.","inputs":["src-desktop/icons/README.md","scripts/apply-android-channel-icons.mjs"]}
+  ]
+}

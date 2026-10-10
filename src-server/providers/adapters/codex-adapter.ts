@@ -32,10 +32,7 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
-import {
-  harnessAnswerTexts,
-  validateHarnessQuestionAnswers,
-} from '@kontourai/station-shared/harness-questions';
+import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
@@ -140,7 +137,7 @@ import {
 } from './codex-mcp-passthrough.js';
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
-import { codexQuestionnaire } from './harness-questions.js';
+import { codexAnswers, codexInputRequest } from './harness-questions.js';
 import {
   nativeResumeBindingKey,
   nativeSessionIdentityKey,
@@ -3036,19 +3033,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
 
     if (pending.method === 'item/tool/requestUserInput') {
-      const questionnaire = codexQuestionnaire(pending.payload);
+      const form = codexInputRequest(pending.payload);
       if (
-        !questionnaire ||
+        !form ||
         !context?.expectedRequestEventId ||
         context.expectedRequestEventId !== pending.openedEventId ||
         decision === 'acceptForSession'
       )
         throw new Error('Inspect this question before answering it.');
-      const answers =
+      const content =
         decision === 'accept'
-          ? validateHarnessQuestionAnswers(questionnaire, context?.answers)
+          ? validateInputRequestContent(form, context?.inputContent)
           : undefined;
-      if (decision !== 'accept' && context?.answers !== undefined)
+      if (decision !== 'accept' && context?.inputContent !== undefined)
         throw new Error('A cancelled question cannot carry answers.');
       record.pendingApprovals.delete(requestId);
       this.transport.replyToApproval(record, {
@@ -3057,20 +3054,13 @@ export class CodexAdapter implements ProviderAdapterShape {
         method: pending.method,
         ...(pending.blocking === false ? { blocking: false } : {}),
         result: {
-          answers: answers
-            ? Object.fromEntries(
-                questionnaire.questions.map((question) => [
-                  question.id,
-                  { answers: harnessAnswerTexts(question, answers) },
-                ]),
-              )
-            : {},
+          answers: content ? codexAnswers(form, content) : {},
         },
         status: mapApprovalResolutionStatus(decision),
       });
       return;
     }
-    if (context?.answers !== undefined)
+    if (context?.inputContent !== undefined)
       throw new Error('This request does not accept question answers.');
     record.pendingApprovals.delete(requestId);
     const outcome = resolveApprovalOutcome(

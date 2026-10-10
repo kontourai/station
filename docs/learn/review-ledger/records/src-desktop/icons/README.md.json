@@ -32,7 +32,9 @@
 
     "src-desktop/tauri.conf.json",
 
-    "src-ui/src/index.css"
+    "src-ui/src/index.css",
+
+    "scripts/lib/ios-launch-screen.mjs"
   ],
 
   "checks": [

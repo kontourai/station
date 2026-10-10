@@ -1379,20 +1379,29 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 
 ### Harness question interaction
 
-`packages/contracts/src/harness-questions.ts` owns the types; the shared
-subpath owns descriptor parsing and complete-batch validation. Provider
-normalization maps Claude AskUserQuestion and Codex requestUserInput into the
-canonical request event. SessionCommandModule validates the current event
-and answer batch before the adapter translates it back to the harness.
+`packages/contracts/src/input-request.ts` owns `station.input-request/v1`
+(#3390); `@kontourai/station-shared/input-request` owns reading and the one
+content validator. Provider normalization
+(`src-server/providers/adapters/harness-questions.ts`) maps Claude
+AskUserQuestion and Codex requestUserInput into a form on the canonical
+request event, and the MCP edge maps a tool server's elicitation the same
+way. SessionCommandModule validates content against the current event's form
+before the adapter, which checks it again against its own copy, translates it
+back to the harness. Stored pre-#3390 `questionnaire` events read as the same
+form.
 Optional Codex requests carry `blocking: false` through resolution and
 snapshot projection so they do not pause or revive turn progress.
 
-The lazy inline HarnessQuestionRequest captures the scoped SDK transport and
-exact event identity. HarnessQuestionCard owns selection, keyboard use, review
-and submission. Its IndexedDB draft owner keys non-private answers by the
-verified durable authority namespace and exact request; transport epoch
+The lazy InputRequestRequest captures the scoped SDK transport and exact
+event identity. InputRequestCard renders every form (inline on desktop, in
+`RequestSheet` on a phone), marks invalid fields and owns submission. For an
+engine's own questions its IndexedDB draft owner keys non-private answers by
+the verified durable authority namespace and exact request; transport epoch
 changes fence the rendered card without discarding that authority's draft.
-Private answers are excluded from drafts and masked in review. This boundary
+Private answers are excluded from drafts and masked as typed. Approvals render
+their `decision` options through InputRequestDecision and keep their own
+authority path. The transcript keeps one `input-request` record per request
+with no tool row, taking its outcome from `request.resolved`. This boundary
 does not redact engine history or establish engine acknowledgement.
 
 

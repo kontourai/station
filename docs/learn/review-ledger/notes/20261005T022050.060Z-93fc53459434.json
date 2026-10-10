@@ -1,0 +1,7 @@
+{
+  "revision": "118cebb159ffb91fc9e5b6d5898fbaae9178ebf1",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"W3 changes only how a Windows launcher service is installed, stopped and updated (service.ts stop order, frozen node.exe, launcher self-supervision); this document makes no claim about those, checked and unchanged.","inputs":["deploy/gcp-dev/README.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

@@ -206,6 +206,24 @@ describe('proof:repo-guardrails protects detailed chat context provenance', () =
 });
 
 describe('proof:repo-guardrails fails closed on a missing source', () => {
+  test('MonitoringView retains the shared session diagnostics query', () => {
+    const { status, output } = runProofCopy(undefined, undefined, undefined, {
+      path: 'src-ui/src/views/MonitoringView.tsx',
+      mutate: (source) => {
+        expect(source.split('useOrchestrationSessionsQuery')).toHaveLength(3);
+        return source.replaceAll(
+          'useOrchestrationSessionsQuery',
+          'retiredSessionQuery',
+        );
+      },
+    });
+    expect(output).toContain(
+      'MonitoringView must use the shared session diagnostics query.',
+    );
+    expect(output).not.toContain('Missing required guardrail source');
+    expect(status).toBe(1);
+  });
+
   test('the extracted usage owner retains its public engine attribution export', () => {
     const declaration = 'export function applyOrchestrationUsageToUsageStats';
     const { status, output } = runProofCopy(undefined, undefined, undefined, {
