@@ -946,7 +946,7 @@ function BrowserSessionPane({
         aria-label="Browser toolbar"
       >
         <div
-          className={`browser-pane__omni${editing ? ' browser-pane__omni--editing' : ''}`}
+          className={`browser-pane__omni${editing ? ' browser-pane__omni--editing' : ''}${addressFocused ? ' browser-pane__omni--focused' : ''}`}
         >
           <span
             className="browser-pane__omni-lock"
@@ -968,6 +968,14 @@ function BrowserSessionPane({
                 requestAnimationFrame(() => input.select());
               }}
               onBlur={() => setAddressFocused(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDraft(null);
+                  event.currentTarget.blur();
+                }
+              }}
               disabled={!live}
               autoCapitalize="off"
               autoComplete="off"

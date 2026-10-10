@@ -342,7 +342,7 @@
 
 /* Back and forward appear on hover or focus of the bar; on a coarse pointer
    there is no hover, so they are always there. */
-.browser-pane__omni-reveal {
+.browser-pane .browser-pane__omni-reveal {
   display: none;
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease-standard);
@@ -350,12 +350,12 @@
 
 .browser-pane__toolbar:hover .browser-pane__omni-reveal,
 .browser-pane__toolbar:focus-within .browser-pane__omni-reveal {
-  display: inline-flex;
+  display: inline-grid;
   opacity: 1;
 }
 
 .browser-pane[data-coarse] .browser-pane__omni-reveal {
-  display: inline-flex;
+  display: inline-grid;
   opacity: 1;
 }
 
@@ -370,7 +370,7 @@
 }
 
 .browser-pane[data-narrow]
-  .browser-pane__omni--editing
+  .browser-pane__omni--focused
   .browser-pane__nav-action {
   display: none;
 }
@@ -552,8 +552,23 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2, 8px);
-  min-height: 0;
+  min-height: 6rem;
   overflow: hidden;
+}
+
+@media (max-height: 540px) {
+  [data-workspace-pane-route]:has(.browser-pane) > .project-page__inner {
+    padding-top: var(--k-space-2);
+    padding-bottom: var(--k-space-2);
+  }
+}
+
+.browser-pane:has(.browser-pane__console) {
+  overflow: auto;
+}
+
+.browser-pane:has(.browser-pane__console) > .browser-pane__stage {
+  min-height: 6rem;
 }
 
 .browser-pane__console-bar {

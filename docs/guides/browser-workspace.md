@@ -220,6 +220,9 @@ pointer only while the toolbar is hovered or focused. Touch takeover hints say
 live page beneath the dock. On the standalone Browser route, the page frame
 passes its available height through to both views. The actions menu fits between
 the current toolbar/banner stack and the dock, with its own scroll when needed.
+Very short panes scroll internally so the console retains readable rows and the
+page remains reachable. Escape cancels an unsubmitted address and restores the
+committed URL; leaving the field restores navigation while retaining its draft.
 
 ## State, evidence and remaining limits
 
