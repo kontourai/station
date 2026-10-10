@@ -1,0 +1,7 @@
+{
+  "revision": "07afae552b359cdc509ccdb0610291686d6e9f0e",
+
+  "notes": [
+    {"path":"README.md","note":"The release-channel-ports change is the Windows-service paragraph only; this document makes no claim about it; checked.","inputs":["README.md","docs/guides/release-channel-ports.md"]}
+  ]
+}
