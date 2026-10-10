@@ -988,7 +988,7 @@ describe('ChatInputArea', () => {
   test('opens the model picker when model selection is available', () => {
     const props = renderChatInputArea();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Model/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(props.onModelOpen).toHaveBeenCalled();
     expect(props.onInputChange).not.toHaveBeenCalled();
@@ -1019,12 +1019,14 @@ describe('ChatInputArea', () => {
     expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
     expect(
       screen
-        .getByRole('button', { name: /^Model:/ })
+        .getByRole('button', { name: /^Engine & model:/ })
         .querySelector('.chat-input__model-name')?.textContent,
     ).not.toBe('Model');
     expect(
-      screen.getByRole('button', { name: /^Model:/ }).getAttribute('title'),
-    ).toMatch(/^Model:/);
+      screen
+        .getByRole('button', { name: /^Engine & model:/ })
+        .getAttribute('title'),
+    ).toMatch(/^Engine & model:/);
     agent.focus();
     // Browsers synthesize an untrusted click for keyboard activation of a
     // native button; detail=0 distinguishes that path from pointer input.
@@ -1074,7 +1076,7 @@ describe('ChatInputArea', () => {
     }
 
     render(<OfflineComposer />);
-    fireEvent.click(screen.getByRole('button', { name: /^Model/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
     expect(
@@ -1174,7 +1176,7 @@ describe('ChatInputArea', () => {
     ).toBe('Big Pickle');
     expect(
       modelButton.querySelector('.chat-input__chip-caption')?.textContent,
-    ).toBe('Model');
+    ).toBe('Engine & model');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
@@ -1193,7 +1195,7 @@ describe('ChatInputArea', () => {
       availableModels: [{ id: 'default', name: 'Default (recommended)' }],
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Default');
     expect(modelButton.textContent).not.toContain('recommended');
     // Nothing is lost: the catalog's own option name still reaches assistive
@@ -1217,7 +1219,7 @@ describe('ChatInputArea', () => {
       ],
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Opus 5');
   });
 
@@ -1228,7 +1230,7 @@ describe('ChatInputArea', () => {
       currentModel: undefined,
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Model & effort');
     expect(modelButton.getAttribute('aria-label')).toContain('Model & effort');
     expect(screen.queryByText('Model not reported')).toBeNull();
@@ -1247,7 +1249,7 @@ describe('ChatInputArea', () => {
     // second visible line, but it still goes through modelSourceLabel — so
     // this remains a real guard against the internal "runtime" vocabulary
     // leaking to users (docs/design/chat-composer.md §2).
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     const accessibleName = modelButton.getAttribute('aria-label') ?? '';
     expect(modelButton.textContent).not.toContain('runtime');
     expect(accessibleName).not.toContain('runtime');
