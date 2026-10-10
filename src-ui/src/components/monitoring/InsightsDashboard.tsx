@@ -1,3 +1,4 @@
+import type { UsageInsights } from '@kontourai/station-contracts/insights';
 import {
   fetchMonitoringEvents,
   useAnalyzeFeedbackMutation,
@@ -31,31 +32,6 @@ import {
 } from './insightsDashboardUtils';
 
 // ── Types ──────────────────────────────────────────────
-
-interface Insights {
-  toolUsage: Record<
-    string,
-    {
-      calls: number;
-      errors: number;
-      outcomeUnknown?: number;
-      /** station#1558; absent from a Station older than that change. */
-      unresolved?: number;
-    }
-  >;
-  hourlyActivity: number[];
-  agentUsage: Record<string, { chats: number; tokens: number }>;
-  modelUsage: Record<string, number>;
-  totalChats: number;
-  totalToolCalls: number;
-  totalErrors: number;
-  /** Results whose producer reported no terminal status (archive#3075). */
-  totalOutcomeUnknown?: number;
-  /** station#1558; absent from a Station older than that change. */
-  totalUnresolved?: number;
-  days: number;
-  applied?: { agent?: string; tool?: string; engine?: string; limit?: number };
-}
 
 interface MessageRating {
   id: string;
@@ -174,7 +150,7 @@ function UsageTab() {
   // a PR description claiming a filter that could not be set (archive#3075
   // review). Wire it when the events carry the field (archive#3130).
   const query = useInsightsQuery(days, { agent });
-  const data: Insights | undefined = query.data;
+  const data: UsageInsights | undefined = query.data;
   const { error, refetch } = query;
 
   if (error)
@@ -189,12 +165,26 @@ function UsageTab() {
       />
     );
   if (!data) return <SkeletonBlock count={3} label="Loading insights" />;
+  if (data.coverage?.state === 'unknown')
+    return (
+      <Empty
+        label="Insights history unavailable"
+        description="This Station has no readable monitoring history for this scan. No activity total can be confirmed."
+      />
+    );
 
   const { agents, maxHourly, maxToolCalls, topTools } =
     getInsightsUsageView(data);
 
   return (
     <>
+      <p role={data.coverage?.state === 'partial' ? 'alert' : 'status'}>
+        {data.coverage?.state === 'partial'
+          ? 'Some monitoring history could not be read. These totals are incomplete.'
+          : data.coverage?.state === 'complete'
+            ? 'Available monitoring history scanned. Totals cover retained records only.'
+            : 'This Station does not report scan completeness. These totals may be incomplete.'}
+      </p>
       <div className="insights-pill-row">
         {[7, 14, 30].map((d) => (
           <button
