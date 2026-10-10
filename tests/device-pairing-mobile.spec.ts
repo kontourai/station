@@ -119,6 +119,22 @@ async function openConnections(page: Page): Promise<Locator> {
   }
   if (await directConnections.isVisible()) {
     await directConnections.click();
+    const stationSwitcher = page.getByRole('menu', { name: 'Choose Station' });
+    await expect
+      .poll(
+        async () =>
+          (await stationSwitcher.isVisible()) ||
+          (await managerControl.first().isVisible()) ||
+          (await addComputer.isVisible()) ||
+          (await controlThisStation.isVisible()),
+        { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
+      )
+      .toBe(true);
+    if (await stationSwitcher.isVisible()) {
+      await stationSwitcher
+        .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+        .click();
+    }
   } else if (await setupLauncher.isVisible()) {
     await setupLauncher
       .getByRole('button', { name: 'View All Connections' })
