@@ -194,10 +194,10 @@ describe('NotificationsPage', () => {
 
     expect(screen.getAllByText('Approval request').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText('Allow Once'));
-    expect(action).toHaveBeenCalledWith({
-      actionId: 'accept',
-      id: 'notif-1',
-    });
+    expect(action).toHaveBeenCalledWith(
+      { actionId: 'accept', id: 'notif-1' },
+      { onSuccess: expect.any(Function) },
+    );
   });
 
   /*
