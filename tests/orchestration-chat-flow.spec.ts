@@ -691,11 +691,11 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(allowOnce).toBeVisible();
 
     // On a phone width (#3331) the row carries one Answer control and the
-    // three decisions move into the shared request sheet; the desktop row
-    // keeps all three inline.
+    // decisions move into the shared request sheet; the desktop row keeps
+    // Deny, Allow Once and the session-grant overflow trigger inline.
     const expectClearLayout = async (
       context: string,
-      controls = '.tool-call__approve-btn, button[aria-label="More ways to allow this request"]',
+      controls = '.tool-call__actions .action-row button',
       controlCount = 3,
     ) => {
       const label = await card.locator('.tool-call__label').boundingBox();
@@ -764,8 +764,15 @@ test.describe('Orchestration Chat Flow', () => {
 
     const expectLegibleButtons = async (
       context: string,
-      buttons: Locator = card.locator('.tool-call__approve-btn'),
+      buttons: Locator = card.locator(
+        '.tool-call__actions .action-row > button',
+      ),
+      controlCount = 2,
     ) => {
+      await expect(
+        buttons,
+        `${context}: expected controls rendered`,
+      ).toHaveCount(controlCount);
       const measure = async (button: Locator, label: string) => {
         // contrastRatio does not model element opacity, which is how the
         // disabled and hover states used to fade the text under 4.5:1. Pin
@@ -822,7 +829,7 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(answerControl).toBeVisible();
     await expect(allowOnce).toHaveCount(0);
     await expectClearLayout('pending 360', '.request-sheet-trigger', 1);
-    await expectLegibleButtons('pending row', answerControl);
+    await expectLegibleButtons('pending row', answerControl, 1);
 
     await answerControl.click();
     const sheetActions = sheet.getByRole('button', {
@@ -932,7 +939,7 @@ test.describe('Orchestration Chat Flow', () => {
       ).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
       // Deny and Allow Once; the session choices sit in the overflow menu.
       const lineCounts = await card
-        .locator('.tool-call__approve-btn')
+        .locator('.tool-call__actions .action-row > button')
         .evaluateAll((nodes) =>
           nodes.map((node) => {
             const range = document.createRange();
@@ -962,7 +969,7 @@ test.describe('Orchestration Chat Flow', () => {
     // under the 768px phone query, where the row carries only Answer.
     answer = 'settled';
     const desktopEnabledWidths = await card
-      .locator('.tool-call__approve-btn')
+      .locator('.tool-call__actions .action-row > button')
       .evaluateAll((nodes) =>
         nodes.map((node) => node.getBoundingClientRect().width),
       );
@@ -974,7 +981,7 @@ test.describe('Orchestration Chat Flow', () => {
     // Disabling restyles the buttons without resizing them: a border that
     // appears only when disabled shifted every button by 2px on click.
     const desktopDisabledWidths = await card
-      .locator('.tool-call__approve-btn')
+      .locator('.tool-call__actions .action-row > button')
       .evaluateAll((nodes) =>
         nodes.map((node) => node.getBoundingClientRect().width),
       );
