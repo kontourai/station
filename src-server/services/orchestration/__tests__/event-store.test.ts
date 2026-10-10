@@ -479,6 +479,38 @@ describe('EventStore', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test.each(['appendEvent', 'appendEventIfAbsent'] as const)(
+    '%s appends after a peer writer releases without upgrading a stale read snapshot',
+    async (appendMethod) => {
+      const peer = await holdPeerWriteLock(
+        join(dir, 'orchestration.sqlite'),
+        1_000,
+      );
+      const startedAt = Date.now();
+      let returnedAt: number | undefined;
+      try {
+        expect(() =>
+          store[appendMethod]({
+            eventId: 'append-after-peer-writer',
+            provider: 'codex',
+            threadId: 'peer-overlap',
+            method: 'turn.started',
+            turnId: 'peer-overlap-turn',
+            createdAt: '2026-10-10T00:00:00.000Z',
+            prompt: 'Record this turn after the peer commits',
+          }),
+        ).not.toThrow();
+        returnedAt = Date.now();
+        expect(store.listEvents('peer-overlap')).toHaveLength(1);
+      } finally {
+        const releasedAt = await peer.releasedAt();
+        expect(startedAt).toBeLessThan(releasedAt);
+        if (returnedAt !== undefined)
+          expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+      }
+    },
+  );
+
   test('seeded replay cursors remain monotonic across physical Draft discard', () => {
     // The connected client has seen every append. The reconnecting client
     // must see every surviving event whose append happened after its cursor.
@@ -1750,8 +1782,10 @@ describe('EventStore', () => {
     const database = new DatabaseSync(databasePath);
     // This is the production schema immediately before message search: every
     // durable event is present, while none of the FTS projections exists.
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database.exec(`
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database.exec(`
       DROP TABLE orchestration_message_search;
       DROP TABLE orchestration_message_search_v2;
       DROP TABLE orchestration_message_search_v3;
@@ -1760,72 +1794,78 @@ describe('EventStore', () => {
       DELETE FROM orchestration_message_search_projection_v3;
       DELETE FROM orchestration_message_search_backfill_v3;
     `);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, created_at, updated_at)
          VALUES (?, 'claude', 'ready', ?, ?)`,
-      )
-      .run(
-        'legacy-search-thread',
-        '2026-08-01T00:00:00.000Z',
-        '2026-08-01T00:00:02.000Z',
-      );
-    const insert = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'legacy-search-thread',
+          '2026-08-01T00:00:00.000Z',
+          '2026-08-01T00:00:02.000Z',
+        );
+      const insert = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'legacy-search-thread', ?, ?, ?, ?, ?, ?)`,
-    );
-    insert.run(
-      'legacy-session-start',
-      null,
-      'session.started',
-      JSON.stringify({
-        eventId: 'legacy-session-start',
-        method: 'session.started',
-        metadata: {
-          userId: 'legacy-owner',
-          agentSlug: 'claude',
-          projectSlug: 'legacy-project',
-        },
-      }),
-      '2026-08-01T00:00:00.000Z',
-      1,
-      1,
-    );
-    insert.run(
-      'legacy-message',
-      'legacy-turn',
-      'turn.started',
-      JSON.stringify({
-        eventId: 'legacy-message',
-        method: 'turn.started',
-        prompt: 'the phrase typed three sessions ago',
-      }),
-      '2026-08-01T00:00:01.000Z',
-      2,
-      2,
-    );
-    // The fixed startup window makes the migration's maximum read explicit.
-    for (
-      let index = 0;
-      index < MESSAGE_SEARCH_BACKFILL_EVENT_BATCH_SIZE;
-      index += 1
-    ) {
-      insert.run(
-        `legacy-noise-${index}`,
-        null,
-        'content.text-delta',
-        JSON.stringify({
-          method: 'content.text-delta',
-          delta: 'not searchable',
-        }),
-        `2026-08-01T00:01:${String(index % 60).padStart(2, '0')}.000Z`,
-        index + 3,
-        index + 3,
       );
+      insert.run(
+        'legacy-session-start',
+        null,
+        'session.started',
+        JSON.stringify({
+          eventId: 'legacy-session-start',
+          method: 'session.started',
+          metadata: {
+            userId: 'legacy-owner',
+            agentSlug: 'claude',
+            projectSlug: 'legacy-project',
+          },
+        }),
+        '2026-08-01T00:00:00.000Z',
+        1,
+        1,
+      );
+      insert.run(
+        'legacy-message',
+        'legacy-turn',
+        'turn.started',
+        JSON.stringify({
+          eventId: 'legacy-message',
+          method: 'turn.started',
+          prompt: 'the phrase typed three sessions ago',
+        }),
+        '2026-08-01T00:00:01.000Z',
+        2,
+        2,
+      );
+      // The fixed startup window makes the migration's maximum read explicit.
+      for (
+        let index = 0;
+        index < MESSAGE_SEARCH_BACKFILL_EVENT_BATCH_SIZE;
+        index += 1
+      ) {
+        insert.run(
+          `legacy-noise-${index}`,
+          null,
+          'content.text-delta',
+          JSON.stringify({
+            method: 'content.text-delta',
+            delta: 'not searchable',
+          }),
+          `2026-08-01T00:01:${String(index % 60).padStart(2, '0')}.000Z`,
+          index + 3,
+          index + 3,
+        );
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
     }
-    database.close();
 
     store = new EventStore(databasePath);
     const firstV3Window = new DatabaseSync(databasePath);
@@ -5163,57 +5203,65 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'pre-ownership-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-backfilled',
-        'claude',
-        'ready',
-        JSON.stringify({ tenantId: 'alpha', source: 'session' }),
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-backfilled',
+          'claude',
+          'ready',
+          JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'backfilled-start',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    insertEvent.run(
-      'backfilled-turn-start',
-      'turn.started',
-      JSON.stringify({
-        method: 'turn.started',
-        prompt: 'Accurate history title',
-      }),
-      '2026-08-08T11:01:00.000Z',
-      2,
-      2,
-    );
-    insertEvent.run(
-      'backfilled-turn-complete',
-      'turn.completed',
-      JSON.stringify({ method: 'turn.completed' }),
-      '2026-08-08T12:00:00.000Z',
-      3,
-      3,
-    );
-    database.close();
+      );
+      insertEvent.run(
+        'backfilled-start',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      insertEvent.run(
+        'backfilled-turn-start',
+        'turn.started',
+        JSON.stringify({
+          method: 'turn.started',
+          prompt: 'Accurate history title',
+        }),
+        '2026-08-08T11:01:00.000Z',
+        2,
+        2,
+      );
+      insertEvent.run(
+        'backfilled-turn-complete',
+        'turn.completed',
+        JSON.stringify({ method: 'turn.completed' }),
+        '2026-08-08T12:00:00.000Z',
+        3,
+        3,
+      );
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
+    }
 
     store = new EventStore(databasePath);
 
@@ -5240,79 +5288,87 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'pre-ownership-provider-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-backfilled',
-        'claude',
-        'ready',
-        JSON.stringify({ tenantId: 'alpha', source: 'session' }),
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-backfilled',
+          'claude',
+          'ready',
+          JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'backfilled-start',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    insertEvent.run(
-      'backfilled-turn-start',
-      'turn.started',
-      JSON.stringify({
-        method: 'turn.started',
-        prompt: 'Accurate history title',
-      }),
-      '2026-08-08T11:01:00.000Z',
-      2,
-      2,
-    );
-    insertEvent.run(
-      'backfilled-turn-complete',
-      'turn.completed',
-      JSON.stringify({ method: 'turn.completed' }),
-      '2026-08-08T12:00:00.000Z',
-      3,
-      3,
-    );
-    insertEvent.run(
-      'backfilled-provider-start',
-      'turn.started',
-      JSON.stringify({
-        method: 'turn.started',
-        metadata: { trigger: 'provider' },
-      }),
-      '2026-08-08T12:00:01.000Z',
-      4,
-      4,
-    );
-    insertEvent.run(
-      'backfilled-provider-complete',
-      'turn.completed',
-      JSON.stringify({
-        method: 'turn.completed',
-        metadata: { trigger: 'provider' },
-      }),
-      '2026-08-08T12:00:02.000Z',
-      5,
-      5,
-    );
-    database.close();
+      );
+      insertEvent.run(
+        'backfilled-start',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      insertEvent.run(
+        'backfilled-turn-start',
+        'turn.started',
+        JSON.stringify({
+          method: 'turn.started',
+          prompt: 'Accurate history title',
+        }),
+        '2026-08-08T11:01:00.000Z',
+        2,
+        2,
+      );
+      insertEvent.run(
+        'backfilled-turn-complete',
+        'turn.completed',
+        JSON.stringify({ method: 'turn.completed' }),
+        '2026-08-08T12:00:00.000Z',
+        3,
+        3,
+      );
+      insertEvent.run(
+        'backfilled-provider-start',
+        'turn.started',
+        JSON.stringify({
+          method: 'turn.started',
+          metadata: { trigger: 'provider' },
+        }),
+        '2026-08-08T12:00:01.000Z',
+        4,
+        4,
+      );
+      insertEvent.run(
+        'backfilled-provider-complete',
+        'turn.completed',
+        JSON.stringify({
+          method: 'turn.completed',
+          metadata: { trigger: 'provider' },
+        }),
+        '2026-08-08T12:00:02.000Z',
+        5,
+        5,
+      );
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
+    }
 
     store = new EventStore(databasePath);
 
@@ -5389,59 +5445,67 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'high-volume-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-high-volume',
-        'claude',
-        'ready',
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-high-volume',
+          'claude',
+          'ready',
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-high-volume', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'high-volume-owner',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    insertEvent.run(
-      'high-volume-title',
-      'turn.started',
-      JSON.stringify({ method: 'turn.started', prompt: 'Bounded title' }),
-      '2026-08-08T11:00:01.000Z',
-      2,
-      2,
-    );
-    for (let index = 0; index < 500; index += 1) {
-      insertEvent.run(
-        `high-volume-noise-${index}`,
-        'content.text-delta',
-        JSON.stringify({
-          method: 'content.text-delta',
-          itemId: `item-${index}`,
-          delta: 'x'.repeat(2_000),
-        }),
-        new Date(1_754_654_402_000 + index).toISOString(),
-        index + 3,
-        index + 3,
       );
+      insertEvent.run(
+        'high-volume-owner',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      insertEvent.run(
+        'high-volume-title',
+        'turn.started',
+        JSON.stringify({ method: 'turn.started', prompt: 'Bounded title' }),
+        '2026-08-08T11:00:01.000Z',
+        2,
+        2,
+      );
+      for (let index = 0; index < 500; index += 1) {
+        insertEvent.run(
+          `high-volume-noise-${index}`,
+          'content.text-delta',
+          JSON.stringify({
+            method: 'content.text-delta',
+            itemId: `item-${index}`,
+            delta: 'x'.repeat(2_000),
+          }),
+          new Date(1_754_654_402_000 + index).toISOString(),
+          index + 3,
+          index + 3,
+        );
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
     }
-    database.close();
 
     const prepare = vi.spyOn(DatabaseSync.prototype as any, 'prepare');
     store = new EventStore(databasePath);
@@ -5475,17 +5539,25 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'multi-batch-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    const insertSession = database.prepare(
-      `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      const insertSession = database.prepare(
+        `INSERT INTO provider_session_state
         (thread_id, provider, status, created_at, updated_at)
        VALUES (?, 'claude', 'ready', ?, ?)`,
-    );
-    for (let index = 0; index <= 500; index += 1) {
-      const createdAt = new Date(1_754_654_400_000 + index).toISOString();
-      insertSession.run(`thread-batch-${index}`, createdAt, createdAt);
+      );
+      for (let index = 0; index <= 500; index += 1) {
+        const createdAt = new Date(1_754_654_400_000 + index).toISOString();
+        insertSession.run(`thread-batch-${index}`, createdAt, createdAt);
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
     }
-    database.close();
 
     const prepare = vi.spyOn(DatabaseSync.prototype as any, 'prepare');
     store = new EventStore(databasePath);
@@ -5510,48 +5582,56 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'title-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-title',
-        'claude',
-        'ready',
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-title',
+          'claude',
+          'ready',
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-title', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'title-start',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-title', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    insertEvent.run(
-      'title-turn',
-      'turn.started',
-      JSON.stringify({
-        method: 'turn.started',
-        prompt: 'Run `ls -la` for **me** and keep user_id',
-      }),
-      '2026-08-08T11:00:01.000Z',
-      2,
-      2,
-    );
-    database.close();
+      );
+      insertEvent.run(
+        'title-start',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-title', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      insertEvent.run(
+        'title-turn',
+        'turn.started',
+        JSON.stringify({
+          method: 'turn.started',
+          prompt: 'Run `ls -la` for **me** and keep user_id',
+        }),
+        '2026-08-08T11:00:01.000Z',
+        2,
+        2,
+      );
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
+    }
 
     store = new EventStore(databasePath);
     expect(
@@ -5572,47 +5652,55 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'ownership-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-ownership',
-        'claude',
-        'ready',
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-ownership',
+          'claude',
+          'ready',
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-ownership', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'ownership-start',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    for (let sequence = 2; sequence <= 4; sequence += 1) {
-      insertEvent.run(
-        `ownership-configured-${sequence}`,
-        'session.configured',
-        JSON.stringify({ method: 'session.configured' }),
-        `2026-08-08T11:00:0${sequence}.000Z`,
-        sequence,
-        sequence,
       );
+      insertEvent.run(
+        'ownership-start',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      for (let sequence = 2; sequence <= 4; sequence += 1) {
+        insertEvent.run(
+          `ownership-configured-${sequence}`,
+          'session.configured',
+          JSON.stringify({ method: 'session.configured' }),
+          `2026-08-08T11:00:0${sequence}.000Z`,
+          sequence,
+          sequence,
+        );
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
     }
-    database.close();
 
     store = new EventStore(databasePath);
     expect(

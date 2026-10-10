@@ -88,7 +88,7 @@ describe('fallow audit base snapshots (#2529)', () => {
           seen.add(entry);
     }, 20);
     try {
-      await runFallowAnalysis(repo, 'audit', join(scratch, 'audit.json'));
+      await runFallowAnalysis(repo, 'audit', join(repo, 'audit.json'));
     } finally {
       clearInterval(watcher);
     }
@@ -112,7 +112,7 @@ describe('fallow audit base snapshots (#2529)', () => {
     process.env.STATION_TEMP_ROOT = stationRoot;
 
     await expect(
-      runFallowAnalysis(repo, 'audit', join(scratch, 'refused-audit.json')),
+      runFallowAnalysis(repo, 'audit', join(repo, 'refused-audit.json')),
     ).rejects.toThrow(/status=2[\s\S]*Failed to parse config file/);
     expect(listing(join(stationRoot, 'fallow'))).toEqual([]);
   });

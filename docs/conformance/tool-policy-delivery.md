@@ -298,12 +298,14 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `decision_reason_type` (`rule`, `mode`, `subcommandResults`,
 `permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
-`decision_reason_code` and `requires_user_interaction`. Agent SDK 0.3.278
-hands `canUseTool` none of them. A test runs the real SDK against a stand-in
-CLI and fails when that changes
+`decision_reason_code` and `requires_user_interaction`. The installed Agent
+SDK 0.3.289 forwards reason type, reason code and interaction fields, but not
+`classifier_approvable`. A test runs the real installed SDK against a stand-in
+CLI and verifies the reason values, request identities and classifier facts
+retained by the tap
 (`src-server/providers/__tests__/claude-code-spawn.sdk.test.ts`). The request
-shapes and reason texts below were read in the CLI bundled with that SDK
-(2.1.278), not captured from a live session.
+shapes and reason texts below were read in Claude Code 2.1.278, not captured
+from a live session.
 
 Station therefore owns the engine spawn through the SDK's
 `spawnClaudeCodeProcess` option

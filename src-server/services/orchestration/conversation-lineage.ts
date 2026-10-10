@@ -9,7 +9,14 @@ import type {
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import type {
+  EngineId,
+  NativeResumeIdentityStatus,
+} from '@kontourai/station-contracts/provider';
+import {
+  NATIVE_RESUME_BINDING_METADATA_KEY,
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   foldedSessionLifecycleState,
@@ -155,6 +162,7 @@ interface ConversationLineageDeps {
    * the idle session is reused as-is.
    */
   perTurnModelOverride?: (provider: EngineId) => boolean;
+  nativeReturnSupported?: (provider: EngineId) => boolean;
   readSessionMessages: (
     threadId: string,
     authority: SessionReadScope,
@@ -209,6 +217,8 @@ export class ConversationLineage {
     resumeCursor?: unknown;
     resumeModel?: string;
     transcriptSeed?: string;
+    nativeSourceSessionId?: string;
+    nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
     retirePredecessorSessionId?: string;
   }> {
@@ -635,8 +645,16 @@ export class ConversationLineage {
       modelId?: string;
       idempotencyKey: string;
       messageDigest: string;
+      provider?: EngineId;
     },
-  ) {
+  ): Promise<
+    ReturnType<EventStore['reserveConversationHandoff']> & {
+      transcriptSeed?: string;
+      resumeCursor?: unknown;
+      nativeResumeBindingKey?: string;
+      contextBoundary?: ConversationContextBoundaryProjection;
+    }
+  > {
     const store = this.deps.eventStore;
     if (!store)
       throw new Error('Conversation handoff requires durable storage');
@@ -674,13 +692,40 @@ export class ConversationLineage {
         boundary.successorSessionId === existing.sessionId
           ? projectConversationContextBoundary(boundary)
           : undefined;
+      const nativeReturn = existing.nativeReturnSourceSessionId
+        ? await this.nativeReturnContext(
+            conversationId,
+            authority,
+            existing.nativeReturnSourceSessionId,
+            target,
+            existing.predecessorSessionId,
+            existing.sessionId,
+          )
+        : undefined;
+      if (
+        existing.nativeReturnSourceSessionId &&
+        (!nativeReturn || contextBoundary)
+      ) {
+        throw new Error(
+          'The reserved native return is no longer available; no replacement activation was started.',
+        );
+      }
+      if (
+        nativeReturn &&
+        nativeReturn.sourceEventId !== existing.nativeReturnSourceEventId
+      ) {
+        throw new Error(
+          'The native return acceptance boundary changed; no replacement activation was started.',
+        );
+      }
       return {
         ...store.describeConversationHandoff(existing, 'existing'),
         ...(contextBoundary ? { contextBoundary } : {}),
-        ...handoffTranscriptContext(
-          contextBoundary,
-          this.readConversationTranscriptMessages(conversationId, authority),
-        ),
+        ...(nativeReturn ??
+          handoffTranscriptContext(
+            contextBoundary,
+            this.readConversationTranscriptMessages(conversationId, authority),
+          )),
       };
     }
     const lineage = store.conversationSessions(conversationId);
@@ -722,6 +767,14 @@ export class ConversationLineage {
         'An Agent/engine handoff requires the predecessor Session to be terminal with no active turn.',
       );
     }
+    const nativeReturn = !boundary
+      ? await this.findNativeReturnContext(
+          conversationId,
+          authority,
+          target,
+          detail.session.cwd,
+        )
+      : undefined;
     const reservation = store.reserveConversationHandoff({
       conversationId,
       predecessorSessionId: predecessor.sessionId,
@@ -730,6 +783,12 @@ export class ConversationLineage {
         `${conversationId}:session:${crypto.randomUUID()}`,
       idempotencyKey: target.idempotencyKey,
       messageDigest: target.messageDigest,
+      ...(nativeReturn
+        ? {
+            nativeReturnSourceSessionId: nativeReturn.sourceSessionId,
+            nativeReturnSourceEventId: nativeReturn.sourceEventId,
+          }
+        : {}),
       targetAgentId: target.agentId,
       ...(target.executionAgentId
         ? { targetExecutionAgentId: target.executionAgentId }
@@ -749,10 +808,143 @@ export class ConversationLineage {
       ...(boundary
         ? { contextBoundary: projectConversationContextBoundary(boundary) }
         : {}),
-      ...handoffTranscriptContext(
-        boundary ? projectConversationContextBoundary(boundary) : undefined,
-        this.readConversationTranscriptMessages(conversationId, authority),
-      ),
+      ...(nativeReturn ??
+        handoffTranscriptContext(
+          boundary ? projectConversationContextBoundary(boundary) : undefined,
+          this.readConversationTranscriptMessages(conversationId, authority),
+        )),
+    };
+  }
+
+  private async findNativeReturnContext(
+    conversationId: string,
+    authority: SessionReadScope,
+    target: {
+      agentId: string;
+      environmentId: string;
+      connectionId?: string;
+      provider?: EngineId;
+    },
+    cwd: string | undefined,
+  ) {
+    if (!target.provider || !this.deps.nativeReturnSupported?.(target.provider))
+      return undefined;
+    const lineage = this.deps.eventStore!.conversationSessions(conversationId);
+    for (const entry of lineage.slice(0, -1).reverse()) {
+      const detail = await this.deps.readSession(entry.sessionId, authority);
+      if (!detail) return undefined;
+      const metadata = executionMetadata(detail.events);
+      if (
+        metadata?.agentSlug !== target.agentId ||
+        metadata.environmentId !== target.environmentId ||
+        metadata.connectionId !== target.connectionId ||
+        detail.session.provider !== target.provider
+      )
+        continue;
+      if (detail.session.cwd !== cwd) return undefined;
+      return this.nativeReturnContext(
+        conversationId,
+        authority,
+        entry.sessionId,
+        target,
+        lineage.at(-1)!.sessionId,
+      );
+    }
+    return undefined;
+  }
+
+  private async nativeReturnContext(
+    conversationId: string,
+    authority: SessionReadScope,
+    sourceSessionId: string,
+    target: {
+      agentId: string;
+      environmentId: string;
+      connectionId?: string;
+      provider?: EngineId;
+    },
+    throughSessionId: string,
+    reservedSessionId?: string,
+  ) {
+    if (!target.provider || !this.deps.nativeReturnSupported?.(target.provider))
+      return undefined;
+    const lineage = this.deps.eventStore!.conversationSessions(conversationId);
+    const index = lineage.findIndex(
+      (entry) => entry.sessionId === sourceSessionId,
+    );
+    const throughIndex = lineage.findIndex(
+      (entry) => entry.sessionId === throughSessionId,
+    );
+    if (index < 0 || throughIndex <= index) return undefined;
+    const source = await this.deps.readSession(sourceSessionId, authority);
+    if (!source) return undefined;
+    if (!this.deps.eventStore!.nativeSessionOwnedBy(sourceSessionId)) {
+      if (
+        !reservedSessionId ||
+        !this.deps.eventStore!.nativeSessionReservedFor(
+          sourceSessionId,
+          reservedSessionId,
+        )
+      )
+        return undefined;
+    }
+    const metadata = executionMetadata(source.events);
+    const key = metadata?.[NATIVE_RESUME_BINDING_METADATA_KEY];
+    const terminal = source.events
+      .filter(
+        (event) =>
+          event.method === 'turn.completed' ||
+          event.method === 'turn.aborted' ||
+          event.method === 'runtime.error',
+      )
+      .at(-1);
+    if (
+      metadata?.agentSlug !== target.agentId ||
+      metadata.environmentId !== target.environmentId ||
+      metadata.connectionId !== target.connectionId ||
+      source.session.provider !== target.provider ||
+      source.session.persistSession === false ||
+      source.session.resumeCursor === undefined ||
+      source.session.status === 'dead' ||
+      source.session.hasActiveTurn ||
+      source.session.pendingReview ||
+      terminal?.method !== 'turn.completed' ||
+      typeof key !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(key)
+    )
+      return undefined;
+    const invalidated = this.deps
+      .eventStore!.listConversationHandoffs(conversationId)
+      .some(
+        (marker) =>
+          marker.nativeReturnSourceSessionId === sourceSessionId &&
+          marker.nativeReturnSourceEventId === terminal.eventId &&
+          this.deps
+            .eventStore!.listEvents(marker.sessionId)
+            .some(
+              (event) =>
+                event.payload.method === 'runtime.error' &&
+                event.payload.metadata?.[
+                  NATIVE_RESUME_IDENTITY_METADATA_KEY
+                ] === 'mismatch',
+            ),
+      );
+    if (invalidated) return undefined;
+    const messages = lineage
+      .slice(index + 1, throughIndex + 1)
+      .flatMap((entry) =>
+        this.deps.readSessionMessages(entry.sessionId, authority),
+      );
+    return {
+      sourceSessionId,
+      sourceEventId: terminal.eventId,
+      resumeCursor: source.session.resumeCursor,
+      nativeResumeBindingKey: key,
+      transcriptSeed: buildTranscriptSeed({
+        heading:
+          'Conversation while this engine was away (context only, not a new request; the earlier native conversation is being resumed).',
+        ...transcriptSeedSource(messages),
+      }).text,
     };
   }
 
@@ -821,12 +1013,25 @@ export class ConversationLineage {
             : store.readSessionByThread(marker.sessionId)
               ? ('indeterminate' as const)
               : ('reserved' as const);
+    let nativeResumeIdentity: NativeResumeIdentityStatus | undefined;
+    for (const event of store.listEvents(marker.sessionId)) {
+      const payload = event.payload;
+      if (
+        payload.method !== 'session.configured' &&
+        payload.method !== 'runtime.error'
+      )
+        continue;
+      const value = payload.metadata?.[NATIVE_RESUME_IDENTITY_METADATA_KEY];
+      if (value === 'matched' || value === 'mismatch')
+        nativeResumeIdentity = value;
+    }
     return {
       conversationId,
       currentSessionId: marker.sessionId,
       status,
       marker: store.projectConversationHandoff(marker),
       ...(providerTurnId ? { providerTurnId } : {}),
+      ...(nativeResumeIdentity ? { nativeResumeIdentity } : {}),
     };
   }
 
@@ -1070,7 +1275,13 @@ function continuationLaunchContext(
   },
   messages: readonly ConversationMessage[],
   resumeSupported?: boolean,
-): { resumeCursor?: unknown; resumeModel?: string; transcriptSeed?: string } {
+): {
+  resumeCursor?: unknown;
+  resumeModel?: string;
+  transcriptSeed?: string;
+  nativeSourceSessionId?: string;
+  nativeResumeBindingKey?: string;
+} {
   const sourceConnectionId = [...detail.events].reverse().flatMap((event) => {
     if (
       event.method !== 'session.started' &&
@@ -1121,12 +1332,38 @@ function continuationLaunchContext(
   const retainedModel = sameExecutionIdentity
     ? (detail.session.reportedModel ?? detail.session.model)
     : undefined;
+  const nativeBindingKey = executionMetadata(detail.events)?.[
+    NATIVE_RESUME_BINDING_METADATA_KEY
+  ];
   return {
     ...(retainedModel ? { resumeModel: retainedModel } : {}),
     ...(canResume
       ? { resumeCursor: detail.session.resumeCursor }
       : { transcriptSeed: continuationTranscriptSeed(messages) }),
+    ...(canResume
+      ? {
+          nativeSourceSessionId: detail.session.threadId,
+          ...(typeof nativeBindingKey === 'string'
+            ? { nativeResumeBindingKey: nativeBindingKey }
+            : {}),
+        }
+      : {}),
   };
+}
+
+function executionMetadata(
+  events: readonly CanonicalRuntimeEvent[],
+): Record<string, unknown> | undefined {
+  let metadata: Record<string, unknown> | undefined;
+  for (const event of events) {
+    if (
+      event.method === 'session.started' ||
+      event.method === 'session.configured'
+    ) {
+      metadata = { ...metadata, ...event.metadata };
+    }
+  }
+  return typeof metadata?.agentSlug === 'string' ? metadata : undefined;
 }
 
 /**

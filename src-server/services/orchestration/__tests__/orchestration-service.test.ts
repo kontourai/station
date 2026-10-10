@@ -23876,12 +23876,14 @@ describe('OrchestrationService', () => {
     expect(root?.sessionLineage).toEqual([
       {
         sessionId: rootId,
+        provider: 'codex',
         agentSlug: 'codex',
         agentDisplayName: 'Historical Codex',
         agentIcon: 'terminal',
       },
       {
         sessionId: childId,
+        provider: 'codex',
         agentSlug: 'claude',
         agentDisplayName: 'Historical Claude',
         agentIcon: 'sparkles',

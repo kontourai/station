@@ -41,6 +41,14 @@ npm install @kontourai/station-sdk
 
 ## Exact tool results
 
+`@kontourai/station-sdk/client` also exports
+`readConversation(apiBase, conversationId, { cursor, aroundMessageId, limit })`.
+It returns the canonical compact history page with message Session/model
+attribution and optional versioned continuity provenance. Provider switches
+remain linked Sessions in one Conversation; explicit fork ancestry is separate.
+Missing or unavailable provenance means unknown, and parent references grant no
+additional read access. Use a published version containing this export.
+
 The React-free `@kontourai/station-sdk/client` entry exports
 `getSessionToolResult(apiBase, sessionId, eventId)`,
 `attachTaskToolResultReference(apiBase, taskId, { sessionId, eventId })`, and

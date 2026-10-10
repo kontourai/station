@@ -70,6 +70,8 @@ b78eecc87b8c0ac3c0ef4b864c9f73855b659e30:tests/input-request.spec.ts:generic-api
 # Approval: T3 9b93bb96-f542-4c31-99b7-2edabdc2573f / e65fddf0-eae4-448d-b242-3dadb66e5adc.
 1b97453318c4282cddfb39af433088bff62b9c28:docs/learn/review-ledger/notes/20261007T183700.092Z-5b40e95b2203.json:generic-api-key:73
 
+# #3499: Brian approved this exact squash-commit fingerprint on 2026-10-09.
+# Byte-identical public review narrative from #3495; future commits stay scanned.
 # #3514: byte-identical replay of the approved #3495 note in its main squash.
 # Exact historical location only; fresh same-path controls remain scanned.
 881b20de853d8c3a7de9489121644c21c7d4aabd:docs/learn/review-ledger/notes/20261007T183700.092Z-5b40e95b2203.json:generic-api-key:73

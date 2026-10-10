@@ -12,6 +12,7 @@
  * this `/agents/:slug/conversations[...]` family).
  */
 
+import type { ConversationReadPage } from '@kontourai/station-contracts/orchestration';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { rethrowDeadline } from './request-deadline';
@@ -20,6 +21,28 @@ interface ConversationEnvelope<T> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+/** Authorized paged history across every execution Session of a Conversation. */
+export async function readConversation(
+  apiBase: string,
+  conversationId: string,
+  query: { cursor?: string; aroundMessageId?: string; limit?: number } = {},
+  opts?: ClientRequestOptions,
+): Promise<ConversationReadPage> {
+  const params = new URLSearchParams();
+  if (query.cursor !== undefined) params.set('cursor', query.cursor);
+  if (query.aroundMessageId !== undefined)
+    params.set('aroundMessageId', query.aroundMessageId);
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  const response = await getJson(
+    `${apiBase}/api/conversations/${encodeURIComponent(conversationId)}/read${params.size ? `?${params}` : ''}`,
+    opts,
+  );
+  const result = await readConversationEnvelope<ConversationReadPage>(response);
+  if (!response.ok || !result.success || !result.data)
+    throw envelopeError(response, result, 'Failed to read conversation');
+  return result.data;
 }
 
 /** Indexed transcript result returned by `/api/conversations/search`. */

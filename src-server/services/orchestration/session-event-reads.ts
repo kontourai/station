@@ -424,6 +424,9 @@ export class SessionEventReads {
         );
         return {
           sessionId: lineage.sessionId,
+          ...(detail?.session.provider
+            ? { provider: detail.session.provider }
+            : {}),
           ...(detail?.session.assignedAgentSlug
             ? { agentSlug: detail.session.assignedAgentSlug }
             : {}),

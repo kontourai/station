@@ -1313,6 +1313,15 @@ The unique predecessor index means concurrent continuation attempts receive the
 same reserved child instead of creating sibling execution sessions.
 
 A conversation keeps one live execution session (#2540). A turn's outcome
+is independent of a provider handoff: handoffs append execution Sessions to
+the same Conversation, while explicit forks create separate Conversations.
+Compatible built-in engine returns reuse the earlier native identity with
+bounded intervening context. The private durable native-ownership tables fence
+old aliases and require confirmed engine retirement before transfer. The compact
+history contract preserves ordered provider boundaries and explicit fork
+ancestry; neither a return request nor lineage alone proves native identity.
+
+A turn's outcome
 never ends its session. A finished turn rests it `idle` (at rest and reusable,
 not the terminal `completed`), and a failed or stopped turn rests it `failed`
 or `canceled`. Either way the next turn runs in that session, with its engine
@@ -2864,7 +2873,14 @@ is assessed exactly once.
 
 **Storage and cleanup.** [GitReviewWorkspaceSource](../../src-server/services/evidence/git-review-workspace-source.ts)
 serializes detached workspaces and defaults to eight retained workspaces. Git
-location checks read exact blobs and reject symlink entries.
+location checks read exact blobs and reject symlink entries. Review and Session
+worktree creation run against the repository configuration copy Station judged.
+Before that copy is removed, creation validates the new directory and Git
+registration, then settles the workspace's `.git` pointer to the canonical
+registration through its checked file handle. A symlink, hard-linked pointer,
+changed identity, or inconsistent registration refuses creation and preserves
+the created workspace for inspection. This retains the path-swap limitations
+of the repository admission boundary.
 [FileReviewReceiptStore](../../src-server/services/evidence/review-receipt-store.ts)
 owns request and content-addressed receipt publication under Project filesystem
 authority. Default per-Project receipt capacity is 256; protected evidence is
