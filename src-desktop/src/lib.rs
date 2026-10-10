@@ -10011,6 +10011,9 @@ const NATIVE_STARTUP_COVER_IDENTIFIER: &str = "io.kontourai.station.startup-cove
 struct NativeCoverDesired {
     generation: u64,
     cover: Option<startup_readiness::StartupCoverContent>,
+    /// Order the window front. False for a reveal while the user has hidden
+    /// the window (closing it only hides it) since the last activation.
+    front: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -10024,12 +10027,14 @@ fn update_native_cover_desired(
     desired: &Mutex<NativeCoverDesired>,
     wake: &SyncSender<()>,
     cover: Option<startup_readiness::StartupCoverContent>,
+    front: bool,
 ) {
     let mut target = desired
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     target.generation = target.generation.wrapping_add(1);
     target.cover = cover;
+    target.front = front;
     drop(target);
 
     match wake.try_send(()) {
@@ -10068,6 +10073,7 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
     let desired = Arc::new(Mutex::new(NativeCoverDesired {
         generation: 0,
         cover: None,
+        front: true,
     }));
     let (wake, receiver) = sync_channel(1);
     let worker_desired = Arc::clone(&desired);
@@ -10095,6 +10101,7 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
                                         &window,
                                         &main_app,
                                         target.cover,
+                                        target.front,
                                     ) {
                                         Ok(()) => true,
                                         Err(error) => {
@@ -10177,12 +10184,13 @@ fn native_cover_failure_dialog_epoch(
 fn request_native_cover(
     app: &AppHandle,
     cover: Option<startup_readiness::StartupCoverContent>,
+    front: bool,
 ) -> bool {
     let Some(dispatcher) = app.try_state::<NativeCoverDispatcher>() else {
         log::error!("native cover dispatcher state is unavailable");
         return false;
     };
-    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, cover);
+    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, cover, front);
     true
 }
 
@@ -10291,8 +10299,10 @@ struct CoverKeyEvent<'a> {
     overdue: bool,
 }
 
-/// Pure key routing while the cover is up. Nothing may reach the hidden,
-/// unadmitted WebView. Command shortcuts are limited to app and window
+/// Pure key routing while the cover is up. No key-down or key-up event
+/// reaches the hidden, unadmitted WebView (modifier-only `flagsChanged`
+/// events still do; they carry no characters). Command shortcuts are
+/// matched as `command_shortcut_key` describes and limited to app and window
 /// management (Quit, Close, Hide, Hide Others, Minimize, cycle windows);
 /// editing shortcuts such as copy, paste, select all and undo would target the
 /// page and are swallowed. Return and keypad Enter choose the overdue cover's
@@ -10308,8 +10318,8 @@ fn cover_key_route(event: CoverKeyEvent<'_>) -> CoverKeyRoute {
     const KEYPAD_ENTER_KEY: u16 = 76;
     if event.command {
         return if matches!(
-            event.characters.to_ascii_lowercase().as_str(),
-            "q" | "w" | "h" | "m" | "`"
+            command_shortcut_key(event.characters, event.key_code),
+            Some('q' | 'w' | 'h' | 'm' | '`')
         ) {
             CoverKeyRoute::Pass
         } else {
@@ -10327,6 +10337,29 @@ fn cover_key_route(event: CoverKeyEvent<'_>) -> CoverKeyRoute {
         }
         SPACE_KEY if event.focus_on_cover_control && event.key_down => CoverKeyRoute::PressFocused,
         _ => CoverKeyRoute::Swallow,
+    }
+}
+
+/// The ASCII key a Command shortcut names. Like AppKit's menu matching, use
+/// the typed character when the layout produces ASCII (so AZERTY's Cmd-A
+/// stays Select All) and otherwise fall back to the ANSI key at that
+/// position (so Cmd-Q still quits on a Cyrillic or Greek layout).
+#[cfg(target_os = "macos")]
+fn command_shortcut_key(characters: &str, key_code: u16) -> Option<char> {
+    let mut chars = characters.chars();
+    if let (Some(character), None) = (chars.next(), chars.next()) {
+        if character.is_ascii_graphic() {
+            return Some(character.to_ascii_lowercase());
+        }
+    }
+    // kVK_ANSI_* virtual key codes for the shortcuts the cover allows.
+    match key_code {
+        0x0C => Some('q'),
+        0x0D => Some('w'),
+        0x04 => Some('h'),
+        0x2E => Some('m'),
+        0x32 => Some('`'),
+        _ => None,
     }
 }
 
@@ -10444,7 +10477,8 @@ fn with_native_startup_cover(
     window: &tauri::WebviewWindow,
     app: &AppHandle,
     cover_content_request: Option<startup_readiness::StartupCoverContent>,
-) -> Result<(), tauri::Error> {
+    front: bool,
+) -> Result<(), String> {
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
         NSAccessibilityLayoutChangedNotification, NSAccessibilityPostNotification,
@@ -10454,113 +10488,137 @@ fn with_native_startup_cover(
     use objc2_foundation::{ns_string, NSObjectProtocol};
 
     let app = app.clone();
-    window.with_webview(move |webview| {
-        let marker = MainThreadMarker::new()
-            .expect("Tauri executes native webview access on the macOS main thread");
-        // Tauri's documented PlatformWebview macOS handles are valid only in
-        // this callback; nothing escapes or is retained across a window close.
-        let webview_view = unsafe { &*webview.inner().cast::<NSView>() };
-        let ns_window = unsafe { &*webview.ns_window().cast::<objc2_app_kit::NSWindow>() };
-        let Some(content) = ns_window.contentView() else {
-            return;
-        };
-        let cover_identifier = ns_string!("io.kontourai.station.startup-cover");
-        debug_assert_eq!(
-            cover_identifier.to_string(),
-            NATIVE_STARTUP_COVER_IDENTIFIER
-        );
-        let subviews = content.subviews();
-        let existing = subviews.iter().find(|view| {
-            view.identifier()
-                .as_deref()
-                .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
-        });
-
-        if let Some(cover_kind) = cover_content_request {
-            if let Some(existing) = existing {
-                if !existing.isKindOfClass(NSBox::class()) {
-                    log::error!("refusing to replace an unexpected native startup cover view");
-                    return;
-                }
-                // Waiting and overdue content are rebuilt in place within one
-                // main-thread turn, so AppKit never draws the uncovered WebView.
-                existing.removeFromSuperview();
-            }
-            let cover = NSBox::new(marker);
-            cover.setFrame(content.bounds());
-            cover.setAutoresizingMask(
-                NSAutoresizingMaskOptions::ViewWidthSizable
-                    | NSAutoresizingMaskOptions::ViewHeightSizable,
+    // On the main thread Tauri runs this closure synchronously, so an early
+    // return below is observed here and reported as a failed task (which lets
+    // an overdue cover fall back to the dialog) instead of as success.
+    let applied = Arc::new(AtomicBool::new(false));
+    let applied_in_task = Arc::clone(&applied);
+    window
+        .with_webview(move |webview| {
+            let marker = MainThreadMarker::new()
+                .expect("Tauri executes native webview access on the macOS main thread");
+            // Tauri's documented PlatformWebview macOS handles are valid only in
+            // this callback; nothing escapes or is retained across a window close.
+            let webview_view = unsafe { &*webview.inner().cast::<NSView>() };
+            let ns_window = unsafe { &*webview.ns_window().cast::<objc2_app_kit::NSWindow>() };
+            let Some(content) = ns_window.contentView() else {
+                return;
+            };
+            let cover_identifier = ns_string!("io.kontourai.station.startup-cover");
+            debug_assert_eq!(
+                cover_identifier.to_string(),
+                NATIVE_STARTUP_COVER_IDENTIFIER
             );
-            cover.setBoxType(NSBoxType::Custom);
-            cover.setFillColor(&NSColor::windowBackgroundColor());
-            cover.setTitle(ns_string!(""));
-            cover.setIdentifier(Some(cover_identifier));
-            let focus = cover.contentView().and_then(|cover_content| {
-                populate_native_startup_cover(&cover_content, cover_kind, &app, marker)
+            let subviews = content.subviews();
+            let existing = subviews.iter().find(|view| {
+                view.identifier()
+                    .as_deref()
+                    .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
             });
-            content.addSubview(&cover);
-            unsafe {
-                let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
-                // Keep WebKit executing the readiness proof. Accessibility is
-                // isolated by hiding the WebView while the labelled cover
-                // remains visible; alpha is only the visual half of the
-                // protected surface. Do not override the content view's child
-                // list: AppKit cannot resume automatic derivation after a
-                // setter-authored list is later assigned nil (#869).
-                let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
-            }
-            install_native_startup_cover_key_monitor(
-                ns_window.windowNumber(),
-                cover.clone(),
-                match cover_kind {
-                    startup_readiness::StartupCoverContent::Overdue { epoch } => {
-                        Some((app.clone(), epoch))
+
+            if let Some(cover_kind) = cover_content_request {
+                if let Some(existing) = existing {
+                    if !existing.isKindOfClass(NSBox::class()) {
+                        log::error!("refusing to replace an unexpected native startup cover view");
+                        return;
                     }
-                    startup_readiness::StartupCoverContent::Waiting => None,
-                },
-                marker,
-            );
-            // Always take keyboard focus off the hidden WebView first. The
-            // default Restart button can take it only when keyboard
-            // navigation is on; otherwise AppKit refuses and focus stays on
-            // the window, while Return still reaches Restart via the monitor.
-            ns_window.makeFirstResponder(None);
-            if let Some(restart) = focus {
-                if !ns_window.makeFirstResponder(Some(&restart)) {
-                    log::debug!("native startup cover Restart did not take keyboard focus");
+                    // Waiting and overdue content are rebuilt in place within one
+                    // main-thread turn, so AppKit never draws the uncovered WebView.
+                    existing.removeFromSuperview();
                 }
-            }
-            ns_window.deminiaturize(None);
-            ns_window.makeKeyAndOrderFront(None);
-            unsafe {
-                // Waiting and overdue content replace each other in place.
-                NSAccessibilityPostNotification(&content, NSAccessibilityLayoutChangedNotification);
-            }
-        } else {
-            if let Some(cover) = existing {
-                if !cover.isKindOfClass(NSBox::class()) {
-                    log::error!("refusing to remove an unexpected startup cover view");
-                    return;
+                let cover = NSBox::new(marker);
+                cover.setFrame(content.bounds());
+                cover.setAutoresizingMask(
+                    NSAutoresizingMaskOptions::ViewWidthSizable
+                        | NSAutoresizingMaskOptions::ViewHeightSizable,
+                );
+                cover.setBoxType(NSBoxType::Custom);
+                cover.setFillColor(&NSColor::windowBackgroundColor());
+                cover.setTitle(ns_string!(""));
+                cover.setIdentifier(Some(cover_identifier));
+                let focus = cover.contentView().and_then(|cover_content| {
+                    populate_native_startup_cover(&cover_content, cover_kind, &app, marker)
+                });
+                content.addSubview(&cover);
+                unsafe {
+                    let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
+                    // Keep WebKit executing the readiness proof. Accessibility is
+                    // isolated by hiding the WebView while the labelled cover
+                    // remains visible; alpha is only the visual half of the
+                    // protected surface. Do not override the content view's child
+                    // list: AppKit cannot resume automatic derivation after a
+                    // setter-authored list is later assigned nil (#869).
+                    let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
                 }
-                cover.removeFromSuperview();
+                install_native_startup_cover_key_monitor(
+                    ns_window.windowNumber(),
+                    cover.clone(),
+                    match cover_kind {
+                        startup_readiness::StartupCoverContent::Overdue { epoch } => {
+                            Some((app.clone(), epoch))
+                        }
+                        startup_readiness::StartupCoverContent::Waiting => None,
+                    },
+                    marker,
+                );
+                // Always take keyboard focus off the hidden WebView first. The
+                // default Restart button can take it only when keyboard
+                // navigation is on; otherwise AppKit refuses and focus stays on
+                // the window, while Return still reaches Restart via the monitor.
+                ns_window.makeFirstResponder(None);
+                if let Some(restart) = focus {
+                    if !ns_window.makeFirstResponder(Some(&restart)) {
+                        log::debug!("native startup cover Restart did not take keyboard focus");
+                    }
+                }
+                ns_window.deminiaturize(None);
+                ns_window.makeKeyAndOrderFront(None);
+                unsafe {
+                    // Waiting and overdue content replace each other in place.
+                    NSAccessibilityPostNotification(
+                        &content,
+                        NSAccessibilityLayoutChangedNotification,
+                    );
+                }
+                applied_in_task.store(true, Ordering::Release);
+            } else {
+                if let Some(cover) = existing {
+                    if !cover.isKindOfClass(NSBox::class()) {
+                        log::error!("refusing to remove an unexpected startup cover view");
+                        return;
+                    }
+                    cover.removeFromSuperview();
+                }
+                clear_native_startup_cover_state();
+                unsafe {
+                    let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
+                }
+                unsafe {
+                    let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
+                    // Unhiding the WebView changes the automatically derived
+                    // content hierarchy. Tell live assistive clients to query it
+                    // again after both accessibility and visual state are restored.
+                    NSAccessibilityPostNotification(
+                        &content,
+                        NSAccessibilityLayoutChangedNotification,
+                    );
+                }
+                ns_window.makeFirstResponder(Some(webview_view));
+                // A window the user closed (hidden) while covered stays hidden
+                // until they activate the app again.
+                if front {
+                    ns_window.deminiaturize(None);
+                    ns_window.makeKeyAndOrderFront(None);
+                }
+                applied_in_task.store(true, Ordering::Release);
             }
-            clear_native_startup_cover_state();
-            unsafe {
-                let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
-            }
-            unsafe {
-                let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
-                // Unhiding the WebView changes the automatically derived
-                // content hierarchy. Tell live assistive clients to query it
-                // again after both accessibility and visual state are restored.
-                NSAccessibilityPostNotification(&content, NSAccessibilityLayoutChangedNotification);
-            }
-            ns_window.deminiaturize(None);
-            ns_window.makeFirstResponder(Some(webview_view));
-            ns_window.makeKeyAndOrderFront(None);
-        }
-    })
+        })
+        .map_err(|error| format!("could not reach the main WebView: {error}"))?;
+    if applied.load(Ordering::Acquire) {
+        Ok(())
+    } else {
+        Err("the native startup cover task did not apply".to_string())
+    }
 }
 
 /// Lays out the cover like the renderer's startup screen: a centered 96 pt
@@ -10722,10 +10780,13 @@ fn present_startup_recovery_surface(
     app: &AppHandle,
     content: startup_readiness::StartupCoverContent,
 ) -> StartupRecoveryPresentation {
-    if desktop_companion::background(app) {
+    if startup_recovery_surface_deferred(
+        desktop_companion::background(app),
+        main_window_hidden_by_user(),
+    ) {
         return StartupRecoveryPresentation::Deferred;
     }
-    if request_native_cover(app, Some(content)) {
+    if request_native_cover(app, Some(content), true) {
         StartupRecoveryPresentation::Presented
     } else {
         StartupRecoveryPresentation::Unavailable
@@ -10742,6 +10803,26 @@ fn present_startup_recovery_surface(
     StartupRecoveryPresentation::Unavailable
 }
 
+/// Set when the user closes (which only hides) the main window; cleared by
+/// any explicit activation. A hidden window is not brought back by startup
+/// recovery or a late reveal on its own.
+#[cfg(not(mobile))]
+static MAIN_WINDOW_HIDDEN_BY_USER: AtomicBool = AtomicBool::new(false);
+
+#[cfg(not(mobile))]
+fn main_window_hidden_by_user() -> bool {
+    MAIN_WINDOW_HIDDEN_BY_USER.load(Ordering::Acquire)
+}
+
+/// Whether startup recovery waits for the next activation instead of
+/// presenting now: a background (tray-only) launch, or a window the user
+/// hid while it was covered.
+#[cfg(not(mobile))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn startup_recovery_surface_deferred(background: bool, hidden_by_user: bool) -> bool {
+    background || hidden_by_user
+}
+
 #[cfg(not(mobile))]
 fn reveal_main_window(app: &AppHandle) {
     if desktop_companion::background(app) {
@@ -10749,7 +10830,13 @@ fn reveal_main_window(app: &AppHandle) {
     }
     #[cfg(target_os = "macos")]
     {
-        request_native_cover(app, None);
+        // Admit the content either way; only front it if the user has not
+        // hidden the window since the last activation.
+        request_native_cover(app, None, !main_window_hidden_by_user());
+        return;
+    }
+    #[cfg(not(target_os = "macos"))]
+    if main_window_hidden_by_user() {
         return;
     }
     #[cfg(not(target_os = "macos"))]
@@ -10888,6 +10975,7 @@ pub(crate) fn main_window_activation_available(app: &AppHandle) -> bool {
 #[cfg(not(mobile))]
 pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {
     desktop_companion::activate(app);
+    MAIN_WINDOW_HIDDEN_BY_USER.store(false, Ordering::Release);
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return false;
     };
@@ -11072,8 +11160,11 @@ trait StartupRecoveryHost {
     /// home. Restart cleared the epoch's identity proof; only this re-earns it.
     fn recommit_native_recovery(&self);
     fn arm_deadline(&self, epoch: u64);
-    /// Blocks on the native dialog. `None` means the user kept waiting.
-    fn ask_slow_start_choice(&self) -> Option<SlowStartupChoice>;
+    /// Shows the native dialog without blocking any thread; the answer
+    /// arrives through `answer_slow_start_dialog_with`.
+    fn ask_slow_start_choice(&self, epoch: u64);
+    /// Offers the dialog again for `epoch` after another deadline period.
+    fn arm_slow_start_reoffer(&self, epoch: u64);
     fn exit(&self);
 }
 
@@ -11138,10 +11229,12 @@ impl StartupRecoveryHost for AppStartupRecoveryHost<'_> {
         arm_startup_deadline(self.app.clone(), epoch);
     }
 
-    fn ask_slow_start_choice(&self) -> Option<SlowStartupChoice> {
+    fn ask_slow_start_choice(&self, epoch: u64) {
         use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-        let result = self
-            .app
+        // Non-blocking: a blocking alert scheduled on the main thread would
+        // queue later cover tasks, including a late reveal, behind it.
+        let app = self.app.clone();
+        self.app
             .dialog()
             .message("Station will open automatically when it is ready. Restart tries the start again; Quit closes Station.")
             .title("Station is taking longer than usual to start")
@@ -11151,8 +11244,38 @@ impl StartupRecoveryHost for AppStartupRecoveryHost<'_> {
                 SLOW_START_DIALOG_QUIT.into(),
                 SLOW_START_DIALOG_WAIT.into(),
             ))
-            .blocking_show_with_result();
-        slow_start_dialog_choice(&result)
+            .show_with_result(move |result| {
+                let Some(state) = app.try_state::<DesktopServerState>() else {
+                    return;
+                };
+                answer_slow_start_dialog_with(
+                    &AppStartupRecoveryHost {
+                        app: &app,
+                        state: state.inner(),
+                    },
+                    epoch,
+                    slow_start_dialog_choice(&result),
+                );
+            });
+    }
+
+    fn arm_slow_start_reoffer(&self, epoch: u64) {
+        let app = self.app.clone();
+        let _ = thread::Builder::new()
+            .name(format!("station-startup-recovery-reoffer-{epoch}"))
+            .spawn(move || {
+                thread::sleep(Duration::from_secs(30));
+                let Some(state) = app.try_state::<DesktopServerState>() else {
+                    return;
+                };
+                offer_slow_start_dialog_with(
+                    &AppStartupRecoveryHost {
+                        app: &app,
+                        state: state.inner(),
+                    },
+                    epoch,
+                );
+            });
     }
 
     fn exit(&self) {
@@ -11240,16 +11363,31 @@ fn resolve_slow_startup(app: &AppHandle, epoch: u64, choice: SlowStartupChoice) 
     );
 }
 
-/// Offers the native dialog for `epoch` while it is still overdue, then
-/// applies the answer. Used where no cover can carry the recovery choice.
+/// Offers the native dialog for `epoch` while it is still overdue. Used
+/// where no cover can carry the recovery choice.
 #[cfg(not(mobile))]
 fn offer_slow_start_dialog_with(host: &impl StartupRecoveryHost, epoch: u64) {
-    if !host.overdue_for_epoch(epoch) {
-        return;
+    if host.overdue_for_epoch(epoch) {
+        host.ask_slow_start_choice(epoch);
     }
-    match host.ask_slow_start_choice() {
+}
+
+/// Applies the dialog's answer. Keep Waiting (or dismissal) never quits; it
+/// re-offers the choice after another deadline period while the same epoch
+/// is still overdue, so the user is not left without Restart or Quit.
+#[cfg(not(mobile))]
+fn answer_slow_start_dialog_with(
+    host: &impl StartupRecoveryHost,
+    epoch: u64,
+    choice: Option<SlowStartupChoice>,
+) {
+    match choice {
         Some(choice) => resolve_slow_startup_with(host, epoch, choice),
-        None => log::info!("desktop startup recovery kept waiting for epoch {epoch}"),
+        None if host.overdue_for_epoch(epoch) => {
+            log::info!("desktop startup recovery kept waiting for epoch {epoch}");
+            host.arm_slow_start_reoffer(epoch);
+        }
+        None => {}
     }
 }
 
@@ -13532,6 +13670,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                         if let Some(state) = app.try_state::<DesktopServerState>() {
                             if !state.supervisor.shutting_down.load(Ordering::SeqCst) {
                                 api.prevent_close();
+                                MAIN_WINDOW_HIDDEN_BY_USER.store(true, Ordering::Release);
                                 if let Some(window) = app.get_webview_window("main") { let _ = window.hide(); }
                                 tray::kick(app);
                             }
@@ -14992,6 +15131,7 @@ mod tests {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 0,
             cover: None,
+            front: true,
         });
         let (wake, receiver) = sync_channel(1);
 
@@ -14999,13 +15139,15 @@ mod tests {
             &desired,
             &wake,
             Some(startup_readiness::StartupCoverContent::Waiting),
+            true,
         );
         update_native_cover_desired(
             &desired,
             &wake,
             Some(startup_readiness::StartupCoverContent::Overdue { epoch: 1 }),
+            true,
         );
-        update_native_cover_desired(&desired, &wake, None);
+        update_native_cover_desired(&desired, &wake, None, false);
 
         assert_eq!(receiver.try_iter().count(), 1, "repeated requests coalesce");
         let mut applied = Vec::new();
@@ -15018,6 +15160,7 @@ mod tests {
             vec![NativeCoverDesired {
                 generation: 3,
                 cover: None,
+                front: false,
             }],
             "an unread cover must be superseded by the newer exact reveal"
         );
@@ -15049,7 +15192,13 @@ mod tests {
         assert!(cover.contains("restart.setKeyEquivalent(ns_string!(\"\\r\"))"));
         // Focus always leaves the hidden WebView before Restart may take it.
         let clear_focus = cover
-            .find("ns_window.makeFirstResponder(None);\n            if let Some(restart) = focus")
+            .match_indices("ns_window.makeFirstResponder(None);")
+            .find(|(at, needle)| {
+                cover[at + needle.len()..]
+                    .trim_start()
+                    .starts_with("if let Some(restart) = focus")
+            })
+            .map(|(at, _)| at)
             .expect("covering clears first responder before focusing Restart");
         let focus_restart = cover
             .find("ns_window.makeFirstResponder(Some(&restart))")
@@ -15119,6 +15268,7 @@ mod tests {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
             cover: Some(startup_readiness::StartupCoverContent::Waiting),
+            front: true,
         });
         let (wake, _receiver) = sync_channel(1);
         let mut applied = Vec::new();
@@ -15126,7 +15276,7 @@ mod tests {
         assert!(apply_native_cover_until_current(&desired, |target| {
             applied.push(target.cover.is_some());
             if target.cover.is_some() {
-                update_native_cover_desired(&desired, &wake, None);
+                update_native_cover_desired(&desired, &wake, None, true);
             }
             true
         }));
@@ -15143,6 +15293,7 @@ mod tests {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
             cover: Some(startup_readiness::StartupCoverContent::Waiting),
+            front: true,
         });
         let mut attempts = 0;
         assert!(!apply_native_cover_until_current(&desired, |_| {
@@ -15530,6 +15681,7 @@ mod tests {
         RecommitNativeRecovery,
         ArmDeadline(u64),
         AskSlowStartChoice,
+        ArmReoffer(u64),
         Exit,
         Reveal,
     }
@@ -15647,9 +15799,15 @@ mod tests {
             self.record(HostCall::ArmDeadline(epoch));
         }
 
-        fn ask_slow_start_choice(&self) -> Option<SlowStartupChoice> {
+        fn ask_slow_start_choice(&self, epoch: u64) {
+            // The production dialog answers asynchronously through the same
+            // function; the fake answers at once.
             self.record(HostCall::AskSlowStartChoice);
-            self.answer
+            answer_slow_start_dialog_with(self, epoch, self.answer);
+        }
+
+        fn arm_slow_start_reoffer(&self, epoch: u64) {
+            self.record(HostCall::ArmReoffer(epoch));
         }
 
         fn exit(&self) {
@@ -15690,8 +15848,8 @@ mod tests {
             startup_deadline_elapsed_with(&host, 1);
             assert_eq!(
                 host.take_calls(),
-                vec![HostCall::AskSlowStartChoice],
-                "activation={activation}: dismissing the dialog keeps waiting"
+                vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1)],
+                "activation={activation}: dismissing the dialog keeps waiting and re-offers later"
             );
             startup_deadline_elapsed_with(&host, 1);
             assert_eq!(
@@ -15704,6 +15862,68 @@ mod tests {
         let deferred = FakeStartupHost::new(true, StartupRecoveryPresentation::Deferred, None);
         startup_deadline_elapsed_with(&deferred, 1);
         assert_eq!(deferred.take_calls(), Vec::<HostCall>::new());
+    }
+
+    /// D5: recovery waits for activation when the launch is background-only
+    /// or the user hid (closed) the window while it was covered.
+    #[test]
+    #[cfg(not(mobile))]
+    fn startup_recovery_defers_for_background_or_user_hidden_windows() {
+        assert!(!startup_recovery_surface_deferred(false, false));
+        assert!(startup_recovery_surface_deferred(true, false));
+        assert!(startup_recovery_surface_deferred(false, true));
+        assert!(startup_recovery_surface_deferred(true, true));
+        let source = include_str!("lib.rs");
+        let close = source
+            .find("api.prevent_close();\n                                MAIN_WINDOW_HIDDEN_BY_USER.store(true")
+            .expect("closing the main window records that the user hid it");
+        assert!(source[close..].find("window.hide()").is_some());
+        let activation = source
+            .find("pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {")
+            .expect("activation entry point");
+        let cleared = source[activation..]
+            .find("MAIN_WINDOW_HIDDEN_BY_USER.store(false")
+            .expect("activation clears the user-hidden state");
+        let transitioned = source[activation..]
+            .find("ReadinessInput::ActivationRequested")
+            .expect("activation transitions readiness");
+        assert!(cleared < transitioned);
+    }
+
+    /// D3: Keep Waiting is not a dead end. While the same epoch stays
+    /// overdue, the offer comes back after another deadline period; once
+    /// the window reveals or a newer epoch starts, the re-offer is inert.
+    #[test]
+    #[cfg(not(mobile))]
+    fn keep_waiting_re_offers_restart_and_quit_while_still_overdue() {
+        let host = FakeStartupHost::new(true, StartupRecoveryPresentation::Unavailable, None);
+        startup_deadline_elapsed_with(&host, 1);
+        assert_eq!(
+            host.take_calls(),
+            vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1)]
+        );
+        // The re-offer timer fires: the same choice is offered again.
+        offer_slow_start_dialog_with(&host, 1);
+        assert_eq!(
+            host.take_calls(),
+            vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1)]
+        );
+        // A re-offered Quit exits for that epoch.
+        answer_slow_start_dialog_with(&host, 1, Some(SlowStartupChoice::Quit));
+        assert_eq!(host.take_calls(), vec![HostCall::Exit]);
+
+        // After a late reveal, a pending re-offer shows nothing.
+        host.apply(startup_readiness::ReadinessInput::ServerTicket(
+            FakeStartupHost::ticket(),
+        ));
+        host.apply(startup_readiness::ReadinessInput::NativeIdentityCommitted(
+            FakeStartupHost::ticket(),
+        ));
+        host.apply(startup_readiness::ReadinessInput::RendererMounted);
+        assert_eq!(host.take_calls(), vec![HostCall::Reveal]);
+        offer_slow_start_dialog_with(&host, 1);
+        answer_slow_start_dialog_with(&host, 1, None);
+        assert_eq!(host.take_calls(), Vec::<HostCall>::new());
     }
 
     /// A late ticket after the routed deadline still reveals with no restart.
@@ -15936,6 +16156,54 @@ mod tests {
             "key-up never presses twice"
         );
         // App and window management pass; editing shortcuts would edit the page.
+        // Non-Latin layouts: the shortcut is matched at its ANSI position,
+        // the way AppKit menu matching falls back to an ASCII-capable layout.
+        let command_at = |key_code: u16, characters: &'static str| CoverKeyEvent {
+            key_code,
+            ..key(key_code, true, characters)
+        };
+        assert_eq!(
+            cover_key_route(command_at(0x0C, "й")),
+            CoverKeyRoute::Pass,
+            "Cyrillic Cmd-Q"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x0D, "ц")),
+            CoverKeyRoute::Pass,
+            "Cyrillic Cmd-W"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x04, "ρ")),
+            CoverKeyRoute::Pass,
+            "Greek Cmd-H"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x2E, "ь")),
+            CoverKeyRoute::Pass,
+            "Cyrillic Cmd-M"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x09, "м")),
+            CoverKeyRoute::Swallow,
+            "Cyrillic Cmd-V"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x00, "ф")),
+            CoverKeyRoute::Swallow,
+            "Cyrillic Cmd-A"
+        );
+        // ASCII layouts use the typed character: AZERTY's Cmd-A sits at the
+        // ANSI Q position and must stay Select All (swallowed).
+        assert_eq!(
+            cover_key_route(command_at(0x0C, "a")),
+            CoverKeyRoute::Swallow,
+            "AZERTY Cmd-A"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x00, "q")),
+            CoverKeyRoute::Pass,
+            "AZERTY Cmd-Q"
+        );
         for allowed in ["q", "w", "h", "m", "`", "Q"] {
             assert_eq!(
                 cover_key_route(key(0, true, allowed)),
@@ -15958,6 +16226,7 @@ mod tests {
         let overdue = NativeCoverDesired {
             generation: 4,
             cover: Some(startup_readiness::StartupCoverContent::Overdue { epoch: 2 }),
+            front: true,
         };
         assert_eq!(native_cover_failure_dialog_epoch(overdue, None), Some(2));
         assert_eq!(native_cover_failure_dialog_epoch(overdue, Some(1)), Some(2));
@@ -15968,6 +16237,7 @@ mod tests {
                     NativeCoverDesired {
                         generation: 4,
                         cover: no_choice,
+                        front: true,
                     },
                     None
                 ),

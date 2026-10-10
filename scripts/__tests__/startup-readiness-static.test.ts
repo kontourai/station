@@ -54,6 +54,29 @@ const DEEP_LINK_ACTIVATION = 'app.handle().deep_link().on_open_url';
 
 const DEADLINE_ARM = '&& now_ms >= next.deadline_ms =>';
 
+/** Calls that restart or signal the owned sidecar process. */
+function processRestartPrimitives(body: string) {
+  return [
+    'SupervisorMessage',
+    'supervisor.tx',
+    'restart_bundled_server',
+    'restart_owned_sidecar',
+    'continue_startup_readiness_with',
+  ].filter((primitive) => body.includes(primitive));
+}
+
+/** Each `fn name(` body inside an impl block, keyed by method name. */
+function rustMethods(implBlock: string) {
+  const methods: Record<string, string> = {};
+  for (const match of implBlock.matchAll(/\bfn (\w+)\(/g)) {
+    methods[match[1] ?? ''] = rustBlock(
+      implBlock.slice(match.index),
+      `fn ${match[1]}(`,
+    );
+  }
+  return methods;
+}
+
 /**
  * Process or phase effects inside the readiness deadline arm. A deadline only
  * marks the epoch overdue; restarting there killed slow cold boots forever.
@@ -97,7 +120,7 @@ describe('desktop startup readiness static boundary', () => {
     const nativeCover = lib.slice(nativeStart, nativeEnd);
     expect(nativeStart).toBeGreaterThanOrEqual(0);
     expect(nativeEnd).toBeGreaterThan(nativeStart);
-    expect(nativeCover).toContain('window.with_webview');
+    expect(nativeCover).toMatch(/window\s*\.with_webview\(/);
     expect(nativeCover).toContain('content.addSubview(&cover)');
     expect(nativeCover).toContain('setAlphaValue: 0.0f64');
     expect(nativeCover).toContain('setAlphaValue: 1.0f64');
@@ -127,10 +150,12 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('apply_native_cover_until_current');
     expect(lib).toContain('ack_rx.recv()');
     expect(lib).toMatch(
-      /with_native_startup_cover\(\s*&window,\s*&main_app,\s*target\.cover,?\s*\)/,
+      /with_native_startup_cover\(\s*&window,\s*&main_app,\s*target\.cover,\s*target\.front,?\s*\)/,
     );
-    expect(lib).toContain('request_native_cover(app, Some(content))');
-    expect(lib).toContain('request_native_cover(app, None)');
+    expect(lib).toContain('request_native_cover(app, Some(content), true)');
+    expect(lib).toMatch(
+      /request_native_cover\(app, None, !main_window_hidden_by_user\(\)\)/,
+    );
     expect(lib).toContain('.on_page_load(|webview, payload|');
     expect(lib).toContain(
       'observe_native_startup_page(webview.app_handle(), webview.label(), payload.event())',
@@ -269,11 +294,11 @@ describe('desktop startup readiness static boundary', () => {
     const deadlineThread = rustBlock(lib, 'fn arm_startup_deadline(');
     expect(deadlineThread).toContain('startup_deadline_elapsed_with(');
     const deadline = rustBlock(lib, 'fn startup_deadline_elapsed_with(');
-    for (const body of [deadlineThread, deadline]) {
+    const offer = rustBlock(lib, 'fn offer_slow_start_dialog_with(');
+    for (const body of [deadlineThread, deadline, offer]) {
+      expect(processRestartPrimitives(body)).toEqual([]);
       for (const forbidden of [
         'continue_startup_readiness',
-        'SupervisorMessage::Restart',
-        'restart_owned_sidecar',
         'resolve_slow_startup',
         'ReadinessInput::Retry',
       ]) {
@@ -309,6 +334,23 @@ describe('desktop startup readiness static boundary', () => {
     expect(rustBlock(host, 'fn restart_owned_sidecar')).toContain(
       'SupervisorMessage::Restart',
     );
+    // Only restart_owned_sidecar may reach a process restart primitive; a
+    // restart hidden in reprobe, recommit, the dialog or the re-offer timer
+    // would bring back the slow-boot kill loop under another name.
+    const hostMethods = rustMethods(host);
+    expect(Object.keys(hostMethods)).toEqual(
+      expect.arrayContaining([
+        'reprobe_current_ticket',
+        'recommit_native_recovery',
+        'ask_slow_start_choice',
+        'arm_slow_start_reoffer',
+        'arm_deadline',
+      ]),
+    );
+    for (const [name, body] of Object.entries(hostMethods)) {
+      if (name === 'restart_owned_sidecar') continue;
+      expect([name, processRestartPrimitives(body)]).toEqual([name, []]);
+    }
     expect(rustBlock(host, 'fn exit')).toContain('self.app.exit(1)');
 
     const activation = rustBlock(
@@ -389,6 +431,33 @@ describe('desktop startup readiness static boundary', () => {
       'next.overdue = true; next.phase = ReadinessPhase::Ready;',
     );
     expect(deadlineRestartRoutes(failingDeadline)).toEqual(['next.phase =']);
+    const lib2 = read('src-desktop/src/lib.rs');
+    const threadRestart = replaceInRustBlock(
+      lib2,
+      'fn arm_startup_deadline(',
+      'thread::sleep(Duration::from_secs(30));',
+      'thread::sleep(Duration::from_secs(30)); let _ = restart_bundled_server(app.clone());',
+    );
+    expect(
+      processRestartPrimitives(
+        rustBlock(threadRestart, 'fn arm_startup_deadline('),
+      ),
+    ).toEqual(['restart_bundled_server']);
+    const reprobeRestart = replaceInRustBlock(
+      lib2,
+      'impl StartupRecoveryHost for AppStartupRecoveryHost',
+      'notify_startup_readiness_if_waiting(self.app);',
+      'notify_startup_readiness_if_waiting(self.app); let _ = self.state.supervisor.tx.send(SupervisorMessage::Restart);',
+    );
+    const injectedHost = rustMethods(
+      rustBlock(
+        reprobeRestart,
+        'impl StartupRecoveryHost for AppStartupRecoveryHost',
+      ),
+    );
+    expect(
+      processRestartPrimitives(injectedHost.reprobe_current_ticket ?? ''),
+    ).toEqual(['SupervisorMessage', 'supervisor.tx']);
     for (const action of ['show', 'unminimize', 'set_focus']) {
       const injected = `${lib}\nfn injected() { app.get_webview_window("main").unwrap().${action}().unwrap(); }`;
       expect(mainWindowActions(injected)).toHaveLength(2);
