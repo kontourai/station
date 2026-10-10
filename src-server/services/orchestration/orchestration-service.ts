@@ -2555,6 +2555,15 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      nativeReturnSupported: (provider) => {
+        const adapter = options.adapterRegistry.get(provider);
+        const continuity = adapter?.metadata.continuity;
+        return (
+          continuity?.resumeIdentity === 'require-match' &&
+          continuity.nativeReturn === 'same-binding' &&
+          typeof adapter?.retireSession === 'function'
+        );
+      },
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -4699,6 +4708,8 @@ export class OrchestrationService {
     resumeCursor?: unknown;
     resumeModel?: string;
     transcriptSeed?: string;
+    nativeSourceSessionId?: string;
+    nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
   }> {
     this.initialize();
@@ -4791,6 +4802,7 @@ export class OrchestrationService {
       modelId?: string;
       idempotencyKey: string;
       messageDigest: string;
+      provider?: EngineId;
     },
   ): ReturnType<ConversationLineage['prepareConversationHandoff']> {
     this.initialize();
@@ -8616,6 +8628,134 @@ export class OrchestrationService {
    * `dispatch` (its resolve-to-dispatch gap in the foreground seam) is
    * invisible here; closing that needs the resolve step to reserve the Session.
    */
+  async retireHandoffPredecessor(
+    handoffSessionId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const marker =
+      this.options.eventStore?.conversationHandoffForSession(handoffSessionId);
+    if (!marker)
+      throw new Error('Conversation handoff reservation was not found.');
+    await this.retireNativeContinuationSource(
+      marker.predecessorSessionId,
+      handoffSessionId,
+      authority,
+    );
+  }
+
+  async retireNativeContinuationSource(
+    sourceId: string,
+    targetId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (
+      store?.conversationForSession(targetId)?.predecessorSessionId !== sourceId
+    )
+      throw new Error('Native continuation source was not found.');
+    await this.sessionExecutionCoordinator.runLifecycleTransition(
+      sourceId,
+      async () => {
+        const source = await this.readSession(sourceId, authority);
+        const children =
+          source && this.childWork.read(sourceId, source.session.provider);
+        if (
+          !source ||
+          !this.sessionAuthz.canReadSession(sourceId, authority) ||
+          source.session.hasActiveTurn ||
+          source.session.pendingReview ||
+          this.sendTurnsInDispatch.has(sourceId) ||
+          this.sessionExecutionCoordinator.hasActiveTurn(sourceId) ||
+          (children?.observability === 'reported' &&
+            children.running.length > 0)
+        )
+          throw new Error('The source native engine is not at rest.');
+        const adapter =
+          this.sessionAdapters.get(sourceId) ??
+          this.options.adapterRegistry.get(source.session.provider);
+        if (adapter?.metadata.continuity?.nativeReturn === 'same-binding') {
+          const retirement = await adapter.retireSession?.(sourceId);
+          if (retirement?.status !== 'retired')
+            throw new Error(
+              'The source native engine has not confirmed retirement.',
+            );
+        } else {
+          if (!adapter)
+            throw new Error('The source engine adapter is unavailable.');
+          // After restart a non-native-return adapter may own no live session.
+          // Native reuse still requires the explicit retirement receipt above.
+          if (await adapter.hasSession(sourceId))
+            await this.stopSessionNow(sourceId);
+        }
+        store.recordNativeSessionRetired(sourceId);
+      },
+    );
+  }
+
+  async retireNativeReturnSource(
+    handoffSessionId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const store = this.options.eventStore;
+    const marker = store?.conversationHandoffForSession(handoffSessionId);
+    if (
+      !store ||
+      !marker?.nativeReturnSourceSessionId ||
+      !marker.nativeReturnSourceEventId
+    ) {
+      throw new Error('Native return reservation was not found.');
+    }
+    const sourceId = marker.nativeReturnSourceSessionId;
+    await this.sessionExecutionCoordinator.runLifecycleTransition(
+      sourceId,
+      async () => {
+        const source = await this.readSession(sourceId, authority);
+        const terminal = store
+          .listEvents(sourceId)
+          .filter(
+            (event) =>
+              event.method === 'turn.completed' ||
+              event.method === 'turn.aborted' ||
+              event.method === 'runtime.error',
+          )
+          .at(-1);
+        const children =
+          source && this.childWork.read(sourceId, source.session.provider);
+        if (
+          !source ||
+          !this.sessionAuthz.canReadSession(sourceId, authority) ||
+          source.session.controlMode !== 'station-owned' ||
+          source.session.hasActiveTurn ||
+          source.session.pendingReview ||
+          this.sendTurnsInDispatch.has(sourceId) ||
+          this.sessionExecutionCoordinator.hasActiveTurn(sourceId) ||
+          (children?.observability === 'reported' &&
+            children.running.length > 0) ||
+          terminal?.id !== marker.nativeReturnSourceEventId ||
+          store.conversationSessions(marker.conversationId).at(-1)
+            ?.sessionId !== handoffSessionId
+        ) {
+          throw new Error(
+            'The earlier native engine is not safely available for return.',
+          );
+        }
+        const adapter =
+          this.sessionAdapters.get(sourceId) ??
+          this.options.adapterRegistry.get(source.session.provider);
+        const retirement = await adapter?.retireSession?.(sourceId);
+        if (retirement?.status !== 'retired')
+          throw new Error(
+            'The earlier native engine has not confirmed retirement.',
+          );
+        store.recordNativeSessionRetired(sourceId);
+        store.completeNativeReturnRetirement(handoffSessionId);
+      },
+    );
+  }
+
   async retireNeverRanSession(
     threadId: string,
     context?: {

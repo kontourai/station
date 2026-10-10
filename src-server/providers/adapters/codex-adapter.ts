@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import {
@@ -15,12 +16,16 @@ import { mergeQuotaSnapshot } from '@kontourai/station-contracts/connection-quot
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
+  ProviderContinuityCapabilities,
   ProviderSessionSourceAffinity,
 } from '@kontourai/station-contracts/provider';
 import {
+  ENGINE_SESSION_BINDING_DEAD_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
+  NATIVE_RESUME_BINDING_METADATA_KEY,
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
@@ -30,6 +35,7 @@ import type {
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -132,6 +138,10 @@ import {
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
+import {
+  nativeResumeBindingKey,
+  nativeSessionIdentityKey,
+} from './native-resume-binding.js';
 
 type CodexAdapterLogger = Pick<Logger, 'warn'>;
 type CodexExecutionKnobs = NonNullable<
@@ -157,6 +167,7 @@ interface CodexAdapterOptions {
   getAppHomeEnv?: (
     credentialProfileRef?: string,
   ) => Promise<ResolvedAppHome | undefined>;
+  nativeSessionOwnership?: NativeSessionOwnership;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -699,6 +710,12 @@ export function projectCodexQuotaSnapshot(
 export class CodexAdapter implements ProviderAdapterShape {
   readonly adoptionLifecycle = 'reported' as const;
   readonly provider = 'codex' as const;
+  private readonly continuity: ProviderContinuityCapabilities = {
+    resume: 'same-session',
+    fork: 'none',
+    rewind: 'none',
+    resumeIdentity: 'require-match',
+  };
   readonly metadata = {
     // #2880: Codex's `serverRequest/resolved` acknowledges the request closed.
     approvalAcknowledgement: CODEX_APPROVAL_ACKNOWLEDGEMENT,
@@ -714,7 +731,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       'external-process',
       'image-input',
     ],
-    continuity: { resume: 'same-session', fork: 'none', rewind: 'none' },
+    continuity: this.continuity,
     connectionId: engineConnectionId('codex'),
     builtin: true,
     engineId: engineId('codex'),
@@ -777,6 +794,8 @@ export class CodexAdapter implements ProviderAdapterShape {
   private quotaSnapshotGeneration = 0;
 
   constructor(private readonly options: CodexAdapterOptions = {}) {
+    if (options.nativeSessionOwnership)
+      this.continuity.nativeReturn = 'same-binding';
     this.processFactory =
       options.processFactory ??
       ((env, extraArgs) => createCodexProcess(undefined, env, extraArgs));
@@ -1360,6 +1379,12 @@ export class CodexAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    if (
+      input.requireNativeResumeIdentity &&
+      !isResumeCursor(input.resumeCursor)
+    ) {
+      throw new Error('An exact native resume requires a valid Codex cursor.');
+    }
     return this.startWithReservation(input);
   }
 
@@ -1396,6 +1421,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     threadId: string,
     recovery?: ProviderDiscardSessionRecovery,
   ): Promise<void> {
+    this.options.nativeSessionOwnership?.assertMutable(threadId);
     const source = this.validateDiscardRecovery(threadId, recovery);
     const cursor = isResumeCursor(recovery?.resumeCursor)
       ? recovery.resumeCursor
@@ -1723,6 +1749,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
     adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
+    this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const startedAt = Date.now();
     const resumeRecord =
       input.resumeCursor &&
@@ -1772,6 +1799,40 @@ export class CodexAdapter implements ProviderAdapterShape {
       connectionEnv && appHomeEnv
         ? { ...connectionEnv, ...appHomeEnv }
         : (connectionEnv ?? appHomeEnv);
+    const configurationHome =
+      spawnEnv?.CODEX_HOME ??
+      process.env.CODEX_HOME ??
+      join(homedir(), '.codex');
+    const ownershipBindingKey = nativeResumeBindingKey(
+      this.provider,
+      configurationHome,
+      null,
+    );
+    const resumeBindingKey = sourceAffinity
+      ? undefined
+      : nativeResumeBindingKey(
+          this.provider,
+          configurationHome,
+          resolvedHome?.profileRef ?? null,
+        );
+    if (
+      input.nativeResumeBindingKey &&
+      input.nativeResumeBindingKey !== resumeBindingKey
+    ) {
+      throw new Error(
+        'The native conversation belongs to a different engine home or credential profile.',
+      );
+    }
+    if (resumeCursor)
+      this.options.nativeSessionOwnership?.claim(
+        nativeSessionIdentityKey(
+          this.provider,
+          ownershipBindingKey,
+          resumeCursor.codexThreadId,
+        ),
+        input.threadId,
+        Boolean(input.credentialProfileRef) && !input.nativeResumeBindingKey,
+      );
     const processHandle = this.processFactory(
       spawnEnv,
       connectionLaunch.args.length
@@ -1884,7 +1945,38 @@ export class CodexAdapter implements ProviderAdapterShape {
       }
 
       const codexThread = extractThread(result);
+      if (
+        resumeCursor &&
+        (input.requireNativeResumeIdentity ||
+          this.options.nativeSessionOwnership) &&
+        codexThread.id !== resumeCursor?.codexThreadId
+      ) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.error',
+          severity: 'error',
+          code: ENGINE_SESSION_BINDING_DEAD_CODE,
+          retriable: false,
+          message:
+            'The engine opened a different native conversation; the requested resume was refused.',
+          metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
+        });
+        throw new Error(
+          'The engine opened a different native conversation; the requested resume was refused.',
+        );
+      }
       this.transport.setCodexThreadId(record, codexThread.id);
+      this.options.nativeSessionOwnership?.claim(
+        nativeSessionIdentityKey(
+          this.provider,
+          ownershipBindingKey,
+          codexThread.id,
+        ),
+        input.threadId,
+      );
       const nativeResumeCursor = {
         codexThreadId: codexThread.id,
         ...(sourceAffinity
@@ -1962,6 +2054,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       });
       const baseConfiguredMetadata: Record<string, unknown> = {
         ...input.metadata,
+        [NATIVE_RESUME_BINDING_METADATA_KEY]: resumeBindingKey,
+        [NATIVE_RESUME_IDENTITY_METADATA_KEY]:
+          resumeCursor?.codexThreadId === codexThread.id
+            ? 'matched'
+            : undefined,
         usageAccountKey: resolvedHome
           ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
           : undefined,
@@ -2407,6 +2504,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
     const turnStartedAt = Date.now();
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
@@ -2998,6 +3096,16 @@ export class CodexAdapter implements ProviderAdapterShape {
     // needs its station-control MCP token; a session that never had one is
     // a no-op (revokeStationControlMcpToken tolerates an unknown id).
     this.options.revokeStationControlMcpAuth?.(threadId);
+    this.options.nativeSessionOwnership?.retired(threadId);
+  }
+
+  async retireSession(threadId: string) {
+    try {
+      await this.stopSession(threadId);
+      return { status: 'retired' as const };
+    } catch {
+      return { status: 'indeterminate' as const };
+    }
   }
 
   async listSessions(): Promise<ProviderSession[]> {

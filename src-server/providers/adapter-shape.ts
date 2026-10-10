@@ -15,6 +15,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
+  ProviderSessionRetirement,
   ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
@@ -341,6 +342,8 @@ export interface ProviderAdapterShape {
     },
   ): Promise<void>;
   stopSession(threadId: string): Promise<void>;
+  /** Native ownership may move only after this reports confirmed retirement. */
+  retireSession?(threadId: string): Promise<ProviderSessionRetirement>;
   listSessions(): Promise<ProviderSession[]>;
   /**
    * Whether THIS PROCESS currently holds a live engine binding for the

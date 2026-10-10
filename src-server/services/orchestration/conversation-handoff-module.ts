@@ -1,6 +1,7 @@
 import {
   CONVERSATION_HANDOFF_CARRIED_FIELDS,
   CONVERSATION_HANDOFF_RESET_FIELDS,
+  type ConversationHandoffCarriedField,
   type ConversationHandoffResetField,
 } from '@kontourai/station-contracts/orchestration';
 
@@ -20,6 +21,8 @@ export interface ConversationHandoffMarker {
   targetExecutionAgentId?: string;
   targetModelId?: string;
   messageDigest: string;
+  nativeReturnSourceSessionId?: string;
+  nativeReturnSourceEventId?: string;
   createdAt: string;
 }
 
@@ -58,7 +61,7 @@ export interface ConversationHandoffModule {
   reserve(input: ConversationHandoffMarker): {
     marker: Readonly<ConversationHandoffMarker>;
     outcome: 'created' | 'existing';
-    carried: typeof CONVERSATION_HANDOFF_CARRIED_FIELDS;
+    carried: readonly ConversationHandoffCarriedField[];
     reset: readonly ConversationHandoffResetField[];
   };
   markerForSession(
@@ -93,8 +96,19 @@ export function createConversationHandoffModule(input: {
   ) => ({
     marker: snapshot(marker),
     outcome,
-    carried: CONVERSATION_HANDOFF_CARRIED_FIELDS,
-    reset: CONVERSATION_HANDOFF_RESET_FIELDS,
+    carried: marker.nativeReturnSourceSessionId
+      ? Object.freeze([
+          ...CONVERSATION_HANDOFF_CARRIED_FIELDS,
+          'nativeSession' as const,
+        ])
+      : CONVERSATION_HANDOFF_CARRIED_FIELDS,
+    reset: marker.nativeReturnSourceSessionId
+      ? Object.freeze(
+          CONVERSATION_HANDOFF_RESET_FIELDS.filter(
+            (field) => field !== 'providerNativeCursor',
+          ),
+        )
+      : CONVERSATION_HANDOFF_RESET_FIELDS,
   });
   return {
     describe,

@@ -1,0 +1,7 @@
+{
+  "revision": "e18013ae2498dcbb3ee689ae2d24ec80cfc9504b",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Resolved the concurrent SDK source-path additions by retaining the continuity HTTP-reader test and all peer-enrollment client/query/authority-test references. Reviewed the merged enrollment section against explicit controlling apiBase, captured requestScope/signal, refusal preservation, no mutation retries, scoped cache identity, connected-inventory invalidation and secret-free enrollment projections. readConversation continuity provenance remains unchanged; no new provider/native/remote/publication qualification is asserted.","inputs":["docs/reference/sdk.md"]}
+  ]
+}
