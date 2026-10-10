@@ -878,9 +878,12 @@ stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
 same WebView. Merely hiding the WebView or copying a reveal-time accessibility
-snapshot would change those guarantees. Cover content is requested while the
-readiness lock is held, so it cannot land after the reveal of an admitted
-window.
+snapshot would change those guarantees. WebKit can still make the hidden
+WebView first responder, so while the cover is up a window-scoped key monitor
+withholds keystrokes from it (Command shortcuts pass through) and maps Return
+to the overdue cover's default **Restart**; reveal removes the monitor. Cover
+content is requested while the readiness lock is held, so it cannot land after
+the reveal of an admitted window.
 
 **Recovery.** Server loss invalidates a pending identity proof without erasing
 an already mounted renderer. A new main page invalidates its pre-ready mount

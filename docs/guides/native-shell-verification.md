@@ -466,7 +466,10 @@ On macOS, pending activation may present a native-owned cover so the WebView
 can render while the proof proceeds. It shows the application icon and
 **Starting Station**; when the epoch becomes overdue it switches in place to
 **Station is taking longer than usual to start.** with native **Restart**
-(default) and **Quit** buttons, replacing the former modal alert. An overdue
+(default) and **Quit** buttons, replacing the former modal alert. While the
+cover is up, a window-scoped key monitor keeps keystrokes away from the hidden
+WebView (which WebKit can make first responder) and maps Return to Restart;
+Command shortcuts pass through. An overdue
 background (tray-only) launch defers that cover until activation. Application
 content remains covered until identity and mount readiness converge; reveal
 removes the cover and its buttons. Other desktop platforms retain the
