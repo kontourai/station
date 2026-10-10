@@ -116,7 +116,13 @@
 
     "tests/profile.spec.ts",
 
-    "src-ui/src/components/usage-stats/UsageStatsPanel.css"
+    "src-ui/src/components/usage-stats/UsageStatsPanel.css",
+
+    "src-server/__tests__/telemetry.test.ts",
+
+    "src-server/runtime/bootstrap/hosted-tenant-mode.ts",
+
+    "src-server/runtime/bootstrap/hosted-persistence-boundary.ts"
   ],
 
   "checks": [

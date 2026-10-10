@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   loadPublicDocs,
   renderDocsIndexSections,
@@ -19,6 +19,8 @@ import {
 import {
   marketingHygieneFindings,
   publicDocsHygieneFindings,
+  publicProjectionLinkFindings,
+  runPublicDocsHygiene,
 } from '../public-docs-hygiene.mjs';
 
 async function fixture() {
@@ -101,6 +103,10 @@ describe('public documentation admission', () => {
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('onmouseover="alert(1)');
     expect(renderInline('[unsafe](javascript:alert(1))')).toContain('href="#"');
+    expect(renderInline('[sibling](concepts.md#start)')).toContain(
+      'href="concepts.html#start"',
+    );
+    expect(renderInline('[unsafe](JavaScript:alert(1))')).toContain('href="#"');
     const index = renderDocsIndexSections([
       {
         description: '<script>alert(1)</script>',
@@ -170,6 +176,115 @@ describe('public documentation admission', () => {
         [{ source: 'guides/ok.md' }],
         () =>
           'The values 100.64 and 100.127 are ordinary numeric prose; 100.63.255.255, 100.128.0.0, fe7f::1, fec0::1, fd:, RFD:, fdisk, fd2c04e, fd2c04e8632d40e6e9c53dd13a558a1764375800, and 203.0.113.7 are public controls.',
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects a relative link to a document Pages does not publish', () => {
+    const documents = [
+      { source: 'user/start.md' },
+      { source: 'guides/public.md' },
+    ];
+    const contents = new Map([
+      [
+        'docs/user/start.md',
+        [
+          '# Start',
+          '',
+          'See the [public guide](../guides/public.md#setup), the',
+          '[private guide](../guides/private.md#reading-a-referenced-conversation),',
+          'and the [example](../../examples/demo/README.md).',
+          'A [bare sibling](private.md) and a [rooted](/start.md) link.',
+          'A [versioned](start.md#v1.2) anchor.',
+          'A [`coded`](start.md?x) link and a [top](#) link.',
+        ].join('\n'),
+      ],
+      [
+        'docs/guides/public.md',
+        '# Public\n\nBack to [start](../user/start.md) or a [sibling](./internal.md).',
+      ],
+    ]);
+    expect(
+      publicProjectionLinkFindings(
+        documents,
+        (file) => contents.get(file) ?? '',
+      ),
+    ).toEqual([
+      'user/start.md dead-link: [versioned] renders as href="#"',
+      'user/start.md dead-link: [<code>coded</code>] renders as href="#"',
+      'user/start.md dead-link: [top] renders as href="#"',
+      'user/start.md:4 non-public-link: ../guides/private.md#reading-a-referenced-conversation (not admitted to Pages; use its absolute GitHub URL)',
+      'user/start.md:5 non-public-link: ../../examples/demo/README.md (not admitted to Pages; use its absolute GitHub URL)',
+      'user/start.md:6 non-public-link: private.md (not admitted to Pages; use its absolute GitHub URL)',
+      'user/start.md:6 non-public-link: /start.md (not admitted to Pages; use its absolute GitHub URL)',
+      'guides/public.md:3 non-public-link: ./internal.md (not admitted to Pages; use its absolute GitHub URL)',
+    ]);
+  });
+
+  it('fails the hygiene gate on an unpublished link target', async () => {
+    const documents = [{ source: 'user/start.md' }];
+    const page = (link: string) =>
+      new Map([['docs/user/start.md', `# Start\n\nSee [guide](${link}).`]]);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const broken = page('../guides/private.md');
+      await expect(
+        runPublicDocsHygiene({
+          documents,
+          read: (file) => broken.get(file) ?? '',
+        }),
+      ).resolves.toBe(1);
+      expect(errors).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'user/start.md:3 non-public-link: ../guides/private.md',
+        ),
+      );
+
+      const fixed = page(
+        'https://github.com/kontourai/station/blob/main/docs/guides/private.md',
+      );
+      await expect(
+        runPublicDocsHygiene({
+          documents,
+          read: (file) => fixed.get(file) ?? '',
+        }),
+      ).resolves.toBe(0);
+    } finally {
+      errors.mockRestore();
+      logs.mockRestore();
+    }
+  });
+
+  it('accepts published, absolute, anchor, and fenced links', () => {
+    const documents = [
+      { source: 'user/start.md' },
+      { source: 'user/other.md' },
+      { source: 'guides/public.md' },
+    ];
+    const contents = new Map([
+      ['docs/user/other.md', '# Other\n\n## Intro'],
+      [
+        'docs/user/start.md',
+        [
+          '# Start',
+          '',
+          '[Public](../guides/public.md), [section](../guides/public.md#setup),',
+          '[Sibling](other.md#intro),',
+          '[on page](#start), [source](https://github.com/kontourai/station/blob/main/docs/guides/private.md),',
+          'and [mail](mailto:hello@example.com).',
+          '',
+          '```md',
+          '[not rendered](../guides/private.md)',
+          '```',
+        ].join('\n'),
+      ],
+      ['docs/guides/public.md', '# Public\n\nSee [start](../user/start.md).'],
+    ]);
+    expect(
+      publicProjectionLinkFindings(
+        documents,
+        (file) => contents.get(file) ?? '',
       ),
     ).toEqual([]);
   });

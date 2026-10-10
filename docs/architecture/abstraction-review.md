@@ -190,8 +190,12 @@ queries with actual names, labels, and recording populations;
 [#2752](https://github.com/kontourai/station/issues/2752) addresses failed chat
 spans finalized as successful; and
 [#2755](https://github.com/kontourai/station/issues/2755) addresses instruments
-created before asynchronous provider registration. The last two have bounded
-in-memory exporter/reader probes, not production collector measurements.
+created before asynchronous provider registration. Configured startup now
+registers providers synchronously and defers identity to resource resolution.
+Its regression observes the actual exported chat counter at a loopback OTLP
+receiver, including records during delayed identity I/O and refused export on
+identity failure. That is transport evidence, not production collector/storage
+qualification. #2752 retains its separate in-memory exporter probe.
 
 Insights also logs and skips unreadable rows/files before returning successful
 totals. [#2758](https://github.com/kontourai/station/issues/2758) proposes an
