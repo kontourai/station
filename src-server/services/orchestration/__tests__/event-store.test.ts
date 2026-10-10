@@ -479,31 +479,37 @@ describe('EventStore', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test('appends after a peer writer releases without upgrading a stale read snapshot', async () => {
-    const peer = await holdPeerWriteLock(join(dir, 'orchestration.sqlite'), 1_000);
-    const startedAt = Date.now();
-    let returnedAt: number | undefined;
-    try {
-      expect(() =>
-        store.appendEvent({
-          eventId: 'append-after-peer-writer',
-          provider: 'codex',
-          threadId: 'peer-overlap',
-          method: 'turn.started',
-          turnId: 'peer-overlap-turn',
-          createdAt: '2026-10-10T00:00:00.000Z',
-          prompt: 'Record this turn after the peer commits',
-        }),
-      ).not.toThrow();
-      returnedAt = Date.now();
-      expect(store.listEvents('peer-overlap')).toHaveLength(1);
-    } finally {
-      const releasedAt = await peer.releasedAt();
-      expect(startedAt).toBeLessThan(releasedAt);
-      if (returnedAt !== undefined)
-        expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
-    }
-  });
+  test.each(['appendEvent', 'appendEventIfAbsent'] as const)(
+    '%s appends after a peer writer releases without upgrading a stale read snapshot',
+    async (appendMethod) => {
+      const peer = await holdPeerWriteLock(
+        join(dir, 'orchestration.sqlite'),
+        1_000,
+      );
+      const startedAt = Date.now();
+      let returnedAt: number | undefined;
+      try {
+        expect(() =>
+          store[appendMethod]({
+            eventId: 'append-after-peer-writer',
+            provider: 'codex',
+            threadId: 'peer-overlap',
+            method: 'turn.started',
+            turnId: 'peer-overlap-turn',
+            createdAt: '2026-10-10T00:00:00.000Z',
+            prompt: 'Record this turn after the peer commits',
+          }),
+        ).not.toThrow();
+        returnedAt = Date.now();
+        expect(store.listEvents('peer-overlap')).toHaveLength(1);
+      } finally {
+        const releasedAt = await peer.releasedAt();
+        expect(startedAt).toBeLessThan(releasedAt);
+        if (returnedAt !== undefined)
+          expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+      }
+    },
+  );
 
   test('seeded replay cursors remain monotonic across physical Draft discard', () => {
     // The connected client has seen every append. The reconnecting client

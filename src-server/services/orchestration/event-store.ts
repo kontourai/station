@@ -3525,6 +3525,15 @@ export class EventStore {
     let nextSequence: number;
     let globalSequence: number;
     try {
+      // Reserve the writer before taking a read snapshot. A deferred
+      // savepoint that reads first cannot upgrade while a peer writer holds
+      // the lock; SQLite refuses that upgrade without waiting for busy_timeout.
+      // This leaves the cursor unchanged and nests in an existing transaction.
+      this.db
+        .prepare(
+          'UPDATE orchestration_stream_identity SET high_water = high_water WHERE singleton = 1',
+        )
+        .run();
       // Persisted event time is the sole replay authority. A new terminal gets
       // exactly one host observation time, shared by its event and association.
       const observedAt =
