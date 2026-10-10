@@ -44,6 +44,9 @@ async function start(directory: string): Promise<string> {
   );
   executions.push(execution);
   const output = captureOwnedProcessOutput(execution);
+  if (!('stdout' in execution.child) || !execution.child.stdout)
+    throw new Error('Fixture process did not provide its output pipe');
+  const stdout = execution.child.stdout;
   return new Promise((resolveReady, rejectReady) => {
     let text = '';
     const timer = setTimeout(
@@ -57,10 +60,10 @@ async function start(directory: string): Promise<string> {
       );
       if (!match) return;
       clearTimeout(timer);
-      execution.child.stdout?.removeListener('data', read);
+      stdout.removeListener('data', read);
       resolveReady(match[1]);
     };
-    execution.child.stdout?.on('data', read);
+    stdout.on('data', read);
     void execution.completion.then((result) => {
       clearTimeout(timer);
       rejectReady(
@@ -115,6 +118,7 @@ test('the CLI serves three distinct origins, exact HEAD/GET bytes, and replaceme
   expect(
     (await request(`${artifact}/station-portable.tar.gz`, 'POST')).status,
   ).toBe(405);
+  expect((await request(`${artifact}/%ZZ`)).status).toBe(400);
   writeFileSync(join(root, 'outside.txt'), 'must stay outside');
   expect((await request(`${artifact}/%2e%2e%2foutside.txt`)).status).toBe(404);
 }, 30_000);
