@@ -391,7 +391,7 @@ asking the receiving Agent to read it with the `read_conversation` tool; it
 never copies that conversation's transcript into the prompt. An Agent with
 Station Control can then page through that conversation because you
 referenced it; see
-[reading a referenced conversation](../guides/self-configuring-agent.md#reading-a-referenced-conversation). Titles are displayed as plain text, and the link is
+[reading a referenced conversation](https://github.com/kontourai/station/blob/main/docs/guides/self-configuring-agent.md#reading-a-referenced-conversation). Titles are displayed as plain text, and the link is
 generated from Station's conversation identity. The picker only offers source
 metadata allowed by the current access. At send time, Station checks the
 reference's captured Station and access scope. If that scope

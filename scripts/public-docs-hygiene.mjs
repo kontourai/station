@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { loadPublicDocs } from './build-github-pages.mjs';
+import path from 'node:path';
+import { loadPublicDocs, renderMarkdown } from './build-github-pages.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ABSOLUTE_DEVELOPER_PATH =
@@ -101,6 +102,51 @@ export function publicDocsHygieneFindings(
   return findings;
 }
 
+const RENDERED_HREF = /\shref="([^"]+)"/g;
+const NON_RELATIVE_HREF = /^(?:[a-z][a-z\d+.-]*:|\/\/|\/|#)/i;
+
+// Pages publishes only the manifest's documents, so a relative link from one
+// of them to any other repository file renders as a 404. Links are read from
+// the real Pages renderer rather than re-parsed here, so fenced code and the
+// .md -> .html rewrite match what ships. Link a non-public document by its
+// absolute GitHub URL instead. Until this rule, only the post-merge Pages
+// build (check-generated-pages-links.mjs) saw these, after they landed.
+/**
+ * @param {{ source: string }[]} documents
+ * @param {(file: string, encoding: BufferEncoding) => string} [read]
+ */
+export function publicProjectionLinkFindings(
+  documents,
+  read = (file, encoding) => readFileSync(file, encoding),
+) {
+  const published = new Set(
+    documents.map(({ source }) => source.replace(/\.md$/, '.html')),
+  );
+  const findings = [];
+  for (const { source } of documents) {
+    const text = read(`docs/${source}`, 'utf8');
+    for (const match of renderMarkdown(text).matchAll(RENDERED_HREF)) {
+      const href = match[1].replaceAll('&amp;', '&');
+      if (NON_RELATIVE_HREF.test(href)) continue;
+      const target = path.posix.normalize(
+        path.posix.join(
+          path.posix.dirname(source),
+          decodeURIComponent(href.split(/[?#]/, 1)[0]),
+        ),
+      );
+      if (published.has(target)) continue;
+      const markdownHref = href.replace(/\.html(?=[?#]|$)/, '.md');
+      const index = text.indexOf(`](${markdownHref}`);
+      const location =
+        index === -1
+          ? source
+          : `${source}:${text.slice(0, index).split('\n').length}`;
+      findings.push(`${location} non-public-link: ${markdownHref}`);
+    }
+  }
+  return findings;
+}
+
 /**
  * @param {readonly string[]} [files]
  * @param {(file: string, encoding: BufferEncoding) => string} [read]
@@ -127,6 +173,7 @@ export async function runPublicDocsHygiene() {
   const documents = await loadPublicDocs();
   const findings = [
     ...publicDocsHygieneFindings(documents),
+    ...publicProjectionLinkFindings(documents),
     ...marketingHygieneFindings(),
   ];
   if (findings.length === 0) {

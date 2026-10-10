@@ -19,6 +19,7 @@ import {
 import {
   marketingHygieneFindings,
   publicDocsHygieneFindings,
+  publicProjectionLinkFindings,
 } from '../public-docs-hygiene.mjs';
 
 async function fixture() {
@@ -170,6 +171,69 @@ describe('public documentation admission', () => {
         [{ source: 'guides/ok.md' }],
         () =>
           'The values 100.64 and 100.127 are ordinary numeric prose; 100.63.255.255, 100.128.0.0, fe7f::1, fec0::1, fd:, RFD:, fdisk, fd2c04e, fd2c04e8632d40e6e9c53dd13a558a1764375800, and 203.0.113.7 are public controls.',
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects a relative link to a document Pages does not publish', () => {
+    const documents = [
+      { source: 'user/start.md' },
+      { source: 'guides/public.md' },
+    ];
+    const contents = new Map([
+      [
+        'docs/user/start.md',
+        [
+          '# Start',
+          '',
+          'See the [public guide](../guides/public.md#setup), the',
+          '[private guide](../guides/private.md#reading-a-referenced-conversation),',
+          'and the [example](../../examples/demo/README.md).',
+        ].join('\n'),
+      ],
+      [
+        'docs/guides/public.md',
+        '# Public\n\nBack to [start](../user/start.md) or a [sibling](./internal.md).',
+      ],
+    ]);
+    expect(
+      publicProjectionLinkFindings(
+        documents,
+        (file) => contents.get(file) ?? '',
+      ),
+    ).toEqual([
+      'user/start.md:4 non-public-link: ../guides/private.md#reading-a-referenced-conversation',
+      'user/start.md:5 non-public-link: ../../examples/demo/README.md',
+      'guides/public.md:3 non-public-link: ./internal.md',
+    ]);
+  });
+
+  it('accepts published, absolute, anchor, and fenced links', () => {
+    const documents = [
+      { source: 'user/start.md' },
+      { source: 'guides/public.md' },
+    ];
+    const contents = new Map([
+      [
+        'docs/user/start.md',
+        [
+          '# Start',
+          '',
+          '[Public](../guides/public.md), [section](../guides/public.md#setup),',
+          '[on page](#start), [source](https://github.com/kontourai/station/blob/main/docs/guides/private.md),',
+          'and [mail](mailto:hello@example.com).',
+          '',
+          '```md',
+          '[not rendered](../guides/private.md)',
+          '```',
+        ].join('\n'),
+      ],
+      ['docs/guides/public.md', '# Public\n\nSee [start](../user/start.md).'],
+    ]);
+    expect(
+      publicProjectionLinkFindings(
+        documents,
+        (file) => contents.get(file) ?? '',
       ),
     ).toEqual([]);
   });
