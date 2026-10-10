@@ -1,0 +1,7 @@
+{
+  "revision": "5671773ff687104fd6d210eac63ec1bb33c72edd",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Checked the Windows service stop paragraph against waitForServiceLauncherExit: it ends the launcher only with a proven start time, else refuses naming the pid.","inputs":["docs/reference/cli.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

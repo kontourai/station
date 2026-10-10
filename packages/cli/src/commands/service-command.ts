@@ -47,9 +47,9 @@ export const LAUNCHER_STOP_BUDGET_MS = 65_000 + 10_000 + 60_000;
  * of exactly the handoff's 15 s left no room at all when it did). A stop
  * that lands during a home backup or restore waits for it, and SIGKILL
  * interrupts it: both are idempotent, and the next start sweeps the copy.
- * (launchd's ExitTimeOut is already 600 s; Task Scheduler's /End only ends
- * the cmd wrapper, and `service stop` stops the Station children by record
- * there.)
+ * (launchd's ExitTimeOut is already 600 s. Task Scheduler's /End only ends
+ * the cmd wrapper and has no timeout: a launcher notices its wrapper is gone
+ * and stops on its own, and `service stop` waits this budget for it.)
  */
 export const SYSTEMD_STOP_TIMEOUT_SECONDS =
   Math.ceil(
@@ -80,26 +80,39 @@ type PathApi = Pick<typeof posix, 'dirname' | 'join'>;
  * installer-owned archive: beside `current`, outside every version, so it
  * outlives the updates it performs.
  */
-export function serviceLauncherPath(installRoot: string): string {
-  return posix.join(installRoot, 'runtime', 'station-launcher.mjs');
+function serviceLauncherPath(
+  installRoot: string,
+  path: PathApi = posix,
+): string {
+  return path.join(installRoot, 'runtime', 'station-launcher.mjs');
+}
+
+/**
+ * The Node.js a Windows launcher service runs (#2675 W3, decision D4 option
+ * a): `service install` copies the active version's `runtime\node.exe` beside
+ * the fixed launcher and freezes it with it. Task Scheduler's trusted
+ * execution path then holds no junction (the trust check refuses reparse
+ * points), and the running launcher pins no version directory, which Windows
+ * would otherwise refuse to prune while its node.exe runs. The launcher needs
+ * only Node.js built-ins, and starts each version with that version's own
+ * node.exe by its real path.
+ */
+function windowsServiceLauncherNode(installRoot: string): string {
+  return win32.join(installRoot, 'runtime', 'node.exe');
 }
 
 /**
  * An installer-owned archive's unit runs the fixed launcher, which runs the
- * active version and swaps it. Windows keeps running the version itself
- * until slice W gives it an installer with versions/ and `current`.
+ * active version and swaps it: install.sh's on Linux and macOS, install.ps1's
+ * on Windows (slice W3).
  */
-function runsLauncher(location: ServiceCodeLocation, path: PathApi): boolean {
-  return (
-    location.kind === 'archive' &&
-    location.installRoot !== undefined &&
-    path.join !== win32.join
-  );
+function runsLauncher(location: ServiceCodeLocation): boolean {
+  return location.kind === 'archive' && location.installRoot !== undefined;
 }
 
 function entryFiles(location: ServiceCodeLocation, path: PathApi): string[] {
-  if (runsLauncher(location, path) && location.installRoot !== undefined)
-    return [serviceLauncherPath(location.installRoot)];
+  if (runsLauncher(location) && location.installRoot !== undefined)
+    return [serviceLauncherPath(location.installRoot, path)];
   return location.kind === 'archive'
     ? [path.join(location.repoPath, 'bin', 'station.mjs')]
     : [
@@ -131,7 +144,16 @@ export function renderServiceCommand(
         (origin) => `--allowed-origin=${origin}`,
       ),
     ],
-    workingDirectory: location.repoPath,
+    // A Windows launcher service runs from the launcher's own directory, not
+    // `current`: the wrapper's cmd.exe would otherwise hold its working
+    // directory on a version while the launcher switches `current` away from
+    // it, and Windows cannot remove a directory a process is in.
+    workingDirectory:
+      path.join === win32.join &&
+      runsLauncher(location) &&
+      location.installRoot !== undefined
+        ? win32.join(location.installRoot, 'runtime')
+        : location.repoPath,
   };
 }
 
@@ -181,9 +203,11 @@ export function resolveServiceCodeLocation(input: {
     kind: 'archive',
     ...(installRoot === null ? {} : { installRoot }),
     nodePath:
-      input.platform === 'win32'
-        ? path.join(root, 'runtime', 'node.exe')
-        : path.join(root, 'runtime', 'bin', 'node'),
+      input.platform !== 'win32'
+        ? path.join(root, 'runtime', 'bin', 'node')
+        : installRoot === null
+          ? path.join(root, 'runtime', 'node.exe')
+          : windowsServiceLauncherNode(installRoot),
     repoPath: root,
   };
 }
