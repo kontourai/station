@@ -469,6 +469,12 @@ test.describe('Profile retained usage', () => {
         await expect(
           page.locator('.usage-stats-panel').getByText('42', { exact: true }),
         ).toBeVisible();
+        const targetHeights = await page
+          .locator('.usage-period-btn')
+          .evaluateAll((nodes) =>
+            nodes.map((node) => node.getBoundingClientRect().height),
+          );
+        expect(Math.min(...targetHeights)).toBeGreaterThanOrEqual(44);
         const graph = page.getByLabel('Usage activity overview');
         for (const date of [
           new Date(Date.now() - 13 * 86_400_000).toISOString().slice(0, 10),
