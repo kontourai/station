@@ -878,10 +878,15 @@ stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
 same WebView. Merely hiding the WebView or copying a reveal-time accessibility
-snapshot would change those guarantees. WebKit can still make the hidden
-WebView first responder, so while the cover is up a window-scoped key monitor
-withholds keystrokes from it (Command shortcuts pass through) and maps Return
-to the overdue cover's default **Restart**; reveal removes the monitor. Cover
+snapshot would change those guarantees. Covering always clears first
+responder before the default **Restart** may take it, and WebKit can still
+retake it for the hidden WebView, so while the cover is up a window-scoped key
+monitor evicts the WebView from first responder and routes every key: Return
+chooses **Restart**, Tab/Shift-Tab/Space reach only the cover's own buttons,
+Escape and typing are swallowed, and only the Quit, Close, Hide, Hide Others,
+Minimize and window-cycling Command shortcuts pass (editing shortcuts would
+target the page). Reveal or main-window destruction removes the monitor and
+the retained button target. Cover
 content is requested while the readiness lock is held, so it cannot land after
 the reveal of an admitted window.
 
@@ -892,15 +897,23 @@ can wake a bounded retry while waiting. The 30-second deadline is a waiting
 threshold, not a liveness verdict: it marks the epoch overdue and offers
 recovery once, but never restarts or signals the sidecar. An overdue epoch
 still admits the exact late ticket, identity proof and mount, which reveal the
-window without user action. On macOS the cover switches in place to a
-"taking longer than usual" message with **Restart** (the default button) and
-**Quit**; a background (tray-only) launch defers it until activation. Hosts
-without a cover (Windows, Linux, or a macOS cover dispatcher that did not
-start) show a native dialog with the same two choices. Restart starts a new
-epoch: with a current owned ticket it first reprobes without restarting; a
-later Restart or a missing ticket restarts only the owned sidecar. Quit exits
-only while that same epoch is still overdue. A service-owned/unowned backend
-uses recovery-surface recommit instead of signaling a durable service.
+window without user action. The renderer's
+[bundled-profile bootstrap](../../src-ui/src/platform/native/bundledLocalProfileBootstrap.ts)
+likewise has no wall-clock limit while the desktop owns a sidecar that is not
+yet running, so a fresh home still gets the profile its identity proof
+requires after a long boot or an explicit Restart. On macOS the cover switches
+in place to a "taking longer than usual" message with **Restart** (the default
+button) and **Quit**; a background (tray-only) launch defers it until
+activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
+that did not start, or an overdue cover task that failed) show a native dialog
+with **Restart**, **Quit** and **Keep Waiting**; dismissing it keeps waiting.
+Restart starts a new epoch: with a current owned ticket it first reprobes
+without restarting; a later Restart or a missing ticket restarts only the owned
+sidecar. A service-owned/unowned backend re-runs the native recovery commit
+instead of signaling a durable service, so a late renderer mount still
+reveals. Quit exits only while that same epoch is still overdue. Routing is
+exercised through a recording host in the
+[desktop crate tests](../../src-desktop/src/lib.rs).
 Activation never restarts anything. Dev has an explicit bypass. Activation
 waits for the appropriate state, and startup readiness does not re-hide a
 window already admitted as ready.

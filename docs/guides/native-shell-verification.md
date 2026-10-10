@@ -377,8 +377,11 @@ native shell requests that commit itself. The Rust lane
 proves pure readiness and sidecar-supervisor transitions, including stale
 generation, a deadline that never restarts the sidecar, late-ticket reveal,
 explicit retry, service recovery-surface recommit, and the four automatic
-respawns before the fifth counted exit is terminal. None launches a packaged
-app or sees the native cover or dialog.
+respawns before the fifth counted exit is terminal. Desktop crate tests also
+drive the deadline, Restart/Quit and dialog routing through a recording host,
+and on macOS the cover's pure key routing. None launches a packaged app or sees
+the native cover or dialog; the macOS-only cover tests do not run on the Linux
+Desktop Rust lane.
 
 For the existing hostile-plugin browser test, use a distinct disposable home,
 a unique instance, and an OS-allocated non-default port block. Keep allocation,
@@ -455,8 +458,9 @@ this, the deadline restarted a still-booting sidecar; a 30-40 s cold boot then
 looped indefinitely.) Restart is the only route to a process effect: an owned
 sidecar with a current ticket gets one non-disruptive reprobe, and if that does
 not settle and Restart is chosen again, or there is no current ticket, the host
-requests an owned-sidecar restart. A non-owned backend receives a
-recovery-surface recommit, never a durable-service restart. Quit exits only
+requests an owned-sidecar restart. A non-owned backend re-runs the native
+recovery commit (so a late renderer mount still reveals), never a
+durable-service restart. Quit exits only
 while the same epoch is still overdue. Activation never restarts. These effects
 are routed by [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs). The
 sidecar supervisor itself has no boot or handshake timeout; it waits for the
@@ -467,14 +471,17 @@ can render while the proof proceeds. It shows the application icon and
 **Starting Station**; when the epoch becomes overdue it switches in place to
 **Station is taking longer than usual to start.** with native **Restart**
 (default) and **Quit** buttons, replacing the former modal alert. While the
-cover is up, a window-scoped key monitor keeps keystrokes away from the hidden
-WebView (which WebKit can make first responder) and maps Return to Restart;
-Command shortcuts pass through. An overdue
+cover is up, a window-scoped key monitor evicts the hidden WebView from first
+responder (WebKit can retake it), maps Return to Restart, lets Tab/Space reach
+only the cover's buttons, swallows Escape and typing, and passes only app and
+window management Command shortcuts. A failed overdue cover task falls back to
+the dialog once per epoch. An overdue
 background (tray-only) launch defers that cover until activation. Application
 content remains covered until identity and mount readiness converge; reveal
 removes the cover and its buttons. Other desktop platforms retain the
-hidden-window behavior and show a native dialog with the same choices; it can
-remain open after a late reveal, where both buttons are inert. Interactive
+hidden-window behavior and show a native dialog with **Restart**, **Quit** and
+**Keep Waiting**; dismissal keeps waiting, and the dialog can remain open after
+a late reveal, where its buttons are inert. Interactive
 second launch, accepted deep link, and macOS reopen use this authority;
 explicit background/tray-only launches can suppress activation. Home/schema
 preparation refusals before supervisor setup have a separate Exit-only dialog

@@ -34,28 +34,38 @@ starting and offers a choice once for that epoch:
 
 - On macOS, the startup cover changes to **Station is taking longer than usual
   to start.** with **Restart** and **Quit** buttons. Return selects
-  **Restart**. If Station was launched in the background (tray-only), this
-  appears when you open the window.
+  **Restart**; with keyboard navigation turned on, Tab moves between the two
+  buttons and Space presses the focused one. Escape does nothing. While the
+  cover is shown, other keys and editing shortcuts are ignored; Quit, Close,
+  Hide and Minimize shortcuts still work. If Station was launched in the
+  background (tray-only), this appears when you open the window. If the cover
+  cannot be shown, the dialog described next appears instead.
 - On Windows and Linux, a **Station is taking longer than usual to start**
-  dialog offers the same **Restart** and **Quit** choices.
+  dialog offers **Restart**, **Quit** and **Keep Waiting**. Closing it or
+  pressing Escape is the same as **Keep Waiting**; only **Quit** closes the app.
 
 You do not have to choose. Desktop does not stop its local service when the
-30 seconds pass, so if startup finishes later the window opens by itself
-(unless Station was launched in the background) and the macOS cover and its
-buttons disappear. On Windows and Linux, the dialog can stay open after the
-window appears; either button is then ignored. On macOS, activating the app
-(Dock, second launch, deep link) shows the cover again but does not restart
-anything.
+30 seconds pass. When the service finishes starting, the window opens without
+any action from you (unless Station was launched in the background), and the
+macOS cover and its buttons disappear. There is no time limit on that wait,
+including on a first launch, when Station creates this computer's local
+connection only after the service is running. On Windows and Linux, the dialog
+can stay open after the window appears; its buttons are then ignored. On
+macOS, activating the app (Dock, second launch, deep link) shows the cover
+again but does not restart anything.
 
 - **Restart** starts a new epoch. With a current owned-sidecar ticket, the
   first restart rechecks that ticket without restarting a potentially healthy
   backend. If that recheck does not complete and you choose Restart again, or
   no current ticket exists, Desktop asks its bounded supervisor to restart the
   sidecar. If a durable service owns the home, or no sidecar is owned, it
-  requests the recovery surface again; it does not start or restart the
-  durable service.
+  re-establishes the local recovery screen, which opens once the app has
+  loaded; it does not start or restart the durable service.
 - **Quit** closes the desktop app if that startup is still waiting. It does
   not reset data or remove a service.
+- **Keep Waiting** (Windows and Linux) closes the message and lets startup
+  continue. That startup does not show the message again; to quit, use the
+  tray or end the app.
 - After an unexpected exit, the supervisor can respawn the sidecar four times,
   after 1, 2, 4, and 8 seconds. The fifth counted exit is terminal and reports
   failure. An owned-sidecar restart resets that attempt count; a ticket-only
