@@ -558,8 +558,8 @@
 
 @media (max-height: 540px) {
   [data-workspace-pane-route]:has(.browser-pane) > .project-page__inner {
-    padding-top: var(--k-space-2);
-    padding-bottom: var(--k-space-2);
+    padding-top: 0;
+    padding-bottom: 0;
   }
 }
 

@@ -186,7 +186,11 @@ export function BrowserOverflowMenu({
       0,
       Math.min(
         viewportHeight - EDGE_PX - viewportTop,
-        Math.max(chromeHeight, openUp ? above : below),
+        Math.max(above, below) < chromeHeight + 44
+          ? viewportHeight - EDGE_PX - viewportTop
+          : openUp
+            ? above
+            : below,
       ),
     );
     const height = Math.max(chromeHeight, Math.min(menu.height, maxHeight));
@@ -204,6 +208,13 @@ export function BrowserOverflowMenu({
       maxWidth: `calc(100vw - ${EDGE_PX * 2}px)`,
     });
   }, [open, listId, menuRef]);
+
+  useEffect(() => {
+    if (!open || style.visibility === 'hidden') return;
+    menuRef.current
+      ?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)')
+      ?.focus({ preventScroll: true });
+  }, [open, style.visibility, menuRef]);
 
   const list = items.find(
     (item): item is Extract<BrowserMenuItem, { kind: 'list' }> =>
