@@ -1,0 +1,7 @@
+{
+  "revision": "4ed9dc968657d8c549e8116236a204f3320cbea2",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the parse-cache delta against lock/workspace and installed patch-binding claims. Complete file contents identify parsing only; every current-file read, public shape check and installed-content verification still executes. Caller mutations cannot change later checks. Existing residual expiries, advisories and platform/provider limits are unchanged.","inputs":["docs/guides/dependency-security.md","scripts/lib/pnpm-lockfile.mjs"]}
+  ]
+}
