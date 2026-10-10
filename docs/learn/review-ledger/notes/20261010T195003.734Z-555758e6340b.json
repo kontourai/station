@@ -1,0 +1,7 @@
+{
+  "revision": "a687e68a80fc4627d228d46539ac3dd77566113f",
+
+  "notes": [
+    {"path":"examples/shared-providers/README.md","note":"Traced the achievements link consumer through PluginRegistry, ProfilePage and AchievementsBadge: the metadata is unchanged and the placeholder link appears after opening Milestones. Provider loading, grants, refusal/fallback limits and sidebar behavior remain unchanged.","inputs":["examples/shared-providers/README.md","src-ui/src/pages/ProfilePage.tsx"]}
+  ]
+}
