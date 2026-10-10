@@ -574,6 +574,10 @@ export function executeOwnedCommand(
     },
     runtime,
   );
+  let wrapperExited = false;
+  execution.child.once('exit', () => {
+    wrapperExited = true;
+  });
   // Observe pipes as soon as the launcher spawn returns, but reserve the EOF
   // allowance for trailing output after command or launcher completion.
   const outputEOF = observeOwnedOutputEOF(execution.child);
@@ -665,6 +669,10 @@ export function executeOwnedCommand(
     completion,
     promise: completion,
     launcherCompletion,
+    // Windows can publish exit without close after IPC disconnect. Job proof
+    // still owns descendants and output; exit proves only the wrapper ended.
+    isAlive: () =>
+      !(treeSettlement.proven && wrapperExited) && execution.isAlive(),
     completionRequiresCleanup: true,
     terminate: () => settleTree(false),
     forceTerminate: () => settleTree(true),

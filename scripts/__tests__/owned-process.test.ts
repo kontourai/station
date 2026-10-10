@@ -127,39 +127,42 @@ describe('owned process lifecycle', () => {
     expect(execution.isAlive()).toBe(false);
   });
 
-  test('records normal COMPLETE plus raw EOF as Job settlement even after wrapper close', async () => {
-    const child = Object.assign(mockChild(), {
-      pid: 4242,
-      connected: true,
-      kill: () => true,
-      send: () => true,
-      disconnect: () => {},
-    });
-    const execution = executeOwnedCommand(
-      'phase.exe',
-      [],
-      (() => child) as never,
-      'fixture',
-      {
-        resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
-      },
-      { platform: 'win32' },
-    );
-    child.emit('message', {
-      type: 'owned-command-bound',
-      pid: 5151,
-      processStart: 'target-birth',
-      guard: { pid: 5152, start: 'guard-birth' },
-      jobBound: true,
-    });
-    child.emit('message', { type: 'owned-command-complete', status: 0 });
-    child.stdout.emit('end');
-    child.stderr.emit('end');
-    child.emit('close', 0, null);
+  test.each(['close', 'exit'] as const)(
+    'records normal COMPLETE plus raw EOF as Job settlement after wrapper %s',
+    async (wrapperEvent) => {
+      const child = Object.assign(mockChild(), {
+        pid: 4242,
+        connected: true,
+        kill: () => true,
+        send: () => true,
+        disconnect: () => {},
+      });
+      const execution = executeOwnedCommand(
+        'phase.exe',
+        [],
+        (() => child) as never,
+        'fixture',
+        {
+          resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
+        },
+        { platform: 'win32' },
+      );
+      child.emit('message', {
+        type: 'owned-command-bound',
+        pid: 5151,
+        processStart: 'target-birth',
+        guard: { pid: 5152, start: 'guard-birth' },
+        jobBound: true,
+      });
+      child.emit('message', { type: 'owned-command-complete', status: 0 });
+      child.stdout.emit('end');
+      child.stderr.emit('end');
+      child.emit(wrapperEvent, 0, null);
 
-    await expect(execution.promise).resolves.toMatchObject({ status: 0 });
-    expect(execution.isAlive()).toBe(false);
-  });
+      await expect(execution.promise).resolves.toMatchObject({ status: 0 });
+      expect(execution.isAlive()).toBe(false);
+    },
+  );
 
   test('settles an abort only after the launcher Job-settlement acknowledgement', async () => {
     const sent: unknown[] = [];
@@ -215,6 +218,8 @@ describe('owned process lifecycle', () => {
       },
       { platform: 'win32' },
     );
+    child.emit('exit', 0, null);
+    expect(execution.isAlive()).toBe(true);
     await expect(execution.terminate()).rejects.toThrow(/did not acknowledge/);
     expect(execution.settlementEvidence().barriers).toMatchObject({
       treeSettlementAcknowledged: false,
