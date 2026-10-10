@@ -762,7 +762,6 @@ describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382
     expect(
       await screen.findByRole('menuitem', {
         name: 'Allow Bash for this session',
-        exact: true,
       }),
     ).toBeTruthy();
   });
