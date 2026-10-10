@@ -1,0 +1,7 @@
+{
+  "revision": "d63496d9454959e1805e85ae12c1bc85cee57c7d",
+
+  "notes": [
+    {"path":"packaging/manifest/README.md","note":"Reviewed source installer smoke delta: three artifact/manifest/test-key origins now use the already selected Node24 runtime instead of stalled hosted Python3.14.7. Signature payload, test-key override, artifact hashes, installer invocation, upgrade replacement and rollback checks are unchanged. Readiness still fails after30s and now HEADs the actual portable artifact. Local CLI bytes/replacement/refusal tests passed; hosted f39 failed before installer/compilation and its nested Python startup cause is unknown. New-head hosted macOS installer proof remains pending.","inputs":["packaging/manifest/README.md",".github/workflows/install-smoke.yml","scripts/install-smoke-file-server.mjs"]}
+  ]
+}

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { glob } from 'glob';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, it } from 'vitest';
 
 /**
