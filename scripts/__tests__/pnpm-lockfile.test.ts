@@ -25,11 +25,14 @@ describe('live pnpm YAML reads', () => {
     try {
       const first = readPnpmLockfile('/first', read);
       first.importers['.'].dependencies.datum.version = 'broken';
+      const second = readPnpmLockfile('/second', read);
+      expect(second.importers['.'].dependencies.datum.version).toBe('4.0.0');
+      second.importers['.'].dependencies.datum.version = 'also-broken';
       expect(
-        readPnpmLockfile('/second', read).importers['.'].dependencies.datum
+        readPnpmLockfile('/third', read).importers['.'].dependencies.datum
           .version,
       ).toBe('4.0.0');
-      expect(read).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenCalledTimes(3);
       expect(parse).toHaveBeenCalledTimes(1);
       text = lock('5.0.0');
       expect(
@@ -70,10 +73,14 @@ describe('live pnpm YAML reads', () => {
     const first = readPnpmLockfile('/root', () => text);
     first.packages.injected = {};
     first.snapshots.injected = {};
-    expect(readPnpmLockfile('/root', () => text)).toMatchObject({
-      packages: {},
-      snapshots: {},
-    });
+    const second = readPnpmLockfile('/root', () => text);
+    expect(second.packages).toEqual({});
+    expect(second.snapshots).toEqual({});
+    second.packages.alsoInjected = {};
+    second.snapshots.alsoInjected = {};
+    const third = readPnpmLockfile('/root', () => text);
+    expect(third.packages).toEqual({});
+    expect(third.snapshots).toEqual({});
   });
 
   test('evicts old parsed inputs and does not retain oversized documents', () => {
