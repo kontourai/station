@@ -3901,6 +3901,7 @@ describe('ConnectionService', () => {
       { kind: 'expired', expected: 'canary-profile-ref' },
       { kind: 'global', expected: 'canary-profile-ref' },
       { kind: 'all-exhausted', expected: undefined },
+      { kind: 'missing-window-exhausted', expected: undefined },
       { kind: 'subscription-end', expected: 'canary-profile-ref' },
       { kind: 'renewing', expected: 'profile-c' },
       { kind: 'unknown-renewal', expected: 'profile-c' },
@@ -3972,6 +3973,10 @@ describe('ConnectionService', () => {
               },
             ],
           };
+          if (kind === 'missing-window-exhausted')
+            snapshot.windows = snapshot.windows
+              .filter((window) => window.id === 'primary')
+              .map((window) => ({ ...window, usedPercent: 100 }));
           return { kind: 'snapshot', snapshot };
         });
         const { service } = createCredentialProfileApplyFixture(

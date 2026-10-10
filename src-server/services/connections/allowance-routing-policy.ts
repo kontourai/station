@@ -34,6 +34,14 @@ export function selectExpiringAllowance(input: {
       snapshot.accountScope !== 'profile'
     )
       continue;
+    if (
+      snapshot.windows.some(
+        (item) => fresh(item.observedAt) && item.usedPercent === 100,
+      )
+    ) {
+      excludedProfileRefs.push(candidate.profileRef);
+      continue;
+    }
     const window = snapshot.windows.find(
       (item) => item.id === input.preference.windowId,
     );
@@ -45,12 +53,7 @@ export function selectExpiringAllowance(input: {
       window.usedPercent > 100
     )
       continue;
-    if (
-      100 - window.usedPercent < input.preference.minimumRemainingPercent ||
-      snapshot.windows.some(
-        (item) => fresh(item.observedAt) && item.usedPercent >= 100,
-      )
-    ) {
+    if (100 - window.usedPercent < input.preference.minimumRemainingPercent) {
       excludedProfileRefs.push(candidate.profileRef);
       continue;
     }
