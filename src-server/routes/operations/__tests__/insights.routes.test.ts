@@ -93,6 +93,40 @@ describe('Insights Routes', () => {
     expect(body.data.coverage.issues).toEqual(['malformed-row']);
   });
 
+  test('attributable foreign timestamp defects do not disclose integrity through own coverage', async () => {
+    writeFileSync(
+      join(dir, 'events-foreign.ndjson'),
+      JSON.stringify({
+        [K.TIMESTAMP]: 'invalid',
+        [K.USER_ID]: 'another-user',
+        [K.OP_NAME]: OP.INVOKE_AGENT,
+        [K.SPAN_KIND]: SPAN.END,
+      }),
+    );
+    const body = await json(await createInsightsRoutes(dir).request('/'));
+    expect(body.data.coverage.state).toBe('complete');
+    expect(body.data.coverage.issues).toEqual([]);
+  });
+
+  test('foreign rows cannot make an impaired own-history scan look measured', async () => {
+    writeFileSync(
+      join(dir, 'events-mixed.ndjson'),
+      [
+        'not json',
+        JSON.stringify({
+          [K.TIMESTAMP]: new Date().toISOString(),
+          [K.USER_ID]: 'another-user',
+          [K.OP_NAME]: OP.INVOKE_AGENT,
+          [K.SPAN_KIND]: SPAN.END,
+          [K.TRACE_ID]: 'foreign',
+        }),
+      ].join('\n'),
+    );
+    const body = await json(await createInsightsRoutes(dir).request('/'));
+    expect(body.data.totalChats).toBe(0);
+    expect(body.data.coverage.state).toBe('unknown');
+  });
+
   test.each(['0', '366', '7.5', '7junk', 'NaN', ''])(
     'rejects invalid day window %s',
     async (days) => {

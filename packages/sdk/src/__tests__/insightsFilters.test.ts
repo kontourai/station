@@ -16,6 +16,17 @@ const { fetchInsights, useInsightsQuery } = await import(
   '../query-domains/analytics'
 );
 
+const legacyInsights = {
+  toolUsage: {},
+  hourlyActivity: Array(24).fill(0),
+  agentUsage: {},
+  modelUsage: {},
+  totalChats: 0,
+  totalToolCalls: 0,
+  totalErrors: 0,
+  days: 14,
+};
+
 describe('insights filters reach the server (station#3075)', () => {
   test('failed or absent scan result rejects instead of becoming an empty successful query', async () => {
     for (const result of [
@@ -24,6 +35,9 @@ describe('insights filters reach the server (station#3075)', () => {
       null,
       [],
       { success: true, data: [] },
+      { success: true, data: {} },
+      { data: { ...legacyInsights, totalChats: -1 } },
+      { data: { ...legacyInsights, coverage: { state: 'complete' } } },
     ]) {
       authenticatedFetch.mockResolvedValue({
         ok: true,
@@ -38,13 +52,17 @@ describe('insights filters reach the server (station#3075)', () => {
     authenticatedFetch.mockReset();
     authenticatedFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ data: {} }),
+      json: async () => ({ data: legacyInsights }),
     });
   });
 
   function requestedUrl(): URL {
     return new URL(String(authenticatedFetch.mock.calls[0]?.[0]));
   }
+
+  test('a valid older server response remains readable without fabricating coverage', async () => {
+    await expect(fetchInsights()).resolves.toEqual(legacyInsights);
+  });
 
   test('every filter is sent, not silently dropped', async () => {
     // The dimensions were always on the data; the endpoint refusing to use
@@ -88,7 +106,7 @@ describe('filters key the query cache, not just the URL', () => {
 
     authenticatedFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ data: {} }),
+      json: async () => ({ data: legacyInsights }),
     });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },

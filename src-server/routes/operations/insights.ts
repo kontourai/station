@@ -365,18 +365,18 @@ export function createInsightsRoutes(
           if (!line.trim()) continue;
           try {
             const event = JSON.parse(line) as MonitoringEventRecord;
+            if (!event || typeof event !== 'object' || Array.isArray(event)) {
+              scanIssues.add('malformed-row');
+              continue;
+            }
+            if (!readableByCaller(event)) continue;
             const ts = timestampFor(event);
             if (ts === null) {
               scanIssues.add('invalid-timestamp');
               continue;
             }
-            readableRows++;
             if (ts < cutoff || isHealthProbe(event)) continue;
-            // archive#3130: the same two layers `/monitoring/events` applies.
-            // Per-user first, matching `queryEventsFromDisk`'s predicate
-            // exactly; then the central tenant predicate, imported rather than
-            // re-derived. Without these this rollup counted every user's rows.
-            if (!readableByCaller(event)) continue;
+            readableRows++;
 
             const operation = event[K.OP_NAME];
             const spanKind = event[K.SPAN_KIND];
