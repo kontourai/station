@@ -143,6 +143,7 @@ export async function initializeTelemetry(
       .catch(() => {});
     throw error;
   }
+  if (shutdown) return;
   (options.log ?? console.log)(
     `[telemetry] OTel exporting to ${endpoint} (installation identity configured)`,
   );

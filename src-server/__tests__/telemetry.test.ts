@@ -447,4 +447,36 @@ describe('OTel installation identity', () => {
     expect(shutdown).toHaveBeenCalledOnce();
     expect(configuredTelemetryShutdownTask()).toBeUndefined();
   });
+
+  test('shutdown owns the configured SDK while identity is pending and cannot announce export after stopping', async () => {
+    const root = await home();
+    const { initializeTelemetry, configuredTelemetryShutdownTask } =
+      await telemetry();
+    let releaseIdentity = () => {};
+    const delayed = new Promise<void>((resolve) => {
+      releaseIdentity = resolve;
+    });
+    identityDelay.beforeMkdir = () => delayed;
+    const shutdown = vi.fn(async () => {});
+    const log = vi.fn();
+    const initializing = initializeTelemetry({
+      env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector.test' },
+      homeDir: root,
+      createSdk: () => ({ start: () => {}, shutdown }),
+      log,
+    });
+    try {
+      const task = configuredTelemetryShutdownTask();
+      expect(task).toBeDefined();
+      const controller = new AbortController();
+      controller.abort();
+      await task?.shutdown(controller.signal);
+      await task?.shutdown(controller.signal);
+      expect(shutdown).toHaveBeenCalledOnce();
+    } finally {
+      releaseIdentity();
+      await initializing;
+    }
+    expect(log).not.toHaveBeenCalled();
+  });
 });
