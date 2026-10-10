@@ -643,6 +643,14 @@ export class WorktreeProvisioningService {
         await rm(worktreePath, { recursive: true, force: true });
         throw error;
       }
+      try {
+        await repository.settleCreatedWorktree(worktreePath);
+      } catch (error) {
+        throw new Error(
+          `Created worktree preserved at ${worktreePath}: metadata could not be settled`,
+          { cause: error },
+        );
+      }
 
       return {
         mode: 'worktree',

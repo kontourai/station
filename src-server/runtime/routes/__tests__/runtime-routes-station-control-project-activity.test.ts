@@ -1164,11 +1164,26 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       }
 
       // A recorded fact appears; a model summary could not have.
-      appendTurn('a-peer', 6, {
-        end: 'completed',
-        prompt: 'A brand new request',
-        tools: [{ name: 'NewTool' }],
-      });
+      try {
+        appendTurn('a-peer', 6, {
+          end: 'completed',
+          prompt: 'A brand new request',
+          tools: [{ name: 'NewTool' }],
+        });
+      } catch (error) {
+        const sqlite =
+          error instanceof Error
+            ? {
+                code: Reflect.get(error, 'code'),
+                errcode: Reflect.get(error, 'errcode'),
+                errstr: Reflect.get(error, 'errstr'),
+              }
+            : undefined;
+        throw new Error(
+          `Appending a turn after the digest read failed: ${JSON.stringify(sqlite)}`,
+          { cause: error },
+        );
+      }
       const second = await tool(bearer('a-caller'), 'get_session_digest', {
         sessionId: 'a-peer',
       });

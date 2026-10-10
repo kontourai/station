@@ -136,6 +136,7 @@ import {
   claudeAskFlags,
   claudeRequestDisplayText,
   claudeSandboxNetworkTitle,
+  isClaudeInitMessage,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   reportClaudePermissionMode,
@@ -3715,8 +3716,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   private mapMessage(record: ClaudeSessionRecord, message: SDKMessage): void {
     if (
-      message.type === 'system' &&
-      message.subtype === 'init' &&
+      isClaudeInitMessage(message) &&
       !record.nativeOwnershipClaimed &&
       record.nativeOwnershipBindingKey &&
       (!record.requireNativeResumeIdentity ||

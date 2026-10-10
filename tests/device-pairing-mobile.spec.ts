@@ -119,6 +119,22 @@ async function openConnections(page: Page): Promise<Locator> {
   }
   if (await directConnections.isVisible()) {
     await directConnections.click();
+    const stationSwitcher = page.getByRole('menu', { name: 'Choose Station' });
+    await expect
+      .poll(
+        async () =>
+          (await stationSwitcher.isVisible()) ||
+          (await managerControl.first().isVisible()) ||
+          (await addComputer.isVisible()) ||
+          (await controlThisStation.isVisible()),
+        { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
+      )
+      .toBe(true);
+    if (await stationSwitcher.isVisible()) {
+      await stationSwitcher
+        .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+        .click();
+    }
   } else if (await setupLauncher.isVisible()) {
     await setupLauncher
       .getByRole('button', { name: 'View All Connections' })
@@ -269,8 +285,8 @@ test('keeps direct pairing methods usable at 390px without an advanced detour', 
     }),
   ).toHaveCount(0);
   for (const name of [
-    'Request access',
-    'Add a Station address',
+    'Connect a Station',
+    'Connect another device',
     'Scan a QR code',
     'Enter a pairing code',
   ]) {

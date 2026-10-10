@@ -1,0 +1,7 @@
+{
+  "revision": "392395f5ed457793373cfebe47e66bd88a9c5d76",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Scoped review of the committed generated topic delta: only ReviewEvidenceModule storage/cleanup prose now describes validated created-worktree pointer settlement and preserved-on-refusal behavior; topic id/title/tool API and availability/authentication contracts stay unchanged. Regenerated body matches the committed module-map paragraph and content digest. Linux Git2.43 five-owner suites191PASS and Mac guard controls122PASS cover the implementation; no native Windows/provider/power-loss qualification is claimed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

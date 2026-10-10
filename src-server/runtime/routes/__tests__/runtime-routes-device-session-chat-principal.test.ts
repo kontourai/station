@@ -1864,12 +1864,48 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         await invoke('/api/projects/example/access', undefined, operator),
       );
       expect(before.members).toHaveLength(1);
+      const authenticate = vi.spyOn(h.localAccounts!.service, 'authenticate');
+      const accept = vi.spyOn(h.membership!.service, 'accept');
       const accepted = await invoke(
         '/api/account-auth/accept-invitation',
         { token },
         { Cookie },
       );
-      expect(accepted.status, await accepted.clone().text()).toBe(200);
+      const authResults = await Promise.allSettled(
+        authenticate.mock.results
+          .filter((result) => result.type === 'return')
+          .map((result) => result.value),
+      );
+      const acceptance = await Promise.allSettled(
+        accept.mock.results
+          .filter((result) => result.type === 'return')
+          .map((result) => result.value),
+      );
+      const diagnosis = {
+        response: await accepted.clone().text(),
+        authentication: authResults.map((result) =>
+          result.status === 'fulfilled'
+            ? {
+                kind: result.value.kind,
+                reason:
+                  'reason' in result.value ? result.value.reason : undefined,
+                samePrincipal:
+                  result.value.kind === 'authenticated' &&
+                  result.value.principal.id === account.principal.id,
+              }
+            : { kind: 'thrown' },
+        ),
+        acceptance: acceptance.map((result) =>
+          result.status === 'rejected' && result.reason instanceof Error
+            ? {
+                kind: result.reason.name,
+                code: Reflect.get(result.reason, 'code'),
+                stack: result.reason.stack?.split('\n').slice(0, 8),
+              }
+            : { kind: result.status },
+        ),
+      };
+      expect(accepted.status, JSON.stringify(diagnosis)).toBe(200);
       expect(await responseData<unknown>(accepted)).toEqual({
         scope: view.scope,
         grantsDeviceAccess: false,

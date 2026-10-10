@@ -357,9 +357,11 @@ plan exit or a question opens a request even when the guardian allowed the
 call. In an ACP Session it answers no plan exit, question or sandbox
 network-host ask.
 
-Station also reads the engine's structured reason for each ask, which the
-SDK does not forward, from the engine's `can_use_tool` request (#2932). The
-same rule applies: these always prompt, under a tool grant or `autoApprove`
+Station also reads the engine's structured reason and classifier facts for
+each ask from the engine's `can_use_tool` request (#2932). The current SDK
+forwards reason and interaction fields, while the tap retains the classifier
+approval fact and the complete recorded ask. The same rule applies: these
+always prompt, under a tool grant or `autoApprove`
 of `*`, and offer no session option unless the engine suggested a directory
 to forward.
 

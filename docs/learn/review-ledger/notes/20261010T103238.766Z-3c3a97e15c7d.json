@@ -1,0 +1,7 @@
+{
+  "revision": "be6ab84f39e9325bda33652cbc9aa73b2ade73cc",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed actual 1d7-to-be6 Claude caller keeper delta: retain the guaranteed returned Session as local started, assign the identical object to the claim observer, and read ready/error assertions from the definite local binding. Claim-before-mapper status observation, refusal blocking init publication, event-model marker, scope/actions, deadlines and cleanup are unchanged; production bytes and permission/grant calculation are untouched. Independent REASONED review found no issue. This fixture typing correction needs no conformance prose change and establishes no new typecheck, real SDK/native/runtime or CI proof; dated provider evidence remains historical.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

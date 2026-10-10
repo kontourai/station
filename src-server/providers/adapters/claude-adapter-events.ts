@@ -434,6 +434,12 @@ export function reportClaudePermissionMode(
   });
 }
 
+export function isClaudeInitMessage(
+  message: SDKMessage,
+): message is Extract<SDKMessage, { type: 'system'; subtype: 'init' }> {
+  return message.type === 'system' && message.subtype === 'init';
+}
+
 export function mapClaudeSdkMessage({
   provider,
   record,
@@ -460,7 +466,7 @@ export function mapClaudeSdkMessage({
       observeClaudeBackgroundChildSettling(turnContext),
   };
 
-  if (message.type === 'system' && message.subtype === 'init') {
+  if (isClaudeInitMessage(message)) {
     if (
       record.requireNativeResumeIdentity &&
       message.session_id !== record.attemptedResumeCursor

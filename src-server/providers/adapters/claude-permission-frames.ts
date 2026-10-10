@@ -2,9 +2,10 @@ import { Transform, type TransformCallback } from 'node:stream';
 
 /**
  * #2932: the structured reason fields the Claude CLI writes on a
- * `can_use_tool` control request and Agent SDK 0.3.278 does not pass to
- * `canUseTool` (`decision_reason_type`, `classifier_approvable`,
- * `decision_reason_code`, `requires_user_interaction`). Read from the CLI's
+ * `can_use_tool` control request (`decision_reason_type`,
+ * `classifier_approvable`, `decision_reason_code`, `requires_user_interaction`).
+ * The installed Agent SDK 0.3.289 forwards reason and interaction fields;
+ * the classifier approval fact still requires the tap. Read from the CLI's
  * stdout by {@link ClaudePermissionFrameTap}, keyed by the frame's
  * `request_id`, which the SDK hands the callback as `requestId`.
  *

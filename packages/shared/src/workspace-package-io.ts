@@ -206,7 +206,12 @@ export function packageGit(
         '-c',
         'core.fsmonitor=false',
         ...(!contentPolicyQuery
-          ? ['-c', `core.attributesFile=${devNull}`]
+          ? [
+              '-c',
+              `core.attributesFile=${devNull}`,
+              '-c',
+              `core.excludesFile=${devNull}`,
+            ]
           : []),
         '-c',
         'gc.auto=0',
