@@ -723,8 +723,9 @@ validated exact coordinator, target, and guard PID/start identities; a wrapper
 start that was not already known remains `null`. Environment, arguments, command
 paths, and raw unredacted output are outside this diagnostic. The record locates
 the missing proof barrier; it does not claim the underlying Windows failure is
-fixed. The owned-command runner accepts an observed wrapper `exit` after Job
-settlement, or its existing `close` observation. Windows can emit `exit` without
+fixed. The [owned-command runner](../../scripts/lib/owned-process.mjs) accepts
+an observed wrapper `exit` after Job settlement, or its existing `close`
+observation. Windows can emit `exit` without
 `close` after IPC disconnect. Wrapper exit alone never proves Job settlement or
 output completion; the command's guard, EOF and drain barriers still apply.
 
