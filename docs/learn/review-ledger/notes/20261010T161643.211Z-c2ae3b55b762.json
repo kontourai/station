@@ -1,0 +1,7 @@
+{
+  "revision": "4f9cf02b3ce81565e31d4f705d3079c5b43aa1cb",
+
+  "notes": [
+    {"path":"packaging/manifest/README.md","note":"Reviewed smoke workflow routing addition: changes to the new file-server CLI now select installer smoke by themselves after the workflow lands. Three-origin Node fixture behavior, public-manifest signatures and hashes, installer checks and30s readiness remain as previously reviewed. Workflow gate passed; no production publisher or authority change.","inputs":["packaging/manifest/README.md",".github/workflows/install-smoke.yml"]}
+  ]
+}
