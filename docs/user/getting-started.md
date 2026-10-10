@@ -121,8 +121,8 @@ first; the controls show what **Start** will use:
 - The **Agent** chip shows the Agent's icon and name. Open it to
   list **Station**, **Coding apps**, and **My agents**, with readiness and setup
   actions. The separate Model chip shows the Model's name and opens the
-  **Engine & model** picker, which offers alternative engines when they are
-  available. An engine choice overrides this conversation's execution
+  Model picker, titled **Engine & model** when it also offers alternative
+  engines. An engine choice overrides this conversation's execution
   while retaining the selected Agent's profile and saved defaults. Search or
   filter by provider, **Recent**, or **Favorites**; open **Options** for
   supported controls such as reasoning effort. Choosing a Model for an Agent also chooses
@@ -666,9 +666,9 @@ more context.
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station
 checks that the request is still open and makes the decision. When the paired
-Station reports a question's exact request, **Answer on the paired Station**
-sends your reply bound to that question; otherwise the card says to answer it
-on that Station.
+Station reports a question's exact request and your access permits it, the card
+offers an **Answer on the paired Station** box whose **Send answer** reply is
+bound to that question; otherwise the card says to answer it on that Station.
 
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision

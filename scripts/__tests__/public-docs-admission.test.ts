@@ -195,6 +195,7 @@ describe('public documentation admission', () => {
           '[private guide](../guides/private.md#reading-a-referenced-conversation),',
           'and the [example](../../examples/demo/README.md).',
           'A [bare sibling](private.md) and a [rooted](/start.md) link.',
+          'A [versioned](start.md#v1.2) anchor.',
         ].join('\n'),
       ],
       [
@@ -208,6 +209,7 @@ describe('public documentation admission', () => {
         (file) => contents.get(file) ?? '',
       ),
     ).toEqual([
+      'user/start.md dead-link: [versioned] renders as href="#"',
       'user/start.md:4 non-public-link: ../guides/private.md#reading-a-referenced-conversation (not admitted to Pages; use its absolute GitHub URL)',
       'user/start.md:5 non-public-link: ../../examples/demo/README.md (not admitted to Pages; use its absolute GitHub URL)',
       'user/start.md:6 non-public-link: private.md (not admitted to Pages; use its absolute GitHub URL)',

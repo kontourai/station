@@ -103,6 +103,9 @@ export function publicDocsHygieneFindings(
 }
 
 const RENDERED_HREF = /\shref="([^"]+)"/g;
+// The renderer replaces any href it cannot prove safe with `#`; on a link
+// that did not ask for `#`, that ships a dead link no target check can see.
+const DEAD_RENDERED_LINK = /<a href="#">([^<]*)<\/a>/g;
 const NON_RELATIVE_HREF = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i;
 
 // Pages publishes only the manifest's documents, so a relative link from one
@@ -125,7 +128,12 @@ export function publicProjectionLinkFindings(
   const findings = [];
   for (const { source } of documents) {
     const text = read(`docs/${source}`, 'utf8');
-    for (const match of renderMarkdown(text).matchAll(RENDERED_HREF)) {
+    const html = renderMarkdown(text);
+    for (const [, label] of html.matchAll(DEAD_RENDERED_LINK)) {
+      if (text.includes(`[${label}](#)`)) continue;
+      findings.push(`${source} dead-link: [${label}] renders as href="#"`);
+    }
+    for (const match of html.matchAll(RENDERED_HREF)) {
       const href = match[1].replaceAll('&amp;', '&');
       if (NON_RELATIVE_HREF.test(href)) continue;
       // A root-absolute href leaves the Pages project path, so no admitted
