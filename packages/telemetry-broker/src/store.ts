@@ -167,13 +167,20 @@ export class PgProductRepository implements ProductRepository {
       );
     });
   }
+  private async assertSchema(client: PoolClient): Promise<void> {
+    const { rows } = await client.query<{ version: number; digest: string }>(
+      'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
+    );
+    if (
+      rows.length !== 1 ||
+      rows[0].version !== 1 ||
+      rows[0].digest !== SCHEMA_DIGEST
+    )
+      throw new Error('Unsupported telemetry storage migration');
+  }
   async ready(): Promise<void> {
     await this.transaction(async (client) => {
-      const { rows } = await client.query<{ digest: string }>(
-        'SELECT digest FROM station_telemetry.migrations WHERE version=1',
-      );
-      if (rows[0]?.digest !== SCHEMA_DIGEST)
-        throw new Error('Telemetry storage migration unavailable');
+      await this.assertSchema(client);
       await client.query(
         'SELECT source_id,event_id,content_digest,observation FROM station_telemetry.events LIMIT 0',
       );
@@ -182,6 +189,7 @@ export class PgProductRepository implements ProductRepository {
   private async source(client: PoolClient, key: string): Promise<SourceRow> {
     if (!/^stp_[A-Za-z0-9_-]{43}$/.test(key))
       throw new BrokerError('source_unauthorized');
+    await this.assertSchema(client);
     const { rows } = await client.query<SourceRow>(
       "SELECT id,label,revoked_at FROM station_telemetry.sources WHERE credential_hash=$1 AND namespace='product' AND revoked_at IS NULL FOR UPDATE",
       [hash(key)],
@@ -202,6 +210,7 @@ export class PgProductRepository implements ProductRepository {
     )
       throw new BrokerError('invalid_source');
     return this.transaction(async (client) => {
+      await this.assertSchema(client);
       await client.query(
         "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
       );
@@ -224,6 +233,7 @@ export class PgProductRepository implements ProductRepository {
   async revokeSource(id: string): Promise<boolean> {
     if (!uuid(id)) throw new BrokerError('invalid_source');
     return this.transaction(async (client) => {
+      await this.assertSchema(client);
       const result = await client.query(
         'UPDATE station_telemetry.sources SET revoked_at=clock_timestamp() WHERE id=$1 AND revoked_at IS NULL',
         [id],

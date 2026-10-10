@@ -4,8 +4,12 @@ import { build } from 'esbuild';
 
 const root = dirname(fileURLToPath(import.meta.url));
 await build({
-  entryPoints: [join(root, 'src/main.ts')],
-  outfile: join(root, 'dist/main.mjs'),
+  entryPoints: {
+    main: join(root, 'src/main.ts'),
+    index: join(root, 'src/index.ts'),
+  },
+  outdir: join(root, 'dist'),
+  outExtension: { '.js': '.mjs' },
   banner: {
     js: "import { createRequire as createNodeRequire } from 'node:module'; const require = createNodeRequire(import.meta.url);",
   },
