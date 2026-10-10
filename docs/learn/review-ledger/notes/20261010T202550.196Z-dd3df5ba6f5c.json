@@ -1,0 +1,7 @@
+{
+  "revision": "5cecd885191c7ccce6ec8f6aee239a3afdec9076",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the 5cecd885 orchestration fixture selector repair against the session-grant explanation and ActionOverflowMenu trigger. The server grant remains beside per-tool approval in overflow; no grant computation, authority, adapter, persistence or policy changed. Exact-two decision label checks exclude the icon trigger while all-three geometry checks remain. E2E types and fixture guard passed; browser and real provider proof are not established by this review.","inputs":["docs/conformance/tool-policy-delivery.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

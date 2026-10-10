@@ -1,0 +1,7 @@
+{
+  "revision": "5cecd885191c7ccce6ec8f6aee239a3afdec9076",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the orchestration fixture delta at 5cecd885: geometry still measures all three desktop controls; label contrast, single-line labels and disabled widths now select exactly two decision buttons, excluding the aria-haspopup menu trigger. Canonical events, browser-health assertions, runner and manifest are unchanged. Current E2E types and fixture guard passed; corrected browser execution remains pending, so this is source review only.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}
