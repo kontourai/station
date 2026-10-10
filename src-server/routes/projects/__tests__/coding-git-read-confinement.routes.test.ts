@@ -19,6 +19,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { basename, dirname, join } from 'node:path';
 import { Hono } from 'hono';
@@ -463,9 +464,12 @@ describe.skipIf(process.platform === 'win32')(
         '%s runs no credential helper and connects nowhere',
         async (route) => {
           let connections = 0;
-          const server = createServer((socket) => {
+          const server = createHttpServer((_request, response) => {
             connections += 1;
-            socket.destroy();
+            response.writeHead(401, {
+              'WWW-Authenticate': 'Basic realm="partial-clone-control"',
+            });
+            response.end();
           });
           await new Promise<void>((resolve) =>
             server.listen(0, '127.0.0.1', resolve),
@@ -483,8 +487,7 @@ describe.skipIf(process.platform === 'win32')(
               ['core.repositoryformatversion', '1'],
               ['extensions.partialClone', 'origin'],
               ['remote.origin.promisor', 'true'],
-              ['remote.origin.url', `https://u@127.0.0.1:${port}/x.git`],
-              ['http.proactiveAuth', 'basic'],
+              ['remote.origin.url', `http://u@127.0.0.1:${port}/x.git`],
               [
                 'credential.helper',
                 `!touch '${marker}'; echo username=u; echo password=p`,
