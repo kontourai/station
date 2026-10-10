@@ -925,6 +925,16 @@ server reads refresh the lifetime snapshot at most once a minute. A request's
 success is not proof of complete provider reporting; retain source coverage and
 snapshot metadata. A rescan invalidates all analytics and Insights queries.
 
+### `fetchInsights(days?, filters?)` / `useInsightsQuery(days?, filters?, config?)`
+
+Return `UsageInsights` from `@kontourai/station-contracts/insights`, including
+retained-scan coverage when the server supports it. Filters are part of the
+query cache key. HTTP failures, `success: false`, and absent/non-object results
+reject. Older servers may omit coverage; consumers must describe completeness
+as unknown. Partial scans retain readable aggregates with a warning; unknown
+scans and failed refreshes must not display cached totals as measured results.
+See [Insights](api.md#insights) for retention and file-day boundaries.
+
 ### `useAchievementsQuery(config?)`
 
 Fetches achievement data.

@@ -37,6 +37,112 @@ describe('Insights Routes', () => {
     const body = await json(await app.request('/'));
     expect(body.data.totalChats).toBe(0);
     expect(body.data.hourlyActivity).toHaveLength(24);
+    expect(body.data.coverage).toMatchObject({
+      state: 'unknown',
+      scope: 'retained-monitoring',
+      issues: ['history-missing'],
+    });
+  });
+
+  test('readable totals survive malformed rows and unavailable selected files with explicit omissions', async () => {
+    writeFileSync(
+      join(dir, 'events-readable.ndjson'),
+      [
+        JSON.stringify({
+          [K.TIMESTAMP]: new Date().toISOString(),
+          [K.USER_ID]: 'user-1',
+          [K.OP_NAME]: OP.INVOKE_AGENT,
+          [K.SPAN_KIND]: SPAN.END,
+          [K.TRACE_ID]: 'readable-trace',
+          [K.AGENT_SLUG]: 'default',
+        }),
+        'not json',
+        JSON.stringify({
+          [K.USER_ID]: 'user-1',
+          [K.TIMESTAMP]: 'invalid-time',
+        }),
+      ].join('\n'),
+    );
+    symlinkSync(
+      join(dir, 'absent-history'),
+      join(dir, 'events-missing.ndjson'),
+    );
+    const body = await json(await createInsightsRoutes(dir).request('/'));
+    expect(body.data.totalChats).toBe(1);
+    expect(body.data.coverage.state).toBe('partial');
+    expect(body.data.coverage.issues).toEqual(
+      expect.arrayContaining([
+        'malformed-row',
+        'invalid-timestamp',
+        'unreadable-file',
+      ]),
+    );
+    expect(JSON.stringify(body.data.coverage)).not.toContain(dir);
+  });
+
+  test('entirely unreadable or corrupt history reports unknown instead of measured zeros', async () => {
+    const path = join(dir, 'events-unavailable.ndjson');
+    symlinkSync(join(dir, 'absent-history'), path);
+    let body = await json(await createInsightsRoutes(dir).request('/'));
+    expect(body.data.coverage.state).toBe('unknown');
+    expect(body.data.coverage.issues).toEqual(['unreadable-file']);
+    rmSync(path);
+    writeFileSync(path, 'not json');
+    body = await json(await createInsightsRoutes(dir).request('/'));
+    expect(body.data.coverage.state).toBe('unknown');
+    expect(body.data.coverage.issues).toEqual(['malformed-row']);
+  });
+
+  test.each(['0', '366', '7.5', '7junk', 'NaN', ''])(
+    'rejects invalid day window %s',
+    async (days) => {
+      const response = await createInsightsRoutes(dir).request(
+        `/?days=${days}`,
+      );
+      expect(response.status).toBe(400);
+      expect((await json(response)).success).toBe(false);
+    },
+  );
+
+  test('a clean retained scan reports integrity without calling excluded records corrupt', async () => {
+    writeFileSync(
+      join(dir, 'events-clean.ndjson'),
+      [
+        JSON.stringify({
+          [K.TIMESTAMP]: new Date().toISOString(),
+          [K.USER_ID]: 'user-1',
+          [K.OP_NAME]: OP.INVOKE_AGENT,
+          [K.SPAN_KIND]: SPAN.END,
+          [K.TRACE_ID]: 'trace-clean',
+          [K.AGENT_SLUG]: 'default',
+        }),
+        JSON.stringify({
+          [K.TIMESTAMP]: new Date().toISOString(),
+          [K.USER_ID]: 'another-user',
+          [K.OP_NAME]: OP.INVOKE_AGENT,
+          [K.SPAN_KIND]: SPAN.END,
+          [K.TRACE_ID]: 'foreign-trace',
+        }),
+      ].join('\n'),
+    );
+    const body = await json(await createInsightsRoutes(dir).request('/'));
+    expect(body.data.totalChats).toBe(1);
+    expect(body.data.coverage).toMatchObject({
+      state: 'complete',
+      scope: 'retained-monitoring',
+      issues: [],
+    });
+  });
+
+  test('an unreadable history root fails rather than confirming a zero activity total', async () => {
+    const file = join(dir, 'not-a-directory');
+    writeFileSync(file, 'retained history cannot be listed here');
+    const response = await createInsightsRoutes(file).request('/');
+    expect(response.status).toBe(503);
+    const body = await json(response);
+    expect(body.success).toBe(false);
+    expect(body.data).toBeUndefined();
+    expect(body.error).not.toContain(file);
   });
 
   test('GET / derives metrics from MonitoringEmitter events persisted by RuntimeEventLog', async () => {

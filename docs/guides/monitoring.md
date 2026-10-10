@@ -813,10 +813,15 @@ reader's content-derived bounds, this optimization can omit a clock-skewed
 exporter's row at a UTC day boundary. It does not scan every retained file on
 every request.
 
-Insights logs and skips per-row parsing and per-file read failures, then can
-still return `success: true` without a completeness indicator. A successful
-aggregate therefore does not prove every relevant file/row was read. This
-differs from the history reader's propagation of non-missing-file I/O errors.
+Insights returns typed retained-scan coverage: clean scans are `complete`,
+omissions alongside readable rows are `partial`, and missing history or an
+impaired scan with no measurable rows is `unknown`. Malformed rows, invalid
+timestamps and unreadable files are classified without exposing paths, contents
+or other users' counts. An unreadable directory fails with 503. These states
+describe scan integrity, not lifetime, delivery or requested-window retention.
+The dashboard warns alongside partial totals, hides unknown totals, and hides
+cached totals after a failed refresh. Older servers without coverage show a
+completeness warning. Day windows must be integers from 1 through 365.
 
 For exact query parsing and response fields, read the
 [monitoring route](../../src-server/routes/operations/monitoring.ts),

@@ -17,6 +17,23 @@ const { fetchInsights, useInsightsQuery } = await import(
 );
 
 describe('insights filters reach the server (station#3075)', () => {
+  test('failed or absent scan result rejects instead of becoming an empty successful query', async () => {
+    for (const result of [
+      { success: false, error: 'unavailable' },
+      { success: true },
+      null,
+      [],
+      { success: true, data: [] },
+    ]) {
+      authenticatedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => result,
+      });
+      await expect(fetchInsights()).rejects.toThrow(
+        'Insights returned no readable result',
+      );
+    }
+  });
   beforeEach(() => {
     authenticatedFetch.mockReset();
     authenticatedFetch.mockResolvedValue({

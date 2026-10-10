@@ -1,4 +1,11 @@
+import type { UsageInsights } from '@kontourai/station-contracts/insights';
 import { _getApiBase } from '../api';
+
+export type {
+  InsightsScanCoverage,
+  InsightsScanIssue,
+  UsageInsights,
+} from '@kontourai/station-contracts/insights';
 
 export type {
   UsageRollupQuery,
@@ -124,19 +131,30 @@ function insightsQuery(days: number, filters: InsightsFilters = {}): string {
 export async function fetchInsights(
   days = 14,
   filters: InsightsFilters = {},
-): Promise<any> {
+): Promise<UsageInsights> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/insights?${insightsQuery(days, filters)}`,
   );
   if (!response.ok) throw new Error('Failed to fetch insights');
-  return (await response.json()).data;
+  const result = await response.json();
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    Array.isArray(result) ||
+    result.success === false ||
+    !result.data ||
+    typeof result.data !== 'object' ||
+    Array.isArray(result.data)
+  )
+    throw new Error('Insights returned no readable result');
+  return result.data;
 }
 
 export function useInsightsQuery(
   days = 14,
   filters: InsightsFilters = {},
-  config?: QueryConfig<any>,
+  config?: QueryConfig<UsageInsights>,
 ) {
   return useApiQuery(
     // Filters belong in the cache key: without them, switching agent would
