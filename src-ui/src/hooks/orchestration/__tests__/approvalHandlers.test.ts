@@ -489,6 +489,7 @@ describe('the Station browser server grant on the toast', () => {
       expectedRequestEventId: 'evt-1',
       decision: 'acceptForSession',
       sessionGrantScope: 'server',
+      timeoutMs: 15_000,
     });
   });
 

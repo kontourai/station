@@ -38,6 +38,10 @@ vi.mock('../contexts/ToastContext', () => ({
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
 }));
+vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
+  ConnectedAttachUserInputToTaskButton: () => null,
+  ConnectedAnswerBasisAffordance: () => null,
+}));
 vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
 }));
