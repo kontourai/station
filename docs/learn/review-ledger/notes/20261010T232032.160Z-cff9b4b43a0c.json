@@ -1,0 +1,7 @@
+{
+  "revision": "162bfff2daafda376d746082e7c45c3db709ab8d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the intentional status-body reference refresh at 162bfff. The exact pinned Linux Gallery artifact is run 38093954685/job114335926927/artifact11684892636, source cb840b9737ecbe77ee1fc31abe56df5ce40ec91d, full selection null/all54 capture entries successful. Independent visual/raw-pixel review found only498 pixels inside the glyph+label body bbox(1309,782)-(1423,794), with52 compared screens unchanged and no content/layout regression. The owner change drops the completed morph transform; normal/reduced resting-style checks and the real Linux capture assertion passed. Official screenshot:baseline changed only the intended PNG and decoded-RGBA hash d02e5aa365c5db17f6097ae8ef3838fa2d57d1c8a0f16777246457f98f90afec; copied PNG SHA25676e0e5e04de4f9771e0ab22fc116a7facfb617b74b1f6d4a6b88b29b24305e19 matches the artifact exactly. Same-artifact diff53/53 is reference integrity, not independent repeat determinism. No threshold, volatility, mask or comparator change. Existing baseline provenance/evidence-separation prose remains accurate. Historical3-pixel failure is preserved, and original cause remains unknown.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}
