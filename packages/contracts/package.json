@@ -212,7 +212,7 @@
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",
-    "@kontourai/flow": "5.1.1",
+    "@kontourai/flow": "5.1.3",
     "@kontourai/flow-agents": "6.5.1",
     "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0"

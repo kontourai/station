@@ -6,7 +6,7 @@
       "adapterId": "station-strands",
       "adapterVersion": "0.7.1",
       "hostId": "station-strands",
-      "hostVersion": "1.18.0",
+      "hostVersion": "1.19.0",
       "capabilities": {
         "lifecycle": {
           "session-start": "unavailable",
