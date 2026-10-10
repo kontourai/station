@@ -1782,11 +1782,36 @@ export async function seedE2EUsageTelemetryDisclosure(
   operatorCredential,
   fetchImpl = globalThis.fetch,
 ) {
+  const disclosureResponse = await fetchImpl(
+    `${baseUrl}/api/usage-telemetry/disclosure`,
+    { headers: e2eOperatorAuthorizationHeaders(operatorCredential) },
+  );
+  if (!disclosureResponse.ok)
+    throw new Error(
+      `Could not read the ordinary-suite usage-telemetry disclosure: HTTP ${disclosureResponse.status}`,
+    );
+  const disclosure = await disclosureResponse.json();
+  if (
+    disclosure?.success !== true ||
+    disclosure?.data?.acknowledgementProtocol !== 2 ||
+    typeof disclosure?.data?.inventoryRevision !== 'string' ||
+    !disclosure.data.inventoryRevision
+  )
+    throw new Error(
+      'Could not read a supported ordinary-suite usage-telemetry disclosure',
+    );
   const response = await fetchImpl(
     `${baseUrl}/api/usage-telemetry/disclosure/acknowledgements`,
     {
       method: 'POST',
-      headers: e2eOperatorAuthorizationHeaders(operatorCredential),
+      headers: {
+        ...e2eOperatorAuthorizationHeaders(operatorCredential),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        acknowledgementProtocol: 2,
+        inventoryRevision: disclosure.data.inventoryRevision,
+      }),
     },
   );
   if (!response.ok) {
@@ -1795,7 +1820,11 @@ export async function seedE2EUsageTelemetryDisclosure(
     );
   }
   const result = await response.json();
-  if (result?.success !== true || result?.data?.acknowledged !== true) {
+  if (
+    result?.success !== true ||
+    result?.data?.acknowledged !== true ||
+    result?.data?.inventoryRevision !== disclosure.data.inventoryRevision
+  ) {
     throw new Error(
       'Could not acknowledge the ordinary-suite usage-telemetry disclosure: the service did not report it acknowledged',
     );
