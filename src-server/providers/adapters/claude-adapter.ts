@@ -21,7 +21,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
-import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
+import type { InputRequestForm } from '@kontourai/station-contracts/input-request';
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
@@ -41,10 +41,7 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
-import {
-  harnessAnswerTexts,
-  validateHarnessQuestionAnswers,
-} from '@kontourai/station-shared/harness-questions';
+import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import {
   type ClaudeAskReason,
   sessionGrantPermissionUpdates,
@@ -199,7 +196,7 @@ import {
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
-import { claudeQuestionnaire } from './harness-questions.js';
+import { claudeAnswers, claudeInputRequest } from './harness-questions.js';
 
 type PendingRequest = {
   resolve: (result: PermissionResult) => void;
@@ -218,7 +215,8 @@ type PendingRequest = {
    * same `toolRequestServerGrant` computation the surfaces offer from.
    */
   serverGrant: ToolRequestServerGrant;
-  questionnaire?: HarnessQuestionnaire;
+  /** #3390: the form an `AskUserQuestion` opened, answered with content. */
+  inputRequest?: InputRequestForm;
   eventId: string;
 };
 
@@ -2302,27 +2300,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error(`Unknown Claude permission request: ${requestId}`);
     }
 
-    if (pending.questionnaire) {
+    if (pending.inputRequest) {
       if (
         context?.expectedRequestEventId !== pending.eventId ||
         decision === 'acceptForSession'
       )
         throw new Error('Inspect this question before answering it.');
       if (decision === 'accept') {
-        const answers = validateHarnessQuestionAnswers(
-          pending.questionnaire,
-          context?.answers,
+        // Checked again here, against the form this adapter opened: the
+        // orchestration service checked the stored request, and this is the
+        // one that reaches the engine.
+        const content = validateInputRequestContent(
+          pending.inputRequest,
+          context?.inputContent,
         );
-        const claudeAnswers = Object.fromEntries(
-          pending.questionnaire.questions.map((question) => [
-            question.prompt,
-            harnessAnswerTexts(question, answers).join(', '),
-          ]),
-        );
-        pending.toolInput = { ...pending.toolInput, answers: claudeAnswers };
-      } else if (context?.answers !== undefined)
+        pending.toolInput = {
+          ...pending.toolInput,
+          answers: claudeAnswers(pending.inputRequest, content),
+        };
+      } else if (context?.inputContent !== undefined)
         throw new Error('A declined question cannot carry answers.');
-    } else if (context?.answers !== undefined)
+    } else if (context?.inputContent !== undefined)
       throw new Error('This request does not accept question answers.');
     record.pendingRequests.delete(requestId);
     const grant = pending.sessionGrant;
@@ -2335,15 +2333,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // forwards the engine's acceptEdits mode change alone, and a folder grant
     // its directory suggestions alone (the approved directory is then the
     // engine's state); neither mints anything.
-    if (effectiveDecision === 'acceptForSession' && grant === 'tool') {
+    if (
+      effectiveDecision === 'acceptForSession' &&
+      grant === 'tool' &&
+      context?.sessionGrantScope !== 'server'
+    ) {
       record.approvedTools.add(pending.toolName);
     }
     // Owner decision: the typed `sessionGrantScope: 'server'` widens the
     // answer to the Station browser server, only where the request offered it
     // (`pending.serverGrant`, computed from an authentic call). Any other
     // answer, a plain per-tool `acceptForSession` included, mints no server
-    // grant. The per-tool grant above is still minted: the broader grant
-    // contains it.
+    // grant. A server choice mints no independent tool-name grant: every
+    // later browser call must still pass the current authenticity checks.
     if (
       effectiveDecision === 'acceptForSession' &&
       context?.sessionGrantScope === 'server' &&
@@ -2356,8 +2358,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const result = mapClaudeDecisionToPermissionResult(
       effectiveDecision,
       pending.toolInput,
-      pending.suggestions &&
-        sessionGrantPermissionUpdates(grant, pending.suggestions),
+      context?.sessionGrantScope === 'server'
+        ? undefined
+        : pending.suggestions &&
+            sessionGrantPermissionUpdates(grant, pending.suggestions),
     );
     // #2915: a forwarded mode change is Station's own request and now the
     // engine's mode. Both records follow it, so a turn whose posture differs
@@ -3133,11 +3137,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         const claudeAsk: ClaudeAskReason | null = recordedAsk
           ? recordedReason
           : null;
-        const questionnaire =
-          toolName === 'AskUserQuestion'
-            ? claudeQuestionnaire(toolInput)
-            : null;
-        if (toolName === 'AskUserQuestion' && !questionnaire)
+        const inputRequest =
+          toolName === 'AskUserQuestion' ? claudeInputRequest(toolInput) : null;
+        if (toolName === 'AskUserQuestion' && !inputRequest)
           return {
             behavior: 'deny',
             message: 'This question format is not supported.',
@@ -3198,7 +3200,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // A chained Bash command hides its parts' ask rules (see
         // `claudeAskEscalates`).
         if (
-          !questionnaire &&
+          !inputRequest &&
           toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
             toolName,
@@ -3229,7 +3231,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           const notApplied =
             policyAllow === 'changed'
               ? 'the input changed after the guardian reviewed it'
-              : questionnaire
+              : inputRequest
                 ? 'the request is a question for a person'
                 : toolRequestIsPlainCall(request)
                   ? undefined
@@ -3257,7 +3259,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         const sessionGrant = toolRequestSessionGrant(request);
         const serverGrant = toolRequestServerGrant(request);
         if (
-          !questionnaire &&
+          !inputRequest &&
           record.approvedTools.has(toolName) &&
           sessionGrant === 'tool'
         ) {
@@ -3268,7 +3270,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // request that would offer it (a plain call to an authentic tool of
         // that server), so an escalation or an impostor still prompts.
         if (
-          !questionnaire &&
+          !inputRequest &&
           serverGrant === 'server' &&
           record.serverGrants.has(STATION_BROWSER_MCP_SERVER_ID)
         ) {
@@ -3304,14 +3306,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           requestId,
           method: 'request.opened',
           requestType: 'approval',
-          title: questionnaire
-            ? 'The agent has questions for you'
+          title: inputRequest
+            ? inputRequest.message
             : (options.title ??
               claudeSandboxNetworkTitle(toolName, toolInput) ??
               `Allow ${toolName}`),
           description: claudeRequestDisplayText(options.description),
           payload: {
-            ...(questionnaire ? { questionnaire } : {}),
+            ...(inputRequest ? { inputRequest } : {}),
             toolName,
             // #2316: the SDK's id for this exact tool_use block — the same id
             // `tool.started` carries as `toolCallId` — so the transcript binds
@@ -3357,7 +3359,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             sessionGrant,
             serverGrant,
             eventId,
-            ...(questionnaire ? { questionnaire } : {}),
+            ...(inputRequest ? { inputRequest } : {}),
           });
           // #2316: the SDK aborts this callback when the call it gates is
           // abandoned; the request is then settled, never left answerable.

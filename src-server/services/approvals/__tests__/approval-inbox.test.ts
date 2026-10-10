@@ -151,6 +151,7 @@ describe('approval inbox notifications', () => {
           payload,
           provider: 'claude',
           requestId: 'req-browser',
+          eventId: 'event-browser',
           requestType: 'approval',
           threadId: 'thread-browser',
           title: 'Allow station-browser',
@@ -176,6 +177,7 @@ describe('approval inbox notifications', () => {
         type: 'respondToRequest',
         threadId: 'thread-browser',
         requestId: 'req-browser',
+        expectedRequestEventId: 'event-browser',
         decision: 'acceptForSession',
         sessionGrantScope: 'server',
       });
@@ -189,6 +191,7 @@ describe('approval inbox notifications', () => {
         type: 'respondToRequest',
         threadId: 'thread-browser',
         requestId: 'req-browser',
+        expectedRequestEventId: 'event-browser',
         decision: 'acceptForSession',
       });
     });

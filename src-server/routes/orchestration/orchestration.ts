@@ -458,6 +458,8 @@ const respondToRequestCommandSchema = z.object({
   // Only an `acceptForSession` answer reads it, and only an authentic
   // Station browser request honours it (the adapter's grant computation).
   sessionGrantScope: z.literal('server').optional(),
+  // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
+  // `content` by the service. Removed in 0.10.0.
   answers: z
     .record(
       z.string().min(1).max(256),
@@ -469,16 +471,24 @@ const respondToRequestCommandSchema = z.object({
         .strict(),
     )
     .optional(),
-  // #3284: shape only. Whether it fits the open form is decided by the
+  // #3390: shape only. Whether it fits the open form is decided by the
   // service against the form itself; nothing here coerces or cuts values.
-  elicitationContent: z
+  content: z
     .record(
-      z.string().min(1).max(128),
+      z.string().min(1).max(256),
       z.union([
         z.string().max(12000),
         z.number(),
         z.boolean(),
-        z.array(z.string().max(512)).max(64),
+        z.object({ custom: z.string().max(12000) }).strict(),
+        z
+          .array(
+            z.union([
+              z.string().max(512),
+              z.object({ custom: z.string().max(12000) }).strict(),
+            ]),
+          )
+          .max(65),
       ]),
     )
     .optional(),
@@ -598,6 +608,7 @@ const executionTargetSchema = z.object({
         executionAgent: z.string().min(1).max(64),
         expectedDefinitionFingerprint: z
           .string()
+          .max(71)
           .regex(/^sha256:[0-9a-f]{64}$/)
           .optional(),
       })

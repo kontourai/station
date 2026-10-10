@@ -2,6 +2,7 @@ import {
   hasHiddenCharacters,
   revealHiddenCharacters,
 } from '@kontourai/station-shared/display-reveal';
+import { approvalDecisionBody } from '@kontourai/station-shared/input-request';
 import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
   type ToolRequestServerGrant,
@@ -26,7 +27,6 @@ import {
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import { attentionWord } from '../../views/home/work-status';
-import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import {
   DiscardGlyph,
@@ -43,6 +43,7 @@ import {
   formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
+import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
 import {
   RequestSheet,
   RequestSheetTrigger,
@@ -729,54 +730,17 @@ function ToolApprovalSheet({
     />
   );
   const actions = (
-    <ActionRow
-      overflowLabel="More approval options"
-      secondary={
-        <Button
-          variant="danger-outline"
-          disabled={busy}
-          pending={inFlight && chosen === 'deny'}
-          pendingLabel="Denying…"
-          onClick={() => decide('deny')}
-        >
-          Deny
-        </Button>
-      }
-      primary={
-        <Button
-          variant="primary"
-          disabled={busy}
-          // The session grant is an allow too; its overflow item
-          // cannot show progress, so Allow carries it.
-          pending={inFlight && chosen !== 'deny'}
-          pendingLabel="Allowing…"
-          onClick={() => decide('once')}
-        >
-          Allow Once
-        </Button>
-      }
-      overflow={[
-        ...(grantLabel
-          ? [
-              {
-                key: 'trust',
-                label: grantLabel,
-                disabled: busy,
-                onSelect: () => decide('trust'),
-              },
-            ]
-          : []),
-        ...(serverGrant === 'server'
-          ? [
-              {
-                key: 'trust-server',
-                label: STATION_BROWSER_SERVER_GRANT_LABEL,
-                disabled: busy,
-                onSelect: () => decide('trust-server'),
-              },
-            ]
-          : []),
-      ]}
+    <DecisionActionRow
+      body={approvalDecisionBody(
+        grantLabel,
+        serverGrant === 'server'
+          ? STATION_BROWSER_SERVER_GRANT_LABEL
+          : undefined,
+      )}
+      busy={busy}
+      inFlight={inFlight}
+      chosen={chosen}
+      onChoose={decide}
     />
   );
   if (grouped)
@@ -828,57 +792,21 @@ function ToolApprovalButtons({
   const busy = phase !== 'idle';
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
-  const overflow = [
-    ...(grantLabel
-      ? [
-          {
-            key: 'trust',
-            // #2316: the same words as the toast and the inbox card for the
-            // same grant. It names the REQUEST's tool, never the row's
-            // `toolName`, which can be an ACP title — a whole command line.
-            label: grantLabel,
-            disabled: busy,
-            onSelect: () => decide('trust'),
-          },
-        ]
-      : []),
-    ...(serverGrant === 'server'
-      ? [
-          {
-            key: 'trust-server',
-            label: STATION_BROWSER_SERVER_GRANT_LABEL,
-            disabled: busy,
-            onSelect: () => decide('trust-server'),
-          },
-        ]
-      : []),
-  ];
+  // #3390: the options come from the approval's decision body. #2316: the
+  // session option's label is the same words as the toast and the inbox
+  // card for the same grant, and names the REQUEST's tool, never the row's
+  // `toolName`, which can be an ACP title — a whole command line.
   return (
     <>
-      <ActionRow
-        overflowLabel="More ways to allow this request"
-        label="Approval choices"
-        secondary={
-          <button
-            type="button"
-            onClick={() => decide('deny')}
-            disabled={busy}
-            className="tool-call__approve-btn tool-call__approve-btn--danger"
-          >
-            Deny
-          </button>
-        }
-        primary={
-          <button
-            type="button"
-            onClick={() => decide('once')}
-            disabled={busy}
-            className="tool-call__approve-btn tool-call__approve-btn--primary"
-          >
-            Allow Once
-          </button>
-        }
-        overflow={overflow}
+      <DecisionButtons
+        body={approvalDecisionBody(
+          grantLabel,
+          serverGrant === 'server'
+            ? STATION_BROWSER_SERVER_GRANT_LABEL
+            : undefined,
+        )}
+        busy={busy}
+        onChoose={decide}
       />
       <ApprovalDecisionStatus
         phase={phase}

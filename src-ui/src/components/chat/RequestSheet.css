@@ -140,7 +140,7 @@
 
 /* A feature's inline card renders inside the body; the sheet already draws
    the surface, so the card's own frame would be a box inside a box. */
-.request-sheet__body > .harness-question-card {
+.request-sheet__body > .input-request-card {
   padding: 0;
   border: 0;
   background: none;

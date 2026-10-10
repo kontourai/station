@@ -3471,7 +3471,7 @@ describe('ClaudeAdapter', () => {
         if (question.kind !== 'prompted') throw new Error('expected a prompt');
         expect(question.event).toMatchObject({
           title: 'The agent has questions for you',
-          payload: { questionnaire: expect.anything() },
+          payload: { inputRequest: expect.anything() },
         });
         expect(logger.info).toHaveBeenCalledWith(
           NOT_APPLIED,
@@ -4835,9 +4835,20 @@ describe('ClaudeAdapter', () => {
           'thread-browser-grant',
           browserAgent(),
         );
-        const first = await ask('mcp__station-browser__browser_open', {
-          url: 'https://example.test',
-        });
+        const first = await ask(
+          'mcp__station-browser__browser_open',
+          { url: 'https://example.test' },
+          {
+            suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'mcp__station-browser__browser_open' }],
+                behavior: 'allow',
+                destination: 'session',
+              },
+            ],
+          },
+        );
         if (first.kind !== 'prompted') throw new Error('expected a prompt');
         // The adapter publishes its finding that the call is authentic, which
         // is what the surfaces offer the choice from.
@@ -5063,6 +5074,42 @@ describe('ClaudeAdapter', () => {
         expect(later.kind).toBe('prompted');
         if (later.kind === 'prompted') await later.answer('decline');
         await adapter.stopSession('thread-browser-revoked');
+      });
+
+      test('a granted server still rechecks authenticity on the same tool after verification is revoked', async () => {
+        const controlled = createControlledMockQuery();
+        const { adapter, ask, waitFor } = await grantHarness(
+          'thread-browser-granted-revoked',
+          {
+            agent: { slug: 'browser-agent' },
+            stationBrowser: true,
+            query: controlled,
+          },
+        );
+        const init = (servers: Array<Record<string, unknown>>) =>
+          controlled.push({
+            type: 'system',
+            subtype: 'init',
+            session_id: 'thread-browser-granted-revoked-engine',
+            cwd: '/workspace/project',
+            model: 'claude-sonnet-4-6',
+            tools: [],
+            mcp_servers: servers,
+          });
+        init(SDK_ONLY);
+        await waitFor((event) => event.method === 'session.configured');
+        const first = await ask('mcp__station-browser__browser_click', {});
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        await first.answer('acceptForSession', SERVER);
+        init([
+          ...SDK_ONLY,
+          { name: 'station-browser', status: 'connected', source: 'project' },
+        ]);
+        await waitFor((event) => event.method === 'session.configured');
+        const repeated = await ask('mcp__station-browser__browser_click', {});
+        expect(repeated.kind).toBe('prompted');
+        if (repeated.kind === 'prompted') await repeated.answer('decline');
+        await adapter.stopSession('thread-browser-granted-revoked');
       });
 
       test('a session not delivered the in-process server is never offered the grant', async () => {

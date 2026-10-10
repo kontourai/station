@@ -170,15 +170,15 @@ jobs:
               response.setHeader("content-type", "application/json");
               response.end(JSON.stringify({ models: [] }));
             }).listen(11434, "127.0.0.1");
-          ' &
+          ' >/tmp/station-ollama-fixture.log 2>&1 &
           ollama_pid=$!
-          python3 -m http.server 8765 --bind 127.0.0.1 \
+          python3 -u -m http.server 8765 --bind 127.0.0.1 \
             --directory "$serve_dir" >/tmp/station-artifact-server.log 2>&1 &
           artifact_pid=$!
-          python3 -m http.server 8766 --bind 127.0.0.1 \
+          python3 -u -m http.server 8766 --bind 127.0.0.1 \
             --directory "$manifests_dir" >/tmp/station-manifest-server.log 2>&1 &
           manifest_pid=$!
-          python3 -m http.server 8767 --bind 127.0.0.1 \
+          python3 -u -m http.server 8767 --bind 127.0.0.1 \
             --directory "$keys_dir" >/tmp/station-key-server.log 2>&1 &
           key_pid=$!
           cleanup() {
@@ -186,6 +186,31 @@ jobs:
             kill "$ollama_pid" "$artifact_pid" "$manifest_pid" "$key_pid" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
+
+          wait_for_fixture() {
+            local label=$1 pid=$2 url=$3 log=$4
+            local deadline=$((SECONDS + 30))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              if ! kill -0 "$pid" 2>/dev/null; then
+                echo "Fixture $label exited before readiness (pid=$pid)." >&2
+                tail -100 "$log" >&2 || true
+                return 1
+              fi
+              if curl --noproxy '*' --silent --fail --head --connect-timeout 1 --max-time 2 "$url" >/dev/null; then
+                echo "Fixture $label ready (pid=$pid)."
+                return 0
+              fi
+              sleep 0.2
+            done
+            echo "Fixture $label did not become reachable within 30 seconds (pid=$pid)." >&2
+            ps -p "$pid" -o pid=,ppid=,stat=,comm= >&2 || true
+            tail -100 "$log" >&2 || true
+            return 1
+          }
+          wait_for_fixture artifact "$artifact_pid" http://127.0.0.1:8765/ /tmp/station-artifact-server.log
+          wait_for_fixture manifest "$manifest_pid" http://127.0.0.1:8766/manifest.json /tmp/station-manifest-server.log
+          wait_for_fixture key "$key_pid" http://127.0.0.1:8767/public.pem /tmp/station-key-server.log
+          wait_for_fixture ollama "$ollama_pid" http://127.0.0.1:11434/api/tags /tmp/station-ollama-fixture.log
 
           public_install_env=(
             STATION_INSTALL_PUBLIC_MANIFEST_URL=http://127.0.0.1:8766/manifest.json

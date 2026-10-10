@@ -99,7 +99,7 @@ policy is changed.
 The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.2.0
 in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.31.0.
 Exact overrides cover transitive client/SDK consumers. The client brings its
-exact core 2.2.0 dependency; the unaffected server retains its core 2.0.0.
+exact core 2.2.0 dependency; server 2.3.0 brings its exact core 2.3.0 dependency.
 No Station code imports core directly.
 
 The [shell-quote advisory](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)

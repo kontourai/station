@@ -897,6 +897,9 @@ describe('changed verification selection', () => {
     expect(selection.relatedPaths).toEqual([]);
     expect(selection.tests.map(({ path }) => path)).toEqual([
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
+      // #3149: every src-server/security change also runs the production
+      // HTTP security composition suite.
+      'src-server/routes/system/__tests__/authority-observation.routes.test.ts',
       'src-server/security/__tests__/pairing-route-scopes.test.ts',
     ]);
 

@@ -48,6 +48,9 @@ export function conversationPartToContentParts(
     approvalSessionGrant: part.approvalSessionGrant,
     approvalServerGrant: part.approvalServerGrant,
     approvalStatus: part.approvalStatus,
+    ...(part.inputRequestRecord
+      ? { inputRequestRecord: { ...part.inputRequestRecord } }
+      : {}),
   } as ContentPart;
   // Preserve the same tool-result identity and sanitized blocks as the live
   // renderer when a completed turn enters durable replay.

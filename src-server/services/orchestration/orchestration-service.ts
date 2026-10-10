@@ -124,13 +124,10 @@ import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflo
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
-  readHarnessQuestionnaire,
-  validateHarnessQuestionAnswers,
-} from '@kontourai/station-shared/harness-questions';
-import {
-  readMcpElicitationForm,
-  validateMcpElicitationContent,
-} from '@kontourai/station-shared/mcp-elicitation';
+  harnessAnswersToInputContent,
+  inputRequestFromRequestEvent,
+  validateInputRequestContent,
+} from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
@@ -8239,59 +8236,53 @@ export class OrchestrationService {
               command.threadId,
               command.requestId,
             );
-          const questionnaire = readHarnessQuestionnaire(
+          // #3390: a form input request — a harness question or a tool
+          // server's elicitation, read through one reader whether the event
+          // was stored before or after #3390. Accepted content must fit the
+          // form the person was actually shown — this exact opened event —
+          // and is refused with a reason otherwise; never coerced or cut to
+          // fit. This runs whatever the client checked: a client is not
+          // trusted to have run the same validator.
+          const inputForm = inputRequestFromRequestEvent(
             currentQuestionRequest?.state === 'found' &&
               currentQuestionRequest.event.payload.method === 'request.opened'
-              ? currentQuestionRequest.event.payload.payload?.questionnaire
+              ? currentQuestionRequest.event.payload
               : undefined,
           );
-          if (questionnaire || command.answers !== undefined) {
-            if (
-              !questionnaire ||
-              !command.expectedRequestEventId ||
-              command.decision === 'acceptForSession'
-            )
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'Inspect the current question before answering it.',
-              );
-            if (command.decision === 'accept')
-              validateHarnessQuestionAnswers(questionnaire, command.answers);
-            else if (command.answers !== undefined)
-              throw new Error('A cancelled question cannot carry answers.');
-          }
-          // #3284: a tool server's form. Accepted content must fit the form
-          // the person was actually shown — this exact opened event — and is
-          // refused with a reason otherwise; never coerced or cut to fit.
-          const elicitationForm = readMcpElicitationForm(
-            currentQuestionRequest?.state === 'found' &&
-              currentQuestionRequest.event.payload.method === 'request.opened'
-              ? currentQuestionRequest.event.payload.payload?.mcpElicitation
-              : undefined,
-          );
-          let elicitationContent:
-            | ReturnType<typeof validateMcpElicitationContent>
+          let inputContent:
+            | ReturnType<typeof validateInputRequestContent>
             | undefined;
-          if (elicitationForm || command.elicitationContent !== undefined) {
+          if (
+            inputForm ||
+            command.content !== undefined ||
+            command.answers !== undefined
+          ) {
             if (
-              !elicitationForm ||
+              !inputForm ||
               !command.expectedRequestEventId ||
               command.decision === 'acceptForSession'
             )
               throw new RequestEventGuardError(
                 'request_verification_unavailable',
-                'Inspect the current form before answering it.',
+                'Inspect the current request before answering it.',
               );
+            if (command.content !== undefined && command.answers !== undefined)
+              throw new Error('Send the answer once, as content.');
             if (command.decision === 'accept') {
-              if (command.elicitationContent === undefined)
+              const submitted =
+                command.content ??
+                (command.answers !== undefined
+                  ? harnessAnswersToInputContent(inputForm, command.answers)
+                  : undefined);
+              if (submitted === undefined)
                 throw new Error('Fill in the form before sending it.');
-              elicitationContent = validateMcpElicitationContent(
-                elicitationForm,
-                command.elicitationContent,
-              );
-            } else if (command.elicitationContent !== undefined)
+              inputContent = validateInputRequestContent(inputForm, submitted);
+            } else if (
+              command.content !== undefined ||
+              command.answers !== undefined
+            )
               throw new Error(
-                'A declined or cancelled form cannot carry content.',
+                'A declined or cancelled request cannot carry an answer.',
               );
           }
 
@@ -8421,10 +8412,7 @@ export class OrchestrationService {
             decision === 'acceptForSession' &&
             command.sessionGrantScope === 'server';
           const requestContext =
-            questionnaire ||
-            elicitationForm ||
-            context?.clientOrigin ||
-            serverScope
+            inputForm || context?.clientOrigin || serverScope
               ? {
                   ...(serverScope
                     ? { sessionGrantScope: 'server' as const }
@@ -8432,10 +8420,8 @@ export class OrchestrationService {
                   ...(context?.clientOrigin
                     ? { clientOrigin: context.clientOrigin }
                     : {}),
-                  ...(command.answers ? { answers: command.answers } : {}),
-                  ...(elicitationContent ? { elicitationContent } : {}),
-                  ...((questionnaire || elicitationForm) &&
-                  command.expectedRequestEventId
+                  ...(inputContent ? { inputContent } : {}),
+                  ...(inputForm && command.expectedRequestEventId
                     ? { expectedRequestEventId: command.expectedRequestEventId }
                     : {}),
                 }

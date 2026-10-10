@@ -3820,6 +3820,9 @@ await respondToRequest(requestScope.apiBase, {
 with `decision: 'acceptForSession'`. It widens the grant to the built-in
 Station browser server and only where the request offered that choice. Omit it
 for the per-tool grant; a Station that predates the field ignores it.
+The approval decision option carries the same optional `sessionGrantScope`;
+renderers must forward it separately from `acceptForSession` so the server
+choice cannot collapse into ordinary per-tool trust.
 
 The host captures `requestScope`; do not reconstruct it from a URL or title.
 Response commands preserve their existing receipts. An event mismatch or lost
@@ -4162,17 +4165,19 @@ continue to govern resolution.
 
 ## Harness question answers
 
-`respondToRequest` from `@kontourai/station-sdk/client` accepts a structured
-`answers` batch alongside `decision: 'accept'` and `expectedRequestEventId`.
+`respondToRequest` from `@kontourai/station-sdk/client` accepts form
+`content` (`InputRequestContent`, #3390) alongside `decision: 'accept'` and
+`expectedRequestEventId`, for a harness question or a tool server's form.
+The pre-#3390 `answers` batch is deprecated since 0.9.0 and removed in
+0.10.0.
 Capture the request's thread, request and opened-event IDs, and pass the
 current explicit `requestScope`; the server validates the exact pending
 question before forwarding it. See the [Session API](session-api.md#respondtorequest)
 for the wire shape and limits. Inspection preserves `requiresAnswers` for
 clients that must direct the user to the inline question card.
 
-The same call accepts `elicitationContent` for a tool server's form
-elicitation (#3284), with the same exact-event rule; the server validates it
-against the opened form. `useAgentMcpPromptsQuery(agentSlug)` reads
+The server validates content against the opened form whatever the client
+checked. `useAgentMcpPromptsQuery(agentSlug)` reads
 `GET /agents/:slug/mcp-prompts` (cache key `agentMcpPromptsQueryKey`) and
 `runAgentMcpPrompt(agentSlug, { serverId, name, arguments })` reads one prompt
 and returns the text to send; a refusal throws the server's reason as a

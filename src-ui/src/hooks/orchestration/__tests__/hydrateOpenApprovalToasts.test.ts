@@ -118,6 +118,57 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
     expect(chat?.approvalToasts.get('req-1')).toBe('real-toast');
   });
 
+  test.each([
+    {
+      inputRequest: {
+        schema: 'station.input-request/v1',
+        source: 'mcp:fixture',
+        requester: 'fixture',
+        message: 'Question',
+        body: {
+          kind: 'form',
+          fields: [{ name: 'answer', kind: 'string', required: false }],
+        },
+      },
+    },
+    {
+      mcpElicitation: {
+        serverId: 'fixture',
+        message: 'Question',
+        fields: [{ name: 'answer', kind: 'string', required: false }],
+      },
+    },
+  ])(
+    'binds a restored form to its turn without creating approval actions: %j',
+    async (payload) => {
+      fetchWindow.mockResolvedValue(
+        window(requestOpened({ turnId: 'turn-1', payload })),
+      );
+      await hydrateOpenApprovalToasts(
+        'http://api',
+        'thread-1',
+        new Map([['req-1', 'placeholder-toast']]),
+      );
+      expect(chat?.pendingApprovalTurnIds).toEqual({ 'req-1': 'turn-1' });
+      expect(showToolApproval).not.toHaveBeenCalled();
+      expect(dismiss).not.toHaveBeenCalled();
+      expect(
+        settlePendingApprovalsOnTurnEnd(
+          chat as never,
+          {
+            eventId: 'abort-form',
+            provider: 'station',
+            threadId: 'thread-1',
+            createdAt: '2026-09-05T00:00:01.000Z',
+            method: 'turn.aborted',
+            turnId: 'turn-1',
+            reason: 'interrupted',
+          } as never,
+        ),
+      ).toMatchObject({ pendingApprovals: [] });
+    },
+  );
+
   test('never writes the chat status: the snapshot already holds the chat state', async () => {
     // The request opened in a turn that has since ended: the snapshot left the
     // chat idle with the request still pending. Replaying the live handler's

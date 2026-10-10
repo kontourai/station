@@ -1,0 +1,7 @@
+{
+  "revision": "f37611190bbc7495c9941188534592f10151cc6e",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed the approved Fraunces Original-spacing boot animation and native 96px launch geometry. HTML and React share a document intro clock; live stage labels come from platform, selected-route and authority pending branches, with no fabricated percentages or minimum wait. Canvas paints committed imagery, cleans frames/listeners on unmount, pauses when hidden, and renders a static reduced-motion result. Theme/channel changes update the mark and role tokens. Executed browser remount probe preserved the shifted lockup; SDK/query/auth contracts remain unchanged.","inputs":["docs/guides/theming.md","src-ui/src/lib/startup-animation.ts","src-ui/src/components/StartupScreen.tsx","src-ui/index.html"]}
+  ]
+}

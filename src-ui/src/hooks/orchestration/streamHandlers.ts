@@ -1,3 +1,7 @@
+import type {
+  InputRequestOutcome,
+  InputRequestRecord,
+} from '@kontourai/station-contracts/input-request';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
@@ -469,5 +473,68 @@ export function handleToolCompletedEvent(
       ...streamingMessage,
       contentParts: settle(streamingMessage.contentParts),
     },
+  });
+}
+
+/**
+ * #3390: the live half of an input request's transcript record. The
+ * projection (`runtime-event-projection.ts`'s `request.opened`) writes the
+ * record for every turn it renders; the open turn is rendered by the
+ * streaming shell instead, so the record goes there too, at the same
+ * position, and takes its outcome from the live `request.resolved`. Nothing
+ * is written when no turn is streaming: the projection owns that row.
+ */
+export function openInputRequestRecordPart(
+  event: { threadId: string; turnId?: string },
+  record: InputRequestRecord,
+  /** A decision bound to a call already on the shell has its row; skip it. */
+  toolCallId?: string,
+): void {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (!chat?.streamingMessage || !chat.orchestrationTurnOpen) return;
+  if (turnContradicts(chat.openTurnId, event.turnId)) return;
+  const parts = chat.streamingMessage.contentParts ?? [];
+  if (
+    parts.some(
+      (part) =>
+        part.inputRequestRecord?.requestId === record.requestId &&
+        part.inputRequestRecord.threadId === record.threadId,
+    ) ||
+    (toolCallId !== undefined &&
+      parts.some((part) => part.toolCallId === toolCallId))
+  )
+    return;
+  activeChatsStore.updateChat(event.threadId, {
+    streamingMessage: {
+      ...chat.streamingMessage,
+      contentParts: [
+        ...parts,
+        { type: 'input-request', inputRequestRecord: record },
+      ],
+    },
+  });
+}
+
+export function settleInputRequestRecordPart(
+  event: { threadId: string; requestId: string },
+  outcome: (kind: InputRequestRecord['kind']) => InputRequestOutcome,
+): void {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const parts = chat?.streamingMessage?.contentParts;
+  if (!chat?.streamingMessage || !parts) return;
+  const index = parts.findIndex(
+    (part) =>
+      part.inputRequestRecord?.requestId === event.requestId &&
+      part.inputRequestRecord.threadId === event.threadId,
+  );
+  if (index < 0) return;
+  const record = parts[index].inputRequestRecord!;
+  const next = [...parts];
+  next[index] = {
+    ...parts[index],
+    inputRequestRecord: { ...record, outcome: outcome(record.kind) },
+  };
+  activeChatsStore.updateChat(event.threadId, {
+    streamingMessage: { ...chat.streamingMessage, contentParts: next },
   });
 }

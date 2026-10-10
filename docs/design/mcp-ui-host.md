@@ -157,7 +157,7 @@ not a legacy signal.
 
 This is the compatibility record for Station as an MCP client (#3284, part of
 #3274). Station targets MCP core `2026-07-28` through
-`@modelcontextprotocol/client` 2.0.0 and falls back to the 2025-era
+`@modelcontextprotocol/client` 2.2.0 and falls back to the 2025-era
 `initialize` handshake for deployed legacy servers.
 
 | Feature | Supported subset | Not supported |
@@ -174,11 +174,12 @@ This is the compatibility record for Station as an MCP client (#3284, part of
 
 A server's form arrives on the connection's `elicitation/create` handler,
 which hands it to the one Station turn whose tool call is in flight on that
-connection. That turn's elicitation bridge normalizes the schema
-(`@kontourai/station-shared/mcp-elicitation`), refusing any property type or
-bound it cannot render, and injects the form into the turn's `/chat` stream.
-The Station-agent adapter publishes it as the thread's `request.opened`
-(payload `mcpElicitation`), and the pending-requests strip renders the form.
+connection. That turn's elicitation bridge maps the schema into a
+`station.input-request/v1` form (`@kontourai/station-shared/mcp-elicitation`,
+#3390), refusing any property type or bound it cannot render, and injects the
+form into the turn's `/chat` stream. The Station-agent adapter publishes it as
+the thread's `request.opened` (payload `inputRequest`), and the
+pending-requests strip renders it with the one input-request renderer.
 The answer returns through the orchestration `respondToRequest` command,
 pinned to the exact opened event; the service validates accepted content
 against that form and refuses invalid content with a reason, and the bridge

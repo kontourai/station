@@ -29,6 +29,7 @@ type InboxTarget =
     }
   | {
       kind: 'orchestration';
+      requestEventId?: string;
       requestId: string;
       requestKey: string;
       threadId: string;
@@ -178,6 +179,9 @@ export class ApprovalInboxNotificationProvider
         type: 'respondToRequest' as const,
         threadId: target.threadId,
         requestId: target.requestId,
+        ...(target.requestEventId
+          ? { expectedRequestEventId: target.requestEventId }
+          : {}),
         decision,
         // The typed choice, never the label.
         ...(actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
@@ -496,6 +500,7 @@ export function wireApprovalInboxNotifications(
               provider: event.provider,
               ...(projectSlug ? { projectSlug } : {}),
               requestId: event.requestId,
+              requestEventId: event.eventId,
               requestKey: buildOrchestrationRequestKey(event),
               requestKind: 'orchestration',
               requestType: event.requestType,
@@ -637,6 +642,9 @@ function parseInboxTarget(notification: Notification): InboxTarget | null {
     }
     return {
       kind: 'orchestration',
+      ...(typeof notification.metadata?.requestEventId === 'string'
+        ? { requestEventId: notification.metadata.requestEventId }
+        : {}),
       requestId,
       requestKey,
       threadId,

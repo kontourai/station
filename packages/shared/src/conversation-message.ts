@@ -1,3 +1,4 @@
+import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
@@ -131,6 +132,12 @@ export interface MessagePart {
     | 'user-approved'
     | 'user-denied'
     | 'policy-denied';
+  /**
+   * #3390: the `input-request` part's record of one request that has no
+   * tool row to carry it — every form, and an approval bound to no call. It
+   * opens on `request.opened` and records its outcome on `request.resolved`.
+   */
+  inputRequestRecord?: InputRequestRecord;
 }
 
 export interface ConversationMessage {

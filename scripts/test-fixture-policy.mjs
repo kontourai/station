@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { mergeBaseWith } from './lib/git-ref.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const STRICT_BROWSER_FILES = [
@@ -326,9 +327,16 @@ export function main(
     ['rev-parse', '--verify', 'origin/main'],
     gitOptions,
   );
+  // Compare with the baseline this change started from (the merge base), not
+  // origin/main's tip: against the tip, an unmerged branch still listing an
+  // entry main has since removed would read as adding one (#3101).
+  const upstreamRef =
+    mergeBaseWith('origin/main', (args) =>
+      execFileSyncBounded('git', args, gitOptions).trim(),
+    ) ?? 'origin/main';
   const upstreamHasBaseline = execFileSyncBounded(
     'git',
-    ['ls-tree', '--name-only', 'origin/main', '--', BASELINE],
+    ['ls-tree', '--name-only', upstreamRef, '--', BASELINE],
     gitOptions,
   ).trim();
   const introduction = execFileSyncBounded(
@@ -340,7 +348,7 @@ export function main(
     .split('\n')
     .filter(Boolean)
     .at(-1);
-  const baselineRef = upstreamHasBaseline ? 'origin/main' : introduction;
+  const baselineRef = upstreamHasBaseline ? upstreamRef : introduction;
   const previous = baselineRef
     ? JSON.parse(
         execFileSyncBounded(

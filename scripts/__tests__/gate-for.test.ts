@@ -111,7 +111,7 @@ describe('gate-for report', () => {
     );
   });
 
-  it('always names the unconditional checks and a ladder of real commands', () => {
+  it('names the source-edit hook commands and a ladder of real commands', () => {
     const plan = gatePlan({ changedPaths: [], baseSha });
     expect(plan.everyPush.length).toBeGreaterThan(0);
     for (const { command } of plan.everyPush)
