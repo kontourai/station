@@ -12,6 +12,7 @@ on:
       # Which installer packaged `station upgrade` runs.
       - 'packages/shared/src/prebuilt-archive.ts'
       - 'scripts/smoke-install-ps1.mjs'
+      - 'scripts/install-smoke-file-server.mjs'
       - 'scripts/install-script-generated.mjs'
       - '.gitattributes'
       - 'scripts/package-portable-release.sh'
