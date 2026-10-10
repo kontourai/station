@@ -120,7 +120,7 @@ describe('the fixtures narrow no production scan', () => {
     const offenders: string[] = [];
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name).replaceAll('\\', '/');
+        const path = join(dir, entry.name);
         if (entry.isDirectory()) {
           walk(path);
           continue;
@@ -142,7 +142,7 @@ describe('the fixtures narrow no production scan', () => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const path = join(dir, entry.name);
         if (entry.isDirectory()) collect(path);
-        else found.push(path);
+        else found.push(path.replaceAll('\\', '/'));
       }
     };
     collect(FIXTURE_ROOT);
