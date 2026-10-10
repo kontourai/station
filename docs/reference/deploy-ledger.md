@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-10T13:42:56Z | nightly-npm | 0.7.0-nightly.2474.38054322896 | `67a1355` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38054322896) |
 | 2026-10-08T06:55:12Z | nightly-desktop | 0.1.11-nightly.2472 | `8a8f382` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/37735427039) |
 | 2026-10-08T06:55:08Z | nightly-android | 0.1.11-nightly.2472 | `8a8f382` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/37735427039) |
 | 2026-10-08T06:31:44Z | nightly-npm | 0.7.0-nightly.2472.37735427039 | `8a8f382` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/37735427039) |
@@ -229,6 +230,48 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-10T13:42:56Z · nightly-npm · 0.7.0-nightly.2474.38054322896
+
+- Ship SHA: `67a1355378d159451db79764aba856520391faf9`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2474.38054322896 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `8a8f382` ([full sha](https://github.com/kontourai/station/commit/8a8f38298ef2e0a64c8fb1e1c48b312099f088cb)):
+
+**Features**
+
+- [#3499](https://github.com/kontourai/station/pull/3499) feat(continuity): resume native threads and expose provider history
+- [#3410](https://github.com/kontourai/station/pull/3410) feat(chat): one input-request contract for questions, elicitation and approvals (#3390)
+- [#3360](https://github.com/kontourai/station/pull/3360) feat(service): the Windows service updates through the supervised launcher (#2675 W3)
+- [#3262](https://github.com/kontourai/station/pull/3262) feat(prepush): lighter path for a pure merge of main; ratchets judged at the merge base (#3101)
+- [#3517](https://github.com/kontourai/station/pull/3517) feat(chat): unify execution pickers and preserve Agent engine overrides
+- [#3514](https://github.com/kontourai/station/pull/3514) feat(ci): consolidate faster qualified Nightly delivery and recovery
+- [#3495](https://github.com/kontourai/station/pull/3495) feat(connections): unify Device and Station peer access setup
+- [#2978](https://github.com/kontourai/station/pull/2978) feat(connections): credential profiles carry a non-secret env overlay (route one profile through a model proxy)
+- [#3391](https://github.com/kontourai/station/pull/3391) feat(start): project icons in the composer and the real run location (#3370)
+- [#3500](https://github.com/kontourai/station/pull/3500) feat(developer): make runtime diagnostics useful and unify section navigation
+
+**Fixes**
+
+- [#3523](https://github.com/kontourai/station/pull/3523) fix(qualification): restore SDK, workspace, storage, and pairing callers
+- [#3520](https://github.com/kontourai/station/pull/3520) fix(ci): restore current-main qualification contracts
+- [#3515](https://github.com/kontourai/station/pull/3515) fix(mobile): ship the Fraunces river startup transition
+- [#3334](https://github.com/kontourai/station/pull/3334) fix(ci): select the suites #3149's incidents broke but their PR checks skipped
+- [#3516](https://github.com/kontourai/station/pull/3516) fix(approvals): repair mobile decisions and notification recovery
+- [#3512](https://github.com/kontourai/station/pull/3512) fix(tooling): read owned Windows identities without PowerShell startup
+- [#3502](https://github.com/kontourai/station/pull/3502) fix(tooling): widen the node version probes' timeout budget for cold Windows starts
+- [#3511](https://github.com/kontourai/station/pull/3511) fix(security): renew exact VoltAgent residuals with P1 follow-up
+
+**Other**
+
+- [#3507](https://github.com/kontourai/station/pull/3507) chore(deps): bump the runtime-and-ui-minor-patch group across 1 directory with 51 updates
+- [#3504](https://github.com/kontourai/station/pull/3504) chore(deps): bump the github-actions-minor-patch group with 3 updates
+- [#3505](https://github.com/kontourai/station/pull/3505) chore(deps): bump pnpm/setup from 2.1.0 to 3.0.0
+- [#3506](https://github.com/kontourai/station/pull/3506) chore(deps): bump kontourai/flow-agents/.github/actions/codex-pr-review
 
 ## 2026-10-08T06:55:12Z · nightly-desktop · 0.1.11-nightly.2472
 
