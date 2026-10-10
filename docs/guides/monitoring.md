@@ -58,7 +58,18 @@ principal or provider writer and remain unallocated in those dimensions even if
 arbitrary metadata names them. Engine person attribution uses the server-stamped `turn.started`
 principal; usage-event principal fields cannot override it. Current app or Agent configuration
 never fills historical gaps.
-The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
+The hero graph shows the last 14 UTC days rather than the last 14 populated rows,
+with full date endpoints at narrow widths. The usage summary shows retained activity,
+conversations, active UTC days and recorded cost. It does not divide a partial token
+or cost sum by all turns to imply a measured per-turn average. Model rankings show
+only recorded model identities and disclose unattributed turns; current Agent defaults
+do not establish historical model-to-Agent relationships. Model and Agent rows and
+details distinguish absent cost from a reported or estimated zero. Agent cost buckets
+retain optional `reportedCostUsd` and `estimatedCostUsd` alongside their combined `cost`.
+Paired people, the operator breakdown, peer receipts, milestones, diagnostics and
+history mount when their disclosure is opened and unmount when closed. Shared
+analytics queries, including milestone data, continue to follow their context
+ownership. Existing authorization rules still apply to the connected Station.
 
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.

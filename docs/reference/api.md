@@ -1480,8 +1480,10 @@ can reduce them. Earlier summaries remain in `legacySummary` as unverified
 migration evidence, excluded from current totals. `unallocated` keeps missing
 or ambiguous date/model/provider/principal allocations explicit. `tokenReports`
 distinguishes a measured zero from an unmeasured compatibility sum. Optional
-`reportedCostUsd` and `estimatedCostUsd` remain separate. Ordinary usage and
-rescan responses omit `byPrincipal`.
+`reportedCostUsd` and `estimatedCostUsd` remain separate, including in Agent
+buckets alongside their combined compatibility `cost`. An omitted component is
+unreported; a supplied zero is measured. Ordinary usage and rescan responses omit
+`byPrincipal`.
 A completed scan does not prove historical totals or every provider's accounting
 are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other

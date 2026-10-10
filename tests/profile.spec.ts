@@ -1,51 +1,80 @@
-import { expect, test } from '@playwright/test';
+import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
+import { expect, type Page } from '@playwright/test';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 
-const MOCK_USAGE = {
+const today = new Date().toISOString().slice(0, 10);
+const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+const reports = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 };
+const usage: UsageStats = {
+  snapshot: {
+    projection: 'retained-source-v1',
+    dayScope: 'recorded-observations-utc',
+    rescannedAt: new Date().toISOString(),
+    engineUsage: 'available',
+    skippedMessages: 0,
+    costCoverageChecked: true,
+    missingEngineTurnCosts: 30,
+  },
   lifetime: {
     totalMessages: 42,
     totalCost: 1.23,
+    reportedCostUsd: 1.23,
     totalConversations: 5,
-    firstMessageDate: '2026-01-15T10:00:00Z',
-    streak: 3,
+    totalInputTokens: 55_000,
+    totalOutputTokens: 15_000,
+    uniqueAgents: ['default', 'coder'],
+    firstMessageDate: yesterday,
+    lastMessageDate: today,
+    daysActive: 2,
+    streak: 2,
+    engineUsageCoverage: {
+      sessions: 5,
+      sessionsReportingTokens: 2,
+      sessionsReportingCost: 2,
+    },
   },
   byModel: {
-    'anthropic.claude-3-sonnet': { messages: 30, cost: 0.9, tokens: 50000 },
-    'anthropic.claude-3-haiku': { messages: 12, cost: 0.33, tokens: 20000 },
+    sonnet: {
+      messages: 30,
+      cost: 0.9,
+      reportedCostUsd: 0.9,
+      inputTokens: 40_000,
+      outputTokens: 10_000,
+      tokenReports: reports,
+    },
+    haiku: {
+      messages: 12,
+      cost: 0.33,
+      reportedCostUsd: 0.33,
+      inputTokens: 15_000,
+      outputTokens: 5_000,
+      tokenReports: reports,
+    },
   },
   byAgent: {
-    default: { messages: 35, cost: 1.0, conversations: 4 },
-    coder: { messages: 7, cost: 0.23, conversations: 1 },
+    default: { messages: 35, cost: 1, reportedCostUsd: 1, conversations: 4 },
+    coder: { messages: 7, cost: 0.23, reportedCostUsd: 0.23, conversations: 1 },
   },
   byDate: {
-    '2026-04-01': { messages: 2, cost: 0.08, byAgent: { default: 2 } },
-    '2026-04-02': {
-      messages: 4,
-      cost: 0.12,
-      byAgent: { default: 3, coder: 1 },
+    [today]: {
+      messages: 35,
+      cost: 0.9,
+      reportedCostUsd: 0.9,
+      inputTokens: 40_000,
+      outputTokens: 10_000,
+      byAgent: { default: 35 },
     },
-    '2026-04-03': { messages: 1, cost: 0.04, byAgent: { coder: 1 } },
-    '2026-04-04': { messages: 6, cost: 0.2, byAgent: { default: 6 } },
+    [yesterday]: {
+      messages: 7,
+      cost: 0.33,
+      reportedCostUsd: 0.33,
+      inputTokens: 15_000,
+      outputTokens: 5_000,
+      byAgent: { coder: 7 },
+    },
   },
 };
-
-const MOCK_ACHIEVEMENTS = [
-  {
-    id: 'first-message',
-    name: 'First Message',
-    description: 'Send your first message',
-    unlocked: true,
-    progress: 100,
-  },
-  {
-    id: 'power-user',
-    name: 'Power User',
-    description: 'Send 100 messages',
-    unlocked: false,
-    progress: 42,
-  },
-];
-
-const MOCK_INSIGHTS = {
+const insights = {
   toolUsage: {
     Bash: { calls: 8, errors: 2 },
     apply_patch: { calls: 2, errors: 0 },
@@ -54,362 +83,453 @@ const MOCK_INSIGHTS = {
     hour === 9 ? 12 : hour === 14 ? 6 : 0,
   ),
   agentUsage: { default: { chats: 4, tokens: 0 } },
-  modelUsage: { 'claude-3': 4 },
+  modelUsage: { sonnet: 4 },
   totalChats: 4,
   totalToolCalls: 10,
   totalErrors: 2,
   days: 14,
 };
 
-const STATUS_READY = {
-  ready: true,
-  acp: { connected: false, connections: [] },
-  clis: {},
-  prerequisites: [],
-  providers: {
-    configuredChatReady: true,
-    configured: [
-      {
-        id: 'profile-test-runtime',
-        type: 'codex',
-        enabled: true,
-        capabilities: ['llm'],
-      },
-    ],
-    detected: { ollama: false, bedrock: false },
-  },
-  capabilities: {
-    chat: {
-      ready: true,
-      source: 'profile-test-runtime',
-    },
-  },
-};
+const sourceStates = new WeakMap<Page, { usage: UsageStats }>();
 
-function setupRoutes(page: import('@playwright/test').Page) {
-  return Promise.all([
-    page.route('**/api/analytics/usage*', (route) => {
-      if (route.request().method() === 'DELETE') {
-        return route.fulfill({ json: { success: true } });
-      }
-      return route.fulfill({ json: { data: MOCK_USAGE } });
-    }),
-    page.route('**/api/analytics/achievements', (route) =>
-      route.fulfill({ json: { data: MOCK_ACHIEVEMENTS } }),
-    ),
-    page.route('**/api/insights*', (route) =>
-      route.fulfill({ json: { data: MOCK_INSIGHTS } }),
-    ),
-    page.route('**/api/feedback/ratings', (route) =>
-      route.fulfill({ json: { data: [] } }),
-    ),
-    page.route('**/api/feedback/guidelines', (route) =>
-      route.fulfill({ json: { data: null } }),
-    ),
-    page.route('**/api/feedback/status', (route) =>
-      route.fulfill({
-        json: { data: { isAnalyzing: false, analyzeCallbackAvailable: true } },
-      }),
-    ),
-    page.route('**/api/agents', (route) =>
-      route.fulfill({ json: { success: true, data: [] } }),
-    ),
-    page.route('**/config/app', (route) =>
-      route.fulfill({
-        json: { success: true, data: { defaultModel: 'test' } },
-      }),
-    ),
-    page.route('**/api/system/status', (route) =>
-      route.fulfill({
-        json: STATUS_READY,
-      }),
-    ),
-    page.route('**/api/system/capabilities', (route) =>
-      route.fulfill({
-        json: {
-          runtime: 'voltagent',
-          voice: { stt: [], tts: [] },
-          context: { providers: [] },
-          scheduler: true,
-        },
-      }),
-    ),
-    page.route('**/api/models/**', (route) =>
-      route.fulfill({ json: { success: true, data: [] } }),
-    ),
-    page.route('**/api/branding', (route) =>
-      route.fulfill({ json: { success: true, data: {} } }),
-    ),
-    page.route('**/api/analytics/rescan', (route) =>
-      route.fulfill({ json: { data: MOCK_USAGE } }),
-    ),
-    page.route('**/events', (route) =>
-      route.fulfill({
-        status: 200,
-        headers: { 'content-type': 'text/event-stream' },
-        body: 'data: {"event":"connected"}\n\n',
-      }),
-    ),
-  ]);
-}
-
-test.describe('Profile Page', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem(
-        'station-connect-connections',
-        JSON.stringify([
-          {
-            id: 'profile-server',
-            name: 'Profile Test Server',
-            url: window.location.origin,
-            lastConnected: Date.now(),
-          },
-        ]),
+async function setupRoutes(page: Page) {
+  const state = { usage };
+  sourceStates.set(page, state);
+  await page.route(
+    (url) => url.pathname === '/api/analytics/usage',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      const url = new URL(route.request().url());
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const byDate = Object.fromEntries(
+        Object.entries(state.usage.byDate).filter(
+          ([date]) => (!from || date >= from) && (!to || date <= to),
+        ),
       );
-      localStorage.setItem(
-        'station-connect-connections-active',
-        'profile-server',
-      );
-    });
-    await setupRoutes(page);
-  });
-
-  test('navigates to profile via the header avatar menu', async ({ page }) => {
-    await page.goto('/');
-    // #1552 D1: the avatar opens a menu (Profile / Ask Station for help / Open
-    // settings) rather than navigating straight to the profile. Profile leads
-    // it, so the destination is one press further and is now named.
-    await page.getByRole('button', { name: 'Profile and settings' }).click();
-    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
-    await expect(page).toHaveURL(/\/profile/);
-    await expect(page.locator('.profile-page')).toBeVisible();
-  });
-
-  test('displays hero card with usage stats', async ({ page }) => {
-    await page.goto('/profile');
-    await expect(page.locator('.profile-hero-title')).toBeVisible();
-    await expect(page.locator('.profile-hero-subtitle')).toContainText(
-      '42 messages',
-    );
-    // The activity overview and its bars live inside the first hero card.
-    const heroCard = page.locator('.profile-container > .profile-card').first();
-    await expect(heroCard.getByLabel('Usage activity overview')).toBeVisible();
-    await expect(
-      heroCard.locator('.profile-usage-graph__bar').first(),
-    ).toBeVisible();
-  });
-
-  test('renders activity timeline columns when activity data exists', async ({
-    page,
-  }) => {
-    await page.goto('/profile');
-
-    await expect(
-      page.locator('.profile-timeline [data-testid^="chart-col-"]').first(),
-    ).toBeVisible();
-  });
-
-  test('renders usage stats panel with stat cards', async ({ page }) => {
-    await page.goto('/profile');
-    const panel = page.locator('.usage-stats-panel');
-    await expect(panel.getByText('Messages')).toBeVisible();
-    await expect(panel.getByText('Conversations')).toBeVisible();
-    await expect(panel.getByText('Total Cost')).toBeVisible();
-    await expect(panel.getByText('Avg/Message')).toBeVisible();
-    await expect(panel.getByText('42')).toBeVisible();
-  });
-
-  test('switches between Usage and Feedback tabs', async ({ page }) => {
-    await page.goto('/profile');
-    // Usage tab active by default
-    const usageTab = page.getByRole('button', { name: 'Usage' });
-    const feedbackTab = page.getByRole('button', { name: 'Feedback' });
-    await expect(usageTab).toHaveClass(/is-active/);
-
-    // Switch to Feedback
-    await feedbackTab.click();
-    await expect(feedbackTab).toHaveClass(/is-active/);
-    await expect(page.getByText('No ratings yet')).toBeVisible();
-
-    // Switch back to Usage
-    await usageTab.click();
-    await expect(usageTab).toHaveClass(/is-active/);
-  });
-
-  test('renders populated insights values and visible hourly activity bars', async ({
-    page,
-  }) => {
-    await page.goto('/profile');
-    await expect(page.getByText('Tool Calls')).toBeVisible();
-    await expect(page.getByText('10', { exact: true })).toBeVisible();
-    await expect(
-      page.locator('.insights-stat-value').filter({ hasText: /^2$/ }),
-    ).toBeVisible();
-    await expect(page.getByText('Bash')).toBeVisible();
-    await expect(page.getByText('8 (2 err)')).toBeVisible();
-    await expect(page.locator('.insights-bar-fill.has-errors')).toHaveCount(1);
-    const bars = page.locator('.insights-hourly-bar.has-data');
-    await expect(bars).toHaveCount(2);
-    const [maxBarHeight, halfValueBarHeight] = await bars.evaluateAll((nodes) =>
-      nodes.map((node) => node.getBoundingClientRect().height),
-    );
-    expect(maxBarHeight).toBeGreaterThan(0);
-    expect(maxBarHeight).toBeGreaterThan(halfValueBarHeight);
-  });
-
-  test('time period filters change active state', async ({ page }) => {
-    await page.goto('/profile');
-    // Click Feedback tab first (it has the time pills visible without data)
-    // Actually Usage tab (InsightsDashboard) has the pills
-    const pill7d = page.locator('.insights-pill', { hasText: '7d' });
-    const pill14d = page.locator('.insights-pill', { hasText: '14d' });
-    const pill30d = page.locator('.insights-pill', { hasText: '30d' });
-
-    await expect(pill14d).toHaveClass(/is-active/);
-    await pill7d.click();
-    await expect(pill7d).toHaveClass(/is-active/);
-    await pill30d.click();
-    await expect(pill30d).toHaveClass(/is-active/);
-  });
-
-  test('reset confirmation dialog cancels without resetting and confirms with one reset', async ({
-    page,
-  }) => {
-    const resets: string[] = [];
-    await page.route('**/api/analytics/usage*', (route) => {
-      if (route.request().method() !== 'DELETE') return route.fallback();
-      resets.push(route.request().url());
-      return route.fulfill({ json: { success: true } });
-    });
-    await page.goto('/profile');
-    const resetBtn = page.getByRole('button', { name: 'Reset' });
-    await resetBtn.click();
-
-    // Confirm dialog appears
-    await expect(page.getByText('Reset Usage Statistics')).toBeVisible();
-    await expect(page.getByText('This will permanently clear')).toBeVisible();
-
-    // Cancel dismisses
-    await page.getByRole('button', { name: 'Cancel' }).click();
-    await expect(page.getByText('Reset Usage Statistics')).not.toBeVisible();
-    expect(resets).toEqual([]);
-
-    // Open again and confirm
-    await resetBtn.click();
-    await page.getByRole('button', { name: 'Reset All' }).click();
-    await expect(page.getByText('Reset Usage Statistics')).not.toBeVisible();
-    // The dialog closes before the reset runs, so its closing is no proof.
-    await expect.poll(() => resets.length).toBe(1);
-  });
-
-  test('shows empty states with no data', async ({ page }) => {
-    // The shared beforeEach mock is populated; this journey needs its own
-    // empty insights payload or the tool/agent panels render data rows.
-    await page.route('**/api/insights*', (route) =>
-      route.fulfill({
+      const rows = Object.values(byDate);
+      await route.fulfill({
         json: {
           success: true,
           data: {
-            toolUsage: {},
-            hourlyActivity: Array(24).fill(0),
-            agentUsage: {},
-            modelUsage: {},
-            totalChats: 0,
-            totalToolCalls: 0,
-            totalErrors: 0,
-            days: 14,
+            ...state.usage,
+            byDate,
+            ...(from && to
+              ? {
+                  rangeSummary: {
+                    totalDays:
+                      (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1,
+                    activeDays: rows.length,
+                    totalMessages: rows.reduce(
+                      (sum, row) => sum + row.messages,
+                      0,
+                    ),
+                    totalCost: rows.reduce((sum, row) => sum + row.cost, 0),
+                    avgPerDay: rows.length
+                      ? rows.reduce((sum, row) => sum + row.messages, 0) /
+                        rows.length
+                      : 0,
+                  },
+                }
+              : {}),
           },
         },
-      }),
+      });
+    },
+  );
+  await page.route(
+    (url) => url.pathname === '/api/insights',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill({ json: { success: true, data: insights } });
+    },
+  );
+}
+
+async function openDiagnostics(page: Page) {
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Diagnostics/ })
+    .click();
+  await expect(page.getByText('Tool Calls', { exact: true })).toBeVisible();
+}
+
+test.describe('Profile retained usage', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupRoutes(page);
+  });
+
+  test('navigates through the avatar menu', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
+    await expect(page).toHaveURL(/\/profile/);
+    await expect(
+      page.locator('.usage-stats-panel').getByText('42', { exact: true }),
+    ).toBeVisible();
+  });
+
+  test('shows Station scope, retained totals and the populated recent chart', async ({
+    page,
+  }) => {
+    await page.goto('/profile');
+    await expect(page.locator('.profile-hero-subtitle')).toContainText(
+      'connected Station',
     );
-    await page.route('**/api/analytics/usage*', (route) => {
-      if (route.request().method() === 'GET') {
-        return route.fulfill({
+    const panel = page.locator('.usage-stats-panel');
+    await expect(panel.getByText('42', { exact: true })).toBeVisible();
+    await expect(panel.getByText('$1.23', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Active days', { exact: true })).toBeVisible();
+    await expect(panel.getByText(/Measured on 2 of 5/)).toBeVisible();
+    await expect(panel.getByText('Avg/Message')).toHaveCount(0);
+    const bar = page.locator(
+      '.profile-usage-graph__bar[title*="35 recorded messages"]',
+    );
+    await expect(bar).toBeVisible();
+    expect((await bar.boundingBox())!.height).toBeGreaterThan(2);
+  });
+
+  test('period control scopes the summary without relabeling lifetime rankings', async ({
+    page,
+  }) => {
+    await page.goto('/profile');
+    await page.getByText('Today', { exact: true }).click();
+    const panel = page.locator('.usage-stats-panel');
+    await expect(panel.getByText('35', { exact: true })).toBeVisible();
+    await expect(panel.getByText('$0.90', { exact: true })).toBeVisible();
+    await expect(
+      panel.getByText('Model and agent breakdowns · all time'),
+    ).toBeVisible();
+    await expect(panel.getByRole('button', { name: /sonnet/ })).toContainText(
+      '30 msgs',
+    );
+  });
+
+  test('opens history and model details through real controls', async ({
+    page,
+  }) => {
+    await page.goto('/profile');
+    await page
+      .locator('summary')
+      .filter({ hasText: /^Activity history/ })
+      .click();
+    await expect(
+      page.locator('[data-testid^="chart-col-"]').first(),
+    ).toBeVisible();
+    await page
+      .locator('.usage-stats-panel')
+      .getByRole('button', { name: /sonnet/ })
+      .click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('40,000', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('$0.90', { exact: true })).toBeVisible();
+    await dialog
+      .getByRole('button', { name: 'Close model usage details' })
+      .click();
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test('closed diagnostics do not request insights, and opened diagnostics show real chart geometry', async ({
+    page,
+  }) => {
+    let requests = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/insights') requests++;
+    });
+    const runtimeErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') runtimeErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => runtimeErrors.push(error.message));
+    await page.goto('/profile');
+    await expect(page.locator('.usage-stats-panel')).toBeVisible();
+    expect(requests).toBe(0);
+    await openDiagnostics(page);
+    await expect(page.getByText('8 (2 err)', { exact: true })).toBeVisible();
+    const bars = page.locator('.insights-hourly-bar.has-data');
+    await expect(bars).toHaveCount(2);
+    const heights = await bars.evaluateAll((nodes) =>
+      nodes.map((node) => node.getBoundingClientRect().height),
+    );
+    expect(heights[0]).toBeGreaterThan(heights[1]);
+    expect(heights[1]).toBeGreaterThan(0);
+    expect(runtimeErrors).toEqual([]);
+  });
+
+  test('diagnostic period controls preserve their selected state', async ({
+    page,
+  }) => {
+    await page.goto('/profile');
+    await openDiagnostics(page);
+    await page.locator('.insights-pill', { hasText: '7d' }).click();
+    await expect(page.locator('.insights-pill', { hasText: '7d' })).toHaveClass(
+      /is-active/,
+    );
+    await page.locator('.insights-pill', { hasText: '30d' }).click();
+    await expect(
+      page.locator('.insights-pill', { hasText: '30d' }),
+    ).toHaveClass(/is-active/);
+  });
+
+  test('diagnostic Usage and Feedback tabs remain usable inside the disclosure', async ({
+    page,
+  }) => {
+    await page.route(
+      (url) => url.pathname === '/api/feedback/ratings',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        await route.fulfill({ json: { success: true, data: [] } });
+      },
+    );
+    await page.goto('/profile');
+    await openDiagnostics(page);
+    await page.getByRole('button', { name: 'Feedback', exact: true }).click();
+    await expect(page.getByText(/^No ratings yet\./)).toBeVisible();
+    await page.getByRole('button', { name: 'Usage', exact: true }).click();
+    await expect(page.getByText('8 (2 err)', { exact: true })).toBeVisible();
+  });
+
+  test('an empty retained source shows an honest empty chart and unreported cost', async ({
+    page,
+  }) => {
+    const empty: UsageStats = {
+      ...usage,
+      snapshot: { ...usage.snapshot!, missingEngineTurnCosts: 0 },
+      lifetime: {
+        ...usage.lifetime,
+        streak: 0,
+        totalMessages: 0,
+        totalConversations: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalCost: 0,
+        reportedCostUsd: undefined,
+        daysActive: 0,
+        uniqueAgents: [],
+        firstMessageDate: undefined,
+        lastMessageDate: undefined,
+        engineUsageCoverage: {
+          sessions: 0,
+          sessionsReportingTokens: 0,
+          sessionsReportingCost: 0,
+        },
+      },
+      byModel: {},
+      byAgent: {},
+      byDate: {},
+    };
+    await page.route(
+      (url) => url.pathname === '/api/analytics/usage',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        await route.fulfill({ json: { success: true, data: empty } });
+      },
+    );
+    await page.route(
+      (url) => url.pathname === '/api/insights',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        await route.fulfill({
           json: {
+            success: true,
             data: {
-              lifetime: {
-                totalMessages: 0,
-                totalCost: 0,
-                totalConversations: 0,
-              },
-              byModel: {},
-              byAgent: {},
-              byDate: {},
-              rangeSummary: {
-                totalMessages: 0,
-                totalDays: 0,
-                activeDays: 0,
-                avgPerDay: 0,
-                totalCost: 0,
-              },
+              ...insights,
+              toolUsage: {},
+              agentUsage: {},
+              modelUsage: {},
+              hourlyActivity: Array(24).fill(0),
+              totalChats: 0,
+              totalToolCalls: 0,
+              totalErrors: 0,
             },
           },
         });
-      }
-      return route.fulfill({ json: { success: true } });
-    });
-    await page.goto('/profile');
-    await expect(
-      page.getByText('Start your journey with your first message'),
-    ).toBeVisible();
-    await expect(page.getByText('No tool usage yet')).toBeVisible();
-    await expect(page.getByText('No agent usage yet')).toBeVisible();
-    await expect(page.getByText('No model data yet')).toBeVisible();
-    await expect(page.getByText('No agent data yet')).toBeVisible();
-    await expect(
-      page.locator('.profile-container > .profile-card').first(),
-    ).toContainText(/No (usage|activity)/i);
-  });
-
-  test('mobile layout stacks vertically', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/profile');
-    await expect(page.locator('.profile-page')).toBeVisible();
-
-    // Single column at mobile: the grid's two cards share a left edge and
-    // the second starts below the first.
-    const cards = page.locator('.profile-stats-grid > .profile-card');
-    await expect(cards).toHaveCount(2);
-    const [first, second] = await Promise.all(
-      [cards.nth(0), cards.nth(1)].map(
-        async (card) => (await card.boundingBox())!,
-      ),
+      },
     );
-    expect(second.x).toBeCloseTo(first.x, 0);
-    expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
-  });
-
-  test('no console errors on profile page', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(msg.text());
-    });
     await page.goto('/profile');
-    await expect(page.locator('.profile-page')).toBeVisible();
-    await expect(page.locator('.usage-stats-panel')).toBeVisible();
-    expect(errors).toEqual([]);
+    await expect(
+      page.getByText('Daily activity not recorded in the last 14 days', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('.usage-stats-panel')
+        .getByText('Not reported', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('No model data yet', { exact: true }),
+    ).toBeVisible();
+    await page
+      .locator('summary')
+      .filter({ hasText: /^Diagnostics/ })
+      .click();
+    await expect(
+      page.getByText('No tool usage yet', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('No agent usage yet', { exact: true }),
+    ).toBeVisible();
   });
 
-  test('loading state appears before data loads', async ({ page }) => {
+  test('initial loading does not render fabricated zero totals', async ({
+    page,
+  }) => {
     let release!: () => void;
-    const responseGate = new Promise<void>((resolve) => {
+    const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await page.route('**/api/analytics/usage*', async (route) => {
-      await responseGate;
-      await route.fulfill({ json: { data: MOCK_USAGE } });
-    });
+    await page.route(
+      (url) => url.pathname === '/api/analytics/usage',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        await gate;
+        await route.fulfill({ json: { success: true, data: usage } });
+      },
+    );
     await page.goto('/profile');
     try {
       await expect(
         page.getByRole('status', { name: 'Loading profile', exact: true }),
       ).toBeVisible();
+      await expect(page.locator('.usage-stats-panel')).toHaveCount(0);
     } finally {
       release();
     }
     await expect(
-      page.getByRole('heading', { name: 'Usage Statistics', exact: true }),
+      page.locator('.usage-stats-panel').getByText('42', { exact: true }),
     ).toBeVisible();
   });
+
+  test('rebuild dispatches once and refreshes the visible source snapshot', async ({
+    page,
+  }) => {
+    let rebuilds = 0;
+    const state = sourceStates.get(page)!;
+    await page.route(
+      (url) => url.pathname === '/api/analytics/rescan',
+      async (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        rebuilds++;
+        state.usage = {
+          ...usage,
+          snapshot: { ...usage.snapshot!, missingEngineTurnCosts: 31 },
+          lifetime: { ...usage.lifetime, totalMessages: 43 },
+          byModel: {
+            ...usage.byModel,
+            sonnet: { ...usage.byModel.sonnet, messages: 31 },
+          },
+          byAgent: {
+            ...usage.byAgent,
+            default: { ...usage.byAgent.default, messages: 36 },
+          },
+          byDate: {
+            ...usage.byDate,
+            [today]: {
+              ...usage.byDate[today],
+              messages: 36,
+              byAgent: { default: 36 },
+            },
+          },
+        };
+        await route.fulfill({ json: { success: true, data: state.usage } });
+      },
+    );
+    await page.goto('/profile');
+    const panel = page.locator('.usage-stats-panel');
+    await expect(panel.getByText('42', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Rebuild usage' }).click();
+    await expect.poll(() => rebuilds).toBe(1);
+    await expect(
+      page.getByRole('button', { name: 'Rebuild usage' }),
+    ).toBeEnabled();
+    await expect(panel.getByText('43', { exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: /sonnet/ })).toContainText(
+      '31 msgs',
+    );
+  });
+
+  for (const width of [320, 390, 620]) {
+    for (const theme of ['light', 'dark']) {
+      test(`populated Profile fits ${width}px in ${theme} theme, including unclipped date endpoints`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 844 });
+        await page.goto('/profile');
+        await page.evaluate((value) => {
+          document.documentElement.dataset.theme = value;
+        }, theme);
+        await expect(
+          page.locator('.usage-stats-panel').getByText('42', { exact: true }),
+        ).toBeVisible();
+        const targetHeights = await page
+          .locator('.usage-period-btn')
+          .evaluateAll((nodes) =>
+            nodes.map((node) => node.getBoundingClientRect().height),
+          );
+        expect(targetHeights.length).toBeGreaterThan(0);
+        expect(Math.min(...targetHeights)).toBeGreaterThanOrEqual(44);
+        const graph = page.getByLabel('Usage activity overview');
+        for (const date of [
+          new Date(Date.now() - 13 * 86_400_000).toISOString().slice(0, 10),
+          today,
+        ]) {
+          const dateLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString(
+            'en-US',
+            { month: 'short', day: 'numeric', timeZone: 'UTC' },
+          );
+          const label = graph.getByText(dateLabel, { exact: true });
+          await expect(label).toBeVisible();
+          const geometry = await label.evaluate((node) => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const text = range.getBoundingClientRect();
+            const graph = node
+              .closest('.profile-usage-graph')!
+              .getBoundingClientRect();
+            const card = node.closest('.profile-card')!.getBoundingClientRect();
+            return {
+              textLeft: text.left,
+              textRight: text.right,
+              graphLeft: graph.left,
+              graphRight: graph.right,
+              cardLeft: card.left,
+              cardRight: card.right,
+              viewport: window.innerWidth,
+            };
+          });
+          expect(geometry.textLeft).toBeGreaterThanOrEqual(
+            Math.max(0, geometry.graphLeft, geometry.cardLeft) - 1,
+          );
+          expect(geometry.textRight).toBeLessThanOrEqual(
+            Math.min(
+              geometry.viewport,
+              geometry.graphRight,
+              geometry.cardRight,
+            ) + 1,
+          );
+        }
+        const bounds = await page.locator('.profile-page').evaluate((node) => {
+          const r = node.getBoundingClientRect();
+          return {
+            left: r.left,
+            right: r.right,
+            viewport: window.innerWidth,
+            scroll: node.scrollWidth,
+            width: node.clientWidth,
+          };
+        });
+        expect(bounds.left).toBeGreaterThanOrEqual(-1);
+        expect(bounds.right).toBeLessThanOrEqual(bounds.viewport + 1);
+        expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
+      });
+    }
+  }
 });
