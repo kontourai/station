@@ -10271,6 +10271,9 @@ enum CoverKeyRoute {
     Pass,
     Swallow,
     Restart,
+    FocusNext,
+    FocusPrevious,
+    PressFocused,
 }
 
 #[cfg(target_os = "macos")]
@@ -10279,6 +10282,7 @@ struct CoverKeyEvent<'a> {
     key_down: bool,
     key_code: u16,
     command: bool,
+    shift: bool,
     /// `charactersIgnoringModifiers`, used only for Command shortcuts.
     characters: &'a str,
     /// One of the cover's own controls is first responder (keyboard
@@ -10293,7 +10297,9 @@ struct CoverKeyEvent<'a> {
 /// editing shortcuts such as copy, paste, select all and undo would target the
 /// page and are swallowed. Return and keypad Enter choose the overdue cover's
 /// default Restart. Tab, Shift-Tab and Space operate the cover's own buttons
-/// only when one of them has focus. Escape never quits.
+/// only when one of them has focus; the monitor performs them itself because
+/// the window's content view (tao) consumes key events before the window's
+/// key-view loop sees them. Escape never quits.
 #[cfg(target_os = "macos")]
 fn cover_key_route(event: CoverKeyEvent<'_>) -> CoverKeyRoute {
     const RETURN_KEY: u16 = 36;
@@ -10312,7 +10318,14 @@ fn cover_key_route(event: CoverKeyEvent<'_>) -> CoverKeyRoute {
     }
     match event.key_code {
         RETURN_KEY | KEYPAD_ENTER_KEY if event.overdue && event.key_down => CoverKeyRoute::Restart,
-        TAB_KEY | SPACE_KEY if event.focus_on_cover_control => CoverKeyRoute::Pass,
+        TAB_KEY if event.focus_on_cover_control && event.key_down => {
+            if event.shift {
+                CoverKeyRoute::FocusPrevious
+            } else {
+                CoverKeyRoute::FocusNext
+            }
+        }
+        SPACE_KEY if event.focus_on_cover_control && event.key_down => CoverKeyRoute::PressFocused,
         _ => CoverKeyRoute::Swallow,
     }
 }
@@ -10328,7 +10341,9 @@ fn install_native_startup_cover_key_monitor(
     overdue: Option<(AppHandle, u64)>,
     marker: objc2::MainThreadMarker,
 ) {
-    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSView};
+    use objc2_app_kit::{
+        NSButton, NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSView,
+    };
 
     clear_native_startup_cover_key_monitor();
     let handler = block2::RcBlock::new(move |event: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
@@ -10336,7 +10351,8 @@ fn install_native_startup_cover_key_monitor(
         if key.windowNumber() != window_number {
             return event.as_ptr();
         }
-        let focus_on_cover_control = key.window(marker).is_some_and(|window| {
+        let window = key.window(marker);
+        let focus_on_cover_control = window.as_ref().is_some_and(|window| {
             let on_cover = window
                 .firstResponder()
                 .and_then(|responder| responder.downcast::<NSView>().ok())
@@ -10354,6 +10370,7 @@ fn install_native_startup_cover_key_monitor(
             key_down: key.r#type() == NSEventType::KeyDown,
             key_code: key.keyCode(),
             command: key.modifierFlags().contains(NSEventModifierFlags::Command),
+            shift: key.modifierFlags().contains(NSEventModifierFlags::Shift),
             characters: &characters,
             focus_on_cover_control,
             overdue: overdue.is_some(),
@@ -10361,6 +10378,26 @@ fn install_native_startup_cover_key_monitor(
         match route {
             CoverKeyRoute::Pass => event.as_ptr(),
             CoverKeyRoute::Swallow => std::ptr::null_mut(),
+            CoverKeyRoute::FocusNext
+            | CoverKeyRoute::FocusPrevious
+            | CoverKeyRoute::PressFocused => {
+                if let Some(window) = &window {
+                    match route {
+                        CoverKeyRoute::FocusNext => window.selectNextKeyView(None),
+                        CoverKeyRoute::FocusPrevious => window.selectPreviousKeyView(None),
+                        _ => {
+                            if let Some(button) = window
+                                .firstResponder()
+                                .and_then(|responder| responder.downcast::<NSButton>().ok())
+                            {
+                                // SAFETY: a nil sender is valid for an NSControl action.
+                                unsafe { button.performClick(None) };
+                            }
+                        }
+                    }
+                }
+                std::ptr::null_mut()
+            }
             CoverKeyRoute::Restart => {
                 if let Some((app, epoch)) = &overdue {
                     // Never unwind across the Objective-C block boundary.
@@ -15834,6 +15871,7 @@ mod tests {
             key_down: true,
             key_code,
             command,
+            shift: false,
             characters,
             focus_on_cover_control: false,
             overdue: true,
@@ -15868,20 +15906,35 @@ mod tests {
             CoverKeyRoute::Swallow
         );
         assert_eq!(cover_key_route(key(0, false, "a")), CoverKeyRoute::Swallow);
-        // Tab / Space operate the cover's own buttons only when one has focus.
+        // Tab / Shift-Tab / Space operate the cover's own buttons only when
+        // one has focus; otherwise they are swallowed.
         for code in [48, 49] {
             assert_eq!(
                 cover_key_route(key(code, false, " ")),
                 CoverKeyRoute::Swallow
             );
-            assert_eq!(
-                cover_key_route(CoverKeyEvent {
-                    focus_on_cover_control: true,
-                    ..key(code, false, " ")
-                }),
-                CoverKeyRoute::Pass
-            );
         }
+        let focused = |code: u16| CoverKeyEvent {
+            focus_on_cover_control: true,
+            ..key(code, false, " ")
+        };
+        assert_eq!(cover_key_route(focused(48)), CoverKeyRoute::FocusNext);
+        assert_eq!(
+            cover_key_route(CoverKeyEvent {
+                shift: true,
+                ..focused(48)
+            }),
+            CoverKeyRoute::FocusPrevious
+        );
+        assert_eq!(cover_key_route(focused(49)), CoverKeyRoute::PressFocused);
+        assert_eq!(
+            cover_key_route(CoverKeyEvent {
+                key_down: false,
+                ..focused(49)
+            }),
+            CoverKeyRoute::Swallow,
+            "key-up never presses twice"
+        );
         // App and window management pass; editing shortcuts would edit the page.
         for allowed in ["q", "w", "h", "m", "`", "Q"] {
             assert_eq!(
