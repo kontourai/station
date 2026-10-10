@@ -266,31 +266,50 @@ describe('desktop startup readiness static boundary', () => {
       expect(body).not.toContain('next.overdue');
     }
 
-    const deadline = rustBlock(lib, 'fn arm_startup_deadline(');
-    for (const forbidden of [
-      'continue_startup_readiness',
-      'SupervisorMessage::Restart',
-      'ReadinessInput::Retry',
-    ]) {
-      expect(deadline).not.toContain(forbidden);
+    const deadlineThread = rustBlock(lib, 'fn arm_startup_deadline(');
+    expect(deadlineThread).toContain('startup_deadline_elapsed_with(');
+    const deadline = rustBlock(lib, 'fn startup_deadline_elapsed_with(');
+    for (const body of [deadlineThread, deadline]) {
+      for (const forbidden of [
+        'continue_startup_readiness',
+        'SupervisorMessage::Restart',
+        'restart_owned_sidecar',
+        'resolve_slow_startup',
+        'ReadinessInput::Retry',
+      ]) {
+        expect(body).not.toContain(forbidden);
+      }
     }
     // macOS shows recovery inside the native cover; the dialog is only the
     // fallback for hosts without one.
     const presented = deadline.indexOf(
-      'Some(StartupRecoveryPresentation::Presented) => return',
+      'Some(StartupRecoveryPresentation::Presented) => {}',
     );
     expect(presented).toBeGreaterThanOrEqual(0);
-    expect(deadline.indexOf('.dialog()')).toBeGreaterThan(presented);
-    expect(deadline).toContain('resolve_slow_startup(');
+    expect(
+      deadline.indexOf('offer_slow_start_dialog_with(host, epoch)'),
+    ).toBeGreaterThan(presented);
 
-    const resolve = rustBlock(lib, 'fn resolve_slow_startup(');
+    const resolve = rustBlock(lib, 'fn resolve_slow_startup_with(');
     expect(resolve).toContain(
-      'continue_startup_readiness(app, state.inner(), &effects);',
+      'continue_startup_readiness_with(host, &effects);',
     );
-    expect(resolve).toContain('startup_readiness::overdue_for_epoch(');
-    expect(resolve.indexOf('overdue_for_epoch(')).toBeLessThan(
-      resolve.indexOf('app.exit(1)'),
+    expect(resolve.indexOf('host.overdue_for_epoch(epoch)')).toBeLessThan(
+      resolve.indexOf('host.exit()'),
     );
+    // The routing tests drive a fake host; pin the production host's
+    // owner-routed recovery commit and its single supervisor restart.
+    const host = rustBlock(
+      lib,
+      'impl StartupRecoveryHost for AppStartupRecoveryHost',
+    );
+    expect(rustBlock(host, 'fn recommit_native_recovery')).toContain(
+      'advance_native_startup_after_page(self.app)',
+    );
+    expect(rustBlock(host, 'fn restart_owned_sidecar')).toContain(
+      'SupervisorMessage::Restart',
+    );
+    expect(rustBlock(host, 'fn exit')).toContain('self.app.exit(1)');
 
     const activation = rustBlock(
       lib,
