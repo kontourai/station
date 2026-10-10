@@ -90,7 +90,11 @@ const insights = {
   days: 14,
 };
 
+const sourceStates = new WeakMap<Page, { usage: UsageStats }>();
+
 async function setupRoutes(page: Page) {
+  const state = { usage };
+  sourceStates.set(page, state);
   await page.route(
     (url) => url.pathname === '/api/analytics/usage',
     async (route) => {
@@ -100,7 +104,7 @@ async function setupRoutes(page: Page) {
       const from = url.searchParams.get('from');
       const to = url.searchParams.get('to');
       const byDate = Object.fromEntries(
-        Object.entries(usage.byDate).filter(
+        Object.entries(state.usage.byDate).filter(
           ([date]) => (!from || date >= from) && (!to || date <= to),
         ),
       );
@@ -109,7 +113,7 @@ async function setupRoutes(page: Page) {
         json: {
           success: true,
           data: {
-            ...usage,
+            ...state.usage,
             byDate,
             ...(from && to
               ? {
@@ -122,9 +126,10 @@ async function setupRoutes(page: Page) {
                       0,
                     ),
                     totalCost: rows.reduce((sum, row) => sum + row.cost, 0),
-                    avgPerDay:
-                      rows.reduce((sum, row) => sum + row.messages, 0) /
-                      ((Date.parse(to) - Date.parse(from)) / 86_400_000 + 1),
+                    avgPerDay: rows.length
+                      ? rows.reduce((sum, row) => sum + row.messages, 0) /
+                        rows.length
+                      : 0,
                   },
                 }
               : {}),
@@ -233,6 +238,11 @@ test.describe('Profile retained usage', () => {
     page.on('request', (request) => {
       if (new URL(request.url()).pathname === '/api/insights') requests++;
     });
+    const runtimeErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') runtimeErrors.push(message.text());
+    });
+    page.on('pageerror', (error) => runtimeErrors.push(error.message));
     await page.goto('/profile');
     await expect(page.locator('.usage-stats-panel')).toBeVisible();
     expect(requests).toBe(0);
@@ -245,6 +255,7 @@ test.describe('Profile retained usage', () => {
     );
     expect(heights[0]).toBeGreaterThan(heights[1]);
     expect(heights[1]).toBeGreaterThan(0);
+    expect(runtimeErrors).toEqual([]);
   });
 
   test('diagnostic period controls preserve their selected state', async ({
@@ -276,9 +287,7 @@ test.describe('Profile retained usage', () => {
     await page.goto('/profile');
     await openDiagnostics(page);
     await page.getByRole('button', { name: 'Feedback', exact: true }).click();
-    await expect(
-      page.getByText('No ratings yet', { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText(/^No ratings yet\./)).toBeVisible();
     await page.getByRole('button', { name: 'Usage', exact: true }).click();
     await expect(page.getByText('8 (2 err)', { exact: true })).toBeVisible();
   });
@@ -288,8 +297,10 @@ test.describe('Profile retained usage', () => {
   }) => {
     const empty: UsageStats = {
       ...usage,
+      snapshot: { ...usage.snapshot!, missingEngineTurnCosts: 0 },
       lifetime: {
         ...usage.lifetime,
+        streak: 0,
         totalMessages: 0,
         totalConversations: 0,
         totalInputTokens: 0,
@@ -318,6 +329,28 @@ test.describe('Profile retained usage', () => {
         await route.fulfill({ json: { success: true, data: empty } });
       },
     );
+    await page.route(
+      (url) => url.pathname === '/api/insights',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              ...insights,
+              toolUsage: {},
+              agentUsage: {},
+              modelUsage: {},
+              hourlyActivity: Array(24).fill(0),
+              totalChats: 0,
+              totalToolCalls: 0,
+              totalErrors: 0,
+            },
+          },
+        });
+      },
+    );
     await page.goto('/profile');
     await expect(
       page.getByText('Daily activity not recorded in the last 14 days', {
@@ -331,6 +364,16 @@ test.describe('Profile retained usage', () => {
     ).toBeVisible();
     await expect(
       page.getByText('No model data yet', { exact: true }),
+    ).toBeVisible();
+    await page
+      .locator('summary')
+      .filter({ hasText: /^Diagnostics/ })
+      .click();
+    await expect(
+      page.getByText('No tool usage yet', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('No agent usage yet', { exact: true }),
     ).toBeVisible();
   });
 
@@ -364,28 +407,53 @@ test.describe('Profile retained usage', () => {
     ).toBeVisible();
   });
 
-  test('rebuild dispatches once and returns to the recorded snapshot', async ({
+  test('rebuild dispatches once and refreshes the visible source snapshot', async ({
     page,
   }) => {
     let rebuilds = 0;
+    const state = sourceStates.get(page)!;
     await page.route(
       (url) => url.pathname === '/api/analytics/rescan',
       async (route) => {
         if (route.request().method() !== 'POST')
           return rejectUnexpectedFixtureRequest(route);
         rebuilds++;
-        await route.fulfill({ json: { success: true, data: usage } });
+        state.usage = {
+          ...usage,
+          snapshot: { ...usage.snapshot!, missingEngineTurnCosts: 31 },
+          lifetime: { ...usage.lifetime, totalMessages: 43 },
+          byModel: {
+            ...usage.byModel,
+            sonnet: { ...usage.byModel.sonnet, messages: 31 },
+          },
+          byAgent: {
+            ...usage.byAgent,
+            default: { ...usage.byAgent.default, messages: 36 },
+          },
+          byDate: {
+            ...usage.byDate,
+            [today]: {
+              ...usage.byDate[today],
+              messages: 36,
+              byAgent: { default: 36 },
+            },
+          },
+        };
+        await route.fulfill({ json: { success: true, data: state.usage } });
       },
     );
     await page.goto('/profile');
+    const panel = page.locator('.usage-stats-panel');
+    await expect(panel.getByText('42', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Rebuild usage' }).click();
     await expect.poll(() => rebuilds).toBe(1);
     await expect(
       page.getByRole('button', { name: 'Rebuild usage' }),
     ).toBeEnabled();
-    await expect(
-      page.locator('.usage-stats-panel').getByText('42', { exact: true }),
-    ).toBeVisible();
+    await expect(panel.getByText('43', { exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: /sonnet/ })).toContainText(
+      '31 msgs',
+    );
   });
 
   for (const width of [320, 390, 620]) {
@@ -401,28 +469,59 @@ test.describe('Profile retained usage', () => {
         await expect(
           page.locator('.usage-stats-panel').getByText('42', { exact: true }),
         ).toBeVisible();
-        const dateLabel = new Date(`${today}T12:00:00Z`).toLocaleDateString(
-          'en-US',
-          { month: 'short', day: 'numeric', timeZone: 'UTC' },
-        );
-        const label = page.getByText(dateLabel, { exact: true });
-        await expect(label).toBeVisible();
-        const geometry = await label.evaluate((node) => {
-          const range = document.createRange();
-          range.selectNodeContents(node);
+        const graph = page.getByLabel('Usage activity overview');
+        for (const date of [
+          new Date(Date.now() - 13 * 86_400_000).toISOString().slice(0, 10),
+          today,
+        ]) {
+          const dateLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString(
+            'en-US',
+            { month: 'short', day: 'numeric', timeZone: 'UTC' },
+          );
+          const label = graph.getByText(dateLabel, { exact: true });
+          await expect(label).toBeVisible();
+          const geometry = await label.evaluate((node) => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const text = range.getBoundingClientRect();
+            const graph = node
+              .closest('.profile-usage-graph')!
+              .getBoundingClientRect();
+            const card = node.closest('.profile-card')!.getBoundingClientRect();
+            return {
+              textLeft: text.left,
+              textRight: text.right,
+              graphLeft: graph.left,
+              graphRight: graph.right,
+              cardLeft: card.left,
+              cardRight: card.right,
+              viewport: window.innerWidth,
+            };
+          });
+          expect(geometry.textLeft).toBeGreaterThanOrEqual(
+            Math.max(0, geometry.graphLeft, geometry.cardLeft) - 1,
+          );
+          expect(geometry.textRight).toBeLessThanOrEqual(
+            Math.min(
+              geometry.viewport,
+              geometry.graphRight,
+              geometry.cardRight,
+            ) + 1,
+          );
+        }
+        const bounds = await page.locator('.profile-page').evaluate((node) => {
+          const r = node.getBoundingClientRect();
           return {
-            text: range.getBoundingClientRect().width,
-            available: node.getBoundingClientRect().width,
-          };
-        });
-        expect(geometry.text).toBeLessThanOrEqual(geometry.available + 1);
-        const overflow = await page
-          .locator('.profile-page')
-          .evaluate((node) => ({
+            left: r.left,
+            right: r.right,
+            viewport: window.innerWidth,
             scroll: node.scrollWidth,
             width: node.clientWidth,
-          }));
-        expect(overflow.scroll).toBeLessThanOrEqual(overflow.width + 1);
+          };
+        });
+        expect(bounds.left).toBeGreaterThanOrEqual(-1);
+        expect(bounds.right).toBeLessThanOrEqual(bounds.viewport + 1);
+        expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
       });
     }
   }
