@@ -586,6 +586,7 @@ export function projectCodexQuotaUpdate(
     );
   }
   const windows = ['primary', 'secondary'].flatMap((id) => {
+    if (limits[id] === null) return [];
     const window = record(limits[id]);
     const usedPercent = quotaPercent(window?.usedPercent);
     if (!window) {
@@ -598,12 +599,13 @@ export function projectCodexQuotaUpdate(
     const windowDurationMins = number(window.windowDurationMins);
     const resetsAt = number(window.resetsAt);
     requireValidGroup(
-      window.windowDurationMins !== undefined,
+      window.windowDurationMins !== undefined &&
+        window.windowDurationMins !== null,
       windowDurationMins !== undefined,
       `${id}.windowDurationMins`,
     );
     requireValidGroup(
-      window.resetsAt !== undefined,
+      window.resetsAt !== undefined && window.resetsAt !== null,
       resetsAt !== undefined,
       `${id}.resetsAt`,
     );
@@ -614,6 +616,8 @@ export function projectCodexQuotaUpdate(
         observedAt,
         ...(label ? { label } : {}),
         ...(windowDurationMins === undefined ? {} : { windowDurationMins }),
+        // An explicitly unavailable reset revokes prior deadline qualification.
+        ...(window.resetsAt === null ? { resetDeadlineAt: undefined } : {}),
         ...(resetsAt === undefined
           ? {}
           : {
@@ -637,6 +641,7 @@ export function projectCodexQuotaUpdate(
       typeof hasCredits === 'boolean' &&
       typeof unlimited === 'boolean' &&
       (credits?.balance === undefined ||
+        credits?.balance === null ||
         string(credits?.balance) !== undefined),
     'credits',
   );

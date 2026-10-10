@@ -428,6 +428,68 @@ describe('CodexAdapter', () => {
     expect(snapshot?.credits).toBeUndefined();
   });
 
+  test.each([
+    {
+      id: 'primary',
+      primary: {
+        usedPercent: 94,
+        windowDurationMins: 10080,
+        resetsAt: 1791948529,
+      },
+      secondary: null,
+    },
+    {
+      id: 'secondary',
+      primary: null,
+      secondary: {
+        usedPercent: 94,
+        windowDurationMins: 10080,
+        resetsAt: 1791948529,
+      },
+    },
+    {
+      id: 'primary',
+      primary: { usedPercent: 94, windowDurationMins: null, resetsAt: null },
+      secondary: null,
+    },
+  ])(
+    'reads nullable native quota windows without inventing allowance ($id)',
+    async ({ id, primary, secondary }) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const read = adapter.readQuotaSnapshot({ connectionId: 'codex' });
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '1', result: {} })}\n`,
+      );
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '2', result: { rateLimits: { primary, secondary, credits: { hasCredits: false, unlimited: false, balance: null } } } })}\n`,
+      );
+      const result = await read;
+      expect(result.kind).toBe('snapshot');
+      if (result.kind !== 'snapshot')
+        throw new Error('Expected native quota snapshot');
+      expect(result.snapshot.windows).toHaveLength(1);
+      expect(result.snapshot.windows[0]).toMatchObject({ id, usedPercent: 94 });
+      expect(result.snapshot.credits?.value).toEqual({
+        hasCredits: false,
+        unlimited: false,
+      });
+      const window = primary ?? secondary;
+      if (window?.resetsAt === null) {
+        expect(result.snapshot.windows[0]).not.toHaveProperty('resetsAt');
+        expect(result.snapshot.windows[0]?.resetDeadlineAt).toBeUndefined();
+        expect(result.snapshot.windows[0]).not.toHaveProperty(
+          'windowDurationMins',
+        );
+      }
+      await adapter.stopAll();
+    },
+  );
+
   test('returns provider-error when the quota transport fails', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({ processFactory: () => processHandle! });
@@ -478,7 +540,7 @@ describe('CodexAdapter', () => {
       null,
       42,
       { rateLimits: null },
-      { rateLimits: { primary: null } },
+      { rateLimits: { primary: [] } },
       { rateLimits: { secondary: 42 } },
     ]) {
       expect(() =>
@@ -496,7 +558,7 @@ describe('CodexAdapter', () => {
     });
     for (const [process, payload] of [
       [first, { rateLimits: null }],
-      [second, { rateLimits: { primary: null } }],
+      [second, { rateLimits: { primary: [] } }],
     ] as const) {
       const read = adapter.readQuotaSnapshot({ connectionId: 'codex' });
       await flushIo();

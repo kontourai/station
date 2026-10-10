@@ -154,6 +154,11 @@ child-work report for that row; clients retain their existing state.
 
 ## Allowance observations and recovery ordering
 
+Codex's nullable `primary` and `secondary` groups represent unavailable windows,
+not malformed data or zero usage. Nullable duration, reset and credit-balance
+metadata remains unknown; an explicitly unavailable reset cannot supply a
+qualified expiry deadline. Non-null malformed groups still refuse projection.
+
 `connection-quota` retains raw provider reset values and adds optional
 `resetDeadlineAt` only when an adapter can normalize a declared wire unit.
 `subscriptionEnd` carries its own observation time and explicit renewal state;
