@@ -112,7 +112,11 @@
 
     "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
 
-    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx"
+    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserPane.css",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx"
   ],
 
   "checks": [
