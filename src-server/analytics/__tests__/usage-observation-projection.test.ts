@@ -185,6 +185,25 @@ function fixture() {
   return { home, store, aggregator, app, start, turn, current, event };
 }
 
+test('agent cost fields preserve reported and estimated zero separately from missing cost', async () => {
+  const f = fixture();
+  try {
+    f.start('measured', 'claude', day1, 'model-a', { agentSlug: 'measured' });
+    f.turn('measured', 'claude', 'measured-turn', day1, { reportedCostUsd: 0 });
+    f.start('unknown', 'codex', day1, 'model-a', { agentSlug: 'unknown' });
+    f.turn('unknown', 'codex', 'unknown-turn', day1);
+    await memory(f.home, 'saved-zero', { timestamp: day1, usage: { estimatedCost: 0 } }, 'estimated');
+    const stats = await f.current();
+    expect(stats.byAgent.measured).toMatchObject({ cost: 0, reportedCostUsd: 0 });
+    expect(stats.byAgent.estimated).toMatchObject({ cost: 0, estimatedCostUsd: 0 });
+    expect(stats.byAgent.unknown.cost).toBe(0);
+    expect(stats.byAgent.unknown.reportedCostUsd).toBeUndefined();
+    expect(stats.byAgent.unknown.estimatedCostUsd).toBeUndefined();
+  } finally {
+    f.store.close();
+  }
+});
+
 async function memory(
   home: string,
   conversationId: string,

@@ -5,7 +5,6 @@ import {
 import { AgentIcon } from '../icons/AgentIcon';
 import {
   AgentGlyph,
-  ChartGlyph,
   CheckGlyph,
   CloseGlyph,
   FolderGlyph,
@@ -21,6 +20,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { StatCard } from './StatCard';
 import {
+  formatRecordedCost,
   getAgentModelBreakdown,
   getTotalUsageConversations,
   getUsageModelDisplayName,
@@ -61,7 +61,12 @@ export function UsageDrillDownModal({
     const cacheInclusivity = cacheProvider
       ? modelStats.cacheInclusivity
       : undefined;
-    const promptTotal = cacheInclusivePromptTokens(cacheProvider, modelStats);
+    const inputMeasured = modelStats.inputTokens > 0 || modelStats.tokenReports?.input > 0;
+    const outputMeasured = modelStats.outputTokens > 0 || modelStats.tokenReports?.output > 0;
+    const promptTotal = cacheInclusivePromptTokens(cacheProvider, {
+      ...modelStats,
+      inputTokens: inputMeasured ? modelStats.inputTokens : undefined,
+    });
     const modelInfo = models.find(
       (model) => model.id === id || model.originalId === id,
     );
@@ -73,6 +78,8 @@ export function UsageDrillDownModal({
         agentName: agentId,
         messages: stats.models[id].messages,
         cost: stats.models[id].cost,
+        reportedCostUsd: stats.models[id].reportedCostUsd,
+        estimatedCostUsd: stats.models[id].estimatedCostUsd,
       }))
       .sort((a, b) => b.messages - a.messages);
 
@@ -108,7 +115,7 @@ export function UsageDrillDownModal({
                   ? 'Input Tokens (uncached)'
                   : 'Input Tokens'
               }
-              value={modelStats.inputTokens.toLocaleString()}
+              value={inputMeasured ? modelStats.inputTokens.toLocaleString() : 'Not reported'}
             />
             {modelStats.cacheReadTokens !== undefined && (
               <StatCard
@@ -134,45 +141,15 @@ export function UsageDrillDownModal({
             <StatCard
               icon={<OutboxGlyph />}
               label="Output Tokens"
-              value={modelStats.outputTokens.toLocaleString()}
+              value={outputMeasured ? modelStats.outputTokens.toLocaleString() : 'Not reported'}
             />
             <StatCard
               icon={<MoneyGlyph />}
-              label="Total Cost"
-              value={`$${modelStats.cost.toFixed(2)}`}
+              label="Recorded cost"
+              value={formatRecordedCost(modelStats)}
             />
-            <StatCard
-              icon={<ChartGlyph />}
-              label="Avg Cost/Turn"
-              value={`$${(modelStats.cost / modelStats.messages).toFixed(4)}`}
-            />
-            <StatCard
-              icon={<InboxGlyph />}
-              label={
-                cacheInclusivity === 'disjoint'
-                  ? 'Input Tokens (uncached)/Turn'
-                  : 'Input Tokens/Turn'
-              }
-              value={Math.round(
-                modelStats.inputTokens / modelStats.messages,
-              ).toLocaleString()}
-            />
-            {promptTotal !== undefined && (
-              <StatCard
-                icon={<InboxGlyph />}
-                label="Prompt Total/Turn"
-                value={Math.round(
-                  promptTotal / modelStats.messages,
-                ).toLocaleString()}
-              />
-            )}
-            <StatCard
-              icon={<OutboxGlyph />}
-              label="Output Tokens/Turn"
-              value={Math.round(
-                modelStats.outputTokens / modelStats.messages,
-              ).toLocaleString()}
-            />
+
+
           </div>
 
           {agentsUsingModel.length > 0 && (
@@ -180,11 +157,11 @@ export function UsageDrillDownModal({
               <h4>Agents Using This Model</h4>
               <div className="drill-down-list">
                 {agentsUsingModel.map(
-                  ({ agentId, agentName, messages, cost }) => (
-                    <div key={agentId} className="drill-down-list-item">
-                      <span className="drill-down-list-name">{agentName}</span>
+                  (entry) => (
+                    <div key={entry.agentId} className="drill-down-list-item">
+                      <span className="drill-down-list-name">{entry.agentName}</span>
                       <span className="drill-down-list-stats">
-                        {messages} msgs · ${cost.toFixed(2)}
+                        {entry.messages} msgs · {formatRecordedCost(entry)}
                       </span>
                     </div>
                   ),
@@ -310,14 +287,10 @@ export function UsageDrillDownModal({
             />
             <StatCard
               icon={<MoneyGlyph />}
-              label="Total Cost"
-              value={`$${agentStats.cost.toFixed(2)}`}
+              label="Recorded cost"
+              value={formatRecordedCost(agentStats)}
             />
-            <StatCard
-              icon={<ChartGlyph />}
-              label="Avg Cost/Turn"
-              value={`$${(agentStats.cost / agentStats.messages).toFixed(4)}`}
-            />
+
           </div>
 
           {modelBreakdown.length > 0 && (
@@ -325,13 +298,13 @@ export function UsageDrillDownModal({
               <h4>Models Used</h4>
               <div className="drill-down-list">
                 {modelBreakdown.map(
-                  ({ modelId, displayName, messages, cost }) => (
-                    <div key={modelId} className="drill-down-list-item">
+                  (entry) => (
+                    <div key={entry.modelId} className="drill-down-list-item">
                       <span className="drill-down-list-name">
-                        {displayName}
+                        {entry.displayName}
                       </span>
                       <span className="drill-down-list-stats">
-                        {messages} msgs · ${cost.toFixed(2)}
+                        {entry.messages} msgs · {formatRecordedCost(entry)}
                       </span>
                     </div>
                   ),

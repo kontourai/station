@@ -23,7 +23,7 @@ function statValue(label: string): string | undefined {
 }
 
 describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () => {
-  test('renders the 212x known answer as an explicitly backed prompt total and per-turn figure', () => {
+  test('renders the 212x known answer as an explicitly backed prompt total', () => {
     renderModel({
       messages: 3,
       inputTokens: 135,
@@ -40,7 +40,6 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
     expect(statValue('Cache Read Tokens')).toBe('18,400');
     expect(statValue('Cache Write Tokens')).toBe('10,100');
     expect(statValue('Prompt Total')).toBe('28,635');
-    expect(statValue('Prompt Total/Turn')).toBe('9,545');
   });
 
   test('shows an unverified provider cache component without inventing a prompt sum', () => {
@@ -96,4 +95,27 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
     expect(statValue('Cache Read Tokens')).toBe('0');
     expect(screen.queryByText('Cache Write Tokens')).toBeNull();
   });
+});
+
+
+test.each([undefined, 0])('model details distinguish missing token/cost measurements from reported zero (%s)', (reported) => {
+  renderModel({ messages: 1, inputTokens: 0, outputTokens: 0, cost: 0,
+    reportedCostUsd: reported,
+    tokenReports: { input: reported === undefined ? 0 : 1, output: reported === undefined ? 0 : 1 }
+  });
+  expect(statValue('Recorded cost')).toBe(reported === undefined ? 'Not reported' : '$0.00');
+  expect(statValue('Input Tokens')).toBe(reported === undefined ? 'Not reported' : '0');
+  expect(statValue('Output Tokens')).toBe(reported === undefined ? 'Not reported' : '0');
+  expect(screen.queryByText('Avg Cost/Turn')).toBeNull();
+});
+
+
+test('cache-only observations do not invent an uncached input or prompt total', () => {
+  renderModel({ messages: 1, inputTokens: 0, outputTokens: 0, cost: 0,
+    cacheReadTokens: 25, tokenReports: { input: 0, output: 0, cacheRead: 1, cacheWrite: 0 },
+    cacheProvider: 'claude', cacheInclusivity: 'disjoint', cacheProviderAttribution: 'single',
+  });
+  expect(statValue('Input Tokens (uncached)')).toBe('Not reported');
+  expect(statValue('Cache Read Tokens')).toBe('25');
+  expect(screen.queryByText('Prompt Total')).toBeNull();
 });
