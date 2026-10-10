@@ -103,9 +103,10 @@ export function publicDocsHygieneFindings(
 }
 
 const RENDERED_HREF = /\shref="([^"]+)"/g;
-// The renderer replaces any href it cannot prove safe with `#`; on a link
-// that did not ask for `#`, that ships a dead link no target check can see.
-const DEAD_RENDERED_LINK = /<a href="#">([^<]*)<\/a>/g;
+// The renderer replaces any href it cannot prove safe with `#`, which ships a
+// dead link no target check can see. A public doc has no reason to link `#`
+// itself, so every rendered `#` link is rejected.
+const DEAD_RENDERED_LINK = /<a href="#">(.*?)<\/a>/g;
 const NON_RELATIVE_HREF = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i;
 
 // Pages publishes only the manifest's documents, so a relative link from one
@@ -130,8 +131,7 @@ export function publicProjectionLinkFindings(
     const text = read(`docs/${source}`, 'utf8');
     const html = renderMarkdown(text);
     for (const [, label] of html.matchAll(DEAD_RENDERED_LINK)) {
-      if (!text.includes(`[${label}](#)`))
-        findings.push(`${source} dead-link: [${label}] renders as href="#"`);
+      findings.push(`${source} dead-link: [${label}] renders as href="#"`);
     }
     for (const match of html.matchAll(RENDERED_HREF)) {
       const href = match[1].replaceAll('&amp;', '&');

@@ -121,8 +121,8 @@ first; the controls show what **Start** will use:
 - The **Agent** chip shows the Agent's icon and name. Open it to
   list **Station**, **Coding apps**, and **My agents**, with readiness and setup
   actions. The separate Model chip shows the Model's name and opens the
-  Model picker, titled **Engine & model** when it also offers alternative
-  engines. An engine choice overrides this conversation's execution
+  **Engine & model** picker, which also offers alternative engines when they
+  are available. An engine choice overrides this conversation's execution
   while retaining the selected Agent's profile and saved defaults. Search or
   filter by provider, **Recent**, or **Favorites**; open **Options** for
   supported controls such as reasoning effort. Choosing a Model for an Agent also chooses
