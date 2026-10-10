@@ -18,7 +18,11 @@
 
     "src-ui/src/components/voice/VoicePill.css",
 
-    "src-ui/src/tokens.css"
+    "src-ui/src/tokens.css",
+
+    "src-ui/src/components/status/live-status.css",
+
+    "tests/screenshots.spec.ts"
   ],
 
   "checks": [
