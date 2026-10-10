@@ -432,10 +432,11 @@ describe('ClaudeAdapter', () => {
         }
       })();
       try {
-        session = await adapter.startSession({
+        const started = await adapter.startSession({
           provider: 'claude',
           threadId: 'fresh-native-init',
         });
+        session = started;
         expect(claim).not.toHaveBeenCalled();
         controlled.push({
           type: 'system',
@@ -450,9 +451,9 @@ describe('ClaudeAdapter', () => {
           await vi.waitFor(() =>
             expect(order).toEqual(['claim', 'configured']),
           );
-          expect(session.status).toBe('ready');
+          expect(started.status).toBe('ready');
         } else {
-          await vi.waitFor(() => expect(session.status).toBe('error'));
+          await vi.waitFor(() => expect(started.status).toBe('error'));
           expect(order).toEqual(['claim']);
           expect(
             events.some(
