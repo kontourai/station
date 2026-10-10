@@ -30,8 +30,8 @@ vi.mock('@kontourai/station-sdk', () => ({
 import {
   answerOrchestrationRequest,
   forgetApprovalAnswer,
-  readApprovalAnswerState,
   inspectApprovalAnswer,
+  readApprovalAnswerState,
 } from '../answerRequest';
 
 const request = {
@@ -101,9 +101,12 @@ describe('answerOrchestrationRequest', () => {
         decision: 'acceptForSession' as const,
         ...(sessionGrantScope ? {} : { sessionGrantScope: 'server' as const }),
       };
-      await expect(
-        answerOrchestrationRequest('http://api', other),
-      ).rejects.toThrow('still being sent');
+      const oppositeScopeAnswer = answerOrchestrationRequest(
+        'http://api',
+        other,
+      );
+      expect(oppositeScopeAnswer).not.toBe(first);
+      await expect(oppositeScopeAnswer).rejects.toThrow('still being sent');
       expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(1);
       expect(
         vi.mocked(resolveOrchestrationRequest).mock.calls[0][0]
