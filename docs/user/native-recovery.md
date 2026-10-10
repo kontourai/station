@@ -36,20 +36,27 @@ starting and offers a choice once for that epoch:
   to start.** with **Restart** and **Quit** buttons. Return selects
   **Restart**; with keyboard navigation turned on, Tab moves between the two
   buttons and Space presses the focused one. Escape does nothing. While the
-  cover is shown, other keys and editing shortcuts are ignored; Quit, Close,
-  Hide and Minimize shortcuts still work. If Station was launched in the
-  background (tray-only), this appears when you open the window. If the cover
-  cannot be shown, the dialog described next appears instead.
+  cover is shown, typing and editing shortcuts are ignored; the Quit, Close,
+  Hide and Minimize shortcuts still work, including on non-Latin keyboard
+  layouts. Closing the window only hides it: Station keeps starting, and the
+  window comes back when you open Station again (Dock, launching it, or the
+  tray). If Station was launched in the background (tray-only), this message
+  appears when you open the window. If the cover cannot be shown, the dialog
+  described next appears instead.
 - On Windows and Linux, a **Station is taking longer than usual to start**
   dialog offers **Restart**, **Quit** and **Keep Waiting**. Closing it or
   pressing Escape is the same as **Keep Waiting**; only **Quit** closes the app.
+  After **Keep Waiting**, the message comes back after another 30 seconds if
+  Station still has not finished starting.
 
 You do not have to choose. Desktop does not stop its local service when the
 30 seconds pass. When the service finishes starting, the window opens without
-any action from you (unless Station was launched in the background), and the
-macOS cover and its buttons disappear. There is no time limit on that wait,
+any action from you (unless Station was launched in the background, or you
+closed the window while waiting), and the macOS cover and its buttons
+disappear. There is no time limit while the service is still starting,
 including on a first launch, when Station creates this computer's local
-connection only after the service is running. On Windows and Linux, the dialog
+connection only after the service is running. If the service has stopped or
+failed, Station shows its recovery screen instead of waiting. On Windows and Linux, the dialog
 can stay open after the window appears; its buttons are then ignored. On
 macOS, activating the app (Dock, second launch, deep link) shows the cover
 again but does not restart anything.
@@ -64,8 +71,8 @@ again but does not restart anything.
 - **Quit** closes the desktop app if that startup is still waiting. It does
   not reset data or remove a service.
 - **Keep Waiting** (Windows and Linux) closes the message and lets startup
-  continue. That startup does not show the message again; to quit, use the
-  tray or end the app.
+  continue; the message returns after another 30 seconds while startup is
+  still waiting.
 - After an unexpected exit, the supervisor can respawn the sidecar four times,
   after 1, 2, 4, and 8 seconds. The fifth counted exit is terminal and reports
   failure. An owned-sidecar restart resets that attempt count; a ticket-only

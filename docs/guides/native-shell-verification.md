@@ -472,15 +472,20 @@ can render while the proof proceeds. It shows the application icon and
 **Station is taking longer than usual to start.** with native **Restart**
 (default) and **Quit** buttons, replacing the former modal alert. While the
 cover is up, a window-scoped key monitor evicts the hidden WebView from first
-responder (WebKit can retake it), maps Return to Restart, lets Tab/Space reach
-only the cover's buttons, swallows Escape and typing, and passes only app and
-window management Command shortcuts. A failed overdue cover task falls back to
-the dialog once per epoch. An overdue
+responder (WebKit can retake it) and routes key-down/key-up events (modifier-only
+`flagsChanged` events still reach the page): it maps Return to Restart, lets
+Tab/Space operate only the cover's buttons, swallows Escape and typing, and
+passes only app and window management Command shortcuts, matched by ANSI key
+position on non-Latin layouts. A cover task that fails, including an early
+return inside the WebView callback, falls back to a non-blocking dialog once
+per epoch. Closing the covered window only hides it; recovery and the late
+reveal do not bring it back until the next activation. An overdue
 background (tray-only) launch defers that cover until activation. Application
 content remains covered until identity and mount readiness converge; reveal
 removes the cover and its buttons. Other desktop platforms retain the
 hidden-window behavior and show a native dialog with **Restart**, **Quit** and
-**Keep Waiting**; dismissal keeps waiting, and the dialog can remain open after
+**Keep Waiting**; dismissal keeps waiting and re-offers the choice after another
+deadline period while still overdue, and the dialog can remain open after
 a late reveal, where its buttons are inert. Interactive
 second launch, accepted deep link, and macOS reopen use this authority;
 explicit background/tray-only launches can suppress activation. Home/schema
