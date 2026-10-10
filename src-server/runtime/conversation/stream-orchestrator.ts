@@ -4,13 +4,13 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import type { McpElicitationResult } from '@kontourai/station-contracts/mcp-elicitation';
+import type { InputRequestResponse } from '@kontourai/station-contracts/input-request';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import {
-  mcpElicitationFormFromRequest,
-  readMcpElicitationResult,
-  validateMcpElicitationContent,
-} from '@kontourai/station-shared/mcp-elicitation';
+  readInputRequestResponse,
+  validateInputRequestContent,
+} from '@kontourai/station-shared/input-request';
+import { inputRequestFromMcpElicitation } from '@kontourai/station-shared/mcp-elicitation';
 import { APICallError } from 'ai';
 import {
   findModelProviderError,
@@ -71,8 +71,8 @@ async function requestMcpElicitation(
     conversationId: string | undefined;
     orchestrationThreadId?: string;
   },
-): Promise<McpElicitationResult> {
-  const form = mcpElicitationFormFromRequest(request.serverId, request.params);
+): Promise<InputRequestResponse> {
+  const form = inputRequestFromMcpElicitation(request.serverId, request.params);
   if (!form)
     throw new Error(
       'Station cannot show this form: it uses a field type or size Station does not render.',
@@ -82,7 +82,7 @@ async function requestMcpElicitation(
   context.injectableStream.inject({
     type: 'mcp-elicitation-request',
     approvalId,
-    form,
+    inputRequest: form,
   } as unknown as any);
   // Registered in the same tick as the inject, before any await, so the
   // answer can never arrive for an id the registry does not hold yet.
@@ -95,9 +95,9 @@ async function requestMcpElicitation(
         ? { orchestrationThreadId: context.orchestrationThreadId }
         : {}),
       description: form.message,
-      server: form.serverId,
+      server: request.serverId,
       source: 'runtime',
-      title: `${form.serverId} needs your input`,
+      title: `${form.requester} needs your input`,
     },
     timeoutMs: MCP_ELICITATION_TIMEOUT_MS,
   });
@@ -109,13 +109,13 @@ async function requestMcpElicitation(
       throw new Error(
         'This form could not be shown: the turn is not bound to a session that can answer it.',
       );
-    const result = readMcpElicitationResult(answer);
+    const result = readInputRequestResponse(answer);
     if (outcome === 'approved' && result?.action === 'accept')
       return {
         action: 'accept',
         // Re-checked here, at the last seam before the server: whatever
         // settled the request, only content that fits the form leaves.
-        content: validateMcpElicitationContent(form, result.content),
+        content: validateInputRequestContent(form, result.content),
       };
     if (outcome === 'denied' && result?.action === 'decline')
       return { action: 'decline' };

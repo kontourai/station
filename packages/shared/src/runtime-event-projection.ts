@@ -13,9 +13,16 @@ import {
   type ExtensionTranscriptMarkerKind,
   extensionTranscriptMarker,
 } from './extension-transcript-markers.js';
-import { readHarnessQuestionnaire } from './harness-questions.js';
-import { readMcpElicitationForm } from './mcp-elicitation-form.js';
-import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
+import {
+  inputRequestFromRequestEvent,
+  inputRequestOutcome,
+} from './input-request.js';
+import {
+  toolRequestDisplayName,
+  toolRequestFromPayload,
+  toolRequestSessionGrantFromPayload,
+} from './tool-request-preview.js';
+
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
 
 function repeatedRuntimeErrorText(message: string, count: number) {
@@ -145,6 +152,12 @@ export function approvalRetiredBy(
  * call with "No result recorded".
  */
 function retireApprovalCard(part: MessagePart): void {
+  // #3390: a request record closed with no decision reads as cancelled,
+  // the same outcome `request.resolved` would record for it.
+  if (part.inputRequestRecord) {
+    part.inputRequestRecord.outcome = 'cancelled';
+    return;
+  }
   part.needsApproval = false;
   part.cancelled = true;
   if (part.state === 'awaiting-approval') part.state = 'cancelled';
@@ -184,7 +197,7 @@ export function projectRuntimeEventsToMessages(
   // sessions, whose request ids are only unique per session).
   const openApprovalParts = new Map<
     string,
-    { part: MessagePart; subagent: boolean }
+    { part: MessagePart; subagent: boolean; nonblocking?: true }
   >();
   // #2316: the session whose `tool.started` created each tool part. Call ids
   // are only unique per session, and a lineage window folds several, so an
@@ -562,8 +575,13 @@ export function projectRuntimeEventsToMessages(
       ev.method === 'session.exited'
     ) {
       for (const [key, open] of openApprovalParts) {
-        if (open.part.approvalThreadId !== ev.threadId) continue;
+        const owner =
+          open.part.approvalThreadId ?? open.part.inputRequestRecord?.threadId;
+        if (owner !== ev.threadId) continue;
         if (!approvalRetiredBy(ev.method, open.subagent)) continue;
+        // The pending-requests strip's rule (`pendingRequestRows.ts`): an
+        // asynchronous question outlives the end of its turn.
+        if (open.nonblocking && ev.method === 'turn.completed') continue;
         retireApprovalCard(open.part);
         openApprovalParts.delete(key);
       }
@@ -985,12 +1003,45 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'request.opened': {
-        // Answered with content on its own card, never as a tool's Allow/Deny.
-        if (
-          readHarnessQuestionnaire(ev.payload?.questionnaire) ||
-          readMcpElicitationForm(ev.payload?.mcpElicitation)
-        )
+        // #3390: one transcript record per request with no tool row to carry
+        // it. It sits where the request opened and takes its outcome from
+        // `request.resolved`, so an answer given anywhere — this device,
+        // another one, a timeout — leaves a trace.
+        const openRecord = (
+          kind: 'form' | 'decision',
+          requester: string,
+          message: string,
+        ) => {
+          turnSessionId ??= ev.threadId;
+          turnOpen = true;
+          flushText();
+          flushReasoning();
+          const part: MessagePart = {
+            type: 'input-request',
+            inputRequestRecord: {
+              requestId: ev.requestId,
+              threadId: ev.threadId,
+              eventId: ev.eventId,
+              kind,
+              requester,
+              message,
+              outcome: 'pending',
+            },
+          };
+          parts.push(part);
+          openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
+            part,
+            subagent: isSubagentApprovalRequest(ev.payload),
+            ...(ev.blocking === false ? { nonblocking: true as const } : {}),
+          });
+        };
+        // A form is answered with content on its own card, never as a
+        // tool's Allow/Deny.
+        const form = inputRequestFromRequestEvent(ev);
+        if (form) {
+          openRecord('form', form.requester, form.message);
           break;
+        }
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
         const toolCallId = ev.payload?.toolCallId;
         // #2316: a request id is answerable only by the session that minted
@@ -1043,6 +1094,16 @@ export function projectRuntimeEventsToMessages(
             part: target,
             subagent: isSubagentApprovalRequest(ev.payload),
           });
+        } else if (
+          ev.requestType === 'approval' ||
+          ev.requestType === 'permission'
+        ) {
+          // An approval bound to no call (Codex reports no call identity; a
+          // subagent's call has no row here) records on its own part.
+          const named = toolRequestDisplayName(
+            toolRequestFromPayload(ev.payload).toolName,
+          );
+          openRecord('decision', named || 'A tool call', ev.title);
         }
         break;
       }
@@ -1052,7 +1113,12 @@ export function projectRuntimeEventsToMessages(
         const target =
           openApprovalParts.get(key)?.part ?? approvalTargets.get(ev.requestId);
         openApprovalParts.delete(key);
-        if (target) {
+        if (target?.inputRequestRecord) {
+          target.inputRequestRecord.outcome = inputRequestOutcome(
+            target.inputRequestRecord.kind,
+            ev.status,
+          );
+        } else if (target) {
           target.needsApproval = false;
           if (ev.status === 'approved') target.approvalStatus = 'user-approved';
           else if (ev.status === 'denied')

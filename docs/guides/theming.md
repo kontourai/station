@@ -55,8 +55,38 @@ shared value upstream when it belongs to the public design system.
 
 ## Device preference and accents
 
-[main.tsx](../../src-ui/src/main.tsx) resolves the saved device theme before
-render and sets `data-theme` on the document element.
+[startup-theme.js](../../src-ui/public/startup-theme.js) selects the saved
+light/dark preference before the entry HTML paints, reading the device-settings
+envelope before the legacy theme key and falling back to dark if storage is
+unavailable. [main.tsx](../../src-ui/src/main.tsx) applies the canonical theme,
+accent and cached branding before React renders. The initial HTML and
+[StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
+startup surface through platform and authority resolution. The lightweight
+[boot entry](../../src-ui/src/boot.ts) starts painting before it imports the full
+app. A failed app import releases animation and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
+bundle budget still counts the immediately loaded app's static JS/CSS closure
+through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
+then moves left while Fraunces reveals `tation`, using the river as the S. The
+selected wordmark uses the Original spacing from the reviewed motion study.
+Water falls into a track and spreads across it, then remains an indeterminate
+activity signal. It does not claim a percentage or delay a ready app.
+
+[startup-animation.ts](../../src-ui/src/lib/startup-animation.ts) keeps the
+intro clock for the document, so a loader remount does not replay it. Pending
+platform setup, shared-Project entry and authority observation supply their own
+current stage text; labels use Hanken Grotesk and a small entrance transition.
+There is no timer-driven sequence of invented loading stages. Reduced motion
+uses the completed static lockup and track; hidden windows pause painting, and
+unmount removes the frame and observers. Route-level waits still use the state
+primitives. The imagery remains the committed Station mark; this splash choice
+does not finalize the broader Kontour wordmark decision.
+
+The native OS launch surface follows OS appearance; it cannot read the
+WebView's saved device preference. iOS stages a centered mark and appearance-aware
+background after Tauri init; Android's channel overlay supplies a dark splash
+background in night mode, plus a centered native window mark behind the
+initially transparent WebView. A different OS and saved app preference can still
+produce a background change at that boundary.
 [ThemeToggle](../../src-ui/src/components/header/ThemeToggle.tsx) keeps it in
 sync with the device-settings store. The selected light/dark preference belongs
 to the Device; changing a server or Project is not a separate theme choice.

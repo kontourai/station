@@ -451,7 +451,7 @@ describe('authority recovery composition (real provider tree, mocked wire)', () 
     // including the open dialog, must NOT unmount.
     await switchTo(idB);
     await waitFor(() =>
-      expect(screen.queryByText(/Verifying Station authority/i)).not.toBeNull(),
+      expect(screen.queryByText(/Checking Station access/i)).not.toBeNull(),
     );
     expect(
       accessDialog().getByRole('heading', { name: 'Request Access' })

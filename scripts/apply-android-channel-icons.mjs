@@ -42,7 +42,7 @@ function channelValues({ accent, splashBackground }) {
 <resources>
   <color name="ic_launcher_background">${splashBackground}</color>
   <color name="station_channel_accent">${accent}</color>
-  <color name="station_splash_background">${splashBackground}</color>
+  <color name="station_splash_background">#FFF5F4EF</color>
 </resources>
 `;
 }
@@ -117,11 +117,38 @@ export function applyAndroidChannelIcons(
         copyTree(join(source, density), join(destination, density));
       }
     }
+    const drawable = join(destination, 'drawable');
+    mkdirSync(drawable, { recursive: true });
+    copyFileSync(
+      join(
+        root,
+        'src-ui/public',
+        channel === 'stable' ? 'favicon.png' : `favicon-${channel}.png`,
+      ),
+      join(drawable, 'station_startup_logo.png'),
+    );
+    writeFileSync(
+      join(drawable, 'station_startup_background.xml'),
+      `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:drawable="@color/station_splash_background" />
+  <item android:width="96dp" android:height="96dp" android:gravity="center">
+    <bitmap android:src="@drawable/station_startup_logo" android:gravity="fill" />
+  </item>
+</layer-list>
+`,
+    );
     const values = join(destination, 'values');
     mkdirSync(values, { recursive: true });
     writeFileSync(
       join(values, 'ic_launcher_background.xml'),
       channelValues(identity),
+    );
+    const nightValues = join(destination, 'values-night');
+    mkdirSync(nightValues, { recursive: true });
+    writeFileSync(
+      join(nightValues, 'station_splash_background.xml'),
+      '<?xml version="1.0" encoding="utf-8"?>\n<resources><color name="station_splash_background">#FF0A0E13</color></resources>\n',
     );
     const stringsPath = join(values, 'strings.xml');
     writeFileSync(

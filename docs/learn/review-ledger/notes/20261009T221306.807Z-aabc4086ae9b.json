@@ -1,0 +1,7 @@
+{
+  "revision": "f37611190bbc7495c9941188534592f10151cc6e",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"Re-reviewed maintained Android drawable and iOS storyboard after centering both native launch marks at 96px to match the approved shared intro. Resource regeneration owners, channel launcher identity, day/night backgrounds, transparent WebView gap coverage and existing icon-generation inputs remain unchanged; exact new runtime/build evidence remains separate.","inputs":["src-desktop/icons/README.md","scripts/apply-android-channel-icons.mjs"]}
+  ]
+}

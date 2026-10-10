@@ -488,7 +488,8 @@ async function expectedRequestEvent(
         candidate.requestType === 'permission'),
   );
   if (!request?.requestEventId) return {};
-  // A question (a request carrying a questionnaire) is never bound here.
+  // A question (a request carrying an input-request form, or a pre-#3390
+  // questionnaire) is never bound here.
   // The server refuses an unbound answer to one, so that nothing closes a
   // question its asker has not been shown; binding it automatically would
   // turn `decline` and `cancel` into a way around that.
@@ -499,7 +500,11 @@ async function expectedRequestEvent(
     opened?.payload && typeof opened.payload === 'object'
       ? (opened.payload as Record<string, unknown>)
       : undefined;
-  if (payload?.questionnaire !== undefined) return {};
+  if (
+    payload?.inputRequest !== undefined ||
+    payload?.questionnaire !== undefined
+  )
+    return {};
   return { expectedRequestEventId: request.requestEventId };
 }
 

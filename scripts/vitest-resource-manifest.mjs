@@ -386,6 +386,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
+  // #3101 slice F: builds small real Git graphs and runs the pure-merge
+  // classifier, and once the real pre-push hook through `git push` with
+  // stubbed gate commands, as bounded single-shot children.
+  'scripts/__tests__/prepush-pure-merge.test.ts',
+  // #3101 slice F: runs the fixture policy's real main() as a child process
+  // against a small real Git graph (merge base versus main's tip).
+  'scripts/__tests__/test-fixture-policy.process.test.ts',
   // Same shape one gate over: runs the pre-push typecheck scope guard as a
   // real child process — once against a stub `npm` so its REFUSAL exit
   // status is proven, once with an empty scope so the skip path's zero is

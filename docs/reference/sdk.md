@@ -43,6 +43,16 @@ retry, credential singleton, engine loop, or new Agent definition schema.
 
 ## Setup
 
+The React-free `/client` entry exports
+`readConversation(apiBase, conversationId, query?, options?)` for compact,
+paginated conversation history. `query` accepts `cursor`, `aroundMessageId` and
+`limit`. Its `ConversationReadPage` contract preserves message Session/model
+attribution and optional versioned continuity provenance. Provider handoffs
+remain one Conversation with linked execution Sessions; explicit fork ancestry
+is separate. Missing or unavailable provenance means unknown. Parent references
+do not grant read access. See the [Session API](session-api.md) for continuity
+and authorization limits. This export requires a published version containing it.
+
 `fetchSSE` accepts `initialLastEventId` for a replacement stream. It sends that
 cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the
@@ -4166,17 +4176,19 @@ continue to govern resolution.
 
 ## Harness question answers
 
-`respondToRequest` from `@kontourai/station-sdk/client` accepts a structured
-`answers` batch alongside `decision: 'accept'` and `expectedRequestEventId`.
+`respondToRequest` from `@kontourai/station-sdk/client` accepts form
+`content` (`InputRequestContent`, #3390) alongside `decision: 'accept'` and
+`expectedRequestEventId`, for a harness question or a tool server's form.
+The pre-#3390 `answers` batch is deprecated since 0.9.0 and removed in
+0.10.0.
 Capture the request's thread, request and opened-event IDs, and pass the
 current explicit `requestScope`; the server validates the exact pending
 question before forwarding it. See the [Session API](session-api.md#respondtorequest)
 for the wire shape and limits. Inspection preserves `requiresAnswers` for
 clients that must direct the user to the inline question card.
 
-The same call accepts `elicitationContent` for a tool server's form
-elicitation (#3284), with the same exact-event rule; the server validates it
-against the opened form. `useAgentMcpPromptsQuery(agentSlug)` reads
+The server validates content against the opened form whatever the client
+checked. `useAgentMcpPromptsQuery(agentSlug)` reads
 `GET /agents/:slug/mcp-prompts` (cache key `agentMcpPromptsQueryKey`) and
 `runAgentMcpPrompt(agentSlug, { serverId, name, arguments })` reads one prompt
 and returns the text to send; a refusal throws the server's reason as a

@@ -1,0 +1,7 @@
+{
+  "revision": "36780e64234e6d25c7905e6f1e747bb48004e549",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed only the four approved dependency-advisory exception renewals against this guide and the unchanged advisory-policy owner. Brian explicitly approved http-cache-semantics GHSA-ch52-4w7c-c8xp in root/SDK/Shared and braces GHSA-vfj7-8cjw-p6xm in root through 2026-10-17T00:00:00Z; fresh issue3150 evidence and owner attestation record the unresolved cross-user shared-cache and untrusted brace-pattern stack-exhaustion threats. This is temporary risk acceptance, not remediation or non-reachability proof. Only four reasons/expiry dates change; all matching, severity floors, dependency resolutions, other exceptions and residuals are unchanged. Executed public-policy controls accept these exact four before the deadline, reject all four at expiry and block an unrelated high finding; the90focused policy tests and live six-view root/SDK/Shared audit passed. The maintained Exceptions section still accurately requires exact identity, current owner review, fresh issue evidence and expiry; no prose change is needed. Scope is this current ledger renewal, not dated historical inventories, other package behavior, hosted acceptance or main landing.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}

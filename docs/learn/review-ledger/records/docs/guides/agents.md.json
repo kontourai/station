@@ -148,12 +148,6 @@
 
     "src-ui/src/components/chat-dock/DelegationLauncher.tsx",
 
-    "src-ui/src/components/chat/HarnessQuestionCard.tsx",
-
-    "src-ui/src/components/chat/HarnessQuestionRequest.tsx",
-
-    "src-ui/src/components/chat/harnessQuestionDrafts.ts",
-
     "src-ui/src/components/kontour/station-tones.ts",
 
     "src-ui/src/components/session/SessionModelPicker.tsx",
@@ -194,7 +188,13 @@
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+
+    "src-ui/src/components/chat/InputRequestCard.tsx",
+
+    "src-ui/src/components/chat/InputRequestRequest.tsx",
+
+    "src-ui/src/components/chat/inputRequestDrafts.ts"
   ],
 
   "checks": [

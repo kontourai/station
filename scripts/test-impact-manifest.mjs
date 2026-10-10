@@ -1,3 +1,10 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  changedDependencies,
+  DEPENDENCY_TEST_FANOUT_LIMIT,
+  directImporterTests,
+} from './lib/dependency-change-scan.mjs';
 import {
   invertPathReadPins,
   scanPathReadPins,
@@ -667,6 +674,72 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
 ]);
 
 /**
+ * #3149: suites that compose a module through a production entry point, so a
+ * change to it can break them while the diff's own selection never runs them.
+ * Every edge is `supplemental`: it adds the suite and leaves the path's related
+ * selection, escalation and lanes as they were. That is the point — these
+ * paths sit in diffs that escalate (`packages/shared/` is an escalation path),
+ * and an escalated diff drops related discovery and keeps only explicit tests
+ * (`executionSelection` in run-changed-verification.mjs).
+ *
+ * Exact paths, not the import graph: the entry-point suite reaches each of
+ * these through `runCli` or the runtime HTTP composition, and the graph of any
+ * one of them is far larger than the suite that proves the composition.
+ */
+const CLI_SERVICE_ENTRY_POINT_TEST =
+  'packages/cli/src/__tests__/service-dev-home-entry-points.test.ts';
+const RUNTIME_SECURITY_COMPOSITION_TEST =
+  'src-server/routes/system/__tests__/authority-observation.routes.test.ts';
+const COMPOSITION_EDGES = Object.freeze([
+  // #3251 changed the host-owner claim these entry points install a service
+  // through; the suite drives every source-checkout entry point via `runCli`.
+  ...[
+    'packages/shared/src/instance-registry.ts',
+    'packages/cli/src/commands/lifecycle.ts',
+    'packages/cli/src/commands/service.ts',
+    'packages/cli/src/commands/service-liveness.ts',
+    'packages/cli/src/commands/service-run.ts',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([CLI_SERVICE_ENTRY_POINT_TEST]),
+      reason:
+        'the CLI service entry points compose this module through runCli; ' +
+        'kept explicit so an escalated diff still runs them (#3149)',
+    }),
+  ),
+  // #3114 widened the account-bound device gate; the suite runs the REAL
+  // configureRuntimeHttp transport, device gate and principal owner. Every
+  // `src-server/runtime/bootstrap/*gate*` module is listed here, which
+  // test-impact-incidents.test.ts pins against the directory.
+  ...[
+    'src-server/security/**',
+    'src-server/runtime/bootstrap/account-bound-device-gate.ts',
+    'src-server/runtime/bootstrap/agent-audience-gate.ts',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([RUNTIME_SECURITY_COMPOSITION_TEST]),
+      reason:
+        'request security is composed by the production HTTP chain this ' +
+        'suite runs; kept explicit so an escalated diff still runs it (#3149)',
+    }),
+  ),
+  Object.freeze({
+    pattern: 'src-server/runtime/bootstrap/agent-audience-gate.ts',
+    supplemental: true,
+    tests: Object.freeze([
+      'src-server/runtime/routes/__tests__/runtime-routes-agent-audience.test.ts',
+    ]),
+    reason:
+      'Agent audience enforcement through the production route composition; ' +
+      'kept explicit so an escalated diff still runs its caller suite (#3149)',
+  }),
+]);
+
+/**
  * #2176: suites whose subject is a whole source tree, read by walking it.
  * No impact edge can honestly select them — the edge would be every file
  * under the tree, and a supplemental test on every path is noise in the
@@ -685,6 +758,10 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
+  // Walks packages/sdk/src/client. Its packages/sdk/src/client/** edge selects
+  // it, but a diff that escalates with more than 32 explicit tests runs none
+  // of them: #3170 broke it that way and it first failed in qualification.
+  'packages/sdk/src/__tests__/client-entry-portability.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
   // Scans src-server, packages/shared/src and packages/cli/src for Station
   // home-root literals the store registry must list (#2675 D1).
@@ -1463,7 +1540,11 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'doctor recovery command documentation source seam',
   },
   {
+    // Supplemental (#3149): a tests-only edge here suppressed the path's
+    // related selection, so a service.ts change ran this documentation check
+    // and none of the 22 suites that import it.
     pattern: 'packages/cli/src/commands/service.ts',
+    supplemental: true,
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'service-status recovery command documentation source seam',
   },
@@ -1771,6 +1852,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   ...SPAWNED_SCRIPT_EDGES,
   ...UNMODELLED_INPUT_EDGES,
+  ...COMPOSITION_EDGES,
   {
     pattern: 'scripts/prepush-test-manifest.mjs',
     tests: [
@@ -2023,6 +2105,74 @@ export function spawnedScriptEdges({ root = process.cwd(), entries } = {}) {
   );
   if (cacheable) spawnedScriptEdgeCache.set(root, edges);
   return edges;
+}
+
+const DEPENDENCY_DEFERRAL_REASON =
+  `more than ${DEPENDENCY_TEST_FANOUT_LIMIT} suites import this changed ` +
+  'dependency, so they run in test-full rather than inline (#3149)';
+
+/**
+ * Impact edges for the sibling Kontour packages a diff's dependency files
+ * changed (#3149; `scripts/lib/dependency-change-scan.mjs` says why and which).
+ * Each edge is attached to the changed `package.json` or `pnpm-lock.yaml`
+ * that shows the change and selects the suites importing that package.
+ *
+ * Same contract as `spawnedScriptEdges`: every edge is `supplemental`, so it
+ * only adds tests (or, above the fan-out limit, a deferred `test-full` lane)
+ * and never changes the path's escalation. It needs the diff's BASE content,
+ * which the path list does not carry, so it is built per selection by
+ * `prepareChangedSelection` rather than in `buildTestImpactManifest`.
+ *
+ * @param {{
+ *   root?: string,
+ *   paths: readonly string[],
+ *   readBase: (path: string) => string | null,
+ *   readHead?: (path: string) => string | null,
+ *   testFiles?: readonly string[],
+ * }} options
+ * @returns {readonly ImpactEdge[]}
+ */
+export function dependencyChangeEdges({
+  root = process.cwd(),
+  paths,
+  readBase,
+  readHead = (path) => {
+    const absolute = join(root, path);
+    return existsSync(absolute) ? readFileSync(absolute, 'utf8') : null;
+  },
+  testFiles,
+}) {
+  const changes = changedDependencies({ root, paths, readBase, readHead });
+  if (!changes.size) return Object.freeze([]);
+  const importers = directImporterTests({
+    root,
+    names: changes.keys(),
+    ...(testFiles ? { testFiles } : {}),
+  });
+  return Object.freeze(
+    [...changes].flatMap(([name, sources]) => {
+      const tests = importers.get(name) ?? [];
+      if (!tests.length) return [];
+      return [...sources].sort().map((pattern) =>
+        tests.length > DEPENDENCY_TEST_FANOUT_LIMIT
+          ? Object.freeze({
+              pattern,
+              supplemental: true,
+              deferredLanes: Object.freeze(['test-full']),
+              reason: `${DEPENDENCY_DEFERRAL_REASON}: ${name}`,
+            })
+          : Object.freeze({
+              pattern,
+              supplemental: true,
+              tests: Object.freeze(tests),
+              reason:
+                `dependency ${name} changed and this suite imports it ` +
+                'directly; a version bump changes no source file the import ' +
+                'graph could follow (#3149)',
+            }),
+      );
+    }),
+  );
 }
 
 /**

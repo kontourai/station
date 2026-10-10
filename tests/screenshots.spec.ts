@@ -1152,6 +1152,18 @@ function overlayDockProjectMismatchHooks(): Pick<
       cleanups = [
         await withRoute(
           page,
+          '**/api/conversations/gallery-mismatch-conversation/open',
+          async (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            await route.fulfill({
+              status: 503,
+              json: { success: false, error: 'temporarily_unavailable' },
+            });
+          },
+        ),
+        await withRoute(
+          page,
           '**/api/orchestration/sessions/read-model',
           orchestrationSessionFixture({
             threadId: 'gallery-mismatch-conversation',
@@ -1228,6 +1240,12 @@ function overlayDockProjectMismatchHooks(): Pick<
         ).toBeVisible({ timeout: 10_000 });
         await expect(
           page.locator('.chat-dock__project-session-name'),
+        ).toBeVisible({ timeout: 10_000 });
+        await expect(
+          page.getByRole('button', {
+            name: 'Status unavailable — repair the connection',
+            exact: true,
+          }),
         ).toBeVisible({ timeout: 10_000 });
       } finally {
         // See `withRoute`'s doc comment: every route registered above must

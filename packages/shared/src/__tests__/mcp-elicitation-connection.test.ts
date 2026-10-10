@@ -58,6 +58,27 @@ async function askDetails(
 describe.each(['modern', 'legacy'] as const)(
   'MCP elicitation through the real client connection (%s era)',
   (era) => {
+    test.each(['optional', 'required'] as const)(
+      'refuses a raw %s __proto__ field before opening a turn form',
+      async (variant) => {
+        const connection = await connect(era, {
+          STATION_MCP_FIXTURE_PROTO_FIELD: variant,
+        });
+        const seen: unknown[] = [];
+        const outcome = await askDetails(connection, async (request) => {
+          seen.push(request);
+          return { action: 'accept', content: { name: 'Ada' } };
+        }).then(
+          (value) => ({ value }),
+          (error: Error) => ({ error: error.message }),
+        );
+        expect(seen).toEqual([]);
+        expect(JSON.stringify(outcome)).toContain(
+          'Station refuses MCP elicitation fields named __proto__',
+        );
+      },
+    );
+
     test('accept returns the content the person entered', async () => {
       const connection = await connect(era);
       const seen: unknown[] = [];
