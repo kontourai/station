@@ -3,12 +3,6 @@ import { z } from 'zod/v3';
 import { _getApiBase } from '../api';
 
 export type {
-  InsightsScanCoverage,
-  InsightsScanIssue,
-  UsageInsights,
-} from '@kontourai/station-contracts/insights';
-
-export type {
   UsageRollupQuery,
   UsageRollupResponse,
 } from '../client/analytics';
