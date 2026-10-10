@@ -165,8 +165,15 @@ export function BrowserOverflowMenu({
       window.innerHeight -
       inset('--dock-slot-size') -
       inset('--visual-viewport-bottom-inset');
+    const viewportTop = Math.max(
+      EDGE_PX,
+      document.querySelector('.app-toolbar')?.getBoundingClientRect().bottom ??
+        0,
+      document.querySelector('.banner-host')?.getBoundingClientRect().bottom ??
+        0,
+    );
     const below = viewportHeight - trigger.bottom - GAP_PX - EDGE_PX;
-    const above = trigger.top - GAP_PX - EDGE_PX;
+    const above = trigger.top - GAP_PX - viewportTop;
     const openUp = menu.height > below && above > below;
     setStyle({
       position: 'fixed',
@@ -174,7 +181,7 @@ export function BrowserOverflowMenu({
       ...(openUp
         ? { bottom: window.innerHeight - trigger.top + GAP_PX }
         : { top: trigger.bottom + GAP_PX }),
-      maxHeight: Math.max(120, openUp ? above : below),
+      maxHeight: Math.max(0, openUp ? above : below),
       maxWidth: `calc(100vw - ${EDGE_PX * 2}px)`,
     });
   }, [open, listId, menuRef]);

@@ -12,6 +12,34 @@
   padding: var(--space-2, 8px);
 }
 
+/* The standalone route must pass its available height through the page frame;
+   otherwise the browser and console size the route instead of sharing it. */
+.route-transition:has([data-workspace-pane-route] .browser-pane) {
+  min-height: 0;
+}
+
+[data-workspace-pane-route]:has(.browser-pane) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-workspace-pane-route]:has(.browser-pane) > .project-page__inner {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+[data-workspace-pane-route]
+  > .project-page__inner
+  > [data-workspace-pane-lifecycle]:has(.browser-pane) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .browser-pane__nav,
 .browser-pane__bar {
   align-items: center;
@@ -95,7 +123,7 @@
    tall device preset in a wide pane is letterboxed, never drawn below the
    fold (the canvas keeps object-fit: contain, so input mapping holds). */
 .browser-pane .live-surface__canvas {
-  max-height: calc(100dvh - 12rem);
+  max-height: 100%;
 }
 
 .browser-pane__notice,
@@ -298,7 +326,7 @@
 .browser-pane__omni-host {
   flex: 0 1 auto;
   font-weight: 600;
-  min-width: 7ch;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -315,16 +343,19 @@
 /* Back and forward appear on hover or focus of the bar; on a coarse pointer
    there is no hover, so they are always there. */
 .browser-pane__omni-reveal {
+  display: none;
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
 .browser-pane__toolbar:hover .browser-pane__omni-reveal,
 .browser-pane__toolbar:focus-within .browser-pane__omni-reveal {
+  display: inline-flex;
   opacity: 1;
 }
 
 .browser-pane[data-coarse] .browser-pane__omni-reveal {
+  display: inline-flex;
   opacity: 1;
 }
 
@@ -336,6 +367,12 @@
 .browser-pane[data-narrow] .browser-pane__omni {
   gap: 0;
   padding-left: var(--k-space-2);
+}
+
+.browser-pane[data-narrow]
+  .browser-pane__omni--editing
+  .browser-pane__nav-action {
+  display: none;
 }
 
 /* The driver chip: a soft tint, a dot and one word. */
@@ -515,6 +552,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2, 8px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .browser-pane__console-bar {
@@ -536,17 +575,11 @@
   margin: 0;
   /* Its own scroll, a sensible default, and the reader can drag it taller. */
   height: 10rem;
-  max-height: 60vh;
-  min-height: 4rem;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: 0;
   resize: vertical;
-}
-
-/* With the console open, the live view gives up the drawer's height rather
-   than being pushed below the fold. */
-.browser-pane:has(.browser-pane__console) .live-surface__canvas {
-  max-height: calc(100dvh - 8rem - 14rem);
 }
 
 .browser-pane__console-entry {
