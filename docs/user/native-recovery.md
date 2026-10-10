@@ -1,8 +1,8 @@
 # Recover a desktop start
 
 This guide is for a packaged Station desktop app that stays hidden while it
-starts, shows **Station is not ready**, or opens but then cannot reach its
-local service. It describes the recovery behavior implemented in the desktop
+starts, says **Station is taking longer than usual to start**, or opens but
+then cannot reach its local service. It describes the recovery behavior implemented in the desktop
 host; it is not evidence that every platform's packaged app has been exercised.
 Contributor and operator procedures are in the repository's
 [native shell verification guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md).
@@ -19,8 +19,8 @@ cannot reveal a newer sidecar.
 If an installed service owns the home, or Desktop owns no sidecar, the host can
 instead reveal the mounted connection/recovery surface. That does not establish
 that a backend is reachable or ready. On macOS, an activation request can make
-a native startup cover visible while readiness is pending; this cover does not
-expose application content.
+a native startup cover visible while readiness is pending. It shows the app
+icon and **Starting Station**, and it does not expose application content.
 
 This avoids showing a usable-looking window before its protected local surface
 is ready. The original native-startup work is recorded in
@@ -28,27 +28,42 @@ is ready. The original native-startup work is recorded in
 
 ## When the window does not appear
 
-If readiness has not completed after a 30-second startup epoch, the native host
-normally shows one **Station is not ready** dialog with **Retry** and **Exit**.
-A pending activation request can instead start another readiness epoch. An
-activation after failure also resumes readiness; neither bypasses the proof
-required to reveal content.
+A cold start can take longer than 30 seconds on a slow or busy computer. If
+readiness has not completed after a 30-second startup epoch, Station keeps
+starting and offers a choice once for that epoch:
 
-- **Retry** starts a new epoch. With a current owned-sidecar ticket, the first
-  retry rechecks that ticket without restarting a potentially healthy backend.
-  If that recheck fails to complete and you retry again, or no current ticket
-  exists, Desktop asks its bounded supervisor to restart the sidecar. If a
-  durable service owns the home, or no sidecar is owned, it requests the
-  recovery surface again; it does not start or restart the durable service.
-- **Exit** closes the desktop app. It does not reset data or remove a service.
+- On macOS, the startup cover changes to **Station is taking longer than usual
+  to start.** with **Restart** and **Quit** buttons. Return selects
+  **Restart**. If Station was launched in the background (tray-only), this
+  appears when you open the window.
+- On Windows and Linux, a **Station is taking longer than usual to start**
+  dialog offers the same **Restart** and **Quit** choices.
+
+You do not have to choose. Desktop does not stop its local service when the
+30 seconds pass, so if startup finishes later the window opens by itself
+(unless Station was launched in the background) and the macOS cover and its
+buttons disappear. On Windows and Linux, the dialog can stay open after the
+window appears; either button is then ignored. On macOS, activating the app
+(Dock, second launch, deep link) shows the cover again but does not restart
+anything.
+
+- **Restart** starts a new epoch. With a current owned-sidecar ticket, the
+  first restart rechecks that ticket without restarting a potentially healthy
+  backend. If that recheck does not complete and you choose Restart again, or
+  no current ticket exists, Desktop asks its bounded supervisor to restart the
+  sidecar. If a durable service owns the home, or no sidecar is owned, it
+  requests the recovery surface again; it does not start or restart the
+  durable service.
+- **Quit** closes the desktop app if that startup is still waiting. It does
+  not reset data or remove a service.
 - After an unexpected exit, the supervisor can respawn the sidecar four times,
   after 1, 2, 4, and 8 seconds. The fifth counted exit is terminal and reports
   failure. An owned-sidecar restart resets that attempt count; a ticket-only
   recheck does not. Neither proves that the underlying cause is fixed. The cap
   and fail-closed classification are covered by the linked native-startup work.
 
-If the dialog reappears, stop retrying blindly and collect the bounded
-diagnostics below. A data-home schema error containing
+If the message reappears after a restart, stop restarting blindly and
+collect the bounded diagnostics below. A data-home schema error containing
 `STATION_HOME_RESET_REQUIRED` is deliberately fail-closed: restart attempts do
 not repair it. Follow the exact `station home reset` conditions only after you
 have a backup and have selected the intended home.
@@ -116,7 +131,7 @@ native harness must not be presented as packaged or physical-device evidence.
 
 | Behavior | Current evidence | Status |
 | --- | --- | --- |
-| Hidden release window, exact ticket, timeout, retry, and activation deferral | Source configuration and pure Rust/UI test coverage associated with archive#3808 | **NOT_VERIFIED** on packaged macOS, Windows, and Linux shells |
+| Hidden release window, exact ticket, slow-start recovery, late reveal, restart, and activation deferral | Source configuration and pure Rust/UI test coverage associated with archive#3808 | **NOT_VERIFIED** on packaged macOS, Windows, and Linux shells |
 | Hostile plugin IPC denial in a real Tauri WebView | Separate browser and real-WebView harnesses exist; the native lane was not run for this documentation review | **NOT_VERIFIED** here; historical gap recorded in [archive#2495](https://github.com/kontourai/station-archive/issues/2495) |
 | Renderer/WebView death detection and bounded reload | Window recreation exists; no automatic renderer-death recovery or kill-the-WebView proof is established here | **NOT_VERIFIED**; [archive#2006](https://github.com/kontourai/station-archive/issues/2006) |
 | EPIPE/closed-stdio handling | Server stdout guard and focused tests exist; no packaged closed-parent recovery journey was run here | **NOT_VERIFIED** on packaged shells; [archive#2006](https://github.com/kontourai/station-archive/issues/2006) |

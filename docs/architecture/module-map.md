@@ -871,33 +871,48 @@ reports only mount through `useLayoutEffect`, outside `PlatformBootstrap`.
 StrictMode/remounts share one module-owned attempt. The host retains early
 page/mount facts until DesktopServerState exists and replays them in order.
 
-While waiting on macOS, the host can show a native startup cover. The WebView
+While waiting on macOS, the host can show a native startup cover laid out like
+the renderer startup screen: the application icon (which carries the channel
+art) centered at 96 pt and a short centered status line below it. The WebView
 stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
 same WebView. Merely hiding the WebView or copying a reveal-time accessibility
-snapshot would change those guarantees.
+snapshot would change those guarantees. Cover content is requested while the
+readiness lock is held, so it cannot land after the reveal of an admitted
+window.
 
 **Recovery.** Server loss invalidates a pending identity proof without erasing
 an already mounted renderer. A new main page invalidates its pre-ready mount
 without inventing server loss. Proof is single-flight; a relevant profile write
-can wake a bounded retry while waiting. Timeout produces one diagnostic per
-epoch. Retry starts a new epoch: with a current owned ticket it first reprobes
-without restarting; a later retry or missing ticket restarts only the owned
-sidecar. A service-owned/unowned backend uses recovery-surface recommit instead
-of signaling a durable service. Dev has an explicit bypass. Activation waits
-for the appropriate state, and startup readiness does not re-hide a window
-already admitted as ready.
+can wake a bounded retry while waiting. The 30-second deadline is a waiting
+threshold, not a liveness verdict: it marks the epoch overdue and offers
+recovery once, but never restarts or signals the sidecar. An overdue epoch
+still admits the exact late ticket, identity proof and mount, which reveal the
+window without user action. On macOS the cover switches in place to a
+"taking longer than usual" message with **Restart** (the default button) and
+**Quit**; a background (tray-only) launch defers it until activation. Hosts
+without a cover (Windows, Linux, or a macOS cover dispatcher that did not
+start) show a native dialog with the same two choices. Restart starts a new
+epoch: with a current owned ticket it first reprobes without restarting; a
+later Restart or a missing ticket restarts only the owned sidecar. Quit exits
+only while that same epoch is still overdue. A service-owned/unowned backend
+uses recovery-surface recommit instead of signaling a durable service.
+Activation never restarts anything. Dev has an explicit bypass. Activation
+waits for the appropriate state, and startup readiness does not re-hide a
+window already admitted as ready.
 
 The status bridge projects sidecar generation/instance/boot identity and clears
 child fields after loss; the generation-tagged stdout handshake remains a
-separate admission check. No browser timer, automatic renderer polling, cache
-reset or CSP weakening supplies readiness.
+separate admission check. The supervisor has no boot or handshake timeout of
+its own: it waits for that handshake or for the child to exit. No browser
+timer, automatic renderer polling, cache reset or CSP weakening supplies
+readiness.
 
 Pure Rust state/claim tests and
 [startup wiring tests](../../scripts/__tests__/startup-readiness-static.test.ts)
-cover the decision boundaries. They do not prove AppKit pixels, OS dialogs,
-real IPC or packaged behavior. The [native verification guide](../guides/native-shell-verification.md)
+cover the decision boundaries. They do not prove AppKit pixels, the cover's
+buttons, OS dialogs, real IPC or packaged behavior. The [native verification guide](../guides/native-shell-verification.md)
 and [recovery guide](../user/native-recovery.md) keep those platform checks
 separate.
 
