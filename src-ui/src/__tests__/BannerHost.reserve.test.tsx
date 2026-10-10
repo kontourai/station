@@ -151,7 +151,8 @@ describe('BannerHost space reservation', () => {
     stubGeometry((element) => {
       if (element.classList.contains('banner-host__stack')) return [46, 142];
       if (element.hasAttribute('data-banner-id')) {
-        const top = element.getAttribute('data-banner-id') === 'upper' ? 46 : 112;
+        const top =
+          element.getAttribute('data-banner-id') === 'upper' ? 46 : 112;
         return [top, top + 60];
       }
       return stackedCards(element);
