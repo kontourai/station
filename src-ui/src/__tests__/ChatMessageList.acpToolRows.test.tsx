@@ -198,14 +198,17 @@ function TranscriptHarness({ session }: { session: ChatSession }) {
   );
 }
 
-function renderTranscript(session = chatSession()) {
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <ActiveChatsProvider>
-        <TranscriptHarness session={session} />
-      </ActiveChatsProvider>
-    </QueryClientProvider>,
-  );
+async function renderTranscript(session = chatSession()) {
+  await act(async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ActiveChatsProvider>
+          <TranscriptHarness session={session} />
+        </ActiveChatsProvider>
+      </QueryClientProvider>,
+    );
+    await vi.dynamicImportSettled();
+  });
 }
 
 /** The `d` of a glyph's one path — how a row's icon is told apart. */
@@ -296,7 +299,7 @@ describe('ACP (OpenCode) tool rows', () => {
       text('t1', 'Done.'),
       runtimeEvent({ method: 'turn.completed', turnId: 't1' }),
     ];
-    renderTranscript();
+    await renderTranscript();
 
     const terminal = glyphPath(TerminalGlyph);
     await waitFor(() => expect(rowFor('Ran echo')).toBeTruthy());
@@ -350,7 +353,7 @@ describe('ACP (OpenCode) tool rows', () => {
       text('t1', 'Done.'),
       runtimeEvent({ method: 'turn.completed', turnId: 't1' }),
     ];
-    renderTranscript();
+    await renderTranscript();
 
     await waitFor(() => expect(rowFor('Edited bgp.mjs')).toBeTruthy());
     expect(rowGlyph(rowFor('Edited bgp.mjs'))).toBe(glyphPath(EditGlyph));
@@ -391,7 +394,7 @@ describe('ACP (OpenCode) tool rows', () => {
         },
       }),
     ];
-    renderTranscript(
+    await renderTranscript(
       chatSession({
         status: 'sending',
         orchestrationTurnOpen: true,
@@ -467,7 +470,7 @@ describe('ACP (OpenCode) tool rows', () => {
         },
       }),
     ];
-    renderTranscript(
+    await renderTranscript(
       chatSession({
         status: 'sending',
         orchestrationTurnOpen: true,
