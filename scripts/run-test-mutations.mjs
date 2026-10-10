@@ -56,6 +56,70 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'telemetry-hosted-first-write',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'automatic telemetry import refuses hosted absent home with writable parent before writes',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  assertHostedPersistenceBeforeSchemaSync(homeDir, env);',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-implicit-log-export',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with persisted identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(source, '    logRecordProcessors: [],', ''),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-provider-registration',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with persisted identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+            '  await identity;\n  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-unidentified-export',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with failed identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const identity = Promise.resolve(\n    resourceAttributes[OTEL_INSTALLATION_ID_ATTRIBUTE],\n  );',
+            "  const identity = Promise.resolve('bypassed');",
+          ),
+      },
+    ],
+  },
+  {
     id: 'telemetry-completed-startup-boundary',
     test: 'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
     failure:
