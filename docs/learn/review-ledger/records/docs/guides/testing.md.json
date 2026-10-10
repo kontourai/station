@@ -176,7 +176,9 @@
 
     "tests/screenshots.baseline/overlay-dock-project-bound.png",
 
-    "tests/screenshots.baseline/overlay-dock-project-mismatch.png"
+    "tests/screenshots.baseline/overlay-dock-project-mismatch.png",
+
+    "scripts/lib/owned-process.mjs"
   ],
 
   "checks": [
