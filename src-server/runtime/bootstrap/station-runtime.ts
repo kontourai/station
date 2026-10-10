@@ -3860,8 +3860,6 @@ export class StationRuntime {
     // telemetry inactive, while a missing receipt stays silent and inactive.
     await this.usageTelemetry.loadDisclosureReceipt();
     this.orchestrationService.setUsageTelemetry(this.usageTelemetry);
-    // Never delay a usable runtime for optional telemetry.
-    void this.usageTelemetry.stationStarted();
     this.observeRuntimeConfigurationSources();
     // This is the last awaited startup step. Failed listeners/services above
     // cannot leave an accepted policy decision from an incomplete startup.
@@ -3871,6 +3869,8 @@ export class StationRuntime {
         initialized.appConfig.registryTrust,
       );
     this.recordRuntimeLifecycle('ready');
+    // Completion telemetry follows final policy publication and never delays boot.
+    void this.usageTelemetry.stationStarted();
 
     // archive#1575: detected native engines (claude/codex CLIs) become registry
     // engine connections + default Agents without a Providers-UI trip.
