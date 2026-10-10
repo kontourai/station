@@ -140,7 +140,11 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
       'Settings disclosure acknowledgement did not call the receipt endpoint',
     ).toHaveBeenLastCalledWith(
       'http://station.test/api/usage-telemetry/disclosure/acknowledgements',
-      { method: 'POST' },
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ inventoryRevision: 'rev' }),
+      },
     ),
   );
 });
@@ -353,6 +357,8 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ inventoryRevision: 'rev' }),
     }),
   );
   // And only AFTER the receipt landed: advancing on the click would leave a
@@ -437,6 +443,8 @@ test('#1582 A3: "Turn it off" writes the setting Settings reads, then acknowledg
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ inventoryRevision: 'rev' }),
     }),
   );
   await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
@@ -665,6 +673,8 @@ test('#1600: the modal offers the turn-it-off decision, and writes it', async ()
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ inventoryRevision: 'rev' }),
     }),
   );
   view.unmount();

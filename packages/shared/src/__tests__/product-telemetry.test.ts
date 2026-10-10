@@ -26,6 +26,12 @@ describe('versioned content-free product ingestion contract', () => {
       parseProductTelemetryBatch(batch()).events[0].build.sha,
     ).toBeUndefined();
   });
+  test('validated properties do not alias mutable input', () => {
+    const input = batch();
+    const parsed = parseProductTelemetryBatch(input);
+    input.events[0].properties.engine = 'private-engine-name';
+    expect(parsed.events[0].properties.engine).toBe('codex');
+  });
   test.each([
     [
       'legacy',
@@ -111,6 +117,59 @@ describe('versioned content-free product ingestion contract', () => {
             {
               ...value.events[0],
               build: { ...value.events[0].build, branch: 'secret' },
+            },
+          ],
+        };
+      },
+    ],
+    [
+      'coerced provenance enum',
+      () => {
+        const value = batch();
+        return {
+          ...value,
+          events: [
+            {
+              ...value.events[0],
+              build: {
+                ...value.events[0].build,
+                sha: 'a'.repeat(40),
+                sha_source: ['checkout'],
+              },
+            },
+          ],
+        };
+      },
+    ],
+    [
+      'coerced channel enum',
+      () => {
+        const value = batch();
+        return {
+          ...value,
+          events: [
+            {
+              ...value.events[0],
+              build: { ...value.events[0].build, channel: ['nightly'] },
+            },
+          ],
+        };
+      },
+    ],
+    [
+      'not a full Git hash',
+      () => {
+        const value = batch();
+        return {
+          ...value,
+          events: [
+            {
+              ...value.events[0],
+              build: {
+                ...value.events[0].build,
+                sha: 'a'.repeat(50),
+                sha_source: 'checkout',
+              },
             },
           ],
         };

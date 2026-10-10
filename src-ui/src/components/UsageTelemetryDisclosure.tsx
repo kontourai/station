@@ -312,15 +312,23 @@ function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
   const { apiBase } = useApiBase();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (inventoryRevision: string) =>
       authenticatedFetch(
         `${apiBase}/api/usage-telemetry/disclosure/acknowledgements`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ inventoryRevision }),
+        },
       ).then(responseData),
     onSuccess: (data) => {
       queryClient.setQueryData(['usage-telemetry-disclosure', apiBase], data);
       onAcknowledged?.();
     },
+    onError: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['usage-telemetry-disclosure', apiBase],
+      }),
   });
 }
 
@@ -617,7 +625,9 @@ function useUsageTelemetryDecision(
     },
   });
   const acknowledgeRecovery = useMutation({
-    mutationFn: async (target: RecoveryDecisionTarget) => {
+    mutationFn: async (
+      target: RecoveryDecisionTarget & { inventoryRevision: string },
+    ) => {
       const response = await mutateJson(
         `${target.apiBase}/api/usage-telemetry/disclosure/acknowledgements`,
         'POST',
@@ -625,6 +635,7 @@ function useUsageTelemetryDecision(
           timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
           ...(target.requestScope ? { requestScope: target.requestScope } : {}),
         },
+        { inventoryRevision: target.inventoryRevision },
       );
       return responseData(response);
     },
@@ -635,6 +646,10 @@ function useUsageTelemetryDecision(
       );
       onDecided?.();
     },
+    onError: (_error, target) =>
+      queryClient.invalidateQueries({
+        queryKey: recoveryDisclosureKey(target.apiBase, target.identityKey),
+      }),
   });
   const [settingError, setSettingError] = useState(false);
 
@@ -676,7 +691,10 @@ function useUsageTelemetryDecision(
       if (next === enabled && !keepMustRecord) {
         // Nothing to write: the choice is the state the host is already
         // in, and something durable already says so.
-        acknowledgeRecovery.mutate(target);
+        acknowledgeRecovery.mutate({
+          ...target,
+          inventoryRevision: data.inventoryRevision,
+        });
         return;
       }
       recoveryConfigWrite.mutate(
@@ -698,7 +716,10 @@ function useUsageTelemetryDecision(
             queryClient.invalidateQueries({
               queryKey: recoveryConfigKey(target.apiBase, target.identityKey),
             });
-            acknowledgeRecovery.mutate(target);
+            acknowledgeRecovery.mutate({
+              ...target,
+              inventoryRevision: data.inventoryRevision,
+            });
           },
           onError: () => setSettingError(true),
         },
@@ -708,7 +729,7 @@ function useUsageTelemetryDecision(
     if (next === enabled && !keepMustRecord) {
       // Nothing to write: the choice is the state the host is already in, and
       // something durable already says so.
-      acknowledgeProtected.mutate();
+      acknowledgeProtected.mutate(data.inventoryRevision);
       return;
     }
     updateProtected.mutate(
@@ -727,7 +748,7 @@ function useUsageTelemetryDecision(
             setSettingError(true);
             return;
           }
-          acknowledgeProtected.mutate();
+          acknowledgeProtected.mutate(data.inventoryRevision);
         },
         onError: () => setSettingError(true),
       },

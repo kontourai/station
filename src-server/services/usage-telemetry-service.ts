@@ -111,7 +111,9 @@ export class UsageTelemetryService {
       version: options.version,
       platform: process.platform,
       arch: process.arch,
-      ...(provenance?.fullSha && provenance.shaSource
+      ...(provenance?.fullSha &&
+      /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(provenance.fullSha) &&
+      provenance.shaSource
         ? { sha: provenance.fullSha, sha_source: provenance.shaSource }
         : {}),
       ...(provenance?.channel &&
@@ -167,7 +169,11 @@ export class UsageTelemetryService {
     }
     return this.hasCurrentDisclosureReceipt;
   }
-  async acknowledgeDisclosure(): Promise<void> {
+  async acknowledgeDisclosure(inventoryRevision: string): Promise<void> {
+    if (inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION)
+      throw new Error(
+        'Usage telemetry disclosure changed; review the current inventory.',
+      );
     const configDir = join(this.options.homeDir, 'config');
     await mkdir(configDir, { recursive: true, mode: 0o700 });
     await chmod(configDir, 0o700);
@@ -267,6 +273,11 @@ export class UsageTelemetryService {
     if (!this.active) return;
     try {
       assertUsageTelemetryInventoryContract(event, properties);
+      assertUsageTelemetryInventoryContract('station_started', {
+        version: this.build.version,
+        platform: this.build.platform,
+        arch: this.build.arch,
+      });
     } catch (error) {
       this.recordOutcome('drift_rejected');
       this.warn('Usage telemetry event dropped.', error);

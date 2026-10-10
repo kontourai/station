@@ -7,6 +7,7 @@ export {
 } from '@kontourai/station-contracts/product-telemetry';
 
 import {
+  PRODUCT_TELEMETRY_ENVELOPE,
   type ProductTelemetryBatch,
   type ProductTelemetryBuild,
   type ProductTelemetryObservation,
@@ -87,20 +88,19 @@ export function assertUsageTelemetryInventoryContract(
 
 /** Envelope fields participate in the disclosure receipt just like event properties. */
 export function renderUsageTelemetryEnvelopeInventory(): string {
-  return `Version 1 envelope
-
-Every batch includes schema_version (1), inventory_revision (this disclosed inventory's SHA-256),
-and distinct_id (the separate installation hash). Every event includes event_id (random UUID),
-event (one inventory name), occurred_at (UTC producer time at observation), observed_at
-(UTC producer time at buffer admission), build, and the allowlisted properties below.
-IDs and observation metadata remain unchanged on retry. Timestamps are producer wall-clock
-observations, not a guarantee of synchronized clocks or receiver arrival.
-
-Every event's build carries SemVer version, operating-system platform and CPU architecture.
-Optional sha is a full Git hash paired with sha_source (build-stamp or checkout); checkout
-provenance does not identify served bundle bytes. Optional channel is stable, preview,
-nightly, dev or source-checkout; optional dirty is a boolean supplied by the build stamp.
-Missing provenance stays absent. Branches, hostnames, instance and boot identifiers are excluded.`;
+  return (
+    '## Version 1 envelope\n\n' +
+    Object.entries(PRODUCT_TELEMETRY_ENVELOPE)
+      .map(
+        ([scope, fields]) =>
+          `### ${scope} fields\n\n| Field | Disclosed meaning |\n| --- | --- |\n` +
+          Object.entries(fields)
+            .map(([field, meaning]) => `| \`${field}\` | ${meaning} |`)
+            .join('\n'),
+      )
+      .join('\n\n') +
+    '\n\nProducer wall-clock times do not guarantee synchronized clocks or receiver arrival. Branches, hostnames, instance and boot identifiers are excluded.'
+  );
 }
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -119,12 +119,7 @@ export function parseProductTelemetryBatch(
 ): ProductTelemetryBatch {
   if (
     !record(value) ||
-    !onlyKeys(value, [
-      'schema_version',
-      'inventory_revision',
-      'distinct_id',
-      'events',
-    ]) ||
+    !onlyKeys(value, Object.keys(PRODUCT_TELEMETRY_ENVELOPE.batch)) ||
     value.schema_version !== 1 ||
     value.inventory_revision !== USAGE_TELEMETRY_INVENTORY_REVISION ||
     typeof value.distinct_id !== 'string' ||
@@ -139,14 +134,7 @@ export function parseProductTelemetryBatch(
   for (const event of value.events) {
     if (
       !record(event) ||
-      !onlyKeys(event, [
-        'event_id',
-        'event',
-        'occurred_at',
-        'observed_at',
-        'build',
-        'properties',
-      ]) ||
+      !onlyKeys(event, Object.keys(PRODUCT_TELEMETRY_ENVELOPE.observation)) ||
       typeof event.event_id !== 'string' ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         event.event_id,
@@ -161,17 +149,7 @@ export function parseProductTelemetryBatch(
     }
     assertUsageTelemetryInventoryContract(event.event, event.properties);
     const build = event.build;
-    if (
-      !onlyKeys(build, [
-        'version',
-        'platform',
-        'arch',
-        'sha',
-        'sha_source',
-        'channel',
-        'dirty',
-      ])
-    )
+    if (!onlyKeys(build, Object.keys(PRODUCT_TELEMETRY_ENVELOPE.build)))
       throw new Error('Undisclosed product telemetry build fields');
     const buildProperties = {
       version: build.version,
@@ -189,13 +167,15 @@ export function parseProductTelemetryBatch(
       (build.sha === undefined) !== (build.sha_source === undefined) ||
       (build.sha !== undefined &&
         (typeof build.sha !== 'string' ||
-          !/^[0-9a-f]{40,64}$/i.test(build.sha))) ||
+          !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(build.sha))) ||
       (build.sha_source !== undefined &&
-        !['build-stamp', 'checkout'].includes(String(build.sha_source))) ||
+        (typeof build.sha_source !== 'string' ||
+          !['build-stamp', 'checkout'].includes(build.sha_source))) ||
       (build.channel !== undefined &&
-        !['stable', 'preview', 'nightly', 'dev', 'source-checkout'].includes(
-          String(build.channel),
-        )) ||
+        (typeof build.channel !== 'string' ||
+          !['stable', 'preview', 'nightly', 'dev', 'source-checkout'].includes(
+            build.channel,
+          ))) ||
       (build.dirty !== undefined && typeof build.dirty !== 'boolean')
     )
       throw new Error('Invalid product telemetry build provenance');
@@ -204,7 +184,7 @@ export function parseProductTelemetryBatch(
       event: event.event as UsageTelemetryEvent,
       occurred_at: event.occurred_at,
       observed_at: event.observed_at,
-      properties: event.properties,
+      properties: { ...event.properties },
       build: {
         version: buildProperties.version,
         platform: buildProperties.platform,

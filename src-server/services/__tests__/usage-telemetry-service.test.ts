@@ -80,11 +80,41 @@ async function service(
   // Existing transport tests exercise post-disclosure behavior; receipt-gate
   // tests below deliberately construct a service without this acknowledgement.
   if (options.env?.STATION_TELEMETRY_ENDPOINT)
-    await subject.acknowledgeDisclosure();
+    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
   return subject;
 }
 
 describe('UsageTelemetryService', () => {
+  test('stale displayed inventory cannot publish a current consent receipt', async () => {
+    const subject = await service();
+    await expect(
+      subject.acknowledgeDisclosure('stale-revision'),
+    ).rejects.toThrow('disclosure changed');
+    expect((await subject.disclosure()).acknowledged).toBe(false);
+  });
+
+  test('non-full checkout hashes remain missing on terminal events', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const subject = await service({
+      env: {
+        STATION_TELEMETRY_ENDPOINT: 'https://ingest.test',
+        STATION_BUILD_SHA: 'a'.repeat(50),
+      },
+      fetch,
+      setInterval: vi.fn() as typeof setInterval,
+    });
+    await subject.track('engine_turn', {
+      engine: 'codex',
+      outcome: 'completed',
+    });
+    await subject.shutdown();
+    const sent = parseProductTelemetryBatch(
+      JSON.parse(fetch.mock.calls[0][1].body),
+    );
+    expect(sent.events[0].build.sha).toBeUndefined();
+    expect(sent.events[0].build.sha_source).toBeUndefined();
+  });
+
   test('lost response retry preserves observation IDs, time and build on real delivery', async () => {
     const bodies: ProductTelemetryBatch[] = [];
     const receiver = createServer(async (request, response) => {
@@ -315,7 +345,7 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure();
+    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -884,7 +914,7 @@ describe('UsageTelemetryService', () => {
       setInterval: vi.fn() as any,
     };
     const first = new UsageTelemetryService(opts);
-    await first.acknowledgeDisclosure();
+    await first.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
     await first.stationStarted();
     await first.shutdown();
     const raw = (
@@ -1071,7 +1101,7 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure();
+    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -1105,7 +1135,7 @@ describe('UsageTelemetryService', () => {
       new UsageTelemetryService(options),
       new UsageTelemetryService(options),
     ];
-    await one.acknowledgeDisclosure();
+    await one.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
     await Promise.all([one.stationStarted(), two.stationStarted()]);
     await Promise.all([one.shutdown(), two.shutdown()]);
     const persisted = (

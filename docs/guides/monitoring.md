@@ -8,6 +8,13 @@ Station has three separate measurement paths:
 | OTel metrics and traces | OpenTelemetry SDK → configured collector | `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and the startup limitation below |
 | Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
 
+Product observations use the disclosed v1 envelope: stable retry IDs, producer
+times, inventory revision and allowlisted immutable build attribution on every
+event. Source authentication/durable deduplication remain receiver work; these
+observations are separate from canonical personal receipts. Acknowledgements
+must name the displayed inventory revision, so stale/older UIs cannot silently
+approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
+
 The repository includes an optional Docker example for Collector → Prometheus
 → Grafana metrics and Collector → Jaeger traces. Starting that example is not
 proof that Station recorded or delivered a measurement. The local event log is

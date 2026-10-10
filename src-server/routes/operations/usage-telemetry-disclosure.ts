@@ -33,7 +33,32 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_not_ready' } },
         503,
       );
-    await service.acknowledgeDisclosure();
+    const body: unknown = await c.req.json().catch(() => null);
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      !('inventoryRevision' in body) ||
+      typeof body.inventoryRevision !== 'string'
+    )
+      return c.json(
+        {
+          success: false,
+          error: 'The displayed inventory revision is required.',
+        },
+        400,
+      );
+    const disclosure = await service.disclosure();
+    if (body.inventoryRevision !== disclosure.inventoryRevision)
+      return c.json(
+        {
+          success: false,
+          error:
+            'Usage telemetry disclosure changed; review the current inventory.',
+        },
+        409,
+      );
+    await service.acknowledgeDisclosure(body.inventoryRevision);
     return c.json({ success: true, data: await service.disclosure() });
   });
   return app;

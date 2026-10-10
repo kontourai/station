@@ -193,13 +193,38 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       data: disclosure,
     });
 
+    for (const [body, status] of [
+      [undefined, 400],
+      [JSON.stringify({ inventoryRevision: 'stale-revision' }), 409],
+    ] as const) {
+      const refused = await app.request(
+        '/api/usage-telemetry/disclosure/acknowledgements',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          ...(body ? { body } : {}),
+        },
+        loopbackEnv(),
+      );
+      expect(refused.status).toBe(status);
+      expect(acknowledgeDisclosure).not.toHaveBeenCalled();
+    }
+
     const acknowledged = await app.request(
       '/api/usage-telemetry/disclosure/acknowledgements',
-      { method: 'POST' },
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          inventoryRevision: disclosure.inventoryRevision,
+        }),
+      },
       loopbackEnv(),
     );
     expect(acknowledged.status).toBe(200);
-    expect(acknowledgeDisclosure).toHaveBeenCalledOnce();
+    expect(acknowledgeDisclosure).toHaveBeenCalledExactlyOnceWith(
+      disclosure.inventoryRevision,
+    );
     await expect(acknowledged.json()).resolves.toEqual({
       success: true,
       data: disclosure,

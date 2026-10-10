@@ -124,6 +124,38 @@ export type UsageTelemetryProperties<E extends UsageTelemetryEvent> = {
 
 /** Product reliability observations are separate from canonical personal usage receipts. */
 
+/** Envelope disclosure and accepted field names share this authority. */
+export const PRODUCT_TELEMETRY_ENVELOPE = {
+  batch: {
+    schema_version: 'Protocol version 1.',
+    inventory_revision:
+      'SHA-256 of the disclosed envelope and event inventory.',
+    distinct_id:
+      'SHA-256 of a separate random installation UUID; not a person identity.',
+    events: 'One through twenty inventory observations.',
+  },
+  observation: {
+    event_id: 'Random UUID assigned once at observation; unchanged on retry.',
+    event: 'One name from the classified event inventory.',
+    occurred_at:
+      'Canonical UTC producer wall-clock time when track was called.',
+    observed_at: 'Canonical UTC producer wall-clock time at buffer admission.',
+    build:
+      'Allowlisted immutable process build metadata; missing facts stay absent.',
+    properties: 'Only the event-specific classified properties below.',
+  },
+  build: {
+    version: 'SemVer application version, present on every event.',
+    platform: 'Operating-system platform from the startup inventory.',
+    arch: 'CPU architecture from the startup inventory.',
+    sha: 'Optional full 40 or 64 hex Git hash, paired with sha_source.',
+    sha_source:
+      'Optional build-stamp or checkout; checkout does not identify served bundle bytes.',
+    channel: 'Optional stable, preview, nightly, dev or source-checkout.',
+    dirty: 'Optional boolean supplied by the immutable build stamp.',
+  },
+} as const;
+
 export interface ProductTelemetryBuild {
   version: string;
   platform: string;
