@@ -1,0 +1,7 @@
+{
+  "revision": "3d4f09f5ef3eeaa857aa58704a82bda629b6219e",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Scoped correction to sending versus unconfirmed coalescing wording. Checked answerRequest pending state: while sending, decision and grant scope must both match to share the pending promise; unconfirmed deliberately returns that pending failure for every decision/scope until exact inspection. The corrected paragraph preserves the uncertainty lock and shared unknown/resolved scope retention without inferring server grant success. Prior named provider/coalescer controls remain bound to their actual revisions; earlier wrong-reader and timeout receipts remain nonqualifying. Documentation-only change, no production behavior or new current-head CI/browser/native/runtime/publication claim; prior body and history review limits retained.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}
