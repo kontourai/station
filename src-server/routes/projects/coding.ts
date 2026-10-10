@@ -1114,7 +1114,7 @@ export function createCodingRoutes(
             ...repository.repoArgs,
             ...(create
               ? ['checkout', '-b', branch, 'HEAD', '--']
-              : ['checkout', '--end-of-options', branch, '--']),
+              : ['checkout', branch, '--']),
           ],
           opts,
         );
