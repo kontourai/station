@@ -172,14 +172,11 @@ jobs:
             }).listen(11434, "127.0.0.1");
           ' >/tmp/station-ollama-fixture.log 2>&1 &
           ollama_pid=$!
-          python3 -u -m http.server 8765 --bind 127.0.0.1 \
-            --directory "$serve_dir" >/tmp/station-artifact-server.log 2>&1 &
+          node scripts/install-smoke-file-server.mjs 8765 "$serve_dir" >/tmp/station-artifact-server.log 2>&1 &
           artifact_pid=$!
-          python3 -u -m http.server 8766 --bind 127.0.0.1 \
-            --directory "$manifests_dir" >/tmp/station-manifest-server.log 2>&1 &
+          node scripts/install-smoke-file-server.mjs 8766 "$manifests_dir" >/tmp/station-manifest-server.log 2>&1 &
           manifest_pid=$!
-          python3 -u -m http.server 8767 --bind 127.0.0.1 \
-            --directory "$keys_dir" >/tmp/station-key-server.log 2>&1 &
+          node scripts/install-smoke-file-server.mjs 8767 "$keys_dir" >/tmp/station-key-server.log 2>&1 &
           key_pid=$!
           cleanup() {
             "$launcher" stop --base="$station_home" >/dev/null 2>&1 || true
@@ -207,7 +204,7 @@ jobs:
             tail -100 "$log" >&2 || true
             return 1
           }
-          wait_for_fixture artifact "$artifact_pid" http://127.0.0.1:8765/ /tmp/station-artifact-server.log
+          wait_for_fixture artifact "$artifact_pid" http://127.0.0.1:8765/station-portable.tar.gz /tmp/station-artifact-server.log
           wait_for_fixture manifest "$manifest_pid" http://127.0.0.1:8766/manifest.json /tmp/station-manifest-server.log
           wait_for_fixture key "$key_pid" http://127.0.0.1:8767/public.pem /tmp/station-key-server.log
           wait_for_fixture ollama "$ollama_pid" http://127.0.0.1:11434/api/tags /tmp/station-ollama-fixture.log
