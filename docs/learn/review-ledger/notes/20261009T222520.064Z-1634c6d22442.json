@@ -1,0 +1,7 @@
+{
+  "revision": "223988ce473367b4db32446f1a352ee038594fd3",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"Reviewed channel-exact launch imagery across generated Android and iOS projects. Android stages the explicit channel favicon, and iOS derives the channel from the generated app identifier, refusing unknown identity before copying artwork. Tests compare staged bytes for stable/dev/beta/nightly; 96px centered geometry and day/night backgrounds match the shared intro. Existing native icon provenance, generator contracts and OS appearance limits remain accurate.","inputs":["src-desktop/icons/README.md","scripts/lib/ios-launch-screen.mjs"]}
+  ]
+}
