@@ -1,5 +1,36 @@
 [
   {
+    "timestampUtc": "2026-10-10T16:59:49Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2474.38067157478",
+    "sha": "bcd808979a4b8d439f3d47bead4b59498a982db7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38067157478",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2474.38067157478 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "67a1355378d159451db79764aba856520391faf9",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3524](https://github.com/kontourai/station/pull/3524) fix(ios): synchronize the canonical launch storyboard"
+        ],
+        "ci": [
+          "[#3345](https://github.com/kontourai/station/pull/3345) ci: run the full regression in the merge queue for ci-fast and test-full deferrals"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-10T13:42:56Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2474.38054322896",
