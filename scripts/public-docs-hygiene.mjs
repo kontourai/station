@@ -141,7 +141,9 @@ export function publicProjectionLinkFindings(
         index === -1
           ? source
           : `${source}:${text.slice(0, index).split('\n').length}`;
-      findings.push(`${location} non-public-link: ${markdownHref}`);
+      findings.push(
+        `${location} non-public-link: ${markdownHref} (not admitted to Pages; use its absolute GitHub URL)`,
+      );
     }
   }
   return findings;

@@ -203,9 +203,9 @@ describe('public documentation admission', () => {
         (file) => contents.get(file) ?? '',
       ),
     ).toEqual([
-      'user/start.md:4 non-public-link: ../guides/private.md#reading-a-referenced-conversation',
-      'user/start.md:5 non-public-link: ../../examples/demo/README.md',
-      'guides/public.md:3 non-public-link: ./internal.md',
+      'user/start.md:4 non-public-link: ../guides/private.md#reading-a-referenced-conversation (not admitted to Pages; use its absolute GitHub URL)',
+      'user/start.md:5 non-public-link: ../../examples/demo/README.md (not admitted to Pages; use its absolute GitHub URL)',
+      'guides/public.md:3 non-public-link: ./internal.md (not admitted to Pages; use its absolute GitHub URL)',
     ]);
   });
 
