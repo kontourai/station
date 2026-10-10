@@ -255,6 +255,16 @@ describe('desktop startup readiness static boundary', () => {
     const lib = read('src-desktop/src/lib.rs');
     const readiness = read('src-desktop/src/startup_readiness.rs');
     expect(deadlineRestartRoutes(readiness)).toEqual([]);
+    // An overdue epoch is still Waiting, so a late exact ticket and its
+    // identity proof are admitted and reveal without user action.
+    for (const arm of [
+      'ReadinessInput::ServerTicket(ticket) =>',
+      'ReadinessInput::NativeIdentityCommitted(ticket) =>',
+    ]) {
+      const body = rustBlock(readiness, arm);
+      expect(body).toContain('matches!(next.phase, ReadinessPhase::Waiting)');
+      expect(body).not.toContain('next.overdue');
+    }
 
     const deadline = rustBlock(lib, 'fn arm_startup_deadline(');
     for (const forbidden of [
