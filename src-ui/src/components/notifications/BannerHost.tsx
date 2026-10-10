@@ -566,10 +566,10 @@ export function BannerHost({
     }
     reservedTargetRef.current = target;
     if (!host || !target) return;
+    const stack = host.querySelector('.banner-host__stack');
 
     const measure = () => {
       const hostTop = host.getBoundingClientRect().top;
-      const stack = host.querySelector('.banner-host__stack');
       const stackBounds = stack?.getBoundingClientRect();
       const clipsStack =
         stack !== null &&
@@ -613,7 +613,6 @@ export function BannerHost({
       }
     };
     measure();
-    const stack = stackRef.current;
     stack?.addEventListener('scroll', measure);
     const observer =
       typeof ResizeObserver === 'undefined'
