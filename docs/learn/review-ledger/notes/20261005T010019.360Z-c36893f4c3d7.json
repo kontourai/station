@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"actionlint-gate.mjs change only admits the exact merge-queue-regression.yml full-regression reusable call (contents/actions read, fixed guard, source_sha github.sha) and updates the pinned aggregate run; this guide makes no workflow-policy claims, so no prose change.","inputs":["docs/guides/delegation-attempt-claims.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

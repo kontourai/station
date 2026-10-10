@@ -379,6 +379,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
   // #3101: dependency-free planner CLI output and exit status in child processes.
   'scripts/__tests__/fast-checks-plan.test.ts',
+  // Runs the merge-queue regression decision script and the required
+  // aggregate's real bash/jq step as child processes over real plans.
+  // Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/merge-queue-regression-decision.test.ts',
   // #2709 re-land: runs the aggregator's real base-controlled bash/jq step
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.

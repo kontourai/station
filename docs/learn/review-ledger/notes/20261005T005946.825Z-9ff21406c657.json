@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Merge-queue row and the merge integration paragraph now state that the required Merge-queue regression check runs the hosted full regression on candidates whose fast-checks plan defers to a lane or names a mergeQueueRegression path, else takes the fast path; checked against merge-queue-regression.yml and the decision script. Qualification reuse: qualification-evidence.mjs TRUSTED_WORKFLOWS excludes merge-queue runs, so promotion evidence claims are unchanged.","inputs":["docs/guides/releasing.md",".github/workflows/merge-queue-regression.yml"]}
+  ]
+}
