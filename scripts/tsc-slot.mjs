@@ -257,8 +257,15 @@ async function runWindowsCompiler(compiler, args, cwd) {
     args,
     undefined,
     'typecheck',
-    { cwd, env: process.env, stdio: 'inherit', windowsHide: true },
+    {
+      cwd,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
   );
+  execution.child.stdout?.pipe(process.stdout, { end: false });
+  execution.child.stderr?.pipe(process.stderr, { end: false });
   let interrupted = false;
   let cleanup;
   const stop = () => {
