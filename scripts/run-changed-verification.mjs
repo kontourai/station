@@ -1190,7 +1190,9 @@ function countsFor(executions, preparation) {
   const infrastructureErrors =
     executions.filter((entry) => entry.infrastructureError).length +
     (preparation?.infrastructureError === true ? 1 : 0);
-  const parserErrors = executions.filter((entry) => entry.error).length;
+  const parserErrors = executions.filter(
+    (entry) => entry.error && !entry.infrastructureError,
+  ).length;
   const testCounts = executions.flatMap((entry) =>
     entry.counts ? [entry.counts] : [],
   );

@@ -1767,6 +1767,10 @@ setInterval(() => {}, 1000);`,
     );
     expect(diagnostic).toBeDefined();
     const artifact = JSON.parse(diagnostic![1]);
+    expect(artifact.counts).toMatchObject({
+      infrastructureErrors: 1,
+      parserErrors: 0,
+    });
     expect(artifact.executions[0].error).toBe(result.executed[0].error);
     expect(JSON.stringify(result)).not.toContain('fixture-child-secret');
   });
