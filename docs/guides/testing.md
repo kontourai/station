@@ -1440,7 +1440,32 @@ The `PR: Merge integration` workflow retains the legacy required context
 candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
-The merge path does not run the full corpus.
+
+On each merge-queue candidate the workflow also recomputes the fast-checks
+plan against the queue base, using the same planner and inputs as `fast-checks`.
+[`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
+then chooses a path:
+
+- **Full regression.** The plan defers to the `ci-fast` or `test-full` lane,
+  or it names a `mergeQueueRegression` path. Narrower deferred lanes, such as a
+  packaging leg, take the fast path: the owner limited the scope to keep queue
+  candidates under the shared runner cap. A deferred plan drops related discovery and
+  runs no explicit test above 32, so `fast-checks` cannot cover it. A
+  `mergeQueueRegression` path, such as the SDK transport or the orchestration
+  event store, leaves its consumers to the queue on purpose. The candidate
+  runs the hosted [full regression](../../.github/workflows/full-regression.yml)
+  on its own SHA, with exact-source reuse allowed. The required check passes
+  only when that run passes.
+- **Fast path.** Any other candidate, including one deferred only to a narrower
+  lane, skips the full regression. The check
+  reports `no deferred lane: fast path`.
+
+The decision fails closed. A missing, unreadable or invalid plan runs the full
+regression, and so does a plan for another head or base. If the planner or its
+install fails, or the decision step writes nothing, the full regression runs
+too, because it is skipped only when the decision is exactly `false`. Pull
+requests never run it. In this workflow, `pull_request_target` only reports
+the skipped required context.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
@@ -1497,9 +1522,9 @@ not every way to wait.
 ### Test quarantine
 
 The historical `QUARANTINED_VITEST_FILES` list remains a diagnostic exclusion
-mechanism for explicitly requested corpus runs. Merge integration no longer
-runs the full corpus. Scheduled and release qualification never exclude these
-files: a known flake remains visible and blocks promotion until resolved.
+mechanism for explicitly requested corpus runs. The merge-queue full regression
+for deferred candidates, scheduled qualification and release qualification never
+exclude these files: a known flake remains visible and blocks promotion until resolved.
 
 **When to quarantine.** Only a test that is flaky, not broken: the *same
 commit* both passed and failed it. A test that fails every time is a defect to
