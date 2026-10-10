@@ -112,7 +112,11 @@
 
     "src-ui/src/components/usage-stats/period.ts",
 
-    "src-ui/src/components/usage-stats/UsageTrendChart.tsx"
+    "src-ui/src/components/usage-stats/UsageTrendChart.tsx",
+
+    "tests/profile.spec.ts",
+
+    "src-ui/src/components/usage-stats/UsageStatsPanel.css"
   ],
 
   "checks": [
