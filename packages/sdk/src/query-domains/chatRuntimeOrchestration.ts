@@ -1,6 +1,7 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
   AdoptedSessionResult,
   AdoptSessionTarget,
@@ -1091,7 +1092,10 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+  /** @deprecated since 0.9.0; removed in 0.10.0. Use `content`. */
   answers?: HarnessQuestionAnswers;
+  /** #3390: accepted content for a form input request. */
+  content?: InputRequestContent;
   apiBase?: string;
   /** Deadline for decision admission; a timeout does not cancel the server-side decision. */
   timeoutMs?: number;
@@ -1106,6 +1110,7 @@ export async function resolveOrchestrationRequest(input: {
         : {}),
       decision: input.decision,
       ...(input.answers ? { answers: input.answers } : {}),
+      ...(input.content ? { content: input.content } : {}),
     },
     input.apiBase,
     input.timeoutMs,

@@ -1,11 +1,8 @@
 import { fetchOrchestrationConversationEventWindow } from '@kontourai/station-sdk';
-import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
-import {
-  carriesMcpElicitationForm,
-  raiseRequestOpenedToast,
-} from './approvalHandlers';
+import { raiseRequestOpenedToast } from './approvalHandlers';
 import type { OrchestrationEvent } from './types';
 
 /** Older pages read after the newest turn while placeholders remain. */
@@ -75,7 +72,6 @@ function hydratePage(
     if (event.method !== 'request.opened' || !event.eventId) continue;
     const placeholderToastId = placeholders.get(event.requestId);
     if (!placeholderToastId || event.blocking === false) continue;
-    // Found: whatever the guard below decides, no older page need be read.
     unresolved.delete(event.requestId);
     const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
     // The placeholder is still this request's toast: an answer, a newer
@@ -101,10 +97,7 @@ function hydratePage(
       : {};
     // A questionnaire or an MCP form is answered on its own card, not by the
     // approval toast, so the placeholder stays; only the turn is bound.
-    if (
-      readHarnessQuestionnaire(event.payload?.questionnaire) ||
-      carriesMcpElicitationForm(event.payload)
-    ) {
+    if (inputRequestFromRequestEvent(event)) {
       if (learnedTurnId) activeChatsStore.updateChat(event.threadId, bindTurn);
       continue;
     }

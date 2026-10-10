@@ -1,0 +1,7 @@
+{
+  "revision": "c08475d851458e047f6ecee780795100a5411c3c",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the current client negotiation and elicitation path and corrected the retained version from2.0.0 to the actually installed2.2.0. Raw-message forbidden-field refusal precedes the SDK codec for both legacy requests and modern input-required results, then valid forms retain the same scoped turn route and canonical input-request reader. Real stdio regression controls passed24 after4expectedfailures; other MCP Apps rendering/CSP/platform claims are unchanged and not newly qualified.","inputs":["docs/design/mcp-ui-host.md","packages/shared/src/mcp-connection.ts"]}
+  ]
+}

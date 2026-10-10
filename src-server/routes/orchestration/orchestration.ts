@@ -454,6 +454,8 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
+  // `content` by the service. Removed in 0.10.0.
   answers: z
     .record(
       z.string().min(1).max(256),
@@ -465,16 +467,24 @@ const respondToRequestCommandSchema = z.object({
         .strict(),
     )
     .optional(),
-  // #3284: shape only. Whether it fits the open form is decided by the
+  // #3390: shape only. Whether it fits the open form is decided by the
   // service against the form itself; nothing here coerces or cuts values.
-  elicitationContent: z
+  content: z
     .record(
-      z.string().min(1).max(128),
+      z.string().min(1).max(256),
       z.union([
         z.string().max(12000),
         z.number(),
         z.boolean(),
-        z.array(z.string().max(512)).max(64),
+        z.object({ custom: z.string().max(12000) }).strict(),
+        z
+          .array(
+            z.union([
+              z.string().max(512),
+              z.object({ custom: z.string().max(12000) }).strict(),
+            ]),
+          )
+          .max(65),
       ]),
     )
     .optional(),

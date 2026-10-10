@@ -1347,7 +1347,8 @@ carries `requestEventId`, the `request.opened` event it was read from.
 `respond` looks the request up first and, for an approval or permission this
 Station still lists, sends that id as `expectedRequestEventId`, so the server
 answers the request that was listed and refuses one that changed. A question
-(a request carrying a questionnaire) is never bound this way, so the server
+(a request carrying an input-request form, or a stored pre-#3390
+questionnaire) is never bound this way, so the server
 still refuses to close one that was not inspected. A request the lookup does
 not find is posted without the id and the server decides; nothing is refused
 client-side.
