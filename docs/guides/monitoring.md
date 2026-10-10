@@ -434,8 +434,9 @@ Station server
        └─ Metrics → OTLP HTTP :4318/v1/metrics → Collector → Prometheus → Grafana
 ```
 
-`src-server/index.ts` imports `src-server/telemetry.ts` early, but initialization
-is asynchronous and does not hold up application startup. A failure warns and
+`src-server/index.ts` imports `src-server/telemetry.ts` early. The SDK, exporters,
+and instrumentation load only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured.
+Initialization is asynchronous and does not hold up application startup. A failure warns and
 Station continues. Import order alone does not solve the instrument-binding
 problem described above. The configured SDK includes:
 - `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter)

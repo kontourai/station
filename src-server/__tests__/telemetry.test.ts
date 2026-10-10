@@ -4,6 +4,22 @@ import * as os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+const sdkModule = vi.hoisted(() => ({
+  loads: 0,
+  start: vi.fn(),
+  shutdown: vi.fn(async () => {}),
+}));
+
+vi.mock('@opentelemetry/sdk-node', () => {
+  sdkModule.loads++;
+  return {
+    NodeSDK: class {
+      start = sdkModule.start;
+      shutdown = sdkModule.shutdown;
+    },
+  };
+});
+
 const homes: string[] = [];
 const renameHook: { afterRename?: () => Promise<void> } = {};
 const readPaths: string[] = [];
@@ -27,6 +43,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.resetModules();
+  sdkModule.loads = 0;
+  sdkModule.start.mockClear();
+  sdkModule.shutdown.mockClear();
   renameHook.afterRename = undefined;
   readPaths.length = 0;
   await Promise.all(
@@ -125,6 +144,7 @@ describe('OTel installation identity', () => {
     const { initializeTelemetry } = await telemetry();
     await initializeTelemetry({ env: {}, homeDir: fresh });
     await initializeTelemetry({ env: {}, homeDir: existing });
+    expect(sdkModule.loads, 'unconfigured OTel loaded its SDK').toBe(0);
     expect(
       readPaths,
       'unconfigured OTel read an existing installation identity',
@@ -194,6 +214,24 @@ describe('OTel installation identity', () => {
       // Full digest, deliberately not truncated: the old implementation cut to
       // 48 bits, which only added collisions over a guessable input space.
     ).toBe(createHash('sha256').update(persisted).digest('hex'));
+  });
+
+  test('loads and starts the SDK only for a configured endpoint, then shuts it down', async () => {
+    const root = await home();
+    const { initializeTelemetry, configuredTelemetryShutdownTask } =
+      await telemetry();
+    expect(sdkModule.loads).toBe(0);
+    await initializeTelemetry({
+      env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector.test' },
+      homeDir: root,
+      log: () => {},
+    });
+    expect(sdkModule.loads).toBe(1);
+    expect(sdkModule.start).toHaveBeenCalledOnce();
+    await configuredTelemetryShutdownTask()?.shutdown(
+      new AbortController().signal,
+    );
+    expect(sdkModule.shutdown).toHaveBeenCalledOnce();
   });
 
   test('configured OTel is inventoried for shutdown while an inert install is not', async () => {

@@ -4,19 +4,7 @@
  */
 
 import { platform } from 'node:os';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { AwsInstrumentation } from '@opentelemetry/instrumentation-aws-sdk';
-import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
-import {
-  defaultResource,
-  resourceFromAttributes,
-} from '@opentelemetry/resources';
-import {
-  AggregationTemporality,
-  PeriodicExportingMetricReader,
-} from '@opentelemetry/sdk-metrics';
-import { NodeSDK } from '@opentelemetry/sdk-node';
+import type { NodeSDK } from '@opentelemetry/sdk-node';
 import { persistedRandomIdentifierHash } from './services/persisted-random-identifier.js';
 import { resolveHomeDir } from './utils/paths.js';
 
@@ -34,10 +22,27 @@ export interface InitializeTelemetryOptions {
   log?: (message: string) => void;
 }
 
-function createSdk(
+async function createSdk(
   resourceAttributes: Record<string, string>,
   endpoint: string,
-): NodeSDK {
+): Promise<NodeSDK> {
+  const [
+    { OTLPMetricExporter },
+    { OTLPTraceExporter },
+    { AwsInstrumentation },
+    { HttpInstrumentation },
+    { defaultResource, resourceFromAttributes },
+    { AggregationTemporality, PeriodicExportingMetricReader },
+    { NodeSDK },
+  ] = await Promise.all([
+    import('@opentelemetry/exporter-metrics-otlp-http'),
+    import('@opentelemetry/exporter-trace-otlp-http'),
+    import('@opentelemetry/instrumentation-aws-sdk'),
+    import('@opentelemetry/instrumentation-http'),
+    import('@opentelemetry/resources'),
+    import('@opentelemetry/sdk-metrics'),
+    import('@opentelemetry/sdk-node'),
+  ]);
   const telemetryApiKey = process.env.STATION_TELEMETRY_API_KEY;
   const headers = telemetryApiKey
     ? { 'x-api-key': telemetryApiKey }
@@ -94,7 +99,9 @@ export async function initializeTelemetry(
     ),
     'os.type': platform(),
   };
-  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);
+  const sdk = options.createSdk
+    ? options.createSdk(resourceAttributes, endpoint)
+    : await createSdk(resourceAttributes, endpoint);
   sdk.start();
   activeTelemetrySdks.add(sdk);
   (options.log ?? console.log)(
