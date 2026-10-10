@@ -123,6 +123,16 @@ export function validateFastChecksPlan(plan) {
     )
   )
     errors.push('plan deferredLanes must be a list of named lanes');
+  // Optional here (older planners omit it); the merge-queue decision
+  // requires it and treats its absence as a reason to run full regression.
+  if (
+    plan.mergeQueueRegressionPaths !== undefined &&
+    (!Array.isArray(plan.mergeQueueRegressionPaths) ||
+      plan.mergeQueueRegressionPaths.some(
+        (path) => typeof path !== 'string' || path.length === 0,
+      ))
+  )
+    errors.push('plan mergeQueueRegressionPaths must be a list of paths');
   if (!Array.isArray(plan.groups)) {
     errors.push('plan groups must be a list');
     return errors;

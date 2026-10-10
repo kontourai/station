@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Merge integration section rewritten against merge-queue-regression.yml and scripts/merge-queue-regression-decision.mjs: the plan job recomputes the fast-checks plan with ci.yml's planner inputs (STATION_CI_FAST_BASE = merge_group.base_sha, adaptive shards); any deferred lane or a mergeQueueRegression path runs full-regression.yml on github.sha with allow_reuse; otherwise the aggregate prints 'no deferred lane: fast path'. Fail-closed claims checked against the decision (missing/invalid/foreign plan -> full), the full-regression job guard (!= 'false') and the aggregate jq. Quarantine paragraph: full-regression.yml excludes no quarantined files, so the queue run does not either. Merge-queue-regression-decision.test.ts executes these paths.","inputs":["docs/guides/testing.md",".github/workflows/merge-queue-regression.yml","scripts/lib/fast-checks-shards.mjs","scripts/run-changed-verification.mjs","scripts/test-impact-manifest.mjs"]}
+  ]
+}

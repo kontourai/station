@@ -73,8 +73,10 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
  * native transport order, credential wake, timeouts, origin headers, failure
  * mapping, request authority, portability. The transport's CONSUMERS' unit
  * and component suites leave the fast lane — and still run before merge:
- * the required `Merge-queue regression` check runs the full-regression
- * corpus on every merge-queue candidate (since 2026-09-23). Fast feedback
+ * `mergeQueueRegression: true` puts the path in the fast-checks plan's
+ * `mergeQueueRegressionPaths`, and the required `Merge-queue regression`
+ * check runs the full-regression corpus on any merge-queue candidate whose
+ * plan names one (scripts/merge-queue-regression-decision.mjs). Fast feedback
  * covers the module's own behaviour; the queue covers everything that
  * imports it.
  *
@@ -108,6 +110,7 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
     Object.freeze({
       pattern,
       tests: SDK_TRANSPORT_TESTS,
+      mergeQueueRegression: true,
       reason:
         'SDK transport: own-behaviour suites; its import graph is too broad ' +
         'for the fast lane, so consumers are covered by the merge-queue ' +
@@ -134,6 +137,7 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
 const SDK_BROAD_MODULE_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'packages/sdk/src/client/api-error-message.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'packages/sdk/src/__tests__/api-error-message.test.ts',
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
@@ -145,6 +149,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
   }),
   Object.freeze({
     pattern: 'packages/sdk/src/client/chatHttpError.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'packages/sdk/src/__tests__/chatRuntimeStream.test.ts',
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
@@ -162,6 +167,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
   // which run in the merge-queue full regression — before merge, not here.
   Object.freeze({
     pattern: 'packages/sdk/src/client/index.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
     ]),
@@ -192,6 +198,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
 const ORCHESTRATION_STORE_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'src-server/services/orchestration/event-store.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
       'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
@@ -214,6 +221,7 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
   }),
   Object.freeze({
     pattern: 'src-server/services/orchestration/transcript-search-queries.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'src-server/services/orchestration/__tests__/event-store.test.ts',
       'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
@@ -246,6 +254,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     // failures. The suites that exercise the matrix's own declarations run
     // here; its consumers run in the required merge-queue full regression.
     pattern: 'packages/contracts/src/engine-capability-matrix.ts',
+    mergeQueueRegression: true,
     tests: [
       'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
       'packages/contracts/src/__tests__/agent-capability-profile.test.ts',
@@ -2191,6 +2200,30 @@ export function buildTestImpactManifest(options) {
   ]);
 }
 
+/**
+ * Changed paths whose consumers the fast lane deliberately leaves to the
+ * merge queue: a path an unconditional `mergeQueueRegression` edge owns. The
+ * fast-checks plan records them, and a merge-queue candidate that names any
+ * runs the full regression (scripts/merge-queue-regression-decision.mjs).
+ *
+ * @param {readonly string[]} paths
+ * @param {readonly ImpactEdge[]} [manifest]
+ * @returns {string[]}
+ */
+export function mergeQueueRegressionPaths(
+  paths,
+  manifest = TEST_IMPACT_MANIFEST,
+) {
+  const owned = manifest.filter((edge) => edge.mergeQueueRegression === true);
+  return [...new Set(paths)]
+    .filter((path) =>
+      owned.some(
+        (edge) => matches(edge.pattern, path) && !edge.except?.includes(path),
+      ),
+    )
+    .sort();
+}
+
 export function matches(pattern, path) {
   if (pattern.endsWith('/**')) return path.startsWith(pattern.slice(0, -2));
   return path === pattern;
@@ -2217,6 +2250,7 @@ export function isEscalationPath(path) {
  *   deferredLanes?: readonly string[],
  *   whenAll?: readonly string[],
  *   except?: readonly string[],
+ *   mergeQueueRegression?: boolean,
  *   reason?: string,
  * }} ImpactEdge
  */
@@ -2238,6 +2272,19 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
       errors.push(`invalid impact edge: ${JSON.stringify(edge)}`);
     // `deferredLanes` is how a supplemental edge adds a lane: it only adds,
     // like the supplemental tests, and never touches the boundary decisions.
+    // A merge-queue regression owner must be a boundary edge naming its own
+    // suites: a supplemental or conditional edge would claim the queue covers
+    // a path whose boundary it does not decide.
+    if (
+      edge?.mergeQueueRegression !== undefined &&
+      (edge.mergeQueueRegression !== true ||
+        edge.supplemental ||
+        edge.whenAll ||
+        !edge.tests?.length)
+    )
+      errors.push(
+        `a merge-queue regression edge must be an unconditional boundary edge with tests: ${edge.pattern}`,
+      );
     if (edge?.deferredLanes?.length && !edge.supplemental)
       errors.push(
         `only a supplemental impact edge may defer to a lane: ${edge.pattern}`,
