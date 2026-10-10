@@ -169,12 +169,21 @@ export function marketingHygieneFindings(
   return findings;
 }
 
-export async function runPublicDocsHygiene() {
-  const documents = await loadPublicDocs();
+/**
+ * @param {{
+ *   documents?: { source: string }[],
+ *   read?: (file: string, encoding: BufferEncoding) => string,
+ * }} [input]
+ */
+export async function runPublicDocsHygiene({
+  documents: injectedDocuments,
+  read = (file, encoding) => readFileSync(file, encoding),
+} = {}) {
+  const documents = injectedDocuments ?? (await loadPublicDocs());
   const findings = [
-    ...publicDocsHygieneFindings(documents),
-    ...publicProjectionLinkFindings(documents),
-    ...marketingHygieneFindings(),
+    ...publicDocsHygieneFindings(documents, read),
+    ...publicProjectionLinkFindings(documents, read),
+    ...marketingHygieneFindings(MARKETING_FILES, read),
   ];
   if (findings.length === 0) {
     console.log(

@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   loadPublicDocs,
   renderDocsIndexSections,
@@ -20,6 +20,7 @@ import {
   marketingHygieneFindings,
   publicDocsHygieneFindings,
   publicProjectionLinkFindings,
+  runPublicDocsHygiene,
 } from '../public-docs-hygiene.mjs';
 
 async function fixture() {
@@ -206,6 +207,41 @@ describe('public documentation admission', () => {
       'user/start.md:5 non-public-link: ../../examples/demo/README.md',
       'guides/public.md:3 non-public-link: ./internal.md',
     ]);
+  });
+
+  it('fails the hygiene gate on an unpublished link target', async () => {
+    const documents = [{ source: 'user/start.md' }];
+    const page = (link: string) =>
+      new Map([['docs/user/start.md', `# Start\n\nSee [guide](${link}).`]]);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const broken = page('../guides/private.md');
+      await expect(
+        runPublicDocsHygiene({
+          documents,
+          read: (file) => broken.get(file) ?? '',
+        }),
+      ).resolves.toBe(1);
+      expect(errors).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'user/start.md:3 non-public-link: ../guides/private.md',
+        ),
+      );
+
+      const fixed = page(
+        'https://github.com/kontourai/station/blob/main/docs/guides/private.md',
+      );
+      await expect(
+        runPublicDocsHygiene({
+          documents,
+          read: (file) => fixed.get(file) ?? '',
+        }),
+      ).resolves.toBe(0);
+    } finally {
+      errors.mockRestore();
+      logs.mockRestore();
+    }
   });
 
   it('accepts published, absolute, anchor, and fenced links', () => {
