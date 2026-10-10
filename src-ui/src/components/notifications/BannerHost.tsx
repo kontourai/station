@@ -569,12 +569,28 @@ export function BannerHost({
 
     const measure = () => {
       const hostTop = host.getBoundingClientRect().top;
+      const stack = host.querySelector('.banner-host__stack');
+      const stackBounds = stack?.getBoundingClientRect();
+      const clipsStack =
+        stack !== null &&
+        ['auto', 'scroll', 'hidden', 'clip'].includes(
+          getComputedStyle(stack).overflowY,
+        );
       const entries: BannerReserveEntry[] = [];
       let anyReserving = false;
       for (const node of host.querySelectorAll('[data-banner-id]')) {
         const reserves = node.getAttribute('data-overlay') === null;
         anyReserving ||= reserves;
-        entries.push({ reserves, bottom: node.getBoundingClientRect().bottom });
+        const bounds = node.getBoundingClientRect();
+        const bottom =
+          clipsStack && stackBounds
+            ? Math.min(bounds.bottom, stackBounds.bottom)
+            : bounds.bottom;
+        const visible =
+          !clipsStack ||
+          !stackBounds ||
+          bottom > Math.max(bounds.top, stackBounds.top);
+        entries.push({ reserves: reserves && visible, bottom });
       }
       // The stack cap is chrome for the banners behind it, so it reserves on
       // the same terms they do: with something reserving it is part of the
@@ -597,12 +613,17 @@ export function BannerHost({
       }
     };
     measure();
+    const stack = stackRef.current;
+    stack?.addEventListener('scroll', measure);
     const observer =
       typeof ResizeObserver === 'undefined'
         ? null
         : new ResizeObserver(measure);
     observer?.observe(host);
-    return () => observer?.disconnect();
+    return () => {
+      observer?.disconnect();
+      stack?.removeEventListener('scroll', measure);
+    };
   }, [banners, expanded]);
 
   useEffect(

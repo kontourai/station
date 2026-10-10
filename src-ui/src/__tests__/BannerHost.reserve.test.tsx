@@ -12,7 +12,7 @@
  * `components/notifications/__tests__/BannerHost.reserve-cascade.test.tsx`.
  */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   BANNER_RESERVED_HEIGHT_PROPERTY,
@@ -142,6 +142,85 @@ describe('BannerHost space reservation', () => {
     const { container } = render(<BannerHost />);
 
     expect(screen.getByRole('alert').getAttribute('data-overlay')).toBe('true');
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('');
+  });
+
+  test('a reserving card clipped by its stack does not reserve its hidden portion', () => {
+    stubGeometry((element) => {
+      if (element.classList.contains('banner-host__stack')) return [46, 142];
+      if (element.hasAttribute('data-banner-id')) {
+        const top = element.getAttribute('data-banner-id') === 'upper' ? 46 : 112;
+        return [top, top + 60];
+      }
+      return stackedCards(element);
+    });
+    presentBlocking({ id: 'upper', priority: 101 });
+    presentBlocking({ id: 'lower' });
+    const { container } = render(<BannerHost />);
+    const stack = container.querySelector<HTMLElement>('.banner-host__stack')!;
+    stack.style.overflowY = 'auto';
+    fireEvent.scroll(stack);
+
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('102px');
+  });
+
+  test('a scroll-clipped stack reserves its visible cards and follows scrolling', () => {
+    let scrollOffset = 0;
+    stubGeometry((element) => {
+      if (element.classList.contains('banner-host__stack')) return [46, 106];
+      if (element.hasAttribute('data-banner-id')) {
+        const top =
+          (element.getAttribute('data-banner-id') === 'reserving' ? 46 : 112) -
+          scrollOffset;
+        return [top, top + 60];
+      }
+      return stackedCards(element);
+    });
+    presentBlocking({ id: 'reserving', priority: 101 });
+    presentBlocking({ id: 'overlay', overlay: true });
+    const { container } = render(<BannerHost />);
+    const stack = container.querySelector<HTMLElement>('.banner-host__stack')!;
+    stack.style.overflowY = 'auto';
+    fireEvent.scroll(stack);
+
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('66px');
+
+    scrollOffset = 30;
+    fireEvent.scroll(stack);
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('36px');
+
+    scrollOffset = 66;
+    fireEvent.scroll(stack);
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('');
+  });
+
+  test('a clipped overlay-only stack still reserves nothing', () => {
+    stubGeometry((element) => {
+      if (element.classList.contains('banner-host__stack')) return [46, 142];
+      if (element.hasAttribute('data-banner-id')) {
+        const top =
+          element.getAttribute('data-banner-id') === 'overlay-2' ? 46 : 112;
+        return [top, top + 60];
+      }
+      return stackedCards(element);
+    });
+    presentBlocking({ id: 'overlay-1', overlay: true });
+    presentBlocking({ id: 'overlay-2', overlay: true, priority: 101 });
+    const { container } = render(<BannerHost />);
+    const stack = container.querySelector<HTMLElement>('.banner-host__stack')!;
+    stack.style.overflowY = 'auto';
+    fireEvent.scroll(stack);
+
     expect(
       container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
     ).toBe('');
