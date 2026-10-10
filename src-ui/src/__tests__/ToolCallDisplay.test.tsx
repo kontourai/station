@@ -743,7 +743,7 @@ describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382
     );
   });
 
-  test('"Why:" drops bidi controls and turns C1 controls into spaces; the grant button names a sanitised tool', () => {
+  test('"Why:" drops bidi controls and turns C1 controls into spaces; the grant menu item names a sanitised tool', async () => {
     pendingBash(
       { command: 'ls' },
       {
@@ -756,8 +756,14 @@ describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382
     expect(document.querySelector('.tool-call__purpose')!.textContent).toBe(
       'Why: List the txt.exe files',
     );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More ways to allow this request' }),
+    );
     expect(
-      screen.getByRole('button', { name: 'Allow Bash for this session' }),
+      await screen.findByRole('menuitem', {
+        name: 'Allow Bash for this session',
+        exact: true,
+      }),
     ).toBeTruthy();
   });
 });
