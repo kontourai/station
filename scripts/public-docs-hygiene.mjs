@@ -103,7 +103,7 @@ export function publicDocsHygieneFindings(
 }
 
 const RENDERED_HREF = /\shref="([^"]+)"/g;
-const NON_RELATIVE_HREF = /^(?:[a-z][a-z\d+.-]*:|\/\/|\/|#)/i;
+const NON_RELATIVE_HREF = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i;
 
 // Pages publishes only the manifest's documents, so a relative link from one
 // of them to any other repository file renders as a 404. Links are read from
@@ -128,12 +128,16 @@ export function publicProjectionLinkFindings(
     for (const match of renderMarkdown(text).matchAll(RENDERED_HREF)) {
       const href = match[1].replaceAll('&amp;', '&');
       if (NON_RELATIVE_HREF.test(href)) continue;
-      const target = path.posix.normalize(
-        path.posix.join(
-          path.posix.dirname(source),
-          decodeURIComponent(href.split(/[?#]/, 1)[0]),
-        ),
-      );
+      // A root-absolute href leaves the Pages project path, so no admitted
+      // document can satisfy it.
+      const target = href.startsWith('/')
+        ? href
+        : path.posix.normalize(
+            path.posix.join(
+              path.posix.dirname(source),
+              decodeURIComponent(href.split(/[?#]/, 1)[0]),
+            ),
+          );
       if (published.has(target)) continue;
       const markdownHref = href.replace(/\.html(?=[?#]|$)/, '.md');
       const index = text.indexOf(`](${markdownHref}`);

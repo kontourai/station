@@ -35,6 +35,7 @@ const EXPLICIT_PUBLIC_REFERENCE_SOURCES = new Set([
   'reference/contributor-commands.md',
   'reference/product-laws.md',
 ]);
+const BARE_RELATIVE_HREF = /^[\w-][\w./-]*(?:#[\w-]*)?$/;
 const PUBLIC_SOURCE = /^(?:user|guides)\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 
 export function isAllowedPublicDocSource(source) {
@@ -415,9 +416,14 @@ export function renderInline(value) {
         : href.endsWith('.md')
           ? href.replace(/\.md$/, '.html')
           : href.replace(/\.md#/, '.html#');
-      const safeHref = /^(?:https?:|mailto:|#|\/|\.\.?\/)/i.test(normalized)
-        ? normalized
-        : '#';
+      // A bare sibling path (`concepts.md`) is as relative as `./concepts.md`;
+      // it once fell through to `#` and shipped as a dead link. Its character
+      // set admits no scheme, so `javascript:` still lands on `#`.
+      const safeHref =
+        /^(?:https?:|mailto:|#|\/|\.\.?\/)/i.test(normalized) ||
+        BARE_RELATIVE_HREF.test(normalized)
+          ? normalized
+          : '#';
       return `<a href="${escapeAttribute(safeHref)}">${label}</a>`;
     });
 }

@@ -103,6 +103,10 @@ describe('public documentation admission', () => {
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('onmouseover="alert(1)');
     expect(renderInline('[unsafe](javascript:alert(1))')).toContain('href="#"');
+    expect(renderInline('[sibling](concepts.md#start)')).toContain(
+      'href="concepts.html#start"',
+    );
+    expect(renderInline('[unsafe](JavaScript:alert(1))')).toContain('href="#"');
     const index = renderDocsIndexSections([
       {
         description: '<script>alert(1)</script>',
@@ -190,6 +194,7 @@ describe('public documentation admission', () => {
           'See the [public guide](../guides/public.md#setup), the',
           '[private guide](../guides/private.md#reading-a-referenced-conversation),',
           'and the [example](../../examples/demo/README.md).',
+          'A [bare sibling](private.md) and a [rooted](/guides/public.md) link.',
         ].join('\n'),
       ],
       [
@@ -205,6 +210,8 @@ describe('public documentation admission', () => {
     ).toEqual([
       'user/start.md:4 non-public-link: ../guides/private.md#reading-a-referenced-conversation (not admitted to Pages; use its absolute GitHub URL)',
       'user/start.md:5 non-public-link: ../../examples/demo/README.md (not admitted to Pages; use its absolute GitHub URL)',
+      'user/start.md:6 non-public-link: private.md (not admitted to Pages; use its absolute GitHub URL)',
+      'user/start.md:6 non-public-link: /guides/public.md (not admitted to Pages; use its absolute GitHub URL)',
       'guides/public.md:3 non-public-link: ./internal.md (not admitted to Pages; use its absolute GitHub URL)',
     ]);
   });
@@ -247,15 +254,18 @@ describe('public documentation admission', () => {
   it('accepts published, absolute, anchor, and fenced links', () => {
     const documents = [
       { source: 'user/start.md' },
+      { source: 'user/other.md' },
       { source: 'guides/public.md' },
     ];
     const contents = new Map([
+      ['docs/user/other.md', '# Other\n\n## Intro'],
       [
         'docs/user/start.md',
         [
           '# Start',
           '',
           '[Public](../guides/public.md), [section](../guides/public.md#setup),',
+          '[Sibling](other.md#intro),',
           '[on page](#start), [source](https://github.com/kontourai/station/blob/main/docs/guides/private.md),',
           'and [mail](mailto:hello@example.com).',
           '',
