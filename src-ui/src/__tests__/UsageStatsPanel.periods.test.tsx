@@ -244,7 +244,7 @@ describe('UsageStatsPanel period selector', () => {
     expect(screen.getByText('12')).toBeTruthy();
     expect(screen.getByText('$1.23')).toBeTruthy();
     expect(screen.getByText('2/30')).toBeTruthy();
-    expect(screen.getByText('$0.1025')).toBeTruthy(); // 1.23 / 12
+    expect(screen.queryByText('Avg/Message')).toBeNull();
     // The dishonest-completeness case: the lifetime totals — which include
     // engine sessions daily history cannot see — must not appear as period
     // figures.
