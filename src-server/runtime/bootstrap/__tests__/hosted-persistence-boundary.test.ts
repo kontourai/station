@@ -75,23 +75,12 @@ function secureHomeWithData(prefix: string): {
   return { home, data, database };
 }
 
+// Join the graph at module evaluation so the security assertion's clock owns
+// construction, not an unfinished cold import overlapping earlier tests.
+const { StationRuntime } = await import('../station-runtime.js');
+
 describe('hosted persistence boundary', () => {
   const directories: string[] = [];
-
-  // The full station-runtime graph takes ~5.0s cold to import (measured in
-  // the EventStore-order test below), and inside a loaded corpus shard that
-  // import has repeatedly outrun the test's own budget (red again in the
-  // 2026-09-21 21:54 UTC Nightly). Kick the import off at collection so it
-  // overlaps the earlier filesystem tests instead of racing one test's
-  // clock; the timed test then pays only construction + assertion. The env
-  // var it configures is read at construction time, not module scope, so
-  // the early import captures nothing it should not. Module mocks
-  // (vi.mock) apply to dynamic imports regardless of timing.
-  const stationRuntimeImport: Promise<typeof import('../station-runtime.js')> =
-    import('../station-runtime.js');
-  // A rejection here would otherwise sit unhandled during the earlier
-  // tests; the timed test below still observes it via await.
-  stationRuntimeImport.catch(() => {});
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -296,9 +285,7 @@ describe('hosted persistence boundary', () => {
     ).toThrow(/Windows hosted mode is unsupported/);
   });
 
-  // The station-runtime graph import is kicked off at describe scope (see
-  // the note above) so this budget covers construction + assertion, not the
-  // ~5s cold import that previously raced this clock under corpus load.
+  // The deployment environment is read at construction, after graph readiness.
   it('rejects an insecure hosted home before EventStore construction', {
     timeout: 20_000,
   }, async () => {
@@ -310,7 +297,6 @@ describe('hosted persistence boundary', () => {
     process.env.STATION_HOSTED_TENANT_REGISTRY_FILE =
       '/deployment/tenant-registry.json';
     try {
-      const { StationRuntime } = await stationRuntimeImport;
       expect(() => new StationRuntime({ projectHomeDir: home })).toThrow(
         HostedPersistenceBoundaryError,
       );
