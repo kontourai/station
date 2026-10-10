@@ -130,35 +130,38 @@ export function publicProjectionLinkFindings(
     const text = read(`docs/${source}`, 'utf8');
     const html = renderMarkdown(text);
     for (const [, label] of html.matchAll(DEAD_RENDERED_LINK)) {
-      if (text.includes(`[${label}](#)`)) continue;
-      findings.push(`${source} dead-link: [${label}] renders as href="#"`);
+      if (!text.includes(`[${label}](#)`))
+        findings.push(`${source} dead-link: [${label}] renders as href="#"`);
     }
     for (const match of html.matchAll(RENDERED_HREF)) {
       const href = match[1].replaceAll('&amp;', '&');
       if (NON_RELATIVE_HREF.test(href)) continue;
-      // A root-absolute href leaves the Pages project path, so no admitted
-      // document can satisfy it.
-      const target = href.startsWith('/')
-        ? href
-        : path.posix.normalize(
-            path.posix.join(
-              path.posix.dirname(source),
-              decodeURIComponent(href.split(/[?#]/, 1)[0]),
-            ),
-          );
-      if (published.has(target)) continue;
+      if (published.has(renderedLinkTarget(source, href))) continue;
       const markdownHref = href.replace(/\.html(?=[?#]|$)/, '.md');
-      const index = text.indexOf(`](${markdownHref}`);
-      const location =
-        index === -1
-          ? source
-          : `${source}:${text.slice(0, index).split('\n').length}`;
       findings.push(
-        `${location} non-public-link: ${markdownHref} (not admitted to Pages; use its absolute GitHub URL)`,
+        `${linkLocation(source, text, markdownHref)} non-public-link: ${markdownHref} (not admitted to Pages; use its absolute GitHub URL)`,
       );
     }
   }
   return findings;
+}
+
+/** The docs-relative page a rendered relative href opens. */
+function renderedLinkTarget(source, href) {
+  // A root-absolute href leaves the Pages project path, so no admitted
+  // document can satisfy it.
+  if (href.startsWith('/')) return href;
+  const pathname = decodeURIComponent(href.split(/[?#]/, 1)[0]);
+  return path.posix.normalize(
+    path.posix.join(path.posix.dirname(source), pathname),
+  );
+}
+
+/** `source:line` of the first Markdown link to `markdownHref`, else `source`. */
+function linkLocation(source, text, markdownHref) {
+  const index = text.indexOf(`](${markdownHref}`);
+  if (index === -1) return source;
+  return `${source}:${text.slice(0, index).split('\n').length}`;
 }
 
 /**
