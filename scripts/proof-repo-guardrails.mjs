@@ -6077,19 +6077,15 @@ for (const requiredHelper of [
   }
 }
 
-const metricsPanel = readRequiredSource(
-  '../src-ui/src/components/monitoring/MetricsPanel.tsx',
-);
-if (metricsPanel.includes('fetch(')) {
-  errors.push('MetricsPanel must not issue raw fetch() calls.');
-}
-if (!metricsPanel.includes('useMonitoringMetricsQuery')) {
-  errors.push('MetricsPanel must use the shared monitoring metrics query.');
-}
-
 const monitoringView = readRequiredSource(
   '../src-ui/src/views/MonitoringView.tsx',
 );
+if (monitoringView.includes('fetch(')) {
+  errors.push('MonitoringView must not issue raw fetch() calls.');
+}
+if (!monitoringView.includes('useOrchestrationSessionsQuery')) {
+  errors.push('MonitoringView must use the shared session diagnostics query.');
+}
 for (const requiredImport of [
   './MonitoringTimeControls',
   './MonitoringLogControls',

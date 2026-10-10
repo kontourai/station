@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { glob } from 'glob';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -155,15 +156,61 @@ describe('tab/section-nav class-token import guard (station#4463 slice 2)', () =
     return TAB_TOKENS.some((token) => source.includes(token));
   }
 
-  function reachesPageLayoutCss(file: string, source: string): boolean {
-    if (OWNING_COMPONENTS.includes(file)) {
-      return source.includes('page-layout.css');
-    }
-    if (source.includes('page-layout.css')) return true;
-    return (
-      /from ['"][^'"]*\/Tabs['"]/.test(source) ||
-      /from ['"][^'"]*\/SectionNav['"]/.test(source)
+  function reachesPageLayoutCss(
+    file: string,
+    source: string,
+    visited = new Set<string>(),
+  ): boolean {
+    const absolute = resolve(UI_SRC, file);
+    if (visited.has(absolute)) return false;
+    visited.add(absolute);
+    const parsed = ts.createSourceFile(
+      file,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
     );
+    const imports = parsed.statements.flatMap((statement) => {
+      if (
+        !ts.isImportDeclaration(statement) ||
+        !ts.isStringLiteral(statement.moduleSpecifier) ||
+        statement.importClause?.isTypeOnly
+      )
+        return [];
+      const clause = statement.importClause;
+      if (
+        clause &&
+        !clause.name &&
+        clause.namedBindings &&
+        ts.isNamedImports(clause.namedBindings) &&
+        clause.namedBindings.elements.every((element) => element.isTypeOnly)
+      )
+        return [];
+      return [statement.moduleSpecifier.text];
+    });
+    const stylesheet = resolve(UI_SRC, 'views/page-layout.css');
+    if (
+      imports.some(
+        (specifier) => resolve(dirname(absolute), specifier) === stylesheet,
+      )
+    )
+      return true;
+    if (OWNING_COMPONENTS.includes(file)) return false;
+    return imports.some((specifier) => {
+      if (!specifier.startsWith('.')) return false;
+      const target = resolve(dirname(absolute), specifier).replace(/\.js$/, '');
+      const dependency = [target, `${target}.tsx`, `${target}.ts`].find(
+        (candidate) => /\.tsx?$/.test(candidate) && existsSync(candidate),
+      );
+      return (
+        dependency !== undefined &&
+        reachesPageLayoutCss(
+          relative(UI_SRC, dependency),
+          readFileSync(dependency, 'utf8'),
+          visited,
+        )
+      );
+    });
   }
 
   it('scans a real corpus and finds the two owning components (scope honesty)', () => {

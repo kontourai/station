@@ -594,6 +594,7 @@ const executionTargetSchema = z.object({
         executionAgent: z.string().min(1).max(64),
         expectedDefinitionFingerprint: z
           .string()
+          .max(71)
           .regex(/^sha256:[0-9a-f]{64}$/)
           .optional(),
       })
