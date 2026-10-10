@@ -21,6 +21,25 @@ is not enough: the moment you are looking at something else, the toast has
 nobody to show itself to, and the thing you are being asked to approve expires
 in five minutes.
 
+## External transcripts
+
+Threads followed from another app (`controlMode: read-only-attached`) do not
+raise Station completion or approval notifications. The
+[completion producer](../../src-server/services/orchestration/turn-completion-notifications.ts)
+and [approval producer](../../src-server/services/approvals/approval-inbox.ts)
+check Station's recorded ownership before scheduling a notification, so those
+transcript events produce no notification popup, sound, desktop alert, Web Push,
+or native mobile alert. External transcripts are also excluded from Android
+activity cards and iOS Live Activities by the
+[shared card phase selector](../../src-server/services/notifications/agent-activity-card.ts),
+using ownership carried by the
+[publisher's summary projection](../../src-server/services/notifications/agent-activity-publisher.ts).
+
+They remain available in Activity and the imported conversation reader. A
+Station-owned session using an external engine, or a new Station-owned
+continuation of an external transcript, keeps its ordinary notification
+behavior. Automation triggers are separate from this notification policy.
+
 ## Approval actions in the running client
 
 The in-app approval toast sends the selected decision and opens its originating

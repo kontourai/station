@@ -154,6 +154,7 @@ function readSummaries(sessions: Map<string, CanonicalRuntimeEvent[]>) {
       provider: 'claude',
       threadId,
       status: 'running',
+      controlMode: events[0]?.metadata?.controlMode ?? 'station-owned',
       cwd: '/Users/someone/private-repo',
       createdAt: events[0]?.createdAt,
       updatedAt: events.at(-1)?.createdAt,
@@ -424,6 +425,33 @@ describe('agent-activity publisher', () => {
     expect(h.fetchImpl).not.toHaveBeenCalled();
     await h.publisher.stop();
   });
+
+  test.each(['running', 'approval', 'input', 'completed'] as const)(
+    'external %s transcripts never appear or alert on a mobile card',
+    async (state) => {
+      const h = await harness();
+      await h.pairAndRegister();
+      h.sessions.set('owned', sessionEvents('owned', 'running', START));
+      const external = sessionEvents('external', state, START);
+      external[0]!.metadata = {
+        ...external[0]!.metadata,
+        controlMode: 'read-only-attached',
+      };
+      h.sessions.set('external', external);
+      h.emit('turn.completed');
+      await h.settle();
+      expect(h.refused).toEqual([]);
+      expect(h.delivered).toHaveLength(1);
+      expect(h.delivered[0]?.card).toMatchObject({
+        activity_active_count: '1',
+        activity_attention_count: '0',
+        activity_session_id: 'owned',
+      });
+      expect(h.delivered[0]?.card.alert_id).toBeUndefined();
+      expect(JSON.stringify(h.delivered[0]?.card)).not.toContain('external');
+      await h.publisher.stop();
+    },
+  );
 
   test('seals one card per phone: only routing data travels in clear', async () => {
     const h = await harness();

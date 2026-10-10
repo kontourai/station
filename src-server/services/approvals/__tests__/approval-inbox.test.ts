@@ -59,10 +59,31 @@ describe('approval inbox notifications', () => {
     OrchestrationService,
     | 'dispatch'
     | 'isEphemeralSession'
+    | 'isReadOnlyAttachedSession'
     | 'readRequestOutcome'
     | 'resolveSessionProjectSlug'
   >;
   let provider: ApprovalInboxNotificationProvider;
+
+  test('an external transcript request never raises an approval notification', async () => {
+    vi.mocked(orchestrationService.isReadOnlyAttachedSession).mockReturnValue(
+      true,
+    );
+    await emit('orchestration:event', {
+      event: {
+        eventId: 'external-request',
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        provider: 'codex',
+        threadId: 'external-thread',
+        turnId: 'external-turn',
+        requestId: 'external-approval',
+        requestType: 'approval',
+        title: 'External approval',
+      },
+    });
+    expect(await notificationService.list()).toEqual([]);
+  });
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'approval-inbox-'));
@@ -84,6 +105,9 @@ describe('approval inbox notifications', () => {
       resolveSessionProjectSlug: vi
         .fn<OrchestrationService['resolveSessionProjectSlug']>()
         .mockReturnValue(undefined),
+      isReadOnlyAttachedSession: vi
+        .fn<OrchestrationService['isReadOnlyAttachedSession']>()
+        .mockReturnValue(false),
       isEphemeralSession: vi
         .fn<OrchestrationService['isEphemeralSession']>()
         .mockReturnValue(false),
