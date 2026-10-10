@@ -194,7 +194,7 @@ describe('public documentation admission', () => {
           'See the [public guide](../guides/public.md#setup), the',
           '[private guide](../guides/private.md#reading-a-referenced-conversation),',
           'and the [example](../../examples/demo/README.md).',
-          'A [bare sibling](private.md) and a [rooted](/guides/public.md) link.',
+          'A [bare sibling](private.md) and a [rooted](/start.md) link.',
         ].join('\n'),
       ],
       [
@@ -211,7 +211,7 @@ describe('public documentation admission', () => {
       'user/start.md:4 non-public-link: ../guides/private.md#reading-a-referenced-conversation (not admitted to Pages; use its absolute GitHub URL)',
       'user/start.md:5 non-public-link: ../../examples/demo/README.md (not admitted to Pages; use its absolute GitHub URL)',
       'user/start.md:6 non-public-link: private.md (not admitted to Pages; use its absolute GitHub URL)',
-      'user/start.md:6 non-public-link: /guides/public.md (not admitted to Pages; use its absolute GitHub URL)',
+      'user/start.md:6 non-public-link: /start.md (not admitted to Pages; use its absolute GitHub URL)',
       'guides/public.md:3 non-public-link: ./internal.md (not admitted to Pages; use its absolute GitHub URL)',
     ]);
   });
