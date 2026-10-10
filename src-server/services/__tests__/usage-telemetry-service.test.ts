@@ -7,8 +7,11 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
+import { parseProductTelemetryBatch } from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { usageTelemetryOutcomes } from '../../telemetry/metrics.js';
 import {
@@ -82,6 +85,69 @@ async function service(
 }
 
 describe('UsageTelemetryService', () => {
+  test('lost response retry preserves observation IDs, time and build on real delivery', async () => {
+    const bodies: ProductTelemetryBatch[] = [];
+    const receiver = createServer(async (request, response) => {
+      let raw = '';
+      for await (const chunk of request) raw += chunk;
+      bodies.push(parseProductTelemetryBatch(JSON.parse(raw)));
+      if (bodies.length === 1) request.socket.destroy();
+      else response.writeHead(202).end();
+    });
+    await new Promise<void>((resolve) =>
+      receiver.listen(0, '127.0.0.1', resolve),
+    );
+    const address = receiver.address();
+    if (!address || typeof address === 'string')
+      throw new Error('receiver did not listen');
+    const subject = await service({
+      env: {
+        STATION_TELEMETRY_ENDPOINT: `http://127.0.0.1:${address.port}`,
+        STATION_BUILD_SHA: 'a'.repeat(40),
+        STATION_BUILD_BRANCH: 'private-project-branch',
+        STATION_INSTANCE_ID: 'private-host-label',
+        STATION_CHANNEL: 'nightly',
+      },
+      setInterval: vi.fn() as typeof setInterval,
+    });
+    try {
+      await subject.track('engine_turn', {
+        engine: 'codex',
+        outcome: 'completed',
+      });
+      await subject.flush();
+      expect(subject.bufferedCount).toBe(1);
+      await subject.flush();
+      expect(subject.bufferedCount).toBe(0);
+      expect(bodies).toHaveLength(2);
+      expect((await subject.disclosure()).envelope).toContain('event_id');
+      expect(bodies[1]).toEqual(bodies[0]);
+      expect(bodies[0].events[0]).toMatchObject({
+        event: 'engine_turn',
+        build: {
+          version: '1.2.3',
+          sha: 'a'.repeat(40),
+          sha_source: 'checkout',
+          channel: 'nightly',
+        },
+      });
+      expect(bodies[0].events[0].event_id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(Number.isFinite(Date.parse(bodies[0].events[0].occurred_at))).toBe(
+        true,
+      );
+      expect(Number.isFinite(Date.parse(bodies[0].events[0].observed_at))).toBe(
+        true,
+      );
+      expect(JSON.stringify(bodies)).not.toContain('private-project-branch');
+      expect(JSON.stringify(bodies)).not.toContain('private-host-label');
+    } finally {
+      await subject.shutdown();
+      await new Promise<void>((resolve, reject) =>
+        receiver.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
   /**
    * #1582 A3: the first-run disclosure says "none is configured here, so
    * nothing is sent" and offers to keep telemetry on or turn it off. Both

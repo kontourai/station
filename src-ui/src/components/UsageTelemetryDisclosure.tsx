@@ -31,6 +31,8 @@ import { SkeletonBlock } from './state';
 type Disclosure = {
   acknowledged: boolean;
   inventoryRevision: string;
+  /** Versioned envelope disclosure; older servers omit it. */
+  envelope?: string;
   events: Record<
     string,
     {
@@ -332,6 +334,9 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
         filesystem paths, repository names, hostnames, branches, account
         identities, or other free text.
       </p>
+      {data.envelope && (
+        <p className="usage-telemetry-disclosure__lede">{data.envelope}</p>
+      )}
       {Object.entries(data.events).map(([event, definition]) => (
         <div className="usage-telemetry-disclosure__event" key={event}>
           <strong>{event}</strong>

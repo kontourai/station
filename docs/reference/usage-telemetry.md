@@ -58,7 +58,22 @@ controlled endpoints; a live ingestion deployment needs its own delivery evidenc
 
 # Event inventory
 
-This page is rendered from `src-server/services/usage-telemetry-inventory.ts`; its contract test rejects code/inventory drift.
+This inventory is declared by @kontourai/station-contracts/product-telemetry and rendered by @kontourai/station-shared/product-telemetry. Its revision includes envelope metadata.
+
+Version 1 envelope
+
+Every batch includes schema_version (1), inventory_revision (this disclosed inventory's SHA-256),
+and distinct_id (the separate installation hash). Every event includes event_id (random UUID),
+event (one inventory name), occurred_at (UTC producer time at observation), observed_at
+(UTC producer time at buffer admission), build, and the allowlisted properties below.
+IDs and observation metadata remain unchanged on retry. Timestamps are producer wall-clock
+observations, not a guarantee of synchronized clocks or receiver arrival.
+
+Every event's build carries SemVer version, operating-system platform and CPU architecture.
+Optional sha is a full Git hash paired with sha_source (build-stamp or checkout); checkout
+provenance does not identify served bundle bytes. Optional channel is stable, preview,
+nightly, dev or source-checkout; optional dirty is a boolean supplied by the build stamp.
+Missing provenance stays absent. Branches, hostnames, instance and boot identifiers are excluded.
 
 ## `station_started`
 

@@ -1,14 +1,25 @@
+import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type {
+  ProductTelemetryBatch,
+  ProductTelemetryBuild,
+  ProductTelemetryObservation,
+} from '@kontourai/station-contracts/product-telemetry';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { redactDeep } from '@kontourai/station-shared/redaction';
+import {
+  type BuildProvenanceSnapshot,
+  captureBuildProvenance,
+} from '../routes/system/build-provenance.js';
 import { usageTelemetryOutcomes } from '../telemetry/metrics.js';
 import { errorMessage } from '../utils/error-message.js';
 import type { Logger } from '../utils/logger.js';
 import { persistedRandomIdentifierHash } from './persisted-random-identifier.js';
 import {
   assertUsageTelemetryInventoryContract,
+  renderUsageTelemetryEnvelopeInventory,
   USAGE_TELEMETRY_EVENTS,
   USAGE_TELEMETRY_INVENTORY_REVISION,
   type UsageTelemetryEvent,
@@ -22,15 +33,14 @@ const MAX_SHUTDOWN_FLUSH_ATTEMPTS = 5;
 const REQUEST_TIMEOUT_MS = 1_000;
 // Optional telemetry must not consume Station's service-stop time when an
 // ingestion host accepts a connection but never responds.
-type BufferedEvent = {
-  event: UsageTelemetryEvent;
-  properties: Record<string, string>;
-};
+type BufferedEvent = ProductTelemetryObservation;
 
 interface UsageTelemetryServiceOptions {
   homeDir: string;
   appConfig: AppConfig;
   version: string;
+  /** null preserves explicitly unknown bootstrap provenance. */
+  buildProvenance?: BuildProvenanceSnapshot | null;
   logger: Pick<Logger, 'warn'>;
   env?: NodeJS.ProcessEnv;
   fetch?: typeof globalThis.fetch;
@@ -76,6 +86,7 @@ function resolveEnabled(
 
 /** Server-only, dependency-free product telemetry. It never reads vendor homes. */
 export class UsageTelemetryService {
+  private readonly build: ProductTelemetryBuild;
   private readonly endpoint: string | undefined;
   private readonly apiKey: string | undefined;
   private enabled: boolean;
@@ -92,6 +103,25 @@ export class UsageTelemetryService {
   private readonly tracking = new Set<Promise<void>>();
   constructor(private readonly options: UsageTelemetryServiceOptions) {
     const env = options.env ?? process.env;
+    const provenance =
+      options.buildProvenance === undefined
+        ? captureBuildProvenance(env)
+        : options.buildProvenance;
+    this.build = {
+      version: options.version,
+      platform: process.platform,
+      arch: process.arch,
+      ...(provenance?.fullSha && provenance.shaSource
+        ? { sha: provenance.fullSha, sha_source: provenance.shaSource }
+        : {}),
+      ...(provenance?.channel &&
+      ['stable', 'preview', 'nightly', 'dev', 'source-checkout'].includes(
+        provenance.channel,
+      )
+        ? { channel: provenance.channel as ProductTelemetryBuild['channel'] }
+        : {}),
+      ...(provenance?.dirty !== undefined ? { dirty: provenance.dirty } : {}),
+    };
     const resolved = resolveEnabled(options.appConfig, env);
     this.enabled = resolved.enabled;
     this.enabledSource = resolved.source;
@@ -173,6 +203,7 @@ export class UsageTelemetryService {
     acknowledged: boolean;
     inventoryRevision: string;
     events: typeof USAGE_TELEMETRY_EVENTS;
+    envelope: string;
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
@@ -181,6 +212,7 @@ export class UsageTelemetryService {
       acknowledged: await this.loadDisclosureReceipt(),
       inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
+      envelope: renderUsageTelemetryEnvelopeInventory(),
       endpointConfigured: this.endpointConfigured,
       // The EFFECTIVE setting, which is `telemetryEnabled` folded over the
       // `STATION_TELEMETRY_ENABLED` fallback and the default. A client that
@@ -215,7 +247,12 @@ export class UsageTelemetryService {
     properties: UsageTelemetryProperties<E>,
   ): Promise<void> {
     if (!this.acceptingTracks) return Promise.resolve();
-    const operation = this.trackAccepted(event, properties);
+    const operation = this.trackAccepted(
+      event,
+      properties,
+      randomUUID(),
+      new Date().toISOString(),
+    );
     this.tracking.add(operation);
     void operation.finally(() => this.tracking.delete(operation));
     return operation;
@@ -223,6 +260,8 @@ export class UsageTelemetryService {
   private async trackAccepted<E extends UsageTelemetryEvent>(
     event: E,
     properties: UsageTelemetryProperties<E>,
+    eventId: string,
+    occurredAt: string,
   ): Promise<void> {
     if (!this.hasCurrentDisclosureReceipt) await this.loadDisclosureReceipt();
     if (!this.active) return;
@@ -240,7 +279,14 @@ export class UsageTelemetryService {
         this.recordOutcome('event_dropped');
         this.warn('Usage telemetry buffer overflow; dropped oldest event.');
       }
-      this.buffer.push({ event, properties: safeProperties });
+      this.buffer.push({
+        event,
+        properties: safeProperties,
+        event_id: eventId,
+        occurred_at: occurredAt,
+        observed_at: new Date().toISOString(),
+        build: { ...this.build },
+      });
       this.ensureTimer();
       if (this.buffer.length >= BATCH_SIZE) void this.flush();
     } catch (error) {
@@ -338,9 +384,11 @@ export class UsageTelemetryService {
             ...(this.apiKey ? { 'x-api-key': this.apiKey } : {}),
           },
           body: JSON.stringify({
+            schema_version: 1,
+            inventory_revision: USAGE_TELEMETRY_INVENTORY_REVISION,
             distinct_id: await this.distinctIdHash(),
             events: batch,
-          }),
+          } satisfies ProductTelemetryBatch),
           signal: controller.signal,
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);

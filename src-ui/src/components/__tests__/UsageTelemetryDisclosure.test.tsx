@@ -81,6 +81,8 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
         data: {
           acknowledged: false,
           inventoryRevision: 'rev',
+          envelope:
+            'Every event carries an observation ID, producer times and allowlisted build metadata.',
           events: {
             station_started: {
               description: 'Station completed startup.',
@@ -121,6 +123,11 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
   expect(
     screen.getByText('platform'),
     'Settings disclosure did not render the published property',
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      'Every event carries an observation ID, producer times and allowlisted build metadata.',
+    ),
   ).toBeTruthy();
   // #1600: the action names the decision it makes, here and in the modal, and
   // keeping the state the host is already in writes only the receipt.
