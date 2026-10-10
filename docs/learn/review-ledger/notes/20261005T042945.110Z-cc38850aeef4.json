@@ -1,0 +1,7 @@
+{
+  "revision": "3133f30b5ab982915cee2dbcdc0537297885960a",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"The linked change is the Windows service stop and pre-W3 migration wording only; this document makes no claim about either; checked.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]}
+  ]
+}

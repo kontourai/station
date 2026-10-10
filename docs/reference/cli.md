@@ -1877,7 +1877,13 @@ version `install.sh` made active (on Linux and macOS), the unit runs the
 archive's bundled Node.js through `<install root>/current` (and puts
 `current/runtime/bin` on its `PATH`) with the fixed service launcher that
 `service install` copies to `<install root>/runtime/station-launcher.mjs`; the
-launcher runs the active version. The
+launcher runs the active version. For the version `install.ps1` made active
+(on Windows, #2675 W3), `service install` also copies that version's
+`runtime\node.exe` to `<install root>\runtime\node.exe`, and the task's
+`cmd.exe` wrapper runs that copy with the launcher, from `<install
+root>\runtime`: no junction is on the path the task executes, and the
+running launcher holds no version directory open, so an update can switch
+`current` and prune old versions under it. The
 service manifest records which (`kind`: `source` or `archive`) and, for such
 an archive, its `installRoot`; the installer and `station upgrade` recognize
 the service by that root. Installing a service from another version under
@@ -1922,6 +1928,25 @@ run `station service stop --instance=<name>` and
 `station service start --instance=<name>`: each start tries the restore once
 more. That includes any restart of the launcher, a reboot among them: every
 launcher start in this state runs one restore attempt on its own.
+
+On Windows the launcher supervises itself, because Task Scheduler does
+neither of the things the other two managers do for it: it does not run a task
+again when its program exits, and `schtasks /End` ends only the `cmd.exe`
+wrapper, not the processes it started. So the Windows launcher, where it
+would exit for its manager to restart it (the running version exited, or a
+step of an update failed, such as a restore), waits and starts over from
+`runtime\service-state.json` in the same process: 5 seconds, doubling to at
+most 60, and back to 5 after a run of 10 minutes. A failing restore is still
+counted and still ends in needs-operator. The launcher stops when its
+wrapper is gone, and it stops the running version by closing their IPC
+channel, which `service run` answers with the same orderly shutdown a
+SIGTERM starts elsewhere. `service stop` therefore ends the task, waits for
+the launcher to stop Station and exit (up to its 150-second stop budget, after
+which it ends the launcher by pid only if the launcher's start time proves the
+pid is still the launcher's, and otherwise refuses, naming the pid), and then
+stops anything left by record.
+If the launcher process itself is killed, nothing starts it again until the
+next logon or `service start`.
 `station service status` shows the update (`update` in `--json`), and in this
 state names the recovery; it is the place to see it, since no Station runs
 for a client to ask. While the launcher that accepted the update runs, the service's
@@ -2025,6 +2050,9 @@ did not persist. Unlike the macOS (`KeepAlive`) and Linux (`Restart=always`)
 units, the Windows task does not relaunch a service that exits: Task
 Scheduler's restart settings apply to a task it could not start, and a wrapper
 that exits non-zero is left stopped until the next logon or `service start`.
+A service of an `install.ps1` install runs the fixed launcher, which restarts
+the Station it supervises itself (see the self-update section above); a
+service installed from any other code root is not restarted.
 `service status` (and `station upgrade`) read the same six values on a
 `scheduling` line: a task registered by an earlier version reports `stale`
 with the reinstall command, and `healthy` is false until it is reinstalled.
@@ -2421,7 +2449,7 @@ install state, provenance, ownership marker and active link, then re-runs that
 version's installer with the recorded release manifest. On Windows the
 installer is the version's `install.ps1`, run through the system Windows
 PowerShell, and the install root's ACL (current user only) is checked in place
-of POSIX mode bits; a Windows service is not switched yet (#2675 W3). Public-manifest
+of POSIX mode bits. Public-manifest
 installs record the URL in schema-4 state; an explicit
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. The installer keeps the ports
 the install recorded: the CLI's own `STATION_SERVER_PORT`/`STATION_UI_PORT`
