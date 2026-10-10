@@ -56,6 +56,40 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'telemetry-provider-registration',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with persisted identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+            '  await identity;\n  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-unidentified-export',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with failed identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const identity = Promise.resolve(\n    resourceAttributes[OTEL_INSTALLATION_ID_ATTRIBUTE],\n  );',
+            "  const identity = Promise.resolve('bypassed');",
+          ),
+      },
+    ],
+  },
+  {
     id: 'ci-health-concurrency-threshold',
     test: 'scripts/__tests__/ci-health.test.ts',
     failure:
