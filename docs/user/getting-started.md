@@ -443,7 +443,10 @@ how Station preserves the same work identity through retries and response loss.
 
 **Activity** also lists Claude Code, Codex, Grok and OpenCode conversations
 you ran in a terminal or another app on this machine. Station reads them; it
-never controls them. It looks in four places:
+never controls them. These conversations do not raise Station sounds, popups,
+desktop notifications or mobile alerts, and do not appear on mobile activity
+cards. A new conversation you continue in Station has its ordinary alerts.
+Station looks in four places:
 
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
