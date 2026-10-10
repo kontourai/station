@@ -468,15 +468,44 @@ describe('EventStore concurrent-home boot', () => {
 describe('EventStore', () => {
   let dir: string;
   let store: EventStore;
+  let profile = { started: 0, calls: 0, appendMs: 0, maxAppendMs: 0 };
 
-  beforeEach(() => {
+  beforeEach((context) => {
+    profile = {
+      started: performance.now(),
+      calls: 0,
+      appendMs: 0,
+      maxAppendMs: 0,
+    };
+    process.stderr.write(
+      `${JSON.stringify({ phase: 'test-start', name: context.task.name })}\n`,
+    );
     dir = mkdtempSync(join(tmpdir(), 'orchestration-store-'));
     store = new EventStore(join(dir, 'orchestration.sqlite'));
+    const append = store.appendEvent.bind(store);
+    vi.spyOn(store, 'appendEvent').mockImplementation((...args) => {
+      const started = performance.now();
+      try {
+        return append(...args);
+      } finally {
+        const duration = performance.now() - started;
+        profile.calls += 1;
+        profile.appendMs += duration;
+        profile.maxAppendMs = Math.max(profile.maxAppendMs, duration);
+        if (profile.calls % 500 === 0)
+          process.stderr.write(
+            `${JSON.stringify({ phase: 'append-progress', ...profile, elapsedMs: performance.now() - profile.started })}\n`,
+          );
+      }
+    });
   });
 
-  afterEach(() => {
+  afterEach((context) => {
     store.close();
     rmSync(dir, { recursive: true, force: true });
+    process.stderr.write(
+      `${JSON.stringify({ phase: 'test-terminal', name: context.task.name, ...profile, elapsedMs: performance.now() - profile.started })}\n`,
+    );
   });
 
   test.each(['appendEvent', 'appendEventIfAbsent'] as const)(
