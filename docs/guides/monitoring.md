@@ -16,14 +16,17 @@ also separate from the canonical orchestration EventStore.
 Configured OTel registers its providers synchronously when the telemetry module
 loads, before Station creates its instruments. Installation identity resolves
 as an asynchronous resource attribute; export waits for it without delaying
-application startup. Failed identity persistence stops the SDK and refuses
+application startup. Hosted persistence admission precedes schema/identity
+writes; deployment-mode detection has no metric imports that could create
+instruments before provider registration. Failed identity persistence stops the SDK and refuses
 export rather than sending an unidentified payload. With no endpoint, the SDK
 stays inactive and performs no identity I/O.
 
 The [telemetry regression](../../src-server/__tests__/telemetry.test.ts) records
 the actual exported chat counter while identity I/O is held, then observes both
 that record and a later record at a loopback OTLP receiver with the persisted
-identity hash. A failure control receives no payload. This repairs
+identity hash. A failure control receives no payload, and unsafe hosted homes
+remain untouched. This repairs
 [#2755](https://github.com/kontourai/station/issues/2755); it does not qualify a
 deployed collector, storage backend or dashboard. The tables below remain
 declarations and recording call sites, not proof of those destinations.
@@ -450,6 +453,8 @@ before instrument creation. The configured SDK includes:
 - `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter)
 - `AwsInstrumentation` — auto-instruments AWS SDK calls
 - A `PeriodicExportingMetricReader` with a 30-second export interval and delta temporality
+- No SDK log exporter: Station's durable logger remains a separate local path.
+  `OTEL_LOGS_EXPORTER` does not implicitly add an unreviewed export signal.
 
 ## Metrics reference
 

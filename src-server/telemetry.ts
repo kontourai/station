@@ -18,6 +18,7 @@ import {
 } from '@opentelemetry/sdk-metrics';
 import { core, NodeSDK } from '@opentelemetry/sdk-node';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
+import { assertHostedPersistenceBeforeSchemaSync } from './runtime/bootstrap/hosted-persistence-boundary.js';
 import { persistedRandomIdentifierHash } from './services/persisted-random-identifier.js';
 import { resolveHomeDir } from './utils/paths.js';
 
@@ -88,6 +89,8 @@ function createSdk(
       }),
     ),
     traceExporter,
+    // Station's durable logger is separate; NodeSDK otherwise enables OTLP logs.
+    logRecordProcessors: [],
     metricReader: new PeriodicExportingMetricReader({
       exporter: metricExporter,
       exportIntervalMillis: 30_000,
@@ -118,6 +121,7 @@ export async function initializeTelemetry(
   if (!endpoint) return;
 
   const homeDir = options.homeDir ?? resolveHomeDir();
+  assertHostedPersistenceBeforeSchemaSync(homeDir, env);
   ensureStationHomeSchemaSync(homeDir);
   const identity = persistedRandomIdentifierHash(
     homeDir,

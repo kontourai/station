@@ -56,6 +56,36 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'telemetry-hosted-first-write',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'automatic telemetry import refuses hosted absent home with writable parent before writes',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  assertHostedPersistenceBeforeSchemaSync(homeDir, env);',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-implicit-log-export',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with persisted identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(source, '    logRecordProcessors: [],', ''),
+      },
+    ],
+  },
+  {
     id: 'telemetry-provider-registration',
     test: 'src-server/__tests__/telemetry.test.ts',
     failure:

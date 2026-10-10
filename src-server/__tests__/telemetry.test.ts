@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import * as os from 'node:os';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
 import { metrics, trace } from '@opentelemetry/api';
 import { MeterProvider } from '@opentelemetry/sdk-metrics';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -12,6 +13,15 @@ const homes: string[] = [];
 const renameHook: { afterRename?: () => Promise<void> } = {};
 const readPaths: string[] = [];
 const identityDelay: { beforeMkdir?: () => Promise<void> } = {};
+const sdkRequire = createRequire(
+  createRequire(import.meta.url).resolve('@opentelemetry/sdk-node'),
+);
+const { logs } = sdkRequire('@opentelemetry/api-logs') as {
+  logs: {
+    getLogger(name: string): { emit(record: { body: string }): void };
+    disable(): void;
+  };
+};
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
@@ -40,6 +50,7 @@ afterEach(async () => {
   identityDelay.beforeMkdir = undefined;
   metrics.disable();
   trace.disable();
+  logs.disable();
   readPaths.length = 0;
   await Promise.all(
     homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
@@ -47,7 +58,7 @@ afterEach(async () => {
 });
 
 async function home(): Promise<string> {
-  const value = await mkdtemp(join(os.tmpdir(), 'station-otel-'));
+  const value = await createStationTempDir('otel');
   homes.push(value);
   ensureStationHomeSchemaSync(value);
   return value;
@@ -87,7 +98,7 @@ describe('OTel installation identity', () => {
       vi.stubEnv('STATION_HOME', root);
       vi.stubEnv('STATION_ROOT', '');
       vi.stubEnv('STATION_TELEMETRY_API_KEY', '');
-      vi.stubEnv('OTEL_LOGS_EXPORTER', 'none');
+      vi.stubEnv('OTEL_LOGS_EXPORTER', '');
       vi.stubEnv('OTEL_NODE_RESOURCE_DETECTORS', 'none');
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const started = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -127,6 +138,11 @@ describe('OTel installation identity', () => {
         'OTEL_EXPORTER_OTLP_ENDPOINT',
         `http://127.0.0.1:${address.port}`,
       );
+      vi.stubEnv(
+        'OTEL_EXPORTER_OTLP_LOGS_ENDPOINT',
+        `http://127.0.0.1:${address.port}/v1/logs`,
+      );
+      vi.stubEnv('OTEL_EXPORTER_OTLP_LOGS_PROTOCOL', 'http/json');
       const {
         configuredTelemetryShutdownTask,
         OTEL_INSTALLATION_ID_ATTRIBUTE,
@@ -143,6 +159,9 @@ describe('OTel installation identity', () => {
           );
         chatRequests.add(7);
         tracer.startSpan('station.identity-pending-control').end();
+        logs
+          .getLogger('station.undeclared-signal-control')
+          .emit({ body: 'not an enabled export signal' });
         const pendingExport = provider.forceFlush();
         expect(requests).toEqual([]);
         releaseIdentity();
@@ -234,6 +253,9 @@ describe('OTel installation identity', () => {
             });
           });
         expect(traces).toContain('station.identity-pending-control');
+        expect(requests.some((request) => request.path === '/v1/logs')).toBe(
+          false,
+        );
       } finally {
         releaseIdentity();
         await vi.waitFor(() => {
@@ -261,7 +283,7 @@ describe('OTel installation identity', () => {
   );
 
   test('refuses an incompatible home before identity writes or provider creation', async () => {
-    const root = await mkdtemp(join(os.tmpdir(), 'station-otel-incompatible-'));
+    const root = await createStationTempDir('otel-incompatible');
     homes.push(root);
     await writeFile(join(root, 'unclaimed-history.ndjson'), '{}\n');
     const { initializeTelemetry } = await telemetry();
@@ -281,6 +303,55 @@ describe('OTel installation identity', () => {
       readFile(join(root, 'config', 'otel-installation-id'), 'utf8'),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  test.each(['absent home with writable parent', 'public home'] as const)(
+    'automatic telemetry import refuses hosted %s before writes',
+    async (scenario) => {
+      const parent = await createStationTempDir('otel-hosted-boundary');
+      homes.push(parent);
+      const root = scenario === 'public home' ? parent : join(parent, 'home');
+      await chmod(parent, scenario === 'public home' ? 0o755 : 0o777);
+      vi.stubEnv('STATION_HOME', root);
+      vi.stubEnv('STATION_ROOT', '');
+      vi.stubEnv(
+        'STATION_HOSTED_TENANT_REGISTRY_FILE',
+        '/deployment/registry.json',
+      );
+      vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'https://collector.test');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      metrics.disable();
+      let telemetryModule: typeof import('../telemetry.js') | undefined;
+      try {
+        telemetryModule = await import('../telemetry.js');
+        const { configuredTelemetryShutdownTask } = telemetryModule;
+        await vi.waitFor(() =>
+          expect(warn).toHaveBeenCalledWith(
+            '[telemetry] OTel did not start; Station continues without it:',
+            expect.stringContaining('private Station persistence boundary'),
+          ),
+        );
+        expect(configuredTelemetryShutdownTask()).toBeUndefined();
+        for (const path of [
+          '.station-home-schema.json',
+          'config/otel-installation-id',
+        ]) {
+          await expect(stat(join(root, path))).rejects.toMatchObject({
+            code: 'ENOENT',
+          });
+        }
+        expect((await stat(parent)).mode & 0o777).toBe(
+          scenario === 'public home' ? 0o755 : 0o777,
+        );
+        if (scenario !== 'public home')
+          await expect(stat(root)).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        await telemetryModule
+          ?.configuredTelemetryShutdownTask()
+          ?.shutdown(new AbortController().signal);
+        warn.mockRestore();
+      }
+    },
+  );
 
   test('IDENTITY STORAGE DEFECT: a fresh OTel install persists a UUID and emits its hash', async () => {
     const root = await home();
