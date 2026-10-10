@@ -30,6 +30,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 import {
   answerOrchestrationRequest,
   forgetApprovalAnswer,
+  getApprovalAnswerState,
   inspectApprovalAnswer,
 } from '../answerRequest';
 
@@ -110,6 +111,37 @@ describe('answerOrchestrationRequest', () => {
       ).toBe(sessionGrantScope);
       finish();
       await expect(first).resolves.toBe('answered');
+
+      vi.mocked(resolveOrchestrationRequest).mockRejectedValueOnce(
+        new TypeError('Reply lost'),
+      );
+      inspectAttentionRequest.mockRejectedValueOnce(
+        new Error('Inspection unavailable'),
+      );
+      await expect(
+        answerOrchestrationRequest('http://api', intent),
+      ).rejects.toMatchObject({ code: 'approval_delivery_unconfirmed' });
+      const reference = { apiBase: 'http://api', ...request };
+      expect(getApprovalAnswerState(reference)).toMatchObject({
+        phase: 'unconfirmed',
+        decision: 'acceptForSession',
+      });
+      expect(getApprovalAnswerState(reference)?.sessionGrantScope).toBe(
+        sessionGrantScope,
+      );
+      inspectAttentionRequest.mockResolvedValueOnce({ state: 'resolved' });
+      await expect(inspectApprovalAnswer('http://api', request)).resolves.toBe(
+        'already-settled',
+      );
+      expect(getApprovalAnswerState(reference)).toEqual({
+        phase: 'already-settled',
+        decision: 'acceptForSession',
+        ...(sessionGrantScope ? { sessionGrantScope } : {}),
+      });
+      await expect(
+        answerOrchestrationRequest('http://api', other),
+      ).resolves.toBe('already-settled');
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
     },
   );
 
