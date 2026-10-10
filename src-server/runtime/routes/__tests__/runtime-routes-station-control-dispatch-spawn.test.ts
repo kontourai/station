@@ -263,14 +263,19 @@ async function waitFor<T>(
   read: () => T,
   matches: (value: T) => boolean,
   timeoutMs = 20_000,
+  diagnostics: () => string = () => '',
 ): Promise<T> {
   const startedAt = Date.now();
+  let observed: T | undefined;
   while (Date.now() - startedAt < timeoutMs) {
     const value = read();
+    observed = value;
     if (matches(value)) return value;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error('Timed out waiting for test condition');
+  throw new Error(
+    `Timed out waiting for test condition; observed=${JSON.stringify(observed)}; ${diagnostics()}`,
+  );
 }
 
 describe('configureRuntimeRoutes: a station-control dispatch folder is decided again at the spawn (#2873)', () => {
@@ -300,6 +305,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
 
   function createService(eventStore: EventStore) {
     const adapter = new RecordingAcpAdapter();
+    const logger = { debug: vi.fn(), warn: vi.fn() };
     const adapters: ProviderAdapterShape[] = [adapter];
     const resolveAgent = createSessionAgentResolver({
       loadAgentSpec: async (slug) =>
@@ -337,9 +343,9 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         hook?.();
         return resolveAgent(input);
       },
-      logger: { debug: vi.fn(), warn: vi.fn() },
+      logger,
     } as never);
-    return { service, adapter };
+    return { service, adapter, logger };
   }
 
   async function setup() {
@@ -510,6 +516,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       base,
       eventStore,
       adapter: first.adapter,
+      logger: first.logger,
       /** A new process over the same store: no engine holds any session. */
       restart: () => {
         const next = createService(eventStore);
@@ -916,6 +923,9 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
             .listEvents(composed.taskId)
             .map((event) => event.payload.method),
         (methods) => methods.includes('session.exited'),
+        20_000,
+        () =>
+          `event-consumer warnings=${JSON.stringify(composed.logger.warn.mock.calls)}`,
       );
       composed.adapter.starts.length = 0;
       return composed;
