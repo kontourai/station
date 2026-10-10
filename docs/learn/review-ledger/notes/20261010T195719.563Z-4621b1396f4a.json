@@ -1,0 +1,7 @@
+{
+  "revision": "c55220fbd098010ae2fd7881834d4f181b12a784",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the formatting-only wrapping of the bounded waiter request. No tokens, assertions, lifecycle behavior, or coordinator contracts changed. Read-only lint passes; the existing fixture review remains accurate.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts"]}
+  ]
+}
