@@ -11,6 +11,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   realpathSync,
@@ -33,6 +34,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
  */
 const hooks = vi.hoisted(() => ({
   beforeGit: undefined as ((args: string[]) => void) | undefined,
+  afterGit: undefined as ((args: string[]) => void) | undefined,
 }));
 
 vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
@@ -42,7 +44,10 @@ vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
     ...original,
     execGit: ((args, options) => {
       hooks.beforeGit?.(args);
-      return original.execGit(args, options);
+      return original.execGit(args, options).then((result) => {
+        hooks.afterGit?.(args);
+        return result;
+      });
     }) as typeof original.execGit,
   };
 });
@@ -228,6 +233,7 @@ function expectRefused(
 
 beforeEach(() => {
   hooks.beforeGit = undefined;
+  hooks.afterGit = undefined;
   root = realpathSync(makeTempDir('station-coding-git-read-'));
   const global = join(root, 'global.gitconfig');
   writeFileSync(
@@ -1779,6 +1785,49 @@ describe.skipIf(process.platform === 'win32')(
       git(project, ['worktree', 'add', '-q', '--detach', join(root, 'plain')]);
       expect(existsSync(marker), 'control: plain git runs it').toBe(true);
     });
+
+    test.each(['symlink', 'hardlink', 'folder-symlink'] as const)(
+      'an independent review refuses a %s planted in its new worktree pointer without modifying the linked file',
+      async (kind) => {
+        repo(project, { 'a.txt': 'one\n' });
+        const base = git(project, ['rev-parse', 'HEAD']);
+        writeFileSync(join(project, 'a.txt'), 'two\n');
+        git(project, ['commit', '-q', '-am', 'second']);
+        const head = git(project, ['rev-parse', 'HEAD']);
+        const external = join(root, 'external-pointer');
+        let created = '';
+        let original = '';
+        hooks.afterGit = (args) => {
+          if (!args.includes('worktree') || !args.includes('add')) return;
+          created = args[args.indexOf('--detach') + 1]!;
+          const pointer = join(created, '.git');
+          original = readFileSync(pointer, 'utf8');
+          writeFileSync(external, original);
+          if (kind === 'folder-symlink') {
+            renameSync(created, `${created}-moved`);
+            symlinkSync(`${created}-moved`, created, 'dir');
+          } else {
+            rmSync(pointer);
+            if (kind === 'symlink') symlinkSync(external, pointer);
+            else linkSync(external, pointer);
+          }
+        };
+        await expect(
+          new GitReviewWorkspaceSource(
+            { workspace: () => project },
+            join(root, 'review-workspaces'),
+          ).open({
+            kind: 'git-range',
+            projectSlug: 'acme',
+            baseRevision: base,
+            headRevision: head,
+          }),
+        ).rejects.toThrow('metadata could not be settled');
+        expect(created).not.toBe('');
+        expect(existsSync(created)).toBe(true);
+        expect(readFileSync(external, 'utf8')).toBe(original);
+      },
+    );
 
     test('an independent review checks out with the config it judged: a smudge filter written afterwards does not run', async () => {
       repo(project, {

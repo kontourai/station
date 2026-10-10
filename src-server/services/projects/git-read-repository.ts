@@ -41,9 +41,9 @@
  * directory, so it reads the copy and nothing else, while HEAD, the index
  * and `logs/HEAD` are read and written where they live; objects, refs and
  * the reflogs go through the copy's links to the repository; `worktrees` is
- * linked too for a `worktree add`, and git names the new entry by its real
- * path (measured on git 2.50: the `.git` file it writes names the
- * repository's `worktrees/<name>`, not the copy's). The copy's `packed-refs`
+ * linked too for a `worktree add`. Before the copy is removed, the creation
+ * owner validates the new registration and canonicalizes its `.git` pointer:
+ * older Git versions can name the temporary copy's linked worktrees path. The copy's `packed-refs`
  * is a link, which a rewrite would replace in the copy alone, so no
  * operation that repacks or deletes refs runs this way.
  *
@@ -82,6 +82,7 @@ import {
   mkdir,
   mkdtemp,
   opendir,
+  open,
   realpath,
   rm,
   symlink,
@@ -89,7 +90,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { execGit } from '../../utils/git-exec.js';
 import {
   type GitDirectoryCheckOptions,
@@ -403,6 +404,8 @@ export interface LiveRepository {
   /** See `ProjectRepositoryForRead`. Ask immediately before the write. */
   unchanged: () => Promise<boolean>;
   sameIdentity: () => Promise<boolean>;
+  /** Settle one newly created worktree before removing the judged copy. */
+  settleCreatedWorktree: (folder: string) => Promise<void>;
   /** Removes the copy. After it, git must not be run with `env` again. */
   dispose: () => Promise<void>;
 }
@@ -488,9 +491,140 @@ export async function openLiveRepository(
       env: snapshot.live.env,
       unchanged: repository.unchanged,
       sameIdentity: repository.sameIdentity,
+      settleCreatedWorktree: async (folder) => {
+        if (!options.newWorktree)
+          throw new ProjectRepositoryRefusedError(
+            'not opened for a new worktree',
+          );
+        await settleCreatedWorktree(repository, folder);
+      },
       dispose: snapshot.dispose,
     },
   };
+}
+
+async function settleCreatedWorktree(
+  repository: Extract<ProjectRepositoryForRead, { ok: true }>,
+  folder: string,
+): Promise<void> {
+  const requestedDirectory = await lstat(folder);
+  const workspace = await realpath(folder);
+  const canonicalDirectory = await lstat(workspace);
+  if (
+    !requestedDirectory.isDirectory() ||
+    !canonicalDirectory.isDirectory() ||
+    requestedDirectory.dev !== canonicalDirectory.dev ||
+    requestedDirectory.ino !== canonicalDirectory.ino
+  )
+    throw new ProjectRepositoryRefusedError(
+      'new worktree folder is not its created directory',
+    );
+  const pointer = join(workspace, '.git');
+  const handle = await open(
+    pointer,
+    constants.O_RDWR |
+      (constants.O_NOFOLLOW ?? 0) |
+      (constants.O_NONBLOCK ?? 0),
+  );
+  try {
+    const file = await handle.stat();
+    const currentPointer = async () => {
+      const directory = await lstat(folder);
+      const resolvedDirectory = await lstat(workspace);
+      const entry = await lstat(pointer);
+      const opened = await handle.stat();
+      return (
+        directory.isDirectory() &&
+        resolvedDirectory.isDirectory() &&
+        directory.dev === requestedDirectory.dev &&
+        directory.ino === requestedDirectory.ino &&
+        resolvedDirectory.dev === requestedDirectory.dev &&
+        resolvedDirectory.ino === requestedDirectory.ino &&
+        entry.isFile() &&
+        opened.isFile() &&
+        entry.dev === file.dev &&
+        entry.ino === file.ino &&
+        opened.dev === file.dev &&
+        opened.ino === file.ino &&
+        opened.nlink === 1 &&
+        (await realpath(folder)) === workspace &&
+        (await repository.sameIdentity())
+      );
+    };
+    if (!file.isFile() || file.nlink !== 1 || file.size > 8192)
+      throw new ProjectRepositoryRefusedError(
+        'new worktree pointer is not an owned regular file',
+      );
+    const bytes = Buffer.alloc(file.size);
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (bytesRead !== bytes.length)
+      throw new ProjectRepositoryRefusedError('new worktree pointer changed');
+    const match = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(bytes.toString('utf8'));
+    if (!match)
+      throw new ProjectRepositoryRefusedError(
+        'new worktree pointer is invalid',
+      );
+    const gitDir = await realpath(resolve(workspace, match[1]!));
+    const entryName = relative(join(repository.commonDir, 'worktrees'), gitDir);
+    if (!entryName || entryName === '..' || entryName.includes(sep))
+      throw new ProjectRepositoryRefusedError(
+        'new worktree entry is outside its repository',
+      );
+    const back = await readSmallRegularFile(join(gitDir, 'gitdir'), 8192);
+    const common = await readSmallRegularFile(join(gitDir, 'commondir'), 8192);
+    if (
+      !back ||
+      !common ||
+      /[\r\n]/.test(back.toString().trim()) ||
+      /[\r\n]/.test(common.toString().trim()) ||
+      (await realpath(resolve(gitDir, back.toString().trim()))) !== pointer ||
+      (await realpath(resolve(gitDir, common.toString().trim()))) !==
+        repository.commonDir ||
+      !(await currentPointer())
+    )
+      throw new ProjectRepositoryRefusedError(
+        'new worktree registration does not match',
+      );
+    const registrationCurrent = async () =>
+      back.equals(
+        (await readSmallRegularFile(join(gitDir, 'gitdir'), 8192)) ??
+          Buffer.alloc(0),
+      ) &&
+      common.equals(
+        (await readSmallRegularFile(join(gitDir, 'commondir'), 8192)) ??
+          Buffer.alloc(0),
+      ) &&
+      (await realpath(resolve(workspace, match[1]!))) === gitDir;
+    const canonical = Buffer.from(`gitdir: ${gitDir}\n`);
+    if (!bytes.equals(canonical)) {
+      let written = 0;
+      while (written < canonical.length) {
+        const result = await handle.write(
+          canonical,
+          written,
+          canonical.length - written,
+          written,
+        );
+        if (!result.bytesWritten)
+          throw new Error('new worktree pointer write did not advance');
+        written += result.bytesWritten;
+      }
+      await handle.truncate(canonical.length);
+    }
+    const retained = Buffer.alloc(canonical.length + 1);
+    const readback = await handle.read(retained, 0, retained.length, 0);
+    if (
+      readback.bytesRead !== canonical.length ||
+      !retained.subarray(0, readback.bytesRead).equals(canonical) ||
+      !(await currentPointer()) ||
+      !(await registrationCurrent())
+    )
+      throw new ProjectRepositoryRefusedError(
+        'new worktree changed during settlement',
+      );
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
