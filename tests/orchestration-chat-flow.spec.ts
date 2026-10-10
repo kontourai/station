@@ -765,7 +765,7 @@ test.describe('Orchestration Chat Flow', () => {
     const expectLegibleButtons = async (
       context: string,
       buttons: Locator = card.locator(
-        '.tool-call__actions .action-row > button',
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
       ),
       controlCount = 2,
     ) => {
@@ -938,17 +938,19 @@ test.describe('Orchestration Chat Flow', () => {
         `${context}: actions inside the card`,
       ).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
       // Deny and Allow Once; the session choices sit in the overflow menu.
-      const lineCounts = await card
-        .locator('.tool-call__actions .action-row > button')
-        .evaluateAll((nodes) =>
-          nodes.map((node) => {
-            const range = document.createRange();
-            range.selectNodeContents(node);
-            return new Set(
-              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
-            ).size;
-          }),
-        );
+      const decisionButtons = card.locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      );
+      await expect(decisionButtons).toHaveCount(2);
+      const lineCounts = await decisionButtons.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return new Set(
+            [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+          ).size;
+        }),
+      );
       expect(lineCounts, `${context}: button labels on one line`).toEqual([
         1, 1,
       ]);
@@ -968,8 +970,15 @@ test.describe('Orchestration Chat Flow', () => {
     // label-row check this test once made has no subject any more: 720px is
     // under the 768px phone query, where the row carries only Answer.
     answer = 'settled';
+    await expect(
+      card.locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      ),
+    ).toHaveCount(2);
     const desktopEnabledWidths = await card
-      .locator('.tool-call__actions .action-row > button')
+      .locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      )
       .evaluateAll((nodes) =>
         nodes.map((node) => node.getBoundingClientRect().width),
       );
@@ -981,11 +990,13 @@ test.describe('Orchestration Chat Flow', () => {
     // Disabling restyles the buttons without resizing them: a border that
     // appears only when disabled shifted every button by 2px on click.
     const desktopDisabledWidths = await card
-      .locator('.tool-call__actions .action-row > button')
+      .locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      )
       .evaluateAll((nodes) =>
         nodes.map((node) => node.getBoundingClientRect().width),
       );
-    expect(desktopDisabledWidths).toHaveLength(desktopEnabledWidths.length);
+    expect(desktopDisabledWidths).toHaveLength(2);
     desktopDisabledWidths.forEach((width, index) => {
       expect(
         Math.abs(width - desktopEnabledWidths[index]),
