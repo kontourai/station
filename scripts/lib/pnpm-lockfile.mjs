@@ -4,15 +4,34 @@ import { resolve } from 'node:path';
 
 const require = createRequire(import.meta.url);
 
+const parsedYaml = new Map();
+const MAX_PARSED_YAML_ENTRIES = 2;
+const MAX_PARSED_YAML_BYTES = 2 * 1024 * 1024;
+let parsedYamlBytes = 0;
+
 /** Read the single dependency authority. Called only after inert bootstrap. */
 function readYaml(path, readFile) {
+  const text = readFile(path, 'utf8');
+  if (parsedYaml.has(text)) return structuredClone(parsedYaml.get(text));
   const { parseDocument } = require('yaml');
-  const document = parseDocument(readFile(path, 'utf8'), {
-    uniqueKeys: true,
-  });
+  const document = parseDocument(text, { uniqueKeys: true });
   if (document.errors.length)
     throw new Error(`pnpm lockfile is invalid: ${document.errors[0].message}`);
-  return document.toJS({ maxAliasCount: 0 });
+  const value = document.toJS({ maxAliasCount: 0 });
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes <= MAX_PARSED_YAML_BYTES) {
+    while (
+      parsedYaml.size >= MAX_PARSED_YAML_ENTRIES ||
+      parsedYamlBytes + bytes > MAX_PARSED_YAML_BYTES
+    ) {
+      const oldest = parsedYaml.keys().next().value;
+      parsedYamlBytes -= Buffer.byteLength(oldest, 'utf8');
+      parsedYaml.delete(oldest);
+    }
+    parsedYaml.set(text, value);
+    parsedYamlBytes += bytes;
+  }
+  return structuredClone(value);
 }
 
 export function readPnpmWorkspace(root, readFile = readFileSync) {
