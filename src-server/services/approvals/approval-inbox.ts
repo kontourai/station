@@ -50,6 +50,7 @@ interface ApprovalInboxDependencies {
     OrchestrationService,
     | 'dispatch'
     | 'isEphemeralSession'
+    | 'isReadOnlyAttachedSession'
     | 'readRequestOutcome'
     | 'resolveSessionProjectSlug'
   >;
@@ -248,6 +249,10 @@ export class ApprovalInboxNotificationProvider
     this.notificationIdByRequestKey.delete(target.requestKey);
   }
 
+  isReadOnlyAttachedSession(threadId: string): boolean {
+    return this.deps.orchestrationService.isReadOnlyAttachedSession(threadId);
+  }
+
   /**
    * archive#1284 (AC4): the session's project binding, when it has one —
    * same lookup `AttentionProjectionService.sessionOpenHref` uses, exposed
@@ -422,6 +427,7 @@ export function wireApprovalInboxNotifications(
 
       const event = message.data.event as CanonicalRuntimeEvent;
       if (event.method === 'request.opened') {
+        if (provider.isReadOnlyAttachedSession(event.threadId)) return;
         // archive#1284 (AC4): resolved synchronously (no adapter I/O — see
         // OrchestrationService.resolveSessionProjectSlug's doc comment) so the
         // approval card can deep-link into the project chat dock like a

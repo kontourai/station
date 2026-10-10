@@ -1,0 +1,7 @@
+{
+  "revision": "6def5d83baac2ed4afaae8ffe51fe002ea77d266",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed external transcript notification policy through attachment persistence before import, authoritative read-model ownership, completion and approval producers, and summary projection into shared Android/iOS card eligibility. Eight new baseline failures caught notifications and sealed-card alerts; all 143 focused cases pass after the fix. Station-owned external-engine sessions retain alerts. No physical mobile, browser push-service, desktop OS, deployment, or automation qualification.","inputs":["docs/design/notification-delivery.md","src-server/services/notifications/agent-activity-card.ts","src-server/services/notifications/agent-activity-publisher.ts","src-server/services/orchestration/turn-completion-notifications.ts","src-server/services/approvals/approval-inbox.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

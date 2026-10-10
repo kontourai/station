@@ -1,0 +1,9 @@
+{
+  "revision": "7c34357c7621164ca994352f8f3726c9b8ce5268",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed retained request-inspection capture metadata and the owning UI/API path against the external-transcript alert delta. This capture shows a Station-owned synthetic request being inspected without a decision. Exposing the attachment predicate and suppressing observed external transcript notifications does not change that request inspector, controls, identity expansion or close behavior. Existing image/video bytes and original capture revisions remain unchanged; no recapture or new runtime/device evidence is claimed.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed retained request-inspection capture metadata and the owning UI/API path against the external-transcript alert delta. This capture shows a Station-owned synthetic request being inspected without a decision. Exposing the attachment predicate and suppressing observed external transcript notifications does not change that request inspector, controls, identity expansion or close behavior. Existing image/video bytes and original capture revisions remain unchanged; no recapture or new runtime/device evidence is claimed.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

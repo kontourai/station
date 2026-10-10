@@ -11,6 +11,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NATIVE_PUSH_SEALED_AAD_PREFIX } from '@kontourai/station-contracts/native-push';
+import type { SessionControlMode } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -80,12 +81,14 @@ function sessionEvents(
   threadId: string,
   state: SessionState,
   at: number,
+  controlMode: SessionControlMode = 'station-owned',
 ): CanonicalRuntimeEvent[] {
   const events = [
     ev(threadId, at - 5000, {
       method: 'session.started',
       sessionId: threadId,
       metadata: {
+        controlMode,
         projectSlug: 'login-app',
         cwd: '/Users/someone/private-repo',
       },
@@ -150,10 +153,12 @@ function openRequest(
 /** The read model's session summaries, folded by the real builder. */
 function readSummaries(sessions: Map<string, CanonicalRuntimeEvent[]>) {
   return [...sessions].map(([threadId, events]) => {
+    const started = events.find((event) => event.method === 'session.started');
     const session = {
       provider: 'claude',
       threadId,
       status: 'running',
+      controlMode: started?.metadata?.controlMode ?? 'station-owned',
       cwd: '/Users/someone/private-repo',
       createdAt: events[0]?.createdAt,
       updatedAt: events.at(-1)?.createdAt,
@@ -424,6 +429,34 @@ describe('agent-activity publisher', () => {
     expect(h.fetchImpl).not.toHaveBeenCalled();
     await h.publisher.stop();
   });
+
+  test.each(['running', 'approval', 'input', 'completed'] as const)(
+    'external %s transcripts never appear or alert on a mobile card',
+    async (state) => {
+      const h = await harness();
+      await h.pairAndRegister();
+      h.sessions.set('owned', sessionEvents('owned', 'running', START));
+      const external = sessionEvents(
+        'external',
+        state,
+        START,
+        'read-only-attached',
+      );
+      h.sessions.set('external', external);
+      h.emit('turn.completed');
+      await h.settle();
+      expect(h.refused).toEqual([]);
+      expect(h.delivered).toHaveLength(1);
+      expect(h.delivered[0]?.card).toMatchObject({
+        activity_active_count: '1',
+        activity_attention_count: '0',
+        activity_session_id: 'owned',
+      });
+      expect(h.delivered[0]?.card.alert_id).toBeUndefined();
+      expect(JSON.stringify(h.delivered[0]?.card)).not.toContain('external');
+      await h.publisher.stop();
+    },
+  );
 
   test('seals one card per phone: only routing data travels in clear', async () => {
     const h = await harness();
