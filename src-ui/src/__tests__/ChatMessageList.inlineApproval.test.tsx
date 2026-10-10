@@ -15,7 +15,9 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { _setApiBase } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -37,10 +39,6 @@ vi.mock('../contexts/ToastContext', () => ({
 }));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
-}));
-vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
-  ConnectedAttachUserInputToTaskButton: () => null,
-  ConnectedAnswerBasisAffordance: () => null,
 }));
 vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
@@ -87,6 +85,7 @@ import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTra
 import type { ChatSession } from '../types';
 
 const API_BASE = 'http://localhost:3242';
+let queryClient: QueryClient;
 
 /** The chat tab: a conversation whose CURRENT child is `claude-child-b`. */
 function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
@@ -193,7 +192,10 @@ function stubFetch(
         body: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
       };
       // The transcript's checkpoint read is unrelated to approvals.
-      if (url.includes('/checkpoints')) {
+      if (
+        url.includes('/checkpoints') ||
+        new URL(url).pathname === '/api/tasks'
+      ) {
         return Response.json({ success: true, data: [] });
       }
       calls.push(call);
@@ -240,9 +242,11 @@ async function grantLabels(): Promise<string[]> {
 
 function renderCard(session = chatSession()) {
   const tree = (current: ChatSession) => (
-    <ActiveChatsProvider>
-      <TranscriptHarness session={current} />
-    </ActiveChatsProvider>
+    <QueryClientProvider client={queryClient}>
+      <ActiveChatsProvider>
+        <TranscriptHarness session={current} />
+      </ActiveChatsProvider>
+    </QueryClientProvider>
   );
   const rendered = render(tree(session));
   // Re-renders the SAME mount (the window's events are read at render).
@@ -254,6 +258,9 @@ function renderCard(session = chatSession()) {
 
 describe('#2316 inline approval card', () => {
   beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
     forgetApprovalAnswer('claude-child-b', 'req-claude-b');
     // What the mounted `ApiBaseProvider` does in the app; the registry route
     // resolves its base from here.
@@ -262,8 +269,12 @@ describe('#2316 inline approval card', () => {
     windowEvents.current = claudeBashAwaitingApproval();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     cleanup();
+    queryClient.clear();
     windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
@@ -408,32 +419,34 @@ describe('#2316 inline approval card', () => {
       ),
     );
     render(
-      <ActiveChatsProvider>
-        <ChatMessageList
-          activeSession={chatSession({
-            orchestrationSessionStarted: false,
-            messages: [
-              {
-                role: 'assistant',
-                content: '',
-                contentParts: [
-                  {
-                    type: 'tool-invocation',
-                    toolCallId: 'registry-call',
-                    toolName: 'shell_exec',
-                    state: 'awaiting-approval',
-                    needsApproval: true,
-                    approvalId: 'registry-approval-1',
-                  },
-                ],
-              },
-            ],
-          })}
-          fontSize={13}
-          showReasoning={false}
-          showToolDetails={false}
-        />
-      </ActiveChatsProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ActiveChatsProvider>
+          <ChatMessageList
+            activeSession={chatSession({
+              orchestrationSessionStarted: false,
+              messages: [
+                {
+                  role: 'assistant',
+                  content: '',
+                  contentParts: [
+                    {
+                      type: 'tool-invocation',
+                      toolCallId: 'registry-call',
+                      toolName: 'shell_exec',
+                      state: 'awaiting-approval',
+                      needsApproval: true,
+                      approvalId: 'registry-approval-1',
+                    },
+                  ],
+                },
+              ],
+            })}
+            fontSize={13}
+            showReasoning={false}
+            showToolDetails={false}
+          />
+        </ActiveChatsProvider>
+      </QueryClientProvider>,
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));

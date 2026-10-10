@@ -15,7 +15,9 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { _setApiBase } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -37,10 +39,6 @@ vi.mock('../contexts/ToastContext', () => ({
 }));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
-}));
-vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
-  ConnectedAttachUserInputToTaskButton: () => null,
-  ConnectedAnswerBasisAffordance: () => null,
 }));
 vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
@@ -88,6 +86,7 @@ import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTra
 import type { ChatSession } from '../types';
 
 const API_BASE = 'http://localhost:3242';
+let queryClient: QueryClient;
 const THREAD = 'opencode-thread';
 
 function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
@@ -201,9 +200,11 @@ function TranscriptHarness({ session }: { session: ChatSession }) {
 
 function renderTranscript(session = chatSession()) {
   return render(
-    <ActiveChatsProvider>
-      <TranscriptHarness session={session} />
-    </ActiveChatsProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ActiveChatsProvider>
+        <TranscriptHarness session={session} />
+      </ActiveChatsProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -232,6 +233,9 @@ function rowGlyph(row: HTMLElement) {
 
 describe('ACP (OpenCode) tool rows', () => {
   beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
     _setApiBase(API_BASE);
     sequence = 0;
     vi.stubGlobal(
@@ -240,8 +244,12 @@ describe('ACP (OpenCode) tool rows', () => {
     );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     cleanup();
+    queryClient.clear();
     vi.unstubAllGlobals();
     _setApiBase('');
   });
