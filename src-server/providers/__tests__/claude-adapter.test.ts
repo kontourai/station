@@ -319,7 +319,14 @@ describe('ClaudeAdapter', () => {
     async (observedId) => {
       const controlled = createControlledMockQuery();
       mockQuery.mockReturnValue(controlled);
-      const adapter = new ClaudeAdapter();
+      const claim = vi.fn();
+      const adapter = new ClaudeAdapter({
+        nativeSessionOwnership: {
+          assertMutable: vi.fn(),
+          claim,
+          retired: vi.fn(),
+        },
+      });
       const events: Array<{
         method: string;
         code?: string;
@@ -336,6 +343,7 @@ describe('ClaudeAdapter', () => {
           requireNativeResumeIdentity: true,
           metadata: { nativeResumeIdentity: 'matched' },
         });
+        expect(claim).toHaveBeenCalledOnce();
         expect(
           events.some(
             (event) => event.metadata?.nativeResumeIdentity === 'matched',
@@ -381,6 +389,82 @@ describe('ClaudeAdapter', () => {
             events.some((event) => event.method === 'turn.completed'),
           ).toBe(false);
         }
+        expect(claim).toHaveBeenCalledOnce();
+      } finally {
+        await adapter.stopAll();
+        await drain;
+      }
+    },
+  );
+
+  test.each(['claimed', 'refused'] as const)(
+    'fresh native init is %s before publishing ready continuity',
+    async (outcome) => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const order: string[] = [];
+      let session: { status: string } | undefined;
+      const statusAtClaim: Array<string | undefined> = [];
+      const claim = vi.fn<(identityKey: string, sessionId: string) => void>(
+        () => {
+          statusAtClaim.push(session?.status);
+          order.push('claim');
+          if (outcome === 'refused')
+            throw new Error('native ownership conflict');
+        },
+      );
+      const adapter = new ClaudeAdapter({
+        nativeSessionOwnership: {
+          assertMutable: vi.fn(),
+          claim,
+          retired: vi.fn(),
+        },
+      });
+      const events: Array<{ method: string; model?: string }> = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) {
+          events.push(event);
+          if (
+            event.method === 'session.configured' &&
+            event.model === 'native-observed-model'
+          )
+            order.push('configured');
+        }
+      })();
+      try {
+        session = await adapter.startSession({
+          provider: 'claude',
+          threadId: 'fresh-native-init',
+        });
+        expect(claim).not.toHaveBeenCalled();
+        controlled.push({
+          type: 'system',
+          subtype: 'init',
+          session_id: 'native-fresh',
+          cwd: '/tmp/project',
+          model: 'native-observed-model',
+          tools: [],
+          mcp_servers: [],
+        });
+        if (outcome === 'claimed') {
+          await vi.waitFor(() =>
+            expect(order).toEqual(['claim', 'configured']),
+          );
+          expect(session.status).toBe('ready');
+        } else {
+          await vi.waitFor(() => expect(session.status).toBe('error'));
+          expect(order).toEqual(['claim']);
+          expect(
+            events.some(
+              (event) =>
+                event.method === 'session.configured' &&
+                event.model === 'native-observed-model',
+            ),
+          ).toBe(false);
+        }
+        expect(claim).toHaveBeenCalledOnce();
+        expect(statusAtClaim).toEqual(['connecting']);
+        expect(claim.mock.calls[0]?.[1]).toBe('fresh-native-init');
       } finally {
         await adapter.stopAll();
         await drain;
