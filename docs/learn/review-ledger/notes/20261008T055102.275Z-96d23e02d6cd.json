@@ -1,0 +1,7 @@
+{
+  "revision": "c7e8df2ccf029ea2c84a00234a941076f50da0c1",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"same delta as the png capture; the recorded interaction still matches the merged behavior.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

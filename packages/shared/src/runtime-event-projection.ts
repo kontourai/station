@@ -20,6 +20,7 @@ import {
 import {
   toolRequestDisplayName,
   toolRequestFromPayload,
+  toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from './tool-request-preview.js';
 
@@ -1086,6 +1087,9 @@ export function projectRuntimeEventsToMessages(
             target.approvalToolName = toolName;
           else delete target.approvalToolName;
           target.approvalSessionGrant = toolRequestSessionGrantFromPayload(
+            ev.payload,
+          );
+          target.approvalServerGrant = toolRequestServerGrantFromPayload(
             ev.payload,
           );
           target.state = 'awaiting-approval';

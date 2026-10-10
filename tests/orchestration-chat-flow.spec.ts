@@ -691,11 +691,11 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(allowOnce).toBeVisible();
 
     // On a phone width (#3331) the row carries one Answer control and the
-    // three decisions move into the shared request sheet; the desktop row
-    // keeps all three inline.
+    // decisions move into the shared request sheet; the desktop row keeps
+    // Deny, Allow Once and the session-grant overflow trigger inline.
     const expectClearLayout = async (
       context: string,
-      controls = '.tool-call__approve-btn',
+      controls = '.tool-call__actions .action-row button',
       controlCount = 3,
     ) => {
       const label = await card.locator('.tool-call__label').boundingBox();
@@ -764,8 +764,15 @@ test.describe('Orchestration Chat Flow', () => {
 
     const expectLegibleButtons = async (
       context: string,
-      buttons: Locator = card.locator('.tool-call__approve-btn'),
+      buttons: Locator = card.locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      ),
+      controlCount = 2,
     ) => {
+      await expect(
+        buttons,
+        `${context}: expected controls rendered`,
+      ).toHaveCount(controlCount);
       const measure = async (button: Locator, label: string) => {
         // contrastRatio does not model element opacity, which is how the
         // disabled and hover states used to fade the text under 4.5:1. Pin
@@ -822,7 +829,7 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(answerControl).toBeVisible();
     await expect(allowOnce).toHaveCount(0);
     await expectClearLayout('pending 360', '.request-sheet-trigger', 1);
-    await expectLegibleButtons('pending row', answerControl);
+    await expectLegibleButtons('pending row', answerControl, 1);
 
     await answerControl.click();
     const sheetActions = sheet.getByRole('button', {
@@ -930,19 +937,22 @@ test.describe('Orchestration Chat Flow', () => {
         actionsBox.x + actionsBox.width,
         `${context}: actions inside the card`,
       ).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
-      const lineCounts = await card
-        .locator('.tool-call__approve-btn')
-        .evaluateAll((nodes) =>
-          nodes.map((node) => {
-            const range = document.createRange();
-            range.selectNodeContents(node);
-            return new Set(
-              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
-            ).size;
-          }),
-        );
+      // Deny and Allow Once; the session choices sit in the overflow menu.
+      const decisionButtons = card.locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      );
+      await expect(decisionButtons).toHaveCount(2);
+      const lineCounts = await decisionButtons.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return new Set(
+            [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+          ).size;
+        }),
+      );
       expect(lineCounts, `${context}: button labels on one line`).toEqual([
-        1, 1, 1,
+        1, 1,
       ]);
     };
     await expectClearLayout('desktop right dock pending');
@@ -960,8 +970,15 @@ test.describe('Orchestration Chat Flow', () => {
     // label-row check this test once made has no subject any more: 720px is
     // under the 768px phone query, where the row carries only Answer.
     answer = 'settled';
+    await expect(
+      card.locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      ),
+    ).toHaveCount(2);
     const desktopEnabledWidths = await card
-      .locator('.tool-call__approve-btn')
+      .locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      )
       .evaluateAll((nodes) =>
         nodes.map((node) => node.getBoundingClientRect().width),
       );
@@ -973,11 +990,13 @@ test.describe('Orchestration Chat Flow', () => {
     // Disabling restyles the buttons without resizing them: a border that
     // appears only when disabled shifted every button by 2px on click.
     const desktopDisabledWidths = await card
-      .locator('.tool-call__approve-btn')
+      .locator(
+        '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
+      )
       .evaluateAll((nodes) =>
         nodes.map((node) => node.getBoundingClientRect().width),
       );
-    expect(desktopDisabledWidths).toHaveLength(desktopEnabledWidths.length);
+    expect(desktopDisabledWidths).toHaveLength(2);
     desktopDisabledWidths.forEach((width, index) => {
       expect(
         Math.abs(width - desktopEnabledWidths[index]),

@@ -1836,12 +1836,27 @@ describe('OrchestrationService', () => {
               .hasPossibleEffect(sessionId),
           ).toEqual({ kind: 'available', active: true });
         }
+        const finalPreparation = vi.spyOn(room, 'prepareAgentStarted');
         const recovered = await recoverCompletedTaskDispatches({
           eventStore: restarted,
           taskGraph: graph,
           room,
         });
-        expect(recovered).toEqual(
+        const preparationOutcomes = await Promise.all(
+          finalPreparation.mock.results.map(async ({ type, value }) => {
+            if (type !== 'return') return { type };
+            try {
+              await value;
+              return { type: 'completed' };
+            } catch (error) {
+              return {
+                type: 'rejected',
+                reason: error instanceof Error ? error.message : 'non-Error',
+              };
+            }
+          }),
+        );
+        expect(recovered, JSON.stringify({ preparationOutcomes })).toEqual(
           uncertain
             ? { recovered: 0, unresolved: 1 }
             : { recovered: 1, unresolved: 0 },

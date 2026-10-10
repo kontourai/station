@@ -138,6 +138,14 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
       /**
+       * Only with `acceptForSession`. `server` widens the session grant from
+       * the one tool to the whole in-process Station browser server, and only
+       * where the request offered it (an authentic `station-browser` call).
+       * Absent keeps the per-tool grant, so an older client's answer is
+       * unchanged. An engine that cannot honour it takes the per-tool grant.
+       */
+      sessionGrantScope?: 'server';
+      /**
        * #3390: accepted content for a form input request (a harness question
        * or a tool server's elicitation), keyed by field name. Only with
        * `accept`; the server validates it against the exact opened event.

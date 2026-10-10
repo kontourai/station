@@ -339,6 +339,13 @@ export interface ProviderAdapterShape {
        */
       inputContent?: InputRequestContent;
       expectedRequestEventId?: string;
+      /**
+       * With `acceptForSession`: widen the grant to the whole in-process
+       * Station browser server. Honoured only by the Claude adapter, and only
+       * for a request that offered it; other adapters ignore it and grant as
+       * `acceptForSession` always did.
+       */
+      sessionGrantScope?: 'server';
     },
   ): Promise<void>;
   stopSession(threadId: string): Promise<void>;

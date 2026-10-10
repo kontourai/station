@@ -138,7 +138,7 @@ interface MessageBubbleProps {
     agentSlug: string,
     approvalId: string,
     toolName: string,
-    action: 'once' | 'trust' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'deny',
     approvalThreadId?: string,
     approvalEventId?: string,
   ) => Promise<ToolApprovalOutcome>;
@@ -181,7 +181,10 @@ function MessageBubbleComponent({
   // markdown — every time MessageBubble itself re-renders for an unrelated
   // reason (e.g. a sibling message's isThinking flag flipping).
   const handleContentToolApproval = useCallback(
-    (part: MessageContentPart, action: 'once' | 'trust' | 'deny') => {
+    (
+      part: MessageContentPart,
+      action: 'once' | 'trust' | 'trust-server' | 'deny',
+    ) => {
       if (!onToolApproval)
         return Promise.reject(new Error('This chat cannot answer requests.'));
       const toolName = part.toolName || part.name;

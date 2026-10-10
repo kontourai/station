@@ -202,7 +202,9 @@ button.chat-status-pill {
   min-width: 0;
   align-items: center;
   gap: 7px;
-  animation: chat-status-pill-morph var(--motion-base) var(--ease-spring) both;
+  /* Release the transform effect at rest; the base styles are the final frame. */
+  animation: chat-status-pill-morph var(--motion-base) var(--ease-spring)
+    backwards;
 }
 
 .chat-status-pill__label {

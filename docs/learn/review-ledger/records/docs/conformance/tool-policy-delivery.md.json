@@ -74,7 +74,11 @@
 
     "src-ui/src/hooks/orchestration/answerRequest.ts",
 
-    "src-ui/src/components/notifications/NotificationHistory.tsx"
+    "src-ui/src/components/notifications/NotificationHistory.tsx",
+
+    "src-ui/src/components/chat/InputRequestDecision.tsx",
+
+    "src-ui/src/components/chat/InputRequestDecision.css"
   ],
 
   "checks": [

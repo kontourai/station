@@ -184,6 +184,15 @@ its request sheet's overflow item, #3331) and inbox card label it:
 
 - A plain call to a tool grants every later call to that tool ("Allow Bash for
   this session"). Only this case mints a Station tool grant.
+- An authentic `station-browser` plain call also offers the server-wide choice
+  "Allow the Station browser for this session", computed by
+  `toolRequestServerGrant` and answered with `acceptForSession` plus the typed
+  `sessionGrantScope: 'server'`. The adapter records it on the session and
+  honours it only for a plain call it found authentic: the engine-generated
+  `mcp__station-browser__` name, the in-process server delivered to that
+  session and no authored server using the id. It is offered beside the
+  per-tool grant, never instead of it, and changes nothing in the #90 N2
+  auto-approval rule.
 - A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan
   mode and full access, allows the call and forwards only the engine's
   `acceptEdits` mode change ("Auto-accept file edits for this session"). The
@@ -508,12 +517,19 @@ decision. Accepted approval actions in notification history and Attention also
 open the conversation. These actions preserve the request's thread and opened
 event; a session grant retains the engine's existing scope.
 
-The shared answer path coalesces concurrent answers to the same prompt. Its
+While a decision is being sent, the shared answer path coalesces concurrent
+answers to the same prompt only when the decision and session grant scope both
+match. A per-tool choice and a server-wide choice remain distinct. Its
 15-second send deadline is followed by a bounded 5-second inspection when the
 send fails. A resolved request is shown as settled without claiming a local
 grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
 Check status reads the request before another decision can be sent. Errors
 keep a short summary beside the controls and technical details in a disclosure.
+While delivery is unconfirmed, all further decisions remain locked regardless
+of their decision or grant scope until inspection settles the uncertainty.
+The shared state retains the chosen server scope while delivery is unconfirmed
+and after inspection finds the request settled; that settled result sends no
+additional decision and does not establish which grant the server recorded.
 
 Owners: [approval sheet](../../src-ui/src/components/chat/ApprovalSheetProvider.tsx),
 [decision delivery](../../src-ui/src/hooks/orchestration/answerRequest.ts),

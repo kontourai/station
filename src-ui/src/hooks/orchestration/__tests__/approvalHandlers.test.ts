@@ -429,6 +429,85 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
   );
 });
 
+describe('the Station browser server grant on the toast', () => {
+  const LABEL = 'Allow the Station browser for this session';
+  const browserPayload = {
+    toolName: 'mcp__station-browser__browser_click',
+    toolInput: { ref: 'e1' },
+  };
+
+  beforeEach(() => {
+    showToolApproval.mockClear();
+    vi.mocked(resolveOrchestrationRequest).mockClear();
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: [],
+    });
+  });
+
+  test('offers the choice beside the per-tool one only when the adapter found the call authentic', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...browserPayload, stationBrowserServer: true }),
+    );
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Allow station-browser.browser_click for this session',
+      LABEL,
+      'Deny',
+    ]);
+  });
+
+  test('a call named like the browser tool, without the adapter finding, does not offer it', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened(browserPayload),
+    );
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Allow station-browser.browser_click for this session',
+      'Deny',
+    ]);
+  });
+
+  test('choosing it sends acceptForSession with the typed server scope', async () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...browserPayload, stationBrowserServer: true }),
+    );
+    approvalToast()
+      .actions.find((action) => action.label === LABEL)
+      ?.onClick();
+    await vi.waitFor(() =>
+      expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+    );
+    expect(resolveOrchestrationRequest).toHaveBeenCalledWith({
+      apiBase: 'http://localhost:1',
+      threadId: 'thread-1',
+      requestId: 'req-1',
+      expectedRequestEventId: 'evt-1',
+      decision: 'acceptForSession',
+      sessionGrantScope: 'server',
+      timeoutMs: 15_000,
+    });
+  });
+
+  test('the per-tool choice sends no scope', async () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...browserPayload, stationBrowserServer: true }),
+    );
+    approvalToast().actions[1]?.onClick();
+    await vi.waitFor(() =>
+      expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+    );
+    expect(
+      vi.mocked(resolveOrchestrationRequest).mock.calls[0][0],
+    ).not.toHaveProperty('sessionGrantScope');
+  });
+});
+
 describe('#2344: the toast reports what happened to its answer', () => {
   beforeEach(() => {
     showToolApproval.mockClear();

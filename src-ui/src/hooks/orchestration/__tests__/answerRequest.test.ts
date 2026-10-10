@@ -31,6 +31,7 @@ import {
   answerOrchestrationRequest,
   forgetApprovalAnswer,
   inspectApprovalAnswer,
+  readApprovalAnswerState,
 } from '../answerRequest';
 
 const request = {
@@ -77,6 +78,75 @@ describe('answerOrchestrationRequest', () => {
       answerOrchestrationRequest('http://api', request),
     ).rejects.toThrow('network error');
   });
+
+  test.each([undefined, 'server'] as const)(
+    'does not coalesce a different session grant scope into %s',
+    async (sessionGrantScope) => {
+      let finish!: () => void;
+      vi.mocked(resolveOrchestrationRequest).mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const intent = {
+        ...request,
+        decision: 'acceptForSession' as const,
+        ...(sessionGrantScope ? { sessionGrantScope } : {}),
+      };
+      const first = answerOrchestrationRequest('http://api', intent);
+      expect(answerOrchestrationRequest('http://api', intent)).toBe(first);
+      const other = {
+        ...request,
+        decision: 'acceptForSession' as const,
+        ...(sessionGrantScope ? {} : { sessionGrantScope: 'server' as const }),
+      };
+      const oppositeScopeAnswer = answerOrchestrationRequest(
+        'http://api',
+        other,
+      );
+      expect(oppositeScopeAnswer).not.toBe(first);
+      await expect(oppositeScopeAnswer).rejects.toThrow('still being sent');
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(1);
+      expect(
+        vi.mocked(resolveOrchestrationRequest).mock.calls[0][0]
+          .sessionGrantScope,
+      ).toBe(sessionGrantScope);
+      finish();
+      await expect(first).resolves.toBe('answered');
+
+      vi.mocked(resolveOrchestrationRequest).mockRejectedValueOnce(
+        new TypeError('Reply lost'),
+      );
+      inspectAttentionRequest.mockRejectedValueOnce(
+        new Error('Inspection unavailable'),
+      );
+      await expect(
+        answerOrchestrationRequest('http://api', intent),
+      ).rejects.toMatchObject({ code: 'approval_delivery_unconfirmed' });
+      const reference = { apiBase: 'http://api', ...request };
+      expect(readApprovalAnswerState(reference)).toMatchObject({
+        phase: 'unconfirmed',
+        decision: 'acceptForSession',
+      });
+      expect(readApprovalAnswerState(reference)?.sessionGrantScope).toBe(
+        sessionGrantScope,
+      );
+      inspectAttentionRequest.mockResolvedValueOnce({ state: 'resolved' });
+      await expect(inspectApprovalAnswer('http://api', request)).resolves.toBe(
+        'already-settled',
+      );
+      expect(readApprovalAnswerState(reference)).toEqual({
+        phase: 'already-settled',
+        decision: 'acceptForSession',
+        ...(sessionGrantScope ? { sessionGrantScope } : {}),
+      });
+      await expect(
+        answerOrchestrationRequest('http://api', other),
+      ).resolves.toBe('already-settled');
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
+    },
+  );
 
   test('a first, successful answer resolves answered', async () => {
     vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined as any);

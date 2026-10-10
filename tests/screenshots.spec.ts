@@ -1247,6 +1247,27 @@ function overlayDockProjectMismatchHooks(): Pick<
             exact: true,
           }),
         ).toBeVisible({ timeout: 10_000 });
+        const statusBody = page.locator(
+          '[data-chat-status-pill="blocked"] .chat-status-pill__body',
+        );
+        await expect(statusBody).toHaveCount(1);
+        const restingStyle = await statusBody.evaluate(async (element) => {
+          await Promise.all(
+            element
+              .getAnimations()
+              .filter(
+                (animation) =>
+                  animation.effect?.getTiming().iterations !== Infinity,
+              )
+              .map((animation) => animation.finished),
+          );
+          const style = getComputedStyle(element);
+          return { transform: style.transform, opacity: style.opacity };
+        });
+        expect(
+          restingStyle,
+          'The settled status body releases its transform effect',
+        ).toEqual({ transform: 'none', opacity: '1' });
       } finally {
         // See `withRoute`'s doc comment: every route registered above must
         // be unregistered again, or its fixture leaks into every screen

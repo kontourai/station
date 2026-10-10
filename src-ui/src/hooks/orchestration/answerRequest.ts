@@ -22,6 +22,7 @@ export interface ApprovalAnswerReference {
 interface ApprovalAnswerState {
   phase: 'sending' | 'unconfirmed' | 'already-settled';
   decision: 'accept' | 'acceptForSession' | 'decline';
+  sessionGrantScope?: 'server';
   error?: Error;
 }
 const answerListeners = new Set<() => void>();
@@ -83,6 +84,9 @@ export async function inspectApprovalAnswer(
       current.state = {
         phase: 'already-settled',
         decision: current.state.decision,
+        ...(current.state.sessionGrantScope
+          ? { sessionGrantScope: current.state.sessionGrantScope }
+          : {}),
       };
       notifyAnswers();
     }
@@ -117,15 +121,21 @@ export function answerOrchestrationRequest(
     requestId: string;
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
+    sessionGrantScope?: 'server';
   },
 ): Promise<OrchestrationAnswerOutcome> {
   const key = answerKey(apiBase, request);
   const pending = pendingAnswers.get(key);
+  const scope =
+    request.decision === 'acceptForSession'
+      ? request.sessionGrantScope
+      : undefined;
   if (pending?.state.phase === 'already-settled')
     return Promise.resolve('already-settled');
   if (pending)
     return pending.state.phase === 'unconfirmed' ||
-      pending.state.decision === request.decision
+      (pending.state.decision === request.decision &&
+        pending.state.sessionGrantScope === scope)
       ? pending.result
       : Promise.reject(
           new Error('A decision for this request is still being sent.'),
@@ -146,7 +156,11 @@ export function answerOrchestrationRequest(
     );
   const result = sendAnswer(apiBase, request);
   pendingAnswers.set(key, {
-    state: { phase: 'sending', decision: request.decision },
+    state: {
+      phase: 'sending',
+      decision: request.decision,
+      ...(scope ? { sessionGrantScope: scope } : {}),
+    },
     threadId: request.threadId,
     requestId: request.requestId,
     result,
@@ -182,6 +196,8 @@ async function sendAnswer(
     requestId: string;
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
+    /** With `acceptForSession`: widen the grant to the Station browser server. */
+    sessionGrantScope?: 'server';
   },
 ): Promise<OrchestrationAnswerOutcome> {
   try {
@@ -194,6 +210,9 @@ async function sendAnswer(
         ? { expectedRequestEventId: request.requestEventId }
         : {}),
       decision: request.decision,
+      ...(request.sessionGrantScope
+        ? { sessionGrantScope: request.sessionGrantScope }
+        : {}),
       timeoutMs: 15_000,
     });
     return 'answered';

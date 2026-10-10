@@ -8420,9 +8420,15 @@ export class OrchestrationService {
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
+          const serverScope =
+            decision === 'acceptForSession' &&
+            command.sessionGrantScope === 'server';
           const requestContext =
-            inputForm || context?.clientOrigin
+            inputForm || context?.clientOrigin || serverScope
               ? {
+                  ...(serverScope
+                    ? { sessionGrantScope: 'server' as const }
+                    : {}),
                   ...(context?.clientOrigin
                     ? { clientOrigin: context.clientOrigin }
                     : {}),

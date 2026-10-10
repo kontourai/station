@@ -1,7 +1,10 @@
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import type { ToolRequestSessionGrant } from './tool-request-preview.js';
+import type {
+  ToolRequestServerGrant,
+  ToolRequestSessionGrant,
+} from './tool-request-preview.js';
 
 /**
  * Canonical conversation message shape — the single shared contract every
@@ -113,6 +116,11 @@ export interface MessagePart {
    * session option and label. Set only next to `approvalEventId`.
    */
   approvalSessionGrant?: ToolRequestSessionGrant;
+  /**
+   * Whether that request also offers the server-wide Station browser grant
+   * (`toolRequestServerGrantFromPayload`); `'none'` or absent offers nothing.
+   */
+  approvalServerGrant?: ToolRequestServerGrant;
   /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`

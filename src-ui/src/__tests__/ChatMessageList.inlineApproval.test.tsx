@@ -15,7 +15,9 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { _setApiBase } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -37,10 +39,6 @@ vi.mock('../contexts/ToastContext', () => ({
 }));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
-}));
-vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
-  AttachUserInputToTaskButton: () => null,
-  AttachAnswerToTaskButton: () => null,
 }));
 vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
@@ -87,6 +85,7 @@ import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTra
 import type { ChatSession } from '../types';
 
 const API_BASE = 'http://localhost:3242';
+let queryClient: QueryClient;
 
 /** The chat tab: a conversation whose CURRENT child is `claude-child-b`. */
 function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
@@ -193,7 +192,10 @@ function stubFetch(
         body: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
       };
       // The transcript's checkpoint read is unrelated to approvals.
-      if (url.includes('/checkpoints')) {
+      if (
+        url.includes('/checkpoints') ||
+        new URL(url).pathname === '/api/tasks'
+      ) {
         return Response.json({ success: true, data: [] });
       }
       calls.push(call);
@@ -203,11 +205,48 @@ function stubFetch(
   return calls;
 }
 
+const MORE = 'More ways to allow this request';
+
+/**
+ * The session choices live behind the row's overflow menu (#3045): opens the
+ * `index`th card's menu and returns its items' labels. The menu is portalled,
+ * so items are read from the screen.
+ */
+async function openGrantMenu(
+  root: { findAllByRole: typeof screen.findAllByRole } = screen,
+  index = 0,
+) {
+  const triggers = await root.findAllByRole('button', { name: MORE });
+  fireEvent.click(triggers[index]);
+  return screen.findAllByRole('menuitem');
+}
+
+/** Chooses one session grant through the overflow menu. */
+async function pickGrant(
+  name: string,
+  root: { findAllByRole: typeof screen.findAllByRole } = screen,
+  index = 0,
+) {
+  await openGrantMenu(root, index);
+  fireEvent.click(await screen.findByRole('menuitem', { name }));
+}
+
+/** The labels the overflow menu offers; empty when the card has no menu. */
+async function grantLabels(): Promise<string[]> {
+  if (screen.queryAllByRole('button', { name: MORE }).length === 0) return [];
+  const items = await openGrantMenu();
+  const labels = items.map((item) => item.textContent ?? '');
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+  return labels;
+}
+
 function renderCard(session = chatSession()) {
   const tree = (current: ChatSession) => (
-    <ActiveChatsProvider>
-      <TranscriptHarness session={current} />
-    </ActiveChatsProvider>
+    <QueryClientProvider client={queryClient}>
+      <ActiveChatsProvider>
+        <TranscriptHarness session={current} />
+      </ActiveChatsProvider>
+    </QueryClientProvider>
   );
   const rendered = render(tree(session));
   // Re-renders the SAME mount (the window's events are read at render).
@@ -219,6 +258,9 @@ function renderCard(session = chatSession()) {
 
 describe('#2316 inline approval card', () => {
   beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
     forgetApprovalAnswer('claude-child-b', 'req-claude-b');
     // What the mounted `ApiBaseProvider` does in the app; the registry route
     // resolves its base from here.
@@ -227,8 +269,12 @@ describe('#2316 inline approval card', () => {
     windowEvents.current = claudeBashAwaitingApproval();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await act(async () => {
+      await vi.dynamicImportSettled();
+    });
     cleanup();
+    queryClient.clear();
     windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
@@ -280,7 +326,8 @@ describe('#2316 inline approval card', () => {
       const calls = stubFetch(() => Response.json({ success: true, data: {} }));
       renderCard();
 
-      fireEvent.click(await screen.findByRole('button', { name: label }));
+      if (label.endsWith('for this session')) await pickGrant(label);
+      else fireEvent.click(await screen.findByRole('button', { name: label }));
 
       await waitFor(() => expect(calls).toHaveLength(1));
       expect(calls[0]).toEqual({
@@ -300,8 +347,11 @@ describe('#2316 inline approval card', () => {
       // A decision that landed is not offered again.
       await waitFor(() =>
         expect(
-          (screen.getByRole('button', { name: label }) as HTMLButtonElement)
-            .disabled,
+          (
+            screen.getByRole('button', {
+              name: label.endsWith('for this session') ? 'Allow Once' : label,
+            }) as HTMLButtonElement
+          ).disabled,
         ).toBe(true),
       );
       expect(screen.queryByText(/Your decision was not delivered/)).toBeNull();
@@ -343,10 +393,18 @@ describe('#2316 inline approval card', () => {
     if (_case !== 'the network fails')
       expect(alert.closest('[role="alert"]')?.textContent).toMatch(reason);
     // The request is still open: the card must not pretend it is settled.
-    for (const name of ['Allow Once', 'Allow Bash for this session', 'Deny']) {
+    for (const name of ['Allow Once', 'Deny']) {
       expect(
         (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
       ).toBe(_case === 'the network fails');
+    }
+    if (_case !== 'the network fails') {
+      await openGrantMenu();
+      expect(
+        screen
+          .getByRole('menuitem', { name: 'Allow Bash for this session' })
+          .hasAttribute('disabled'),
+      ).toBe(false);
     }
   });
 
@@ -361,32 +419,34 @@ describe('#2316 inline approval card', () => {
       ),
     );
     render(
-      <ActiveChatsProvider>
-        <ChatMessageList
-          activeSession={chatSession({
-            orchestrationSessionStarted: false,
-            messages: [
-              {
-                role: 'assistant',
-                content: '',
-                contentParts: [
-                  {
-                    type: 'tool-invocation',
-                    toolCallId: 'registry-call',
-                    toolName: 'shell_exec',
-                    state: 'awaiting-approval',
-                    needsApproval: true,
-                    approvalId: 'registry-approval-1',
-                  },
-                ],
-              },
-            ],
-          })}
-          fontSize={13}
-          showReasoning={false}
-          showToolDetails={false}
-        />
-      </ActiveChatsProvider>,
+      <QueryClientProvider client={queryClient}>
+        <ActiveChatsProvider>
+          <ChatMessageList
+            activeSession={chatSession({
+              orchestrationSessionStarted: false,
+              messages: [
+                {
+                  role: 'assistant',
+                  content: '',
+                  contentParts: [
+                    {
+                      type: 'tool-invocation',
+                      toolCallId: 'registry-call',
+                      toolName: 'shell_exec',
+                      state: 'awaiting-approval',
+                      needsApproval: true,
+                      approvalId: 'registry-approval-1',
+                    },
+                  ],
+                },
+              ],
+            })}
+            fontSize={13}
+            showReasoning={false}
+            showToolDetails={false}
+          />
+        </ActiveChatsProvider>
+      </QueryClientProvider>,
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
@@ -407,10 +467,7 @@ describe('#2316 inline approval card', () => {
   test('the session grant is labelled with its tool and its session scope, never "Always Allow"', async () => {
     stubFetch(() => Response.json({ success: true, data: {} }));
     renderCard();
-    const grant = await screen.findByRole('button', {
-      name: 'Allow Bash for this session',
-    });
-    expect(grant.textContent).toBe('Allow Bash for this session');
+    expect(await grantLabels()).toEqual(['Allow Bash for this session']);
     expect(screen.queryByRole('button', { name: /Always Allow/ })).toBeNull();
   });
 
@@ -471,12 +528,100 @@ describe('#2316 inline approval card', () => {
       });
       renderCard();
       await screen.findByRole('button', { name: 'Allow Once' });
-      const session = screen.queryByRole('button', {
-        name: /for this session/,
-      });
-      expect(session?.textContent ?? undefined).toBe(label);
+      expect((await grantLabels())[0]).toBe(label);
     },
   );
+
+  describe('the Station browser server grant', () => {
+    const LABEL = 'Allow the Station browser for this session';
+    const TOOL = 'mcp__station-browser__browser_click';
+
+    const openedEventId = () => {
+      const opened = windowEvents.current.find(
+        (entry) =>
+          (entry.event as Record<string, unknown>).method === 'request.opened',
+      );
+      if (!opened) throw new Error('no request.opened event');
+      return (opened.event as Record<string, unknown>).eventId;
+    };
+
+    /** The browser call as the Claude adapter publishes it. */
+    function useBrowserCall(authentic: boolean) {
+      windowEvents.current = claudeBashAwaitingApproval().map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method === 'tool.started')
+          return { ...entry, event: { ...event, toolName: TOOL } };
+        if (event.method === 'request.opened')
+          return {
+            ...entry,
+            event: {
+              ...event,
+              title: `Allow ${TOOL}`,
+              payload: {
+                ...(event.payload as Record<string, unknown>),
+                toolName: TOOL,
+                ...(authentic ? { stationBrowserServer: true } : {}),
+              },
+            },
+          };
+        return entry;
+      });
+    }
+
+    test('an authentic call offers the choice beside the per-tool one, and choosing it sends the typed scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      useBrowserCall(true);
+      renderCard();
+
+      const labels = (await openGrantMenu()).map((item) => item.textContent);
+      expect(labels).toEqual([
+        'Allow station-browser.browser_click for this session',
+        LABEL,
+      ]);
+      fireEvent.click(await screen.findByRole('menuitem', { name: LABEL }));
+
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toEqual({
+        type: 'respondToRequest',
+        threadId: 'claude-child-b',
+        requestId: 'req-claude-b',
+        // The exact prompt the user saw.
+        expectedRequestEventId: openedEventId(),
+        decision: 'acceptForSession',
+        sessionGrantScope: 'server',
+      });
+    });
+
+    test('the per-tool choice sends no scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      useBrowserCall(true);
+      renderCard();
+
+      await pickGrant('Allow station-browser.browser_click for this session');
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({ decision: 'acceptForSession' });
+      expect(calls[0].body).not.toHaveProperty('sessionGrantScope');
+    });
+
+    test('a call the adapter did not find authentic does not show it, whatever its name', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      useBrowserCall(false);
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow Once' });
+      expect(await grantLabels()).toEqual([
+        'Allow station-browser.browser_click for this session',
+      ]);
+      expect(screen.queryByText(LABEL)).toBeNull();
+    });
+
+    test('an ordinary tool card never shows it', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow Once' });
+      expect(await grantLabels()).toEqual(['Allow Bash for this session']);
+      expect(screen.queryByText(LABEL)).toBeNull();
+    });
+  });
 
   test('#2916: a plan exit card offers no session grant', async () => {
     stubFetch(() => Response.json({ success: true, data: {} }));
@@ -511,9 +656,7 @@ describe('#2316 inline approval card', () => {
     renderCard();
     await screen.findByRole('button', { name: 'Allow Once' });
     expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
-    expect(
-      screen.queryByRole('button', { name: /for this session/ }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: MORE })).toBeNull();
   });
 
   describe('a second answer for a request that is already settled', () => {
@@ -644,11 +787,7 @@ describe('#2316 inline approval card', () => {
         );
         renderCard();
 
-        fireEvent.click(
-          await screen.findByRole('button', {
-            name: 'Allow Bash for this session',
-          }),
-        );
+        await pickGrant('Allow Bash for this session');
 
         await screen.findByText('This request is no longer open.');
         // Which decision settled it is not ours to claim: no local grant.
@@ -751,9 +890,7 @@ describe('#2316 inline approval card', () => {
         decision: 'decline',
       });
       // It was not re-bound onto the parent's same-turn call.
-      expect(
-        screen.getAllByRole('button', { name: 'Allow Bash for this session' }),
-      ).toHaveLength(1);
+      expect(screen.getAllByRole('button', { name: MORE })).toHaveLength(1);
     });
 
     test('offers nothing once the request is resolved, its session exited, or a recovery aborted its turn', async () => {
@@ -1068,16 +1205,12 @@ describe('#2316 inline approval card', () => {
       const strip = await screen.findByRole('region', {
         name: 'Approvals waiting on you',
       });
-      fireEvent.click(
-        within(strip).getByRole('button', {
-          name: 'Allow reading this folder for this session',
-        }),
+      await pickGrant(
+        'Allow reading this folder for this session',
+        within(strip),
+        0,
       );
-      fireEvent.click(
-        within(strip).getByRole('button', {
-          name: 'Allow Bash for this session',
-        }),
-      );
+      await pickGrant('Allow Bash for this session', within(strip), 1);
       await waitFor(() => expect(calls).toHaveLength(2));
       expect(calls.map((call) => call.body)).toEqual([
         expect.objectContaining({

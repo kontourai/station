@@ -15,7 +15,10 @@ import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
+import type {
+  ToolRequestServerGrant,
+  ToolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
 import {
   readSkillExperienceDraft,
   type SkillExperienceDraft,
@@ -136,6 +139,8 @@ export type ChatContentPart = {
   approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
+  /** See `MessagePart.approvalServerGrant`. */
+  approvalServerGrant?: ToolRequestServerGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'

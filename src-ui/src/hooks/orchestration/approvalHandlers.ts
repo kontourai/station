@@ -6,10 +6,12 @@ import {
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
+  STATION_BROWSER_SERVER_GRANT_LABEL,
   toolRequestDisplayName,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestPreviewFromPayload,
+  toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
@@ -178,6 +180,9 @@ export function raiseRequestOpenedToast(
     agentName,
     conversationTitle: chat.title,
     grantLabel,
+    ...(toolRequestServerGrantFromPayload(event.payload) === 'server'
+      ? { serverGrantLabel: STATION_BROWSER_SERVER_GRANT_LABEL }
+      : {}),
   });
 }
 
@@ -187,6 +192,8 @@ type ApprovalToastView = {
   agentName: string;
   conversationTitle?: string;
   grantLabel?: string;
+  /** Set only when the request offers the Station browser server grant. */
+  serverGrantLabel?: string;
 };
 
 function showApprovalToast(
@@ -194,13 +201,16 @@ function showApprovalToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
 ) {
-  const answer = (decision: 'accept' | 'acceptForSession' | 'decline') => {
+  const answer = (
+    decision: 'accept' | 'acceptForSession' | 'decline',
+    sessionGrantScope?: 'server',
+  ) => {
     const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
     navigationStore.navigate('/', {
       chat: chat?.conversationId ?? event.threadId,
       dock: 'open',
     });
-    void answerFromToast(apiBase, event, view, decision);
+    void answerFromToast(apiBase, event, view, decision, sessionGrantScope);
   };
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
@@ -213,7 +223,10 @@ function showApprovalToast(
     // and the sheet render. The session option's label says what the grant
     // covers: "Allow for Session" reads as a grant for this one call, and it
     // is a standing grant for every later call to the same tool.
-    actions: approvalDecisionBody(view.grantLabel).options.map((option) => ({
+    actions: approvalDecisionBody(
+      view.grantLabel,
+      view.serverGrantLabel,
+    ).options.map((option) => ({
       label: option.label,
       variant:
         option.effect === 'deny'
@@ -221,7 +234,8 @@ function showApprovalToast(
           : option.scope === 'session'
             ? ('secondary' as const)
             : ('primary' as const),
-      onClick: () => answer(decisionOptionResponse(option)),
+      onClick: () =>
+        answer(decisionOptionResponse(option), option.sessionGrantScope),
     })),
   });
 
@@ -256,6 +270,7 @@ async function answerFromToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
+  sessionGrantScope?: 'server',
 ) {
   // The request stops waiting on the user at the click, not at the engine's
   // `request.resolved`: the queue card is already gone, and a status surface
@@ -273,6 +288,7 @@ async function answerFromToast(
       requestId: event.requestId,
       requestEventId: event.eventId,
       decision,
+      ...(sessionGrantScope ? { sessionGrantScope } : {}),
     });
     if (outcome === 'already-settled') {
       toastStore.show(

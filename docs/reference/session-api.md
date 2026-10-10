@@ -237,7 +237,8 @@ requests through simulated process streams; they are not a live Codex receipt.
   "type": "respondToRequest",
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
-  "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'"
+  "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
+  "sessionGrantScope": "'server', optional, only with acceptForSession"
 }
 ```
 
@@ -338,6 +339,30 @@ The ACP response mapper prefers the agent's `allow_once` option. If the
 agent offers only `allow_always`, it falls back to that option; Station's
 one-call decision therefore does not guarantee one-call behavior in the
 agent. Claude's own plan exit uses its separate response mapping (#2916).
+
+`sessionGrantScope: 'server'` widens an `acceptForSession` answer from the one
+tool to every later call to the built-in `station-browser` server in that
+Session. A Claude Session offers it only on a request whose `request.opened`
+payload carries `stationBrowserServer: true`, which the adapter sets only for an
+authentic call: the engine-generated `mcp__station-browser__<tool>` name, the
+built-in in-process server delivered to that Session, and no authored tool
+server using the id, and an engine `init` report listing exactly one
+`station-browser` server whose source is `sdk` (fail closed when the source is
+absent or the name is shared; the grant also covers subagents in the Session).
+A server merely named like it, an ACP-reported name or a
+Session without the built-in server never gets the flag. The grant lives with
+the Session record, as the per-tool grant does: it is not shared with another
+Session or server, and a stopped or restarted Session starts with none. It
+covers only plain calls, so an escalation still prompts. The server choice
+does not mint an independent tool-name grant or SDK permission rule: every
+later call still passes the current browser authenticity check. It does not change
+the #90 N2 policy: auto mode and `tools.autoApprove` patterns such as `*` or
+`station-*` still never cover a sensitive browser tool. A request without the
+flag, an answer that omits the field (every older client) and every other
+decision keep the per-tool `acceptForSession` behaviour; an engine that does
+not read the field, and a Station that predates it, grant the one tool. The
+inbox offers it as the `acceptForSessionServer` action, which sends the same
+typed decision. The delegated-task respond route does not accept the field.
 
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox
