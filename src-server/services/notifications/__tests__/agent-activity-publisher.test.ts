@@ -11,6 +11,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NATIVE_PUSH_SEALED_AAD_PREFIX } from '@kontourai/station-contracts/native-push';
+import type { SessionControlMode } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -80,12 +81,14 @@ function sessionEvents(
   threadId: string,
   state: SessionState,
   at: number,
+  controlMode: SessionControlMode = 'station-owned',
 ): CanonicalRuntimeEvent[] {
   const events = [
     ev(threadId, at - 5000, {
       method: 'session.started',
       sessionId: threadId,
       metadata: {
+        controlMode,
         projectSlug: 'login-app',
         cwd: '/Users/someone/private-repo',
       },
@@ -150,11 +153,12 @@ function openRequest(
 /** The read model's session summaries, folded by the real builder. */
 function readSummaries(sessions: Map<string, CanonicalRuntimeEvent[]>) {
   return [...sessions].map(([threadId, events]) => {
+    const started = events.find((event) => event.method === 'session.started');
     const session = {
       provider: 'claude',
       threadId,
       status: 'running',
-      controlMode: events[0]?.metadata?.controlMode ?? 'station-owned',
+      controlMode: started?.metadata?.controlMode ?? 'station-owned',
       cwd: '/Users/someone/private-repo',
       createdAt: events[0]?.createdAt,
       updatedAt: events.at(-1)?.createdAt,
@@ -432,11 +436,12 @@ describe('agent-activity publisher', () => {
       const h = await harness();
       await h.pairAndRegister();
       h.sessions.set('owned', sessionEvents('owned', 'running', START));
-      const external = sessionEvents('external', state, START);
-      external[0]!.metadata = {
-        ...external[0]!.metadata,
-        controlMode: 'read-only-attached',
-      };
+      const external = sessionEvents(
+        'external',
+        state,
+        START,
+        'read-only-attached',
+      );
       h.sessions.set('external', external);
       h.emit('turn.completed');
       await h.settle();
