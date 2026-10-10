@@ -69,7 +69,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 
 export interface DiscoveredLeafRoute {
   readonly method: string;
