@@ -120,8 +120,9 @@ first; the controls show what **Start** will use:
 
 - The **Agent** chip shows the Agent's icon and name. Open it to
   list **Station**, **Coding apps**, and **My agents**, with readiness and setup
-  actions. The separate **Engine & model** control offers alternative engines
-  when they are available. An engine choice overrides this conversation's execution
+  actions. The separate Model chip shows the Model's name and opens the
+  **Engine & model** picker, which also offers alternative engines when they
+  are available. An engine choice overrides this conversation's execution
   while retaining the selected Agent's profile and saved defaults. Search or
   filter by provider, **Recent**, or **Favorites**; open **Options** for
   supported controls such as reasoning effort. Choosing a Model for an Agent also chooses
@@ -165,10 +166,11 @@ Station access, and the Model for each Agent. The project is remembered as the
 chat dock's project for new chats, the same setting the dock's project
 switcher changes, so Home and the dock always open on the same choices.
 **No project** clears it.
-Runtime options such as reasoning effort apply to that start only; they are
-not remembered. A choice you make stays on both surfaces for this browser tab,
-even if another chat later runs on a different Model, until you change it or
-choose **Reset**.
+Runtime options such as reasoning effort stay with the Model choice for this
+browser tab only; they are not remembered after it. A choice you make stays on
+both surfaces for this browser tab, even if another chat later runs on a
+different Model, until you change it or choose the picker's **Use …** reset,
+which names the default it returns to.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
@@ -326,8 +328,8 @@ other integrations retain their own authorization instructions.
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
 aside while keeping your chosen workspace, Agent, Model, and selected context.
-From the composer, use **Return to New Chat** when finished, or browser
-Back to return to the page you left. Station rechecks setup before selection;
+Use **Return to New Chat** in the setup banner when finished, **Cancel
+return** to stay, or browser Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the
 selected agent returns you automatically and resumes the original request after
 revalidation. A failed read keeps the request unsent. If a choice was removed or
@@ -391,7 +393,7 @@ asking the receiving Agent to read it with the `read_conversation` tool; it
 never copies that conversation's transcript into the prompt. An Agent with
 Station Control can then page through that conversation because you
 referenced it; see
-[reading a referenced conversation](../guides/self-configuring-agent.md#reading-a-referenced-conversation). Titles are displayed as plain text, and the link is
+[reading a referenced conversation](https://github.com/kontourai/station/blob/main/docs/guides/self-configuring-agent.md#reading-a-referenced-conversation). Titles are displayed as plain text, and the link is
 generated from Station's conversation identity. The picker only offers source
 metadata allowed by the current access. At send time, Station checks the
 reference's captured Station and access scope. If that scope
@@ -516,8 +518,8 @@ ones inside a Project, but no account can open them there.
 
 Open an attached terminal Session in **Activity**, then choose **Continue in
 Station**. Claude and Codex create independent child Sessions; the original
-terminal Session can keep running. OpenCode conversations are read only: the
-action shows why it is unavailable. Codex continues from the latest completed
+terminal Session can keep running. OpenCode and Grok conversations are read
+only: the action shows why it is unavailable. Codex continues from the latest completed
 turn Station has observed, so wait for one if the action is disabled.
 
 The continuation always works in the folder the conversation ran in, and the
@@ -663,8 +665,10 @@ more context.
 
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station
-checks that the request is still open and makes the decision. Its questions are
-answered on that Station.
+checks that the request is still open and makes the decision. When the paired
+Station reports a question's exact request and your access permits it, the card
+offers an **Answer on the paired Station** box whose **Send answer** reply is
+bound to that question; otherwise the card says to answer it on that Station.
 
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision

@@ -120,6 +120,27 @@ export const MUTATIONS = [
     ],
   },
   {
+    id: 'telemetry-completed-startup-boundary',
+    test: 'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
+    failure:
+      'restores disclosure and emits completed startup only after policy publication: failed (#2015/#2833)',
+    files: [
+      {
+        path: 'src-server/runtime/bootstrap/station-runtime.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              '      void this.usageTelemetry?.stationStarted();',
+              '',
+            ),
+            '    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
+            '    void this.usageTelemetry.stationStarted();\n    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
+          ),
+      },
+    ],
+  },
+  {
     id: 'ci-health-concurrency-threshold',
     test: 'scripts/__tests__/ci-health.test.ts',
     failure:
