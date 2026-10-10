@@ -80,7 +80,11 @@ export function UsageSummaryCards({
       <StatCard
         icon={<CalendarGlyph />}
         label="Active days"
-        value={daysActive === undefined ? 'Not recorded' : daysActive.toLocaleString()}
+        value={
+          daysActive === undefined
+            ? 'Not recorded'
+            : daysActive.toLocaleString()
+        }
         detail="UTC · retained activity"
       />
     </div>

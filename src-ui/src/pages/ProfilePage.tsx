@@ -83,41 +83,55 @@ function ProfileUsageGraph({
         />
       ) : (
         <>
-        <div className="profile-usage-graph__bars">
-          {points.map((point) => (
-            <div key={point.date} className="profile-usage-graph__column">
-              <div
-                className="profile-usage-graph__bar"
-                style={{
-                  height:
-                    point.value > 0
-                      ? `${(point.value / maxValue) * 6}rem`
-                      : '2px',
-                }}
-                title={
-                  point.recorded
-                    ? `${point.label}: ${point.value.toLocaleString()} recorded messages`
-                    : `${point.label}: no daily record`
-                }
-              />
-            </div>
-          ))}
-        </div>
-        <div className="profile-usage-graph__axis" aria-hidden="true">
-          <span>{points[0].label}</span>
-          <span>{points[points.length - 1].label}</span>
-        </div>
+          <div className="profile-usage-graph__bars">
+            {points.map((point) => (
+              <div key={point.date} className="profile-usage-graph__column">
+                <div
+                  className="profile-usage-graph__bar"
+                  style={{
+                    height:
+                      point.value > 0
+                        ? `${(point.value / maxValue) * 6}rem`
+                        : '2px',
+                  }}
+                  title={
+                    point.recorded
+                      ? `${point.label}: ${point.value.toLocaleString()} recorded messages`
+                      : `${point.label}: no daily record`
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <div className="profile-usage-graph__axis" aria-hidden="true">
+            <span>{points[0].label}</span>
+            <span>{points[points.length - 1].label}</span>
+          </div>
         </>
       )}
     </div>
   );
 }
 
-function ProfileDisclosure({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+function ProfileDisclosure({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   return (
-    <details className="profile-disclosure" onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary>{title}{hint && <span>{hint}</span>}</summary>
+    <details
+      className="profile-disclosure"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        {title}
+        {hint && <span>{hint}</span>}
+      </summary>
       {open && children}
     </details>
   );
@@ -324,13 +338,22 @@ export function ProfilePage() {
           <UsageStatsPanel />
         </div>
 
-        <ProfileDisclosure title="Paired people" hint="Approved profiles & devices">
+        <ProfileDisclosure
+          title="Paired people"
+          hint="Approved profiles & devices"
+        >
           <StationPeoplePanel />
         </ProfileDisclosure>
-        <ProfileDisclosure title="Operator breakdown" hint="Providers, models & recorded people">
+        <ProfileDisclosure
+          title="Operator breakdown"
+          hint="Providers, models & recorded people"
+        >
           <StationUsagePanel initiallyExpanded />
         </ProfileDisclosure>
-        <ProfileDisclosure title="Usage across Stations" hint="Receipts & peer totals">
+        <ProfileDisclosure
+          title="Usage across Stations"
+          hint="Receipts & peer totals"
+        >
           <UsageRollupPanel />
         </ProfileDisclosure>
         <ProfileDisclosure title="Milestones">

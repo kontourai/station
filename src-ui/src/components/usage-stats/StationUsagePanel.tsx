@@ -56,7 +56,11 @@ function rowsFor(stats: UsageStats, group: Group): Row[] {
 const amount = (value: number | undefined) =>
   value === undefined ? '—' : `${value.toFixed(4)} USD`;
 
-export function StationUsagePanel({ initiallyExpanded = false }: { initiallyExpanded?: boolean }) {
+export function StationUsagePanel({
+  initiallyExpanded = false,
+}: {
+  initiallyExpanded?: boolean;
+}) {
   const scope = useHostRequestAuthorityScope();
   const [expanded, setExpanded] = useState(initiallyExpanded);
   const [group, setGroup] = useState<Group>('provider');

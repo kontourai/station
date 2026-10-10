@@ -2,8 +2,8 @@ import { AgentIcon } from '../icons/AgentIcon';
 import { AgentGlyph, TargetGlyph } from '../icons/Glyph';
 import { Empty } from '../state';
 import {
-  getTopUsageEntries,
   formatRecordedCost,
+  getTopUsageEntries,
   getUsageModelDisplayName,
 } from './utils';
 
@@ -33,31 +33,28 @@ function ModelRow({
     .join('\n');
 
   return (
-    <>
-      <button
-        type="button"
-        className="usage-breakdown-item"
-        title={tooltipLines}
-        onClick={onClick}
-      >
-        <span className="usage-breakdown-header">
-          <span className="usage-breakdown-name">{displayName}</span>
-          <span className="usage-breakdown-stats">
-            {stats.messages} msgs ·{' '}
-            {formatRecordedCost(stats)}
-          </span>
+    <button
+      type="button"
+      className="usage-breakdown-item"
+      title={tooltipLines}
+      onClick={onClick}
+    >
+      <span className="usage-breakdown-header">
+        <span className="usage-breakdown-name">{displayName}</span>
+        <span className="usage-breakdown-stats">
+          {stats.messages} msgs · {formatRecordedCost(stats)}
         </span>
-        <span className="usage-breakdown-bar">
-          <span
-            className="usage-breakdown-bar-fill"
-            style={{
-              width: `${percentage}%`,
-              backgroundColor: 'var(--accent-primary)',
-            }}
-          />
-        </span>
-      </button>
-    </>
+      </span>
+      <span className="usage-breakdown-bar">
+        <span
+          className="usage-breakdown-bar-fill"
+          style={{
+            width: `${percentage}%`,
+            backgroundColor: 'var(--accent-primary)',
+          }}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -77,45 +74,39 @@ function AgentRow({
   const percentage = total > 0 ? (stats.messages / total) * 100 : 0;
   const agentConfig = agents.find((entry) => entry.slug === agent);
   const isAcp = agentConfig?.engineConnectionType === 'acp';
-  const displayName = agentConfig?.name || (agent === '(unnamed)' ? 'Unattributed agent' : agent);
+  const displayName =
+    agentConfig?.name || (agent === '(unnamed)' ? 'Unattributed agent' : agent);
 
   return (
-    <>
-      <button
-        type="button"
-        className="usage-breakdown-item"
-        onClick={onClick}
-      >
-        <span className="usage-breakdown-header">
-          <span
-            className="usage-breakdown-name"
-            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            {agentConfig ? (
-              <AgentIcon agent={agentConfig} size="small" />
-            ) : (
-              <AgentGlyph />
-            )}
-            {displayName}
-          </span>
-          <span className="usage-breakdown-stats">
-            {stats.messages} msgs ·{' '}
-            {formatRecordedCost(stats)}
-          </span>
+    <button type="button" className="usage-breakdown-item" onClick={onClick}>
+      <span className="usage-breakdown-header">
+        <span
+          className="usage-breakdown-name"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          {agentConfig ? (
+            <AgentIcon agent={agentConfig} size="small" />
+          ) : (
+            <AgentGlyph />
+          )}
+          {displayName}
         </span>
-        <span className="usage-breakdown-bar">
-          <span
-            className="usage-breakdown-bar-fill"
-            style={{
-              width: `${percentage}%`,
-              backgroundColor: isAcp
-                ? 'var(--accent-acp)'
-                : 'var(--accent-yellow)',
-            }}
-          />
+        <span className="usage-breakdown-stats">
+          {stats.messages} msgs · {formatRecordedCost(stats)}
         </span>
-      </button>
-    </>
+      </span>
+      <span className="usage-breakdown-bar">
+        <span
+          className="usage-breakdown-bar-fill"
+          style={{
+            width: `${percentage}%`,
+            backgroundColor: isAcp
+              ? 'var(--accent-acp)'
+              : 'var(--accent-yellow)',
+          }}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -162,7 +153,8 @@ export function UsageBreakdownSection({
         </div>
         {unallocatedModelMessages > 0 && (
           <p className="usage-period-note">
-            {unallocatedModelMessages.toLocaleString()} messages / turns without a recorded model
+            {unallocatedModelMessages.toLocaleString()} messages / turns without
+            a recorded model
           </p>
         )}
       </div>

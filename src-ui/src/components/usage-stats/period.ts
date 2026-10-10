@@ -75,7 +75,17 @@ export interface TrendDay {
  * happens here — totals come from the server's `rangeSummary`.
  */
 export function buildTrendDays(
-  byDate: Record<string, { messages?: number; cost?: number; reportedCostUsd?: number; estimatedCostUsd?: number }> | undefined,
+  byDate:
+    | Record<
+        string,
+        {
+          messages?: number;
+          cost?: number;
+          reportedCostUsd?: number;
+          estimatedCostUsd?: number;
+        }
+      >
+    | undefined,
   from: string,
   to: string,
 ): TrendDay[] {
@@ -93,7 +103,10 @@ export function buildTrendDays(
             recorded: true,
             messages: row.messages ?? 0,
             cost: row.cost ?? 0,
-            costRecorded: row.reportedCostUsd !== undefined || row.estimatedCostUsd !== undefined || (row.cost ?? 0) > 0,
+            costRecorded:
+              row.reportedCostUsd !== undefined ||
+              row.estimatedCostUsd !== undefined ||
+              (row.cost ?? 0) > 0,
           }
         : { date, recorded: false, messages: 0, cost: 0 },
     );

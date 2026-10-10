@@ -97,23 +97,44 @@ describe('UsageDrillDownModal — cache-honest model usage (station#4196)', () =
   });
 });
 
-
-test.each([undefined, 0])('model details distinguish missing token/cost measurements from reported zero (%s)', (reported) => {
-  renderModel({ messages: 1, inputTokens: 0, outputTokens: 0, cost: 0,
-    reportedCostUsd: reported,
-    tokenReports: { input: reported === undefined ? 0 : 1, output: reported === undefined ? 0 : 1 }
-  });
-  expect(statValue('Recorded cost')).toBe(reported === undefined ? 'Not reported' : '$0.00');
-  expect(statValue('Input Tokens')).toBe(reported === undefined ? 'Not reported' : '0');
-  expect(statValue('Output Tokens')).toBe(reported === undefined ? 'Not reported' : '0');
-  expect(screen.queryByText('Avg Cost/Turn')).toBeNull();
-});
-
+test.each([undefined, 0])(
+  'model details distinguish missing token/cost measurements from reported zero (%s)',
+  (reported) => {
+    renderModel({
+      messages: 1,
+      inputTokens: 0,
+      outputTokens: 0,
+      cost: 0,
+      reportedCostUsd: reported,
+      tokenReports: {
+        input: reported === undefined ? 0 : 1,
+        output: reported === undefined ? 0 : 1,
+      },
+    });
+    expect(statValue('Recorded cost')).toBe(
+      reported === undefined ? 'Not reported' : '$0.00',
+    );
+    expect(statValue('Input Tokens')).toBe(
+      reported === undefined ? 'Not reported' : '0',
+    );
+    expect(statValue('Output Tokens')).toBe(
+      reported === undefined ? 'Not reported' : '0',
+    );
+    expect(screen.queryByText('Avg Cost/Turn')).toBeNull();
+  },
+);
 
 test('cache-only observations do not invent an uncached input or prompt total', () => {
-  renderModel({ messages: 1, inputTokens: 0, outputTokens: 0, cost: 0,
-    cacheReadTokens: 25, tokenReports: { input: 0, output: 0, cacheRead: 1, cacheWrite: 0 },
-    cacheProvider: 'claude', cacheInclusivity: 'disjoint', cacheProviderAttribution: 'single',
+  renderModel({
+    messages: 1,
+    inputTokens: 0,
+    outputTokens: 0,
+    cost: 0,
+    cacheReadTokens: 25,
+    tokenReports: { input: 0, output: 0, cacheRead: 1, cacheWrite: 0 },
+    cacheProvider: 'claude',
+    cacheInclusivity: 'disjoint',
+    cacheProviderAttribution: 'single',
   });
   expect(statValue('Input Tokens (uncached)')).toBe('Not reported');
   expect(statValue('Cache Read Tokens')).toBe('25');

@@ -155,12 +155,21 @@ describe('UsageStatsPanel period selector', () => {
         'model-x': { messages: 100, inputTokens: 0, outputTokens: 0, cost: 0 },
       },
       byAgent: {
-        'agent-a': { conversations: 4, messages: 50, cost: 0, reportedCostUsd: 0 },
+        'agent-a': {
+          conversations: 4,
+          messages: 50,
+          cost: 0,
+          reportedCostUsd: 0,
+        },
       },
     };
     render(<UsageStatsPanel />);
-    expect(screen.getByRole('button', { name: /model-x/ }).textContent).toContain('Not reported');
-    expect(screen.getByRole('button', { name: /agent-a/ }).textContent).toContain('$0.00');
+    expect(
+      screen.getByRole('button', { name: /model-x/ }).textContent,
+    ).toContain('Not reported');
+    expect(
+      screen.getByRole('button', { name: /agent-a/ }).textContent,
+    ).toContain('$0.00');
     expect(screen.getByText(/300.*without a recorded model/)).toBeTruthy();
     expect(screen.queryByText('Avg/Message')).toBeNull();
   });
@@ -349,9 +358,15 @@ describe('UsageStatsPanel period selector', () => {
     });
     const { container } = render(<UsageStatsPanel />);
     selectPeriod('30 days');
-    const titles = Array.from(container.querySelectorAll('.usage-trend__bar')).map((bar) => bar.getAttribute('title'));
-    expect(titles.some((title) => title?.includes('Cost not reported · 3 messages'))).toBe(true);
-    expect(titles.some((title) => title?.includes('$0.0000 · 9 messages'))).toBe(true);
+    const titles = Array.from(
+      container.querySelectorAll('.usage-trend__bar'),
+    ).map((bar) => bar.getAttribute('title'));
+    expect(
+      titles.some((title) => title?.includes('Cost not reported · 3 messages')),
+    ).toBe(true);
+    expect(
+      titles.some((title) => title?.includes('$0.0000 · 9 messages')),
+    ).toBe(true);
   });
 
   test('an empty period is an empty state, not $0.00 cards', () => {

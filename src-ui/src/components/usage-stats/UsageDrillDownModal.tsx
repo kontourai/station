@@ -61,8 +61,10 @@ export function UsageDrillDownModal({
     const cacheInclusivity = cacheProvider
       ? modelStats.cacheInclusivity
       : undefined;
-    const inputMeasured = modelStats.inputTokens > 0 || modelStats.tokenReports?.input > 0;
-    const outputMeasured = modelStats.outputTokens > 0 || modelStats.tokenReports?.output > 0;
+    const inputMeasured =
+      modelStats.inputTokens > 0 || modelStats.tokenReports?.input > 0;
+    const outputMeasured =
+      modelStats.outputTokens > 0 || modelStats.tokenReports?.output > 0;
     const promptTotal = cacheInclusivePromptTokens(cacheProvider, {
       ...modelStats,
       inputTokens: inputMeasured ? modelStats.inputTokens : undefined,
@@ -115,7 +117,11 @@ export function UsageDrillDownModal({
                   ? 'Input Tokens (uncached)'
                   : 'Input Tokens'
               }
-              value={inputMeasured ? modelStats.inputTokens.toLocaleString() : 'Not reported'}
+              value={
+                inputMeasured
+                  ? modelStats.inputTokens.toLocaleString()
+                  : 'Not reported'
+              }
             />
             {modelStats.cacheReadTokens !== undefined && (
               <StatCard
@@ -141,31 +147,33 @@ export function UsageDrillDownModal({
             <StatCard
               icon={<OutboxGlyph />}
               label="Output Tokens"
-              value={outputMeasured ? modelStats.outputTokens.toLocaleString() : 'Not reported'}
+              value={
+                outputMeasured
+                  ? modelStats.outputTokens.toLocaleString()
+                  : 'Not reported'
+              }
             />
             <StatCard
               icon={<MoneyGlyph />}
               label="Recorded cost"
               value={formatRecordedCost(modelStats)}
             />
-
-
           </div>
 
           {agentsUsingModel.length > 0 && (
             <div className="drill-down-section">
               <h4>Agents Using This Model</h4>
               <div className="drill-down-list">
-                {agentsUsingModel.map(
-                  (entry) => (
-                    <div key={entry.agentId} className="drill-down-list-item">
-                      <span className="drill-down-list-name">{entry.agentName}</span>
-                      <span className="drill-down-list-stats">
-                        {entry.messages} msgs · {formatRecordedCost(entry)}
-                      </span>
-                    </div>
-                  ),
-                )}
+                {agentsUsingModel.map((entry) => (
+                  <div key={entry.agentId} className="drill-down-list-item">
+                    <span className="drill-down-list-name">
+                      {entry.agentName}
+                    </span>
+                    <span className="drill-down-list-stats">
+                      {entry.messages} msgs · {formatRecordedCost(entry)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -290,25 +298,22 @@ export function UsageDrillDownModal({
               label="Recorded cost"
               value={formatRecordedCost(agentStats)}
             />
-
           </div>
 
           {modelBreakdown.length > 0 && (
             <div className="drill-down-section">
               <h4>Models Used</h4>
               <div className="drill-down-list">
-                {modelBreakdown.map(
-                  (entry) => (
-                    <div key={entry.modelId} className="drill-down-list-item">
-                      <span className="drill-down-list-name">
-                        {entry.displayName}
-                      </span>
-                      <span className="drill-down-list-stats">
-                        {entry.messages} msgs · {formatRecordedCost(entry)}
-                      </span>
-                    </div>
-                  ),
-                )}
+                {modelBreakdown.map((entry) => (
+                  <div key={entry.modelId} className="drill-down-list-item">
+                    <span className="drill-down-list-name">
+                      {entry.displayName}
+                    </span>
+                    <span className="drill-down-list-stats">
+                      {entry.messages} msgs · {formatRecordedCost(entry)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
