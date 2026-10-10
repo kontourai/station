@@ -515,12 +515,17 @@ decision. Accepted approval actions in notification history and Attention also
 open the conversation. These actions preserve the request's thread and opened
 event; a session grant retains the engine's existing scope.
 
-The shared answer path coalesces concurrent answers to the same prompt. Its
+The shared answer path coalesces concurrent answers to the same prompt only
+when the decision and session grant scope both match. A per-tool choice and a
+server-wide choice remain distinct. Its
 15-second send deadline is followed by a bounded 5-second inspection when the
 send fails. A resolved request is shown as settled without claiming a local
 grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
 Check status reads the request before another decision can be sent. Errors
 keep a short summary beside the controls and technical details in a disclosure.
+The shared state retains the chosen server scope while delivery is unconfirmed
+and after inspection finds the request settled; that settled result sends no
+additional decision and does not establish which grant the server recorded.
 
 Owners: [approval sheet](../../src-ui/src/components/chat/ApprovalSheetProvider.tsx),
 [decision delivery](../../src-ui/src/hooks/orchestration/answerRequest.ts),
