@@ -61,8 +61,11 @@ ends identify its active probes. Probe command limits and report exit status
 remain unchanged.
 
 Independent command and generated-tree probes run concurrently through the
-owned-process helper. Each retains its command deadline (normally 10 seconds;
-Apple device discovery retains 15 seconds), bounded output and process cleanup.
+owned-process helper. Each retains its command deadline (10 seconds; the
+node-spawning version probes — node, npm and tauri-cli — carry 30 seconds
+because a cold Windows start can exceed the shorter bound while the tool is
+healthy; Apple device discovery retains 15 seconds), bounded output and
+process cleanup.
 A stalled tool stays failed in the report and findings; it does not prevent
 unrelated version probes from returning. The exported `buildContextReport`
 builder returns a promise; its CLI caller awaits the completed report.
@@ -124,10 +127,10 @@ The earlier 2026-08-15 registry review is historical. The current checkout
 requests these direct versions; this list is not a claim that they remain the
 latest upstream releases:
 
-- Rust `tauri` 2.11.5
-- Rust `tauri-build` 2.6.3
-- npm `@tauri-apps/api` `^2.11.1`
-- npm `@tauri-apps/cli` `^2.11.5`
+- Rust `tauri` 2.12.1
+- Rust `tauri-build` 2.7.1
+- npm `@tauri-apps/api` `^2.12.1`
+- npm `@tauri-apps/cli` `^2.12.1`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
 Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The
@@ -135,6 +138,11 @@ manifest ranges do not by themselves identify the installed npm package version.
 Tauri's
 [dependency update guide](https://v2.tauri.app/develop/updating-dependencies/)
 before changing either side.
+
+The Rust process, deep-link, updater, haptics, and notification plugins use
+the same minor lines as their npm packages. `tauri:context` checks the selected
+toolchain and configuration; those checks alone do not prove a packaged shell
+works.
 
 ## Desktop Content Security Policy
 

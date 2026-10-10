@@ -22,13 +22,13 @@ default = []
 webdriver = ["dep:tauri-plugin-wdio-webdriver"]
 
 [build-dependencies]
-tauri-build = { version = "=2.6.3", features = [] }
-tauri-plugin = { version = "=2.6.3", features = ["build"] }
+tauri-build = { version = "=2.7.1", features = [] }
+tauri-plugin = { version = "=2.7.1", features = ["build"] }
 serde_json = "1"
 plist = "=1.10.0"
 
 [dependencies]
-tauri = { version = "=2.11.5", features = ["devtools", "tray-icon", "image-png"] }
+tauri = { version = "=2.12.1", features = ["devtools", "tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # rustls, because native requests reach the Station over HTTPS — a
@@ -43,12 +43,12 @@ dunce = "1"
 # dependency table, not the desktop-only one below: web push cannot reach the
 # native shell (Android WebView has no PushManager), so mobile is the whole
 # reason this is here (#910).
-tauri-plugin-notification = "=2.4.0"
+tauri-plugin-notification = "=2.5.1"
 # Mobile haptic feedback (station#1954). Official Tauri plugin — listed in the
 # shared table so capability ACL generation can resolve `haptics:*` permissions
 # on every target; `lib.rs` only `.plugin()`-inits it under `cfg(mobile)`.
-tauri-plugin-haptics = "=2.3.3"
-tauri-plugin-deep-link = "=2.4.10"
+tauri-plugin-haptics = "=2.4.1"
+tauri-plugin-deep-link = "=2.6.1"
 # `log` is the standard facade; the desktop shell has never emitted through it
 # before (#1899). Commodity crate, so a loose version like the other
 # non-Tauri-plugin dependencies above.
@@ -88,10 +88,10 @@ tauri-plugin-opener = "=2.5.5"
 # functionally inert plugin, which is honest-inertness policy, not a second
 # crash guard.
 notify-rust = "=4.18.0"
-tauri-plugin-updater = "=2.11.0"
+tauri-plugin-updater = "=2.13.1"
 # The one JS-reachable way to relaunch the process after an update installs.
 # Config-free, so unlike the updater plugin above it is always registered.
-tauri-plugin-process = "=2.3.1"
+tauri-plugin-process = "=2.4.0"
 # One desktop app per identifier, enforced at the OS layer (station#2904). A
 # second launch never becomes a second process contending for the home-scoped
 # sidecar claim — its argv is forwarded to the primary and it exits before any
@@ -155,7 +155,7 @@ libc = "0.2"
 tempfile = "3"
 # The mock runtime lets unit tests inspect the actual native menu item built by
 # tray code without adding test machinery to release artifacts.
-tauri = { version = "=2.11.5", features = ["test"] }
+tauri = { version = "=2.12.1", features = ["test"] }
 
 [patch.crates-io]
 # Audited Station patch over android-native-keyring-store 1.0.0. Upstream's

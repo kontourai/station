@@ -386,6 +386,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
+  // #3101 slice F: builds small real Git graphs and runs the pure-merge
+  // classifier, and once the real pre-push hook through `git push` with
+  // stubbed gate commands, as bounded single-shot children.
+  'scripts/__tests__/prepush-pure-merge.test.ts',
+  // #3101 slice F: runs the fixture policy's real main() as a child process
+  // against a small real Git graph (merge base versus main's tip).
+  'scripts/__tests__/test-fixture-policy.process.test.ts',
   // Same shape one gate over: runs the pre-push typecheck scope guard as a
   // real child process — once against a stub `npm` so its REFUSAL exit
   // status is proven, once with an empty scope so the skip path's zero is
@@ -573,6 +580,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reads the ledger from origin/main, peels real ledger commit-backs with
   // git, and its exit status. Bounded, single-shot children.
   'scripts/__tests__/nightly-qualification-decide.cli.test.ts',
+  // Bounded real CLI with local Actions HTTP responses; no corpus or provider effects.
+  'scripts/__tests__/release-pipeline.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a

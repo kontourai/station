@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS orchestration_conversation_handoffs (
   target_agent_id TEXT NOT NULL,
   target_environment_id TEXT NOT NULL,
   target_connection_id TEXT,
+  target_execution_agent_id TEXT,
   target_model_id TEXT,
   message_digest TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -46,6 +47,27 @@ export function ensureConversationHandoffMessageDigestColumn(db: {
     );
   } catch (error) {
     // Another EventStore can complete this additive home upgrade first.
+    if (!hasColumn()) throw error;
+  }
+}
+
+/** Persist the explicit execution default independently of the profile identity. */
+export function ensureConversationHandoffExecutionAgentColumn(db: {
+  prepare(sql: string): { all(): unknown[] };
+  exec(sql: string): void;
+}): void {
+  const hasColumn = () =>
+    (
+      db
+        .prepare('PRAGMA table_info(orchestration_conversation_handoffs)')
+        .all() as Array<{ name?: unknown }>
+    ).some((column) => column?.name === 'target_execution_agent_id');
+  if (hasColumn()) return;
+  try {
+    db.exec(
+      'ALTER TABLE orchestration_conversation_handoffs ADD COLUMN target_execution_agent_id TEXT',
+    );
+  } catch (error) {
     if (!hasColumn()) throw error;
   }
 }

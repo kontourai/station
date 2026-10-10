@@ -110,12 +110,29 @@ function readSelection(value: unknown): NewChatStartSelection | undefined {
   if (model !== undefined) {
     if (!isRecord(model) || !isRecord(model.providerOptions)) return undefined;
     const modelId = optionalString(model.modelId);
+    const executionAgentId = optionalString(model.executionAgentId);
+    const environmentId = optionalString(model.environmentId);
+    const expectedDefinitionFingerprint = optionalString(
+      model.expectedDefinitionFingerprint,
+    );
     const providerId = optionalString(model.providerId);
     const providerType = optionalString(model.providerType);
-    if (modelId === null || providerId === null || providerType === null)
+    if (
+      modelId === null ||
+      providerId === null ||
+      providerType === null ||
+      executionAgentId === null ||
+      environmentId === null ||
+      expectedDefinitionFingerprint === null
+    )
       return undefined;
     choice = {
       ...(modelId ? { modelId } : {}),
+      ...(executionAgentId ? { executionAgentId } : {}),
+      ...(environmentId ? { environmentId } : {}),
+      ...(expectedDefinitionFingerprint
+        ? { expectedDefinitionFingerprint }
+        : {}),
       ...(providerId ? { providerId } : {}),
       ...(providerType ? { providerType } : {}),
       providerOptions: { ...model.providerOptions },

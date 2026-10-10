@@ -151,6 +151,11 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  // #3149: the native platform boundary scans every renderer source for Tauri
+  // access outside the adapter. Its only pull-request test spawns it among
+  // thirty other gates, and no path edge can select that for any src-ui change,
+  // so #3114 first failed it in scheduled qualification. Under a second.
+  Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),

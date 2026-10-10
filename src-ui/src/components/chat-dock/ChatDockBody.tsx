@@ -28,6 +28,7 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
   drainQueuedMessageOnTurnCompleted,
   sendPendingMessageNow,
@@ -239,6 +240,8 @@ interface ChatDockBodyProps {
   stationApprovalModeDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   availableModels: SelectableModel[];
+  executionModels?: SelectableModel[];
+  onExecutionModelSelect?: (model?: SelectableModel) => void;
   modelsLoading?: boolean;
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: () => void;
@@ -419,6 +422,8 @@ export function ChatDockBody({
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
+  executionModels,
+  onExecutionModelSelect,
   modelsLoading = false,
   chatInput,
   secondaryActions,
@@ -495,12 +500,35 @@ export function ChatDockBody({
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
+  const windowRequests = useMemo(
+    () =>
+      unansweredApprovalRequests(
+        [],
+        transcript.events.map((item) => item.event),
+      ).flatMap((request) =>
+        request.approvalId
+          ? [
+              {
+                requestId: request.approvalId,
+                threadId: request.approvalThreadId,
+              },
+            ]
+          : [],
+      ),
+    [transcript.events],
+  );
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
     streamStatus,
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
+    windowRequests,
+    observationUnavailable:
+      unverifiedOpen ||
+      Boolean(
+        transcript.enabled && (transcript.error || transcript.upgradeRequired),
+      ),
   });
   /*
    * One transitional state for the whole conversation, from the two things
@@ -919,6 +947,39 @@ export function ChatDockBody({
   );
 
   const agent = agents.find((a) => a.slug === activeSession.agentSlug);
+  const hasExecutionAlternatives = Boolean(
+    onExecutionModelSelect &&
+      activeSession.conversationId &&
+      executionModels?.some(
+        (model) =>
+          model.executionAgentId !== activeSession.executionAgentId &&
+          model.available !== false,
+      ),
+  );
+  const pickerModels = executionModels?.map((model) =>
+    model.executionAgentId === activeSession.executionAgentId &&
+    !chatInput.canModelSelect
+      ? {
+          ...model,
+          available: false,
+          unavailableReason:
+            chatInput.modelSelectionReason ??
+            'This engine cannot change its model in this conversation.',
+        }
+      : model,
+  );
+  const executionBinding = activeSession.executionAgentId
+    ? agents.find(
+        (candidate) => candidate.slug === activeSession.executionAgentId,
+      )
+    : agent;
+  const executionEngineLabel =
+    executionBinding?.engineDisplayName ??
+    engineDisplayLabel(
+      activeSession.orchestrationProvider ?? activeSession.provider ?? '',
+    ) ??
+    modelProviderLabel;
+
   const workspaceRefused =
     activeSession.outboundQueuedTurns?.some(isWorkspaceRefusedTurn) ?? false;
 
@@ -1965,6 +2026,7 @@ export function ChatDockBody({
             modelSupportsAttachments={modelSupportsAttachments}
             fileAttachmentsSupported={fileAttachmentsSupported}
             modelProviderLabel={modelProviderLabel}
+            executionEngineLabel={executionEngineLabel}
             modelProviders={modelProviders}
             currentProviderId={activeSession.providerId}
             fontSize={chatFontSize}
@@ -1976,13 +2038,19 @@ export function ChatDockBody({
                 : (activeSession.requestedModelSource ??
                   activeSession.modelSource)
             }
-            canModelSelect={chatInput.canModelSelect}
+            canModelSelect={
+              chatInput.canModelSelect || hasExecutionAlternatives
+            }
             modelSelectionReason={chatInput.modelSelectionReason}
-            modelsStale={chatInput.modelsStale}
+            modelsStale={
+              hasExecutionAlternatives ? false : chatInput.modelsStale
+            }
             modelsLoading={modelsLoading}
             agentDefaultModel={agentDefaultModelId}
             defaultModelSource={activeSession.defaultModelSource}
             availableModels={availableModels}
+            pickerModels={pickerModels}
+            currentExecutionAgentId={activeSession.executionAgentId}
             modelQuery={chatInput.modelQuery}
             agentConnectionId={activeSession.agentConnectionId}
             modelRuntimeOptions={
@@ -2048,10 +2116,31 @@ export function ChatDockBody({
             onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
             onRemoveAttachment={chatInput.handleRemoveAttachment}
             onClearAttachments={chatInput.handleClearAttachments}
-            onModelSelect={chatInput.handleModelSelect}
-            onModelReset={chatInput.handleModelReset}
+            onModelSelect={(model) => {
+              if (
+                model.executionAgentId !== activeSession.executionAgentId &&
+                onExecutionModelSelect
+              ) {
+                chatInput.handleModelClose();
+                onExecutionModelSelect(model);
+              } else if (chatInput.canModelSelect) {
+                chatInput.handleModelSelect(model);
+              }
+            }}
+            onModelReset={() => {
+              if (activeSession.executionAgentId && onExecutionModelSelect) {
+                chatInput.handleModelClose();
+                onExecutionModelSelect();
+              } else {
+                chatInput.handleModelReset();
+              }
+            }}
             onModelClose={chatInput.handleModelClose}
-            onModelOpen={chatInput.handleModelOpen}
+            onModelOpen={
+              hasExecutionAlternatives
+                ? chatInput.openModelForExecution
+                : chatInput.handleModelOpen
+            }
             onModelRuntimeOptionChange={
               chatInput.handleModelRuntimeOptionChange
             }

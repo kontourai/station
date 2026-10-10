@@ -52,6 +52,12 @@ emits public metadata and opaque handles only. An iOS source check includes
 those platform branches; a desktop Rust test does not compile the callback
 module. Neither check proves installed delivery or OS storage.
 
+Pinned Tao 0.37.1 registers its scene-configuration callback even when the
+app has no scene manifest. The intake hook validates that callback's actual
+class and ABI before wrapping it; manifest absence does not mean the method
+is absent. Keep this contract aligned with the resolved Tao source when
+upgrading Tauri. A source match does not replace the installed launch checks.
+
 Qualification requires the same installed app identity, channel and actual
 proof-key surface as the operator-approved native v2 invitation. Exercise
 cold and warm launches, explicit cancel then return to the original invitation,
@@ -150,6 +156,23 @@ Rust admission tests cover the serialized snapshot and queue bound; the
 native adapter tests cover recovery, exhaustion, cancellation, authority
 changes, and non-replayable failures. Those tests do not establish real
 WebView IPC, packaged-shell, mobile, or physical-device behavior.
+
+## Resolver recovery and approval uncertainty
+
+Both native authenticated requests and the credential-free public handshake
+retry a host-issued `transport_dns` failure twice, after 250 and 500 ms. The
+native client disables redirects, so this resolver failure precedes HTTP
+dispatch. Each authenticated retry preserves the scoped binding and rechecks
+authority. Cancellation stops the wait; the reserved health probe is not
+retried. HTTP 503, timeouts and lost responses do not authorize replay.
+
+Manual history Retry invalidates the cached capability observation before
+loading again. Failed history or continuation observation displays Status
+unavailable instead of asserting that a cached Working timer is current.
+Approval delivery has a separate bounded send and inspection path; see
+[tool-policy delivery](../conformance/tool-policy-delivery.md#answering-on-a-phone-and-recovering-delivery).
+Adapter and browser tests are diagnostic evidence, separate from a real shell,
+physical phone, notification lifecycle or release-provider journey.
 
 ## Native foreground dispatch deadlines
 

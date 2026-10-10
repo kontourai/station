@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Bound sources changed only by this PR's credential profile env overlay plus main's additive runtime wiring; the overlay's documented precedence and refusal behavior does not alter this document's claims; verified the cited behavior lines still match the merged sources.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/codex-adapter-transport.ts","src-server/providers/adapters/harness-questions.ts","src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Merged main 5326f034: station-runtime.ts delta since the last review is additive wiring only (relayInvitationOwner pass-through, projectMcpServers resolution from Knowledge roots, project native tool loader). Checked this document's runtime claims; none reference those seams and the described behavior is unchanged.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json#/exports/.~1task-room-work","packages/sdk/src/__tests__/task-room-work-hooks.test.tsx","packages/sdk/src/query-domains/taskRoomWork.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

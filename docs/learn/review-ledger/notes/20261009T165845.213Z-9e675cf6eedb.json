@@ -1,0 +1,7 @@
+{
+  "revision": "7cbccd9001c36225451ee81d2db40ae1f8e67f6f",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed authoritative inspection outcomes shared across kept-mounted approval copies: pending clears uncertainty, resolved retains a settled snapshot and prevents another decision. Both outcomes use the actual grouped and transcript caller keeper with retained old event rows; deleting the resolved snapshot reproduces the named RED, and exact restoration passes. Shared settled entries remain bounded and may be retired without evicting active or uncertain sends. No grant is inferred from a closed request.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx","src-ui/src/hooks/orchestration/answerRequest.ts"]}
+  ]
+}

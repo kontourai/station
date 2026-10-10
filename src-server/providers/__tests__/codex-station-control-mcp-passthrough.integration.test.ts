@@ -49,6 +49,8 @@ class FakeWritable extends Writable {
 }
 
 class FakeCodexProcess extends EventEmitter {
+  exitCode: number | null = null;
+  readonly signalCode = null;
   readonly stdin = new FakeWritable();
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
@@ -60,6 +62,7 @@ class FakeCodexProcess extends EventEmitter {
   }
 
   kill(): boolean {
+    this.exitCode = 0;
     this.emit('exit', 0);
     return true;
   }
@@ -110,6 +113,27 @@ function toolServersReport(input: ProviderSessionStartInput) {
 }
 
 describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station-control integration wire-safe', () => {
+  test('an explicit engine override refuses a tool that resolved but cannot be delivered by the adapter', async () => {
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () => agentSpecWithStationControl(),
+      resolveToolServer: async () => realStationControlToolDef(),
+      resolveSkillDir: async () => null,
+    });
+    const resolved = await resolver({
+      threadId: 'override-delivery-refusal',
+      provider: 'codex',
+      metadata: { agentSlug: 'ops-agent', executionAgentId: 'codex' },
+    });
+    expect(toolServersReport(resolved)?.undelivered).toEqual([]);
+    const processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => processHandle });
+    await expect(adapter.startSession(resolved)).rejects.toThrow(
+      'toolServers:station-control (delivery-failed)',
+    );
+    expect(processHandle.exitCode).toBe(0);
+    await expect(adapter.listSessions()).resolves.toEqual([]);
+  });
+
   test('a real env-bearing station-control record survives resolution for codex AND reaches the spawn argv as a -c mcp_servers.station-control.url override with a per-session token, never env', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () => agentSpecWithStationControl(),

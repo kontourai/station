@@ -319,7 +319,8 @@ install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
 Normal operation is a Nightly started by a passing main qualification run for
-the commit it qualified, at most about once a day. Nightly has no independent
+the commit it qualified, under the configured minimum publication interval
+(six hours by default) and its separate serialized delivery lease. Nightly has no independent
 schedule; manual dispatch remains available for recovery and requires
 exact-source qualification. Both entry points use their workflow event SHA,
 never stage a source their published markers already contain, and skip
@@ -398,7 +399,7 @@ at `usr/share/Station/dist-server` and `usr/share/Station/node_modules`.
 server and dependencies under `usr/share/Station`, but the
 [native host](../../src-desktop/src/lib.rs) currently joins both the registry
 bridge and sidecar entrypoint directly under Tauri's `resource_dir()/dist-server`.
-The pinned `tauri-utils` 2.9.3 resolves the AppImage resource directory under
+The pinned `tauri-utils` 2.10.1 resolves the AppImage resource directory under
 `usr/lib/<package>`. No alternate `usr/share/Station` lookup is present in those
 callers. Package-layout checks alone therefore do not establish a working
 AppImage startup; this source mismatch needs repair and an actual Linux launch.

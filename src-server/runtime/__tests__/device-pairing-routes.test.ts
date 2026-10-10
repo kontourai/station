@@ -1305,8 +1305,7 @@ describe('device pairing routes', () => {
       ),
     );
     expect(delegationOffer.status).toBe(201);
-    // kind is a host-side label, never part of the wire DevicePairingOffer.
-    expect(await delegationOffer.json()).not.toHaveProperty('kind');
+    expect(await delegationOffer.json()).toHaveProperty('kind', 'delegation');
 
     const invalidKind = await harness.request(
       '/api/pairing/offers',

@@ -40,7 +40,9 @@
 
     "src-ui/src/views/settings/settings-catalog.ts",
 
-    "src-ui/src/views/settings/settings-pages.ts"
+    "src-ui/src/views/settings/settings-pages.ts",
+
+    "src-ui/src/components/SectionNavigation.tsx"
   ],
 
   "checks": [

@@ -9,7 +9,7 @@ opens Fieldwork's protected review application in a sandboxed frame.
 
 - Station owns project selection, path confinement, run metadata, host
   navigation, and the frame that presents the review application.
-- `@kontourai/fieldwork@0.10.0` owns run creation, review lifecycle, Survey's
+- `@kontourai/fieldwork@0.14.0` owns run creation, review lifecycle, Survey's
   review surface, and reviewed output.
 - The plugin creates its main `createFieldworkApplication()` facade lazily.
   Reviewed-source reads use additional short-lived owner facades, closed in

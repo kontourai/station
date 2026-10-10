@@ -11,6 +11,10 @@
  * inside the directory Station named. The CLI authenticates as itself, which is
  * what the provider expects, and no token passes through Station.
  *
+ * #2966: a profile's env overlay is deliberately NOT applied here. Login
+ * authenticates with the provider itself, so an overlay routing sessions
+ * through a proxy (or masking a key) would misdirect the sign-in.
+ *
  * Verified live on macOS — the platform whose Keychain storage makes this
  * non-obvious (`APP_HOME_ENGINES.claude` carries that caveat):
  *
