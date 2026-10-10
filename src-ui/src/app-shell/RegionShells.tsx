@@ -2,9 +2,12 @@ import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspa
 import {
   type ComponentType,
   createContext,
+  lazy,
   type ReactNode,
+  Suspense,
   useContext,
   useEffect,
+  useMemo,
 } from 'react';
 import { ambientChatPaneFailureContext } from '../components/chat-dock/chatPaneFailureContext';
 import { LazyBoundary } from '../components/LazyBoundary';
@@ -55,11 +58,22 @@ function renderAmbientChatPane(
   shellChrome: DockShellChrome,
 ) {
   return (
-    <LazyBoundary
-      load={loadAmbientChatPane}
-      componentProps={{ instance, onRequestAuth, shellChrome }}
-      pending={<SkeletonBlock count={1} label="Loading Chat" />}
+    <AmbientChatPane
+      instance={instance}
+      onRequestAuth={onRequestAuth}
+      shellChrome={shellChrome}
     />
+  );
+}
+
+function AmbientChatPane(props: AmbientChatPaneProps) {
+  const ChatPane = useMemo(() => lazy(loadAmbientChatPane), []);
+  // The pane owner's boundary retains named-conversation recovery for both
+  // renderer failures and rejected imports.
+  return (
+    <Suspense fallback={<SkeletonBlock count={1} label="Loading Chat" />}>
+      <ChatPane {...props} />
+    </Suspense>
   );
 }
 
