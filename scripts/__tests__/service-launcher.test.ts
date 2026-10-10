@@ -1097,7 +1097,15 @@ describe('a self-supervised launcher, as on Windows (#2675 W3)', {
     writeServiceUpdateRequest(install.installRoot, '1.1.0');
     const update = await waitFor(
       'the update to finish',
-      () => finished(install),
+      () => {
+        const update = finished(install);
+        if (
+          update?.status === 'committed' &&
+          currentVersion(install) !== update.targetVersion
+        )
+          return undefined;
+        return update;
+      },
       30_000,
       diagnostics(install, launcher),
     );
