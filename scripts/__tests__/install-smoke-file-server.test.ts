@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -11,13 +11,8 @@ import {
 import { runBoundedFixture } from './helpers/bounded-fixture-process.mjs';
 
 const script = resolve('scripts/install-smoke-file-server.mjs');
-const directories: string[] = [];
+const makeTempDir = trackTempDirs();
 const executions: ReturnType<typeof executeOwnedCommand>[] = [];
-function temporaryRoot() {
-  const root = mkdtempSync(join(tmpdir(), 'install-smoke-files-'));
-  directories.push(root);
-  return root;
-}
 
 afterEach(async () => {
   for (const execution of executions.splice(0)) {
@@ -30,8 +25,6 @@ afterEach(async () => {
     expect(cleanup.settled).toBe(true);
     expect(cleanup.errors).toEqual([]);
   }
-  for (const root of directories.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 
 async function start(directory: string): Promise<string> {
@@ -82,7 +75,7 @@ const request = (url: string, method = 'GET') =>
   });
 
 test('the CLI serves three distinct origins, exact HEAD/GET bytes, and replacement artifacts', async () => {
-  const root = temporaryRoot();
+  const root = makeTempDir('install-smoke-files-');
   const names = ['artifacts', 'manifests', 'keys'];
   for (const name of names) mkdirSync(join(root, name));
   const bytes = Buffer.from([0, 255, 42, 7]);
@@ -126,7 +119,7 @@ test('the CLI serves three distinct origins, exact HEAD/GET bytes, and replaceme
 test('the CLI fails before readiness when its fixture directory is missing', async () => {
   const result = await runBoundedFixture(
     process.execPath,
-    [script, '0', join(temporaryRoot(), 'missing')],
+    [script, '0', join(makeTempDir('install-smoke-files-'), 'missing')],
     {},
   );
   expect(result.status).toBe(1);
