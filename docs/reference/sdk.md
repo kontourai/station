@@ -929,8 +929,8 @@ snapshot metadata. A rescan invalidates all analytics and Insights queries.
 
 Return `UsageInsights` from `@kontourai/station-contracts/insights`, including
 retained-scan coverage when the server supports it. Filters are part of the
-query cache key. HTTP failures, `success: false`, and absent/non-object results
-reject. Older servers may omit coverage; consumers must describe completeness
+query cache key. HTTP failures, `success: false`, and invalid rollup/coverage payloads
+reject. Additive fields are preserved. Older servers may omit coverage; consumers must describe completeness
 as unknown. Partial scans retain readable aggregates with a warning; unknown
 scans and failed refreshes must not display cached totals as measured results.
 See [Insights](api.md#insights) for retention and file-day boundaries.

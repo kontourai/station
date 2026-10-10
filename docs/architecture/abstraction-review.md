@@ -193,9 +193,11 @@ spans finalized as successful; and
 created before asynchronous provider registration. The last two have bounded
 in-memory exporter/reader probes, not production collector measurements.
 
-Insights also logs and skips unreadable rows/files before returning successful
-totals. [#2758](https://github.com/kontourai/station/issues/2758) proposes an
-explicit completeness result through the route, SDK, and visible view. A
+Insights now reports retained-scan integrity through its route, typed SDK and
+existing dashboard ([#2758](https://github.com/kontourai/station/issues/2758)).
+Readable omissions show partial totals; unknown history and failed refreshes
+hide totals. Coverage decisions follow user/tenant admission for attributable
+rows. A clean scan still does not prove retention or producer delivery. A
 generated [metric catalog](../reference/metrics.md) prevents declaration drift;
 it cannot establish that observations were recorded, exported, or complete.
 
