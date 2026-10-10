@@ -200,14 +200,17 @@ function bunCompiler(argv, cwd) {
     throw new Error(
       'Bun diagnostics require --noEmit and an explicit -p project.',
     );
-  const manifest = join(cwd, 'package.json');
-  if (
-    existsSync(manifest) &&
-    JSON.parse(readFileSync(manifest, 'utf8')).scripts?.check
-  )
-    throw new Error(
-      'Bun diagnostics cannot run where a package check script shadows the checker.',
-    );
+  for (let directory = cwd; ; directory = dirname(directory)) {
+    const manifest = join(directory, 'package.json');
+    if (
+      existsSync(manifest) &&
+      JSON.parse(readFileSync(manifest, 'utf8')).scripts?.check
+    )
+      throw new Error(
+        'Bun diagnostics cannot run where a package check script shadows the checker.',
+      );
+    if (dirname(directory) === directory) break;
+  }
   const result = spawnSyncBounded(
     process.env.STATION_BUN_EXECUTABLE || 'bun',
     [

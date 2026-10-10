@@ -591,6 +591,46 @@ describe('host-wide cap across processes', { timeout: 90_000 }, () => {
 });
 
 describe('tsc-slot runner', () => {
+  test('Bun diagnostics refuse a check script inherited from a parent directory', () => {
+    const parent = tempDir('tc-bun-shadow-');
+    const nested = join(parent, 'nested');
+    mkdirSync(nested);
+    writeFileSync(
+      join(parent, 'package.json'),
+      JSON.stringify({
+        scripts: { check: 'echo WRONG_CHECK' },
+      }),
+    );
+    writeFileSync(
+      join(nested, 'tsconfig.json'),
+      JSON.stringify({ files: ['bad.ts'] }),
+    );
+    writeFileSync(join(nested, 'bad.ts'), 'export const bad: string = 42;\n');
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+        '--bun',
+        '--noEmit',
+        '-p',
+        'tsconfig.json',
+      ],
+      {
+        cwd: nested,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          STATION_BUN_EXECUTABLE: join(parent, 'missing-bun'),
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('package check script shadows the checker');
+    expect(result.stdout).toBe('');
+  });
+
   test.each([
     ['--bun', '--noEmit'],
     ['--bun', '-p', 'tsconfig.json'],
