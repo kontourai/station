@@ -43,7 +43,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.resetModules();
-  sdkModule.loads = 0;
   sdkModule.start.mockClear();
   sdkModule.shutdown.mockClear();
   renameHook.afterRename = undefined;
