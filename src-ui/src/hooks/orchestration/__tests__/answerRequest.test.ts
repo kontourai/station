@@ -30,7 +30,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 import {
   answerOrchestrationRequest,
   forgetApprovalAnswer,
-  getApprovalAnswerState,
+  readApprovalAnswerState,
   inspectApprovalAnswer,
 } from '../answerRequest';
 
@@ -122,18 +122,18 @@ describe('answerOrchestrationRequest', () => {
         answerOrchestrationRequest('http://api', intent),
       ).rejects.toMatchObject({ code: 'approval_delivery_unconfirmed' });
       const reference = { apiBase: 'http://api', ...request };
-      expect(getApprovalAnswerState(reference)).toMatchObject({
+      expect(readApprovalAnswerState(reference)).toMatchObject({
         phase: 'unconfirmed',
         decision: 'acceptForSession',
       });
-      expect(getApprovalAnswerState(reference)?.sessionGrantScope).toBe(
+      expect(readApprovalAnswerState(reference)?.sessionGrantScope).toBe(
         sessionGrantScope,
       );
       inspectAttentionRequest.mockResolvedValueOnce({ state: 'resolved' });
       await expect(inspectApprovalAnswer('http://api', request)).resolves.toBe(
         'already-settled',
       );
-      expect(getApprovalAnswerState(reference)).toEqual({
+      expect(readApprovalAnswerState(reference)).toEqual({
         phase: 'already-settled',
         decision: 'acceptForSession',
         ...(sessionGrantScope ? { sessionGrantScope } : {}),
