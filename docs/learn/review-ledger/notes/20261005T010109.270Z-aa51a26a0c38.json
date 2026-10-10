@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/workspace-packages.md","note":"actionlint-gate.mjs change only concerns the merge-queue workflow topology; workspace package contracts are unaffected.","inputs":["docs/guides/workspace-packages.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

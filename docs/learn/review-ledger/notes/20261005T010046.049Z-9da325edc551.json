@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/product-law-authoring.md","note":"actionlint-gate.mjs change is confined to the merge-queue full-regression call exemption and aggregate pin; product-law routing and its gates are untouched.","inputs":["docs/guides/product-law-authoring.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

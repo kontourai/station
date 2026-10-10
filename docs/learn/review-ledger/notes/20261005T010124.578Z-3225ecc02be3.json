@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"fast-checks-shards.mjs only gains optional validation of mergeQueueRegressionPaths; browser smoke selection, statics and CI fence described here are unchanged.","inputs":["docs/testing/browser-smoke.md","scripts/lib/fast-checks-shards.mjs"]}
+  ]
+}

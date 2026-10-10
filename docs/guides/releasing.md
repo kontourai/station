@@ -76,7 +76,7 @@ transient run status in GitHub rather than embedding it here.
 | Stage | Evidence | Failure consequence |
 | --- | --- | --- |
 | Pull request | Affected tests, all typecheck lanes, lint, governance, security, critical browser smoke, and relevant platform checks | Blocks that PR |
-| Merge queue | Required checks against the synthesized combined candidate | Blocks incompatible integration |
+| Merge queue | Required checks against the synthesized combined candidate; the full regression when its fast-checks plan defers to a lane | Blocks incompatible integration |
 | Main qualification | Every full-regression phase and Android viewport tests | Opens or updates one repair episode; source remains unqualified |
 | Internal development | Local/dev build with focused and smoke evidence | Must be identified as unqualified; never advertised as Preview or Stable |
 | Nightly | Daily signed dogfood delivery after exact-source qualification and existing platform/provider gates | No publication without qualification |
@@ -87,10 +87,19 @@ The authorities are [CI](../../.github/workflows/ci.yml),
 [merge integration](../../.github/workflows/merge-queue-regression.yml), and
 [hosted qualification](../../.github/workflows/full-regression.yml).
 `Merge-queue regression` remains the required check's legacy name for ruleset
-compatibility; its workflow is now `PR: Merge integration` and checks the candidate
-diff. The required `fast-checks`, security, Windows portable floor and relevant
-iOS checks retain their integration protections. The merge path does not run
-the full corpus.
+compatibility. Its workflow is now `PR: Merge integration`. It checks the
+candidate diff, and it runs the hosted full regression on a candidate whose
+fast-checks plan defers to the `ci-fast` or `test-full` lane or names a path
+whose consumers only the queue runs. Every other candidate takes the fast path
+([merge integration](testing.md#merge-integration-required)). The required
+`fast-checks`, security, Windows portable floor and relevant iOS checks retain
+their integration protections.
+
+The reusable regression performs the same capacity admission as main
+qualification. Insufficient observed capacity stops before fanout and remains
+a failed required queue check; it is not successful regression evidence. Keep
+the admission receipt when diagnosing a dequeue. A genuine capacity change
+needs a fresh assessment before another attempt, rather than a blind rerun.
 
 ## Qualification cadence and evidence reuse
 
