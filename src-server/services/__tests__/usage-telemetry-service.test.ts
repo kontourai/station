@@ -360,7 +360,9 @@ describe('UsageTelemetryService', () => {
       join(root, 'config', 'usage-telemetry-disclosure.json'),
       JSON.stringify({
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: 'old-revision',
+        // Frozen event-only inventory revision from main 558d3a91; it never disclosed envelope metadata.
+        inventoryRevision:
+          'bf90377e754031d83bd38266066a33c8a323255043fa43acd03d30ef0096952b',
       }),
     );
     const fetch = vi.fn();
@@ -378,6 +380,8 @@ describe('UsageTelemetryService', () => {
       fetch,
       'stale disclosure receipt permitted telemetry emission',
     ).not.toHaveBeenCalled();
+    expect((await subject.disclosure()).acknowledged).toBe(false);
+    expect(subject.bufferedCount).toBe(0);
   });
   test('RESTART DISCLOSURE DEFECT: bootstrap receipt load activates an existing valid receipt without an HTTP request', async () => {
     const root = await home();
