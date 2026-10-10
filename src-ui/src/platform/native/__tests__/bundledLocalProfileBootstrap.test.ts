@@ -1,11 +1,98 @@
+// @vitest-environment jsdom
 import { resetLocalSelfProvisionLatchForTests } from '@kontourai/station-connect/local-self-provision';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { bootstrapBundledLocalProfile } from '../bundledLocalProfileBootstrap';
 
 describe('bundled local profile bootstrap', () => {
   beforeEach(() => {
     resetLocalSelfProvisionLatchForTests();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * Runs the bootstrap with its production timer (`window.setTimeout`) on a
+   * virtual clock. `phaseAt` decides the owned sidecar's phase from elapsed
+   * virtual milliseconds, standing in for a slow cold boot.
+   */
+  async function bootstrapOnVirtualClock(
+    phaseAt: (elapsedMs: number) => string,
+    runForMs: number,
+  ) {
+    vi.useFakeTimers();
+    const startedAt = Date.now();
+    const getBundledServerStatus = vi.fn(async () => ({
+      status: 'ok',
+      value: { phase: phaseAt(Date.now() - startedAt), ownership: 'sidecar' },
+    }));
+    const invoke = vi.fn(async (command: string) =>
+      command === 'station_ensure_bundled_local_profile' ? 'local' : undefined,
+    );
+    const repository = {
+      refresh: vi.fn(async () => true),
+      selectProfileForProcess: vi.fn(() => 'station-profile:local'),
+      pendingLocalSelfProvisionProfileName: vi.fn(() => undefined),
+      authorizeActiveConnection: vi.fn(async () => true),
+    };
+    let settled = false;
+    const result = bootstrapBundledLocalProfile({
+      adapter: { getBundledServerStatus } as never,
+      repository: repository as never,
+      invoke,
+    }).finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(runForMs);
+    return {
+      result,
+      settled: () => settled,
+      getBundledServerStatus,
+      invoke,
+      repository,
+    };
+  }
+
+  test('keeps waiting for an owned sidecar whose cold boot outlasts a minute, then authors and authorizes its profile', async () => {
+    const run = await bootstrapOnVirtualClock(
+      (elapsed) => (elapsed < 90_000 ? 'starting' : 'running'),
+      95_000,
+    );
+    expect(run.settled()).toBe(true);
+    await expect(run.result).resolves.toEqual({});
+    expect(run.invoke).toHaveBeenCalledWith(
+      'station_ensure_bundled_local_profile',
+    );
+    expect(run.repository.authorizeActiveConnection).toHaveBeenCalledWith(
+      'station-profile:local',
+    );
+    // After the first minute the wait backs off instead of polling at 10 Hz.
+    expect(run.getBundledServerStatus.mock.calls.length).toBeLessThan(700);
+  });
+
+  test('a failed owned sidecar is still awaited, so an explicit Restart that later runs completes the bootstrap', async () => {
+    const run = await bootstrapOnVirtualClock(
+      (elapsed) =>
+        elapsed < 40_000
+          ? 'starting'
+          : elapsed < 120_000
+            ? 'failed'
+            : 'running',
+      125_000,
+    );
+    expect(run.settled()).toBe(true);
+    expect(run.invoke).toHaveBeenCalledWith(
+      'station_ensure_bundled_local_profile',
+    );
+    expect(run.repository.authorizeActiveConnection).toHaveBeenCalled();
+  });
+
+  test('does not author a profile while the owned sidecar is not running', async () => {
+    const run = await bootstrapOnVirtualClock(() => 'restarting', 180_000);
+    expect(run.settled()).toBe(false);
+    expect(run.invoke).not.toHaveBeenCalled();
   });
 
   test('waits for the owned sidecar, asks native code to author the profile, provisions, and authorizes it', async () => {

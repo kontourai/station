@@ -3,10 +3,16 @@ import { readNativeCommandError } from './nativeCommandError';
 import type { NativeStationProfileRepository } from './stationProfileStorage';
 import type { NativePlatformAdapter } from './types';
 
-// Large migrated homes can spend tens of seconds loading agents, plugins, and
-// event indexes before the native-owned sidecar publishes its handshake.
-const MAX_STATUS_ATTEMPTS = 600;
+// Large migrated homes, or a slow host, can spend tens of seconds (sometimes
+// more than a minute) loading agents, plugins, and event indexes before the
+// native-owned sidecar publishes its handshake. There is deliberately no
+// wall-clock limit: native startup readiness owns the slow-start recovery UI,
+// and an owned sidecar that failed or exhausted its restarts becomes usable
+// only through an explicit Restart, which this wait then observes. Giving up
+// would leave a fresh home without the profile its identity proof requires.
 const STATUS_RETRY_MS = 100;
+const STATUS_RETRY_SLOW_MS = 1_000;
+const STATUS_FAST_ATTEMPTS = 600;
 
 interface BootstrapDependencies {
   adapter: NativePlatformAdapter;
@@ -31,12 +37,14 @@ export async function bootstrapBundledLocalProfile({
   wait = (milliseconds) =>
     new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
 }: BootstrapDependencies): Promise<BundledLocalProfileBootstrapResult> {
-  for (let attempt = 0; attempt < MAX_STATUS_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; ; attempt += 1) {
     const status = await adapter.getBundledServerStatus();
     if (status.status !== 'ok') return {};
     const ownsSidecar = status.value.ownership === 'sidecar';
     if (ownsSidecar && status.value.phase !== 'running') {
-      await wait(STATUS_RETRY_MS);
+      await wait(
+        attempt < STATUS_FAST_ATTEMPTS ? STATUS_RETRY_MS : STATUS_RETRY_SLOW_MS,
+      );
       continue;
     }
     // The native command is also the read-only owner resolver for an attached
@@ -84,5 +92,4 @@ export async function bootstrapBundledLocalProfile({
     await repository.authorizeActiveConnection(selected);
     return {};
   }
-  return {};
 }
