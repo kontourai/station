@@ -285,8 +285,8 @@ test('keeps direct pairing methods usable at 390px without an advanced detour', 
     }),
   ).toHaveCount(0);
   for (const name of [
-    'Request access',
-    'Add a Station address',
+    'Connect a Station',
+    'Connect another device',
     'Scan a QR code',
     'Enter a pairing code',
   ]) {
