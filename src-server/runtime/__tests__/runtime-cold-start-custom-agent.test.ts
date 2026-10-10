@@ -793,7 +793,13 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(adoption.signal?.aborted).toBe(true);
   });
 
-  it.each(['applied', 'failed'] as const)(
+  it.each([
+    'applied',
+    'failed',
+    'canceled',
+    'canceled-local',
+    'publication-failed',
+  ] as const)(
     'restores disclosure and emits completed startup only after policy publication: %s (#2015/#2833)',
     async (outcome) => {
       // This intentionally uses StationRuntime.initialize(), rather than calling
@@ -819,10 +825,21 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           region: 'eu-west-1',
         }),
       );
+      const virtualReady = vi.fn(() => {
+        if (outcome === 'publication-failed')
+          throw new Error('virtual readiness publication refused');
+      });
       runtime = new StationRuntime({
         projectHomeDir: home,
         port: TEST_PORT,
         host: '127.0.0.1',
+        virtualApplication:
+          outcome === 'canceled-local'
+            ? undefined
+            : {
+                origin: 'https://virtual.example.test',
+                ready: virtualReady,
+              },
       });
       replaceTerminalListener(runtime);
       // This receipt-composition proof does not cover native-engine discovery.
@@ -847,9 +864,19 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           registryTrustPolicyAuthority: RegistryTrustPolicyAuthority;
         }
       ).registryTrustPolicyAuthority;
+      const publishApplied =
+        policyAuthority.publishApplied.bind(policyAuthority);
       const publish = vi.spyOn(policyAuthority, 'publishApplied');
       const failure = new Error('final startup policy publication refused');
       if (outcome === 'failed') publish.mockRejectedValue(failure);
+      if (outcome === 'canceled' || outcome === 'canceled-local') {
+        publish.mockImplementation(async (...args) => {
+          const publication = publishApplied(...args);
+          const shutdown = runtime!.shutdown();
+          void shutdown.catch(() => {});
+          return publication;
+        });
+      }
       let readyWasDurableBeforeStartup = false;
       const stationStarted = UsageTelemetryService.prototype.stationStarted;
       const started = vi
@@ -877,11 +904,22 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       });
 
       try {
-        if (outcome === 'failed') {
-          await expect(runtime.initialize()).rejects.toBe(failure);
+        if (outcome !== 'applied') {
+          if (outcome === 'failed')
+            await expect(runtime.initialize()).rejects.toBe(failure);
+          else if (outcome === 'canceled' || outcome === 'canceled-local')
+            await expect(runtime.initialize()).rejects.toMatchObject({
+              name: 'AbortError',
+            });
+          else
+            await expect(runtime.initialize()).rejects.toThrow(
+              'virtual readiness publication refused',
+            );
           expect(publish).toHaveBeenCalledOnce();
           expect(started).not.toHaveBeenCalled();
           expect(readyWasDurableBeforeNotification).toBe(false);
+          if (outcome === 'canceled' || outcome === 'canceled-local')
+            expect(virtualReady).not.toHaveBeenCalled();
           return;
         }
         await expect(runtime.initialize()).resolves.toBeUndefined();

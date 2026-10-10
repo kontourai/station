@@ -67,7 +67,7 @@ export const MUTATIONS = [
           exactReplace(
             exactReplace(
               source,
-              '    // Completion telemetry follows final policy publication and never delays boot.\n    void this.usageTelemetry.stationStarted();',
+              '      void this.usageTelemetry?.stationStarted();',
               '',
             ),
             '    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
