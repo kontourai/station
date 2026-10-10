@@ -3525,15 +3525,7 @@ export class EventStore {
     let nextSequence: number;
     let globalSequence: number;
     try {
-      // Reserve the writer before taking a read snapshot. A deferred
-      // savepoint that reads first cannot upgrade while a peer writer holds
-      // the lock; SQLite refuses that upgrade without waiting for busy_timeout.
-      // This leaves the cursor unchanged and nests in an existing transaction.
-      this.db
-        .prepare(
-          'UPDATE orchestration_stream_identity SET high_water = high_water WHERE singleton = 1',
-        )
-        .run();
+      this.reserveEventAppendWriter();
       // Persisted event time is the sole replay authority. A new terminal gets
       // exactly one host observation time, shared by its event and association.
       const observedAt =
@@ -3745,6 +3737,17 @@ export class EventStore {
     current: () => boolean;
   }) {
     return this.sessionWorkItemAdmissions.stage(input);
+  }
+
+  private reserveEventAppendWriter(): void {
+    // A read-first savepoint cannot upgrade under a peer writer: SQLite
+    // refuses that upgrade without consulting busy_timeout. Acquire the
+    // writer first while leaving the cursor and savepoint lifetime unchanged.
+    this.db
+      .prepare(
+        'UPDATE orchestration_stream_identity SET high_water = high_water WHERE singleton = 1',
+      )
+      .run();
   }
 
   private openAppendEventSavepoint(): void {
@@ -4281,6 +4284,7 @@ export class EventStore {
     let globalSequence: number;
     let absent: boolean;
     try {
+      this.reserveEventAppendWriter();
       nextSequence = this.nextSequence(event.threadId);
       globalSequence = this.nextGlobalSequence();
       const result = this.db
