@@ -90,6 +90,7 @@ describe('OTel installation identity', () => {
       vi.stubEnv('OTEL_LOGS_EXPORTER', 'none');
       vi.stubEnv('OTEL_NODE_RESOURCE_DETECTORS', 'none');
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const started = vi.spyOn(console, 'log').mockImplementation(() => {});
       const requests: Array<{ path: string | undefined; body: string }> = [];
       const server = createServer(async (request, response) => {
         const chunks: Buffer[] = [];
@@ -235,6 +236,18 @@ describe('OTel installation identity', () => {
         expect(traces).toContain('station.identity-pending-control');
       } finally {
         releaseIdentity();
+        await vi.waitFor(() => {
+          if (outcome === 'failed') {
+            expect(warn).toHaveBeenCalledWith(
+              '[telemetry] OTel did not start; Station continues without it:',
+              'identity persistence refused',
+            );
+          } else {
+            expect(started).toHaveBeenCalledWith(
+              expect.stringContaining('[telemetry] OTel exporting to '),
+            );
+          }
+        });
         await configuredTelemetryShutdownTask()?.shutdown(
           new AbortController().signal,
         );
@@ -242,6 +255,7 @@ describe('OTel installation identity', () => {
           server.close((error) => (error ? reject(error) : resolve())),
         );
         warn.mockRestore();
+        started.mockRestore();
       }
     },
   );
