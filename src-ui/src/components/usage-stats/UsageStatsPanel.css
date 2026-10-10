@@ -429,6 +429,12 @@
 
 /* ── Mobile responsive ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .usage-period-btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
   .usage-stats-cards {
     grid-template-columns: 1fr;
   }
