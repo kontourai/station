@@ -1948,10 +1948,11 @@ The [insights owner](../../src-server/routes/operations/insights.ts) streams
 monitoring NDJSON files and returns `{success: true, data}`. `data` contains
 `toolUsage`, a 24-bucket `hourlyActivity` array, `agentUsage`, `modelUsage`,
 `totalChats`, `totalToolCalls`, `totalErrors`, `totalOutcomeUnknown`,
-`totalUnresolved`, and `days`.
+`totalUnresolved`, `days`, and typed `coverage` from the
+[Insights contract](../../packages/contracts/src/insights.ts).
 
-- `days` defaults to 14. It is currently parsed as an integer rather than
-  validated against a closed set of windows.
+- `days` defaults to 14 and must be an integer from 1 through 365; invalid
+  windows return 400.
 - `agent`, `tool`, and `engine` are exact filters. Engine reads
   `gen_ai.provider.name`; an event without that field does not match.
 - A positive `limit` retains the top buckets (cap 500); it does not cap the
@@ -1974,9 +1975,18 @@ a producer limitation, not evidence that the engine used no model. The route
 also accepts other persisted event producers, so it cannot promise this absence
 for every possible record.
 
-Malformed lines and unreadable files are logged and skipped; this response has
-no completeness field for those skipped inputs. A result is a rollup of what
-was read, not certification that every event was available. `(unnamed)` is the
+`coverage.state` is `complete` for a clean retained scan, `partial` when readable
+rows coexist with malformed rows, invalid timestamps, or unreadable files, and
+`unknown` when history is missing or no row could be measured in an impaired
+scan. An unreadable directory returns a generic 503 instead of successful zeros.
+`coverage.scope` is `retained-monitoring`; `evaluatedAt` timestamps the scan and
+`issues` names bounded failure categories without file paths, contents or other
+users' counts. A clean scan does not prove lifetime or requested-window retention,
+producer delivery, provider reporting, or inclusion of clock-skewed OTLP rows at
+file-day boundaries. Missing coverage from an older server means unknown integrity.
+
+The dashboard keeps partial totals with an explicit warning, hides totals for
+unknown scans, and hides cached totals after a failed refresh. `(unnamed)` is the
 bucket for a missing tool name and remains distinct from a literal `unknown`.
 
 ### The rows behind the rollup

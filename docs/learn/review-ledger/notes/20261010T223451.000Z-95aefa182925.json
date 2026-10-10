@@ -1,0 +1,7 @@
+{
+  "revision": "335cbbe3dcd70d19ab3b934614d764f52c418f99",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed lazy Insights response validation after the hosted entry-bundle failure. The same schema now loads from query-domains/insightsResponse only when fetchInsights reads a successful HTTP body; validation, legacy absence, additive fields and returned typing remain unchanged. SDK/barrel/dashboard28 checks and SDK typecheck pass. Same worktree/own dependencies measured eager036c437882gzip (red) versus lazy335cbbe422518gzip (green), unchanged430000 budget and unchanged CSS. This proves source build placement, not hosted or native qualification.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/analytics.ts","packages/sdk/src/query-domains/insightsResponse.ts"]}
+  ]
+}

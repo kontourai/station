@@ -1,7 +1,11 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import type {
+  InsightsScanCoverage,
+  InsightsScanIssue,
+} from '@kontourai/station-contracts/insights';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
 import { Hono } from 'hono';
@@ -31,7 +35,9 @@ type MonitoringEventRecord = Record<string, unknown>;
 function timestampFor(event: MonitoringEventRecord): number | null {
   const timestampMs = event[K.TIMESTAMP_MS];
   if (typeof timestampMs === 'number' && Number.isFinite(timestampMs)) {
-    return timestampMs;
+    return Number.isFinite(new Date(timestampMs).getTime())
+      ? timestampMs
+      : null;
   }
   const timestampValue = event[K.TIMESTAMP];
   if (typeof timestampValue === 'string') {
@@ -147,7 +153,12 @@ export function createInsightsRoutes(
   const app = new Hono();
 
   app.get('/', async (c) => {
-    const days = parseInt(c.req.query('days') || '14', 10);
+    const days = Number(c.req.query('days') ?? '14');
+    if (!Number.isInteger(days) || days < 1 || days > 365)
+      return c.json(
+        { success: false, error: 'days must be between 1 and 365' },
+        400,
+      );
     insightOps.add(1, { op: 'get_insights' });
     const cutoff = Date.now() - days * MS_PER_DAY;
     // Filters (archive#3075). Every dimension here is already on the event;
@@ -223,8 +234,35 @@ export function createInsightsRoutes(
     let totalErrors = 0;
     let totalOutcomeUnknown = 0;
     let totalUnresolved = 0;
+    const scanIssues = new Set<InsightsScanIssue>();
+    let readableRows = 0;
+    const coverage = (
+      state: InsightsScanCoverage['state'],
+    ): InsightsScanCoverage => ({
+      state,
+      scope: 'retained-monitoring',
+      evaluatedAt: new Date().toISOString(),
+      issues: [...scanIssues],
+    });
+    let files: string[];
+    try {
+      files = await readdir(monitoringDir);
+    } catch (error: unknown) {
+      if (
+        !(
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 'ENOENT'
+        )
+      ) {
+        return c.json(
+          { success: false, error: 'Insights history could not be read' },
+          503,
+        );
+      }
+      scanIssues.add('history-missing');
 
-    if (!existsSync(monitoringDir))
       return c.json({
         success: true,
         data: {
@@ -241,6 +279,7 @@ export function createInsightsRoutes(
           totalOutcomeUnknown: 0,
           totalUnresolved: 0,
           days,
+          coverage: coverage('unknown'),
           ...(filters.agent !== undefined ||
           filters.tool !== undefined ||
           filters.engine !== undefined ||
@@ -260,6 +299,7 @@ export function createInsightsRoutes(
             : {}),
         },
       });
+    }
 
     const authority = authz?.readAuthorityForRequest?.(c.req.raw);
     // Identical resolution to /monitoring/events (monitoring.ts:330-333),
@@ -310,7 +350,6 @@ export function createInsightsRoutes(
       return decision;
     };
 
-    const files = await readdir(monitoringDir);
     for (const file of files.filter(
       (f) => f.startsWith('events-') && f.endsWith('.ndjson'),
     )) {
@@ -326,13 +365,18 @@ export function createInsightsRoutes(
           if (!line.trim()) continue;
           try {
             const event = JSON.parse(line) as MonitoringEventRecord;
-            const ts = timestampFor(event);
-            if (ts === null || ts < cutoff || isHealthProbe(event)) continue;
-            // archive#3130: the same two layers `/monitoring/events` applies.
-            // Per-user first, matching `queryEventsFromDisk`'s predicate
-            // exactly; then the central tenant predicate, imported rather than
-            // re-derived. Without these this rollup counted every user's rows.
+            if (!event || typeof event !== 'object' || Array.isArray(event)) {
+              scanIssues.add('malformed-row');
+              continue;
+            }
             if (!readableByCaller(event)) continue;
+            const ts = timestampFor(event);
+            if (ts === null) {
+              scanIssues.add('invalid-timestamp');
+              continue;
+            }
+            if (ts < cutoff || isHealthProbe(event)) continue;
+            readableRows++;
 
             const operation = event[K.OP_NAME];
             const spanKind = event[K.SPAN_KIND];
@@ -453,10 +497,12 @@ export function createInsightsRoutes(
               }
             }
           } catch (e) {
+            scanIssues.add('malformed-row');
             logger.debug('Failed to parse insights event line', { error: e });
           }
         }
       } catch (e) {
+        scanIssues.add('unreadable-file');
         logger.debug('Failed to read insights event file', { error: e });
       }
     }
@@ -488,6 +534,9 @@ export function createInsightsRoutes(
          */
         totalUnresolved,
         days,
+        coverage: coverage(
+          scanIssues.size ? (readableRows ? 'partial' : 'unknown') : 'complete',
+        ),
         ...(filters.agent !== undefined ||
         filters.tool !== undefined ||
         filters.engine !== undefined ||

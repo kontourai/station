@@ -101,6 +101,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads identity/config files created in isolated Station temp homes, never
+  // repository source. Direct telemetry imports own changed-test selection.
+  'src-server/__tests__/telemetry.test.ts',
   // Read install.ps1 through the generator's exported path and the installer
   // core it embeds from a temporary extraction (#2675 W1): computed paths the
   // scanner cannot pin. The install.ps1 impact edge selects both, and their
