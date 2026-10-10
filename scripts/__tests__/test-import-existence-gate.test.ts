@@ -384,8 +384,8 @@ describe('the gate as a real child process', () => {
     );
     mkdirSync(join(spaceDir, 'node_modules'));
     symlinkSync(
-      realpathSync(join(repoRoot, 'node_modules/typescript')),
-      join(spaceDir, 'node_modules/typescript'),
+      realpathSync(join(repoRoot, 'node_modules/typescript-api')),
+      join(spaceDir, 'node_modules/typescript-api'),
       'junction',
     );
 

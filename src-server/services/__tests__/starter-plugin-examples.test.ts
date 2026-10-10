@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { toWorkspacePaneDescriptorId } from '@kontourai/station-contracts/workspace-pane';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { readPluginManifestFile } from '../plugins/plugin-manifest-loader.js';
 

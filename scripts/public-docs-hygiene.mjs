@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { loadPublicDocs } from './build-github-pages.mjs';
+import path from 'node:path';
+import { loadPublicDocs, renderMarkdown } from './build-github-pages.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ABSOLUTE_DEVELOPER_PATH =
@@ -101,6 +102,68 @@ export function publicDocsHygieneFindings(
   return findings;
 }
 
+const RENDERED_HREF = /\shref="([^"]+)"/g;
+// The renderer replaces any href it cannot prove safe with `#`, which ships a
+// dead link no target check can see. A public doc has no reason to link `#`
+// itself, so every rendered `#` link is rejected.
+const DEAD_RENDERED_LINK = /<a href="#">(.*?)<\/a>/g;
+const NON_RELATIVE_HREF = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i;
+
+// Pages publishes only the manifest's documents, so a relative link from one
+// of them to any other repository file renders as a 404. Links are read from
+// the real Pages renderer rather than re-parsed here, so fenced code and the
+// .md -> .html rewrite match what ships. Link a non-public document by its
+// absolute GitHub URL instead. Until this rule, only the post-merge Pages
+// build (check-generated-pages-links.mjs) saw these, after they landed.
+/**
+ * @param {{ source: string }[]} documents
+ * @param {(file: string, encoding: BufferEncoding) => string} [read]
+ */
+export function publicProjectionLinkFindings(
+  documents,
+  read = (file, encoding) => readFileSync(file, encoding),
+) {
+  const published = new Set(
+    documents.map(({ source }) => source.replace(/\.md$/, '.html')),
+  );
+  const findings = [];
+  for (const { source } of documents) {
+    const text = read(`docs/${source}`, 'utf8');
+    const html = renderMarkdown(text);
+    for (const [, label] of html.matchAll(DEAD_RENDERED_LINK)) {
+      findings.push(`${source} dead-link: [${label}] renders as href="#"`);
+    }
+    for (const match of html.matchAll(RENDERED_HREF)) {
+      const href = match[1].replaceAll('&amp;', '&');
+      if (NON_RELATIVE_HREF.test(href)) continue;
+      if (published.has(renderedLinkTarget(source, href))) continue;
+      const markdownHref = href.replace(/\.html(?=[?#]|$)/, '.md');
+      findings.push(
+        `${linkLocation(source, text, markdownHref)} non-public-link: ${markdownHref} (not admitted to Pages; use its absolute GitHub URL)`,
+      );
+    }
+  }
+  return findings;
+}
+
+/** The docs-relative page a rendered relative href opens. */
+function renderedLinkTarget(source, href) {
+  // A root-absolute href leaves the Pages project path, so no admitted
+  // document can satisfy it.
+  if (href.startsWith('/')) return href;
+  const pathname = decodeURIComponent(href.split(/[?#]/, 1)[0]);
+  return path.posix.normalize(
+    path.posix.join(path.posix.dirname(source), pathname),
+  );
+}
+
+/** `source:line` of the first Markdown link to `markdownHref`, else `source`. */
+function linkLocation(source, text, markdownHref) {
+  const index = text.indexOf(`](${markdownHref}`);
+  if (index === -1) return source;
+  return `${source}:${text.slice(0, index).split('\n').length}`;
+}
+
 /**
  * @param {readonly string[]} [files]
  * @param {(file: string, encoding: BufferEncoding) => string} [read]
@@ -123,11 +186,21 @@ export function marketingHygieneFindings(
   return findings;
 }
 
-export async function runPublicDocsHygiene() {
-  const documents = await loadPublicDocs();
+/**
+ * @param {{
+ *   documents?: { source: string }[],
+ *   read?: (file: string, encoding: BufferEncoding) => string,
+ * }} [input]
+ */
+export async function runPublicDocsHygiene({
+  documents: injectedDocuments,
+  read = (file, encoding) => readFileSync(file, encoding),
+} = {}) {
+  const documents = injectedDocuments ?? (await loadPublicDocs());
   const findings = [
-    ...publicDocsHygieneFindings(documents),
-    ...marketingHygieneFindings(),
+    ...publicDocsHygieneFindings(documents, read),
+    ...publicProjectionLinkFindings(documents, read),
+    ...marketingHygieneFindings(MARKETING_FILES, read),
   ];
   if (findings.length === 0) {
     console.log(

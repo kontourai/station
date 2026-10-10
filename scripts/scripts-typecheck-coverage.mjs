@@ -131,7 +131,7 @@ export function baselineDeferrals(repoRoot) {
  * which is both a supply-chain hazard and, observed while building this gate, a
  * silent correctness one: the placeholder `tsc` package exits 1 with a friendly
  * message, which this gate would have reported as a compile failure. The
- * runner resolves `typescript/lib/tsc.js` from `repoRoot`'s own install.
+ * runner resolves the native TypeScript compiler from `repoRoot`'s own install.
  */
 function resolveCompilerRunner(repoRoot) {
   return join(repoRoot, 'scripts', 'tsc-slot.mjs');

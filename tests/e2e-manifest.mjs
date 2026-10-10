@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 
 export const E2E_AUDIT_PATTERN =
   /localhost:(3141|3000|5274)|waitForTimeout\(|test\.skip\(/;

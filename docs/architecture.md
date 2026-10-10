@@ -108,8 +108,8 @@ approval paths; MCP availability does not grant every tool operation.
 
 Monitoring is separate from canonical execution state. The dotted export edge
 exists only when configured, and [monitoring](guides/monitoring.md) documents
-its evidence limits, including the startup meter-binding issue
-[#2755](https://github.com/kontourai/station/issues/2755). An instrument
+its evidence limits. Configured OTel registers providers before instrument
+creation while identity I/O remains asynchronous (#2755). An instrument
 registration or exporter startup log is not collector receipt.
 
 Terminal and voice use dedicated WebSocket listeners and are not represented

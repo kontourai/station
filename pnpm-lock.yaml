@@ -120,13 +120,13 @@ importers:
         version: 0.6.0
       '@kontourai/fieldwork':
         specifier: 0.14.0
-        version: 0.14.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)
+        version: 0.14.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/flow':
         specifier: 5.1.3
         version: 5.1.3(supports-color@7.2.0)
       '@kontourai/flow-agents':
         specifier: 6.5.1
-        version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
+        version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.5)
       '@kontourai/relay':
         specifier: 0.7.1
         version: 0.7.1(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))
@@ -153,7 +153,7 @@ importers:
         version: 3.2.0(supports-color@7.2.0)
       '@kontourai/survey':
         specifier: 3.0.0
-        version: 3.0.0(supports-color@7.2.0)(typescript@5.9.3)
+        version: 3.0.0(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/thread':
         specifier: 0.5.0
         version: 0.5.0
@@ -486,8 +486,11 @@ importers:
         specifier: ^4.23.15
         version: 4.23.15
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: 7.0.2
+        version: 7.0.2
+      typescript-api:
+        specifier: npm:typescript@5.9.3
+        version: typescript@5.9.3
       vite:
         specifier: ^7.3.6
         version: 7.3.6(@types/node@26.6.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)
@@ -508,7 +511,7 @@ importers:
     dependencies:
       '@kontourai/flow-agents':
         specifier: 6.5.1
-        version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
+        version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.5)
       '@kontourai/station-sdk':
         specifier: '*'
         version: link:../../packages/sdk
@@ -529,14 +532,14 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0
       typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
+        specifier: 7.0.2
+        version: 7.0.2
 
   examples/fieldwork-review:
     dependencies:
       '@kontourai/fieldwork':
         specifier: 0.14.0
-        version: 0.14.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)
+        version: 0.14.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/station-sdk':
         specifier: ^0.8.0
         version: link:../../packages/sdk
@@ -557,8 +560,8 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: 7.0.2
+        version: 7.0.2
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -600,8 +603,8 @@ importers:
         specifier: ^30.1.2
         version: 30.1.2(@noble/hashes@2.4.0)
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: 7.0.2
+        version: 7.0.2
       vitest:
         specifier: 4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -628,8 +631,8 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: 7.0.2
+        version: 7.0.2
       vitest:
         specifier: 4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -664,6 +667,9 @@ importers:
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
+      typescript-api:
+        specifier: npm:typescript@5.9.3
+        version: typescript@5.9.3
 
   packages/connect:
     dependencies:
@@ -699,8 +705,8 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: 7.0.2
+        version: 7.0.2
       vitest:
         specifier: 4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -715,7 +721,7 @@ importers:
         version: 5.1.3(supports-color@7.2.0)
       '@kontourai/flow-agents':
         specifier: 6.5.1
-        version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
+        version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.5)
       '@kontourai/surface':
         specifier: ^3.2.0
         version: 3.2.0(supports-color@7.2.0)
@@ -733,7 +739,7 @@ importers:
         version: 5.1.3(supports-color@7.2.0)
       '@kontourai/flow-agents':
         specifier: 6.5.1
-        version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
+        version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.5)
       '@kontourai/station-contracts':
         specifier: ^0.8.0
         version: link:../contracts
@@ -763,8 +769,11 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: 7.0.2
+        version: 7.0.2
+      typescript-api:
+        specifier: npm:typescript@5.9.3
+        version: typescript@5.9.3
       vitest:
         specifier: 4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.2(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -9796,16 +9805,16 @@ snapshots:
       commander: 15.0.0
       zod: 4.6.5
 
-  '@kontourai/fieldwork@0.14.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)':
+  '@kontourai/fieldwork@0.14.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
       '@kontourai/datum': 0.8.0(playwright@1.63.0)
       '@kontourai/dispatch': 0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(@kontourai/datum@0.8.0(playwright@1.63.0))
       '@kontourai/forage': 1.0.1(playwright@1.63.0)
-      '@kontourai/lookout': 0.8.5(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@5.9.3)
+      '@kontourai/lookout': 0.8.5(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@7.0.2)
       '@kontourai/relay': 0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))
       '@kontourai/surface': 4.4.1(supports-color@7.2.0)
-      '@kontourai/survey': 8.0.0(supports-color@7.2.0)(typescript@5.9.3)
-      '@kontourai/traverse': 4.1.0(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@5.9.3)
+      '@kontourai/survey': 8.0.0(supports-color@7.2.0)(typescript@7.0.2)
+      '@kontourai/traverse': 4.1.0(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@7.0.2)
       zod: 4.4.3
     optionalDependencies:
       '@anthropic-ai/sdk': 0.122.0(zod@4.6.5)
@@ -9820,7 +9829,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@kontourai/flow-agents@6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)':
+  '@kontourai/flow-agents@6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.5)':
     dependencies:
       '@kontourai/conduit': 0.7.1
       '@kontourai/datum': 0.7.0(playwright@1.63.0)
@@ -9828,7 +9837,7 @@ snapshots:
       '@kontourai/flow': 5.1.3(supports-color@7.2.0)
       '@kontourai/relay': 0.6.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.116.0(zod@4.6.5))
       '@kontourai/surface': 2.17.0(supports-color@7.2.0)
-      '@kontourai/survey': 2.0.0(supports-color@7.2.0)(typescript@5.9.3)
+      '@kontourai/survey': 2.0.0(supports-color@7.2.0)(typescript@7.0.2)
       esbuild: 0.28.1
     optionalDependencies:
       '@anthropic-ai/sdk': 0.116.0(zod@4.6.5)
@@ -9872,11 +9881,11 @@ snapshots:
     optionalDependencies:
       playwright: 1.63.0
 
-  '@kontourai/lookout@0.8.5(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@5.9.3)':
+  '@kontourai/lookout@0.8.5(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@7.0.2)':
     dependencies:
       '@kontourai/datum': 0.8.0(playwright@1.63.0)
       '@kontourai/forage': 1.0.0(playwright@1.63.0)
-      '@kontourai/traverse': 4.0.0(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@5.9.3)
+      '@kontourai/traverse': 4.0.0(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
       - '@google/genai'
@@ -9958,33 +9967,33 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/survey@2.0.0(supports-color@7.2.0)(typescript@5.9.3)':
+  '@kontourai/survey@2.0.0(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 7.0.2
     transitivePeerDependencies:
       - kerberos
       - supports-color
 
-  '@kontourai/survey@3.0.0(supports-color@7.2.0)(typescript@5.9.3)':
+  '@kontourai/survey@3.0.0(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
       '@modelcontextprotocol/server': 2.0.0
       zod: 4.2.0
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 7.0.2
     transitivePeerDependencies:
       - kerberos
       - supports-color
 
-  '@kontourai/survey@8.0.0(supports-color@7.2.0)(typescript@5.9.3)':
+  '@kontourai/survey@8.0.0(supports-color@7.2.0)(typescript@7.0.2)':
     dependencies:
       '@kontourai/surface': 3.2.0(supports-color@7.2.0)
       '@modelcontextprotocol/server': 2.0.0
       zod: 4.4.3
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 7.0.2
     transitivePeerDependencies:
       - kerberos
       - supports-color
@@ -9995,7 +10004,7 @@ snapshots:
     dependencies:
       zod: 4.6.5
 
-  '@kontourai/traverse@4.0.0(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@5.9.3)':
+  '@kontourai/traverse@4.0.0(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@7.0.2)':
     dependencies:
       '@kontourai/forage': 1.0.1(playwright@1.63.0)
       linkedom: 0.18.13
@@ -10004,12 +10013,12 @@ snapshots:
       '@anthropic-ai/sdk': 0.122.0(zod@4.6.5)
       '@kontourai/relay': 0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))
       openai: 6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5)
-      typescript: 5.9.3
+      typescript: 7.0.2
     transitivePeerDependencies:
       - canvas
       - playwright
 
-  '@kontourai/traverse@4.1.0(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@5.9.3)':
+  '@kontourai/traverse@4.1.0(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/relay@0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5)))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5))(playwright@1.63.0)(typescript@7.0.2)':
     dependencies:
       '@kontourai/forage': 1.0.1(playwright@1.63.0)
       linkedom: 0.18.13
@@ -10018,7 +10027,7 @@ snapshots:
       '@anthropic-ai/sdk': 0.122.0(zod@4.6.5)
       '@kontourai/relay': 0.7.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))
       openai: 6.49.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.5)
-      typescript: 5.9.3
+      typescript: 7.0.2
     transitivePeerDependencies:
       - canvas
       - playwright
@@ -16382,7 +16391,6 @@ snapshots:
       '@typescript/typescript-sunos-x64': 7.0.2
       '@typescript/typescript-win32-arm64': 7.0.2
       '@typescript/typescript-win32-x64': 7.0.2
-    optional: true
 
   uhyphen@0.2.0: {}
 

@@ -6,7 +6,7 @@
     "noEmit": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["tests/**/*", "playwright.config.ts"],
+  "include": ["tests/**/*", "playwright.config.ts", "packages/sdk/src/css.d.ts"],
   // The plain-JS fresh-home walkthrough remains outside this TypeScript lane
   // (allowJs, checkJs off). Typed installed-plugin fixtures are included and
   // use the same automatic JSX runtime as the real host bundle.

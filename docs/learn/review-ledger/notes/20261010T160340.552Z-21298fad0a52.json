@@ -1,0 +1,7 @@
+{
+  "revision": "c53133ca0468f853f9a216add7fc2dd14fe91ea5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-reviewed the fixture CLI tests after replacing the raw temp-directory factory with Station's trackTempDirs helper. The tracker is registered before child settlement cleanup so its reverse-order after-hook removes directories only after owned children settle, including on failed assertions. Temp-dir ratchet, live HTTP CLI tests2/2 and scripts coverage424/480 passed. No readiness deadline or production behavior changed.","inputs":["docs/guides/testing.md","scripts/__tests__/install-smoke-file-server.test.ts"]}
+  ]
+}

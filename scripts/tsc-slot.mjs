@@ -9,11 +9,10 @@
  *
  * Two things are added and nothing is removed:
  *
- * 1. A slot. The compiler is loaded IN THIS PROCESS after the slot is taken,
- *    so the slot holder is the compiler itself: its exit releases the slot
- *    and its death (crash, SIGKILL, OOM) leaves a record the next waiter
- *    reclaims. A wrapper that spawned tsc could die and leave an orphaned
- *    compiler running outside the cap.
+ * 1. A slot. On POSIX, execve replaces this process with the native compiler;
+ *    the next waiter reclaims its record after exit. On Windows, an owned Job
+ *    binds the compiler's lifetime to this slot holder and waits for settlement
+ *    before releasing the slot. Neither path leaves an orphan outside the cap.
  * 2. `--incremental --tsBuildInfoFile <cache>/<project>.tsbuildinfo`, unless
  *    the caller already chose incremental settings, uses a mode where they do
  *    not apply (`--build`, `--watch`, ...), or sets
@@ -26,13 +25,23 @@
  *    projects never share one.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { availableParallelism } from 'node:os';
+import {
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  toNamespacedPath,
+} from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   acquireTypecheckSlot,
+  resolveSlotCount,
   SLOT_HELD_ENV,
 } from './lib/typecheck-host-slots.mjs';
 
@@ -163,16 +172,144 @@ function describeProject(args, cwd) {
   return rel && !rel.startsWith('..') ? rel.replaceAll('\\', '/') : config;
 }
 
+function nativeCompiler() {
+  const require = createRequire(join(REPO_ROOT, 'package.json'));
+  const compilerRequire = createRequire(
+    require.resolve('typescript/package.json'),
+  );
+  const platformPackage = compilerRequire.resolve(
+    `@typescript/typescript-${process.platform}-${process.arch}/package.json`,
+  );
+  return toNamespacedPath(
+    join(
+      dirname(platformPackage),
+      'lib',
+      process.platform === 'win32' ? 'tsc.exe' : 'tsc',
+    ),
+  );
+}
+
+function bunCompiler(argv, cwd) {
+  const args = argv.filter((arg) => arg !== '--noEmit');
+  if (
+    !argv.includes('--noEmit') ||
+    args.length !== 2 ||
+    !['-p', '--project'].includes(args[0]) ||
+    args[1].startsWith('-')
+  )
+    throw new Error(
+      'Bun diagnostics require --noEmit and an explicit -p project.',
+    );
+  for (let directory = cwd; ; directory = dirname(directory)) {
+    const manifest = join(directory, 'package.json');
+    if (
+      existsSync(manifest) &&
+      JSON.parse(readFileSync(manifest, 'utf8')).scripts?.check
+    )
+      throw new Error(
+        'Bun diagnostics cannot run where a package check script shadows the checker.',
+      );
+    if (dirname(directory) === directory) break;
+  }
+  const result = spawnSyncBounded(
+    process.env.STATION_BUN_EXECUTABLE || 'bun',
+    [
+      '-p',
+      'JSON.stringify({version:Bun.version,typescript:process.versions.typescript,executable:process.execPath})',
+    ],
+    { encoding: 'utf8', windowsHide: true, timeout: 10_000 },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0)
+    throw new Error(`Bun runtime probe failed: ${result.stderr}`);
+  const runtime = JSON.parse(result.stdout);
+  if (runtime.version !== '1.4.3' || runtime.typescript !== '7.0.2')
+    throw new Error('Bun diagnostics require Bun 1.4.3 with TypeScript 7.0.2.');
+  const threads = Math.max(
+    1,
+    Math.min(4, Math.floor(availableParallelism() / resolveSlotCount())),
+  );
+  return {
+    compiler: runtime.executable,
+    args: [
+      'check',
+      '--threads',
+      String(threads),
+      '--all',
+      '--noEmit',
+      '-p',
+      resolve(cwd, args[1]),
+    ],
+    buildInfoFile: null,
+  };
+}
+
+async function runWindowsCompiler(compiler, args, cwd) {
+  const {
+    executeOwnedCommand,
+    terminateSuiteExecution,
+    waitForSuiteSettlement,
+  } = await import('./lib/owned-process.mjs');
+  // Windows has no execve. The owned-command Job kills the compiler if this
+  // slot holder dies, and completion waits for the entire Job to settle.
+  const execution = executeOwnedCommand(
+    compiler,
+    args,
+    undefined,
+    'typecheck',
+    {
+      cwd,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  execution.child.stdout?.pipe(process.stdout, { end: false });
+  execution.child.stderr?.pipe(process.stderr, { end: false });
+  let interrupted = false;
+  let cleanup;
+  const stop = () => {
+    cleanup ??= terminateSuiteExecution(execution, {
+      processLabel: 'typecheck',
+      waitForSuiteSettlement,
+      terminationGraceMs: 2000,
+      terminationForceMs: 2000,
+    });
+    return cleanup;
+  };
+  const onSignal = () => {
+    interrupted = true;
+    void stop();
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+  try {
+    const result = await execution.completion;
+    if (execution.isAlive()) await stop();
+    if (cleanup) {
+      const settled = await cleanup;
+      if (!settled.settled || settled.errors.length)
+        throw new Error('Compiler process tree did not settle');
+    }
+    if (result.error) throw result.error;
+    process.exitCode = interrupted || result.signal ? 1 : (result.status ?? 1);
+  } finally {
+    process.removeListener('SIGINT', onSignal);
+    process.removeListener('SIGTERM', onSignal);
+  }
+}
+
 async function main(argv = process.argv.slice(2)) {
   const cwd = process.cwd();
-  const plan = planTscArgs(argv, { cwd });
+  const bun = argv.includes('--bun');
+  argv = argv.filter((arg) => arg !== '--bun');
+  const plan = bun
+    ? bunCompiler(argv, cwd)
+    : { compiler: nativeCompiler(), ...planTscArgs(argv, { cwd }) };
   if (plan.buildInfoFile)
     mkdirSync(dirname(plan.buildInfoFile), { recursive: true });
-
-  const require = createRequire(join(REPO_ROOT, 'package.json'));
-  const compiler = require.resolve('typescript/lib/tsc.js');
-  if (!existsSync(compiler))
-    throw new Error(`TypeScript not found: ${compiler}`);
+  if (!existsSync(plan.compiler))
+    throw new Error(`Compiler not found: ${plan.compiler}`);
 
   if (needsSlot(argv)) {
     let slot;
@@ -183,13 +320,16 @@ async function main(argv = process.argv.slice(2)) {
       process.exitCode = 1;
       return;
     }
-    // tsc ends with process.exit(); the `exit` event is the one hook that
-    // runs on that path, and on an uncaught exception too.
     process.once('exit', slot.release);
     process.env[SLOT_HELD_ENV] = `${slot.dir}#${slot.index}`;
   }
-  process.argv = [process.argv[0], compiler, ...plan.args];
-  require(compiler);
+  if (process.platform !== 'win32') {
+    // Keep the slot holder's PID: killing it must also kill the compiler.
+    // execve bypasses Node's exit hook; the next waiter reclaims its record.
+    process.execve(plan.compiler, [plan.compiler, ...plan.args], process.env);
+    return;
+  }
+  await runWindowsCompiler(plan.compiler, plan.args, cwd);
 }
 
 if (invokedDirectly(import.meta.url)) {
