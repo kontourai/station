@@ -194,8 +194,29 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
     });
 
     for (const [body, status] of [
-      [undefined, 400],
-      [JSON.stringify({ inventoryRevision: 'stale-revision' }), 409],
+      [undefined, 426],
+      [
+        JSON.stringify({
+          acknowledgementProtocol: 1,
+          inventoryRevision: disclosure.inventoryRevision,
+        }),
+        426,
+      ],
+      [
+        JSON.stringify({
+          acknowledgementProtocol: 3,
+          inventoryRevision: disclosure.inventoryRevision,
+        }),
+        426,
+      ],
+      [JSON.stringify({ acknowledgementProtocol: 2 }), 400],
+      [
+        JSON.stringify({
+          acknowledgementProtocol: 2,
+          inventoryRevision: 'stale-revision',
+        }),
+        409,
+      ],
     ] as const) {
       const refused = await app.request(
         '/api/usage-telemetry/disclosure/acknowledgements',
@@ -216,6 +237,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          acknowledgementProtocol: 2,
           inventoryRevision: disclosure.inventoryRevision,
         }),
       },

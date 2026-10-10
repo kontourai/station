@@ -1,3 +1,4 @@
+import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import {
   authenticatedFetch,
   getJson,
@@ -33,6 +34,7 @@ type Disclosure = {
   inventoryRevision: string;
   /** Versioned envelope disclosure; older servers omit it. */
   envelope?: string;
+  acknowledgementProtocol?: number;
   events: Record<
     string,
     {
@@ -207,7 +209,13 @@ class UsageTelemetryNotReadyError extends Error {
 const NOT_READY_RETRY_LIMIT = 20;
 const NOT_READY_RETRY_DELAY_MS = 500;
 
+class UsageTelemetryProtocolUpdateRequiredError extends Error {}
+
 async function responseData(response: Response): Promise<Disclosure> {
+  if (response.status === 426)
+    throw new UsageTelemetryProtocolUpdateRequiredError(
+      'Update this app to acknowledge the current usage telemetry inventory.',
+    );
   if (response.status === 503) throw new UsageTelemetryNotReadyError();
   if (!response.ok)
     throw new Error('Usage telemetry disclosure could not be loaded.');
@@ -318,7 +326,10 @@ function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ inventoryRevision }),
+          body: JSON.stringify({
+            acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+            inventoryRevision,
+          }),
         },
       ).then(responseData),
     onSuccess: (data) => {
@@ -365,10 +376,18 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
   );
 }
 
-function acknowledgeErrorNotice(isError: boolean): ReactNode {
+function acknowledgeErrorNotice(isError: boolean, error: unknown): ReactNode {
+  const updateRequired =
+    error instanceof UsageTelemetryProtocolUpdateRequiredError ||
+    (typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      error.status === 426);
   return isError ? (
     <p className="usage-telemetry-disclosure__error" role="alert">
-      The disclosure acknowledgement could not be saved.
+      {updateRequired
+        ? 'Update this app to acknowledge the current usage telemetry inventory. You can dismiss this disclosure or turn telemetry off.'
+        : 'The disclosure acknowledgement could not be saved.'}
     </p>
   ) : null;
 }
@@ -635,7 +654,10 @@ function useUsageTelemetryDecision(
           timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
           ...(target.requestScope ? { requestScope: target.requestScope } : {}),
         },
-        { inventoryRevision: target.inventoryRevision },
+        {
+          acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+          inventoryRevision: target.inventoryRevision,
+        },
       );
       return responseData(response);
     },
@@ -768,7 +790,10 @@ function useUsageTelemetryDecision(
         The usage telemetry setting could not be saved.
       </p>
     ) : (
-      acknowledgeErrorNotice(acknowledgeError)
+      acknowledgeErrorNotice(
+        acknowledgeError,
+        scoped ? acknowledgeRecovery.error : acknowledgeProtected.error,
+      )
     ),
     retry: acknowledgeError,
   };

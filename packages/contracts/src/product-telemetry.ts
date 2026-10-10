@@ -1,3 +1,7 @@
+export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
+export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY =
+  'productTelemetryAcknowledgement';
+
 /** The single public inventory for Station product usage telemetry. */
 export const USAGE_TELEMETRY_EVENTS = {
   station_started: {

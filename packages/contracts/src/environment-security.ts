@@ -639,7 +639,9 @@ export function isPairingScopeSubset(
  * too — that is the switch that turns a silent misbehavior into a
  * "update your app" verdict.
  */
-export const STATION_COMPAT_PROTOCOL_VERSION = 1;
+// Protocol 2 adds revision-bound product disclosure acknowledgements. Core
+// protocol-1 callers remain admitted; this optional feature negotiates separately.
+export const STATION_COMPAT_PROTOCOL_VERSION = 2;
 
 /**
  * Oldest client protocol this host still serves. A client advertising less

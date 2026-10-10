@@ -3,6 +3,7 @@ import { chmod, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
+  PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
   PRODUCT_TELEMETRY_ENVELOPE,
   type ProductTelemetryBatch,
   type ProductTelemetryBuild,
@@ -210,6 +211,7 @@ export class UsageTelemetryService {
     inventoryRevision: string;
     events: typeof USAGE_TELEMETRY_EVENTS;
     envelope: string;
+    acknowledgementProtocol: number;
     endpointConfigured: boolean;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
@@ -218,6 +220,7 @@ export class UsageTelemetryService {
       acknowledged: await this.loadDisclosureReceipt(),
       inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
+      acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
       envelope: Object.entries(PRODUCT_TELEMETRY_ENVELOPE)
         .map(
           ([scope, fields]) =>

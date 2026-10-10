@@ -1,3 +1,4 @@
+import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import { Hono } from 'hono';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 
@@ -34,6 +35,26 @@ export function createUsageTelemetryDisclosureRoutes(
         503,
       );
     const body: unknown = await c.req.json().catch(() => null);
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      !('acknowledgementProtocol' in body) ||
+      body.acknowledgementProtocol !==
+        PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL
+    )
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'telemetry_acknowledgement_protocol_unsupported',
+            message:
+              'Update this app to acknowledge the current usage telemetry inventory.',
+            requiredProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+          },
+        },
+        426,
+      );
     if (
       !body ||
       typeof body !== 'object' ||
