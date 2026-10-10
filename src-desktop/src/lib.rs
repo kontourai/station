@@ -10225,6 +10225,67 @@ thread_local! {
     static NATIVE_STARTUP_COVER_ACTIONS: std::cell::RefCell<
         Option<objc2::rc::Retained<startup_cover_actions::StartupCoverActions>>,
     > = const { std::cell::RefCell::new(None) };
+
+    /// While the cover is up, WebKit can still make the hidden WebView first
+    /// responder (for example after a page load), and it would then receive
+    /// and swallow keystrokes, including the default button's Return. This
+    /// window-scoped monitor keeps keys away from the hidden content.
+    static NATIVE_STARTUP_COVER_KEY_MONITOR: std::cell::RefCell<
+        Option<objc2::rc::Retained<objc2::runtime::AnyObject>>,
+    > = const { std::cell::RefCell::new(None) };
+}
+
+/// Replaces the cover's key monitor. `None` removes it (reveal). While
+/// installed, key events for the covered window are consumed, except Command
+/// shortcuts (Quit, Close) which keep their menu behavior; on overdue content
+/// Return and keypad Enter choose Restart, the default button.
+#[cfg(target_os = "macos")]
+fn replace_native_startup_cover_key_monitor(
+    window_number: Option<isize>,
+    overdue: Option<(AppHandle, u64)>,
+) {
+    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType};
+    const RETURN_KEY: u16 = 36;
+    const KEYPAD_ENTER_KEY: u16 = 76;
+
+    NATIVE_STARTUP_COVER_KEY_MONITOR.with(|slot| {
+        if let Some(previous) = slot.borrow_mut().take() {
+            unsafe { NSEvent::removeMonitor(&previous) };
+        }
+        let Some(window_number) = window_number else {
+            return;
+        };
+        let handler =
+            block2::RcBlock::new(move |event: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
+                let key = unsafe { event.as_ref() };
+                if key.windowNumber() != window_number
+                    || key.modifierFlags().contains(NSEventModifierFlags::Command)
+                {
+                    return event.as_ptr();
+                }
+                if key.r#type() == NSEventType::KeyDown
+                    && matches!(key.keyCode(), RETURN_KEY | KEYPAD_ENTER_KEY)
+                {
+                    if let Some((app, epoch)) = &overdue {
+                        // Never unwind across the Objective-C block boundary.
+                        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            resolve_slow_startup(app, *epoch, SlowStartupChoice::Restart)
+                        }))
+                        .is_err()
+                        {
+                            log::error!("native startup cover Return action panicked");
+                        }
+                    }
+                }
+                std::ptr::null_mut()
+            });
+        *slot.borrow_mut() = unsafe {
+            NSEvent::addLocalMonitorForEventsMatchingMask_handler(
+                NSEventMask::KeyDown | NSEventMask::KeyUp,
+                &handler,
+            )
+        };
+    });
 }
 
 #[cfg(target_os = "macos")]
@@ -10298,8 +10359,17 @@ fn with_native_startup_cover(
                 // setter-authored list is later assigned nil (#869).
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
             }
+            replace_native_startup_cover_key_monitor(
+                Some(ns_window.windowNumber()),
+                match cover_kind {
+                    startup_readiness::StartupCoverContent::Overdue { epoch } => {
+                        Some((app.clone(), epoch))
+                    }
+                    startup_readiness::StartupCoverContent::Waiting => None,
+                },
+            );
             match focus {
-                // Keyboard and VoiceOver land on the default recovery action.
+                // VoiceOver lands on the default recovery action.
                 Some(restart) => {
                     ns_window.makeFirstResponder(Some(&restart));
                 }
@@ -10322,6 +10392,7 @@ fn with_native_startup_cover(
                 cover.removeFromSuperview();
             }
             NATIVE_STARTUP_COVER_ACTIONS.with(|actions| actions.borrow_mut().take());
+            replace_native_startup_cover_key_monitor(None, None);
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
             }
@@ -10408,6 +10479,8 @@ fn populate_native_startup_cover(
     label.setTextColor(Some(&NSColor::secondaryLabelColor()));
     unsafe {
         let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
+        // A forced accessibility element otherwise reports AXUnknown.
+        let _: () = objc2::msg_send![&*label, setAccessibilityRole: objc2_app_kit::NSAccessibilityStaticTextRole];
         let _: () = objc2::msg_send![&*label, setAccessibilityLabel: &*label_text];
     }
     cover_content.addSubview(&label);
@@ -10434,7 +10507,8 @@ fn populate_native_startup_cover(
             ),
         )
     };
-    // Return activates Restart, the default action.
+    // Restart is the default button. The cover's key monitor delivers Return
+    // to it even when WebKit has made the hidden WebView first responder.
     restart.setKeyEquivalent(ns_string!("\r"));
     unsafe {
         let _: () =
@@ -14622,6 +14696,18 @@ mod tests {
         assert!(cover.contains("restart.setKeyEquivalent(ns_string!(\"\\r\"))"));
         assert!(cover.contains("ns_window.makeFirstResponder(Some(&restart))"));
         assert!(cover.contains("applicationIconImage()"));
+        assert!(
+            cover.contains("setAccessibilityRole: objc2_app_kit::NSAccessibilityStaticTextRole")
+        );
+        // WebKit can retake first responder while covered; the window-scoped
+        // key monitor is installed with the cover and removed on reveal.
+        let monitor_installed = cover
+            .find("Some(ns_window.windowNumber())")
+            .expect("covering installs the key monitor for this window");
+        let monitor_removed = cover
+            .find("replace_native_startup_cover_key_monitor(None, None)")
+            .expect("reveal removes the key monitor");
+        assert!(monitor_installed < monitor_removed);
         assert!(!cover.contains("setAccessibilityChildren:"));
         assert!(!cover.contains("NSArray::arrayWithObject"));
         assert!(cover.contains("NSAccessibilityLayoutChangedNotification"));
