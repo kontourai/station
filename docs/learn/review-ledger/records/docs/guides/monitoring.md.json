@@ -104,7 +104,11 @@
 
     "src-server/routes/system/resource-posture-routes.ts",
 
-    "src-server/__tests__/telemetry.test.ts"
+    "src-server/__tests__/telemetry.test.ts",
+
+    "src-server/runtime/bootstrap/hosted-tenant-mode.ts",
+
+    "src-server/runtime/bootstrap/hosted-persistence-boundary.ts"
   ],
 
   "checks": [
