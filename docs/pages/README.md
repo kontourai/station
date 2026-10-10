@@ -31,3 +31,10 @@ The build copies the hand-authored assets, renders only manifest-listed
 Markdown, and checks every emitted HTML file for broken or escaping relative
 links. It writes disposable output to `dist-pages/`; do not edit that directory
 by hand.
+
+An admitted document may link relatively only to another admitted document;
+link anything else by its absolute
+`https://github.com/kontourai/station/blob/main/...` URL. `npm run
+docs:public:hygiene` renders each admitted document and rejects any other
+relative link, so the mistake fails at PR time instead of in the post-merge
+Pages build.

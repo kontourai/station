@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"New child-process test merge-queue-regression-decision.test.ts is classified in vitest-resource-manifest.mjs; new spawnSync calls pass windowsHide: true; the decision gate is deterministic and fail-closed as this guide requires. No instruction change needed.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

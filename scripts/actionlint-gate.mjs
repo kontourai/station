@@ -789,8 +789,35 @@ function isExactPortableServerArchiveUpload(file, jobId, step) {
 }
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
-echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
+echo "$NEEDS" | jq -r 'if .plan.outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \\(.["full-regression"].result)" end'
+echo "$NEEDS" | jq -e '.diff.result == "success" and (.["full-regression"].result == "success" or (.plan.result == "success" and .plan.outputs["full-regression"] == "false" and .["full-regression"].result == "skipped"))' > /dev/null
 `;
+const MERGE_QUEUE_FULL_REGRESSION_JOB = 'full-regression';
+const MERGE_QUEUE_FULL_REGRESSION_GUARD = `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression != 'false' }}`;
+
+/**
+ * The merge queue's one reusable call: the hosted full regression of this
+ * candidate (github.sha), fail-closed on its plan decision. It needs
+ * `actions: read` for full-regression.yml's exact-source evidence reuse, the
+ * same grant as ci.yml's dispatch call. Any other callee, guard, input,
+ * secret or permission loses the exemption.
+ */
+function isExactMergeQueueFullRegressionCall(file, jobId, job) {
+  return (
+    file === MERGE_QUEUE_REGRESSION_WORKFLOW &&
+    jobId === MERGE_QUEUE_FULL_REGRESSION_JOB &&
+    hasExactKeys(job, ['needs', 'if', 'permissions', 'uses', 'with']) &&
+    job.needs === 'plan' &&
+    job.if === MERGE_QUEUE_FULL_REGRESSION_GUARD &&
+    job.uses === './.github/workflows/full-regression.yml' &&
+    hasExactKeys(job.permissions, ['contents', 'actions']) &&
+    job.permissions.contents === 'read' &&
+    job.permissions.actions === 'read' &&
+    hasExactKeys(job.with, ['source_sha', 'allow_reuse']) &&
+    job.with.source_sha === `\${{ github.sha }}` &&
+    job.with.allow_reuse === true
+  );
+}
 
 /**
  * The merge-queue regression aggregate reads only its needed jobs' results. It
@@ -2723,9 +2750,15 @@ function baseControlledPrWorkflowFindings(file, document) {
   if (file === SECURITY_ANALYSIS_WORKFLOW)
     findings.push(...securityAnalysisTopologyFindings(file, jobs));
   for (const [jobId, job] of Object.entries(jobs)) {
+    const exactFullRegressionCall = isExactMergeQueueFullRegressionCall(
+      file,
+      jobId,
+      job,
+    );
     if (
       job?.permissions !== undefined &&
-      !hasOnlyReadContentsPermission(job.permissions)
+      !hasOnlyReadContentsPermission(job.permissions) &&
+      !exactFullRegressionCall
     )
       findings.push({
         file,
@@ -2734,7 +2767,9 @@ function baseControlledPrWorkflowFindings(file, document) {
           'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
       });
     const runner = classifyRunner(job);
-    if (!runner.hosted)
+    // The exact call has no runner of its own. This rule does not follow
+    // it into full-regression.yml, whose jobs run on ubuntu-22.04 today.
+    if (!runner.hosted && !exactFullRegressionCall)
       findings.push({
         file,
         jobId,
@@ -2750,6 +2785,7 @@ function baseControlledPrWorkflowFindings(file, document) {
           : file === SECURITY_ANALYSIS_WORKFLOW
             ? false
             : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
+              exactFullRegressionCall ||
               hasExplicitCheckout(
                 job,
                 FAST_CHECKOUT_REPOSITORY,

@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed merge-queue and full:regression guidance (lines ~385-496): still accurate; contributors still must not run full:regression locally because main moved; the queue, not the contributor, now runs the hosted full regression for deferred candidates. Optional plan field does not change the fast-checks receipt description.","inputs":["docs/guides/development.md",".github/workflows/merge-queue-regression.yml","scripts/lib/fast-checks-shards.mjs"]}
+  ]
+}
