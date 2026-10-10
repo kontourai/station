@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/input-request';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
+import './InputRequestDecision.css';
 
 /**
  * #3390: the renderer for a `decision` body — an approval's choices. It reads
@@ -73,6 +74,7 @@ export function DecisionActionRow({
   );
   return (
     <ActionRow
+      className="approval-decision-row"
       overflowLabel={overflowLabel}
       secondary={
         deny ? (
