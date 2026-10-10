@@ -2173,7 +2173,9 @@ describe('verification coordinator', () => {
         );
       }
 
-      const rejectedRequest = coordinateVerification(options(worktrees.at(-1)!));
+      const rejectedRequest = coordinateVerification(
+        options(worktrees.at(-1)!),
+      );
       pending.push(rejectedRequest);
       const rejected = await rejectedRequest;
       expect(rejected.disposition).toBe('executed');
