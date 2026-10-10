@@ -131,9 +131,8 @@ export async function fetchInsights(
     `${apiBase}/api/insights?${insightsQuery(days, filters)}`,
   );
   if (!response.ok) throw new Error('Failed to fetch insights');
-  const result = await response.json();
   const { parseInsightsResponse } = await import('./insightsResponse');
-  return parseInsightsResponse(result);
+  return parseInsightsResponse(await response.json());
 }
 
 export function useInsightsQuery(
