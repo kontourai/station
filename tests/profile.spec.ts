@@ -474,6 +474,7 @@ test.describe('Profile retained usage', () => {
           .evaluateAll((nodes) =>
             nodes.map((node) => node.getBoundingClientRect().height),
           );
+        expect(targetHeights.length).toBeGreaterThan(0);
         expect(Math.min(...targetHeights)).toBeGreaterThanOrEqual(44);
         const graph = page.getByLabel('Usage activity overview');
         for (const date of [
