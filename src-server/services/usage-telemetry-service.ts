@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
-import type {
-  ProductTelemetryBatch,
-  ProductTelemetryBuild,
-  ProductTelemetryObservation,
+import {
+  PRODUCT_TELEMETRY_ENVELOPE,
+  type ProductTelemetryBatch,
+  type ProductTelemetryBuild,
+  type ProductTelemetryObservation,
 } from '@kontourai/station-contracts/product-telemetry';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { redactDeep } from '@kontourai/station-shared/redaction';
@@ -19,7 +20,6 @@ import type { Logger } from '../utils/logger.js';
 import { persistedRandomIdentifierHash } from './persisted-random-identifier.js';
 import {
   assertUsageTelemetryInventoryContract,
-  renderUsageTelemetryEnvelopeInventory,
   USAGE_TELEMETRY_EVENTS,
   USAGE_TELEMETRY_INVENTORY_REVISION,
   type UsageTelemetryEvent,
@@ -218,7 +218,15 @@ export class UsageTelemetryService {
       acknowledged: await this.loadDisclosureReceipt(),
       inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
       events: USAGE_TELEMETRY_EVENTS,
-      envelope: renderUsageTelemetryEnvelopeInventory(),
+      envelope: Object.entries(PRODUCT_TELEMETRY_ENVELOPE)
+        .map(
+          ([scope, fields]) =>
+            `${scope}: ` +
+            Object.entries(fields)
+              .map(([field, meaning]) => `${field}: ${meaning}`)
+              .join(' '),
+        )
+        .join('\n\n'),
       endpointConfigured: this.endpointConfigured,
       // The EFFECTIVE setting, which is `telemetryEnabled` folded over the
       // `STATION_TELEMETRY_ENABLED` fallback and the default. A client that
