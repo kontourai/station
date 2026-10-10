@@ -65,10 +65,11 @@ export const MUTATIONS = [
         path: 'src-server/runtime/bootstrap/station-runtime.ts',
         change: (source) =>
           exactReplace(
-            source,
-            '    // Completion telemetry follows final policy publication and never delays boot.\n    void this.usageTelemetry.stationStarted();',
-            '',
-          ).replace(
+            exactReplace(
+              source,
+              '    // Completion telemetry follows final policy publication and never delays boot.\n    void this.usageTelemetry.stationStarted();',
+              '',
+            ),
             '    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
             '    void this.usageTelemetry.stationStarted();\n    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
           ),
