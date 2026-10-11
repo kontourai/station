@@ -244,21 +244,19 @@ export class EnvironmentSecurityService {
    * #3557, first use only: people whose tied devices already held a
    * permission Member would remove before groups applied start as Admin, so
    * turning groups on takes nothing away. Afterwards the operator decides.
-   * The moment groups first applied is stamped apart from the record; a
-   * reseed after a lost record counts only devices issued before it, so it
-   * never re-promotes someone from a grant the operator has since capped.
+   * That groups have applied is marked apart from the record, so a lost
+   * record is never reseeded: a stored grant the operator raised or capped
+   * since would otherwise re-promote someone. Everyone then sits in Member.
    */
   async #seedGroups(pairing: DevicePairingService): Promise<void> {
-    const activatedAt = this.#groups.activatedAt();
+    if (this.#groups.activated()) return;
     if (!this.#groups.exists()) {
       const admins = new Set<string>();
       for (const device of pairing.listDevices()) {
         if (
           device.revokedAt !== null ||
           !device.principalBinding ||
-          device.kind === 'delegation' ||
-          (activatedAt !== null &&
-            (device.issuedAt ?? device.createdAt) >= activatedAt)
+          device.kind === 'delegation'
         )
           continue;
         if (capScopeToGroup(device.scope, 'member') !== device.scope)
@@ -266,7 +264,7 @@ export class EnvironmentSecurityService {
       }
       await this.#groups.seed([...admins]);
     }
-    if (activatedAt === null) await this.#groups.markActivated(this.#now());
+    await this.#groups.markActivated(this.#now());
   }
 
   /** #3557: the group a person sits in. */
