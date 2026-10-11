@@ -51,6 +51,12 @@ describe.skipIf(process.platform === 'win32')(
     let grandchildFile: string;
     const spawned: Array<{ readonly pid?: number }> = [];
 
+    /** Replace the stub `codex` with a shell script body. */
+    function writeStub(body: string): void {
+      writeFileSync(stubPath, `#!/bin/sh\n${body}\n`);
+      chmodSync(stubPath, 0o755);
+    }
+
     beforeEach(() => {
       vi.resetModules();
       const home = makeTempDir('station-codex-owned-home-');
@@ -60,11 +66,7 @@ describe.skipIf(process.platform === 'win32')(
       stubPath = join(binDir, 'codex');
       // Ignores its `app-server` argv; starts a grandchild in the same group
       // and reports its pid, then idles on stdin like the real app-server.
-      writeFileSync(
-        stubPath,
-        `#!/bin/sh\nsleep 600 &\necho $! > '${grandchildFile}'\nexec cat\n`,
-      );
-      chmodSync(stubPath, 0o755);
+      writeStub(`sleep 600 &\necho $! > '${grandchildFile}'\nexec cat`);
       vi.stubEnv('STATION_HOME', home);
       vi.stubEnv('STATION_OWNED_PROCESS_REGISTRY', registryDir);
       vi.doMock('../auth/cli-auth.js', () => ({
@@ -161,7 +163,31 @@ describe.skipIf(process.platform === 'win32')(
 
       await terminateCodexProcess(proc);
 
+      // The group SIGTERM has been sent and the leader confirmed gone; the
+      // reparented grandchild is reaped by init on its own schedule.
+      await waitFor(() => !isAlive(grandchildPid));
       expect(isAlive(grandchildPid)).toBe(false);
+      await waitFor(() => !existsSync(recordFile));
+      expect(existsSync(recordFile)).toBe(false);
+    });
+
+    test('a leader that exits while its grandchild lives keeps the record until the group is gone', async () => {
+      // The app-server exits on its own and leaves a grandchild in its group.
+      writeStub(
+        `sleep 600 >/dev/null 2>&1 &\necho $! > '${grandchildFile}'\nexit 0`,
+      );
+      const { pid, grandchildPid, recordFile } = await spawnStubCodex();
+      await waitFor(() => !isAlive(pid));
+      expect(isAlive(pid)).toBe(false);
+      expect(groupAlive(pid)).toBe(true);
+
+      // Ten release polls (50 ms each) later the group is still alive, so the
+      // record must still be there for a later sweep.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(existsSync(recordFile)).toBe(true);
+
+      process.kill(grandchildPid, 'SIGKILL');
+      await waitFor(() => !groupAlive(pid));
       await waitFor(() => !existsSync(recordFile));
       expect(existsSync(recordFile)).toBe(false);
     });
