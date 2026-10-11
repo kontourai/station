@@ -147,7 +147,12 @@ questions and evidence.
 The [constitution](docs/strategy/constitution.md) records product principles,
 not a certification that every feature already meets them. Keep core
 vendor-neutral, use published Kontour contracts, and propose missing primitive
-capabilities upstream. Extraction requires a real second consumer, a public
+capabilities upstream. [ADR 0005](docs/adr/0005-require-a-second-consumer-before-extraction.md)
+sets two tiers. A subsystem may become a publishable package in Station's
+workspace with Station as its only consumer when it has no Station imports
+(enforced by a check), its own conformance suite and experimental versioning,
+and Station uses only its public entry point. Extraction into a standalone
+product or repository still requires a real second consumer, a public
 contract, verification the new product owns, and a measurable reduction in
 Station-owned code. These are design constraints, not permission to extract
 or remove a working subsystem during documentation cleanup.
