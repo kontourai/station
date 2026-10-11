@@ -1,3 +1,5 @@
+import { isStationTransportFailure } from '../../utils/stationTransportFailure';
+
 /**
  * The one sentence a failed READ is allowed to show the user.
  *
@@ -21,16 +23,19 @@ export const READ_FAILURE_UNREADABLE =
 export const READ_FAILURE_UNREACHABLE =
   'Could not reach Station. Check the connection, then try again.';
 
-// Engine wording for a fetch that never got a response (Chromium, WebKit,
-// Firefox). Anything else a TypeError says is a real message and is kept.
-const NETWORK_FAILURE = /^(failed to fetch|load failed|networkerror\b)/i;
-
 export function describeReadFailure(error: unknown): string {
   // A parse or transport failure's own message is the engine talking
   // ("Failed to execute 'json' on 'Response': Unexpected token '<'…"): true,
   // and useless to the person reading it. Name what happened instead.
-  if (error instanceof SyntaxError) return READ_FAILURE_UNREADABLE;
-  if (error instanceof TypeError && NETWORK_FAILURE.test(error.message.trim()))
+  // Older WebKit rejects Response.json() with a DOMException named
+  // SyntaxError, which is not an instance of the JS SyntaxError.
+  if (
+    error instanceof SyntaxError ||
+    (error instanceof DOMException && error.name === 'SyntaxError')
+  )
+    return READ_FAILURE_UNREADABLE;
+  // The browsers' and native transports' own phrases, from the one list.
+  if (error instanceof Error && isStationTransportFailure(error))
     return READ_FAILURE_UNREACHABLE;
   if (error instanceof Error && error.message.trim()) {
     return error.message;

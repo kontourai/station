@@ -25,7 +25,6 @@ import {
   dispatchNewChatIntent,
   type NewChatHandoff,
 } from '../../lib/newChatIntent';
-import { userFacingErrorMessage } from '../../utils/errorText';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
@@ -628,11 +627,10 @@ export function HomeStartComposer({
             {!feedback && (
               <Button
                 variant="link"
-                onClick={() =>
-                  void refreshSetup().catch((error) =>
-                    setFeedback(userFacingErrorMessage(error)),
-                  )
-                }
+                // A retry that fails again leaves `setupError` saying so; the
+                // rethrown error's own message is the parser text this
+                // alert exists to hide.
+                onClick={() => void refreshSetup().catch(() => undefined)}
               >
                 Try again
               </Button>
@@ -669,7 +667,7 @@ export function HomeStartComposer({
               }
               onCheck={() =>
                 void refreshSetup().catch((error) =>
-                  setFeedback(userFacingErrorMessage(error)),
+                  setFeedback(describeReadFailure(error)),
                 )
               }
             />

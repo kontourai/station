@@ -34,10 +34,14 @@ describe('describeReadFailure', () => {
       `Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
     );
     expect(describeReadFailure(parse)).toBe(READ_FAILURE_UNREADABLE);
-    // WebKit's wording for the same failure.
+    // Older WebKit rejects with a DOMException named SyntaxError, which is
+    // not an instance of the JS SyntaxError.
     expect(
       describeReadFailure(
-        new SyntaxError('The string did not match the expected pattern.'),
+        new DOMException(
+          'The string did not match the expected pattern.',
+          'SyntaxError',
+        ),
       ),
     ).toBe(READ_FAILURE_UNREADABLE);
   });
@@ -52,6 +56,14 @@ describe('describeReadFailure', () => {
         READ_FAILURE_UNREACHABLE,
       );
     }
+    // A native transport's own phrase (src-desktop), on a plain Error.
+    expect(
+      describeReadFailure(
+        new Error(
+          'Native Station request failed: Station refused the connection',
+        ),
+      ),
+    ).toBe(READ_FAILURE_UNREACHABLE);
     // Any other TypeError is a real message and stays.
     expect(describeReadFailure(new TypeError('agents is not iterable'))).toBe(
       'agents is not iterable',

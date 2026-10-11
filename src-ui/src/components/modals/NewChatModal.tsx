@@ -1856,8 +1856,14 @@ export function NewChatModal({
                 <Button
                   variant="link"
                   onClick={() => {
-                    if (returnedFromSetup) setupReturn.retry();
-                    else void refreshSetup().catch(() => undefined);
+                    if (returnedFromSetup) {
+                      if (!setupReturn.retry())
+                        setSelectFeedback(
+                          'Reconnect to this Station before checking setup.',
+                        );
+                      return;
+                    }
+                    void refreshSetup().catch(() => undefined);
                   }}
                 >
                   Try again

@@ -509,6 +509,30 @@ describe('HomeView', () => {
     expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1);
   });
 
+  test('a retry that fails again keeps the plain sentence and its retry', async () => {
+    const parse = new SyntaxError(
+      `Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    );
+    fixtures.setupError = parse;
+    // refreshSetup rethrows the same query error (throwOnError).
+    fixtures.refreshSetup.mockRejectedValueOnce(parse);
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const alert = () =>
+      screen
+        .getAllByRole('alert')
+        .find((node) => node.classList.contains('start-composer__alert'));
+    fireEvent.click(
+      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+    );
+    await waitFor(() => expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(alert()?.textContent).not.toContain('DOCTYPE');
+    expect(
+      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+    ).toBeTruthy();
+  });
+
   test('shows guided start/open actions with a concrete selected identity', () => {
     const onNavigate = vi.fn();
     const newChat = vi.fn();
