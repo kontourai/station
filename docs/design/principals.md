@@ -82,7 +82,7 @@ shared authorization.
 The local product's membership model remains one implicit operator, not a row
 in a member table — the following facts still describe that local authority:
 
-- `verifyOperatorCredential` — `src-server/services/ssh/environment-security-service.ts:330-342`
+- `verifyOperatorCredential` — `src-server/services/ssh/environment-security-service.ts:444-456`
 - the local-grant secret: possession of an owner-only file in the Station home
   *is* the authority (`runtime-routes.ts`, the `local-grant` route)
 - `TenantExecutionContext.source: 'request' | 'session' | 'operator'` —

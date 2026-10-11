@@ -1500,7 +1500,12 @@ than left to inspection.
 
 **Detection for off-host operator-credential use (#2894 S1).** The four
 device-admin routes (`GET /api/pairing/devices`, scope change, revoke and
-record removal) record each raw operator-credential use with its host position.
+record removal), and the Station group change
+(`PUT /api/pairing/people/:principalId/group`, #3557, recorded once the
+change is applied), and the operator's token mint and revoke for a person
+(`POST`/`DELETE /api/pairing/people/:principalId/tokens…`, recorded once the
+operator credential is confirmed), record each raw operator-credential use
+with its host position.
 A use that is visibly off-host (a non-loopback peer, a non-loopback `Host`, or
 any forwarding header, including Station's UI proxy reporting that its client
 sent one) is still allowed. It is logged at warn with the message `Operator

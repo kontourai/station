@@ -147,7 +147,8 @@ the reusable environment credential:
 On successful completion the browser receives a revocable HttpOnly Device
 session and can reconnect. A paired browser is not automatically an approver:
 approval requires the route's current operator/local-home authority or an
-explicitly promoted `access:approve` Device. Use the connection manager's
+explicitly promoted `access:approve` Device (one tied to a person only while
+that person's Station group is Admin). Use the connection manager's
 **Paired devices** view to revoke access. Registration, successful enrollment
 and an authenticated subsequent request are separate observations.
 
