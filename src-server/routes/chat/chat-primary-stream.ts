@@ -289,6 +289,11 @@ export function streamPrimaryAgentChat({
         if (claim) {
           if (claim.claimed) {
             ownsClientTurnClaim = true;
+          } else if ('indeterminate' in claim) {
+            // #3559: never re-run a turn whose dead owner may have run it.
+            throw new Error(
+              `Turn ${clientTurnId} may already have run. Check the conversation before sending it again.`,
+            );
           } else {
             chatTurnDedup.add(1, {
               outcome: claim.conversationId ? 'hit' : 'hit_inflight',

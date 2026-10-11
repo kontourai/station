@@ -119,19 +119,23 @@ function seedTurnRows(
     value: string | null;
     createdAt: number;
     owner?: object;
+    /** Omit to model a row written before #3559 recorded invocation. */
+    invocation?: 'untracked';
   }>,
 ): void {
   const database = new DatabaseSync(filePath);
   try {
     database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
     const insert = database.prepare(`INSERT INTO orchestration_turn_dedup
-      (dedup_key, value, created_at, owner_json) VALUES (?, ?, ?, ?)`);
+      (dedup_key, value, created_at, owner_json, invocation)
+      VALUES (?, ?, ?, ?, ?)`);
     for (const row of rows) {
       insert.run(
         `chat:${row.key.length}:${row.key}`,
         row.value,
         row.createdAt,
         row.owner ? JSON.stringify(row.owner) : null,
+        row.invocation ?? null,
       );
     }
   } finally {
@@ -322,11 +326,38 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
           token: 'abandoned-owner',
           identityKind: 'exact',
         },
+        invocation: 'untracked',
       },
     ]);
 
     expect(new ChatTurnDedupStore(filePath).claim('turn-abandoned')).toEqual({
       claimed: true,
+    });
+  });
+
+  test('#3559: never reclaims a dead owner row written before invocation was recorded', () => {
+    seedTurnRows(filePath, [
+      {
+        key: 'turn-legacy',
+        value: null,
+        createdAt: 0,
+        owner: {
+          pid: 999_999_999,
+          birth: 'dead-process-birth',
+          token: 'legacy-owner',
+          identityKind: 'exact',
+        },
+      },
+    ]);
+
+    const store = new ChatTurnDedupStore(filePath);
+    expect(store.claim('turn-legacy')).toEqual({
+      claimed: false,
+      indeterminate: true,
+    });
+    expect(store.claim('turn-legacy')).toEqual({
+      claimed: false,
+      indeterminate: true,
     });
   });
 
@@ -365,7 +396,13 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       identityKind: 'exact',
     };
     seedTurnRows(filePath, [
-      { key: 'old-dead', value: null, createdAt: 1, owner: deadOwner },
+      {
+        key: 'old-dead',
+        value: null,
+        createdAt: 1,
+        owner: deadOwner,
+        invocation: 'untracked',
+      },
       { key: 'old-resolved', value: 'conversation-old', createdAt: 2 },
       ...Array.from(
         { length: CHAT_TURN_DEDUP_MAX_ENTRIES - 3 },

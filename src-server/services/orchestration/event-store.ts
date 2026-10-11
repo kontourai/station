@@ -12822,13 +12822,20 @@ export class EventStore {
     });
   }
 
+  /**
+   * `/chat` records no invocation boundary, so its claims keep the dead-owner
+   * reclaim rule they had before #3559. Only a legacy row with no invocation
+   * record answers `indeterminate`.
+   */
   claimChatTurn(clientTurnId: string): {
     claimed: boolean;
     conversationId?: string;
+    indeterminate?: true;
   } {
     const claim = this.turnIdempotence.claim(chatTurnDedupKey(clientTurnId));
-    return claim.claimed
-      ? { claimed: true }
+    if (claim.claimed) return { claimed: true };
+    return claim.indeterminate
+      ? { claimed: false, indeterminate: true }
       : { claimed: false, conversationId: claim.value };
   }
   resolveChatTurn(clientTurnId: string, conversationId: string): void {

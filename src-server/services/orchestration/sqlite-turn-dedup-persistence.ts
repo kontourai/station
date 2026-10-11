@@ -1,4 +1,5 @@
 import type {
+  TurnClaimInvocation,
   TurnIdempotencyPersistence,
   TurnIdempotencyRecord,
 } from '../turn-idempotency.js';
@@ -60,20 +61,28 @@ export function createSqliteTurnDedupPersistence({
   function read(key: string): TurnIdempotencyRecord | undefined {
     const row = db
       .prepare(
-        `SELECT value, created_at AS createdAt, owner_json AS ownerJson
+        `SELECT value, created_at AS createdAt, owner_json AS ownerJson,
+                invocation
          FROM orchestration_turn_dedup
          WHERE dedup_key = ?`,
       )
       .get(key) as
-      | { value: string | null; createdAt: number; ownerJson: string | null }
+      | {
+          value: string | null;
+          createdAt: number;
+          ownerJson: string | null;
+          invocation: string | null;
+        }
       | undefined;
     if (!row) return undefined;
+    const invocation = parseTurnClaimInvocation(row.invocation);
     return {
       value: row.value,
       createdAt: row.createdAt,
       ...(row.ownerJson === null
         ? {}
         : { owner: parseTurnClaimOwner(row.ownerJson) }),
+      ...(invocation ? { invocation } : {}),
     };
   }
 
@@ -107,7 +116,7 @@ export function createSqliteTurnDedupPersistence({
         const decision = updater(read(key));
         if (decision.record)
           db.prepare(
-            `INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json) VALUES (?, ?, ?, ?) ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value, created_at = excluded.created_at, owner_json = excluded.owner_json`,
+            `INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json, invocation) VALUES (?, ?, ?, ?, ?) ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value, created_at = excluded.created_at, owner_json = excluded.owner_json, invocation = excluded.invocation`,
           ).run(
             key,
             decision.record.value,
@@ -115,6 +124,7 @@ export function createSqliteTurnDedupPersistence({
             decision.record.owner
               ? JSON.stringify(decision.record.owner)
               : null,
+            decision.record.invocation ?? null,
           );
         else
           db.prepare(
@@ -131,6 +141,19 @@ export function createSqliteTurnDedupPersistence({
       }
     },
   };
+}
+
+/**
+ * #3559: NULL is a row written before invocation was recorded, and any value
+ * this build does not know is treated the same way. Both read as "unknown",
+ * which the claim path never reclaims from a dead owner.
+ */
+function parseTurnClaimInvocation(
+  raw: string | null,
+): TurnClaimInvocation | undefined {
+  return raw === 'pending' || raw === 'begun' || raw === 'untracked'
+    ? raw
+    : undefined;
 }
 
 function parseTurnClaimOwner(

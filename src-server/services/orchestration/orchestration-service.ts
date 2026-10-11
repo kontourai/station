@@ -7023,6 +7023,16 @@ export class OrchestrationService {
               clientTurnId,
             });
             if (claim) {
+              // #3559: the key's owner died after it may have handed this
+              // turn to the provider. Never send it again; report the same
+              // possible-effect outcome a live indeterminate start does.
+              if (claim.kind === 'indeterminate') {
+                orchestrationTurnDedup.add(1, {
+                  provider: adapter.provider,
+                  outcome: 'indeterminate',
+                });
+                throw new SessionTurnStartIndeterminateError();
+              }
               if (claim.kind === 'contended') {
                 const existingTurnId =
                   claim.turnId ??
@@ -7188,6 +7198,12 @@ export class OrchestrationService {
                           },
                         );
                       }
+                      // #3559: durable before the provider can see the turn.
+                      // If this owner dies past this point, a retry of the
+                      // same key is indeterminate instead of a second send.
+                      // A throw here has invoked nothing: the boundary stays
+                      // `prepared` and the claim is released.
+                      ownedClientTurnClaim?.beginInvocation();
                       const begun = boundary.beginInvocation(
                         new Date().toISOString(),
                       );

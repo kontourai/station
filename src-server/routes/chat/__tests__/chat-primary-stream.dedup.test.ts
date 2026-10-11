@@ -9,6 +9,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { captureRuntimeConfigurationLease } from '../../../runtime/plugins/runtime-configuration-lease.js';
@@ -288,6 +289,47 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     await r2.text();
 
     expect(streamText).toHaveBeenCalledTimes(2);
+  });
+
+  test('#3559: a dead owner claim that may already have run reports an error and never re-runs the agent', async () => {
+    const dbPath = join(dir, 'chat-turn-dedup.json');
+    const database = new DatabaseSync(dbPath);
+    try {
+      // A row written before invocation was recorded: nothing proves its
+      // dead owner did not reach the agent.
+      database
+        .prepare(
+          `INSERT INTO orchestration_turn_dedup
+             (dedup_key, value, created_at, owner_json) VALUES (?, NULL, 0, ?)`,
+        )
+        .run(
+          'chat:11:turn-legacy',
+          JSON.stringify({
+            pid: 999_999_999,
+            birth: 'dead-process-birth',
+            token: 'legacy-owner',
+            identityKind: 'exact',
+          }),
+        );
+    } finally {
+      database.close();
+    }
+    const streamText = vi.fn();
+    const agent = buildAgent(streamText);
+    const ctx = buildCtx({ memoryAdapter, dedupStore });
+    const app = buildApp(ctx, agent, dedupStore);
+
+    const response = await app.request('/chat?clientTurnId=turn-legacy', {
+      method: 'POST',
+    });
+    const body = await response.text();
+
+    expect(streamText).not.toHaveBeenCalled();
+    // `/chat` sanitizes every failure to its fixed outward text, exactly as it
+    // does for a contended turn; the specific reason stays in the server log.
+    expect(readSSEEvents(body)).toEqual([
+      expect.objectContaining({ type: 'error' }),
+    ]);
   });
 
   test('omitting clientTurnId never dedups (back-compat)', async () => {
