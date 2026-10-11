@@ -451,13 +451,9 @@ interface DevicePairingServiceOptions {
   /**
    * #3557: the scope a device may actually use, given its granted scope.
    * Station groups cap a device tied to a person; the caller decides who is
-   * capped. Omitted, a device uses exactly what it was granted. `locality`
-   * is the credential's mint-time home-possession proof, never on the wire.
+   * capped. Omitted, a device uses exactly what it was granted.
    */
-  capScope?: (
-    device: PairedDevice,
-    locality: 'home-possession' | undefined,
-  ) => string;
+  capScope?: (device: PairedDevice) => string;
 }
 
 export class DevicePairingError extends Error {
@@ -2139,10 +2135,7 @@ export class DevicePairingService {
     return (
       device?.revokedAt === null &&
       device.pendingEnrollmentId === undefined &&
-      pairingScopeIncludes(
-        this.#capScope(publicDevice(device), device.locality),
-        scope,
-      )
+      pairingScopeIncludes(this.#capScope(publicDevice(device)), scope)
     );
   }
 
@@ -2154,16 +2147,14 @@ export class DevicePairingService {
    */
   effectiveScope(candidate: string): string | undefined {
     const device = this.identifyDevice(candidate);
-    return device
-      ? this.#capScope(device, this.credentialLocality(candidate))
-      : undefined;
+    return device ? this.#capScope(device) : undefined;
   }
 
   /** #3557: a live device's effective scope, by id (device lists). */
   effectiveScopeOfDevice(deviceId: string): string | undefined {
     const device = this.#registry.devices.find((item) => item.id === deviceId);
     return device?.revokedAt === null
-      ? this.#capScope(publicDevice(device), device.locality)
+      ? this.#capScope(publicDevice(device))
       : undefined;
   }
 

@@ -487,10 +487,12 @@ any full access the device had granted. The stored grant is never rewritten,
 so a promotion restores it without re-pairing. Uncapped: a device tied to no
 person (the operator's own), a peer Station delegation, a home-possession
 credential and the operator credential. An unreadable groups record places
-everyone in Member (fail closed). On first use, a person whose tied device
-already held a governed token Member would remove starts as Admin, so turning
-groups on takes nothing away. Only the operator lists people or changes a
-group (`/api/pairing/people`, the pairing family's operator gate).
+everyone in Member (fail closed). On first use, a person whose tied device,
+issued before groups shipped, already held a governed token Member would
+remove starts as Admin, so turning groups on takes nothing away; a lost record
+re-seeds only from those devices, never from a later grant. The operator, or the desktop's own local
+grant, lists people (`GET /api/pairing/people`, the pairing family's boundary);
+only the operator credential changes a group, as for a device's access.
 
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read

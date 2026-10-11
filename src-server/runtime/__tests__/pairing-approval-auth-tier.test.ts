@@ -1178,6 +1178,21 @@ describe('#3557 Station groups at the HTTP boundary', () => {
       ],
     });
 
+    await harness.security.assignGroup(casey.principalId, 'member');
+    const devices = await harness.request('/api/pairing/devices', {
+      headers: { Authorization: `Bearer ${harness.operatorCredential}` },
+    });
+    expect(
+      ((await devices.json()) as { devices: PairedDevice[] }).devices.find(
+        (device) => device.id === casey.device.id,
+      ),
+    ).toMatchObject({
+      scope: ELEVATED,
+      effectiveScope:
+        'orchestration:read orchestration:operate terminal:operate',
+    });
+    await harness.security.assignGroup(casey.principalId, 'admin');
+
     // Casey's own Admin device may approve pairing requests, but never
     // change anyone's group: that is the operator's alone.
     for (const [method, path, body] of [
