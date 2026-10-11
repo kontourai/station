@@ -239,24 +239,23 @@ export function useComposerAttachments(options: {
             const current = currentStages().find(
               (stage) => stage.clientAttachmentId === clientAttachmentId,
             );
-            // The queue throws an AggregateError with no code of its own; the
-            // capacity refusal is on the stage it already reported before
-            // throwing, and that explanation must win over the generic "did
-            // not complete" sentence.
-            const capacityFull = current?.capacityFull === true;
-            if (current?.state !== 'complete' && !current?.capacityFull) {
+            // The queue throws an AggregateError with no code of its own. A
+            // stage it already reported as `failed` (a full capacity, or an
+            // unresolvable caller, #545) carries the real explanation and is
+            // not worth a Retry, so it must win over the generic "did not
+            // complete" sentence.
+            const reportedFailed = current?.state === 'failed';
+            if (current?.state !== 'complete' && !reportedFailed) {
               update({
                 clientAttachmentId,
-                state:
-                  capacityFull || message.includes('does not advertise')
-                    ? 'failed'
-                    : 'retryable',
+                state: message.includes('does not advertise')
+                  ? 'failed'
+                  : 'retryable',
                 progress: 0,
                 error: message,
-                ...(capacityFull ? { capacityFull: true } : {}),
               });
             }
-            setError(capacityFull ? null : message);
+            setError(reportedFailed ? null : message);
           }
         } finally {
           owned.running.current.delete(clientAttachmentId);
