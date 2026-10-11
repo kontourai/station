@@ -125,6 +125,19 @@ describe('Android native size gate', () => {
     }
   });
 
+  // The gate is only as good as its wiring: each lane that stages a release
+  // APK must run it on that APK, beside the 16 KB gate that already reads it.
+  it.each([
+    '.github/workflows/nightly-native-stage.yml',
+    '.github/workflows/release.yml',
+  ])('runs on the staged release APK in %s', (path) => {
+    const workflow = readFileSync(path, 'utf8');
+    expect(workflow).toContain(
+      'node scripts/check-android-16kb-alignment.mjs "$apk"\n          node scripts/check-android-native-size.mjs "$apk"\n',
+    );
+    expect(workflow.match(/check-android-native-size\.mjs/g)).toHaveLength(1);
+  });
+
   // Pin the checked-in ceiling independently of the gate: a raise is a
   // reviewed edit here and in the budget file together.
   it('keeps the checked-in ceiling', () => {
