@@ -43,7 +43,7 @@ declarations and recording call sites, not proof of those destinations.
 
 ## Canonical usage export source
 
-The authored `GET /api/analytics/usage-export` path selects retained canonical
+The `GET /api/analytics/usage-export` path selects retained canonical
 usage observations in committed global order. It reuses the EventStore receipt
 SELECT, mapping and pricing projection. Dates are inclusive UTC Station-observed
 days, at most 366 days; each page selects at most 100 observation events. One
@@ -64,13 +64,21 @@ not issue a companion grant or borrow a peer bearer. Durable grants and person
 destination credential custody, transactional invalidations, restored-home
 generation fencing, index/checkpoint transactions and clone/mirror policy are
 still pending under #3459/#3460. Stream epoch is copied by backups; it is not
-a restore-generation fence. The authored >500-row, scope and queued-release
-controls remain unexecuted on current source, as do runtime authentication,
-query budgets, full gates and deployment qualification. The authored source
+a restore-generation fence. Focused mounted-route and runtime-composition
+controls have exercised more than 500 retained observations, fixed-head paging,
+owner/tenant scope, membership and queued-body revocation, verified person-bound
+Device and account reads, and cumulative-history refusal. They use controlled
+identity fixtures; live enrollment, durable sync, measured query performance,
+full gates and deployment qualification remain separate. The source
 refuses cumulative-cost projection when selected threads exceed a combined
 1,000-event sequence budget, before hydrating their history; its evidence read
 also has a row bound. It reports unavailable rather than truncate cost segments.
 Durable cost-segment indexing and measured larger-history budgets remain open.
+
+The [scoped SDK reader](../reference/sdk.md#canonical-usage-export) validates
+receipt observation clocks, source/window/scope, committed order and a captured
+continuation snapshot without folding page facts into totals. Its fetcher and
+two-observer query controls have executed; a query key grants no source access.
 
 ## Developer diagnostics
 

@@ -32,8 +32,9 @@ removed after all launched children settle. If settlement is unproven,
 qualification fails and retains the frozen snapshot and private credential
 fixture for its owning recovery lane. Seven copy-only corruption/refusal and
 restoration controls include removed input records and a FIFO bundle. Rebuild
-after a source commit; an older build cannot qualify a new head. These authored
-checks remain unexecuted on the current source. The unsigned sidecar is
+after a source commit; an older build cannot qualify a new head. The build and
+these rejected/restored manifest controls have executed against the recorded
+source and artifacts. They do not qualify later revisions. The unsigned sidecar is
 build-only metadata, not a source/publisher
 attestation, installed dependency-graph proof or deployment/release acceptance.
 
@@ -147,8 +148,8 @@ separate database. Build the broker first. The runner creates a unique owned
 database and exercises the real bundled Unix entrypoint with five startup
 refusals and private-file/legacy-environment positive controls. It binds the
 entrypoint and repository bundle digests separately and requires owned process
-cleanup. These authored controls still need execution on the current source;
-they are not image, Compose, private-host, backup/restore or release evidence.
+cleanup. These controls have executed against the recorded source and frozen
+artifacts; they are not image, Compose, private-host, backup/restore or release evidence.
 In that same database, the runner tests HTTP commit/deduplication, revocation,
 saturation, ten malformed
 schema cases across all nine repository entrypoints and the HTTP probe, and a stalled PostgreSQL

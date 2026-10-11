@@ -35,7 +35,8 @@ Container provenance is explicitly a supplied release declaration, not proof
 that the image was built from clean or qualified source. The sidecar is
 unsigned build metadata, not publisher authentication, installed-graph proof
 or a canonical release receipt. Build/consumer and seven rejected/restored
-manifest controls still need execution on current source.
+manifest controls have executed on the recorded local source and artifacts;
+they do not qualify this container profile or later revisions.
 
 Prepare a dedicated absolute private directory outside the checkout. Never put
 credentials in a Compose file, Docker build argument, repository, command line

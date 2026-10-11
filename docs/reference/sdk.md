@@ -4307,7 +4307,7 @@ status as `StationHttpError`. These client controls confer no access.
 
 ### Canonical usage export
 
-The authored [canonical usage-export API](./api.md#export-retained-canonical-usage-observations)
+The [canonical usage-export API](./api.md#export-retained-canonical-usage-observations)
 has a separate request/page type in `@kontourai/station-contracts/usage-export`.
 The React-free client entry exports `fetchUsageExport(apiBase, query, options)`.
 Supply a captured `options.requestScope` and `query.expectedStationId` alongside
@@ -4336,8 +4336,10 @@ refusal or a selection change while waiting instead of returning retained rows
 or a replacement page as a successful answer. Hosts must
 change the captured scope when current authority changes.
 
-The server export and authentication controls remain unexecuted; SDK fetcher
-and hook controls provide focused client evidence only.
+Server export and request-authority controls have executed against mounted
+runtime composition with controlled identity fixtures; SDK fetcher and hook
+controls provide focused client evidence. These checks do not establish live
+source enrollment, deployment, publication or complete synced history.
 `useUsageRollupQuery` retains its interactive limits and is not a complete
 long-term export. No sync/checkpoint consumer is delivered by this page reader;
 #3459/#3460 retain grant, destination credential custody, deletion, restore and

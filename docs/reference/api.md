@@ -1552,7 +1552,7 @@ observations, not a billing statement or precise consumption dates. See
 
 ### Export Retained Canonical Usage Observations
 
-The authored `GET /api/analytics/usage-export` source path returns
+`GET /api/analytics/usage-export` returns
 `{success: true, data: UsageExportPage}`. Required `from`/`to` are inclusive
 UTC Station-observed dates, at most 366 days. `scope` defaults to `individual`;
 `personal-account` explicitly selects the existing approved personal owner set
@@ -1574,8 +1574,10 @@ a changed continuation context are refused. Source/storage failures and
 over-budget cumulative-cost projection return 503. All responses use
 `Cache-Control: no-store`.
 
-This authored path and its real runtime-composition controls remain
-unexecuted. It does not provide a companion source credential, deletion journal,
+Focused mounted-route and runtime-composition controls have exercised paging,
+scope and revocation with controlled identity fixtures. This does not qualify
+live source enrollment or persistent deployment. The path does not provide a
+companion source credential, deletion journal,
 restore-generation fence or durable sync checkpoint/index. A backup copies
 `streamEpoch`; it does not establish current restore authority. See
 [the monitoring guide](../guides/monitoring.md#canonical-usage-export-source)

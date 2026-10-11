@@ -3987,7 +3987,7 @@ explains the UI and opt-out behavior.
 
 ## CanonicalUsageExport
 
-**Purpose and callers.** The authored
+**Purpose and callers.** The
 [usage export reader](../../src-server/analytics/usage-export-reader.ts) serves
 `GET /api/analytics/usage-export` through the existing analytics route,
 runtime request-principal binder and OrchestrationService. Its
@@ -4011,8 +4011,11 @@ excess is unavailable, never a truncated cost segment. Old rollup limits and
 clone/mirror reconciliation remain separate.
 
 **Evidence and open work.** Source review repaired binder, person, membership
-and cost-budget defects. Authored real EventStore/mounted-route and runtime
-composition controls remain unexecuted; source bounds are not measured latency
+and cost-budget defects. Focused real EventStore/mounted-route and runtime
+composition controls have exercised paging, owner/tenant selection and queued
+revocation with controlled identity fixtures. The scoped SDK fetcher and lazy
+query leaf validate page facts and refuse changed waiting selections; their
+focused controls have executed. Source bounds are not measured latency
 or full runtime acceptance. Coverage remains unknown. Narrow grants, destination
 credential custody, deletion invalidations, restore-generation fencing,
 receiver index/checkpoint transactions, clone identity and deployment remain

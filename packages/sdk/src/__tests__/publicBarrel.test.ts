@@ -94,6 +94,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'implementation detail folded into chatRuntime.ts via `export *`.',
   insightsResponse:
     'lazy response validator used by fetchInsights; keep the Insights-only schema out of the application entry.',
+  usageExport:
+    'published only from the documented `@kontourai/station-sdk/usage-export-query` subpath; keep protected export paging and its validator outside the eager root query barrel.',
   sessionSummaryNormalize:
     'lazy parser used only by the summary fetcher so strict persisted-data validation does not enter the application shell.',
   developerRuntime:
