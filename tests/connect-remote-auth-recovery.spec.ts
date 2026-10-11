@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import type { SavedConnection } from '@kontourai/station-connect';
 import { buildStationProofMessage } from '@kontourai/station-contracts';
 import type {
   DevicePairingAccessRequestResponse,
@@ -543,10 +544,19 @@ for (const fixture of [
 
     await page.goto('/');
     await expect(page.locator('body')).toBeVisible();
+    await expect(page.getByTestId('app-toolbar-connection')).toBeVisible();
     await dismissSetupLauncher(page);
     const activeBeforeSetup = await page.evaluate(() =>
       localStorage.getItem('station-connect-connections-active'),
     );
+    expect(activeBeforeSetup).not.toBeNull();
+    const controllerUrl = await page.evaluate((activeId) => {
+      const profiles: SavedConnection[] = JSON.parse(
+        localStorage.getItem('station-connect-connections') ?? '[]',
+      );
+      return profiles.find((profile) => profile.id === activeId)?.url;
+    }, activeBeforeSetup);
+    expect(controllerUrl).toBe(new URL(page.url()).origin);
     await page.getByTestId('app-toolbar-connection').click();
     await page
       .getByRole('menuitem', { name: 'Manage Stations', exact: true })
