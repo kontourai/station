@@ -62,9 +62,10 @@ fn append_record(log_dir: &Path, record: &str) -> std::io::Result<()> {
 /// Installs the recording hook, chaining whatever hook was installed before.
 ///
 /// With a `log_dir`, the record is appended synchronously to
-/// `<log_dir>/crash.log` first: that works before the log plugin exists and
-/// does not depend on the logger's own state. It is then sent through
-/// `log::error!`, which reaches the desktop log file once the plugin is up.
+/// `<log_dir>/crash.log` only: that works before the log plugin exists, and it
+/// never re-enters the logger, which would deadlock if the panic happened
+/// while this thread held the logger's lock. Without one (mobile), `log::error!`
+/// is the only channel, and that re-entrancy risk is accepted there.
 /// Errors are ignored, because a panic inside a panic hook aborts.
 pub(crate) fn install(log_dir: Option<PathBuf>) {
     let previous = std::panic::take_hook();
@@ -94,11 +95,12 @@ pub(crate) fn install(log_dir: Option<PathBuf>) {
         );
         if let Some(dir) = log_dir.as_deref() {
             let _ = append_record(dir, &record);
+        } else {
+            log::error!(
+                "panic on thread '{thread_name}' at {}: {message}",
+                location.as_deref().unwrap_or("<unknown>")
+            );
         }
-        log::error!(
-            "panic on thread '{thread_name}' at {}: {message}",
-            location.as_deref().unwrap_or("<unknown>")
-        );
         previous(info);
     }));
 }
