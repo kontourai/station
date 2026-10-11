@@ -445,13 +445,13 @@ export function runCiFastCli({
     const status = run();
     if (status === CI_FAST_INFRASTRUCTURE_EXIT_CODE)
       error(
-        `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
+        `\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
       );
     return status;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
     if (caught instanceof CiFastInfrastructureError) {
-      error(`${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
+      error(`\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
       return CI_FAST_INFRASTRUCTURE_EXIT_CODE;
     }
     error(`${message}\n`);

@@ -1564,10 +1564,11 @@ monitoring events. They are not interchangeable measures of the whole Station.
 `GET /monitoring/stats` returns `{success: true, data: {agents, summary}}`.
 Rows come from the active managed-Agent map. `healthy` checks for a model and
 memory adapter; it is not a fresh model completion. Personal mode can include
-cached conversation/message counts. The legacy `cost`, `activeAgents`, and
-`runningAgents` values here are currently zero placeholders, so they must not
-be presented as measured spend or activity. Hosted mode omits the personal
-history counts and cost fields.
+cached conversation/message counts. Nothing on this route prices usage, so it
+returns no per-Agent `cost` and no `summary.totalCost`. Older Stations sent
+zero placeholders for both. The legacy `activeAgents` and `runningAgents`
+values are still zero placeholders, so they must not be presented as measured
+activity. Hosted mode omits the personal history counts.
 
 ### Get Historical Metrics
 
@@ -1575,7 +1576,9 @@ history counts and cost fields.
 Agent and returns `{success: true, data: {range, metrics}}`.
 `today`, `week`, and `month` mean trailing 24 hours, 7 days, and 30 days;
 `all` or an unrecognized value applies no start cutoff. This is not a query of
-all durable history. Hosted mode returns an empty metrics list through this
+all durable history. Each metric's `totalCost` sums only priced completions and
+is absent when none was priced; `unpricedCount` counts completions with no
+price. An unpriced completion is unknown spend, not free. Hosted mode returns an empty metrics list through this
 legacy path.
 
 ### Get/Stream Events (SSE)
@@ -1950,10 +1953,11 @@ The [insights owner](../../src-server/routes/operations/insights.ts) streams
 monitoring NDJSON files and returns `{success: true, data}`. `data` contains
 `toolUsage`, a 24-bucket `hourlyActivity` array, `agentUsage`, `modelUsage`,
 `totalChats`, `totalToolCalls`, `totalErrors`, `totalOutcomeUnknown`,
-`totalUnresolved`, and `days`.
+`totalUnresolved`, `days`, and typed `coverage` from the
+[Insights contract](../../packages/contracts/src/insights.ts).
 
-- `days` defaults to 14. It is currently parsed as an integer rather than
-  validated against a closed set of windows.
+- `days` defaults to 14 and must be an integer from 1 through 365; invalid
+  windows return 400.
 - `agent`, `tool`, and `engine` are exact filters. Engine reads
   `gen_ai.provider.name`; an event without that field does not match.
 - A positive `limit` retains the top buckets (cap 500); it does not cap the
@@ -1965,8 +1969,9 @@ Chat counts deduplicate observed trace IDs, with a separate count for completed
 `no-session` events. Tool calls count start records; errors, unresolved outcomes,
 and unknown outcomes count end records. They are not a guaranteed joined
 population: a retained end record can have no matching retained start.
-`agentUsage.tokens` is currently initialized to zero and never accumulated by
-this route; it is not measured token usage.
+`agentUsage` entries carry only `chats`. The route measures no per-Agent token
+figure. Older Stations sent an unmeasured `agentUsage.tokens: 0`, which is not
+token usage.
 
 Filtering applies before aggregation. A tool filter excludes ordinary chat
 records, so chat/model aggregates normally disappear. The current
@@ -1976,9 +1981,18 @@ a producer limitation, not evidence that the engine used no model. The route
 also accepts other persisted event producers, so it cannot promise this absence
 for every possible record.
 
-Malformed lines and unreadable files are logged and skipped; this response has
-no completeness field for those skipped inputs. A result is a rollup of what
-was read, not certification that every event was available. `(unnamed)` is the
+`coverage.state` is `complete` for a clean retained scan, `partial` when readable
+rows coexist with malformed rows, invalid timestamps, or unreadable files, and
+`unknown` when history is missing or no row could be measured in an impaired
+scan. An unreadable directory returns a generic 503 instead of successful zeros.
+`coverage.scope` is `retained-monitoring`; `evaluatedAt` timestamps the scan and
+`issues` names bounded failure categories without file paths, contents or other
+users' counts. A clean scan does not prove lifetime or requested-window retention,
+producer delivery, provider reporting, or inclusion of clock-skewed OTLP rows at
+file-day boundaries. Missing coverage from an older server means unknown integrity.
+
+The dashboard keeps partial totals with an explicit warning, hides totals for
+unknown scans, and hides cached totals after a failed refresh. `(unnamed)` is the
 bucket for a missing tool name and remains distinct from a literal `unknown`.
 
 ### The rows behind the rollup

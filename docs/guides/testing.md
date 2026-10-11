@@ -217,6 +217,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`desktop-clean-checkout.yml`](../../.github/workflows/desktop-clean-checkout.yml) | Desktop clean-checkout build | **PR: Desktop clean checkout** | PR events (path filtered); main pushes (path filtered); manual dispatch. |
 | [`desktop-rust.yml`](../../.github/workflows/desktop-rust.yml) | Desktop Rust tests | **PR: Desktop Rust** | PR events (path filtered); main pushes (path filtered); manual dispatch. |
 | [`docs-freshness-sweep.yml`](../../.github/workflows/docs-freshness-sweep.yml) | Documentation freshness sweep | **Repo: Docs freshness sweep** | UTC schedule: `37 5 * * *`; manual dispatch. |
+| [`docs-kit.yml`](../../.github/workflows/docs-kit.yml) | Main: Docs kit | **Main: Docs kit** | main pushes; manual dispatch. |
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | PR events (path filtered); manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `Nightly`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
@@ -723,7 +724,11 @@ validated exact coordinator, target, and guard PID/start identities; a wrapper
 start that was not already known remains `null`. Environment, arguments, command
 paths, and raw unredacted output are outside this diagnostic. The record locates
 the missing proof barrier; it does not claim the underlying Windows failure is
-fixed.
+fixed. The [owned-command runner](../../scripts/lib/owned-process.mjs) accepts
+an observed wrapper `exit` after Job settlement, or its existing `close`
+observation. Windows can emit `exit` without
+`close` after IPC disconnect. Wrapper exit alone never proves Job settlement or
+output completion; the command's guard, EOF and drain barriers still apply.
 
 ### Unified usability feedback
 

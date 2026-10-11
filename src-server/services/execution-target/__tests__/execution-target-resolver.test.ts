@@ -441,9 +441,72 @@ describe('resolveExecutionTarget', () => {
     expect(getConnection).not.toHaveBeenCalled();
   });
 
-  test('rejects a non-ready target-local engine connection', async () => {
-    await expect(
-      resolveExecutionTarget(
+  // #355: each refusal names its failed predicate and a remedy instead of
+  // one reasonless "not ready" for every cause.
+  test.each<{
+    name: string;
+    patch: Partial<ConnectionConfig>;
+    message: string;
+  }>([
+    {
+      name: 'a degraded status',
+      patch: { status: 'degraded' },
+      message:
+        "Engine connection 'codex' is not ready for execution (status: degraded). Check this connection in Connections or run `station connections test codex`",
+    },
+    {
+      name: 'an error status, without echoing its readiness evidence',
+      patch: {
+        status: 'error',
+        readinessEvidence: {
+          evidenceVersion: 1,
+          level: 'catalog-ready',
+          observedAt: '2026-08-01T11:59:00.000Z',
+          freshness: 'fresh',
+          summary: 'Smoke failed',
+          smoke: {
+            status: 'failed',
+            freshness: 'fresh',
+            reasonCode: 'turn-failed',
+            reason: 'remote said: secret-token-abc',
+            turnLimit: 1,
+          },
+        },
+      },
+      message:
+        "Engine connection 'codex' is not ready for execution (status: error). Check this connection in Connections or run `station connections test codex`",
+    },
+    {
+      name: 'a missing prerequisite',
+      patch: {
+        status: 'missing_prerequisites',
+        prerequisites: [
+          {
+            id: 'codex-cli',
+            name: 'Codex CLI',
+            description: 'The Codex command-line engine',
+            status: 'missing',
+            category: 'required',
+            installGuide: {
+              steps: ['Install Codex'],
+              commands: ['npm install -g @openai/codex'],
+            },
+          },
+        ],
+      },
+      message:
+        "Engine connection 'codex' is not ready for execution (status: missing_prerequisites): Codex CLI (codex-cli) is missing: Install Codex; run `npm install -g @openai/codex`",
+    },
+    {
+      name: 'a missing agent-runtime capability on a ready connection',
+      patch: { capabilities: ['acp'] },
+      message:
+        "Engine connection 'codex' does not advertise the agent-runtime capability, so it cannot run Agent sessions. Bind the Agent to an engine connection that provides an agent runtime",
+    },
+  ])(
+    'rejects a target-local engine connection with $name',
+    async ({ patch, message }) => {
+      const refusal = resolveExecutionTarget(
         {
           environment: { kind: 'current' },
           agent: agentId('codex'),
@@ -453,14 +516,13 @@ describe('resolveExecutionTarget', () => {
             slug: 'codex',
             execution: { agentConnectionId: engineConnectionId('codex') },
           }),
-          getConnection: async () => ({
-            ...connection('codex'),
-            status: 'missing_prerequisites',
-          }),
+          getConnection: async () => ({ ...connection('codex'), ...patch }),
         }),
-      ),
-    ).rejects.toThrow("Engine connection 'codex' is not ready for execution");
-  });
+      );
+      await expect(refusal).rejects.toThrow(message);
+      await expect(refusal).rejects.not.toThrow(/secret-token-abc/);
+    },
+  );
 
   test('rejects a project that disagrees with a verified SSH binding', async () => {
     await expect(

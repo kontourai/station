@@ -45,6 +45,10 @@ import {
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
 } from '@kontourai/station-contracts/environment-security';
 import {
+  PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY,
+  PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+} from '@kontourai/station-contracts/product-telemetry';
+import {
   assertExistingSecurityDirectory,
   EnvironmentSecurityRecordError,
   readEnvironmentSecurityRecord,
@@ -94,6 +98,8 @@ export const HOST_STATION_COMPATIBILITY: StationCompatibility = {
   protocolVersion: STATION_COMPAT_PROTOCOL_VERSION,
   minClientProtocol: STATION_COMPAT_MIN_CLIENT_PROTOCOL,
   capabilities: {
+    [PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY]:
+      PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
     remoteAuth: REMOTE_AUTH_PROTOCOL_VERSION,
     devicePairing: DEVICE_PAIRING_PROTOCOL_VERSION,
     environmentProof: STATION_PROOF_PROTOCOL_VERSION,

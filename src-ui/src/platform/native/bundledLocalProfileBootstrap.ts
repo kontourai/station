@@ -3,10 +3,33 @@ import { readNativeCommandError } from './nativeCommandError';
 import type { NativeStationProfileRepository } from './stationProfileStorage';
 import type { NativePlatformAdapter } from './types';
 
-// Large migrated homes can spend tens of seconds loading agents, plugins, and
-// event indexes before the native-owned sidecar publishes its handshake.
-const MAX_STATUS_ATTEMPTS = 600;
+// Large migrated homes, or a slow host, can spend tens of seconds (sometimes
+// more than a minute) loading agents, plugins, and event indexes before the
+// native-owned sidecar publishes its handshake. Progressing phases are
+// `starting`, `restarting` (the supervisor bounds it with its own attempt cap
+// before reporting `failed`) and `stopping` (only a manual restart sets it,
+// and it always respawns).
+//
+// While the main window is still covered by native startup readiness there is
+// no wall-clock limit, even for a terminal owned sidecar (`failed`,
+// `stopped`): the cover offers Restart/Quit once its deadline passes, and an
+// explicit Restart lets this same bootstrap author and authorize in place.
+// Giving up there would leave a fresh home without the profile its native
+// identity proof requires.
+//
+// A window already shown to the user (a reload of the revealed main window,
+// the dev bypass, or a workspace pop-out) has only the in-app recovery UI, so
+// it releases the loader at once for a terminal sidecar and after the
+// fast-poll budget (about a minute) for a progressing one, with no background
+// polling afterwards.
 const STATUS_RETRY_MS = 100;
+const STATUS_RETRY_SLOW_MS = 1_000;
+const STATUS_FAST_ATTEMPTS = 600;
+const PROGRESSING_PHASES: ReadonlySet<string> = new Set([
+  'starting',
+  'restarting',
+  'stopping',
+]);
 
 interface BootstrapDependencies {
   adapter: NativePlatformAdapter;
@@ -23,20 +46,44 @@ export interface BundledLocalProfileBootstrapResult {
 const REPLACEMENT_WRITE_FAILURE =
   'Station recovered access but could not save the replacement credential. Unlock your keychain or credential store, then relaunch Station.';
 
+function defaultWait(milliseconds: number) {
+  return new Promise<void>((resolve) =>
+    window.setTimeout(resolve, milliseconds),
+  );
+}
+
+/**
+ * Whether this WebView is already shown to the user. Without an answer (an
+ * adapter with no native readiness, or a failed read) it releases rather than
+ * risk hanging a visible window on the loader.
+ */
+async function windowAlreadyShown(adapter: NativePlatformAdapter) {
+  const admitted = await adapter.isStartupWindowAdmitted();
+  return admitted.status !== 'ok' || admitted.value;
+}
+
 /** Bootstrap and authorize a fresh desktop-owned sidecar before first paint. */
-export async function bootstrapBundledLocalProfile({
-  adapter,
-  repository,
-  invoke,
-  wait = (milliseconds) =>
-    new Promise((resolve) => window.setTimeout(resolve, milliseconds)),
-}: BootstrapDependencies): Promise<BundledLocalProfileBootstrapResult> {
-  for (let attempt = 0; attempt < MAX_STATUS_ATTEMPTS; attempt += 1) {
+export async function bootstrapBundledLocalProfile(
+  dependencies: BootstrapDependencies,
+): Promise<BundledLocalProfileBootstrapResult> {
+  const { adapter, repository, invoke } = dependencies;
+  const wait = dependencies.wait ?? defaultWait;
+  for (let attempt = 0; ; attempt += 1) {
     const status = await adapter.getBundledServerStatus();
     if (status.status !== 'ok') return {};
     const ownsSidecar = status.value.ownership === 'sidecar';
     if (ownsSidecar && status.value.phase !== 'running') {
-      await wait(STATUS_RETRY_MS);
+      const terminal = !PROGRESSING_PHASES.has(status.value.phase);
+      const pastShownWindowBudget = attempt >= STATUS_FAST_ATTEMPTS;
+      if (
+        (terminal || pastShownWindowBudget) &&
+        (await windowAlreadyShown(adapter))
+      ) {
+        return {};
+      }
+      await wait(
+        attempt < STATUS_FAST_ATTEMPTS ? STATUS_RETRY_MS : STATUS_RETRY_SLOW_MS,
+      );
       continue;
     }
     // The native command is also the read-only owner resolver for an attached
@@ -84,5 +131,4 @@ export async function bootstrapBundledLocalProfile({
     await repository.authorizeActiveConnection(selected);
     return {};
   }
-  return {};
 }

@@ -203,7 +203,12 @@ credential/profile bridge, `bundled_server_status`) logs through
 `eprintln!`. A terminal launch still sees stdout; a double-clicked `.app` — the
 common case a bare `eprintln!` never reaches — uses a file target when its
 directory is writable. If that preflight fails, startup continues with stdout
-only. File logging is best effort, not guaranteed crash/panic capture.
+only. File logging is best effort, not guaranteed crash capture. A Rust panic
+in the shell is also appended, best effort, to `crash.log` in the same
+directory (message, source location, thread and backtrace). The record is
+written before a panic inside a macOS callback aborts the process. An
+Objective-C exception that aborts the process is not a Rust panic and is not
+recorded there.
 
 **Stable channel paths** (Tauri's `app_log_dir()` convention):
 

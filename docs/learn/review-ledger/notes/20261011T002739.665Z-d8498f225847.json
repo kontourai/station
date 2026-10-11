@@ -1,0 +1,7 @@
+{
+  "revision": "15f61bdb4bc2e1a7ce0a65954a526813e776c7f8",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Reviewed atlas addition: ProductTelemetryReceiver and its private operating guide join the existing scheduling/events branch. Canonical module-map anchor and linked source/evidence owners match; the generator now includes all86 module sections across10 branches. README navigation and explicit semantic/runtime evidence limits remain accurate; no native or deployed companion proof follows from this generated atlas.","inputs":["docs/learn/README.md","docs/learn/atlas.json"]}
+  ]
+}

@@ -26,6 +26,7 @@ import {
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
   type EffectiveModelSource,
+  modelResetSourceLabel,
   modelSourceLabel,
 } from '../../utils/execution';
 import {
@@ -895,11 +896,7 @@ export function ChatInputArea({
                 }
                 currentModel={currentModel}
                 defaultModel={agentDefaultModel}
-                defaultSourceLabel={
-                  defaultModelSource
-                    ? modelSourceLabel(defaultModelSource).toLowerCase()
-                    : 'default model'
-                }
+                defaultSourceLabel={modelResetSourceLabel(defaultModelSource)}
                 runtimeOptions={modelRuntimeOptions}
                 onSelect={onModelSelect}
                 onReset={onModelReset}
@@ -965,10 +962,7 @@ export function ChatInputArea({
               onClick={onModelReset}
               title="Reset this chat to its default model"
             >
-              Use{' '}
-              {defaultModelSource
-                ? modelSourceLabel(defaultModelSource).toLowerCase()
-                : 'default'}
+              Use {modelResetSourceLabel(defaultModelSource)}
             </button>
           )}
           {acpSessionModes.length > 0 && onAcpSessionModeChange ? (

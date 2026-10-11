@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { guardChildStdin } from '../../utils/child-stdin.js';
 import { requireOpenSshAlias } from './openssh-config.js';
 
 export const SSH_WORKER_PROTOCOL_VERSION = 1;
@@ -231,6 +232,10 @@ function runSystemProbeProcess(input: {
     child.once('close', (exitCode) =>
       finish({ stdout, stderr, exitCode: exitCode ?? 1 }),
     );
+    // #776: an ssh that exits before taking the script must not end the
+    // server with an unlistened stdin EPIPE. Its exit and output, judged on
+    // 'close', remain the result.
+    guardChildStdin(child.stdin);
     child.stdin.end(input.stdin);
   });
 }

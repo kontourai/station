@@ -201,6 +201,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Epic #2323 S3: real FIFOs (`mkfifo`) as plugin inputs, and a bounded
   // child process for the tsconfig read a regression would block.
   'packages/shared/src/__tests__/plugin-build-fifo.test.ts',
+  // #699: every buildPlugin call starts esbuild's service child. The file
+  // imports no child_process itself, so the direct-import detector cannot
+  // see that seam; under the ordinary four-worker corpus two of its cases
+  // timed out at canonical phase load.
+  'packages/shared/src/__tests__/plugin-build.test.ts',
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
@@ -214,6 +219,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // The CLI fixture imports child_process only to forbid every launch while
   // patching builtin exports around the real read-only dispatch seam.
   'packages/cli/src/__tests__/home-recovery-plan.test.ts',
+  // #577: runs the interactive-workspace bridge spec through the real
+  // Playwright CLI as a child (a runner plus one worker) to prove a
+  // non-reference host launches no browser and provisions no Station.
+  'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
   // Owns Chromium and esbuild children for the real exposed-binding artifact seam.
   'scripts/__tests__/interactive-workspace-driver-artifact.test.ts',
   // Real runtime identity probes and SQLite workers for source-absent recovery.
@@ -772,6 +781,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // single-shot spawn.
   'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
+  // #2783: runs release-artifacts.mjs assemble and validate as real child
+  // processes with release.yml's arguments. Single-shot spawns, no wall-clock
+  // assertion.
+  'scripts/__tests__/release-artifacts.test.ts',
   // #2977: runs release.yml's assemble-draft admission step as a real bash
   // child against a download-artifact-shaped fixture root.
   'scripts/__tests__/release-admit-producer-assets.test.ts',
@@ -957,6 +970,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/tools/__tests__/store-integrity-probe.test.ts',
   'src-server/services/evidence/__tests__/veritas-readiness-service.test.ts',
   'src-server/services/__tests__/flow-agents-work-item-provider.process-tree.test.ts',
+  // #776: drives the vended bash tool's real persistent shell into a stdin
+  // EPIPE (exit mid-write, and exit before 'close'). Single-shot shells, a
+  // 2s backgrounded sleep at most; nothing asserts a wall-clock bound.
+  'src-server/runtime/tools/__tests__/vended-tool-compat.stdin.process.test.ts',
   // station#2238: starts real Station children against one SQLite claims
   // store to prove construction preserves live ownership.
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',

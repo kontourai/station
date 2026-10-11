@@ -586,7 +586,9 @@
 
     "packages/sdk/src/query-domains/developerRuntime.ts",
 
-    "packages/sdk/src/query-domains/resourcePosture.ts"
+    "packages/sdk/src/query-domains/resourcePosture.ts",
+
+    "packages/sdk/src/query-domains/insightsResponse.ts"
   ],
 
   "checks": [

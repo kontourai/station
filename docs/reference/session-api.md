@@ -663,6 +663,10 @@ as observed progress without inventing a verdict. Discovery and parser limits
 are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
 deduplication.
+Import loops yield after 32 completed operations or 16 ms of elapsed work,
+whichever comes first. Each event is committed before publication, and the
+page cursor advances only after the page is stored. A single synchronous
+SQLite operation can exceed that work budget; it is not a latency guarantee.
 
 Grok observation reads `GROK_HOME/sessions` (`~/.grok/sessions` by default)
 through the same bounded, read-only follower

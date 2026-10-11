@@ -178,6 +178,8 @@
 
     "tests/screenshots.baseline/overlay-dock-project-mismatch.png",
 
+    "scripts/lib/owned-process.mjs",
+
     "scripts/tsc-slot.mjs",
 
     "scripts/lib/typecheck-host-slots.mjs",

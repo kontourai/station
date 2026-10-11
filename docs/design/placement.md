@@ -68,6 +68,11 @@ placement is its tab's move menu (`RegionChromeBar`), and the region bar's
 grab moves the whole region. No surface reads its own placement (pinned by
 `region-surface-boundary.test.ts`).
 
+The eager region shell retains host registration and chrome while Chat's
+implementation loads through a retryable lazy boundary. Occupied collapsed
+regions still mount their Chat pane; hiding the dock is not a reason to drop
+restored session state or defer its lifecycle.
+
 ### `main`
 
 `main` is the primary area: the route outlet at `/`, and the routed view on

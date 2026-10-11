@@ -418,8 +418,8 @@ import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js
 import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-variables.js';
 import { bootstrapRuntimeVoiceAgent } from '../agents/runtime-voice-agent.js';
 import { RuntimeEventLog } from '../conversation/runtime-event-log.js';
-import { StrandsFramework } from '../frameworks/strands-adapter.js';
-import { releaseAllNativeStationControlClients } from '../frameworks/strands-tool-loader.js';
+import type { StrandsFramework } from '../frameworks/strands-adapter.js';
+import { releaseAllNativeStationControlClients } from '../frameworks/strands-native-client-pool.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   createStationControlCallerRecordResolver,
@@ -3855,6 +3855,7 @@ export class StationRuntime {
       homeDir: this.configLoader.getProjectHomeDir(),
       appConfig: this.appConfig,
       version: packageJson.version,
+      buildProvenance: this.buildProvenanceSnapshot ?? null,
       logger: this.logger,
     });
     // A saved, current receipt remains consent after a restart. This read is

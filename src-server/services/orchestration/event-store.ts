@@ -9020,6 +9020,11 @@ export class EventStore {
 
     this.db.exec('SAVEPOINT mark_session_closed_lineage');
     try {
+      // The lineage read below would otherwise open a read snapshot that a
+      // peer commit makes stale, and the INSERT's upgrade then fails BUSY
+      // without waiting. That throw lands before the caller appends
+      // `session.exited`, so the exit fact was lost (#3521).
+      this.reserveEventAppendWriter();
       const lineage =
         this.conversationSessionLineage.sessionForExecution(threadId);
       this.db

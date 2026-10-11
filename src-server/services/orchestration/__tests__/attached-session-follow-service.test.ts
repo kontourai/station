@@ -5,6 +5,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +13,10 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
+import {
+  ClaudeTranscriptSessionSource,
+  TRANSCRIPT_LINE_SKIPPED_CODE,
+} from '../../../providers/sessions/claude-transcript-session-source.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import {
   type AttachedProjectRoot,
@@ -211,6 +216,114 @@ describe('AttachedSessionFollowService', () => {
     // with it, imports nothing new, and still resolves.
     await expect(service.pollNow()).resolves.toBeUndefined();
     expect(source.read).toHaveBeenLastCalledWith(session, 40);
+  });
+
+  // #216: a Claude transcript record over `maxLineBytes` (typically a large
+  // tool result) was skipped with only `outcome: 'line_limit'`, which nothing
+  // read, so the call appeared to have no result and nothing said why.
+  test('records a visible warning in history for a transcript line over the line limit', async () => {
+    const configDir = join(dir, 'claude-config');
+    const projectDir = join(configDir, 'projects', 'encoded-project');
+    mkdirSync(projectDir, { recursive: true });
+    const lines = [
+      {
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'session-large',
+        cwd: session.cwd,
+        timestamp: '2026-07-22T00:00:00.000Z',
+        message: { role: 'user', content: 'read the image' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'assistant-1',
+        sessionId: 'session-large',
+        timestamp: '2026-07-22T00:00:01.000Z',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tool-1',
+              name: 'Read',
+              input: { path: 'image.png' },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'tool-result-1',
+        sessionId: 'session-large',
+        timestamp: '2026-07-22T00:00:02.000Z',
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'tool-1',
+              content: 'x'.repeat(4_096),
+            },
+          ],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'assistant-2',
+        sessionId: 'session-large',
+        timestamp: '2026-07-22T00:00:03.000Z',
+        message: { content: [{ type: 'text', text: 'done' }] },
+      },
+    ].map((line) => `${JSON.stringify(line)}\n`);
+    writeFileSync(join(projectDir, 'session-large.jsonl'), lines.join(''));
+    const oversizedOffset =
+      Buffer.byteLength(lines[0]) + Buffer.byteLength(lines[1]);
+    const service = new AttachedSessionFollowService({
+      sources: [
+        new ClaudeTranscriptSessionSource({ configDir, maxLineBytes: 1_024 }),
+      ],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    await service.pollNow();
+    // A second poll replays nothing and must not duplicate the warning.
+    await service.pollNow();
+
+    const [attached] = store
+      .readSessions()
+      .filter((item) => item.provider === 'claude');
+    expect(attached).toBeDefined();
+    const imported = store.listEvents(attached!.threadId);
+    expect(imported.map((item) => item.method)).toEqual(
+      expect.arrayContaining([
+        'tool.started',
+        'runtime.warning',
+        'content.text-delta',
+      ]),
+    );
+    expect(imported.some((item) => item.method === 'tool.completed')).toBe(
+      false,
+    );
+    const warnings = imported.filter(
+      (item) => item.method === 'runtime.warning',
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.turnId).toBe('user-1');
+    expect(warnings[0]!.payload).toMatchObject({
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: TRANSCRIPT_LINE_SKIPPED_CODE,
+      turnId: 'user-1',
+      details: {
+        byteOffset: oversizedOffset,
+        byteLength: Buffer.byteLength(lines[2]) - 1,
+        maxLineBytes: 1_024,
+      },
+    });
+    // Content-free: the skipped record's text never enters history.
+    expect(JSON.stringify(warnings[0])).not.toContain('xxxx');
   });
 
   test('still surfaces a non-ingress append failure as a poll rejection', async () => {
@@ -2483,6 +2596,87 @@ describe('AttachedSessionFollowService', () => {
     for (const call of listOwnership.mock.calls) {
       expect(typeof call[1]).toBe('number');
       expect(call[1]).toBeLessThanOrEqual(64);
+    }
+  });
+
+  test('yields after slow committed events without advancing a partially imported page', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', events: [], cursor: 1 })
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [
+            event('slice-1'),
+            event('slice-2'),
+            event('slice-3'),
+            event('slice-4'),
+          ],
+          cursor: 2,
+        }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+    await service.pollNow();
+    let clock = 0;
+    let imported = 0;
+    let observed:
+      | { imported: number; durable: boolean; cursor: unknown }
+      | undefined;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    const appendOriginal = store.appendEventIfAbsent.bind(store);
+    const append = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((value) => {
+        const sequence = appendOriginal(value);
+        if (value.eventId.startsWith('slice-')) {
+          imported++;
+          clock += 20;
+          if (imported === 1)
+            setImmediate(() => {
+              observed = {
+                imported,
+                durable: store
+                  .listEvents(session.threadId)
+                  .some((row) => row.id === 'slice-1'),
+                cursor: store
+                  .readSessions()
+                  .find((row) => row.threadId === session.threadId)
+                  ?.resumeCursor,
+              };
+            });
+        }
+        return sequence;
+      });
+    try {
+      await service.pollNow();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(observed?.imported).toBeLessThan(4);
+      expect(observed?.durable).toBe(true);
+      expect(observed?.cursor).toMatchObject({ cursor: 1 });
+      expect(
+        store
+          .listEvents(session.threadId)
+          .filter((row) => row.id.startsWith('slice-')),
+      ).toHaveLength(4);
+      expect(
+        store.readSessions().find((row) => row.threadId === session.threadId)
+          ?.resumeCursor,
+      ).toMatchObject({ cursor: 2 });
+    } finally {
+      append.mockRestore();
+      now.mockRestore();
     }
   });
 

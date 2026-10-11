@@ -91,6 +91,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'implementation detail folded into chatRuntime.ts via `export *`; buildConversationTurnInput/buildConversationTurnPayload/mapConversationMessages are turn-serialization/message-shaping helpers (see client/conversations.ts) that expose generated IDs and raw HTTP payload shape, not a stable plugin contract — deliberately kept out of the public barrel.',
   chatRuntimeTypes:
     'implementation detail folded into chatRuntime.ts via `export *`.',
+  insightsResponse:
+    'lazy response validator used by fetchInsights; keep the Insights-only schema out of the application entry.',
   sessionSummaryNormalize:
     'lazy parser used only by the summary fetcher so strict persisted-data validation does not enter the application shell.',
   developerRuntime:

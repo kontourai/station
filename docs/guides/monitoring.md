@@ -8,6 +8,16 @@ Station has three separate measurement paths:
 | OTel metrics and traces | OpenTelemetry SDK → configured collector | `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
 | Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
 
+Product observations use the disclosed v1 envelope: stable retry IDs, producer
+times, inventory revision and allowlisted immutable build attribution on every
+event. The optional [product receiver](../../packages/telemetry-broker/README.md)
+authenticates separate product source keys, durably commits PostgreSQL observations,
+and deduplicates retained source/event UUIDs. Its operator queries describe received
+observations with unknown delivery coverage; these observations are separate from
+canonical personal receipts. Acknowledgements
+must name the displayed inventory revision, so stale/older UIs cannot silently
+approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
+
 The repository includes an optional Docker example for Collector → Prometheus
 → Grafana metrics and Collector → Jaeger traces. Starting that example is not
 proof that Station recorded or delivered a measurement. The local event log is
@@ -738,7 +748,13 @@ Station-agent streams feed the emitter through their streaming pipeline.
 External canonical engine events are projected by
 [OrchestrationMonitoringBridge](../../src-server/services/orchestration/orchestration-monitoring-bridge.ts),
 which excludes Station-agent to avoid a duplicate projection. The bridge does
-not own lifetime usage accounting; that has its own canonical usage fold.
+not own lifetime usage accounting; that has its own canonical usage fold. On an
+external engine's agent-complete span, token usage is that turn's own figure
+only for a provider declared `per-turn` in
+[usage semantics](../../packages/shared/src/usage-semantics.ts), summed across
+the turn's frames. A session-cumulative provider (Codex) or an undeclared one
+leaves the span's usage absent, because its frames are session totals, not that
+turn's usage. Spans written before this change can carry a Codex session total.
 
 The emitter redacts content, emits the live event, and tracks an asynchronous
 persistence promise. Persistence rejection is contained; `flush()` waits for
@@ -768,8 +784,8 @@ GenAI attributes (set per operation type):
 |-----------|--------|-------------|
 | `gen_ai.request.model` | agent start/end | Model ID |
 | `gen_ai.conversation.id` | when reported | Optional Conversation ID |
-| `gen_ai.usage.input_tokens` | agent complete | Input token count |
-| `gen_ai.usage.output_tokens` | agent complete | Output token count |
+| `gen_ai.usage.input_tokens` | agent complete | That turn's input token count; absent when not reported or not attributable to the turn |
+| `gen_ai.usage.output_tokens` | agent complete | That turn's output token count; absent when not reported or not attributable to the turn |
 | `gen_ai.tool.name` | tool call/result | Tool name. **Omitted when the producer reported none** (archive#3073) — absence is absence, never a tool named `unknown`. Events written before that change carry the literal string, so the two eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
 | `gen_ai.provider.name` | tool call/result | The engine that ran the tool (archive#3074): `station` for Station's own runtime, the dispatch provider for external engines. Absent on events written before that change, so any engine grouping must handle a pre-change window rather than fill it with a fallback. |
 | `gen_ai.request.model` | tool call/result | Session-configured model at dispatch — not observed per call. |
@@ -825,7 +841,8 @@ records that reached the monitoring files.
 ### Insights API
 
 `GET /api/insights` returns aggregates, not raw events: tool/Agent/model buckets,
-hourly activity and totals. Its default window is 14 days. The route applies
+hourly activity and totals. Agent buckets count chats only; there is no
+per-Agent token figure. Its default window is 14 days. The route applies
 user and Session/tenant checks and optional Agent/tool/engine filters; health
 probes are excluded. A tool filter removes non-tool rows too, and an engine
 filter cannot recover provider attribution missing from older or differently
@@ -838,10 +855,15 @@ reader's content-derived bounds, this optimization can omit a clock-skewed
 exporter's row at a UTC day boundary. It does not scan every retained file on
 every request.
 
-Insights logs and skips per-row parsing and per-file read failures, then can
-still return `success: true` without a completeness indicator. A successful
-aggregate therefore does not prove every relevant file/row was read. This
-differs from the history reader's propagation of non-missing-file I/O errors.
+Insights returns typed retained-scan coverage: clean scans are `complete`,
+omissions alongside readable rows are `partial`, and missing history or an
+impaired scan with no measurable rows is `unknown`. Malformed rows, invalid
+timestamps and unreadable files are classified without exposing paths, contents
+or other users' counts. An unreadable directory fails with 503. These states
+describe scan integrity, not lifetime, delivery or requested-window retention.
+The dashboard warns alongside partial totals, hides unknown totals, and hides
+cached totals after a failed refresh. Older servers without coverage show a
+completeness warning. Day windows must be integers from 1 through 365.
 
 For exact query parsing and response fields, read the
 [monitoring route](../../src-server/routes/operations/monitoring.ts),

@@ -3270,6 +3270,52 @@ describe('AcpAdapter', () => {
     expect(await adapter.hasSession('thread-other')).toBe(false);
   });
 
+  test('#354 a refusal or exhausted request budget completes the turn but keeps the ACP stop reason', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-stop',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    const completions: Record<string, unknown>[] = [];
+    for (const stopReason of [
+      'end_turn',
+      'refusal',
+      'max_turn_requests',
+    ] as const) {
+      await adapter.sendTurn({ threadId: 'thread-stop', input: stopReason });
+      await nextEvent(iterator, `turn.started (${stopReason})`);
+      processes[0].resolvePrompt(stopReason);
+      completions.push(
+        (await nextEvent(
+          iterator,
+          `turn.completed (${stopReason})`,
+        )) as unknown as Record<string, unknown>,
+      );
+    }
+
+    const [ended, refused, exhausted] = completions;
+    expect(ended).toMatchObject({ finishReason: 'stop' });
+    expect(ended).not.toHaveProperty('stopReason');
+    expect(refused).toMatchObject({
+      method: 'turn.completed',
+      finishReason: 'other',
+      stopReason: 'refusal',
+    });
+    expect(exhausted).toMatchObject({
+      method: 'turn.completed',
+      finishReason: 'other',
+      stopReason: 'max_turn_requests',
+    });
+    await adapter.stopAll();
+  });
+
   test('publishes runtime.error and reflects error status when the ACP process rejects a prompt', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();

@@ -2469,12 +2469,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/services/usage-telemetry-inventory.ts",
-      "rule": "as-unknown",
-      "fingerprint": "0f3961ab077ab80c70fb1ec97e7fdec8a7fe432c244e98044c9925a6ae6ab30f",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/tools/station-control-delegation.ts",
       "rule": "as-unknown",
       "fingerprint": "c2f17f7c0945e044ee46ebf84ddcd55b42abab605fbbe6dbbca71907aac18b8e",

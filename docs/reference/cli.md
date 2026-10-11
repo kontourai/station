@@ -65,7 +65,13 @@ runs), so it behaves correctly across many worktrees on the same machine. It
 refuses a missing bundle or one older than the source timestamps it inspects,
 naming `npm run build:cli` as the remedy. This is an approximate mtime check,
 not the content-based dist-freshness gate; preserved or skewed timestamps can
-miss drift. Outside a checkout it names the `npx` form instead.
+miss drift. Outside a checkout it names the `npx` form instead. A CLI killed by
+a signal is reported as 128 plus the signal number (143 for `SIGTERM`), not 1.
+
+The installer writes a regular file and never writes through a link. It
+refuses a destination that is a symlink (for example one left by `npm link`),
+or any existing file that is not a previously installed `station-dev`, and
+names the path to remove or the `STATION_DEV_BIN` directory to use instead.
 
 ```bash
 npm run station-dev:install   # once, from any Station checkout

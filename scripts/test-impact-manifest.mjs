@@ -431,8 +431,14 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'scripts/__tests__/public-contribution-surfaces.test.ts',
       'scripts/__tests__/product-docs-source-links.test.ts',
       'scripts/__tests__/public-doc-contract-examples.test.ts',
+      'scripts/__tests__/docs-kit-manifest.test.ts',
     ]),
     reason: 'public documentation admission is governed data',
+  }),
+  Object.freeze({
+    pattern: 'docs-kit.json',
+    tests: Object.freeze(['scripts/__tests__/docs-kit-manifest.test.ts']),
+    reason: 'the docs-kit bundle must publish exactly the admitted public docs',
   }),
   Object.freeze({
     pattern: '.github/workflows/**',
