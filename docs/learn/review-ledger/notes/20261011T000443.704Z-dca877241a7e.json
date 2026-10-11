@@ -1,0 +1,7 @@
+{
+  "revision": "f60717c3dd95d6421d911229b95b465f40d79755",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed current-main integration of provenance: read_conversation now keeps main ConversationReadMessage/ConversationReadPage and session/model attribution while adding optional server-recorded sender; actor-derived read authority, bounded paging and quoted engine framing remain intact. Shared/live transcript types retain main InputRequestRecord with sender/provider cause alongside it. Provenance section and explicit #3158 limitation remain accurate. Six focused route/transcript/delivery files passed 69 tests on the merged source; no new live delivery or visual acceptance claimed.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/orchestration.ts","src-server/routes/chat/conversation-reference-read.ts","packages/shared/src/conversation-message.ts","src-server/services/orchestration/session-message-delivery.ts"]}
+  ]
+}

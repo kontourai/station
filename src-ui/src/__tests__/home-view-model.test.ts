@@ -1,12 +1,14 @@
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   OrchestrationSessionSummary,
   TaskRecord,
 } from '@kontourai/station-sdk';
 import { describe, expect, test } from 'vitest';
+import { inboxRowChips } from '../components/inbox-row/inbox-row-chips';
 import { createDefaultChatState } from '../contexts/active-chats-state';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 import { orchestrationLifecycleLabel } from '../utils/session-state';
+import { activityOriginShortLabel } from '../views/activity/activity-list-model';
 import {
   buildActiveChatTaskItems,
   buildHomeTaskItems,
@@ -2636,4 +2638,66 @@ describe('HomeWorkItem.provider pairs with agentSlug (#3355)', () => {
     expect(row.agentSlug).toBeUndefined();
     expect(row.provider).toBeUndefined();
   });
+});
+
+test('a recorded agent sender reaches Inbox and Activity markers without changing status (#3419)', () => {
+  const session: OrchestrationSessionSummary = {
+    threadId: 'agent-recipient',
+    provider: engineId('claude'),
+    status: 'ready',
+    controlMode: 'station-owned',
+    isLoaded: true,
+    isPersisted: true,
+    eventCount: 1,
+    answerability: { answerable: true },
+    createdAt: '2026-10-06T00:00:00Z',
+    updatedAt: '2026-10-06T00:00:00Z',
+    turnOrigin: {
+      latest: {
+        version: 1,
+        actor: { kind: 'internal' },
+        reported: { version: 1, surface: 'unknown', build: null },
+        sender: {
+          kind: 'agent-session',
+          sessionId: 'sender',
+          title: 'Fix login',
+          requestKey: 'send-key',
+        },
+      },
+      hasOtherOrigins: false,
+    },
+  };
+  const [item] = buildHomeWorkItems({
+    chats: {},
+    agents: [],
+    sessions: [session],
+  });
+  expect(item).toBeDefined();
+  expect(inboxRowChips(item!)).toContainEqual({
+    kind: 'agent-message',
+    label: 'Agent message',
+  });
+  expect(activityOriginShortLabel(session)).toBe('Agent message');
+  const personSession: OrchestrationSessionSummary = {
+    ...session,
+    turnOrigin: {
+      latest: {
+        version: 1,
+        actor: { kind: 'operator' },
+        reported: { version: 1, surface: 'web', build: null },
+      },
+      hasOtherOrigins: false,
+    },
+  };
+  const [personItem] = buildHomeWorkItems({
+    chats: {},
+    agents: [],
+    sessions: [personSession],
+  });
+  expect(item!.lifecycleLabel).toBe(personItem!.lifecycleLabel);
+  expect(inboxRowChips(personItem!)).not.toContainEqual({
+    kind: 'agent-message',
+    label: 'Agent message',
+  });
+  expect(activityOriginShortLabel(personSession)).toBe('Browser');
 });

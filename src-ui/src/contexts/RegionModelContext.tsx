@@ -2,6 +2,7 @@ import type {
   DeviceSettings,
   RegionArrangementRecord,
 } from '@kontourai/station-contracts/device-settings';
+import type { SessionMessageAnchor } from '@kontourai/station-contracts/surface-deep-link';
 import {
   createContext,
   type ReactNode,
@@ -74,6 +75,7 @@ import {
 export interface SurfaceIntent {
   session?: string;
   focus?: 'evidence';
+  messageAnchor?: SessionMessageAnchor;
 }
 
 export interface SurfaceIntentRecord extends SurfaceIntent {
@@ -1449,7 +1451,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   }, [dockMode, isDockOpen, isDockMaximized]);
 
   const intentKey = surfaceIntent
-    ? `${surfaceIntent.surfaceId}|${surfaceIntent.sessionId ?? ''}|${surfaceIntent.focus ?? ''}`
+    ? JSON.stringify([
+        surfaceIntent.surfaceId,
+        surfaceIntent.sessionId,
+        surfaceIntent.focus,
+        surfaceIntent.messageAnchor?.direction,
+        surfaceIntent.messageAnchor?.requestKey,
+      ])
     : null;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the stable string key prevents replaceState reparses from adopting the same intent twice.
@@ -1469,7 +1477,11 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       showSurface(
         surfaceIntent.surfaceId,
         surfaceIntent.sessionId
-          ? { session: surfaceIntent.sessionId, focus: surfaceIntent.focus }
+          ? {
+              session: surfaceIntent.sessionId,
+              focus: surfaceIntent.focus,
+              messageAnchor: surfaceIntent.messageAnchor,
+            }
           : undefined,
       );
     }

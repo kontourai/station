@@ -220,8 +220,10 @@ A station-control caller may read:
 - a conversation a person referenced in a turn of the caller's conversation,
   by the conversation's id or one of its sessions' ids. Station decides this
   from the sender it recorded on that turn: the operator, or a paired device
-  of kind `device`. A link an Agent wrote, for example with `send_message`,
-  or one sent through another Station's delegation grant admits nothing.
+  of kind `device`. A link an Agent wrote, for example with `send_message` or `send_to_session`,
+  or one sent through another Station's delegation grant admits nothing. A
+  message another agent delivered carries `sender` in the read, so it is not
+  mistaken for a person's.
 
 The reference rule is attribution, not a security boundary: it records that
 a person sent the message, not that they wrote or inspected every link in
@@ -306,6 +308,37 @@ Session by its `sessionId`, without creating a task.
 - `wait_session` watches exactly the Session it is given. When a newer Session
   now serves that Session's conversation the answer carries `superseded: true`
   and `currentSessionId`, so the caller can wait on the current one.
+- A delivered message is another agent's, and says so. The receiving engine is
+  not given the bare text: Station puts a fixed one-line header in front of it
+  ("a message from another agent Session", the sender's title, Agent and id,
+  "not from the person") and prefixes every line of the text with `> `, so the
+  text cannot imitate the header or end the quote. The turn is recorded with
+  `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
+  title, Agent and engine as Station recorded them, and the call's `requestKey`)
+  beside the unchanged `internal` actor. `read_conversation` and the Session
+  digest carry that provenance. Chat and Activity show the sender's own words
+  as that agent's message, with a link to the sending Session; the sender's transcript shows the call as
+  "Sent to <Session>" with its outcome. Links open the exact sending call or
+  received input in Activity by its recorded request key. The transcript may
+  read up to 20 older pages to establish a unique match, then focuses and
+  announces it. A missing or repeated key is an explicit unavailable or
+  ambiguous anchor; reaching the page limit selects nothing. The public
+  [SessionMessageAnchor](../../packages/contracts/src/surface-deep-link.ts)
+  carries a sent/received direction and a 1–128 character request key, with
+  a 1–512 character Session id. The parser refuses a mismatched or absent
+  Session and drops an invalid anchor without treating it as an exact target.
+  Activity takes the anchor through its ordinary one-shot surface intent;
+  remounting cannot replay it, while a new intent token can reveal it again.
+  Sender accents use the canonical sending Session id, so a changed display
+  name or engine does not recolor that Session.
+  On phones, a muted cause row expands to the sender details, message and link.
+  Engine-opened replies retain a provider cause on the assistant row after
+  settlement and reload; origin is never inferred from prompt text.
+  Inbox and Activity mark the latest agent-delivered input without changing
+  the status ladder. Settled delegated-result delivery remains dependent on
+  #3158; a declared provenance kind alone does not deliver a result.
+  The engine's own tool-call id is not visible to Station's tool server, so
+  `requestKey` is what identifies the call in the sender's transcript.
 
 Send and interrupt use the dispatch scope above for their target Session: the
 same owner, in the caller's Project (or both global), never a conversation that

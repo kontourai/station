@@ -28,6 +28,7 @@
  * delivery seam (`session-message-delivery.ts`) decides whether the message
  * starts a turn or steers the running one.
  */
+import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   type HostedTenantRegistry,
@@ -61,6 +62,7 @@ import {
   type SessionSendMode,
 } from '../../services/orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
+import { sessionSenderIdentity } from '../../services/orchestration/session-sender-identity.js';
 import {
   evaluateSessionWait,
   SESSION_WAIT_MAX_TIMEOUT_MS,
@@ -186,8 +188,12 @@ export interface SessionAgentControlDeps {
   eventStore: Pick<
     EventStore,
     | 'conversationForSession'
+    | 'conversationRootFirstPromptedTurn'
+    | 'firstTurnStartedWithPrompt'
     | 'listEventsByMethods'
+    | 'readSessionByThread'
     | 'readSessionInventoryHighWater'
+    | 'sessionAgentPresentation'
     | 'sessionControlRequestKeys'
   >;
   /** Server events; an appended orchestration event wakes a wait. */
@@ -543,6 +549,26 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         key: body.requestKey,
       };
       const actor = resolveDispatchActor(deps, c);
+      // #3419: who is sending, from the verified caller and Station's own
+      // record of that Session (never the request body). It rides the turn's
+      // `clientOrigin` beside the unchanged `actor`, so the turn stays a
+      // non-person's, and it names the sender in the frame the engine reads.
+      const sender = clientOriginSender({
+        sender: {
+          kind: 'agent-session',
+          sessionId: caller.sessionId,
+          ...sessionSenderIdentity(deps.eventStore, caller.sessionId),
+          requestKey: body.requestKey,
+        },
+      });
+      if (!sender)
+        return c.json(
+          {
+            success: false,
+            error: 'Station could not identify the Session that is sending.',
+          },
+          400,
+        );
       const context = {
         userId: actor.userId,
         ...(actor.ownerAttribution
@@ -550,7 +576,10 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           : {}),
         principal: actor.principal,
         tenantExecutionContext: tenantExecutionContextForRequest(c.req.raw),
-        clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        clientOrigin: {
+          ...resolveClientOriginForRequest(c.req.raw),
+          sender,
+        },
       };
       let refusedPinned: Response | undefined;
       const outcome = await runWithSessionControlKey<
@@ -640,6 +669,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
             const delivery = await deliverSessionMessage(ports, {
               threadId,
               text: body.text,
+              sender,
               mode: body.mode as SessionSendMode,
               deliveryId: sessionControlDeliveryId(id),
               ...(pinned ? { decided: pinned.branch } : {}),

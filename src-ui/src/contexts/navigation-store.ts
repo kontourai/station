@@ -491,6 +491,16 @@ class NavigationStore {
             ...(this.state.surfaceIntent.sessionId && {
               session: this.state.surfaceIntent.sessionId,
             }),
+            ...(this.state.surfaceIntent.messageAnchor &&
+            this.state.surfaceIntent.sessionId
+              ? {
+                  messageSession: this.state.surfaceIntent.sessionId,
+                  messageDirection:
+                    this.state.surfaceIntent.messageAnchor.direction,
+                  messageRequest:
+                    this.state.surfaceIntent.messageAnchor.requestKey,
+                }
+              : {}),
             ...(this.state.surfaceIntent.focus && {
               focus: this.state.surfaceIntent.focus,
             }),
@@ -909,8 +919,9 @@ class NavigationStore {
         if (SHELL_SCOPED_QUERY_PARAMS.has(key)) continue;
         if (
           surfaceSurvives &&
-          (key === SURFACE_DEEP_LINK_QUERY_KEYS.session ||
-            key === SURFACE_DEEP_LINK_QUERY_KEYS.focus)
+          Object.values(SURFACE_DEEP_LINK_QUERY_KEYS).some(
+            (surfaceKey) => surfaceKey === key,
+          )
         )
           continue;
         if (params && key in params) continue;

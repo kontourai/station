@@ -35,6 +35,17 @@ describe('surface deep-link URL handling', () => {
       { sessionId: 'x&y=z' },
       { surfaceId: ACTIVITY_SURFACE_ID, sessionId: 'x&y=z' },
     ],
+    [
+      {
+        sessionId: 'sender',
+        messageAnchor: { direction: 'sent', requestKey: 'key / & 1' },
+      },
+      {
+        surfaceId: ACTIVITY_SURFACE_ID,
+        sessionId: 'sender',
+        messageAnchor: { direction: 'sent', requestKey: 'key / & 1' },
+      },
+    ],
   ] as const)('round-trips %j', (intent, expected) => {
     expect(
       parseSurfaceDeepLink(
@@ -55,6 +66,21 @@ describe('surface deep-link URL handling', () => {
       surface: null,
       session: null,
       focus: null,
+      messageSession: null,
+      messageDirection: null,
+      messageRequest: null,
     });
   });
+});
+
+test('a message anchor is bounded and belongs to the Session its surface names', () => {
+  for (const query of [
+    'surface=activity&session=s&messageSession=other&messageDirection=sent&messageRequest=k',
+    'surface=activity&session=s&messageSession=s&messageDirection=unknown&messageRequest=k',
+    `surface=activity&session=s&messageSession=s&messageDirection=sent&messageRequest=${'x'.repeat(129)}`,
+  ])
+    expect(parseSurfaceDeepLink(new URLSearchParams(query))).toEqual({
+      surfaceId: 'activity',
+      sessionId: 's',
+    });
 });

@@ -102,7 +102,9 @@ message fit in context, that a turn completed, or that cross-machine migration
 worked. Private resume-enforcement inputs are excluded from public start inputs.
 
 `ConversationReadPage` retains compact message Session attribution and optional
-model attribution, with `provider-reported` or `selected` provenance. Its
+model attribution, with `provider-reported` or `selected` provenance. A row may
+also carry `sender`, the agent-message provenance Station recorded; it does not
+grant read authority, and absence means that attribution was not reported. Its
 versioned `provenance` reports ordered execution Sessions, provider handoffs and
 optional explicit fork ancestry. Missing provenance on an older server, or
 `status: 'unavailable'`, means unknown. A parent reference grants no read access.

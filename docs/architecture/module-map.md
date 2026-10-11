@@ -1207,13 +1207,36 @@ and must not start a second turn on a Session that is already running one.
 is the one place that decides which of those a message becomes, for Station
 Control's `send_to_session` and later for delegation result delivery.
 
-**Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
-decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
+**Interface.** `deliverSessionMessage(ports, { threadId, text, sender, mode,
+deliveryId, decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
 `no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
 pure rule: `auto` steers a running Session and starts an idle one, `start`
 refuses a running one, and `steer` refuses an idle one. The module performs
 nothing itself: the caller supplies the ports for the busy check, a turn start,
 and a receipted steer, each already authorized.
+
+**Provenance.** The module frames `text` as another agent's message
+(`frameAgentMessage`) before any port sees it, naming `sender`, so the engine never
+reads it as the person's; the sender's lines stay quoted under a fixed header the
+text cannot imitate. The route stamps the same sender on the turn's
+`clientOrigin.sender` beside the unchanged `internal` actor, which is what keeps
+`isPersonActor` false and a link in the message from granting `read_conversation`
+access. The transcript projection reads the sender from that record, never from
+the prompt, and unframes the text for display. The digest reads this sender
+from the recorded start event. Engine-opened turns use the adapter's durable
+`metadata.trigger: 'provider'` fact; projected assistant rows retain that
+cause through settlement and rehydration. Phone transcripts show a compact
+cause disclosure, while desktop incoming bubbles keep their sender treatment.
+Exact send/receive navigation uses the recorded request key, reads at most
+20 older pages to rule out ambiguity, and focuses a uniquely resolved record.
+Missing, ambiguous and page-limit outcomes remain visible. The public
+`SessionMessageAnchor` travels through the existing region outbox and Activity
+binding as one consumed intent, with repeat activations keyed by its token.
+Its parser requires a matching Session of 1–512 characters, sent/received
+direction and a request key of 1–128 characters; invalid anchors grant
+neither exact navigation nor conversation access. Delegation-result
+delivery is still the #3158 prerequisite, not behavior supplied by declaring
+a sender kind.
 
 **Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
 `clientInputId` of a steer, so the durable turn claim and the steer receipt
@@ -1231,7 +1254,8 @@ the same lifecycle fold the steer path reads through
 [SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
 which never acts on the Session. Source tests are the
 [delivery decision table](../../src-server/services/orchestration/__tests__/session-message-delivery.test.ts),
-the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
+the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts),
+the [provenance chain from route to transcript and `read_conversation`](../../src-server/routes/orchestration/__tests__/session-agent-message-provenance.integration.test.ts)
 and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the

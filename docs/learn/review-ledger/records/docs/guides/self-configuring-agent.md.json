@@ -144,7 +144,15 @@
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+
+    "packages/contracts/src/orchestration.ts",
+
+    "src-server/routes/chat/conversation-reference-read.ts",
+
+    "packages/shared/src/conversation-message.ts",
+
+    "src-server/services/orchestration/session-message-delivery.ts"
   ],
 
   "checks": [
