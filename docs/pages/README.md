@@ -45,8 +45,15 @@ the hand-authored home). Only its `docs-bundle.json` is published here, and its
 document URLs are the same `docs/<path>.html` pages this builder writes. The
 bundle step fails open: a failed docs-kit build never blocks this site's
 publish, and the previous `docs-bundle.json` stays on `gh-pages` (stale, shown
-as behind on the hub) until a later build succeeds. Its
-`exclude` globs keep every other `docs/**/*.md` unpublished, as here:
+as behind on the hub) until a later build succeeds.
+
+It also lists the agent-facing manual `docs/reference/station-docs.md` with
+`"publish": false`: the bundle carries it, with its relative links made
+absolute GitHub URLs and its document URL a GitHub blob link, but docs-kit
+renders no page for it and this builder never publishes it. The manifest's
+`topics` point into that manual, mirroring the Station Docs MCP topics in
+`docs/learn/mcp-topics.json`. Its `exclude` globs keep every other
+`docs/**/*.md` unpublished, as here:
 
 - `docs/*.md`: the docs-root index, architecture overview, glossary, privacy
   policy working copy, and two historical design records.
@@ -57,7 +64,8 @@ as behind on the hub) until a later build succeeds. Its
 - `docs/learn/**`, `docs/pages/**`, `docs/third-party/**`: the learning reader's
   sources, this directory, and third-party notices.
 - `docs/guides/!(...)`, `docs/reference/!(...)`: every guide and reference
-  except the admitted ones named in the parentheses.
+  except the admitted ones (and the bundle-only manual) named in the
+  parentheses.
 - `docs/user/workspace-checkpoints.md`: the one unadmitted user guide.
 
 Admitting or withdrawing a document changes both files.

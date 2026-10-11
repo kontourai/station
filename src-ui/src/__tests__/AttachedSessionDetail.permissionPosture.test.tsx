@@ -468,7 +468,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
 
   test('a stream that has not opened yet is connecting, not unresponsive', () => {
     renderAttached({ connected: false, events: [] });
-    expect(screen.getByText('Connecting to Station…')).toBeTruthy();
+    expect(screen.getByText('Connecting to this Station…')).toBeTruthy();
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByText(/isn't responding/)).toBeNull();
   });
