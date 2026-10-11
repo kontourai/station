@@ -4876,6 +4876,11 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       serviceTier: 't'.repeat(500),
     });
     expect(longTier).not.toHaveProperty('serviceTier');
+    const firstDroppedTier = projectDelegatedTaskEvent(10, {
+      ...usageEvent,
+      serviceTier: 't'.repeat(65),
+    });
+    expect(firstDroppedTier).not.toHaveProperty('serviceTier');
     const boundaryTier = projectDelegatedTaskEvent(9, {
       ...usageEvent,
       serviceTier: 't'.repeat(64),
