@@ -65,7 +65,9 @@ fn append_record(log_dir: &Path, record: &str) -> std::io::Result<()> {
 /// `<log_dir>/crash.log` only: that works before the log plugin exists, and it
 /// never re-enters the logger, which would deadlock if the panic happened
 /// while this thread held the logger's lock. Without one (mobile), `log::error!`
-/// is the only channel, and that re-entrancy risk is accepted there.
+/// is the only channel, and that re-entrancy risk is accepted there. A desktop
+/// whose log directory is not writable is installed without one, so it falls
+/// back to the logger the same way.
 /// Errors are ignored, because a panic inside a panic hook aborts.
 pub(crate) fn install(log_dir: Option<PathBuf>) {
     let previous = std::panic::take_hook();

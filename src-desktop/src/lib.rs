@@ -13152,8 +13152,9 @@ If a stable instance is running, this launch will focus its window and exit.",
 
     // #759/#370: a panic in an AppKit callback aborts with no message, and a
     // bundled app's stderr is discarded. Record it to `crash.log` beside the
-    // desktop log (and through the logger once it exists), installed as soon
-    // as the log directory is known. Mobile records through the logger only.
+    // desktop log, installed as soon as the log directory is known. The hook
+    // never re-enters the logger when it has a directory; mobile, or a
+    // desktop whose log directory is unwritable, records through the logger.
     #[cfg(not(mobile))]
     panic_log::install(app_log_dir_for(&context.config().identifier).filter(|_| log_dir_writable));
     #[cfg(mobile)]
