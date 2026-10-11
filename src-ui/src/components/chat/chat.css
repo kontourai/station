@@ -927,11 +927,6 @@
 }
 
 .file-mention-picker {
-  position: absolute;
-  z-index: 20;
-  left: 8px;
-  right: 8px;
-  bottom: calc(100% + 8px);
   display: grid;
   max-height: min(320px, 45vh);
   overflow-y: auto;

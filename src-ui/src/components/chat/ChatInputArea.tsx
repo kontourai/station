@@ -1089,50 +1089,49 @@ export function ChatInputArea({
             </React.Suspense>
           )}
           {mentionQuery && mentionLocation && mentionRequestScope && (
-            <div>
-              <React.Suspense
-                fallback={
-                  <div className="file-mention-picker__status">
-                    Finding files…
-                  </div>
-                }
-              >
-                <FileMentionAutocomplete
-                  location={mentionLocation}
-                  requestScope={mentionRequestScope}
-                  query={mentionQuery.query}
-                  listboxId={mentionListboxId}
-                  keyboardController={mentionKeyboardController}
-                  onActiveDescendantChange={setMentionActiveDescendant}
-                  onSelect={(entry) => {
-                    const generation = mentionGeneration.current;
-                    const next = insertComposerMention(
-                      input,
-                      mentionQuery.start,
-                      mentionQuery.end,
-                      {
-                        label: entry.name,
-                        path: entry.path,
-                        workspace: mentionLocation.workingDir,
-                        authority: mentionAuthority ?? '',
-                        type: entry.type,
-                      },
-                    );
-                    onInputChange(next);
-                    updateFromInput(next);
-                    setMentionQuery(null);
-                    requestAnimationFrame(() => {
-                      if (mentionGeneration.current !== generation) return;
-                      const textarea = textareaRef.current;
-                      if (!textarea) return;
-                      textarea.focus();
-                      const cursor = mentionQuery.start + entry.name.length + 2;
-                      textarea.setSelectionRange(cursor, cursor);
-                    });
-                  }}
-                />
-              </React.Suspense>
-            </div>
+            <React.Suspense
+              fallback={
+                <div className="file-mention-picker__status">
+                  Finding files…
+                </div>
+              }
+            >
+              <FileMentionAutocomplete
+                location={mentionLocation}
+                requestScope={mentionRequestScope}
+                query={mentionQuery.query}
+                listboxId={mentionListboxId}
+                keyboardController={mentionKeyboardController}
+                onActiveDescendantChange={setMentionActiveDescendant}
+                anchorRef={textareaRef}
+                onSelect={(entry) => {
+                  const generation = mentionGeneration.current;
+                  const next = insertComposerMention(
+                    input,
+                    mentionQuery.start,
+                    mentionQuery.end,
+                    {
+                      label: entry.name,
+                      path: entry.path,
+                      workspace: mentionLocation.workingDir,
+                      authority: mentionAuthority ?? '',
+                      type: entry.type,
+                    },
+                  );
+                  onInputChange(next);
+                  updateFromInput(next);
+                  setMentionQuery(null);
+                  requestAnimationFrame(() => {
+                    if (mentionGeneration.current !== generation) return;
+                    const textarea = textareaRef.current;
+                    if (!textarea) return;
+                    textarea.focus();
+                    const cursor = mentionQuery.start + entry.name.length + 2;
+                    textarea.setSelectionRange(cursor, cursor);
+                  });
+                }}
+              />
+            </React.Suspense>
           )}
           {modelQuery !== null && input.startsWith('/model ') && (
             <React.Suspense fallback={null}>
