@@ -633,8 +633,8 @@ export function ChatInputArea({
       : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
   // A blocked Send is disabled; it must not keep the active accent that reads
-  // as "ready". The send-mode segment shares this fill so the pair reads as
-  // one split button.
+  // as "ready". The send-mode segment takes the same accent when Send is ready
+  // so the pair reads as one split button.
   const sendReady =
     !isOverLimit &&
     !sendBlockedReason &&
@@ -1089,13 +1089,7 @@ export function ChatInputArea({
             </React.Suspense>
           )}
           {mentionQuery && mentionLocation && mentionRequestScope && (
-            <React.Suspense
-              fallback={
-                <div className="file-mention-picker__status">
-                  Finding files…
-                </div>
-              }
-            >
+            <React.Suspense fallback={null}>
               <FileMentionAutocomplete
                 location={mentionLocation}
                 requestScope={mentionRequestScope}
@@ -1183,6 +1177,9 @@ export function ChatInputArea({
             onBlur={() => {
               setShortcutContext('composerFocused', false);
               closeAll();
+              // The file picker is portaled out of the composer, so it no
+              // longer hides with it; close it like the other pickers.
+              setMentionQuery(null);
             }}
             onChange={(e) => {
               const next = reconcileComposerDisplay(input, e.target.value);

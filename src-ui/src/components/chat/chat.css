@@ -2402,7 +2402,8 @@
   border-end-end-radius: 0;
 }
 /* Steer/Queue is the trailing segment of one split Send button: same height,
-   same fill, a hairline divider, and only the outer corners rounded. */
+   a hairline divider, only the outer corners rounded, and Send's accent while
+   Send is ready. It stays at full strength otherwise because it still works. */
 .chat-input .chat-input__send-mode {
   display: inline-flex;
   align-items: center;
@@ -2425,6 +2426,7 @@
 }
 .chat-input .chat-input__send-mode:hover,
 .chat-input .chat-input__send-mode[aria-expanded="true"] {
+  opacity: 1;
   filter: brightness(1.08);
 }
 

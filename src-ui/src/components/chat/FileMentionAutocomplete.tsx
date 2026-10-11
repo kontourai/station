@@ -34,7 +34,8 @@ export function FileMentionAutocomplete({
   >;
   onActiveDescendantChange: (id: string | undefined) => void;
   onSelect: (entry: CodingFileEntry) => void;
-  /** The composer input; the list opens against its capsule. */
+  /** The composer input; the list opens against its capsule. Without it the
+   *  list renders in normal flow where it is mounted. */
   anchorRef?: RefObject<HTMLElement | null>;
 }) {
   const { popupStyle, renderPopup } = useAnchoredPopup(anchorRef);

@@ -30,6 +30,12 @@ export function useAnchoredPopup(
     const surface = anchor.closest('.chat-input__capsule') ?? anchor;
     const viewport = window.visualViewport;
     const place = () => {
+      // A hidden composer must not leave its popup pinned to the top of the
+      // page.
+      if (surface.checkVisibility?.() === false) {
+        setPopupStyle(undefined);
+        return;
+      }
       const rect = surface.getBoundingClientRect();
       const top = viewport?.offsetTop ?? 0;
       const left = viewport?.offsetLeft ?? 0;
