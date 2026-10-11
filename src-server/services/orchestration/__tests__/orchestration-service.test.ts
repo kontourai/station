@@ -21074,6 +21074,82 @@ describe('OrchestrationService', () => {
       await isolated.shutdown();
     });
 
+    test('an event that committed before the failure reached the loop is never replayed', async () => {
+      const threadId = 'committed-then-failed-thread';
+      const turnId = 'turn-committed';
+      const { events, isolated } = await startObservedTurn(threadId, turnId);
+      const delta = (eventId: string, text: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          turnId,
+          itemId: 'committed-item',
+          createdAt: new Date().toISOString(),
+          method: 'content.text-delta',
+          delta: text,
+        }) as CanonicalRuntimeEvent;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      const attempts = new Map<string, number>();
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          const attempt = (attempts.get(event.eventId) ?? 0) + 1;
+          attempts.set(event.eventId, attempt);
+          const sequence = appendEvent(event, declaredOutputs);
+          // A contention error that surfaces only AFTER the row committed,
+          // as a throw from a later step of the publish body would.
+          if (
+            attempt === 1 &&
+            (event.eventId === 'committed-delta-1' ||
+              event.eventId === 'committed-terminal')
+          )
+            throw busy();
+          return sequence;
+        });
+      events.push(delta('committed-delta-0', 'Hello'));
+      events.push(delta('committed-delta-1', ', '));
+      events.push(delta('committed-delta-2', 'world'));
+      events.push({
+        eventId: 'committed-terminal',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(payloads(threadId).some(isInterruptionWarning)).toBe(true),
+      );
+
+      // Replaying either committed row would hit its primary key; replaying
+      // the delta would also cost the terminal behind it.
+      expect(attempts.get('committed-delta-1')).toBe(1);
+      expect(attempts.get('committed-terminal')).toBe(1);
+      expect(
+        eventStore
+          .listEvents(threadId)
+          .filter(
+            (entry) =>
+              entry.payload.method === 'content.text-delta' ||
+              entry.payload.method === 'turn.completed',
+          )
+          .map((entry) => entry.payload.eventId),
+      ).toEqual([
+        'committed-delta-0',
+        'committed-delta-1',
+        'committed-terminal',
+      ]);
+      // The terminal's own post-commit failure is still reported as
+      // interrupted observation; its durable fold is the completed turn.
+      expect(await isolated.readSession(threadId)).toMatchObject({
+        session: { lifecycleState: 'idle' },
+      });
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
     test('a non-retryable append failure is not retried: it surfaces the interruption warning and leaves the turn durably running, not completed', async () => {
       const threadId = 'nonretryable-terminal-thread';
       const { events, isolated } = await startObservedTurn(
