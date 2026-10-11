@@ -16,9 +16,11 @@ import {
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
+import { navigationStore } from '../../contexts/navigation-store';
 import { useToast } from '../../contexts/ToastContext';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import {
   subscribeAttachedContinuationHandoff,
@@ -176,7 +178,21 @@ export function AttachedSessionDetail({
     ? { kind: 'own-folder' }
     : undefined;
   const ownFolder = session.cwd ? session.cwd : 'its own folder';
-  const noProjectExplanation = `This conversation belongs to no project. Station will continue it as a No project chat that works only in ${ownFolder}. To continue it in a project instead, add a project for that folder or its repository first.`;
+  const noProjectExplanation = `This conversation belongs to no project. Station will continue it as a No project chat that works only in ${ownFolder}.`;
+  const isMobile = useIsMobile();
+  /**
+   * #3552: the alternative to a No project chat is a Project for this
+   * folder, so offer it as an action rather than an instruction. New project
+   * opens with the folder chosen; on a phone the dock gives way to the page.
+   */
+  const addProjectForFolder = session.cwd
+    ? () =>
+        navigationStore.navigate('/projects/new', {
+          directory: session.cwd ?? null,
+          maximize: null,
+          ...(isMobile ? { dock: null } : {}),
+        })
+    : undefined;
   const adoptionIntent = useRef(createAdoptOrchestrationSessionIntent());
   // A settled server outcome is distinct from local reservation evidence: the
   // former says this exact continuation cannot be retried safely, whereas the
@@ -747,6 +763,26 @@ export function AttachedSessionDetail({
                 {noProjectExplanation}
               </p>
             )}
+            {outsideProjects &&
+              (addProjectForFolder ? (
+                <div className="sessions-detail__confirm-alternative">
+                  <Button
+                    variant="secondary"
+                    disabled={adoption.isPending}
+                    onClick={() => {
+                      setReplyRequested(false);
+                      addProjectForFolder();
+                    }}
+                  >
+                    Add a project for this folder instead
+                  </Button>
+                </div>
+              ) : (
+                <p className="sessions-detail__adoption-folder">
+                  To continue it in a project instead, add a project for its
+                  folder or repository first.
+                </p>
+              ))}
             {continuationFeedback}
           </div>
         </Dialog>

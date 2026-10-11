@@ -896,8 +896,35 @@ describe('a conversation no project claims (#3386)', () => {
       within(dialog).getByTestId('attached-continuation-no-project')
         .textContent,
     ).toBe(
-      'This conversation belongs to no project. Station will continue it as a No project chat that works only in /work/scratch/app. To continue it in a project instead, add a project for that folder or its repository first.',
+      'This conversation belongs to no project. Station will continue it as a No project chat that works only in /work/scratch/app.',
     );
+  });
+
+  test('the No project confirmation offers a Project for that folder as an action', () => {
+    adoptOrchestrationSession.mockClear();
+    window.history.replaceState(null, '', '/');
+    renderAttached({
+      presentation: 'chat',
+      session: { projectSlug: undefined, cwd: '/work/scratch/app' },
+    });
+    sendFromComposer('keep me');
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Add a project for this folder instead',
+      }),
+    );
+    expect(window.location.pathname).toBe('/projects/new');
+    expect(new URLSearchParams(window.location.search).get('directory')).toBe(
+      '/work/scratch/app',
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    // The message is still there to continue later.
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('keep me');
+    window.history.replaceState(null, '', '/');
   });
 
   test('confirming continues it as a No project chat in its own folder, and nothing before that', async () => {

@@ -602,6 +602,12 @@
   overflow-wrap: anywhere;
 }
 
+/* The No project alternative reads as an action, not a third footer
+   button competing with Continue. */
+.sessions-detail__confirm-alternative {
+  display: flex;
+}
+
 /* Spacing for the continuation confirmation's paragraphs. */
 .sessions-detail__confirm {
   display: grid;
