@@ -145,6 +145,16 @@ With authentication unconfigured, that router reports unavailable (`501`),
 not a Device-gate authentication failure. This matrix does not extend the
 LAN/private-tailnet qualification above to a production OIDC deployment.
 
+Telemetry delivery status is an `orchestration:read` current-process
+observation. Explicit connection checks and secret-binding administration
+require `access:manage`; saving destination/reference fields also refuses
+internal-agent requests. Account-bound collaborator admission remains narrower
+and does not expose these instance-management surfaces merely because a Device
+has a broad scope. Product and collector credentials require separate exact
+instance destination grants, never account, Project or peer inference grants.
+See [usage telemetry](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
+for the status/probe boundary and failure limits.
+
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device
 gate does not waive the endpoint's own checks. The station-control HTTP/SSE

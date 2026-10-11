@@ -167,8 +167,18 @@ Read [the monitoring guide](monitoring.md) before enabling the stack or setting
 `OTEL_EXPORTER_OTLP_ENDPOINT`. `localhost` in a container names that container,
 not an independently launched collector. Choose the intended reachable endpoint
 and private exposure explicitly. Configured export is not collector receipt;
-the guide records the startup meter-binding limitation and separates telemetry
-from durable product outcomes.
+the guide explains synchronous provider registration and the remaining
+collection, temporality and downstream storage qualification boundaries.
+
+Disclosed product observations use the separate
+[receiver](../../packages/telemetry-broker/README.md), its dedicated PostgreSQL
+store and distinct source/operator keys. They are not accepted by the Collector
+and do not become canonical personal usage receipts. The
+[configuration reference](../reference/config.md#telemetry-destinations)
+describes saved addresses, exact instance key grants and restart activation.
+No product or collector destination is enabled by default. The optional stack
+still needs its own pinned-release, outage/restart, retention and backup/restore
+qualification; a successful connection probe is not that acceptance.
 
 ## Private cloud environment
 
