@@ -561,7 +561,7 @@ const PS_PID_PPID_PGID_LINE = /^\s*(\d+)\s+(\d+)\s+(\d+)\s*$/;
  * (macOS and procps). Null when `ps` fails, times out, or prints a line that
  * is not exactly three integers: a partial table is never read as complete.
  */
-export const listProcessGroupMembers: ProcessGroupLister = (pgid) =>
+const listProcessGroupMembers: ProcessGroupLister = (pgid) =>
   new Promise((resolve) => {
     execFile(
       'ps',
