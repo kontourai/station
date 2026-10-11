@@ -586,7 +586,15 @@
 
     "packages/sdk/src/query-domains/developerRuntime.ts",
 
-    "packages/sdk/src/query-domains/resourcePosture.ts"
+    "packages/sdk/src/query-domains/resourcePosture.ts",
+
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "packages/sdk/src/query-domains/secret-bindings.ts",
+
+    "packages/sdk/src/__tests__/publicBarrel.test.ts",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx"
   ],
 
   "checks": [

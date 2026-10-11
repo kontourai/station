@@ -34,7 +34,9 @@
 
     "packages/telemetry-broker/qualify.mjs",
 
-    "packages/telemetry-broker/src/index.ts"
+    "packages/telemetry-broker/src/index.ts",
+
+    "src-server/domain/telemetry-configuration.ts"
   ],
 
   "checks": [

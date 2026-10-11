@@ -174,7 +174,13 @@
 
     "packages/contracts/src/enriched-agent.ts",
 
-    "packages/contracts/src/product-telemetry.ts"
+    "packages/contracts/src/product-telemetry.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/contracts/src/secret-binding.ts",
+
+    "packages/shared/src/product-telemetry.ts"
   ],
 
   "checks": [

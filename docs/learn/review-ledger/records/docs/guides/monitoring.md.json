@@ -116,7 +116,15 @@
 
     "packages/telemetry-broker/src/main.ts",
 
-    "packages/telemetry-broker/README.md"
+    "packages/telemetry-broker/README.md",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-server/domain/telemetry-bootstrap-config.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "src-ui/src/views/settings/TelemetryDelivery.tsx"
   ],
 
   "checks": [
