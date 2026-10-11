@@ -569,7 +569,7 @@
 
 .sessions-detail__connection-state {
   flex: 0 0 auto;
-  margin: var(--k-space-2) var(--chat-message-gutter) 0;
+  margin: var(--k-space-2) var(--chat-message-gutter);
   padding: var(--k-space-2) var(--k-space-3);
   border-radius: var(--k-radius-md);
   background: var(--k-caution-soft);
