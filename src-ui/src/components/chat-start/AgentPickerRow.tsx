@@ -21,7 +21,7 @@ import './AgentPickerRow.css';
 
 /**
  * The engine as the row's chip names it. An engine named after the Agent
- * plus a qualifier ("Claude Code (brian-media proxy)" under "Claude Code")
+ * plus a qualifier ("Claude Code (home-server proxy)" under "Claude Code")
  * keeps only the qualifier: the name is already the line above.
  */
 function engineQualifiedBy(

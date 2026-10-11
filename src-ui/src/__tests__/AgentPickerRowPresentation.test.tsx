@@ -10,7 +10,7 @@ import { AgentPickerGroups } from '../components/chat-start/AgentPickerRow';
 import type { AgentData } from '../contexts/AgentsContext';
 
 vi.mock('../hooks/useDevicePresentation', () => ({
-  useDevicePresentation: () => ({ hostName: 'brian-media' }),
+  useDevicePresentation: () => ({ hostName: 'home-server' }),
 }));
 
 // The engine-default row for a connection its owner named after the engine
@@ -20,7 +20,7 @@ const PROXIED_CLAUDE: AgentData = {
   name: 'Claude Code',
   source: 'local',
   engineDefault: true,
-  engineDisplayName: 'Claude Code (brian-media proxy)',
+  engineDisplayName: 'Claude Code (home-server proxy)',
   execution: { agentConnectionId: engineConnectionId('claude-proxy') },
 };
 // A custom Agent on that same engine: its name is not the engine's, so the
@@ -29,7 +29,7 @@ const REVIEWER_ON_PROXY: AgentData = {
   slug: agentId('reviewer'),
   name: 'Reviewer',
   source: 'local',
-  engineDisplayName: 'Claude Code (brian-media proxy)',
+  engineDisplayName: 'Claude Code (home-server proxy)',
   execution: { agentConnectionId: engineConnectionId('claude-proxy') },
 };
 const KIRO: AgentData = {
@@ -76,12 +76,12 @@ describe('Agent picker row presentation', () => {
       unavailable: false,
     }));
     const proxied = within(row(PROXIED_CLAUDE.slug));
-    expect(proxied.getByText('brian-media proxy')).toBeTruthy();
-    expect(proxied.queryByText('Claude Code (brian-media proxy)')).toBeNull();
+    expect(proxied.getByText('home-server proxy')).toBeTruthy();
+    expect(proxied.queryByText('Claude Code (home-server proxy)')).toBeNull();
     // An Agent with its own name keeps the whole engine name.
     expect(
       within(row(REVIEWER_ON_PROXY.slug)).getByText(
-        'Claude Code (brian-media proxy)',
+        'Claude Code (home-server proxy)',
       ),
     ).toBeTruthy();
   });
@@ -160,7 +160,7 @@ describe('Agent picker row presentation', () => {
       row(PROXIED_CLAUDE.slug).querySelector(
         '.new-chat-modal__agent-header .new-chat-modal__agent-engine .engine-chip__pill',
       )?.textContent,
-    ).toBe('brian-media proxy');
+    ).toBe('home-server proxy');
   });
 
   test('rows do not repeat the Station every row runs on', () => {
@@ -168,7 +168,7 @@ describe('Agent picker row presentation', () => {
       label: 'Opus',
       unavailable: false,
     }));
-    expect(screen.queryByText(/^on brian-media$/)).toBeNull();
+    expect(screen.queryByText(/^on home-server$/)).toBeNull();
   });
 
   test('an unreported model is not printed as a model', () => {
