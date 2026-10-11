@@ -15,6 +15,18 @@ export const STATION_RELEASE_RINGS = STATION_RELEASE_RINGS_DATA;
 export type StationReleaseRing = keyof typeof STATION_RELEASE_RINGS;
 export const DEFAULT_STATION_CHANNEL: StationChannel = 'development';
 
+/**
+ * The CLI launcher an installed release puts on PATH for a runtime channel
+ * (`nightly` -> `station-nightly`). A development build or source checkout has
+ * no installed launcher, so it, like an unknown channel, gets `station`.
+ */
+export function releaseRingLauncher(runtimeChannel?: string): string {
+  for (const ring of Object.values(STATION_RELEASE_RINGS)) {
+    if (ring.runtimeChannel === runtimeChannel) return ring.launcher;
+  }
+  return 'station';
+}
+
 export function resolveStationChannel(raw?: string): StationChannel {
   const candidate = raw?.trim();
   if (!candidate) return DEFAULT_STATION_CHANNEL;

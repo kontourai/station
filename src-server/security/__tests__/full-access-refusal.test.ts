@@ -63,6 +63,46 @@ describe('fullAccessRefusalBody', () => {
     expect(JSON.stringify(body)).not.toContain('0123456789abcdef');
   });
 
+  test("the host command names this Station's own launcher (a nightly host has no `station`)", () => {
+    const req = request({
+      kind: 'credential',
+      credential: 'c',
+      authority: 'device-credential',
+      deviceId: 'ca0dd4f2aaaaaaaa',
+      source: 'bearer',
+    });
+    bindFullAccessRefusalIdentity(req, {
+      environmentId: () => 'env-1',
+      deviceName: () => 'Phone',
+      hostLauncher: () => 'station-nightly',
+    });
+    const body = fullAccessRefusalBody(req);
+    const cli =
+      'station-nightly environment access scope ca0dd4f2 --add approval:full-access';
+    expect(body.details.grant).toMatchObject({ cli });
+    expect(body.error).toContain(`the operator can run: ${cli}`);
+  });
+
+  test('a launcher lookup that throws still refuses, naming station', () => {
+    const req = request({
+      kind: 'credential',
+      credential: 'c',
+      authority: 'device-credential',
+      deviceId: 'ca0dd4f2aaaaaaaa',
+      source: 'bearer',
+    });
+    bindFullAccessRefusalIdentity(req, {
+      environmentId: () => 'env-1',
+      deviceName: () => 'Phone',
+      hostLauncher: () => {
+        throw new Error('no build identity');
+      },
+    });
+    expect(fullAccessRefusalBody(req).details.grant).toMatchObject({
+      cli: 'station environment access scope ca0dd4f2 --add approval:full-access',
+    });
+  });
+
   test('without the pairing records it still refuses, naming "this device"', () => {
     const body = fullAccessRefusalBody(
       request({

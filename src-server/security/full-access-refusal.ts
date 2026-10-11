@@ -35,6 +35,12 @@ export interface FullAccessRefusalIdentitySource {
   environmentId(): string | undefined;
   /** A paired device's display name, by its id. */
   deviceName(deviceId: string): string | undefined;
+  /**
+   * The CLI launcher on this Station's host (`station-nightly` for a nightly
+   * install). Only stable installs `station`; a host command naming the
+   * wrong one fails, or runs an unrelated checkout's older CLI.
+   */
+  hostLauncher?(): string | undefined;
 }
 
 const identitySources = new WeakMap<Request, FullAccessRefusalIdentitySource>();
@@ -72,8 +78,16 @@ const FULL_ACCESS_GRANT_UI_STEPS: readonly string[] = [
 ];
 
 /** The operator command, run on the Station's own host. */
-function fullAccessGrantCommand(deviceId: string): string {
-  return `station environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
+function fullAccessGrantCommand(deviceId: string, launcher: string): string {
+  return `${launcher} environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
+}
+
+function hostLauncherOf(request: Request): string {
+  try {
+    return identitySources.get(request)?.hostLauncher?.() || 'station';
+  } catch {
+    return 'station';
+  }
 }
 
 function requesterOf(request: Request): ApprovalFullAccessRequester {
@@ -122,7 +136,12 @@ function detailsFor(
             scope: 'approval:full-access',
             uiSteps: FULL_ACCESS_GRANT_UI_STEPS,
             ...(fullDeviceId
-              ? { cli: fullAccessGrantCommand(fullDeviceId) }
+              ? {
+                  cli: fullAccessGrantCommand(
+                    fullDeviceId,
+                    hostLauncherOf(request),
+                  ),
+                }
               : {}),
           },
   };
