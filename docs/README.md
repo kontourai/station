@@ -137,6 +137,8 @@ source boundary is:
 
 - `docs/pages/index.html` and `docs/pages/styles.css` for the marketing home.
 - `docs/pages/public-docs.json` for the exact Markdown allowlist.
+- the root `docs-kit.json`, which mirrors that allowlist for the
+  `docs-bundle.json` the shared Kontour docs hub and docs MCP read.
 
 The generator does not recursively publish `docs/`. Strategy, architecture,
 plans, audits, and historical receipts remain available in the repository but
