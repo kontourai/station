@@ -5,10 +5,7 @@ import { createServer } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
 import { getRequestListener } from '@hono/node-server';
 import { Pool } from 'pg';
-import {
-  createProductBroker,
-  PgProductRepository,
-} from '../packages/telemetry-broker/dist/index.mjs';
+import { createProductBroker, PgProductRepository } from './dist/index.mjs';
 
 // Requires a separate PostgreSQL administrative connection with CREATEDB.
 // Every destructive probe runs in a uniquely named, runner-owned database.
@@ -35,11 +32,7 @@ let passed = false;
 let report;
 const checks = [];
 const artifactSha256 = createHash('sha256')
-  .update(
-    readFileSync(
-      new URL('../packages/telemetry-broker/dist/index.mjs', import.meta.url),
-    ),
-  )
+  .update(readFileSync(new URL('./dist/index.mjs', import.meta.url)))
   .digest('hex');
 try {
   await admin.query(`CREATE DATABASE "${database}"`);

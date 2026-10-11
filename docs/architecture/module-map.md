@@ -3910,7 +3910,7 @@ installation hashes are not people. Retention limits deduplication, and deleted
 rows do not guarantee physical database-file shrinkage.
 
 **Evidence.** Focused HTTP mocks own parser/credential/admission behavior. The
-[live qualifier](../../scripts/qualify-telemetry-broker.mjs) uses its own PostgreSQL
+[live qualifier](../../packages/telemetry-broker/qualify.mjs) uses its own PostgreSQL
 database to exercise commit/replay, revocation, capacity, corrupt live schemas
 and stalled transport recovery. Neither establishes persistent deployment,
 actual Station execution, final-source backup/restore or native acceptance.

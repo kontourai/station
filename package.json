@@ -147,7 +147,7 @@
     "typecheck:connect": "node scripts/tsc-slot.mjs -p packages/connect/tsconfig.tests.json --noEmit",
     "typecheck:telemetry-broker": "node scripts/tsc-slot.mjs -p packages/telemetry-broker/tsconfig.json --noEmit",
     "build:telemetry-broker": "node packages/telemetry-broker/build.mjs",
-    "qualify:telemetry-broker": "node scripts/qualify-telemetry-broker.mjs",
+    "qualify:telemetry-broker": "node packages/telemetry-broker/qualify.mjs",
     "typecheck:contracts": "node scripts/tsc-slot.mjs -p packages/contracts/tsconfig.json --noEmit",
     "typecheck:sdk": "node scripts/tsc-slot.mjs -p packages/sdk/tsconfig.tests.json --noEmit",
     "typecheck:board-pane": "node scripts/tsc-slot.mjs -p packages/board-pane/tsconfig.tests.json --noEmit",
