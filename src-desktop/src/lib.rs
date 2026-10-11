@@ -15269,25 +15269,30 @@ mod tests {
             front_tokens, 3,
             "one `let front` binding and two `if front` gates"
         );
-        // Every AppKit call that can bring the window or app forward sits
-        // directly inside `if front {`: deminiaturize plus the order-front
-        // for both the cover and the reveal, and nothing else.
-        const WINDOW_RAISING_CALLS: [&str; 8] = [
+        // Each occurrence of the window-raising spellings listed below must
+        // sit directly inside `if front {`, and only deminiaturize plus the
+        // order-front for the cover and for the reveal may occur. This scans
+        // these spellings only; other ways to raise a window are not detected.
+        const WINDOW_RAISING_CALLS: [&str; 15] = [
             "makeKeyAndOrderFront(",
+            "makeKeyAndOrderFront:",
             "orderFront(",
+            "orderFront:",
             "orderFrontRegardless(",
             "orderFrontWithKey",
             "orderWindow(",
             "activateIgnoringOtherApps",
+            "activateWithOptions(",
             ".activate(",
+            "unhide(",
+            "setIsVisible(",
             "deminiaturize(",
+            ".show()",
+            "set_focus(",
         ];
         let mut raising = Vec::new();
         for call in WINDOW_RAISING_CALLS {
             for (at, _) in cover.match_indices(call) {
-                if cover[..at].ends_with("make") && call == "orderFront(" {
-                    continue;
-                }
                 raising.push((at, call));
             }
         }

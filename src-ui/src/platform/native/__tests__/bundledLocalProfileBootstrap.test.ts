@@ -170,6 +170,20 @@ describe('bundled local profile bootstrap', () => {
     expectNothingAuthored(run);
   });
 
+  test('past the budget a covered window re-checks admission on every poll, so a later reveal releases it', async () => {
+    const run = await bootstrapOnVirtualClock(
+      () => 'starting',
+      70_000,
+      (elapsed) => elapsed >= 75_000,
+    );
+    expect(run.settled()).toBe(false);
+    const checksBefore = run.isStartupWindowAdmitted.mock.calls.length;
+    expect(checksBefore).toBeGreaterThan(1);
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(run.settled()).toBe(true);
+    expectNothingAuthored(run);
+  });
+
   test('a covered window has no wall-clock limit on a progressing sidecar', async () => {
     const run = await bootstrapOnVirtualClock(
       () => 'restarting',

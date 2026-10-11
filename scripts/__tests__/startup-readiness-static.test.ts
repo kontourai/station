@@ -313,10 +313,17 @@ describe('desktop startup readiness static boundary', () => {
     );
     expect(handlerStart).toBeGreaterThanOrEqual(0);
     const handler = lib.slice(handlerStart, lib.indexOf(']);', handlerStart));
+    // Only a whole entry line counts: a commented-out entry does not, and an
+    // entry gated by a `#[cfg(...)]` attribute line is not unconditionally
+    // registered.
+    const handlerLines = handler.split('\n');
     const registered = new Set(
-      [...handler.matchAll(/(?:[a-z_]+::)*([a-z_]+),?\s*$/gm)].map(
-        (match) => match[1] ?? '',
-      ),
+      handlerLines.flatMap((line, index) => {
+        const entry = /^\s*(?:[a-z_]+::)*([a-z_]+),?\s*$/.exec(line);
+        if (!entry) return [];
+        const previous = handlerLines[index - 1]?.trim() ?? '';
+        return previous.startsWith('#[cfg(') ? [] : [entry[1] ?? ''];
+      }),
     );
     const methods = {
       isStartupWindowAdmitted: 'startup_window_admitted',
