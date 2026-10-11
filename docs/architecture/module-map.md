@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
@@ -3884,3 +3885,32 @@ prompt, memory, hooks and configuration-generation guards. Hookless temporary
 model recovery refuses positive additions. Agent restrictions and store ACLs
 remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)
 explains the UI and opt-out behavior.
+
+
+## ProductTelemetryReceiver
+
+**Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)
+accepts the shared disclosed product envelope. Its
+[HTTP owner](../../packages/telemetry-broker/src/app.ts) separates source ingest
+and source-scoped receipt lookup from operator source management, storage health
+and bounded received-observation trends. The
+[PostgreSQL repository](../../packages/telemetry-broker/src/store.ts) validates
+compatible permanent tables and constraints inside every transaction, fences
+revocation against ingestion, deduplicates retained source/event UUIDs, and
+returns acceptance only after acknowledged durable commit. Database waits and
+request concurrency are bounded; uncertainty returns a failure.
+
+**Composition and limits.** The
+[Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
+operator credentials and composes the database pool separately from Station's
+runtime. No endpoint is enabled automatically. This product namespace neither
+collects OTel metrics/traces nor authorizes personal receipt synchronization.
+Producer clocks and unknown delivery coverage remain explicit in queries;
+installation hashes are not people. Retention limits deduplication, and deleted
+rows do not guarantee physical database-file shrinkage.
+
+**Evidence.** Focused HTTP mocks own parser/credential/admission behavior. The
+[live qualifier](../../scripts/qualify-telemetry-broker.mjs) uses its own PostgreSQL
+database to exercise commit/replay, revocation, capacity, corrupt live schemas
+and stalled transport recovery. Neither establishes persistent deployment,
+actual Station execution, final-source backup/restore or native acceptance.

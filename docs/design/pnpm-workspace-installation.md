@@ -25,6 +25,11 @@ for exact parity. `npm run` and npm publication remain supported command
 interfaces; package-manager choice is determined by the pinned package manager
 and lock/configuration files, not the spelling of the script runner.
 
+The optional `packages/telemetry-broker` companion is declared in both workspace
+lists and owns its pinned PostgreSQL dependencies in the same lock. It remains
+private and builds a separate Node bundle; adding a workspace does not publish
+it with Station or configure a telemetry destination.
+
 Preserve the managed `dependencies:*` entry points. They bootstrap the exact
 pnpm pin, force an inert install, inspect all installed lifecycle packages,
 validate their locked identity and complete hook set, run approved hooks, and
