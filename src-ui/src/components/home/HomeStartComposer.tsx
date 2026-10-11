@@ -621,7 +621,23 @@ export function HomeStartComposer({
           </fieldset>
         )}
         {(feedback || setupError) && (
-          <p role="alert">{feedback ?? describeReadFailure(setupError)}</p>
+          // A failed setup read offers its own retry beside the sentence; it
+          // used to be bare text under the composer with no way forward.
+          <p role="alert" className="start-composer__alert">
+            <span>{feedback ?? describeReadFailure(setupError)}</span>
+            {!feedback && (
+              <Button
+                variant="link"
+                onClick={() =>
+                  void refreshSetup().catch((error) =>
+                    setFeedback(userFacingErrorMessage(error)),
+                  )
+                }
+              >
+                Try again
+              </Button>
+            )}
+          </p>
         )}
         {!loading && agent && !agentRunnability(agent).runnable && (
           <React.Suspense

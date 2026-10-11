@@ -165,6 +165,20 @@
 .start-composer__start {
   min-height: 44px;
 }
+/* A failed read or start under the composer: the warning tone, with its
+   retry on the same line when one fits. */
+.start-composer__alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin: 0;
+  color: var(--warning-text);
+  font-size: var(--k-text-sm);
+}
+.start-composer__alert .button--link {
+  min-height: 44px;
+}
 .start-composer__note {
   margin: 0;
   color: var(--k-text-muted);

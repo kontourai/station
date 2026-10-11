@@ -14,7 +14,24 @@
  */
 export const READ_FAILURE_FALLBACK = 'Try again in a moment.';
 
+/** A body the client could not parse: what `Response.json()` rejects with. */
+export const READ_FAILURE_UNREADABLE =
+  'Station sent a response this app could not read. Try again in a moment.';
+/** The request never got a response: the browser's fetch `TypeError`. */
+export const READ_FAILURE_UNREACHABLE =
+  'Could not reach Station. Check the connection, then try again.';
+
+// Engine wording for a fetch that never got a response (Chromium, WebKit,
+// Firefox). Anything else a TypeError says is a real message and is kept.
+const NETWORK_FAILURE = /^(failed to fetch|load failed|networkerror\b)/i;
+
 export function describeReadFailure(error: unknown): string {
+  // A parse or transport failure's own message is the engine talking
+  // ("Failed to execute 'json' on 'Response': Unexpected token '<'…"): true,
+  // and useless to the person reading it. Name what happened instead.
+  if (error instanceof SyntaxError) return READ_FAILURE_UNREADABLE;
+  if (error instanceof TypeError && NETWORK_FAILURE.test(error.message.trim()))
+    return READ_FAILURE_UNREACHABLE;
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
