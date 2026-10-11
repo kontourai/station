@@ -5,7 +5,7 @@ Station has three separate measurement paths:
 | Path | Owner and destination | What enables it |
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
-| OTel metrics and traces | OpenTelemetry SDK → configured collector | `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and the startup limitation below |
+| OTel metrics and traces | OpenTelemetry SDK → configured collector | `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
 | Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
 
 The repository includes an optional Docker example for Collector → Prometheus
@@ -13,13 +13,23 @@ The repository includes an optional Docker example for Collector → Prometheus
 proof that Station recorded or delivered a measurement. The local event log is
 also separate from the canonical orchestration EventStore.
 
-**Current collection limit:** instruments created before asynchronous OTel
-initialization can remain bound to a no-op meter after the SDK starts. A
-controlled initializer/in-memory-reader probe reproduced this with the actual
-exported chat counter. Treat the tables below as declarations and recording
-call sites, not proof of a populated collector. The startup owner needs to fix
-this binding before an enabled endpoint alone can establish metric collection:
-[#2755](https://github.com/kontourai/station/issues/2755).
+Configured OTel registers its providers synchronously when the telemetry module
+loads, before Station creates its instruments. Installation identity resolves
+as an asynchronous resource attribute; export waits for it without delaying
+application startup. Hosted persistence admission precedes schema/identity
+writes; deployment-mode detection has no metric imports that could create
+instruments before provider registration. Failed identity persistence stops the SDK and refuses
+export rather than sending an unidentified payload. With no endpoint, the SDK
+stays inactive and performs no identity I/O.
+
+The [telemetry regression](../../src-server/__tests__/telemetry.test.ts) records
+the actual exported chat counter while identity I/O is held, then observes both
+that record and a later record at a loopback OTLP receiver with the persisted
+identity hash. A failure control receives no payload, and unsafe hosted homes
+remain untouched. This repairs
+[#2755](https://github.com/kontourai/station/issues/2755); it does not qualify a
+deployed collector, storage backend or dashboard. The tables below remain
+declarations and recording call sites, not proof of those destinations.
 
 ## Developer diagnostics
 
@@ -350,10 +360,11 @@ from automatic retention.
 
 ## Local evidence and the historical migration shadow
 
-Without an OTel SDK, metric instruments **discard their writes**. The startup
-binding issue above can also leave an early-created instrument inactive after
-SDK registration. Nothing is buffered, so nothing is recoverable after the
-fact. That is fine for a rate you would only ever read on a dashboard, and it
+Without an OTel SDK, metric instruments **discard their writes**. Configured
+startup registers providers before creating instruments; an instrument created
+by a different entry point before registration can still bind to a no-op meter.
+Such discarded observations are not recoverable after the fact. That is fine
+for a rate you would only ever read on a dashboard, and it
 is *not* fine for a counter some gate is supposed to read as evidence: an
 instrument that throws its writes away produces exactly the same silence as a
 subsystem that agreed with everything, and the reader cannot tell them apart.
@@ -434,13 +445,16 @@ Station server
        └─ Metrics → OTLP HTTP :4318/v1/metrics → Collector → Prometheus → Grafana
 ```
 
-`src-server/index.ts` imports `src-server/telemetry.ts` early, but initialization
-is asynchronous and does not hold up application startup. A failure warns and
-Station continues. Import order alone does not solve the instrument-binding
-problem described above. The configured SDK includes:
+`src-server/index.ts` imports `src-server/telemetry.ts` before runtime/instrument
+modules. Provider registration runs before the initializer's first await;
+installation identity and export readiness remain asynchronous. A failure
+warns and Station continues. Alternate entry points must preserve registration
+before instrument creation. The configured SDK includes:
 - `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter)
 - `AwsInstrumentation` — auto-instruments AWS SDK calls
 - A `PeriodicExportingMetricReader` with a 30-second export interval and delta temporality
+- No SDK log exporter: Station's durable logger remains a separate local path.
+  `OTEL_LOGS_EXPORTER` does not implicitly add an unreviewed export signal.
 
 ## Metrics reference
 
@@ -813,10 +827,15 @@ reader's content-derived bounds, this optimization can omit a clock-skewed
 exporter's row at a UTC day boundary. It does not scan every retained file on
 every request.
 
-Insights logs and skips per-row parsing and per-file read failures, then can
-still return `success: true` without a completeness indicator. A successful
-aggregate therefore does not prove every relevant file/row was read. This
-differs from the history reader's propagation of non-missing-file I/O errors.
+Insights returns typed retained-scan coverage: clean scans are `complete`,
+omissions alongside readable rows are `partial`, and missing history or an
+impaired scan with no measurable rows is `unknown`. Malformed rows, invalid
+timestamps and unreadable files are classified without exposing paths, contents
+or other users' counts. An unreadable directory fails with 503. These states
+describe scan integrity, not lifetime, delivery or requested-window retention.
+The dashboard warns alongside partial totals, hides unknown totals, and hides
+cached totals after a failed refresh. Older servers without coverage show a
+completeness warning. Day windows must be integers from 1 through 365.
 
 For exact query parsing and response fields, read the
 [monitoring route](../../src-server/routes/operations/monitoring.ts),

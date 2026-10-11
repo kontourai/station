@@ -160,12 +160,20 @@ does not establish implementation, deployment, access, or a completed live journ
 
 ```ts
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import type { UsageInsights, InsightsScanCoverage } from '@kontourai/station-contracts/insights';
 import type { LearningReviewProjectionOutcome } from '@kontourai/station-contracts/learning-review';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { SessionMetadata } from '@kontourai/station-contracts/runtime';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import type { UnifiedSearchResult } from '@kontourai/station-contracts/unified-search';
 ```
+
+`insights` owns the monitoring rollup and optional retained-scan coverage.
+Complete scan integrity does not establish lifetime retention or producer
+delivery. Older servers omit coverage; new consumers treat that omission as
+unknown integrity. Failure classifications carry no file paths or foreign-user
+counts. The [Insights route](../../src-server/routes/operations/insights.ts)
+produces coverage; the SDK and existing dashboard consume it.
 
 `learning-review` is a read-only projection contract. Its available form links
 owner-issued source, candidate, evaluation, decision, activation, effect, and

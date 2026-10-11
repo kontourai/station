@@ -46,10 +46,19 @@ bounded flush and can drop unsent events.
 The producers are
 [runtime startup](../../src-server/runtime/bootstrap/station-runtime.ts) and
 [orchestration](../../src-server/services/orchestration/orchestration-service.ts).
-The current `station_started` call precedes the last awaited registry-policy
-publication and the runtime's `ready` event. Despite the inventory description
-below, this event is not proof every startup step completed. It is also not
-replayed when disclosure is first acknowledged after that startup call.
+The `station_started` call follows successful final registry-policy publication,
+virtual application publication when configured, cancellation checks, and the
+runtime's `ready` recording step in `StationRuntime.initialize()`. Failed or
+canceled startup emits no completed-startup event. Delivery remains optional and does not delay boot;
+the event is not replayed when disclosure is first acknowledged later. A failed
+operational-event append is reported separately and is not a durable readiness
+receipt merely because the runtime became usable.
+
+The [cold-start regression](../../src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts)
+enters through `StationRuntime.initialize()` with restored disclosure and
+success/failure controls at final policy publication, shutdown during that step
+in local and virtual modes, and a failed virtual readiness callback. It observes producer order
+and durable readiness; it does not establish live ingestion delivery.
 
 [Service tests](../../src-server/services/__tests__/usage-telemetry-service.test.ts)
 and the [disclosure route test](../../src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts)

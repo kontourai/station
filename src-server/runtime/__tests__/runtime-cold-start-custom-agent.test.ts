@@ -54,10 +54,12 @@ import {
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../services/usage-telemetry-inventory.js';
+import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
@@ -791,94 +793,172 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(adoption.signal?.aborted).toBe(true);
   });
 
-  it('restores a saved usage-telemetry disclosure receipt during runtime bootstrap (#2015)', async () => {
-    // This intentionally uses StationRuntime.initialize(), rather than calling
-    // UsageTelemetryService.loadDisclosureReceipt() directly: the regression
-    // is the production composition edge that invokes that method at boot.
-    home = await createSchemaHome('station-telemetry-disclosure-bootstrap-');
-    mkdirSync(join(home, 'config'), { recursive: true });
-    writeFileSync(
-      join(home, 'config', 'usage-telemetry-disclosure.json'),
-      JSON.stringify({
-        acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
-      }),
-    );
-    writeFileSync(
-      join(home, 'config', 'app.json'),
-      JSON.stringify({
-        defaultModel: '',
-        invokeModel: '',
-        structureModel: '',
-        systemPrompt: 'You are {{AGENT_NAME}}.',
-        templateVariables: [],
-        region: 'eu-west-1',
-      }),
-    );
-    runtime = new StationRuntime({
-      projectHomeDir: home,
-      port: TEST_PORT,
-      host: '127.0.0.1',
-    });
-    replaceTerminalListener(runtime);
-    // This receipt-composition proof does not cover native-engine discovery.
-    // Match the existing archive#2365 cold-start harness so unavailable sandbox CLIs
-    // cannot consume the test's timeout budget.
-    vi.spyOn(
-      runtime as unknown as { resolveBuiltinEngineBinding: () => unknown },
-      'resolveBuiltinEngineBinding',
-    ).mockResolvedValue(null);
-    vi.spyOn(OllamaLLMProvider.prototype, 'healthCheck').mockResolvedValue(
-      false,
-    );
-    vi.spyOn(MCPManager, 'loadAgentTools').mockResolvedValue([]);
+  it.each([
+    'applied',
+    'failed',
+    'canceled',
+    'canceled-local',
+    'publication-failed',
+  ] as const)(
+    'restores disclosure and emits completed startup only after policy publication: %s (#2015/#2833)',
+    async (outcome) => {
+      // This intentionally uses StationRuntime.initialize(), rather than calling
+      // UsageTelemetryService.loadDisclosureReceipt() directly: the regression
+      // is the production composition edge that invokes that method at boot.
+      home = await createSchemaHome('station-telemetry-disclosure-bootstrap-');
+      mkdirSync(join(home, 'config'), { recursive: true });
+      writeFileSync(
+        join(home, 'config', 'usage-telemetry-disclosure.json'),
+        JSON.stringify({
+          acknowledgedAt: new Date().toISOString(),
+          inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+        }),
+      );
+      writeFileSync(
+        join(home, 'config', 'app.json'),
+        JSON.stringify({
+          defaultModel: '',
+          invokeModel: '',
+          structureModel: '',
+          systemPrompt: 'You are {{AGENT_NAME}}.',
+          templateVariables: [],
+          region: 'eu-west-1',
+        }),
+      );
+      const virtualReady = vi.fn(() => {
+        if (outcome === 'publication-failed')
+          throw new Error('virtual readiness publication refused');
+      });
+      runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        host: '127.0.0.1',
+        virtualApplication:
+          outcome === 'canceled-local'
+            ? undefined
+            : {
+                origin: 'https://virtual.example.test',
+                ready: virtualReady,
+              },
+      });
+      replaceTerminalListener(runtime);
+      // This receipt-composition proof does not cover native-engine discovery.
+      // Match the existing archive#2365 cold-start harness so unavailable sandbox CLIs
+      // cannot consume the test's timeout budget.
+      vi.spyOn(
+        runtime as unknown as { resolveBuiltinEngineBinding: () => unknown },
+        'resolveBuiltinEngineBinding',
+      ).mockResolvedValue(null);
+      vi.spyOn(OllamaLLMProvider.prototype, 'healthCheck').mockResolvedValue(
+        false,
+      );
+      vi.spyOn(MCPManager, 'loadAgentTools').mockResolvedValue([]);
 
-    const outbox = (
-      runtime as unknown as {
-        orchestrationEventStore: EventStore;
+      const outbox = (
+        runtime as unknown as {
+          orchestrationEventStore: EventStore;
+        }
+      ).orchestrationEventStore.operationalEventReader();
+      const policyAuthority = (
+        runtime as unknown as {
+          registryTrustPolicyAuthority: RegistryTrustPolicyAuthority;
+        }
+      ).registryTrustPolicyAuthority;
+      const publishApplied =
+        policyAuthority.publishApplied.bind(policyAuthority);
+      const publish = vi.spyOn(policyAuthority, 'publishApplied');
+      const failure = new Error('final startup policy publication refused');
+      if (outcome === 'failed') publish.mockRejectedValue(failure);
+      if (outcome === 'canceled' || outcome === 'canceled-local') {
+        publish.mockImplementation(async (...args) => {
+          const publication = publishApplied(...args);
+          const shutdown = runtime!.shutdown();
+          void shutdown.catch(() => {});
+          return publication;
+        });
       }
-    ).orchestrationEventStore.operationalEventReader();
-    let readyWasDurableBeforeNotification = false;
-    const unsubscribe = runtime.eventBus.subscribe((notification) => {
-      if (notification.event !== SERVER_EVENTS.OPERATIONAL_EVENT) return;
-      const page = outbox.readAfter();
-      readyWasDurableBeforeNotification =
-        page.kind === 'available' &&
-        page.events?.some(
-          ({ event }) =>
-            (event.payload.data as { phase?: unknown }).phase === 'ready',
-        ) === true;
-    });
+      let readyWasDurableBeforeStartup = false;
+      const stationStarted = UsageTelemetryService.prototype.stationStarted;
+      const started = vi
+        .spyOn(UsageTelemetryService.prototype, 'stationStarted')
+        .mockImplementation(function (this: UsageTelemetryService) {
+          const page = outbox.readAfter();
+          readyWasDurableBeforeStartup =
+            page.kind === 'available' &&
+            page.events.some(
+              ({ event }) =>
+                (event.payload.data as { phase?: string }).phase === 'ready',
+            );
+          return stationStarted.call(this);
+        });
+      let readyWasDurableBeforeNotification = false;
+      const unsubscribe = runtime.eventBus.subscribe((notification) => {
+        if (notification.event !== SERVER_EVENTS.OPERATIONAL_EVENT) return;
+        const page = outbox.readAfter();
+        readyWasDurableBeforeNotification =
+          page.kind === 'available' &&
+          page.events?.some(
+            ({ event }) =>
+              (event.payload.data as { phase?: unknown }).phase === 'ready',
+          ) === true;
+      });
 
-    await expect(runtime.initialize()).resolves.toBeUndefined();
-    unsubscribe();
+      try {
+        if (outcome !== 'applied') {
+          if (outcome === 'failed')
+            await expect(runtime.initialize()).rejects.toBe(failure);
+          else if (outcome === 'canceled' || outcome === 'canceled-local')
+            await expect(runtime.initialize()).rejects.toMatchObject({
+              name: 'AbortError',
+            });
+          else
+            await expect(runtime.initialize()).rejects.toThrow(
+              'virtual readiness publication refused',
+            );
+          expect(publish).toHaveBeenCalledOnce();
+          expect(started).not.toHaveBeenCalled();
+          expect(readyWasDurableBeforeNotification).toBe(false);
+          if (outcome === 'canceled' || outcome === 'canceled-local')
+            expect(virtualReady).not.toHaveBeenCalled();
+          return;
+        }
+        await expect(runtime.initialize()).resolves.toBeUndefined();
+        expect(publish).toHaveBeenCalledOnce();
+        expect(started).toHaveBeenCalledOnce();
+        expect(readyWasDurableBeforeStartup).toBe(true);
+      } finally {
+        unsubscribe();
+        started.mockRestore();
+        publish.mockRestore();
+      }
 
-    const runtimeInternals = runtime as unknown as {
-      usageTelemetry?: { hasCurrentDisclosureReceipt: boolean };
-    };
-    expect(
-      runtimeInternals.usageTelemetry?.hasCurrentDisclosureReceipt,
-      'runtime bootstrap did not restore consent from the saved disclosure receipt',
-    ).toBe(true);
-    expect(readyWasDurableBeforeNotification).toBe(true);
-    await runtime.shutdown();
-    runtime = undefined;
+      const runtimeInternals = runtime as unknown as {
+        usageTelemetry?: { hasCurrentDisclosureReceipt: boolean };
+      };
+      expect(
+        runtimeInternals.usageTelemetry?.hasCurrentDisclosureReceipt,
+        'runtime bootstrap did not restore consent from the saved disclosure receipt',
+      ).toBe(true);
+      expect(readyWasDurableBeforeNotification).toBe(true);
+      await runtime.shutdown();
+      runtime = undefined;
 
-    const reopened = new EventStore(getOrchestrationDatabasePath(home));
-    const lifecycle = reopened.operationalEventReader().readAfter();
-    expect(lifecycle.kind).toBe('available');
-    if (lifecycle.kind !== 'available')
-      throw new Error('expected operational lifecycle history');
-    expect(
-      lifecycle.events.map(
-        ({ event }) => (event.payload.data as { phase: string }).phase,
-      ),
-    ).toEqual(['ready', 'stopping']);
-    reopened.close();
-    // No telemetry endpoint is configured in this home, so this is strictly a
-    // local receipt-restoration assertion; it does not obtain consent through
-    // the HTTP disclosure route or emit an ingestion request.
-  });
+      const reopened = new EventStore(getOrchestrationDatabasePath(home));
+      const lifecycle = reopened.operationalEventReader().readAfter();
+      expect(lifecycle.kind).toBe('available');
+      if (lifecycle.kind !== 'available')
+        throw new Error('expected operational lifecycle history');
+      expect(
+        lifecycle.events.map(
+          ({ event }) => (event.payload.data as { phase: string }).phase,
+        ),
+      ).toEqual(['ready', 'stopping']);
+      reopened.close();
+      // No telemetry endpoint is configured in this home, so this is strictly a
+      // local receipt-restoration assertion; it does not obtain consent through
+      // the HTTP disclosure route or emit an ingestion request.
+    },
+  );
 
   it('loads a custom agent and publishes route services before construction (#208/#212)', async () => {
     home = await createSchemaHome('station-coldstart-');

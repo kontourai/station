@@ -1,0 +1,29 @@
+{
+  "revision": "a90427453f54a28e8545cd6d7cd6c9e7cfd5d31c",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the added type-only Insights subpath and its owning contract reference against context routes. The five responsibilities, authority boundaries and public-contract navigation are unchanged; scan integrity is described at the monitoring owner.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the added Insights contract against the context responsibility and published-contract statements. It introduces no execution engine, authority or service owner; the existing public-contract boundaries remain accurate.","inputs":["CONTEXT.md"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed MonitoringEmitter and retained UsageAggregator descriptions against the new Insights coverage producer and consumers. Local NDJSON remains separate from EventStore receipts and optional OTel; a dashboard or empty metric is still not authoritative work evidence. No architecture prose change needed.","inputs":["docs/architecture.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reconciled the source-confirmed Insights completeness finding with the route, SDK validator and mounted dashboard. Complete retained scan integrity, partial omissions and unknown/unreadable results are now distinct; foreign attributable rows cannot influence coverage. Parent and independent41 focused cases pass; browser, deployed pipeline and native proof remain separate.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed package export-map delta against the Task-room implementation contract and retained evidence. The added Insights type-only domain does not modify task-room history, request selection, room admission or provider uncertainty; dated evidence stays historical.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the Insights contract addition and canonical API explanation against existing Agent, Session, authority and observation vocabulary. Retained-scan integrity is a result field, not a new execution or connection concept; no terminology change needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed public API, SDK and contracts navigation with the new retained-scan coverage path. Required authenticated result/refusal evidence remains valid; this feature does not supply a hosted PostgreSQL adapter or deployed cloud telemetry service. The existing delivery-target warning remains accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Traced authorized retained NDJSON scan through shared Insights contract, SDK Zod validation and existing dashboard. Updated complete/partial/unknown, missing versus unreadable directory, authorized row integrity, legacy absence and failed-refresh behavior; retained file-day/clock-skew caveat. Focused40 initial and independent41 revised cases plus parent mutations pass; no receiver/native delivery claim.","inputs":["docs/guides/monitoring.md","packages/sdk/src/query-domains/analytics.ts","src-server/routes/operations/insights.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Insights windows1-365, exact filters, retained totals, authorization-before-attributable-integrity, bounded omission classifications, root503 and missing-history unknown. Updated response coverage and actual dashboard consequences; complete names scan integrity only, not lifetime/retention or clock-skewed exporter delivery. Source and focused route evidence only.","inputs":["docs/reference/api.md","packages/sdk/src/query-domains/analytics.ts","src-server/routes/operations/insights.ts","src-ui/src/components/monitoring/InsightsDashboard.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed new type-only insights export and UsageInsights/InsightsScanCoverage/InsightsScanIssue ownership. Coverage optional for shipped older servers, explicit retained-monitoring scope, bounded privacy-preserving classifications. Server produces, SDK validates and existing dashboard consumes; no package publication or deployment inference.","inputs":["docs/reference/contracts.md","packages/contracts/package.json"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed fetchInsights/useInsightsQuery through authenticated transport, required rollup and optional coverage validation, cache keys and mounted dashboard. Valid older-server shape without coverage and additive fields remain accepted; malformed shapes reject rather than successful empty data. Parent SDK typecheck and independent41 focused cases pass; native/deployment not established.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/analytics.ts"]},
+
+    {"path":"packages/contracts/README.md","note":"Reviewed insights export addition against source-distribution, opt-in domain imports and export-map authority. Existing README does not enumerate every domain, and root compatibility exports are unchanged; type-only subpath does not require README prose or imply npm publication.","inputs":["packages/contracts/README.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]}
+  ]
+}
