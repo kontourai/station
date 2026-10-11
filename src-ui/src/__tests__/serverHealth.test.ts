@@ -584,7 +584,7 @@ describe('probeServerConnection', () => {
         );
         vi.restoreAllMocks();
       }
-      expect(protectedHeaders).toEqual([null, '1']);
+      expect(protectedHeaders).toEqual([null, '2']);
     });
 
     it('does not read an uncoded 426 as a client-protocol refusal', async () => {
