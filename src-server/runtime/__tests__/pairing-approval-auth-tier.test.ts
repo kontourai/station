@@ -1326,7 +1326,7 @@ describe('#3557 personal access tokens at the HTTP boundary', () => {
       '/api/projects/demo/access/invitations',
       bearer(secret, {}),
     );
-    expect([401, 403]).toContain(administer.status);
+    expect(administer.status).toBe(403);
     expect(
       harness.security.authorizeCredential(casey.credential, {
         method: 'POST',

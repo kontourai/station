@@ -3560,8 +3560,10 @@ person_not_found` unless a live device is tied to the person) mints one, and
 `DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
 operator-minted token is bounded by the person's Station group rather than
 by their devices. The desktop's local grant lists them but cannot mint or
-revoke. A token is refused (`403 personal_token_not_allowed`) on a
-Project's member-administration routes (`POST /api/projects/:slug/access/**`).
+revoke. A token is refused (`403`) on a Project's member-administration
+routes (`POST /api/projects/:slug/access/**`). Only a person tied by a
+Tailscale identity can hold a token; minting for an account-bound person is
+`400 invalid_request`.
 
 ## Decide a pending paired-device request
 

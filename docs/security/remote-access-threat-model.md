@@ -513,8 +513,11 @@ identity is refused through any other tailnet identity, as their devices
 are. It is not a device: it cannot manage tokens, reach `/api/pairing/**`,
 decide a pairing request or consent, open a terminal, receive push
 notifications, or administer a Project's members (invite, change a role,
-transfer: `403 personal_token_not_allowed`), which the person does from a
-device. Secrets carry an `stp_` prefix, are shown once, and are stored only
+transfer: the route table marks those leaves refused to tokens, so the
+boundary answers `403` whatever the token's scope), which the person does
+from a device. Tokens are for people tied by a Tailscale identity: an
+account's devices act only alongside its account session, which a script
+does not hold. Secrets carry an `stp_` prefix, are shown once, and are stored only
 as a sha256 hash in `<home>/security/personal-tokens.json` (owner-only, apart
 from the device registry so an older Station that ignores the file loses only
 the tokens). Writes are made under a cross-process lock from a fresh read,
