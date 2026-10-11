@@ -2311,7 +2311,8 @@ station environment peers remove <environment-id>
   issued Device credentials remain valid until separately revoked or the
   environment is reset. Rotation also prints the replacement bootstrap
   credential; protect its output in the same way as `credential show`.
-- `environment reset` rotates both the environment ID and credential. It prints
+- `environment reset` rotates both the environment ID and credential, and
+  revokes every paired device and personal access token. It prints
   only non-secret reset metadata; run the explicit credential show command to
   bootstrap a client afterward.
 - `environment offer` discovers the active local Station through its

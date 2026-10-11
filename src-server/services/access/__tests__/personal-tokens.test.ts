@@ -10,7 +10,10 @@ import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { afterEach, describe, expect, test } from 'vitest';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
-import { PERSONAL_TOKENS_FILE } from '../personal-token-store.js';
+import {
+  PERSONAL_TOKENS_FILE,
+  PersonalTokenUnavailableError,
+} from '../personal-token-store.js';
 
 const STANDARD = 'orchestration:read orchestration:operate terminal:operate';
 const homes: string[] = [];
@@ -192,6 +195,92 @@ describe('personal access tokens', () => {
       expect((await restart()).verifyCredential(minted.secret)).toBe(true);
       chmodSync(join(homeDir, 'security', PERSONAL_TOKENS_FILE), 0o644);
       expect((await restart()).verifyCredential(minted.secret)).toBe(false);
+    },
+  );
+
+  test('an environment reset revokes every token', async () => {
+    const { security } = await station();
+    const casey = pairCasey(security.devicePairing);
+    const minted = security.devicePairing.mintPersonalToken({
+      name: 'script',
+      binding: casey.device.principalBinding!,
+      ownerPrincipalId: 'human:tailscale-serve:casey',
+      scope: 'orchestration:read',
+      expiresAt: null,
+    });
+    await security.resetEnvironment();
+    expect(security.verifyCredential(minted.secret)).toBe(false);
+  });
+
+  test('a revocation holds for another Station process on the home, which never writes it back', async () => {
+    const { homeDir, security, advance, now } = await station();
+    const casey = pairCasey(security.devicePairing);
+    const minted = security.devicePairing.mintPersonalToken({
+      name: 'script',
+      binding: casey.device.principalBinding!,
+      ownerPrincipalId: 'human:tailscale-serve:casey',
+      scope: 'orchestration:read',
+      expiresAt: null,
+    });
+    const other = new EnvironmentSecurityService({ homeDir, now });
+    await other.initialize();
+    expect(other.verifyCredential(minted.secret)).toBe(true);
+
+    expect(
+      security.devicePairing.revokePersonalToken(
+        minted.token.id,
+        'human:tailscale-serve:casey',
+      ),
+    ).toBe(true);
+    // Long enough that a lookup would record a last use.
+    advance(48 * 60 * 60 * 1000);
+    expect(other.verifyCredential(minted.secret)).toBe(false);
+    const fresh = new EnvironmentSecurityService({ homeDir, now });
+    await fresh.initialize();
+    expect(fresh.verifyCredential(minted.secret)).toBe(false);
+  });
+
+  test('revoked and expired tokens leave no record behind', async () => {
+    const { homeDir, security, advance, now } = await station();
+    const casey = pairCasey(security.devicePairing);
+    const mint = (expiresAt: number | null) =>
+      security.devicePairing.mintPersonalToken({
+        name: 'script',
+        binding: casey.device.principalBinding!,
+        ownerPrincipalId: 'human:tailscale-serve:casey',
+        scope: 'orchestration:read',
+        expiresAt,
+      });
+    for (let cycle = 0; cycle < 30; cycle += 1)
+      security.devicePairing.revokePersonalToken(mint(null).token.id);
+    mint(now() + 1_000);
+    advance(2_000);
+    const kept = mint(null);
+    const onDisk = JSON.parse(
+      readFileSync(join(homeDir, 'security', PERSONAL_TOKENS_FILE), 'utf8'),
+    ) as { tokens: { id: string }[] };
+    expect(onDisk.tokens.map((token) => token.id)).toEqual([kept.token.id]);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'a token file Station cannot trust is never written over',
+    async () => {
+      const { homeDir, security } = await station();
+      const casey = pairCasey(security.devicePairing);
+      const mint = () =>
+        security.devicePairing.mintPersonalToken({
+          name: 'script',
+          binding: casey.device.principalBinding!,
+          ownerPrincipalId: 'human:tailscale-serve:casey',
+          scope: 'orchestration:read',
+          expiresAt: null,
+        });
+      const first = mint();
+      const path = join(homeDir, 'security', PERSONAL_TOKENS_FILE);
+      chmodSync(path, 0o644);
+      expect(security.verifyCredential(first.secret)).toBe(false);
+      expect(mint).toThrow(PersonalTokenUnavailableError);
+      expect(readFileSync(path, 'utf8')).toContain(first.token.id);
     },
   );
 });

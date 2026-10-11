@@ -2971,6 +2971,9 @@ export class DevicePairingService {
     // restart. Offers are in-memory only, so they are cleared after the
     // durable write succeeds.
     this.#persistRegistry(nextRegistry);
+    // #3557: a reset revokes personal access tokens too; they are
+    // credentials of this environment's people like any paired device.
+    this.#tokens.clear();
     this.#dropStaleNativePush(new Set());
     this.#environmentId = environmentId;
     this.#registry = nextRegistry;
@@ -3069,6 +3072,11 @@ export class DevicePairingService {
   }): MintedPersonalAccessToken {
     const name = input.name.trim();
     const now = this.#now();
+    // v1 tokens are for people tied by a Tailscale identity. An account's
+    // devices act only alongside its account session, which a script does
+    // not hold, so a token tied to an account would never work.
+    if ('kind' in input.binding && input.binding.kind === 'account')
+      throw new DevicePairingError('invalid_request');
     if (
       name.length === 0 ||
       name.length > 64 ||
@@ -3082,12 +3090,7 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     const active = this.#tokens
       .list()
-      .filter(
-        (token) =>
-          token.ownerPrincipalId === input.ownerPrincipalId &&
-          token.revokedAt === null &&
-          (token.expiresAt === null || token.expiresAt > now),
-      );
+      .filter((token) => token.ownerPrincipalId === input.ownerPrincipalId);
     if (active.length >= MAX_PERSONAL_TOKENS_PER_PERSON)
       throw new DevicePairingError('identity_credential_quota_reached');
     const { token, secret } = this.#tokens.mint({ ...input, name });
@@ -3096,15 +3099,12 @@ export class DevicePairingService {
 
   /** #3557: a person's tokens (or everyone's), newest first; never secrets. */
   listPersonalTokens(ownerPrincipalId?: string): PersonalAccessToken[] {
-    const now = this.#now();
     return this.#tokens
       .list()
       .filter(
         (token) =>
-          token.revokedAt === null &&
-          (token.expiresAt === null || token.expiresAt > now) &&
-          (ownerPrincipalId === undefined ||
-            token.ownerPrincipalId === ownerPrincipalId),
+          ownerPrincipalId === undefined ||
+          token.ownerPrincipalId === ownerPrincipalId,
       )
       .sort((left, right) => right.createdAt - left.createdAt)
       .map((token) => this.#tokenView(token));

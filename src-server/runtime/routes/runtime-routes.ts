@@ -411,6 +411,7 @@ import {
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
+import { PersonalTokenUnavailableError } from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -9185,6 +9186,10 @@ export function configureDevicePairingHostRoutes(
     }
     for (const entry of groups.assignments())
       personFor(entry.principalId, entry.principalId);
+    // A token outlives its person's devices; its owner stays listed so the
+    // operator can still see and revoke it.
+    for (const token of pairing.listPersonalTokens())
+      personFor(token.ownerPrincipalId, token.ownerPrincipalId);
     return [...people.values()].sort((left, right) =>
       left.displayName.localeCompare(right.displayName),
     );
@@ -9320,19 +9325,14 @@ export function configureDevicePairingHostRoutes(
         201,
       );
     } catch (error) {
-      return c.json(
-        {
-          error:
-            error instanceof DevicePairingError &&
-            error.code === 'identity_credential_quota_reached'
-              ? 'token_limit_reached'
-              : 'invalid_request',
-        },
+      if (
         error instanceof DevicePairingError &&
-          error.code === 'identity_credential_quota_reached'
-          ? 409
-          : 400,
-      );
+        error.code === 'identity_credential_quota_reached'
+      )
+        return c.json({ error: 'token_limit_reached' }, 409);
+      if (error instanceof PersonalTokenUnavailableError)
+        return c.json({ error: 'tokens_unavailable' }, 503);
+      return c.json({ error: 'invalid_request' }, 400);
     }
   });
   app.delete('/api/pairing/people/:principalId/tokens/:tokenId', (c) => {

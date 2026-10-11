@@ -58,7 +58,10 @@ import {
   readEnvironmentSecurityRecord,
   readExistingEnvironmentSecurityRecord,
 } from '@kontourai/station-shared/environment-security-record';
-import { isPairingApprovalLeaf } from '../../security/pairing-route-scopes.js';
+import {
+  isPairingApprovalLeaf,
+  matchPairingScopeRule,
+} from '../../security/pairing-route-scopes.js';
 
 export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/environment-security-record';
 
@@ -584,6 +587,12 @@ export class EnvironmentSecurityService {
     ) {
       return false;
     }
+    if (
+      matchPairingScopeRule(request.method, request.path)?.personalTokens ===
+        'refused' &&
+      this.identifyDevice(candidate)?.credentialKind === 'personal-token'
+    )
+      return false;
     if (request.path.startsWith('/api/pairing')) {
       // Native desktop credentials prove home possession at local-grant mint
       // time. They are the desktop operator's authority for this family,

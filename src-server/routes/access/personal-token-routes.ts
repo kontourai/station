@@ -18,6 +18,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
+import { PersonalTokenUnavailableError } from '../../services/access/personal-token-store.js';
 import {
   DevicePairingError,
   type DevicePairingService,
@@ -134,6 +135,8 @@ export function createPersonalTokenRoutes(
         error.code === 'identity_credential_quota_reached'
       )
         return c.json({ error: { code: 'token_limit_reached' } }, 409);
+      if (error instanceof PersonalTokenUnavailableError)
+        return c.json({ error: { code: 'tokens_unavailable' } }, 503);
       return c.json({ error: { code: 'invalid_request' } }, 400);
     }
   });

@@ -1321,6 +1321,19 @@ describe('#3557 personal access tokens at the HTTP boundary', () => {
       ),
     ).toBe(true);
 
+    // Never a Project's member administration, whatever its scope.
+    const administer = await harness.request(
+      '/api/projects/demo/access/invitations',
+      bearer(secret, {}),
+    );
+    expect([401, 403]).toContain(administer.status);
+    expect(
+      harness.security.authorizeCredential(casey.credential, {
+        method: 'POST',
+        path: '/api/projects/demo/access/invitations',
+      }),
+    ).toBe(true);
+
     const listed = await harness.request(
       '/api/access/tokens',
       bearer(casey.credential),
@@ -1398,6 +1411,27 @@ describe('#3557 personal access tokens at the HTTP boundary', () => {
     expect(harness.security.identifyDevice(secret)?.principalBinding).toEqual(
       casey.device.principalBinding,
     );
+
+    // The token outlives Casey's last device; Casey stays listed with it.
+    const operator = { Authorization: `Bearer ${harness.operatorCredential}` };
+    expect(
+      (
+        await harness.request(`/api/pairing/devices/${casey.device.id}`, {
+          method: 'DELETE',
+          headers: operator,
+        })
+      ).status,
+    ).toBe(200);
+    expect(harness.security.verifyCredential(secret)).toBe(true);
+    const people = (await (
+      await harness.request('/api/pairing/people', { headers: operator })
+    ).json()) as {
+      people: { principalId: string; tokens: { name: string }[] }[];
+    };
+    expect(
+      people.people.find((person) => person.principalId === casey.principalId)
+        ?.tokens,
+    ).toMatchObject([{ name: 'Ops' }]);
 
     const mint = await harness.request(
       '/.well-known/station/v1/pairing/local-grant',
