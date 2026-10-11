@@ -11,7 +11,11 @@ import {
 export function resolveProductTelemetryEnabled(
   config: AppConfig,
   environment: NodeJS.ProcessEnv,
-) {
+): {
+  enabled: boolean;
+  source: 'config' | 'env' | 'default';
+  notices: ReturnType<typeof resolveSettingEnvironment>['notices'];
+} {
   if (config.telemetryEnabled !== undefined)
     return {
       enabled: config.telemetryEnabled,
@@ -34,7 +38,10 @@ export function resolveProductTelemetryEnabled(
 
 export function resolveProductTelemetryEnvironment(
   environment: NodeJS.ProcessEnv,
-) {
+): {
+  endpoint: ReturnType<typeof resolveEnvironmentValue<string>>;
+  key: ReturnType<typeof resolveEnvironmentValue<string>>;
+} {
   return {
     endpoint: resolveEnvironmentValue(
       'STATION_PRODUCT_TELEMETRY_ENDPOINT',
@@ -66,7 +73,12 @@ function resolveOtelTelemetryEnvironment(environment: NodeJS.ProcessEnv) {
 export function resolveOtelTelemetryConfiguration(
   config: Pick<AppConfig, 'otelTelemetryEndpoint' | 'otelTelemetryKeyRef'>,
   environment: NodeJS.ProcessEnv,
-) {
+): {
+  endpoint: string | undefined;
+  keyRef: string | undefined;
+  key: string | undefined;
+  notices: ReturnType<typeof resolveEnvironmentValue<string>>['notices'];
+} {
   const fromEnvironment = resolveOtelTelemetryEnvironment(environment);
   const savedEndpoint = config.otelTelemetryEndpoint?.trim();
   const keyRef = config.otelTelemetryKeyRef?.trim() || undefined;
