@@ -193,6 +193,14 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
     };
   }
 
+  async isStartupWindowAdmitted(): Promise<NativeCommandResult<never>> {
+    return {
+      status: 'unsupported',
+      command: 'startup-window-admitted',
+      reason: 'The web adapter has no native startup readiness.',
+    };
+  }
+
   async commitRendererMount(): Promise<NativeCommandResult<never>> {
     return {
       status: 'unsupported',
