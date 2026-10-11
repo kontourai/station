@@ -4305,15 +4305,41 @@ on error or lost authority. `fetchUsageRollup(query, options?)` forwards capture
 request options, while the React-free client fetcher preserves HTTP refusal
 status as `StationHttpError`. These client controls confer no access.
 
-### Canonical usage-export follow-up
+### Canonical usage export
 
 The authored [canonical usage-export API](./api.md#export-retained-canonical-usage-observations)
 has a separate request/page type in `@kontourai/station-contracts/usage-export`.
-This SDK does not yet provide its fetcher, validator, scoped query key or
-sync/checkpoint consumer. `useUsageRollupQuery` retains its interactive limits;
-it must not be presented as a complete long-term export. Current export source
-and authentication controls remain unexecuted; #3459/#3460 retain grant,
-destination credential custody, deletion, restore and durable-index acceptance.
+The React-free client entry exports `fetchUsageExport(apiBase, query, options)`.
+Supply a captured `options.requestScope` and `query.expectedStationId` alongside
+the requested `from`, `to`, `scope`, and optional `pageSize`. The transport must
+have matching current authority; the client provides no ambient host fallback.
+The [client](../../packages/sdk/src/client/usage-export.ts) validates the schema,
+receipt shapes, selected source/window/scope, committed order and page size, with
+a 2 MiB response ceiling. It preserves reported currencies, estimates and their
+pricing snapshots, repeated receipt restatements, missing measurements and
+unknown coverage without folding a page into a total.
+
+For a subsequent page, retain `nextCursor` plus a `query.snapshot` containing
+the previous page's `streamEpoch`, `highWater`, and last observation's
+`globalSequence` as `afterGlobalSequence`. A cursor requires that snapshot;
+changed epoch/watermark or non-advancing observations are refused. These values
+are pagination data, never a credential or authorization grant.
+
+`useUsageExportQuery(requestScope, query, config?)` is available from the lazy
+`@kontourai/station-sdk/usage-export-query` entry. Its key partitions API base,
+authority, expected Station, dates, scope, cursor, page size and snapshot.
+Missing scope disables dispatch; the hook withholds cached data during
+revalidation and on errors, never supplies the preceding key as placeholder
+data, and pauses polling on failure. Its explicit `refetch()` rejects on a
+refusal instead of returning retained rows as a successful answer. Hosts must
+change the captured scope when current authority changes.
+
+The export source, SDK and authentication controls remain unexecuted.
+`useUsageRollupQuery` retains its interactive limits and is not a complete
+long-term export. No sync/checkpoint consumer is delivered by this page reader;
+#3459/#3460 retain grant, destination credential custody, deletion, restore and
+durable-index acceptance. These SDK source exports require a published release
+containing them.
 
 ### Station peer enrollment
 
