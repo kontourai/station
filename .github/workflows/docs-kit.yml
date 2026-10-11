@@ -34,9 +34,9 @@ concurrency:
 jobs:
   gate:
     name: Docs kit gate
-    # kontourai/.github main at "feat(docs-gate): repository and ref inputs
-    # for pull_request_target callers (#52)", reviewed in actionlint-gate.mjs.
-    uses: kontourai/.github/.github/workflows/docs-gate.yml@091ffabdaf151f0d873d40ac03a85855deee2a55
+    # kontourai/.github main at "fix(docs-gate): run docs-kit outside the
+    # checkout with npm config isolated (#55)", reviewed in actionlint-gate.mjs.
+    uses: kontourai/.github/.github/workflows/docs-gate.yml@246be3494a5cfde4b76fb2e3dc0a84db44218893
     with:
       # The docs-kit commit pages.yml publishes the bundle with (v0.4.0).
       docs-kit-ref: 6945efbe0309bc46ce4efafe0fccaff9b3302603

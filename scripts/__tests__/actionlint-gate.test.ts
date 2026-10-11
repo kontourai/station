@@ -4632,7 +4632,7 @@ describe('the org docs gate runs on pull requests through one exact reviewed cal
   // Literals pinned independently of the gate's constants, so the gate and
   // this suite cannot drift together.
   const REVIEWED_CALLEE =
-    'kontourai/.github/.github/workflows/docs-gate.yml@091ffabdaf151f0d873d40ac03a85855deee2a55';
+    'kontourai/.github/.github/workflows/docs-gate.yml@246be3494a5cfde4b76fb2e3dc0a84db44218893';
   const HEAD_REPOSITORY =
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}";
@@ -4707,10 +4707,10 @@ describe('the org docs gate runs on pull requests through one exact reviewed cal
       [CHECKOUT, HOSTED],
     ],
     [
-      'calls an unreviewed revision of the callee',
+      'calls the superseded revision that ran npx inside the checkout',
       (job: GateJob) => {
         job.uses =
-          'kontourai/.github/.github/workflows/docs-gate.yml@f9ed64bc32b905451ed81d458d770ff09da2ed96';
+          'kontourai/.github/.github/workflows/docs-gate.yml@091ffabdaf151f0d873d40ac03a85855deee2a55';
       },
       [CHECKOUT, HOSTED, UNREVIEWED],
     ],

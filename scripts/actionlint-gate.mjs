@@ -281,10 +281,10 @@ export const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
 export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /** The reviewed revision of the org's docs-kit gate reusable workflow:
- * kontourai/.github 091ffab, "feat(docs-gate): repository and ref inputs for
- * pull_request_target callers (#52)", which also carries #50's
- * `package-manager-cache: false`. Reviewed at that SHA for a
- * pull_request_target and merge_group caller:
+ * kontourai/.github 246be34, "fix(docs-gate): run docs-kit outside the
+ * checkout with npm config isolated (#55)", on top of #52's repository and
+ * ref inputs and #50's `package-manager-cache: false`. Reviewed at that SHA
+ * for a pull_request_target and merge_group caller:
  * - one hosted job (ubuntu-latest, 10-minute timeout) with
  *   `permissions: contents: read`; it declares no secrets and no cache-mode;
  * - actions/checkout@df4cb1c (v6.0.3) of `inputs.repository || github.repository`
@@ -295,15 +295,21 @@ export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflow
  * - one run step, `npx -y github:kontourai/docs-kit#<docs-kit-ref> check`, plus
  *   `--base` on pull requests and merge-queue entries. The inputs reach the
  *   shell only through `env`, never by expression interpolation.
- * docs-kit reads the checked-out files and does not execute them, but npx runs
- * in the candidate checkout, so npm reads the candidate's `.npmrc`: as in
- * every other base-controlled job, candidate code can run on this runner. The
- * controls are the same ones: a read-only contents token that is not
+ * The run step does not execute the candidate: it `cd`s to `$RUNNER_TEMP`,
+ * which is not inside the checkout, so the checkout is not on npm's
+ * project-config lookup path from the working directory; it points
+ * `NPM_CONFIG_USERCONFIG` and `NPM_CONFIG_GLOBALCONFIG` at fresh empty files,
+ * and passes the checkout only as `--root "$GITHUB_WORKSPACE"`. So no
+ * candidate `.npmrc` or package.json reaches npm (the 091ffab revision ran npx
+ * inside the checkout, where a pull request's `.npmrc` steered it), and
+ * docs-kit, pinned by `docs-kit-ref`, only reads the checked-out files. The
+ * remaining controls still apply: a read-only contents token that is not
  * persisted, no secrets, a GitHub-hosted runner, and GitHub's read-only cache
  * token for pull_request_target (see UNTRUSTED_ACTION_CACHE_POLICY).
- * A bump re-opens this review. */
+ * The callee's own `docs-kit-ref` default moved to v0.5.0 here; docs-kit.yml
+ * passes its pin explicitly. A bump re-opens this review. */
 export const REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA =
-  '091ffabdaf151f0d873d40ac03a85855deee2a55';
+  '246be3494a5cfde4b76fb2e3dc0a84db44218893';
 export const DOCS_GATE_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/docs-gate.yml@${REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA}`;
 const DOCS_KIT_WORKFLOW = '.github/workflows/docs-kit.yml';
 const DOCS_KIT_GATE_JOB = 'gate';
@@ -746,7 +752,7 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
  * Remote reusable workflows a pull-request or merge-queue job may call. The
  * gate cannot read them offline, so each is reviewed at its pinned SHA:
  * kontourai/.github secret-scan.yml@28deabb uses only actions/checkout, the
- * physical-host-capacity action and run steps (no cache). docs-gate.yml@091ffab
+ * physical-host-capacity action and run steps (no cache). docs-gate.yml@246be34
  * uses checkout and setup-node with package-manager-cache: false and no
  * `cache` (reviewed above REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA).
  */
