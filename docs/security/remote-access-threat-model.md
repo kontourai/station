@@ -527,8 +527,10 @@ revoked or expired; dead records are dropped, and each person holds at most
 20 active tokens. A token outlives its person's devices, so the people list
 keeps showing its owner for the operator to revoke. An unsafe (not
 owner-only, or a link) or unreadable token file authenticates no one, and
-Station refuses to write over it (`503 tokens_unavailable`). An environment
-reset revokes every token.
+Station refuses to mint or revoke over it (`503 tokens_unavailable`). The
+20-token limit is decided under the lock, so it holds across processes. An
+environment reset revokes every token first, and fails without changing
+anything if it cannot.
 
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read

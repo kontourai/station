@@ -9315,7 +9315,7 @@ export function configureDevicePairingHostRoutes(
     if (!binding) return c.json({ error: 'person_not_found' }, 404);
     try {
       return c.json(
-        pairing.mintPersonalToken({
+        await pairing.mintPersonalToken({
           name: body.name,
           binding,
           ownerPrincipalId: principalId,
@@ -9330,24 +9330,35 @@ export function configureDevicePairingHostRoutes(
         error.code === 'identity_credential_quota_reached'
       )
         return c.json({ error: 'token_limit_reached' }, 409);
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'account_bound_person'
+      )
+        return c.json({ error: 'account_bound_person' }, 400);
       if (error instanceof PersonalTokenUnavailableError)
         return c.json({ error: 'tokens_unavailable' }, 503);
       return c.json({ error: 'invalid_request' }, 400);
     }
   });
-  app.delete('/api/pairing/people/:principalId/tokens/:tokenId', (c) => {
+  app.delete('/api/pairing/people/:principalId/tokens/:tokenId', async (c) => {
     if (!currentOperator(c, c.req.raw))
       return c.json({ error: 'authentication_required' }, 401);
     observeOperatorCredentialUse(
       c,
       'DELETE /api/pairing/people/:principalId/tokens/:tokenId',
     );
-    return pairing.revokePersonalToken(
-      c.req.param('tokenId'),
-      c.req.param('principalId'),
-    )
-      ? c.json({ revoked: true })
-      : c.json({ error: 'not_found' }, 404);
+    try {
+      return (await pairing.revokePersonalToken(
+        c.req.param('tokenId'),
+        c.req.param('principalId'),
+      ))
+        ? c.json({ revoked: true })
+        : c.json({ error: 'not_found' }, 404);
+    } catch (error) {
+      if (error instanceof PersonalTokenUnavailableError)
+        return c.json({ error: 'tokens_unavailable' }, 503);
+      throw error;
+    }
   });
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {

@@ -337,6 +337,9 @@ export class EnvironmentSecurityService {
         now: this.#now,
         capScope: this.#capScope,
       });
+      // #3557: personal access tokens go first. A reset that cannot revoke
+      // them fails before it changes anything, never half done.
+      await this.#devicePairingService.clearPersonalTokens();
       const reset = createRecord();
       const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
       this.#ensureRevisionEvidenceKey(reset.environmentId);

@@ -73,7 +73,7 @@ describe('personal access tokens', () => {
   test('a token authenticates as its person, with only its own scope, stored only as a hash', async () => {
     const { homeDir, security } = await station();
     const casey = pairCasey(security.devicePairing);
-    const minted = security.devicePairing.mintPersonalToken({
+    const minted = await security.devicePairing.mintPersonalToken({
       name: 'CI script',
       binding: casey.device.principalBinding!,
       ownerPrincipalId: 'human:tailscale-serve:casey',
@@ -123,22 +123,22 @@ describe('personal access tokens', () => {
         scope: 'orchestration:read orchestration:operate',
         expiresAt,
       });
-    const expiring = mint(now() + 60_000);
-    const revoking = mint(null);
+    const expiring = await mint(now() + 60_000);
+    const revoking = await mint(null);
     expect(security.verifyCredential(expiring.secret)).toBe(true);
     advance(60_000);
     expect(security.verifyCredential(expiring.secret)).toBe(false);
 
     // Someone else cannot revoke it by guessing the id.
     expect(
-      security.devicePairing.revokePersonalToken(
+      await security.devicePairing.revokePersonalToken(
         revoking.token.id,
         'human:tailscale-serve:dana',
       ),
     ).toBe(false);
     expect(security.verifyCredential(revoking.secret)).toBe(true);
     expect(
-      security.devicePairing.revokePersonalToken(
+      await security.devicePairing.revokePersonalToken(
         revoking.token.id,
         'human:tailscale-serve:casey',
       ),
@@ -168,11 +168,11 @@ describe('personal access tokens', () => {
       'orchestration:read coding:exec',
       'orchestration:read access:manage',
     ])
-      expect(mint(scope), scope).toThrow();
-    expect(mint('orchestration:read', now() - 1)).toThrow();
-    expect(
-      mint('orchestration:read', now() + 400 * 24 * 60 * 60 * 1000),
-    ).toThrow();
+      await expect(mint(scope)(), scope).rejects.toThrow();
+    await expect(mint('orchestration:read', now() - 1)()).rejects.toThrow();
+    await expect(
+      mint('orchestration:read', now() + 400 * 24 * 60 * 60 * 1000)(),
+    ).rejects.toThrow();
   });
 
   test.skipIf(process.platform === 'win32')(
@@ -180,7 +180,7 @@ describe('personal access tokens', () => {
     async () => {
       const { homeDir, security } = await station();
       const casey = pairCasey(security.devicePairing);
-      const minted = security.devicePairing.mintPersonalToken({
+      const minted = await security.devicePairing.mintPersonalToken({
         name: 'script',
         binding: casey.device.principalBinding!,
         ownerPrincipalId: 'human:tailscale-serve:casey',
@@ -201,7 +201,7 @@ describe('personal access tokens', () => {
   test('an environment reset revokes every token', async () => {
     const { security } = await station();
     const casey = pairCasey(security.devicePairing);
-    const minted = security.devicePairing.mintPersonalToken({
+    const minted = await security.devicePairing.mintPersonalToken({
       name: 'script',
       binding: casey.device.principalBinding!,
       ownerPrincipalId: 'human:tailscale-serve:casey',
@@ -215,7 +215,7 @@ describe('personal access tokens', () => {
   test('a revocation holds for another Station process on the home, which never writes it back', async () => {
     const { homeDir, security, advance, now } = await station();
     const casey = pairCasey(security.devicePairing);
-    const minted = security.devicePairing.mintPersonalToken({
+    const minted = await security.devicePairing.mintPersonalToken({
       name: 'script',
       binding: casey.device.principalBinding!,
       ownerPrincipalId: 'human:tailscale-serve:casey',
@@ -229,7 +229,7 @@ describe('personal access tokens', () => {
     expect(other.verifyCredential(minted.secret)).toBe(true);
 
     expect(
-      security.devicePairing.revokePersonalToken(
+      await security.devicePairing.revokePersonalToken(
         minted.token.id,
         'human:tailscale-serve:casey',
       ),
@@ -255,10 +255,12 @@ describe('personal access tokens', () => {
         expiresAt,
       });
     for (let cycle = 0; cycle < 30; cycle += 1)
-      security.devicePairing.revokePersonalToken(mint(null).token.id);
-    mint(now() + 1_000);
+      await security.devicePairing.revokePersonalToken(
+        (await mint(null)).token.id,
+      );
+    await mint(now() + 1_000);
     advance(2_000);
-    const kept = mint(null);
+    const kept = await mint(null);
     const onDisk = JSON.parse(
       readFileSync(join(homeDir, 'security', PERSONAL_TOKENS_FILE), 'utf8'),
     ) as { tokens: { id: string }[] };
@@ -278,12 +280,41 @@ describe('personal access tokens', () => {
           scope: 'orchestration:read',
           expiresAt: null,
         });
-      const first = mint();
+      const first = await mint();
       const path = join(homeDir, 'security', PERSONAL_TOKENS_FILE);
       chmodSync(path, 0o644);
       expect(security.verifyCredential(first.secret)).toBe(false);
-      expect(mint).toThrow(PersonalTokenUnavailableError);
+      await expect(mint()).rejects.toThrow(PersonalTokenUnavailableError);
+      await expect(
+        security.devicePairing.revokePersonalToken(first.token.id),
+      ).rejects.toThrow(PersonalTokenUnavailableError);
       expect(readFileSync(path, 'utf8')).toContain(first.token.id);
     },
   );
+
+  test('a person holds at most 20 active tokens, and only a Tailscale-tied person holds any', async () => {
+    const { security } = await station();
+    const casey = pairCasey(security.devicePairing);
+    const mint = () =>
+      security.devicePairing.mintPersonalToken({
+        name: 'script',
+        binding: casey.device.principalBinding!,
+        ownerPrincipalId: 'human:tailscale-serve:casey',
+        scope: 'orchestration:read',
+        expiresAt: null,
+      });
+    for (let count = 0; count < 20; count += 1) await mint();
+    await expect(mint()).rejects.toMatchObject({
+      code: 'identity_credential_quota_reached',
+    });
+    await expect(
+      security.devicePairing.mintPersonalToken({
+        name: 'script',
+        binding: { kind: 'account', issuer: 'urn:x', subject: 'dana' },
+        ownerPrincipalId: 'account:urn:x:dana',
+        scope: 'orchestration:read',
+        expiresAt: null,
+      } as never),
+    ).rejects.toMatchObject({ code: 'account_bound_person' });
+  });
 });

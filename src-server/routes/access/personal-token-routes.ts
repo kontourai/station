@@ -120,7 +120,7 @@ export function createPersonalTokenRoutes(
       return c.json({ error: { code: 'scope_exceeds_access' } }, 400);
     try {
       return c.json(
-        pairing.mintPersonalToken({
+        await pairing.mintPersonalToken({
           name: body.name,
           binding: self.device.principalBinding,
           ownerPrincipalId: self.ownerPrincipalId,
@@ -135,21 +135,32 @@ export function createPersonalTokenRoutes(
         error.code === 'identity_credential_quota_reached'
       )
         return c.json({ error: { code: 'token_limit_reached' } }, 409);
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'account_bound_person'
+      )
+        return c.json({ error: { code: 'account_bound_person' } }, 400);
       if (error instanceof PersonalTokenUnavailableError)
         return c.json({ error: { code: 'tokens_unavailable' } }, 503);
       return c.json({ error: { code: 'invalid_request' } }, 400);
     }
   });
 
-  app.delete('/:tokenId', (c) => {
+  app.delete('/:tokenId', async (c) => {
     const self = caller(c);
     if (self instanceof Response) return self;
-    return pairing.revokePersonalToken(
-      c.req.param('tokenId'),
-      self.ownerPrincipalId,
-    )
-      ? c.json({ revoked: true })
-      : c.json({ error: { code: 'not_found' } }, 404);
+    try {
+      return (await pairing.revokePersonalToken(
+        c.req.param('tokenId'),
+        self.ownerPrincipalId,
+      ))
+        ? c.json({ revoked: true })
+        : c.json({ error: { code: 'not_found' } }, 404);
+    } catch (error) {
+      if (error instanceof PersonalTokenUnavailableError)
+        return c.json({ error: { code: 'tokens_unavailable' } }, 503);
+      throw error;
+    }
   });
 
   return app;

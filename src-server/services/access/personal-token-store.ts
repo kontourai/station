@@ -33,7 +33,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import type { DevicePrincipalBinding } from '@kontourai/station-contracts/environment-security';
-import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 
 export const PERSONAL_TOKENS_FILE = 'personal-tokens.json';
 const RECORD_VERSION = 1;
@@ -126,14 +126,26 @@ export class PersonalTokenStore {
     );
   }
 
-  /** Records a new token and returns its secret, the only time it exists. */
-  mint(input: {
-    name: string;
-    ownerPrincipalId: string;
-    binding: DevicePrincipalBinding;
-    scope: string;
-    expiresAt: number | null;
-  }): { token: StoredPersonalToken; secret: string } {
+  /** Whether the file can be trusted (a mint or revoke would be refused). */
+  usable(): boolean {
+    return this.#current().usable;
+  }
+
+  /**
+   * Records a new token and returns its secret, the only time it exists;
+   * `undefined` when its owner already holds `maxPerOwner` active tokens
+   * (decided under the lock, so two processes cannot both pass it).
+   */
+  async mint(
+    input: {
+      name: string;
+      ownerPrincipalId: string;
+      binding: DevicePrincipalBinding;
+      scope: string;
+      expiresAt: number | null;
+    },
+    maxPerOwner: number,
+  ): Promise<{ token: StoredPersonalToken; secret: string } | undefined> {
     const secret = `stp_${randomBytes(32).toString('base64url')}`;
     const token: StoredPersonalToken = {
       id: randomUUID(),
@@ -147,14 +159,21 @@ export class PersonalTokenStore {
       lastUsedAt: null,
       revokedAt: null,
     };
-    this.#mutate((tokens) => [...tokens, token]);
-    return { token: structuredClone(token), secret };
+    let full = false;
+    await this.#mutate((tokens) => {
+      full =
+        this.#active(tokens).filter(
+          (held) => held.ownerPrincipalId === input.ownerPrincipalId,
+        ).length >= maxPerOwner;
+      return full ? tokens : [...tokens, token];
+    });
+    return full ? undefined : { token: structuredClone(token), secret };
   }
 
   /** Revokes one token; `false` when it is unknown or no longer active. */
-  revoke(id: string): boolean {
+  async revoke(id: string): Promise<boolean> {
     let found = false;
-    this.#mutate((tokens) =>
+    await this.#mutate((tokens) =>
       tokens.filter((token) => {
         if (token.id !== id) return true;
         found = true;
@@ -168,20 +187,24 @@ export class PersonalTokenStore {
    * Revokes every token (an environment reset), including whatever an
    * untrusted file held: a reset discards it rather than refusing.
    */
-  clear(): void {
-    if (!existsSync(this.#path)) return;
-    const release = acquireFileMutationLock(`${this.#path}.mutation`);
+  async clear(): Promise<void> {
+    const release = await acquireFileMutationLockAsync(
+      `${this.#path}.mutation`,
+    );
     try {
-      this.#write([]);
+      if (existsSync(this.#path)) this.#write([]);
     } finally {
-      release();
+      await release();
       this.#cache = undefined;
     }
   }
 
-  /** Bookkeeping on use; touches only that token's record. */
-  touch(id: string, at: number): void {
-    this.#mutate((tokens) =>
+  /**
+   * Bookkeeping on use; touches only that token's record. Never awaited on
+   * the request path: a contended lock must not hold up authentication.
+   */
+  async touch(id: string, at: number): Promise<void> {
+    await this.#mutate((tokens) =>
       tokens.map((token) =>
         token.id === id ? { ...token, lastUsedAt: at } : token,
       ),
@@ -240,16 +263,18 @@ export class PersonalTokenStore {
    * Applies `update` to a fresh read under the cross-process lock. Refuses
    * to write over a file it cannot trust, which would discard its records.
    */
-  #mutate(
+  async #mutate(
     update: (tokens: StoredPersonalToken[]) => StoredPersonalToken[],
-  ): void {
-    const release = acquireFileMutationLock(`${this.#path}.mutation`);
+  ): Promise<void> {
+    const release = await acquireFileMutationLockAsync(
+      `${this.#path}.mutation`,
+    );
     try {
       const loaded = this.#load();
       if (!loaded.usable) throw new PersonalTokenUnavailableError();
       this.#write(this.#active(update(loaded.tokens)));
     } finally {
-      release();
+      await release();
       this.#cache = undefined;
     }
   }

@@ -1401,6 +1401,29 @@ describe('#3557 personal access tokens at the HTTP boundary', () => {
     }
   });
 
+  test('a read-only person revokes a token the operator made for them', async () => {
+    const harness = await createHarness();
+    const erin = await pairPerson(harness, 'erin', 'orchestration:read');
+    const minted = await harness.request(
+      `/api/pairing/people/${encodeURIComponent(erin.principalId)}/tokens`,
+      bearer(harness.operatorCredential, {
+        name: 'Ops',
+        scope: 'orchestration:read',
+      }),
+    );
+    expect(minted.status).toBe(201);
+    const { secret, token } = (await minted.json()) as {
+      secret: string;
+      token: { id: string };
+    };
+    const revoked = await harness.request(`/api/access/tokens/${token.id}`, {
+      ...bearer(erin.credential),
+      method: 'DELETE',
+    });
+    expect(revoked.status).toBe(200);
+    expect(harness.security.verifyCredential(secret)).toBe(false);
+  });
+
   test('the operator mints for a person; the desktop local grant cannot', async () => {
     const harness = await createHarness();
     const casey = await pairPerson(harness, 'casey', STANDARD);
