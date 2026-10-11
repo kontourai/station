@@ -329,7 +329,14 @@ async function attentionPairingItems(
   harness: Awaited<ReturnType<typeof createHarness>>,
   init: RequestInit,
   peer: string,
-): Promise<Array<{ viewerCanDecide: boolean; source: { requestId: string } }>> {
+): Promise<
+  Array<{
+    viewerCanDecide: boolean;
+    source: { requestId: string };
+    deviceName: string;
+    requestedScope?: string;
+  }>
+> {
   const response = await harness.request('/api/attention', init, peer);
   expect(response.status).toBe(200);
   const body = (await response.json()) as {
@@ -339,6 +346,8 @@ async function attentionPairingItems(
         kind: string;
         viewerCanDecide: boolean;
         source: { requestId: string };
+        deviceName: string;
+        requestedScope?: string;
       }>;
     };
   };
@@ -612,11 +621,7 @@ describe('a request that asks for an elevated grant', () => {
       { headers: { Authorization: `Bearer ${harness.operatorCredential}` } },
       '203.0.113.53',
     );
-    const byName = new Map(
-      (items as Array<{ deviceName: string; requestedScope?: string }>).map(
-        (item) => [item.deviceName, item],
-      ),
-    );
+    const byName = new Map(items.map((item) => [item.deviceName, item]));
     expect(byName.get('Peer Station')).not.toHaveProperty('requestedScope');
     expect(byName.get('Phone')?.requestedScope).toBe(WITH_FULL_ACCESS);
   });
