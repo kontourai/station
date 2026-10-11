@@ -36,13 +36,10 @@ const PATH_CORE = String.raw`(?:\/|\.\/)?(?:[\w@.+-]{1,255}\/){0,64}[\w@+-][\w@.
 
 /**
  * The boundaries keep a mention from starting inside a word, a URL or another
- * path, and from ending before a further path segment. The leading boundary
- * is matched (the string start or one non-path character, group 1) rather
- * than looked behind: WebKit before 16.4 rejects lookbehind, which throws
- * when this module loads there (#3399).
+ * path, and from ending before a further path segment.
  */
 const PATH_MENTION = new RegExp(
-  String.raw`(?:^|([^\w/.@~:-]))(${PATH_CORE})(?![\w/])`,
+  String.raw`(?<![\w/.@~:-])(${PATH_CORE})(?![\w/])`,
   'g',
 );
 
@@ -63,13 +60,13 @@ export function findPathMentions(
 ): { start: number; end: number }[] {
   const found: { start: number; end: number }[] = [];
   for (const match of text.matchAll(PATH_MENTION)) {
-    const token = match[2] ?? '';
+    const token = match[1] ?? '';
     // A bare `name.ext` with no directory must not be a sentence's last word
     // followed by the next one (`done.Next`) — require a lowercase-or-digit
     // extension there, which is what file extensions are.
     if (!token.includes('/') && !/\.[a-z][a-z0-9]*(?::|$)/.test(token))
       continue;
-    const start = (match.index ?? 0) + (match[1]?.length ?? 0);
+    const start = match.index ?? 0;
     found.push({ start, end: start + token.length });
   }
   return found;

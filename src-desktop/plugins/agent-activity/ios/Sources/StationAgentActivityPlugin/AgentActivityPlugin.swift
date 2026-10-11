@@ -8,9 +8,9 @@ import UIKit
 import UserNotifications
 import WebKit
 
-// The app still deploys to iOS 14/15, where ActivityKit does not exist:
-// weak-link it so the app launches there, and gate every use on iOS 18
-// (broadcast channels), the floor for this feature.
+// This package still declares iOS 13 (Package.swift), below ActivityKit's
+// 16.1, though the app itself requires 16.4: weak-link it, and gate every
+// use on iOS 18 (broadcast channels), the floor for this feature.
 @_weakLinked import ActivityKit
 
 @available(iOS 16.1, *)
