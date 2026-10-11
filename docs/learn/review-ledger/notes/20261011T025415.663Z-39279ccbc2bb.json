@@ -1,0 +1,7 @@
+{
+  "revision": "b8f4f7d5ce226176fb551184af9b5366938d10f3",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Normal main merge preserved the receiver source-authentication, commit-before-202 and retained-deduplication explanation, plus main’s typed Insights scan coverage and refresh-error semantics. Regenerated credential-free MCP topics from the merged canonical inputs; no human ledger conflict and no receiver runtime/qualifier delta. Source review only; new merged-head focused/CI/hooks/hosted evidence remains pending.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}
