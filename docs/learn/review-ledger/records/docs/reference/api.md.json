@@ -414,7 +414,17 @@
 
     "src-server/routes/system/resource-posture-routes.ts",
 
-    "packages/contracts/src/system-status.ts"
+    "packages/contracts/src/system-status.ts",
+
+    "src-server/routes/operations/usage-telemetry-disclosure.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/sdk/src/query-domains/telemetryDelivery.ts"
   ],
 
   "checks": [

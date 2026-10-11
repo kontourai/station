@@ -26,7 +26,11 @@
 
     "src-server/telemetry.ts",
 
-    "src-ui/src/hooks/usePushNotifications.ts"
+    "src-ui/src/hooks/usePushNotifications.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-server/domain/telemetry-bootstrap-config.ts"
   ],
 
   "checks": [
