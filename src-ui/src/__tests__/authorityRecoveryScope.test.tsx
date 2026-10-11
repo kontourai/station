@@ -76,7 +76,7 @@ const okResponse = (body: unknown): Response =>
 
 interface Harness {
   plan: Map<string, () => Promise<Response>>;
-  fetchLog: { url: string; method: string }[];
+  fetchLog: { url: string; method: string; body?: BodyInit | null }[];
   configSnapshots: string[];
   scopes: { apiBase: string; identityKey: string }[];
   recoveryClient: QueryClient | undefined;
@@ -100,7 +100,11 @@ let client: QueryClient;
 function installFetchDouble(active: Harness): void {
   vi.stubGlobal('fetch', async (input: unknown, init?: RequestInit) => {
     const url = String(input);
-    active.fetchLog.push({ url, method: init?.method ?? 'GET' });
+    active.fetchLog.push({
+      url,
+      method: init?.method ?? 'GET',
+      body: init?.body,
+    });
     // Longest-prefix match so per-URL plans win over shared fallbacks.
     const plans = [...active.plan.entries()].sort(
       ([a], [b]) => b.length - a.length,
@@ -358,6 +362,13 @@ describe('recovery request authority (real SDK guards)', () => {
         ).length,
       ).toBe(1),
     );
+    const acknowledgement = harness.fetchLog.find((entry) =>
+      entry.url.endsWith('/disclosure/acknowledgements'),
+    );
+    expect(JSON.parse(String(acknowledgement?.body))).toEqual({
+      acknowledgementProtocol: 2,
+      inventoryRevision: 'rev-scope',
+    });
 
     // Rotate before the receipt lands.
     await act(async () => {

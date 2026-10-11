@@ -1686,7 +1686,9 @@ Two important exceptions explain why the function name is not enforcement:
 use their own per-conversation in-process queue, not this cross-process lock;
 the [telemetry disclosure receipt](../../src-server/services/usage-telemetry-service.ts)
 is a complete value with no read-derived update, so concurrent publication is
-last-rename-wins. Atomic publication prevents torn values; it does not by itself
+last-rename-wins. Its acknowledgement must name the displayed current inventory
+revision; that consent check remains in the route/service, outside the publisher.
+Atomic publication prevents torn values; it does not by itself
 prevent a read/modify/write race or coordinate other processes' queues.
 
 [FileStorageAdapter](../../src-server/domain/file-storage-adapter.ts) and

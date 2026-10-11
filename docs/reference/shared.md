@@ -27,6 +27,19 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Product telemetry
+
+`@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and
+fingerprints the canonical event/envelope inventory and provides
+`parseProductTelemetryBatch` for strict v1 receiver validation. It rejects
+unsupported versions, stale inventory revisions, unexpected fields, invalid
+timestamps, unclassified properties and invalid build provenance. It accepts
+1–20 observations per batch; HTTP byte limits, source authentication, durable
+commit, deduplication and namespace isolation belong to the receiver.
+The contract shape and event constants live in
+`@kontourai/station-contracts/product-telemetry`. Validation alone proves no
+collection, consent, durable storage or deployed service.
+
 ## Native relay link codec
 
 `@kontourai/station-shared/native-relay-link` owns `nativeRelayLinkScheme`,

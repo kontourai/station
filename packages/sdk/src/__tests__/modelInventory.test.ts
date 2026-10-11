@@ -34,7 +34,7 @@ describe('contributed model manifest SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/connections/model-inventory',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
