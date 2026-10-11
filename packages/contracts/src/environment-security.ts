@@ -569,6 +569,57 @@ export function pairingScopePresetString(preset: PairingScopePreset): string {
 }
 
 /**
+ * What a device may ask for in its own access request
+ * (`PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH`, body `scope`): one base,
+ * Read-only or Standard, plus any of {@link DEVICE_REQUESTABLE_EXTRA_SCOPES}.
+ * The Station app and browser show these as a permission list, Standard
+ * pre-selected, and the operator sees and can untick each one before
+ * approving. A request that names no scope still receives
+ * {@link DEFAULT_GRANT_PAIRING_SCOPE}, which Station peers and older clients
+ * rely on; nothing a device asks for includes `access:manage`.
+ */
+export const DEVICE_REQUESTABLE_BASE_PRESETS = [
+  'read-only',
+  'standard',
+] as const satisfies readonly PairingScopePreset[];
+
+/**
+ * The elevated grants a device may ask for at pairing time. Each needs the
+ * operator, never an `access:approve` device or an unauthenticated approval,
+ * to keep it when approving. Every other elevated grant stays operator-added
+ * after pairing.
+ */
+export const DEVICE_REQUESTABLE_EXTRA_SCOPES = [
+  PAIRING_SCOPE_CODING_EXEC,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+] as const satisfies readonly PairingScope[];
+
+/**
+ * Whether `scope` is something a device may ask for: exactly one requestable
+ * base preset, plus only requestable extras.
+ */
+export function isDeviceRequestableScope(scope: string): boolean {
+  const tokens = parsePairingScope(scope);
+  if (!tokens) return false;
+  const extras: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
+  const base = tokens.filter((token) => !extras.includes(token));
+  return DEVICE_REQUESTABLE_BASE_PRESETS.some((preset) => {
+    const presetTokens: readonly PairingScope[] = PAIRING_SCOPE_PRESETS[preset];
+    return (
+      base.length === presetTokens.length &&
+      presetTokens.every((token) => base.includes(token))
+    );
+  });
+}
+
+/** The requestable extras `scope` carries: what only the operator may keep. */
+export function deviceRequestedExtraScopes(scope: string): PairingScope[] {
+  const tokens = parsePairingScope(scope) ?? [];
+  const extras: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
+  return tokens.filter((token) => extras.includes(token));
+}
+
+/**
  * Parses an OAuth-style space-delimited scope string into its known,
  * deduplicated tokens. `null` for anything empty, oversized, containing an
  * unknown token, or containing a duplicate — every caller treats `null` as
@@ -852,6 +903,12 @@ export interface DevicePairingAccessRequestResponse {
   expiresAt: number;
   accountCandidate?: DeviceAccountBindingCandidate;
   requireAccountBinding?: true;
+  /**
+   * The operator CLI command on the Station's host, for the approve command
+   * the requester shows (`npx @kontourai/station-cli@nightly` on a nightly).
+   * Absent from a Station that predates it; a client then shows `station`.
+   */
+  operatorCli?: string;
 }
 
 /**

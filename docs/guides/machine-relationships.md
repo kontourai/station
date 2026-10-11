@@ -71,7 +71,9 @@ already-paired device (`station environment access scopes` lists them all with
 their meanings). The operator changes them per device on the Station's own
 host. Without a global install, prefix these with
 `npx @kontourai/station-cli@<tag>` (`nightly` for a nightly Station, otherwise
-`latest`); a full-access refusal's command already includes the prefix:
+`latest`); a full-access refusal's command already includes the prefix. A
+device paired by an older Station may also hold `access:manage`, which no device
+can be granted again; the first change removes it and says so:
 
 ```bash
 station environment access devices

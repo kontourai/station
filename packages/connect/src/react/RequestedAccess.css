@@ -1,0 +1,73 @@
+.requested-access {
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  min-width: 0;
+  padding: 8px 12px 10px;
+}
+
+.requested-access__legend {
+  color: var(--text-primary, #eee);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.requested-access__group-header {
+  color: var(--text-secondary, #aaa);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+}
+
+.requested-access__option {
+  align-items: flex-start;
+  color: var(--text-primary, #eee);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.9rem;
+  gap: 10px;
+  /* A whole row is the tap target on a phone. */
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.requested-access__option input {
+  flex: none;
+  height: 18px;
+  margin: 2px 0 0;
+  width: 18px;
+}
+
+.requested-access__option input:disabled + span {
+  opacity: 0.75;
+}
+
+.requested-access__detail {
+  color: var(--text-secondary, #aaa);
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.requested-access__tag {
+  border: 1px solid var(--warning-text, #d29922);
+  border-radius: 4px;
+  color: var(--warning-text, #d29922);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+  padding: 0 4px;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.requested-access__note {
+  color: var(--text-secondary, #aaa);
+  font-size: 0.78rem;
+  margin: 4px 0 0;
+}

@@ -329,6 +329,88 @@ describe('environment CLI commands', () => {
     );
   });
 
+  test('lists what each request asks for, and approve --scope keeps only part of it', async () => {
+    const pending = {
+      requestId: 'request-scoped',
+      offerId: 'offer-scoped',
+      deviceName: 'Casey phone',
+      scope:
+        'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      source: 'same-origin' as const,
+      createdAt: 10,
+      expiresAt: 20,
+      status: 'pending' as const,
+    };
+    const deps = () => ({
+      createService: () => makeService(),
+      projectHome: '/tmp/station-home',
+      stdout,
+      stderr,
+      isInteractive: false,
+    });
+
+    const listing = makeAccessApi([pending]);
+    await runEnvironmentCommand(['access', 'list'], {
+      ...deps(),
+      request: listing,
+    });
+    expect(
+      JSON.parse(stdout.mock.calls.at(-1)?.[0] as string).requests[0],
+    ).toMatchObject({
+      asksFor: [
+        'orchestration:read',
+        'orchestration:operate',
+        'terminal:operate',
+        'approval:full-access',
+      ],
+    });
+
+    const request = makeAccessApi([pending], {
+      ...pending,
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+      status: 'confirmed',
+    });
+    await runEnvironmentCommand(
+      [
+        'access',
+        'approve',
+        'request-scoped',
+        '--scope=terminal:operate,orchestration:read,orchestration:operate',
+        '--force',
+      ],
+      { ...deps(), request },
+    );
+    expect(request).toHaveBeenLastCalledWith(
+      DEFAULT_LOOPBACK_API_BASE,
+      '/api/pairing/requests/request-scoped/confirm',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          scope: 'orchestration:read orchestration:operate terminal:operate',
+        }),
+      }),
+    );
+
+    // It only narrows: a scope the device did not ask for is refused before
+    // anything is sent.
+    const refused = makeAccessApi([pending]);
+    await expect(
+      runEnvironmentCommand(
+        [
+          'access',
+          'approve',
+          'request-scoped',
+          '--scope=coding:exec',
+          '--force',
+        ],
+        { ...deps(), request: refused },
+      ),
+    ).rejects.toThrow(/"coding:exec" is not something this request asks for/);
+    expect(
+      refused.mock.calls.some(([, path]) => String(path).endsWith('/confirm')),
+    ).toBe(false);
+  });
+
   test('explains the --force guard and prints the exact rerun command', async () => {
     const request = makeAccessApi([
       {
@@ -2174,6 +2256,7 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
       station: AUDIT_STATION_NAME,
       'device-name': 'usage-audit-device',
       timeout: '5',
+      scope: 'orchestration:read',
     };
 
     async function liveUsageText(): Promise<string> {
@@ -2246,6 +2329,7 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
           'approve:bind-account',
           'approve:bind-person',
           'approve:personal-device',
+          'approve:scope',
           'approve:api-base',
           'approve:station',
           'deny:latest',

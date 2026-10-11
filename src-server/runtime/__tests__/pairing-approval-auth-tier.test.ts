@@ -246,10 +246,14 @@ async function createHarness(
   /** A pending inbound request awaiting an approve/deny decision. */
   const createPendingRequest = async (
     name: string,
+    scope?: string,
   ): Promise<DevicePairingRequest> => {
     const offerResponse = await request(
       '/api/pairing/offers',
-      json({ endpoint: ORIGIN }, operatorCredential),
+      json(
+        { endpoint: ORIGIN, ...(scope ? { scope } : {}) },
+        operatorCredential,
+      ),
     );
     expect(offerResponse.status).toBe(201);
     const offer = (await offerResponse.json()) as DevicePairingOffer;
@@ -495,6 +499,106 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
       '203.0.113.31',
     );
     expect(confirm.status).toBe(200);
+  });
+});
+
+describe('a request that asks for an elevated grant', () => {
+  // Literal: Standard plus full access, as the Station app asks for it.
+  const WITH_FULL_ACCESS =
+    'orchestration:read orchestration:operate terminal:operate approval:full-access';
+
+  test('lists what it asks for, and an access:approve device may approve it only with the elevated grant unticked', async () => {
+    const harness = await createHarness();
+    const promoted = await harness.pairDevice('Promoted tablet');
+    harness.security.devicePairing.setDeviceApprovalAuthority(
+      promoted.device.id,
+      true,
+      { kind: 'presented-credential' },
+    );
+    const pending = await harness.createPendingRequest(
+      'New phone',
+      WITH_FULL_ACCESS,
+    );
+
+    const items = await attentionPairingItems(
+      harness,
+      cookieInit(promoted.credential, 'GET'),
+      '203.0.113.51',
+    );
+    expect(items).toEqual([
+      expect.objectContaining({ requestedScope: WITH_FULL_ACCESS }),
+    ]);
+
+    // Keeping full access is the operator's call, not the promoted device's.
+    const kept = await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      { ...cookieInit(promoted.credential, 'POST'), body: '{}' },
+      '203.0.113.51',
+    );
+    expect(kept.status).toBe(403);
+    expect(await kept.json()).toMatchObject({
+      error: 'approval_requires_operator',
+    });
+
+    const trimmed = await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      {
+        ...cookieInit(promoted.credential, 'POST'),
+        headers: {
+          ...(cookieInit(promoted.credential, 'POST').headers as Record<
+            string,
+            string
+          >),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scope: 'orchestration:read orchestration:operate terminal:operate',
+        }),
+      },
+      '203.0.113.51',
+    );
+    expect(trimmed.status).toBe(200);
+    expect(await trimmed.json()).toMatchObject({
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+    });
+  });
+
+  test('the operator keeps it, or unticks part of it, and never adds to it', async () => {
+    const harness = await createHarness();
+    const confirm = (requestId: string, body: unknown) =>
+      harness.request(
+        `/api/pairing/requests/${requestId}/confirm`,
+        harness.json(body, harness.operatorCredential),
+      );
+
+    const asked = await harness.createPendingRequest('Phone', WITH_FULL_ACCESS);
+    const keptAll = await confirm(asked.requestId, {});
+    expect(keptAll.status).toBe(200);
+    expect(await keptAll.json()).toMatchObject({ scope: WITH_FULL_ACCESS });
+
+    const trimmedRequest = await harness.createPendingRequest(
+      'Tablet',
+      WITH_FULL_ACCESS,
+    );
+    const trimmed = await confirm(trimmedRequest.requestId, {
+      scope: 'orchestration:read',
+    });
+    expect(trimmed.status).toBe(200);
+    expect(await trimmed.json()).toMatchObject({ scope: 'orchestration:read' });
+
+    const narrow = await harness.createPendingRequest(
+      'Watch',
+      'orchestration:read',
+    );
+    const widened = await confirm(narrow.requestId, {
+      scope: 'orchestration:read coding:exec',
+    });
+    expect(widened.status).toBe(400);
+    expect(
+      harness.security.devicePairing
+        .listRequests()
+        .find((candidate) => candidate.requestId === narrow.requestId)?.status,
+    ).toBe('pending');
   });
 });
 

@@ -1260,6 +1260,7 @@ export class AttentionProjectionService {
             createdAt: timestamp,
             updatedAt: timestamp,
             deviceName: request.deviceName,
+            requestedScope: request.scope,
             // Derived at the HTTP seam from the boundary's own predicate —
             // see `list()`'s `viewer` option. The card renders Approve/Deny
             // only when true; a session tier that cannot pass the pairing

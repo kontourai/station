@@ -178,6 +178,14 @@ export type { QRDisplayProps } from './react/QRDisplay';
 export { QRDisplay } from './react/QRDisplay';
 export type { QRScannerProps } from './react/QRScanner';
 export { QRScanner } from './react/QRScanner';
+export type { RequestedAccessChoice } from './react/RequestedAccess';
+export {
+  keptScopeForApproval,
+  RequestAccessPicker,
+  RequestedScopeChecklist,
+  requestedAccessScope,
+  requestedScopeTokens,
+} from './react/RequestedAccess';
 export {
   type RequestAuthorityScope,
   type RequestAuthorityScopeOptions,

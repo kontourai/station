@@ -83,12 +83,22 @@ function fullAccessGrantCommand(deviceId: string, cli: string): string {
   return `${cli} environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
 }
 
-function hostCliOf(request: Request): string {
+/**
+ * The operator CLI command on this Station's host, for any refusal that
+ * names a host command (`station` when no identity source is bound).
+ */
+export function operatorHostCli(request: Request): string {
   try {
     return identitySources.get(request)?.hostCli?.() || 'station';
   } catch {
     return 'station';
   }
+}
+
+/** The short id of the paired device a request came from, if it did. */
+export function requestingDeviceShortId(request: Request): string | undefined {
+  const deviceId = getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId;
+  return deviceId ? shortDeviceId(deviceId) : undefined;
 }
 
 function requesterOf(request: Request): ApprovalFullAccessRequester {
@@ -138,7 +148,10 @@ function detailsFor(
             uiSteps: FULL_ACCESS_GRANT_UI_STEPS,
             ...(fullDeviceId
               ? {
-                  cli: fullAccessGrantCommand(fullDeviceId, hostCliOf(request)),
+                  cli: fullAccessGrantCommand(
+                    fullDeviceId,
+                    operatorHostCli(request),
+                  ),
                 }
               : {}),
           },

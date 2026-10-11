@@ -96,6 +96,7 @@ function station(
     ...DEVICES.find((device) => device.id === deviceId),
     scope: (body.scope as string[]).join(' '),
   }),
+  devices: readonly (typeof DEVICES)[number][] = DEVICES,
 ) {
   return vi
     .fn<OperatorJsonRequest>()
@@ -103,7 +104,7 @@ function station(
       if (path === '/.well-known/station/v1')
         return { environmentId: HOME.environmentId };
       if (path === PUBLIC_STATION_PROOF_PATH) return proofResponse(init);
-      if (path === '/api/pairing/devices') return { devices: DEVICES };
+      if (path === '/api/pairing/devices') return { devices };
       const scope = /^\/api\/pairing\/devices\/([^/]+)\/scope$/.exec(path);
       if (scope && init?.method === 'POST')
         return onScope(
@@ -438,6 +439,74 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
     await run(['scope', 'aaaa1111', '--remove=coding:exec'], quiet);
     expect(printed()).toContain('No change.');
     expect(quiet.mock.calls.some(([, path]) => path.endsWith('/scope'))).toBe(
+      false,
+    );
+  });
+
+  // A device paired by an older Station (or a scope-less pairing) holds
+  // `access:manage`, which no device can be granted again, so Station refuses
+  // to store it. The desktop editor drops it on the first edit; so does this.
+  const LEGACY = {
+    id: 'dddd5555-0000-4000-8000-000000000005',
+    name: 'Old phone',
+    scope:
+      'orchestration:read orchestration:operate terminal:operate access:manage',
+    kind: 'device',
+    createdAt: 6,
+    revokedAt: null,
+  } as (typeof DEVICES)[number];
+  const legacyStation = () =>
+    station(
+      (_deviceId, body) => ({
+        ...LEGACY,
+        scope: (body.scope as string[]).join(' '),
+      }),
+      [...DEVICES, LEGACY],
+    );
+
+  test('adding to a device with the old default grant drops access:manage, and says so', async () => {
+    const request = legacyStation();
+    await run(['scope', 'dddd5555', '--add=approval:full-access'], request);
+    const post = request.mock.calls.find(([, path]) =>
+      path.endsWith('/scope'),
+    )!;
+    expect(JSON.parse(String(post[2]?.body))).toEqual({
+      scope: [
+        'orchestration:read',
+        'orchestration:operate',
+        'terminal:operate',
+        'approval:full-access',
+      ],
+      expectedScope: LEGACY.scope,
+    });
+    expect(printed()).toContain(
+      'after:  orchestration:read orchestration:operate terminal:operate approval:full-access',
+    );
+    expect(printed()).toContain(
+      'Also removes access:manage: an older Station version gave it to every device by default, and no device can be granted it again.',
+    );
+    expect(printed()).toContain('Updated.');
+  });
+
+  test('a dry run on such a device shows the drop and sends nothing', async () => {
+    const request = legacyStation();
+    await run(
+      ['scope', 'dddd5555', '--add=approval:full-access', '--dry-run'],
+      request,
+    );
+    expect(printed()).toContain('Also removes access:manage');
+    expect(printed()).toContain('Dry run: nothing was changed.');
+    expect(request.mock.calls.some(([, path]) => path.endsWith('/scope'))).toBe(
+      false,
+    );
+  });
+
+  test('a change that asks for nothing new leaves such a device alone', async () => {
+    const request = legacyStation();
+    await run(['scope', 'dddd5555', '--add=orchestration:read'], request);
+    expect(printed()).toContain('No change.');
+    expect(printed()).not.toContain('Also removes');
+    expect(request.mock.calls.some(([, path]) => path.endsWith('/scope'))).toBe(
       false,
     );
   });

@@ -459,6 +459,32 @@ the delegation intent only with the fixed delegation preset and without account
 binding or client-instance inputs. The receiving trusted approver sees **Station
 peer** separately from Device access.
 
+A Device's access request may also name `scope`: exactly one base from
+`DEVICE_REQUESTABLE_BASE_PRESETS` (Read-only or Standard) plus any of
+`DEVICE_REQUESTABLE_EXTRA_SCOPES` (**Run commands**, `coding:exec`, and **Allow
+full access**, `approval:full-access`). Anything else, and any `scope` beside a
+delegation, is refused with `invalid_request`. The device-pairing panel shows
+this as a permission list, Standard pre-selected, so a phone or browser never
+inherits `access:manage`.
+
+Every approval surface (the **Paired devices** inbox, **Needs attention**, and
+`station environment access approve --scope=<scope,…>`) lists what the request
+asks for, each item ticked, and the approver can untick any of it. The confirm
+route takes the kept scope as `scope`, which must be a non-empty subset of the
+request; omitted, the device gets what it asked for. Requested extras are the
+operator's to grant: an approval that keeps one needs the operator credential or
+the desktop's own local grant, never an `access:approve` device or the
+unauthenticated at-the-machine approval, which may still approve the rest with
+the extras unticked. A delegation or relay grant cannot be trimmed. A request that names no scope still receives the historical
+default grant, which Station peers (`station environment access request`) and
+older clients rely on; a Station that predates the field ignores it. The 202
+response, and an approval refused with `approval_requires_operator`, carry
+`operatorCli`: the operator CLI command on that host
+(`npx @kontourai/station-cli@nightly` for a nightly Station, otherwise
+`npx @kontourai/station-cli@latest`). Connect shows it in the approve command
+it prints, and accepts only `station` or the published package through `npx`,
+so a Station cannot put other text in a command a person is asked to run.
+
 Ordinary Device invitations keep their existing encoded payload shape: default
 Device kind is omitted so older strict invitation parsers remain usable.
 Delegation invitations remain distinguishable and cannot be saved as interactive

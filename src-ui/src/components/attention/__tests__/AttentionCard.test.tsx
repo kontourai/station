@@ -11,7 +11,7 @@ import type {
   SetupIncompleteAttentionItem,
 } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const action = vi.fn();
@@ -43,6 +43,8 @@ const pairingMocks = vi.hoisted(() => {
       isPending: false,
       error: null as unknown,
     },
+    /** The answering Station's build channel, as its system status reports it. */
+    statusChannel: undefined as string | undefined,
   };
 });
 
@@ -86,6 +88,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
     mutate: dismiss,
   }),
+  useSystemStatusForApiBaseQuery: () => ({
+    data: { build: { channel: pairingMocks.statusChannel } },
+  }),
   useDismissPluginLifecycleProposalMutation: () => ({
     isPending: false,
     error: null,
@@ -116,6 +121,7 @@ beforeEach(() => {
   pairingMocks.confirmPairingState.error = null;
   pairingMocks.denyPairingState.isPending = false;
   pairingMocks.denyPairingState.error = null;
+  pairingMocks.statusChannel = undefined;
 });
 
 function baseFailure(
@@ -371,6 +377,27 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     expect(pairingMocks.denyPairing).not.toHaveBeenCalled();
   });
 
+  test('lists what the device asks for; Approve keeps all of it, or only what is still ticked', () => {
+    const asked =
+      'orchestration:read orchestration:operate terminal:operate approval:full-access';
+    const first = renderCard(basePairing({ requestedScope: asked }));
+    expect(screen.getByText('Test Phone asks for')).toBeTruthy();
+    // Everything ticked: the bodyless approval, which keeps what was asked.
+    screen.getByRole('button', { name: 'Approve' }).click();
+    expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith('pair-req-1');
+    first.unmount();
+
+    renderCard(basePairing({ requestedScope: asked }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Allow full access/ }),
+    );
+    screen.getByRole('button', { name: 'Approve' }).click();
+    expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith({
+      requestId: 'pair-req-1',
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+    });
+  });
+
   test('Deny denies the exact request', () => {
     renderCard(basePairing());
 
@@ -391,7 +418,9 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     ).toBe(true);
   });
 
-  test('a 403 refusal renders the trusted-session remedy, naming the CLI approve', () => {
+  test("a 403 refusal renders the trusted-session remedy, naming this Station's own CLI", () => {
+    // A nightly Station has no `station` on its host's PATH.
+    pairingMocks.statusChannel = 'nightly';
     pairingMocks.confirmPairingState.error =
       new pairingMocks.MockDevicePairingRequestActionError(
         403,
@@ -401,7 +430,7 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
 
     expect(
       screen.getByText(
-        /needs a trusted Station session.*station environment access approve pair-req-1 --force/,
+        'Approving “Test Phone” needs a trusted Station session. Run this on the Station: npx @kontourai/station-cli@nightly environment access approve pair-req-1 --force',
       ),
     ).toBeTruthy();
   });
@@ -432,7 +461,7 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(
       screen.getByText(
-        /needs a trusted Station session.*station environment access approve pair-req-1 --force/,
+        /needs a trusted Station session.*Run this on the Station: npx @kontourai\/station-cli@latest environment access approve pair-req-1 --force/,
       ),
     ).toBeTruthy();
     expect(pairingMocks.confirmPairing).not.toHaveBeenCalled();

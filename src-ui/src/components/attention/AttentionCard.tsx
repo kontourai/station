@@ -1,7 +1,13 @@
+import {
+  keptScopeForApproval,
+  RequestedScopeChecklist,
+  requestedScopeTokens,
+} from '@kontourai/station-connect';
 import type {
   AttentionPeerRequestReference,
   AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
+import type { PairingScope } from '@kontourai/station-contracts/environment-security';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
@@ -26,11 +32,13 @@ import {
   useDismissNotificationMutation,
   useNotificationActionMutation,
   useQueryClient,
+  useSystemStatusForApiBaseQuery,
 } from '@kontourai/station-sdk';
 import {
   continueDelegatedTask,
   respondToDelegatedTaskRequest,
 } from '@kontourai/station-sdk/client';
+import { operatorCliCommand } from '@kontourai/station-shared/ports';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
@@ -286,6 +294,18 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
   const confirmMutation = useConfirmDevicePairingRequestMutation();
   const denyMutation = useDenyDevicePairingRequestMutation();
   const busy = confirmMutation.isPending || denyMutation.isPending;
+  // The approve command names this Station's own CLI, read from its build.
+  const { apiBase } = useApiBase();
+  const operatorCli = operatorCliCommand(
+    useSystemStatusForApiBaseQuery(apiBase).data?.build?.channel,
+  );
+  // What the approver keeps of what the device asked for; all of it unless
+  // unticked. An older Station sends no requested scope: no list, and
+  // Approve keeps whatever the request carries.
+  const requestedScope = item.requestedScope ?? '';
+  const [kept, setKept] = useState<ReadonlySet<PairingScope>>(
+    () => new Set(requestedScopeTokens(requestedScope)),
+  );
   // #765 D5 live verification: `access:approve` is operator-promotion-only,
   // so a paired browser session can read this item but the pairing routes
   // answer its approve/deny with 401 `authentication_required` — the buttons
@@ -298,18 +318,36 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         className="attention-item__detail"
         data-testid="attention-pairing-remedy"
       >
-        {pairingApprovalRemedy(item)}
+        {pairingApprovalRemedy(item, operatorCli)}
       </div>
     );
   }
   return (
     <>
+      {requestedScope && (
+        <RequestedScopeChecklist
+          deviceName={item.deviceName}
+          requestedScope={requestedScope}
+          kept={kept}
+          onChange={setKept}
+          disabled={busy}
+        />
+      )}
       <div className="attention-item__actions">
         <button
           type="button"
           className="attention-item__action attention-item__action--primary"
           disabled={busy}
-          onClick={() => confirmMutation.mutate(item.source.requestId)}
+          onClick={() => {
+            const scope = requestedScope
+              ? keptScopeForApproval(requestedScope, kept)
+              : undefined;
+            confirmMutation.mutate(
+              scope === undefined
+                ? item.source.requestId
+                : { requestId: item.source.requestId, scope },
+            );
+          }}
         >
           Approve
         </button>
@@ -327,10 +365,16 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
           confirmMutation.error,
           item,
           'approve',
+          operatorCli,
         )}
       />
       <MutationError
-        error={describePairingActionError(denyMutation.error, item, 'deny')}
+        error={describePairingActionError(
+          denyMutation.error,
+          item,
+          'deny',
+          operatorCli,
+        )}
       />
     </>
   );
@@ -341,8 +385,11 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
  * and the 403 error path print, because it is the same fact arriving earlier
  * — before a doomed request instead of after one.
  */
-function pairingApprovalRemedy(item: DevicePairingAttentionItem): string {
-  return `Approving “${item.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${item.source.requestId} --force`;
+function pairingApprovalRemedy(
+  item: DevicePairingAttentionItem,
+  operatorCli: string,
+): string {
+  return `Approving “${item.deviceName}” needs a trusted Station session. Run this on the Station: ${operatorCli} environment access approve ${item.source.requestId} --force`;
 }
 
 /**
@@ -356,6 +403,7 @@ function describePairingActionError(
   error: unknown,
   item: DevicePairingAttentionItem,
   action: 'approve' | 'deny',
+  operatorCli: string,
 ): unknown {
   if (error == null) return null;
   if (!(error instanceof DevicePairingRequestActionError)) return error;
@@ -365,7 +413,7 @@ function describePairingActionError(
     );
   }
   if (error.status === 403 && action === 'approve') {
-    return new Error(pairingApprovalRemedy(item));
+    return new Error(pairingApprovalRemedy(item, operatorCli));
   }
   if (error.status === 404 || error.status === 410) {
     return new Error(
