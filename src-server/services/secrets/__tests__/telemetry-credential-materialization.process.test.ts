@@ -79,8 +79,12 @@ if (process.argv[3] === 'op://fixture/key/value') {
       expect(await observed).toBe('refused');
       expect(alive(stalledPid!)).toBe(false);
     } finally {
-      if (stalledPid !== undefined && alive(stalledPid))
+      if (stalledPid !== undefined && alive(stalledPid)) {
         process.kill(stalledPid, 'SIGKILL');
+        await expect
+          .poll(() => alive(stalledPid!), { timeout: 5000 })
+          .toBe(false);
+      }
     }
   },
 );
