@@ -641,7 +641,7 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
     };
     expect(listed.scopes).toContainEqual({
       scope: 'approval:full-access',
-      label: 'Allow full access',
+      label: 'Skip approval prompts',
       meaning: PAIRING_SCOPE_DESCRIPTIONS['approval:full-access'].summary,
       grantable: true,
     });

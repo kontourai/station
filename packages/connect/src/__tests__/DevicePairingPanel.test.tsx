@@ -10,7 +10,6 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
-  clearPendingExchange,
   encodeDevicePairingPayload,
   loadPendingExchange,
   type PendingPairingExchange,
@@ -561,7 +560,7 @@ describe('device pairing panels', () => {
     );
   });
 
-  test("asks for the panel's standard grant, and shows the approve command this Station names", async () => {
+  test('asks for full device access, and shows the approve command this Station names', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       response(
         {
@@ -597,53 +596,15 @@ describe('device pairing panels', () => {
     expect(new URL(String(url)).pathname).toBe(
       '/.well-known/station/v1/pairing/access-request',
     );
-    // Literal: the Paired devices panel's grant, never access:manage.
+    // Literal: everything a device can have, never access:manage. The
+    // operator limits it when approving, if at all.
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      scope: 'orchestration:read orchestration:operate terminal:operate',
+      scope:
+        'orchestration:read orchestration:operate terminal:operate coding:exec approval:full-access',
     });
   });
 
-  test('the permission list puts the chosen grant on the wire: Read-only, or Standard with full access', async () => {
-    const sent: unknown[] = [];
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      if (
-        new URL(String(input)).pathname ===
-        '/.well-known/station/v1/pairing/access-request'
-      ) {
-        sent.push(JSON.parse(String(init?.body)).scope);
-        return response(
-          {
-            environmentId: 'environment-direct',
-            offerId: 'offer-direct',
-            proof: 'proof-direct',
-            requestId: `request-${sent.length}`,
-            expiresAt: Date.now() + 60_000,
-          },
-          202,
-        );
-      }
-      return response({ error: 'request_not_confirmed' }, 409);
-    });
-    const first = render(
-      <JoinDevicePairingPanel
-        initialMode="direct"
-        onPaired={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
-    // Standard is pre-selected; full access is asked for only when ticked.
-    expect(
-      (screen.getByRole('radio', { name: /Standard/ }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Allow full access/ }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
-    await screen.findByText(/environment access approve request-1/);
-    first.unmount();
-    clearPendingExchange(window.location.origin, 'direct');
-
+  test("the request screen has no permissions to fill in: scoping down is the approver's", async () => {
     render(
       <JoinDevicePairingPanel
         initialMode="direct"
@@ -651,15 +612,9 @@ describe('device pairing panels', () => {
         onCancel={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole('radio', { name: /Read-only/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
-    await screen.findByText(/environment access approve request-2/);
-
-    // Literals, in the vocabulary's order.
-    expect(sent).toEqual([
-      'orchestration:read orchestration:operate terminal:operate approval:full-access',
-      'orchestration:read',
-    ]);
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(screen.queryAllByRole('checkbox')).toEqual([]);
+    expect(screen.queryByText(/Skip approval prompts/)).toBeNull();
   });
 
   test('a command this Station names that is not a known Station CLI is not shown', async () => {
@@ -1473,7 +1428,7 @@ describe('device pairing panels', () => {
     ]);
   });
 
-  test('lists what a request asks for; the elevated grant starts unticked, and Approve sends only what is ticked', async () => {
+  test('says what a request asks for; Limit access narrows it, and Approve sends only what is kept', async () => {
     const request = {
       requestId: 'request-trim',
       offerId: 'offer-trim',
@@ -1507,19 +1462,18 @@ describe('device pairing panels', () => {
       />,
     );
 
-    expect(await screen.findByText('Casey phone asks for')).toBeTruthy();
-    const fullAccess = screen.getByRole('checkbox', {
-      name: /Allow full access/,
-    }) as HTMLInputElement;
-    // Asking grants nothing: keeping full access is a deliberate tick.
-    expect(fullAccess.checked).toBe(false);
+    expect(await screen.findByText(/Casey phone asks for/)).toBeTruthy();
     expect(
-      (screen.getByRole('checkbox', { name: /^Read/ }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-    expect(
-      screen.getByText('Approving grants only what is ticked.'),
+      screen.getByText('Read, Operate, Terminal, Skip approval prompts'),
     ).toBeTruthy();
+    fireEvent.click(screen.getByText('Limit access'));
+    const skipPrompts = screen.getByRole('checkbox', {
+      name: /Skip approval prompts/,
+    }) as HTMLInputElement;
+    // Approving keeps what was asked unless it is limited.
+    expect(skipPrompts.checked).toBe(true);
+    fireEvent.click(skipPrompts);
+    expect(screen.getByText('Read, Operate, Terminal')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     await waitFor(() =>
@@ -1529,7 +1483,7 @@ describe('device pairing panels', () => {
     );
   });
 
-  test('a refused approval that kept full access says to untick it, with a command that grants what was ticked', async () => {
+  test('a refused approval that kept an elevated grant says to limit it, with a command that grants what was kept', async () => {
     const request = {
       requestId: 'request-kept',
       offerId: 'offer-kept',
@@ -1564,14 +1518,11 @@ describe('device pairing panels', () => {
         onCancel={vi.fn()}
       />,
     );
-    expect(await screen.findByText('Casey phone asks for')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Allow full access/ }),
-    );
+    expect(await screen.findByText(/Casey phone asks for/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     expect(
       await screen.findByText(
-        "Only this Station's operator can grant Allow full access or Run commands. Untick them to approve the rest of “Casey phone”'s request, or run this on the Station: npx @kontourai/station-cli@nightly environment access approve request-kept --scope=orchestration:read,orchestration:operate,terminal:operate,approval:full-access --force",
+        "Only this Station's operator can grant Run commands or Skip approval prompts. Use Limit access to leave them out of “Casey phone”'s access, or run this on the Station: npx @kontourai/station-cli@nightly environment access approve request-kept --force",
       ),
     ).toBeTruthy();
   });
@@ -1668,17 +1619,14 @@ describe('device pairing panels', () => {
         onCancel={vi.fn()}
       />,
     );
-    expect(await screen.findByText('Laptop browser asks for')).toBeTruthy();
+    expect(await screen.findByText(/Laptop browser asks for/)).toBeTruthy();
     fireEvent.click(
       screen.getByRole('checkbox', { name: /Recognize this device as/ }),
-    );
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Allow full access/ }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     expect(
       await screen.findByText(
-        'Approving “Laptop browser” needs a trusted Station session. Run this on the Station: station environment access approve request-person --scope=orchestration:read,orchestration:operate,terminal:operate,approval:full-access --force --bind-person',
+        'Approving “Laptop browser” needs a trusted Station session. Run this on the Station: station environment access approve request-person --force --bind-person',
       ),
     ).toBeTruthy();
   });

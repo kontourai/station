@@ -370,40 +370,50 @@ function basePairing(
  * SAME gated pairing routes the panel and CLI use.
  */
 describe('AttentionCard — device pairing kind (#765 D5)', () => {
-  test('renders Approve and Deny, and Approve confirms the exact request', () => {
+  /** The card only says a device is asking; Review opens the decision. */
+  const review = () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+
+  test('the card is one line with Review; its dialog approves the exact request', () => {
     renderCard(basePairing());
 
     expect(
       screen.getByText('Test Phone is waiting for approval on this Station.'),
     ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    review();
     screen.getByRole('button', { name: 'Approve' }).click();
     expect(pairingMocks.confirmPairing).toHaveBeenCalledWith('pair-req-1');
     expect(pairingMocks.denyPairing).not.toHaveBeenCalled();
   });
 
-  test('lists what the device asks for; the elevated grant is kept only when ticked', () => {
+  test('the dialog says what the device asks for; Approve keeps it, and Limit access narrows it', () => {
     const asked =
       'orchestration:read orchestration:operate terminal:operate approval:full-access';
     const first = renderCard(basePairing({ requestedScope: asked }));
-    expect(screen.getByText('Test Phone asks for')).toBeTruthy();
-    // Asking grants nothing: an untouched Approve leaves full access out.
+    review();
+    expect(
+      screen.getByText('Read, Operate, Terminal, Skip approval prompts'),
+    ).toBeTruthy();
+    // As asked: the bodyless approval.
+    screen.getByRole('button', { name: 'Approve' }).click();
+    expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith('pair-req-1');
+    first.unmount();
+
+    renderCard(basePairing({ requestedScope: asked }));
+    review();
+    fireEvent.click(screen.getByText('Limit access'));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Skip approval prompts/ }),
+    );
     screen.getByRole('button', { name: 'Approve' }).click();
     expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith({
       requestId: 'pair-req-1',
       scope: 'orchestration:read orchestration:operate terminal:operate',
     });
-    first.unmount();
-
-    renderCard(basePairing({ requestedScope: asked }));
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Allow full access/ }),
-    );
-    // Everything ticked: the bodyless approval, which keeps what was asked.
-    screen.getByRole('button', { name: 'Approve' }).click();
-    expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith('pair-req-1');
   });
 
-  test('a refusal of a trimmed approval names only what it sent', () => {
+  test('a refusal of a limited approval names only what it sent', () => {
     pairingMocks.confirmPairingState.error =
       new pairingMocks.MockDevicePairingRequestActionError(
         403,
@@ -419,6 +429,7 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
           'orchestration:read orchestration:operate terminal:operate approval:full-access',
       }),
     );
+    review();
     expect(
       screen.getByText(
         'Approving “Test Phone” needs a trusted Station session. Run this on the Station: npx @kontourai/station-cli@latest environment access approve pair-req-1 --scope=orchestration:read --force',
@@ -426,15 +437,29 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     ).toBeTruthy();
   });
 
-  test('Approve is disabled while nothing is ticked', () => {
-    renderCard(basePairing({ requestedScope: 'approval:full-access' }));
+  test('a refusal to keep an elevated grant says to limit it, and its command grants exactly what was sent', () => {
+    pairingMocks.confirmPairingState.error =
+      new pairingMocks.MockDevicePairingRequestActionError(
+        403,
+        'approval_requires_operator',
+      );
+    // The refused approval kept everything asked (a bodyless approve).
+    pairingMocks.confirmPairingState.variables = 'pair-req-1';
+    renderCard(
+      basePairing({
+        requestedScope:
+          'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      }),
+    );
+    review();
     expect(
-      (screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+      screen.getByText(
+        "Only this Station's operator can grant Run commands or Skip approval prompts. Use Limit access to leave them out of “Test Phone”'s access, or run this on the Station: npx @kontourai/station-cli@latest environment access approve pair-req-1 --force",
+      ),
+    ).toBeTruthy();
   });
 
-  test("a session that cannot decide is shown a command that keeps only the card's ticked scope", () => {
+  test('a session that cannot decide is shown a command that grants what was asked', () => {
     renderCard(
       basePairing({
         viewerCanDecide: false,
@@ -443,35 +468,13 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
       }),
     );
     expect(
-      screen.getByText(
-        /environment access approve pair-req-1 --scope=orchestration:read,orchestration:operate,terminal:operate --force$/,
-      ),
-    ).toBeTruthy();
-  });
-
-  test('a refusal to keep the elevated grant says to untick it, and its command grants exactly what was sent', () => {
-    const asked =
-      'orchestration:read orchestration:operate terminal:operate approval:full-access';
-    pairingMocks.confirmPairingState.error =
-      new pairingMocks.MockDevicePairingRequestActionError(
-        403,
-        'approval_requires_operator',
-      );
-    // The refused approval kept full access (a bodyless approve keeps all).
-    pairingMocks.confirmPairingState.variables = 'pair-req-1';
-    renderCard(basePairing({ requestedScope: asked }));
-    // The boxes start without full access; the message follows what was
-    // sent, not the boxes as they are now.
-    expect(
-      screen.getByText(
-        "Only this Station's operator can grant Allow full access or Run commands. Untick them to approve the rest of “Test Phone”'s request, or run this on the Station: npx @kontourai/station-cli@latest environment access approve pair-req-1 --scope=orchestration:read,orchestration:operate,terminal:operate,approval:full-access --force",
-      ),
+      screen.getByText(/environment access approve pair-req-1 --force$/),
     ).toBeTruthy();
   });
 
   test('Deny denies the exact request', () => {
     renderCard(basePairing());
-
+    review();
     screen.getByRole('button', { name: 'Deny' }).click();
     expect(pairingMocks.denyPairing).toHaveBeenCalledWith('pair-req-1');
     expect(pairingMocks.confirmPairing).not.toHaveBeenCalled();
@@ -480,7 +483,7 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
   test('an in-flight decision disables both buttons — the confirmed state is the server projection resolving the item away', () => {
     pairingMocks.confirmPairingState.isPending = true;
     renderCard(basePairing());
-
+    review();
     expect(
       screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled'),
     ).toBe(true);
@@ -498,7 +501,7 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
         'approval_requires_operator',
       );
     renderCard(basePairing());
-
+    review();
     expect(
       screen.getByText(
         'Approving “Test Phone” needs a trusted Station session. Run this on the Station: npx @kontourai/station-cli@nightly environment access approve pair-req-1 --force',
@@ -510,7 +513,7 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     pairingMocks.denyPairingState.error =
       new pairingMocks.MockDevicePairingRequestActionError(410);
     renderCard(basePairing());
-
+    review();
     expect(
       screen.getByText(
         'That access request has already expired or been removed.',

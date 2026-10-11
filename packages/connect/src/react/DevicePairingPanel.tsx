@@ -60,15 +60,11 @@ import {
 import { QRDisplay } from './QRDisplay';
 import { QRScanner } from './QRScanner';
 import {
-  cliScopeForApproval,
-  DEFAULT_REQUESTED_ACCESS,
   defaultKeptScope,
+  FULL_DEVICE_ACCESS_SCOPE,
   keepsElevatedScope,
   keptScopeForApproval,
-  RequestAccessPicker,
-  type RequestedAccessChoice,
   RequestedScopeChecklist,
-  requestedAccessScope,
   requestedScopeTokens,
 } from './RequestedAccess';
 
@@ -298,11 +294,6 @@ export function JoinDevicePairingPanel({
   }, [pending]);
   const [error, setError] = useState<string | null>(null);
   const [requestingAccess, setRequestingAccess] = useState(false);
-  // What this device asks for: Standard pre-selected; the operator sees the
-  // same list when approving and can untick any of it.
-  const [requestedAccess, setRequestedAccess] = useState<RequestedAccessChoice>(
-    DEFAULT_REQUESTED_ACCESS,
-  );
   const requestInFlight = useRef(false);
   // Set while the exchange is retrying something worth waiting out, so the
   // panel says why nothing is happening instead of sitting mute.
@@ -587,12 +578,13 @@ export function JoinDevicePairingPanel({
       const request = await requestCurrentStationAccess({
         endpoint,
         deviceName,
-        // What the person chose above, never the default grant's
-        // `access:manage`. An account-bound guest request asks for the
-        // plain Standard base; its elevated grants are the operator's call.
+        // A device asks for everything a device can have, never the default
+        // grant's `access:manage`; the operator limits it when approving. An
+        // account-bound guest request asks for the plain Standard preset:
+        // its elevated grants are the operator's call.
         scope: accountBoundDeviceRequest
           ? pairingScopePresetString(DEFAULT_PAIRING_SCOPE_PRESET)
-          : requestedAccessScope(requestedAccess),
+          : FULL_DEVICE_ACCESS_SCOPE,
         ...(accountBoundDeviceRequest
           ? {
               clientInstanceId: accountBoundDeviceRequest.clientInstanceId,
@@ -908,13 +900,6 @@ export function JoinDevicePairingPanel({
             />
           )}
           <HttpConnectionConsent consent={httpConsent} />
-          {!accountBoundDeviceRequest && (
-            <RequestAccessPicker
-              value={requestedAccess}
-              onChange={setRequestedAccess}
-              disabled={requestingAccess}
-            />
-          )}
           {directEndpoint && (
             <details className="pairing-target">
               <summary>Connection details</summary>
@@ -1042,7 +1027,7 @@ export function approvalRefusalRemedy(input: {
     : '';
   const command = `${input.operatorCli} environment access approve ${input.requestId}${scopeFlag} --force${input.extraFlag ?? ''}`;
   return input.keepsElevated
-    ? `Only this Station's operator can grant Allow full access or Run commands. Untick them to approve the rest of “${input.deviceName}”'s request, or run this on the Station: ${command}`
+    ? `Only this Station's operator can grant Run commands or Skip approval prompts. Use Limit access to leave them out of “${input.deviceName}”'s access, or run this on the Station: ${command}`
     : `Approving “${input.deviceName}” needs a trusted Station session. Run this on the Station: ${command}`;
 }
 
@@ -1412,7 +1397,10 @@ export function HostDevicePairingPanel({
                   operatorCli: operatorCli ?? 'station',
                   keptScope:
                     request.kind !== 'delegation' && !bindAccount
-                      ? cliScopeForApproval(request.scope, keptScopeOf(request))
+                      ? keptScopeForApproval(
+                          request.scope,
+                          keptScopeOf(request),
+                        )
                       : undefined,
                   // Unticking helps only an ordinary approval; a person or
                   // account binding is refused for its own reason.
@@ -1994,11 +1982,6 @@ export function HostDevicePairingPanel({
                     }}
                     disabled={
                       requestActionIds.has(request.requestId) ||
-                      // Nothing ticked is nothing to approve.
-                      (request.kind !== 'delegation' &&
-                        !accountBindingRequests.has(request.requestId) &&
-                        requestedScopeTokens(request.scope).length > 0 &&
-                        keptScopeOf(request).size === 0) ||
                       (request.accountCandidate !== undefined &&
                         !accountBindingRequests.has(request.requestId) &&
                         !personBindingRequests.has(request.requestId) &&

@@ -1,26 +1,36 @@
 .requested-access {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.requested-access__summary {
+  color: var(--text-primary, #eee);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.requested-access__limit > summary {
+  color: var(--text-secondary, #aaa);
+  cursor: pointer;
+  font-size: 0.85rem;
+  /* A comfortable tap target on a phone. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.requested-access__list {
   border: 1px solid var(--border-primary, #333);
   border-radius: 8px;
   display: grid;
   gap: 2px;
   margin: 0;
   min-width: 0;
-  padding: 8px 12px 10px;
-}
-
-.requested-access__legend {
-  color: var(--text-primary, #eee);
-  font-size: 0.85rem;
-  font-weight: 600;
-  padding: 0 4px;
-}
-
-.requested-access__group-header {
-  color: var(--text-secondary, #aaa);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  margin-top: 6px;
+  padding: 6px 12px;
 }
 
 .requested-access__option {
@@ -30,7 +40,6 @@
   display: flex;
   font-size: 0.9rem;
   gap: 10px;
-  /* A whole row is the tap target on a phone. */
   min-height: 44px;
   padding: 6px 0;
 }
@@ -64,10 +73,4 @@
   padding: 0 4px;
   text-transform: uppercase;
   vertical-align: 1px;
-}
-
-.requested-access__note {
-  color: var(--text-secondary, #aaa);
-  font-size: 0.78rem;
-  margin: 4px 0 0;
 }

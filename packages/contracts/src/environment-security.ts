@@ -475,11 +475,10 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
   // #2412 / #2436: still the operator's grant, for the reasons on their
   // docblocks. A device may ASK for either at pairing
-  // (DEVICE_REQUESTABLE_EXTRA_SCOPES), but asking grants nothing: every
-  // approval surface leaves them unticked, and only the operator credential
-  // or the desktop's own local grant may keep one when approving. That
-  // approval is the operator promoting the device at pairing time, never a
-  // pairing preset, so the least-known device never receives them by default.
+  // (DEVICE_REQUESTABLE_EXTRA_SCOPES; the Station app asks for everything),
+  // but asking grants nothing: only the operator credential or the desktop's
+  // own local grant may keep one when approving. That approval is the
+  // operator promoting the device at pairing time, never a pairing preset.
   [PAIRING_SCOPE_CODING_EXEC]: ['operator-promotion'],
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: ['operator-promotion'],
 };
@@ -550,9 +549,9 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
       "Can run one-off shell commands on this Station's computer (the Coding terminal's command box), as you and with your keys. Without it the device still reads and edits the Project's files.",
   },
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: {
-    label: 'Allow full access',
+    label: 'Skip approval prompts',
     summary:
-      "Can put a chat, or an Agent's default, at full access: the agent runs with no sandbox and no approval prompts, as you. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
+      "Can put a chat, or an Agent's default, in full access mode: the agent runs with no sandbox and no approval prompts, as you. It grants no other permission. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
   },
 };
 
@@ -577,9 +576,8 @@ export function pairingScopePresetString(preset: PairingScopePreset): string {
  * What a device may ask for in its own access request
  * (`PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH`, body `scope`): one base,
  * Read-only or Standard, plus any of {@link DEVICE_REQUESTABLE_EXTRA_SCOPES}.
- * The Station app and browser show these as a permission list, Standard
- * pre-selected, and the operator sees and can untick each one before
- * approving. A request that names no scope still receives
+ * The Station app and browser ask for everything (Standard and both extras);
+ * the operator sees the request and may limit it before approving. A request that names no scope still receives
  * {@link DEFAULT_GRANT_PAIRING_SCOPE}, which Station peers and older clients
  * rely on; nothing a device asks for includes `access:manage`.
  */
@@ -590,8 +588,8 @@ export const DEVICE_REQUESTABLE_BASE_PRESETS = [
 
 /**
  * The elevated grants a device may ask for at pairing time. Asking grants
- * nothing: approval surfaces leave them unticked, and keeping one needs the
- * operator, never an `access:approve` device or an unauthenticated approval.
+ * nothing by itself: keeping one when approving needs the operator, never an
+ * `access:approve` device or an unauthenticated approval.
  * The same rule covers an operator-created offer that carries one. Every
  * other elevated grant stays operator-added after pairing.
  */

@@ -463,21 +463,23 @@ A Device's access request may also name `scope`: exactly one base from
 `DEVICE_REQUESTABLE_BASE_PRESETS` (Read-only or Standard) plus any of
 `DEVICE_REQUESTABLE_EXTRA_SCOPES` (**Run commands**, `coding:exec`, and **Allow
 full access**, `approval:full-access`). Anything else, and any `scope` beside a
-delegation, is refused with `invalid_request`. The device-pairing panel shows
-this as a permission list, Standard pre-selected, so a phone or browser never
-inherits `access:manage`.
+delegation, is refused with `invalid_request`. The device-pairing panel asks
+for all of it (`FULL_DEVICE_ACCESS_SCOPE`: Standard, `coding:exec` and
+`approval:full-access`), never the default grant's `access:manage`; an
+account-bound request asks for Standard.
 
 Every approval surface (the **Paired devices** inbox, **Needs attention**, and
 `station environment access approve --scope=<scope,…>`) lists what the request
-asks for. The ordinary items start ticked; the requested extras start unticked
-(the CLI leaves them out unless `--scope` names them), so granting one is a
-deliberate choice, never a reflexive Approve. The confirm
+asks for, summarized ("asks for full device access"), and approves it as asked
+unless the approver narrows it under **Limit access** (or with `--scope`). In
+**Needs attention** the request is a one-line card whose **Review** opens a
+dialog with that summary and Approve/Deny. The confirm
 route takes the kept scope as `scope`, which must be a non-empty subset of the
 request; omitted, the device gets what it asked for. Requested extras are the
 operator's to grant: an approval that keeps one needs the operator credential or
 the desktop's own local grant, never an `access:approve` device or the
 unauthenticated at-the-machine approval, which may still approve the rest with
-the extras unticked. The same rule covers an operator-created offer whose scope
+the extras left out. The same rule covers an operator-created offer whose scope
 carries one. A delegation, relay or account-bound grant cannot be trimmed, and
 its **Needs attention** item carries no `requestedScope`; an account binding
 (operator only) approves the request as asked. The Station app never asks for

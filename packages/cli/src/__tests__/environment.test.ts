@@ -391,58 +391,16 @@ describe('environment CLI commands', () => {
       }),
     );
 
-    // Without --scope, the elevated grant it asked for is left out, and the
-    // operator is told the --scope that would include it.
-    stderr.mockReset();
-    const plain = makeAccessApi([pending], {
-      ...pending,
-      scope: 'orchestration:read orchestration:operate terminal:operate',
-      status: 'confirmed',
-    });
+    // Without --scope, the device gets what it asked for: a bodyless confirm.
+    const plain = makeAccessApi([pending], { ...pending, status: 'confirmed' });
     await runEnvironmentCommand(
       ['access', 'approve', 'request-scoped', '--force'],
       { ...deps(), request: plain },
     );
-    expect(plain).toHaveBeenLastCalledWith(
-      DEFAULT_LOOPBACK_API_BASE,
-      '/api/pairing/requests/request-scoped/confirm',
-      expect.objectContaining({
-        body: JSON.stringify({
-          scope: 'orchestration:read orchestration:operate terminal:operate',
-        }),
-      }),
-    );
-    expect(stderr).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'also asks for approval:full-access, which this approval leaves out. To grant it, approve with --scope=orchestration:read,orchestration:operate,terminal:operate,approval:full-access',
-      ),
-    );
-
-    // An offer that carries only an elevated grant is refused clearly, not
-    // approved with an empty scope.
-    const extrasOnly = makeAccessApi([
-      {
-        ...pending,
-        requestId: 'request-extras',
-        scope: 'approval:full-access',
-      },
-    ]);
-    await expect(
-      runEnvironmentCommand(
-        ['access', 'approve', 'request-extras', '--force'],
-        {
-          ...deps(),
-          request: extrasOnly,
-        },
-      ),
-    ).rejects.toThrow(
-      /asks only for approval:full-access\. To approve it, name what to grant with --scope=approval:full-access/,
-    );
-    expect(
-      extrasOnly.mock.calls.some(([, path]) =>
-        String(path).endsWith('/confirm'),
-      ),
-    ).toBe(false);
+    const plainConfirm = plain.mock.calls.find(([, path]) =>
+      String(path).endsWith('/confirm'),
+    )!;
+    expect(plainConfirm[2]).not.toHaveProperty('body');
 
     // It only narrows: a scope the device did not ask for is refused before
     // anything is sent.

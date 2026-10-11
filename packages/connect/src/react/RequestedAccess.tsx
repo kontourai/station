@@ -1,6 +1,5 @@
 import './RequestedAccess.css';
 import {
-  DEVICE_REQUESTABLE_BASE_PRESETS,
   DEVICE_REQUESTABLE_EXTRA_SCOPES,
   PAIRING_SCOPE_DESCRIPTIONS,
   PAIRING_SCOPE_PRESETS,
@@ -9,102 +8,17 @@ import {
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
 
-type RequestableBase = (typeof DEVICE_REQUESTABLE_BASE_PRESETS)[number];
-type RequestableExtra = (typeof DEVICE_REQUESTABLE_EXTRA_SCOPES)[number];
-
-/** What a device asks for: one base and any requestable extras. */
-export interface RequestedAccessChoice {
-  base: RequestableBase;
-  extras: ReadonlySet<RequestableExtra>;
-}
-
-export const DEFAULT_REQUESTED_ACCESS: RequestedAccessChoice = {
-  base: 'standard',
-  extras: new Set(),
-};
-
-const BASE_COPY: Record<RequestableBase, { label: string; detail: string }> = {
-  'read-only': {
-    label: 'Read-only',
-    detail: 'View and follow work. Cannot change anything.',
-  },
-  standard: {
-    label: 'Standard',
-    detail: 'Read, operate, and open a terminal.',
-  },
-};
-
-/** The scope string a choice asks for, in the vocabulary's order. */
-export function requestedAccessScope(choice: RequestedAccessChoice): string {
-  const tokens = new Set<PairingScope>([
-    ...PAIRING_SCOPE_PRESETS[choice.base],
-    ...choice.extras,
-  ]);
-  return PAIRING_SCOPES.filter((token) => tokens.has(token)).join(' ');
-}
+const REQUESTABLE_EXTRAS: readonly PairingScope[] =
+  DEVICE_REQUESTABLE_EXTRA_SCOPES;
 
 /**
- * The requester's permission list: Standard pre-selected, Read-only instead,
- * and the elevated extras a device may ask for. The operator sees the same
- * list when approving and can untick any of it.
+ * Everything a paired device can be given: Standard plus the elevated
+ * permissions a device may ask for. The Station app and browser ask for this;
+ * scoping a device down is the exception, done when approving.
  */
-export function RequestAccessPicker({
-  value,
-  onChange,
-  disabled = false,
-}: {
-  value: RequestedAccessChoice;
-  onChange: (next: RequestedAccessChoice) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <fieldset className="requested-access" disabled={disabled}>
-      <legend className="requested-access__legend">Ask for</legend>
-      <div role="radiogroup" aria-label="Access level">
-        {DEVICE_REQUESTABLE_BASE_PRESETS.map((base) => (
-          <label key={base} className="requested-access__option">
-            <input
-              type="radio"
-              name="requested-access-base"
-              checked={value.base === base}
-              onChange={() => onChange({ ...value, base })}
-            />
-            <span>
-              {BASE_COPY[base].label}
-              <span className="requested-access__detail">
-                {BASE_COPY[base].detail}
-              </span>
-            </span>
-          </label>
-        ))}
-      </div>
-      <span className="requested-access__group-header">
-        Also ask for (the operator decides on these)
-      </span>
-      {DEVICE_REQUESTABLE_EXTRA_SCOPES.map((token) => (
-        <label key={token} className="requested-access__option">
-          <input
-            type="checkbox"
-            checked={value.extras.has(token)}
-            onChange={(event) => {
-              const extras = new Set(value.extras);
-              if (event.target.checked) extras.add(token);
-              else extras.delete(token);
-              onChange({ ...value, extras });
-            }}
-          />
-          <span>
-            {PAIRING_SCOPE_DESCRIPTIONS[token].label}
-            <span className="requested-access__tag">Elevated</span>
-            <span className="requested-access__detail">
-              {PAIRING_SCOPE_DESCRIPTIONS[token].summary}
-            </span>
-          </span>
-        </label>
-      ))}
-    </fieldset>
-  );
-}
+export const FULL_DEVICE_ACCESS_SCOPE = PAIRING_SCOPES.filter((token) =>
+  [...PAIRING_SCOPE_PRESETS.standard, ...REQUESTABLE_EXTRAS].includes(token),
+).join(' ');
 
 /** The tokens of a requested scope, in the vocabulary's order. */
 export function requestedScopeTokens(scope: string): PairingScope[] {
@@ -112,45 +26,14 @@ export function requestedScopeTokens(scope: string): PairingScope[] {
   return PAIRING_SCOPES.filter((token) => tokens.has(token));
 }
 
-const REQUESTABLE_EXTRAS: readonly PairingScope[] =
-  DEVICE_REQUESTABLE_EXTRA_SCOPES;
-
-/**
- * What an approval keeps before the approver touches the list: everything
- * requested except the elevated extras. Keeping full access or running
- * commands is an explicit tick, never a reflexive Approve.
- */
+/** What an approval keeps before the approver limits it: all of the request. */
 export function defaultKeptScope(scope: string): Set<PairingScope> {
-  return new Set(
-    requestedScopeTokens(scope).filter(
-      (token) => !REQUESTABLE_EXTRAS.includes(token),
-    ),
-  );
+  return new Set(requestedScopeTokens(scope));
 }
 
-/** Whether a kept set still includes an elevated extra. */
+/** Whether a kept set includes an elevated permission (the operator's to grant). */
 export function keepsElevatedScope(kept: ReadonlySet<PairingScope>): boolean {
   return REQUESTABLE_EXTRAS.some((token) => kept.has(token));
-}
-
-/**
- * The `--scope` a host approval command needs to grant exactly `kept`:
- * `undefined` only when that is everything requested and nothing elevated,
- * since the CLI leaves requested elevated grants out unless `--scope` names
- * them.
- */
-export function cliScopeForApproval(
-  requestedScope: string,
-  kept: ReadonlySet<PairingScope>,
-): string | undefined {
-  const requested = requestedScopeTokens(requestedScope);
-  const keptTokens = requested.filter((token) => kept.has(token));
-  const elevatedRequested = requested.some((token) =>
-    REQUESTABLE_EXTRAS.includes(token),
-  );
-  return keptTokens.length === requested.length && !elevatedRequested
-    ? undefined
-    : keptTokens.join(' ');
 }
 
 /**
@@ -169,10 +52,22 @@ export function keptScopeForApproval(
 }
 
 /**
- * What a pending request asks for, one line per permission. The ordinary
- * ones start ticked and the elevated extras start unticked (see
- * {@link defaultKeptScope}); the approver changes either, keeping at least
- * one.
+ * The grant in a few words: "full device access" when it is everything a
+ * device can have, otherwise its permissions by name.
+ */
+export function describeDeviceGrant(tokens: Iterable<PairingScope>): string {
+  const granted = new Set(tokens);
+  const full = requestedScopeTokens(FULL_DEVICE_ACCESS_SCOPE);
+  if (full.every((token) => granted.has(token))) return 'full device access';
+  return PAIRING_SCOPES.filter((token) => granted.has(token))
+    .map((token) => PAIRING_SCOPE_DESCRIPTIONS[token].label)
+    .join(', ');
+}
+
+/**
+ * What a pending request asks for, said in one line, with the permissions in
+ * a collapsed "Limit access" list. Approving keeps all of it unless the
+ * approver unticks something there; at least one permission must stay.
  */
 export function RequestedScopeChecklist({
   deviceName,
@@ -189,45 +84,54 @@ export function RequestedScopeChecklist({
 }) {
   const tokens = requestedScopeTokens(requestedScope);
   if (tokens.length === 0) return null;
+  const limited = kept.size < tokens.length;
   return (
-    <fieldset className="requested-access" disabled={disabled}>
-      <legend className="requested-access__legend">
-        {deviceName} asks for
-      </legend>
-      {tokens.map((token) => {
-        const isOnlyKept = kept.has(token) && kept.size === 1;
-        return (
-          <label key={token} className="requested-access__option">
-            <input
-              type="checkbox"
-              checked={kept.has(token)}
-              disabled={isOnlyKept}
-              onChange={(event) => {
-                const next = new Set(kept);
-                if (event.target.checked) next.add(token);
-                else next.delete(token);
-                onChange(next);
-              }}
-            />
-            <span>
-              {PAIRING_SCOPE_DESCRIPTIONS[token].label}
-              {REQUESTABLE_EXTRAS.includes(token) && (
-                <span className="requested-access__tag">
-                  Elevated · tick to grant
+    <div className="requested-access">
+      <p className="requested-access__summary">
+        {deviceName} asks for <strong>{describeDeviceGrant(tokens)}</strong>.
+        {limited && (
+          <>
+            {' '}
+            Approving grants only <strong>{describeDeviceGrant(kept)}</strong>.
+          </>
+        )}
+      </p>
+      <details className="requested-access__limit" open={limited}>
+        <summary>Limit access</summary>
+        <fieldset
+          className="requested-access__list"
+          disabled={disabled}
+          aria-label={`What ${deviceName} may do`}
+        >
+          {tokens.map((token) => {
+            const isOnlyKept = kept.has(token) && kept.size === 1;
+            return (
+              <label key={token} className="requested-access__option">
+                <input
+                  type="checkbox"
+                  checked={kept.has(token)}
+                  disabled={isOnlyKept}
+                  onChange={(event) => {
+                    const next = new Set(kept);
+                    if (event.target.checked) next.add(token);
+                    else next.delete(token);
+                    onChange(next);
+                  }}
+                />
+                <span>
+                  {PAIRING_SCOPE_DESCRIPTIONS[token].label}
+                  {REQUESTABLE_EXTRAS.includes(token) && (
+                    <span className="requested-access__tag">Elevated</span>
+                  )}
+                  <span className="requested-access__detail">
+                    {PAIRING_SCOPE_DESCRIPTIONS[token].summary}
+                  </span>
                 </span>
-              )}
-              <span className="requested-access__detail">
-                {PAIRING_SCOPE_DESCRIPTIONS[token].summary}
-              </span>
-            </span>
-          </label>
-        );
-      })}
-      {kept.size < tokens.length && (
-        <p className="requested-access__note">
-          Approving grants only what is ticked.
-        </p>
-      )}
-    </fieldset>
+              </label>
+            );
+          })}
+        </fieldset>
+      </details>
+    </div>
   );
 }

@@ -1,6 +1,5 @@
 import {
   approvalRefusalRemedy,
-  cliScopeForApproval,
   defaultKeptScope,
   keepsElevatedScope,
   keptScopeForApproval,
@@ -66,6 +65,7 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonList } from '../state';
 import './AttentionCard.css';
@@ -304,12 +304,15 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
     useSystemStatusForApiBaseQuery(apiBase).data?.build?.channel,
   );
   // What the approver keeps of what the device asked for; all of it unless
-  // unticked. An older Station sends no requested scope: no list, and
+  // limited. An older Station sends no requested scope: no list, and
   // Approve keeps whatever the request carries.
   const requestedScope = item.requestedScope ?? '';
   const [kept, setKept] = useState<ReadonlySet<PairingScope>>(() =>
     defaultKeptScope(requestedScope),
   );
+  // The card only says a device is asking; the details and the decision
+  // open in a dialog.
+  const [reviewing, setReviewing] = useState(false);
   // #765 D5 live verification: `access:approve` is operator-promotion-only,
   // so a paired browser session can read this item but the pairing routes
   // answer its approve/deny with 401 `authentication_required` — the buttons
@@ -326,67 +329,85 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
       </div>
     );
   }
+  const decision = (
+    <div className="attention-item__actions">
+      <button
+        type="button"
+        className="attention-item__action attention-item__action--primary"
+        disabled={busy}
+        onClick={() => {
+          const scope = requestedScope
+            ? keptScopeForApproval(requestedScope, kept)
+            : undefined;
+          confirmMutation.mutate(
+            scope === undefined
+              ? item.source.requestId
+              : { requestId: item.source.requestId, scope },
+          );
+        }}
+      >
+        Approve
+      </button>
+      <button
+        type="button"
+        className="attention-item__action attention-item__action--danger"
+        disabled={busy}
+        onClick={() => denyMutation.mutate(item.source.requestId)}
+      >
+        Deny
+      </button>
+    </div>
+  );
   return (
     <>
-      {requestedScope && (
-        <RequestedScopeChecklist
-          deviceName={item.deviceName}
-          requestedScope={requestedScope}
-          kept={kept}
-          onChange={setKept}
-          disabled={busy}
-        />
-      )}
       <div className="attention-item__actions">
         <button
           type="button"
           className="attention-item__action attention-item__action--primary"
-          // Nothing ticked is nothing to approve.
-          disabled={
-            busy ||
-            (requestedScopeTokens(requestedScope).length > 0 && kept.size === 0)
-          }
-          onClick={() => {
-            const scope = requestedScope
-              ? keptScopeForApproval(requestedScope, kept)
-              : undefined;
-            confirmMutation.mutate(
-              scope === undefined
-                ? item.source.requestId
-                : { requestId: item.source.requestId, scope },
-            );
-          }}
+          onClick={() => setReviewing(true)}
         >
-          Approve
-        </button>
-        <button
-          type="button"
-          className="attention-item__action attention-item__action--danger"
-          disabled={busy}
-          onClick={() => denyMutation.mutate(item.source.requestId)}
-        >
-          Deny
+          Review
         </button>
       </div>
-      <MutationError
-        error={describePairingActionError(
-          confirmMutation.error,
-          item,
-          'approve',
-          operatorCli,
-          // What the refused approval sent, not the boxes as they are now.
-          submittedKept(confirmMutation.variables, requestedScope) ?? kept,
-        )}
-      />
-      <MutationError
-        error={describePairingActionError(
-          denyMutation.error,
-          item,
-          'deny',
-          operatorCli,
-          kept,
-        )}
-      />
+      {reviewing && (
+        <Dialog
+          title={`${item.deviceName} is asking to pair`}
+          closeLabel="Close pairing request"
+          onClose={() => setReviewing(false)}
+          footer={decision}
+        >
+          {requestedScope ? (
+            <RequestedScopeChecklist
+              deviceName={item.deviceName}
+              requestedScope={requestedScope}
+              kept={kept}
+              onChange={setKept}
+              disabled={busy}
+            />
+          ) : (
+            <p className="attention-item__detail">{item.body}</p>
+          )}
+          <MutationError
+            error={describePairingActionError(
+              confirmMutation.error,
+              item,
+              'approve',
+              operatorCli,
+              // What the refused approval sent, not the boxes as they are now.
+              submittedKept(confirmMutation.variables, requestedScope) ?? kept,
+            )}
+          />
+          <MutationError
+            error={describePairingActionError(
+              denyMutation.error,
+              item,
+              'deny',
+              operatorCli,
+              kept,
+            )}
+          />
+        </Dialog>
+      )}
     </>
   );
 }
@@ -408,7 +429,7 @@ function pairingApprovalRemedy(
     operatorCli,
     // The printed command grants exactly what this card would have kept.
     keptScope: item.requestedScope
-      ? cliScopeForApproval(item.requestedScope, kept)
+      ? keptScopeForApproval(item.requestedScope, kept)
       : undefined,
     keepsElevated: refusedKeepingElevated,
   });

@@ -8789,7 +8789,7 @@ export function configureDevicePairingHostRoutes(
         | undefined;
       let relayConfirmation: DevicePairingRequest | undefined;
       // What the approver keeps of the requested scope (the approval
-      // surfaces' permission list); omitted keeps all of it.
+      // surfaces' Limit access list); omitted keeps all of it.
       let grantedScope: string | undefined;
       if (c.req.raw.body !== null) {
         const body = await readPairingOfferJson(
@@ -8939,7 +8939,7 @@ export function configureDevicePairingHostRoutes(
       }
       // Full access or running commands, asked for at pairing, is the
       // operator's to grant: an `access:approve` device may approve the rest,
-      // with those unticked, but not keep them.
+      // with those left out, but not keep them.
       if (!relayConfirmation) {
         const requested = pairing
           .listRequests()
