@@ -79,12 +79,13 @@ interface DeltaCoalescerOptions {
    */
   logger?: CoalescerLogger;
   /**
-   * #3560: asked when a flush made AHEAD OF another event fails on the
-   * synchronous `offer` path. Returning true puts the buffered text back, so
-   * the caller's retry of that event delivers it first and the event cannot
-   * overtake it. The owner decides, because only it knows whether the failure
-   * is transient and whether the delivery committed before it threw.
-   * Omitted, the buffer is dropped as before.
+   * #3560: asked when a flush made synchronously by `offer` fails — one made
+   * ahead of another event, or at the size cap. Returning true puts the text
+   * buffered before the offered event back, so the caller's retry of that
+   * event delivers it first and nothing overtakes or loses it. The owner
+   * decides, because only it knows whether the failure is transient and
+   * whether the delivery committed before it threw. Omitted, the buffer is
+   * dropped as before.
    */
   retainFailedFlush?: (event: CanonicalRuntimeEvent, error: unknown) => boolean;
 }
@@ -100,6 +101,7 @@ type DeliveryFailureMode = 'propagate' | 'warn';
 interface Pending {
   event: CanonicalRuntimeEvent;
   text: string;
+  /** Undefined only while retained for an owner retry (see `flushPending`). */
   timer: unknown;
 }
 
@@ -192,7 +194,7 @@ export class DeltaCoalescer {
 
     if (text === undefined) {
       // Not coalescable: whatever is buffered for this thread happened first.
-      this.flushPending(event.threadId, 'propagate', true);
+      this.flushPending(event.threadId, 'propagate', { excludeTrailing: 0 });
       // A tool call, an approval or a turn boundary ends the current run of
       // text, so whatever text comes next is a fresh paint, not a
       // continuation of what this event interrupted — UNLESS the flush above
@@ -204,7 +206,7 @@ export class DeltaCoalescer {
     const current = this.pending.get(event.threadId);
     if (current && !mergeable(current.event, event)) {
       // A different turn, item or kind of delta: not the same text.
-      this.flushPending(event.threadId, 'propagate', true);
+      this.flushPending(event.threadId, 'propagate', { excludeTrailing: 0 });
     }
 
     // The FIRST delta of a run of text is never held. Batching starts with
@@ -230,11 +232,20 @@ export class DeltaCoalescer {
       });
     } else {
       existing.text += text;
+      // Retained text is untimed (see `flushPending`); text merging into it
+      // means the retry is over, so the window applies again.
+      if (existing.timer === undefined)
+        existing.timer = this.setTimer(
+          () => this.flushThread(event.threadId),
+          this.windowMs,
+        );
     }
 
     const held = this.pending.get(event.threadId);
     if (held && held.text.length >= this.maxChars)
-      this.flushPending(event.threadId, 'propagate');
+      this.flushPending(event.threadId, 'propagate', {
+        excludeTrailing: text.length,
+      });
     return true;
   }
 
@@ -281,41 +292,54 @@ export class DeltaCoalescer {
   }
 
   /**
-   * `aheadOfEvent` marks the two `offer` flushes made because a DIFFERENT
-   * event is about to be published. Only those may retain on failure: the
-   * caller retries that event, and the retry must flush this text first. The
-   * size-cap flush is not one of them. Its buffer already holds the delta
-   * being offered, so retaining it would duplicate that delta's text on retry.
+   * `retain` is given only by `offer`'s synchronous flushes, whose caller
+   * retries the event it offered (#3560). The retry must deliver this text
+   * first, so a failed delivery the owner agrees to retry puts it back.
+   *
+   * `excludeTrailing` is how much of the buffer is the offered delta itself.
+   * It is zero for a flush made ahead of a different event. The size-cap
+   * flush runs after the offered delta was appended, so its tail is left for
+   * the caller to re-offer; keeping it too would duplicate that delta.
+   *
+   * Retained text gets NO window timer. The owner's retry is asleep, and a
+   * timer firing then would take the warn path and drop the text it was
+   * retained to keep. `offer` re-times it when later text merges in, and
+   * `flushAll`/`forgetThread` still flush it.
    */
   private flushPending(
     threadId: string,
     onFailure: DeliveryFailureMode,
-    aheadOfEvent = false,
+    retain?: { excludeTrailing: number },
   ): void {
     const held = this.pending.get(threadId);
     if (!held) return;
     this.pending.delete(threadId);
     this.clearTimer(held.timer);
     const merged = { ...held.event, delta: held.text } as CanonicalRuntimeEvent;
-    if (!aheadOfEvent || onFailure !== 'propagate') {
+    if (!retain || onFailure !== 'propagate') {
       this.deliver(merged, onFailure);
       return;
     }
     try {
       this.emit(merged);
     } catch (error) {
+      const kept = held.text.slice(
+        0,
+        held.text.length - retain.excludeTrailing,
+      );
       // The publish body throws before its bus fan-out, so normally nothing
       // has re-buffered this thread. If something did, that buffer holds
       // LATER text and must not be overwritten by this earlier text; the
       // earlier text is then dropped, as it always was.
       if (
+        kept.length > 0 &&
         !this.pending.has(threadId) &&
         this.retainFailedFlush(merged, error)
       ) {
         this.pending.set(threadId, {
           event: held.event,
-          text: held.text,
-          timer: this.setTimer(() => this.flushThread(threadId), this.windowMs),
+          text: kept,
+          timer: undefined,
         });
       }
       throw error;
@@ -408,8 +432,8 @@ export class DeltaCoalescer {
    *
    * What a propagating throw leaves behind is `pending`-clean only: the buffer
    * is dropped before the delivery is attempted, so no thread is left holding
-   * stale text. The exception is a flush ahead of another event that the
-   * owner's `retainFailedFlush` keeps for that event's retry (#3560); see
+   * stale text. The exception is an `offer` flush whose earlier text the
+   * owner's `retainFailedFlush` keeps for the offered event's retry (#3560); see
    * `flushPending`. The first-paint MARKER is a different matter — the first-delta
    * pass-through sets it before delivering, so a throw there leaves a marker
    * saying "painted" for text that never painted, and a throw out of the

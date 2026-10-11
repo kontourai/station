@@ -1998,6 +1998,12 @@ export class OrchestrationService {
         this.isRetryablePublishFailure(event, error),
     },
   );
+  /**
+   * #3560: `turn.started` event ids whose provider-turn boundary is recorded
+   * while their publish is still in progress, so a retry does not record it
+   * again. Cleared when the publish returns or gives up.
+   */
+  private readonly providerTurnBoundariesInFlight = new Set<string>();
   /** Threads whose missing configuration has already been logged for monitoring. */
   private readonly monitoringUnconfiguredThreads = new Set<string>();
   private readonly turnAdmissions = new Set<OrchestrationTurnAdmission>();
@@ -9848,10 +9854,11 @@ export class OrchestrationService {
    * permits retrying the turn.
    *
    * A retry repeats the publish body's pre-append steps. They are idempotent
-   * for a replay of the same event, with two exceptions. A provider-started
-   * turn can record a second accepted boundary row, which that turn's
-   * terminal retires along with the first (they share its provider turn id).
-   * And an activity notification is counted twice in `sessionActivityEvents`.
+   * for a replay of the same event, except that an activity notification is
+   * counted twice in `sessionActivityEvents`; a provider-started turn's
+   * boundary is recorded once per event (`providerTurnBoundariesInFlight`).
+   * Lifecycle normalization is NOT redone, so a retried event keeps the
+   * `previousState`/`sessionState` computed before the first attempt.
    * Pre-append state that outlives an append which never succeeds is #3561.
    */
   private async publishObservedEvent(
@@ -9861,35 +9868,44 @@ export class OrchestrationService {
   ): Promise<boolean> {
     const admitted = this.admitEventForPublication(event);
     if (!admitted) return true;
-    for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
-      try {
-        return this.offerOrPublishEvent(admitted);
-      } catch (error) {
-        if (
-          delayMs === undefined ||
-          !this.isRetryablePublishFailure(admitted, error)
-        )
-          throw error;
-        this.options.logger.debug(
-          'Retrying an observed event after event store contention',
-          {
-            provider: adapter.provider,
-            threadId: admitted.threadId,
-            method: admitted.method,
-            error: errorMessage(error),
-          },
-        );
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
-          throw error;
+    try {
+      for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
+        try {
+          return this.offerOrPublishEvent(admitted);
+        } catch (error) {
+          if (
+            delayMs === undefined ||
+            !this.isRetryablePublishFailure(admitted, error)
+          )
+            throw error;
+          this.options.logger.debug(
+            'Retrying an observed event after event store contention',
+            {
+              provider: adapter.provider,
+              threadId: admitted.threadId,
+              method: admitted.method,
+              error: errorMessage(error),
+            },
+          );
+          // node:sqlite is synchronous: each failed attempt may already have
+          // blocked the whole process for busy_timeout. Only this sleep yields.
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
+            throw error;
+        }
       }
+      throw new Error('unreachable: the final attempt returns or throws');
+    } finally {
+      this.providerTurnBoundariesInFlight.delete(admitted.eventId);
     }
-    throw new Error('unreachable: the final attempt returns or throws');
   }
 
   /**
-   * Retry only SQLITE_BUSY/locked contention: a peer holding the write lock
-   * can let go. A constraint or programming error repeats identically.
+   * Retry only the SQLITE_BUSY family (errcode 5, or its "database is
+   * locked" message, which the extended BUSY codes share): a peer holding the
+   * write lock can let go. SQLITE_LOCKED (6, "database table is locked") is a
+   * same-connection conflict and is not retried, nor is a constraint or
+   * programming error, which repeats identically.
    *
    * And never retry an event that is already stored. The append rolls back
    * its savepoint on any throw inside it, but a throw from a step AFTER the
@@ -11089,7 +11105,12 @@ export class OrchestrationService {
    */
   private projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean {
     const admitted = this.admitEventForPublication(event);
-    return admitted ? this.offerOrPublishEvent(admitted) : true;
+    if (!admitted) return true;
+    try {
+      return this.offerOrPublishEvent(admitted);
+    } finally {
+      this.providerTurnBoundariesInFlight.delete(admitted.eventId);
+    }
   }
 
   /**
@@ -11165,7 +11186,10 @@ export class OrchestrationService {
     if (
       event.method !== 'turn.started' ||
       !event.turnId ||
-      !isProviderTriggeredTurn(event)
+      !isProviderTriggeredTurn(event) ||
+      // #3560: a retried publish of the same event must not record a second
+      // row, which boot recovery would banner a second time after a crash.
+      this.providerTurnBoundariesInFlight.has(event.eventId)
     ) {
       return;
     }
@@ -11174,6 +11198,8 @@ export class OrchestrationService {
       event.turnId,
       event.createdAt,
     );
+    if (recorded.kind === 'applied')
+      this.providerTurnBoundariesInFlight.add(event.eventId);
     providerTurnBoundaryRecords.add(1, {
       provider: event.provider,
       outcome: recorded.kind,
