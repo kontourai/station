@@ -635,7 +635,8 @@ The host-managed `station environment credential rotate` path replaces the
 operator credential, preserves the environment ID and paired-device registry,
 and prints the new secret to stdout after confirmation. Keep that output out of
 logs and shared terminals. `station environment reset` replaces the environment
-ID and operator credential and clears paired-device authority; its output is
+ID and operator credential and clears paired-device authority and personal
+access tokens; its output is
 metadata rather than the new credential. Both support explicit `--force` to
 bypass the prompt. The separately installed CLI refuses these operations when
 no host security service is supplied; use the host's repository launcher or
