@@ -475,18 +475,21 @@ cover is up, a window-scoped key monitor evicts the hidden WebView from first
 responder (WebKit can retake it) and routes key-down/key-up events (modifier-only
 `flagsChanged` events still reach the page): it maps Return to Restart, lets
 Tab/Space operate only the cover's buttons, swallows Escape and typing, and
-passes only app and window management Command shortcuts, matched by ANSI key
-position on non-Latin layouts. A cover task that fails, including an early
+passes only app and window management Command shortcuts, identified by the
+typed ASCII letter or, for a non-ASCII character, the US ANSI key position. A cover task that fails, including an early
 return inside the WebView callback, falls back to a non-blocking dialog once
-per epoch. Closing the covered window only hides it; recovery and the late
-reveal do not bring it back until the next activation. An overdue
+per epoch. Closing the covered window only hides it; recovery is deferred and
+each cover change decides on the main thread when it applies whether to order
+the window front, so neither a queued cover nor the late reveal brings it back
+until the next activation. An overdue
 background (tray-only) launch defers that cover until activation. Application
 content remains covered until identity and mount readiness converge; reveal
 removes the cover and its buttons. Other desktop platforms retain the
 hidden-window behavior and show a native dialog with **Restart**, **Quit** and
-**Keep Waiting**; dismissal keeps waiting and re-offers the choice after another
-deadline period while still overdue, and the dialog can remain open after
-a late reveal, where its buttons are inert. Interactive
+**Keep Waiting**; dismissal keeps waiting and re-offers the choice after 30,
+60, then every 120 seconds while still overdue. That dialog (and the macOS
+fallback alert) can remain open after a late reveal, where its buttons are
+inert. Interactive
 second launch, accepted deep link, and macOS reopen use this authority;
 explicit background/tray-only launches can suppress activation. Home/schema
 preparation refusals before supervisor setup have a separate Exit-only dialog

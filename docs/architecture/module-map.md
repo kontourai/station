@@ -885,12 +885,14 @@ monitor evicts the WebView from first responder and routes every key-down and
 key-up event (modifier-only changes still reach the page; they type nothing):
 Return chooses **Restart**, Tab/Shift-Tab/Space operate only the cover's own
 buttons, Escape and typing are swallowed, and only the Quit, Close, Hide, Hide
-Others, Minimize and window-cycling Command shortcuts pass, matched like AppKit
-menus on non-Latin layouts (editing shortcuts would target the page). Reveal or
+Others, Minimize and window-cycling Command shortcuts pass, identified by the
+typed ASCII letter or, when the layout types a non-ASCII character, by the US
+ANSI key position (editing shortcuts would target the page). Reveal or
 main-window destruction removes the monitor and the retained button target.
 Closing the main window only hides it; until the next explicit activation,
-startup recovery is deferred and a late reveal admits content without bringing
-the hidden window back to the front. Cover
+startup recovery is deferred, and each cover change decides on the main thread
+when it applies whether to order the window front, so neither a queued cover
+nor a late reveal brings the hidden window back. Cover
 content is requested while the readiness lock is held, so it cannot land after
 the reveal of an admitted window.
 
@@ -906,16 +908,20 @@ window without user action. The renderer's
 likewise has no wall-clock limit while the owned sidecar is `starting` or
 `restarting` (the supervisor's attempt cap ends that in `failed`), so a fresh
 home still gets the profile its identity proof requires after a long boot. A
-`failed`, `stopping` or `stopped` sidecar releases the loader at once to the
-in-app recovery UI; a background continuation finishes the bootstrap if an
-explicit Restart later brings that sidecar to `running`. On macOS the cover switches
+`failed`, `stopping` or `stopped` sidecar releases the loader at once so the
+shell can render its recovery UI (behind the native cover until readiness
+admits the window); when an explicit Restart later brings that sidecar to
+`running`, the page reloads once so first paint re-runs the bootstrap with its
+normal error surface. On macOS the cover switches
 in place to a "taking longer than usual" message with **Restart** (the default
 button) and **Quit**; a background (tray-only) launch defers it until
 activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
 that did not start, or an overdue cover task that failed) show a native dialog
 with **Restart**, **Quit** and **Keep Waiting**. The dialog does not block the
-main thread; dismissing it keeps waiting and re-offers the choice after another
-30 seconds while that epoch is still overdue.
+main thread; dismissing it keeps waiting and re-offers the choice after 30,
+then 60, then every 120 seconds while that epoch is still overdue. Like the
+Windows/Linux dialog, a macOS fallback alert can outlive the condition that
+showed it (for example after the window reveals); its buttons are then inert.
 Restart starts a new epoch: with a current owned ticket it first reprobes
 without restarting; a later Restart or a missing ticket restarts only the owned
 sidecar. A service-owned/unowned backend re-runs the native recovery commit
