@@ -1,0 +1,45 @@
+{
+  "path": "packages/telemetry-broker/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed full private receiver journey: package/build, Unix operator-key admission, source/operator separation, durable PostgreSQL commit/dedupe, compatible permanent schema gates, request/transaction/storage bounds, retention/capacity, backup/upgrade instructions and bounded live qualifier.",
+
+  "limits": "Source review, focused HTTP mocks, live PostgreSQL16.14 qualification and built Unix FIFO failure control do not establish persistent deployment, real Station/engine execution, final-source restart/restore, native shells or release qualification. Backup and upgrade are operator instructions awaiting separate deployment evidence.",
+
+  "sources": [
+    "packages/telemetry-broker/package.json",
+
+    "packages/telemetry-broker/build.mjs",
+
+    "packages/telemetry-broker/src/main.ts",
+
+    "packages/telemetry-broker/src/app.ts",
+
+    "packages/telemetry-broker/src/store.ts",
+
+    "packages/telemetry-broker/src/__tests__/broker.test.ts",
+
+    "scripts/qualify-telemetry-broker.mjs",
+
+    "packages/contracts/src/product-telemetry.ts",
+
+    "packages/shared/src/product-telemetry.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "package.json#/scripts/build:telemetry-broker",
+
+    "package.json#/scripts/qualify:telemetry-broker"
+  ],
+
+  "checks": [
+    "Independent source delta approved e705f80c4d1eeef7cc7db0df01cbb1762210b44d",
+
+    "15 focused HTTP tests passed; concurrency and rate mutations caught and restored",
+
+    "Live PostgreSQL16.14 qualification artifact d2744a75ac0734933edc1abf7790d7b6686836ebe7533cafcc2ede475eeda1c5: ten corrupt-schema controls across8entrypoints, commit/dedupe/revocation/capacity, transport deadline5001ms and recovery"
+  ]
+}
