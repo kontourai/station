@@ -7,9 +7,7 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 export { TURN_DEDUP_MAX_ENTRIES as CHAT_TURN_DEDUP_MAX_ENTRIES } from '../../services/orchestration/event-store.js';
 export type ChatTurnDedupClaim =
   | { claimed: true }
-  | { claimed: false; conversationId: string | null }
-  /** A dead owner's claim that may already have run; never re-run it. */
-  | { claimed: false; indeterminate: true };
+  | { claimed: false; conversationId: string | null };
 
 export class ChatTurnDedupStore {
   private readonly eventStore: EventStore;
@@ -26,9 +24,8 @@ export class ChatTurnDedupStore {
   }
   claim(clientTurnId: string): ChatTurnDedupClaim {
     const claim = this.eventStore.claimChatTurn(clientTurnId);
-    if (claim.claimed) return { claimed: true };
-    return claim.indeterminate
-      ? { claimed: false, indeterminate: true }
+    return claim.claimed
+      ? { claimed: true }
       : { claimed: false, conversationId: claim.conversationId ?? null };
   }
   resolve(clientTurnId: string, conversationId: string): void {

@@ -12822,20 +12822,20 @@ export class EventStore {
     });
   }
 
-  /**
-   * `/chat` records no invocation boundary, so its claims keep the dead-owner
-   * reclaim rule they had before #3559. Only a legacy row with no invocation
-   * record answers `indeterminate`.
-   */
   claimChatTurn(clientTurnId: string): {
     claimed: boolean;
     conversationId?: string;
-    indeterminate?: true;
   } {
     const claim = this.turnIdempotence.claim(chatTurnDedupKey(clientTurnId));
-    if (claim.claimed) return { claimed: true };
-    return claim.indeterminate
-      ? { claimed: false, indeterminate: true }
+    // #3559: `/chat` claims are untracked and an unmarked `chat:` row reads as
+    // untracked, so no chat claim can be indeterminate. Refuse rather than
+    // report it as contended if that ever stops holding.
+    if (claim.indeterminate)
+      throw new Error(
+        'A /chat turn claim cannot be indeterminate; it records no invocation.',
+      );
+    return claim.claimed
+      ? { claimed: true }
       : { claimed: false, conversationId: claim.value };
   }
   resolveChatTurn(clientTurnId: string, conversationId: string): void {

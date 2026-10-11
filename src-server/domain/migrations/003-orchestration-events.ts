@@ -264,8 +264,7 @@ CREATE TABLE IF NOT EXISTS orchestration_turn_dedup (
   dedup_key TEXT PRIMARY KEY,
   value TEXT,
   created_at INTEGER NOT NULL,
-  owner_json TEXT,
-  invocation TEXT
+  owner_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS provider_session_adoptions (
@@ -808,18 +807,9 @@ export function ensureOrchestrationTurnDedupColumns(
     const columns = db
       .prepare('PRAGMA table_info(orchestration_turn_dedup)')
       .all() as Array<{ name?: string }>;
-    const names = new Set(columns.map((column) => column.name));
-    if (!names.has('owner_json')) {
+    if (!new Set(columns.map((column) => column.name)).has('owner_json')) {
       db.exec(
         'ALTER TABLE orchestration_turn_dedup ADD COLUMN owner_json TEXT',
-      );
-    }
-    // #3559: existing rows keep NULL. A dead owner's unresolved row with no
-    // invocation record is never reclaimed, because nothing proves it did not
-    // reach its effect.
-    if (!names.has('invocation')) {
-      db.exec(
-        'ALTER TABLE orchestration_turn_dedup ADD COLUMN invocation TEXT',
       );
     }
     // This migration is deliberately additive-only. An ownerless unresolved

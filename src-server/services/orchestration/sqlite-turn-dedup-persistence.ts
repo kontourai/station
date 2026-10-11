@@ -1,5 +1,6 @@
 import type {
   TurnClaimInvocation,
+  TurnClaimOwner,
   TurnIdempotencyPersistence,
   TurnIdempotencyRecord,
 } from '../turn-idempotency.js';
@@ -44,6 +45,10 @@ export function turnDedupThreadPrefix(threadId: string): string {
 export function chatTurnDedupKey(clientTurnId: string): string {
   return `chat:${clientTurnId.length}:${clientTurnId}`;
 }
+/** Thread keys start with the thread id's length, so they never start with `chat:`. */
+function isChatTurnDedupKey(key: string): boolean {
+  return key.startsWith('chat:');
+}
 
 /**
  * SQLite-backed `TurnIdempotencyPersistence` adapter over
@@ -61,27 +66,25 @@ export function createSqliteTurnDedupPersistence({
   function read(key: string): TurnIdempotencyRecord | undefined {
     const row = db
       .prepare(
-        `SELECT value, created_at AS createdAt, owner_json AS ownerJson,
-                invocation
+        `SELECT value, created_at AS createdAt, owner_json AS ownerJson
          FROM orchestration_turn_dedup
          WHERE dedup_key = ?`,
       )
       .get(key) as
-      | {
-          value: string | null;
-          createdAt: number;
-          ownerJson: string | null;
-          invocation: string | null;
-        }
+      | { value: string | null; createdAt: number; ownerJson: string | null }
       | undefined;
     if (!row) return undefined;
-    const invocation = parseTurnClaimInvocation(row.invocation);
+    const claimant =
+      row.ownerJson === null ? undefined : parseTurnClaimOwner(row.ownerJson);
+    // #3559: an unmarked `chat:` row can only come from the /chat facade,
+    // which records no invocation, so it keeps the untracked reclaim rule.
+    const invocation =
+      claimant?.invocation ??
+      (isChatTurnDedupKey(key) ? 'untracked' : undefined);
     return {
       value: row.value,
       createdAt: row.createdAt,
-      ...(row.ownerJson === null
-        ? {}
-        : { owner: parseTurnClaimOwner(row.ownerJson) }),
+      ...(claimant ? { owner: claimant.owner } : {}),
       ...(invocation ? { invocation } : {}),
     };
   }
@@ -116,15 +119,12 @@ export function createSqliteTurnDedupPersistence({
         const decision = updater(read(key));
         if (decision.record)
           db.prepare(
-            `INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json, invocation) VALUES (?, ?, ?, ?, ?) ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value, created_at = excluded.created_at, owner_json = excluded.owner_json, invocation = excluded.invocation`,
+            `INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json) VALUES (?, ?, ?, ?) ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value, created_at = excluded.created_at, owner_json = excluded.owner_json`,
           ).run(
             key,
             decision.record.value,
             decision.record.createdAt,
-            decision.record.owner
-              ? JSON.stringify(decision.record.owner)
-              : null,
-            decision.record.invocation ?? null,
+            serializeTurnClaimOwner(decision.record),
           );
         else
           db.prepare(
@@ -144,21 +144,35 @@ export function createSqliteTurnDedupPersistence({
 }
 
 /**
- * #3559: NULL is a row written before invocation was recorded, and any value
- * this build does not know is treated the same way. Both read as "unknown",
- * which the claim path never reclaims from a dead owner.
+ * #3559: the invocation record lives inside `owner_json`, beside the owner it
+ * describes. A writer that replaces the owner without recording invocation
+ * (an older peer or a downgraded runtime reclaiming the row) therefore drops
+ * it, and the row reads as unknown rather than as a stale `pending` that a
+ * later claimant would reclaim after that writer invoked and died. A record
+ * with no owner cannot carry it and reads as unknown too.
  */
+function serializeTurnClaimOwner(record: TurnIdempotencyRecord): string | null {
+  if (!record.owner) return null;
+  return JSON.stringify(
+    record.invocation
+      ? { ...record.owner, invocation: record.invocation }
+      : record.owner,
+  );
+}
+
+/** Unknown invocation values read as absent: never reclaimed from a dead owner. */
 function parseTurnClaimInvocation(
-  raw: string | null,
+  raw: unknown,
 ): TurnClaimInvocation | undefined {
   return raw === 'pending' || raw === 'begun' || raw === 'untracked'
     ? raw
     : undefined;
 }
 
-function parseTurnClaimOwner(
-  raw: string,
-): import('../turn-idempotency.js').TurnClaimOwner {
+function parseTurnClaimOwner(raw: string): {
+  owner: TurnClaimOwner;
+  invocation?: TurnClaimInvocation;
+} {
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -180,5 +194,13 @@ function parseTurnClaimOwner(
     )
   )
     throw new Error('Invalid orchestration turn claim owner_json');
-  return value as import('../turn-idempotency.js').TurnClaimOwner;
+  const { invocation: rawInvocation, ...owner } = value as Record<
+    string,
+    unknown
+  >;
+  const invocation = parseTurnClaimInvocation(rawInvocation);
+  return {
+    owner: owner as unknown as TurnClaimOwner,
+    ...(invocation ? { invocation } : {}),
+  };
 }

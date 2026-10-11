@@ -33,8 +33,12 @@ const defaultProcessIdentity: TurnIdempotencyProcessIdentity = {
  * - `untracked`: the claimant records no invocation boundary (the `/chat`
  *   facade). Its dead-owner claims keep the pre-#3559 reclaim rule.
  *
- * A row with no value was written before this field existed. Nothing proves
- * it never invoked, so a dead owner's legacy row is never reclaimed.
+ * Absent means unknown: a thread row written before #3559, or one whose owner
+ * was replaced by a writer that does not record invocation (an older peer or
+ * a downgraded runtime). Nothing proves such an owner never invoked, so a dead
+ * owner's unknown row is never reclaimed. The persistence keeps this value
+ * bound to the owner it describes, and reads an unmarked `/chat` row as
+ * `untracked`, since only the `/chat` facade writes those.
  */
 export type TurnClaimInvocation = 'pending' | 'begun' | 'untracked';
 export interface TurnIdempotencyRecord {
