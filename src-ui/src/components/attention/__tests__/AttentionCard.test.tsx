@@ -454,6 +454,16 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
       screen.getByRole('checkbox', { name: /Skip approval prompts/ }),
     );
     expect(screen.getByText(/Approving grants only/)).toBeTruthy();
+    // Re-ticking makes it unlimited again; the list stays open under the
+    // person's hand rather than snapping shut.
+    const limit = screen.getByText('Limit access').closest('details')!;
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Skip approval prompts/ }),
+    );
+    expect(limit.open).toBe(true);
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Skip approval prompts/ }),
+    );
     screen.getByRole('button', { name: 'Approve' }).click();
     const options = pairingMocks.confirmPairing.mock.calls.at(-1)?.[1] as {
       onSuccess: () => void;

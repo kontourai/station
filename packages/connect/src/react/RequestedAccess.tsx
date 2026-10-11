@@ -54,7 +54,8 @@ export function keptScopeForApproval(
  * behind the phrase.
  */
 export function describeDeviceGrant(tokens: Iterable<PairingScope>): string {
-  const granted = PAIRING_SCOPES.filter((token) => new Set(tokens).has(token));
+  const given = new Set(tokens);
+  const granted = PAIRING_SCOPES.filter((token) => given.has(token));
   const full = requestedScopeTokens(FULL_DEVICE_ACCESS_SCOPE);
   if (
     granted.length === full.length &&

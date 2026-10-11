@@ -380,7 +380,9 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         <Dialog
           title={`${item.deviceName} is asking to pair`}
           closeLabel="Close pairing request"
+          // Not closable while a decision is in flight, so its outcome shows.
           dismissible={!busy}
+          hideClose={busy}
           onClose={() => setReviewing(false)}
           footer={decision}
         >

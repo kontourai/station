@@ -464,7 +464,7 @@ A Device's access request may also name `scope`: exactly one base from
 `DEVICE_REQUESTABLE_EXTRA_SCOPES` (**Run commands**, `coding:exec`, and **Skip
 approval prompts**, `approval:full-access`). Anything else, and any `scope` beside a
 delegation, is refused with `invalid_request`. The device-pairing panel asks
-for all of it (`FULL_DEVICE_ACCESS_SCOPE`: Standard, `coding:exec` and
+for all of it (full device access: Standard, `coding:exec` and
 `approval:full-access`), never the default grant's `access:manage`; an
 account-bound request asks for Standard.
 
