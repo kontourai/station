@@ -466,10 +466,15 @@ describe('UsageTelemetryService', () => {
 
   test('a source connection check does not consent, derive an installation ID, or send an observation', async () => {
     let release!: (value: Response) => void;
+    let dispatched!: () => void;
+    const dispatch = new Promise<void>((resolve) => {
+      dispatched = resolve;
+    });
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
       () =>
         new Promise<Response>((resolve) => {
           release = resolve;
+          dispatched();
         }),
     );
     const root = await home();
@@ -488,6 +493,7 @@ describe('UsageTelemetryService', () => {
     try {
       const first = subject.checkConnection();
       const joined = subject.checkConnection();
+      await dispatch;
       expect(fetch).toHaveBeenCalledTimes(1);
       const [url, request] = fetch.mock.calls[0];
       expect(String(url)).toBe('https://ingest.test/v1/product/probes');
