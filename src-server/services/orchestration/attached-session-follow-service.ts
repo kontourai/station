@@ -249,7 +249,6 @@ interface AttachedSessionFollowServiceOptions {
    * anyway. Default 5 s; bounded so a hung source call cannot block shutdown.
    */
   stopPollWaitMs?: number;
-  now?: () => Date;
   /** Testable lower bound for the fixed production deduplication cache. */
   maxSeenEventIds?: number;
   /**
@@ -269,6 +268,8 @@ interface AttachedSessionFollowServiceOptions {
    * event. Optional only so isolated tests can construct the service.
    */
   invalidateSessionOwner?: (threadId: string) => void;
+  /** Live binding owner may refuse a new source subject before any import. */
+  canBindNewAttachedSubject?: (threadId: string) => boolean;
   /**
    * #3406: where a poll reads session and project folders (real path and
    * repository), off the main thread and with a deadline. Defaults to the
@@ -302,9 +303,9 @@ interface AttachedSessionFollowServiceOptions {
 
 /**
  * Follows provider-neutral, read-only transcript sources. It deliberately
- * never asks an adapter whether an external process is alive: freshness is
- * only the observed file scan time and transcript records are retained after
- * their source disappears.
+ * never asks an adapter whether an external process is alive. Source event
+ * time describes imported activity; polling supplies no durable freshness
+ * promise. Transcript records are retained after their source disappears.
  */
 const DEFAULT_STOP_POLL_WAIT_MS = 5_000;
 
@@ -571,6 +572,19 @@ export class AttachedSessionFollowService {
     onlyWithStoredProject = false,
   ): Promise<void> {
     const persisted = snapshot.get(descriptor.threadId);
+    if (persisted && persisted.controlMode !== 'read-only-attached') {
+      this.rejectFollow(source, descriptor);
+      return;
+    }
+    // A bound subject cannot be replaced under the live authorizer's old
+    // tenant binding. Keep the original subject intact; import no new one.
+    if (
+      !sameAttachedSourceSubject(persisted, source, descriptor) &&
+      !this.admitAttachedSubject(source, descriptor, persisted)
+    ) {
+      this.rejectFollow(source, descriptor);
+      return;
+    }
     // A stable Station thread id may outlive the configured source home (Claude
     // derives it from the native session id). Never combine the old attachment
     // with a newly discovered home under that same id. Legacy attachments with
@@ -618,6 +632,7 @@ export class AttachedSessionFollowService {
       !(keepsStoredAttribution && state.storedAttribution !== 'unattributed')
     )
       return;
+    let publicationAttempted = false;
     if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
       let envelopeWrites = 0;
       let lastEnvelopeYieldAt = performance.now();
@@ -629,6 +644,11 @@ export class AttachedSessionFollowService {
         state.storedAttribution,
       )) {
         if (!state.seen.has(event.eventId)) {
+          if (!this.admitAttachedSubject(source, descriptor, persisted)) {
+            this.rejectFollow(source, descriptor);
+            return;
+          }
+          publicationAttempted = true;
           this.appendIngestibleEvent(state, event);
           envelopeWrites += 1;
           if (
@@ -649,14 +669,16 @@ export class AttachedSessionFollowService {
         this.options.eventStore.findSessionOwnerUserId(descriptor.threadId) ===
         undefined
       ) {
+        if (!this.admitAttachedSubject(source, descriptor, persisted)) {
+          this.rejectFollow(source, descriptor);
+          return;
+        }
+        publicationAttempted = true;
         const record = attachedSessionOwnerRecord(
           descriptor,
           state.latestEventAt,
         );
-        try {
-          this.appendAndPublish(record);
-        } catch (error) {
-          if (!(error instanceof EventStoreIngressError)) throw error;
+        this.appendAndPublish(record, (error) => {
           // Retried every poll (below), but a deterministic refusal is
           // logged once per thread, not once per poll.
           if (!state.ownerRecordRefusalLogged) {
@@ -666,7 +688,7 @@ export class AttachedSessionFollowService {
               { threadId: record.threadId, error: error.message },
             );
           }
-        }
+        });
       }
       // Marked only once the log actually holds an owner: a write the store
       // refused (a skipped ingress error) is retried on the next poll.
@@ -675,6 +697,13 @@ export class AttachedSessionFollowService {
         undefined;
     }
 
+    if (
+      publicationAttempted &&
+      !this.admitAttachedSubject(source, descriptor, persisted)
+    ) {
+      this.rejectFollow(source, descriptor);
+      return;
+    }
     const priorCursor = state.cursors.get(sourceCursorKey(source));
     const reusableCursor = cursorMatchesSource(priorCursor, source, descriptor)
       ? priorCursor.cursor
@@ -715,18 +744,28 @@ export class AttachedSessionFollowService {
       });
       return;
     }
-    // Persist attachment metadata before importing, but advance neither durable
-    // nor in-memory progress until the whole page is stored. An interrupted
-    // page then replays through existing event-id deduplication without loss.
-    this.persistAttachedSession(source, descriptor, snapshot, reusableCursor);
-    // Legacy rows and a source whose opaque handle changed still replay one
-    // bounded transcript window. Discard durable ids with one indexed read per
-    // batch instead of making each duplicate enter appendEventIfAbsent's
-    // synchronous write/sequence path (archive#1997).
     const persistedEventIds = this.options.eventStore.existingEventIds(
       read.events.map((event) => event.eventId),
     );
-    let imported = 0;
+    const hasNewEvents = read.events.some(
+      (event) =>
+        !state.seen.has(event.eventId) && !persistedEventIds.has(event.eventId),
+    );
+    // Revalidate the current row after source.read yielded, before any page
+    // import or meaningful attachment write. Never advance progress here.
+    if (
+      !this.persistAttachedSession(
+        source,
+        descriptor,
+        snapshot,
+        reusableCursor,
+        hasNewEvents,
+      )
+    ) {
+      this.rejectFollow(source, descriptor);
+      return;
+    }
+    let appendOperations = 0;
     let lastAppendYieldAt = performance.now();
     for (const event of read.events) {
       if (
@@ -736,26 +775,46 @@ export class AttachedSessionFollowService {
       ) {
         continue;
       }
-      this.appendIngestibleEvent(state, event);
-      if (!state.latestEventAt || event.createdAt > state.latestEventAt) {
-        state.latestEventAt = event.createdAt;
-      }
-      attachedSessionEventsImported.add(1, {
-        source: sourceLabel(source),
-        method: event.method,
-      });
-      imported += 1;
-      // Keep identity/readiness probes responsive during Claude transcript
-      // backfill (dogfood hang: 20k+ sync INSERT OR IGNORE starved the loop).
+      const current = this.options.eventStore.readSessionByThread(
+        descriptor.threadId,
+      );
       if (
-        imported % APPEND_YIELD_EVERY === 0 ||
+        current?.controlMode !== 'read-only-attached' ||
+        !sameAttachedSourceSubject(current, source, descriptor) ||
+        !sameBoundedPersistedValues(
+          current.resumeCursor,
+          snapshot.get(descriptor.threadId)?.resumeCursor,
+        )
+      ) {
+        this.rejectFollow(source, descriptor);
+        return;
+      }
+      if (this.appendIngestibleEvent(state, event)) {
+        if (!state.latestEventAt || event.createdAt > state.latestEventAt) {
+          state.latestEventAt = event.createdAt;
+        }
+        attachedSessionEventsImported.add(1, {
+          source: sourceLabel(source),
+          method: event.method,
+        });
+      }
+      appendOperations += 1;
+      // Refused and raced duplicate attempts still consume work; slicing
+      // must not depend on the count of newly committed events.
+      if (
+        appendOperations % APPEND_YIELD_EVERY === 0 ||
         performance.now() - lastAppendYieldAt >= FOLLOW_WORK_SLICE_MS
       ) {
         await yieldEventLoop();
         lastAppendYieldAt = performance.now();
       }
     }
-    this.persistAttachedSession(source, descriptor, snapshot, read.cursor);
+    if (
+      !this.persistAttachedSession(source, descriptor, snapshot, read.cursor)
+    ) {
+      this.rejectFollow(source, descriptor);
+      return;
+    }
     state.cursors.set(sourceCursorKey(source), {
       provider: source.provider,
       sourceKind: source.kind,
@@ -869,12 +928,44 @@ export class AttachedSessionFollowService {
     );
   }
 
+  private admitAttachedSubject(
+    source: AttachedSessionSource,
+    descriptor: AttachedSessionDescriptor,
+    observed: ProviderSession | undefined,
+  ): boolean {
+    const current = this.options.eventStore.readSessionByThread(
+      descriptor.threadId,
+    );
+    if (
+      (observed && !current) ||
+      (!observed && current) ||
+      (current && current.controlMode !== 'read-only-attached') ||
+      attachedSessionAffinityConflicts(current, descriptor) ||
+      (current &&
+        observed &&
+        recordedAttachedSubjectChanged(observed, current)) ||
+      (current &&
+        comparableAttachedCursor(current.resumeCursor) &&
+        !sameBoundedPersistedValues(
+          current.resumeCursor,
+          observed?.resumeCursor,
+        ))
+    )
+      return false;
+    return (
+      sameAttachedSourceSubject(current, source, descriptor) ||
+      (!current?.tenantExecutionContext &&
+        this.options.canBindNewAttachedSubject?.(descriptor.threadId) !== false)
+    );
+  }
+
   private persistAttachedSession(
     source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     snapshot: PollSessionSnapshot,
     cursor?: AttachedSessionCursor,
-  ): void {
+    hasNewEvents = false,
+  ): boolean {
     const completedBoundary =
       source.continuationBoundary === 'completed-turn'
         ? readCompletedSourceBoundary(
@@ -891,28 +982,117 @@ export class AttachedSessionFollowService {
         ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
         : {}),
     };
-    const session = {
-      provider: descriptor.provider,
-      threadId: descriptor.threadId,
-      status: 'ready',
-      cwd: descriptor.cwd,
-      createdAt: descriptor.createdAt,
-      updatedAt: this.options.now?.().toISOString() ?? new Date().toISOString(),
-      controlMode: 'read-only-attached',
-      attachedSource: attached,
-      ...(cursor === undefined
-        ? {}
-        : {
-            resumeCursor: {
-              kind: ATTACHED_SESSION_CURSOR_KIND,
-              provider: descriptor.provider,
-              sourceHandle: descriptor.sourceHandle,
-              cursor,
-            } satisfies PersistedAttachedSessionCursor,
-          }),
-    } as ProviderSession;
+    const candidateFor = (
+      previous: ProviderSession | undefined,
+    ): ProviderSession => {
+      const sameSourceSubject = sameAttachedSourceSubject(
+        previous,
+        source,
+        descriptor,
+      );
+      return {
+        provider: descriptor.provider,
+        threadId: descriptor.threadId,
+        status: 'ready',
+        cwd: descriptor.cwd,
+        createdAt: previous?.createdAt ?? descriptor.createdAt,
+        updatedAt: previous?.updatedAt ?? descriptor.createdAt,
+        // Retain server facts for the same source subject; discovery cannot
+        // transfer tenant or lineage authority to a different kind/home/id.
+        model: sameSourceSubject ? previous?.model : undefined,
+        persistSession:
+          previous?.persistSession === false
+            ? false
+            : sameSourceSubject
+              ? previous?.persistSession
+              : undefined,
+        ephemeral: previous?.ephemeral,
+        tenantExecutionContext: sameSourceSubject
+          ? previous?.tenantExecutionContext
+          : undefined,
+        continuationSourceThreadId: sameSourceSubject
+          ? previous?.continuationSourceThreadId
+          : undefined,
+        adoptionIdempotencyKey: sameSourceSubject
+          ? previous?.adoptionIdempotencyKey
+          : undefined,
+        controlMode: 'read-only-attached',
+        attachedSource: attached,
+        ...(cursor === undefined
+          ? {}
+          : {
+              resumeCursor: {
+                kind: ATTACHED_SESSION_CURSOR_KIND,
+                provider: descriptor.provider,
+                sourceHandle: descriptor.sourceHandle,
+                cursor,
+              } satisfies PersistedAttachedSessionCursor,
+            }),
+      };
+    };
+    const observed = snapshot.get(descriptor.threadId);
+    let session = candidateFor(observed);
+    if (
+      observed &&
+      sameAttachedSessionPersistence(observed, session) &&
+      !hasNewEvents
+    )
+      return true;
+
+    // This single-row read owns currentness across source.read's await. It
+    // is skipped entirely for a semantically unchanged, event-free page.
+    const current = this.options.eventStore.readSessionByThread(
+      descriptor.threadId,
+    );
+    if (
+      (observed && !current) ||
+      (!observed && current) ||
+      (current && current.controlMode !== 'read-only-attached') ||
+      attachedSessionAffinityConflicts(current, descriptor) ||
+      (!sameAttachedSourceSubject(current, source, descriptor) &&
+        (current?.tenantExecutionContext ||
+          this.options.canBindNewAttachedSubject?.(descriptor.threadId) ===
+            false))
+    )
+      return false;
+    if (
+      current &&
+      observed &&
+      recordedAttachedSubjectChanged(observed, current)
+    )
+      return false;
+    // A different writer advanced durable progress while this page was read.
+    // Defer and rebuild follow state next poll rather than overwrite it.
+    if (
+      current &&
+      comparableAttachedCursor(current.resumeCursor) &&
+      !sameBoundedPersistedValues(current.resumeCursor, observed?.resumeCursor)
+    )
+      return false;
+    session = candidateFor(current);
+    if (current && sameAttachedSessionPersistence(current, session))
+      return true;
+    // Do not migrate an idle row's old poll timestamp. Only a meaningful
+    // metadata write needs the durable clock, including after a committed
+    // event's publication failed before the cached clock advanced.
+    session.updatedAt =
+      this.options.eventStore.latestEventCreatedAtByThread(
+        descriptor.threadId,
+      ) ?? session.createdAt;
     this.options.eventStore.upsertSession(session);
     snapshot.set(session);
+    return true;
+  }
+
+  private rejectFollow(
+    source: AttachedSessionSource,
+    descriptor: AttachedSessionDescriptor,
+  ): void {
+    this.followStates.delete(descriptor.threadId);
+    attachedSessionDiscovery.add(1, {
+      source: sourceLabel(source),
+      outcome: 'rejected_candidate',
+    });
   }
 
   /** Deleting the alias removes its recorded owner, so the cached one goes too. */
@@ -937,13 +1117,24 @@ export class AttachedSessionFollowService {
    * sanitizer exception here can never drop an imported event or crash the
    * poll loop.
    */
-  private appendAndPublish(event: CanonicalRuntimeEvent): void {
+  private appendAndPublish(
+    event: CanonicalRuntimeEvent,
+    onIngressRefusal?: (error: EventStoreIngressError) => void,
+  ): boolean {
     this.options.eventStore.assertNoOuterTransactionForPublication();
     event = safeSanitizeUIBlockEventProvenance(event, (message, meta) =>
       this.options.logger?.warn(message, meta),
     );
-    const sequence = this.options.eventStore.appendEventIfAbsent(event);
-    if (sequence === undefined) return;
+    let sequence: number | undefined;
+    try {
+      sequence = this.options.eventStore.appendEventIfAbsent(event);
+    } catch (error) {
+      if (!(error instanceof EventStoreIngressError) || !onIngressRefusal)
+        throw error;
+      onIngressRefusal(error);
+      return false;
+    }
+    if (sequence === undefined) return false;
     if (
       event.method === 'session.started' ||
       event.method === 'session.configured'
@@ -951,6 +1142,7 @@ export class AttachedSessionFollowService {
       this.options.invalidateSessionOwner?.(event.threadId);
     }
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event });
+    return true;
   }
 
   /**
@@ -966,11 +1158,8 @@ export class AttachedSessionFollowService {
   private appendIngestibleEvent(
     state: FollowState,
     event: CanonicalRuntimeEvent,
-  ): void {
-    try {
-      this.appendAndPublish(event);
-    } catch (error) {
-      if (!(error instanceof EventStoreIngressError)) throw error;
+  ): boolean {
+    const committed = this.appendAndPublish(event, (error) => {
       this.options.logger?.warn(
         'Attached-session event cannot be persisted; skipping it and advancing',
         {
@@ -980,9 +1169,244 @@ export class AttachedSessionFollowService {
           error: error.message,
         },
       );
-    }
+    });
     rememberEvent(state.seen, event.eventId, this.maxSeenEventIds);
+    return committed;
   }
+}
+
+function recordedAttachedSubject(session: ProviderSession):
+  | {
+      provider: string;
+      kind: string;
+      nativeId: string;
+      affinity: AttachedSessionDescriptor['affinity'];
+    }
+  | undefined {
+  const attached = session.attachedSource;
+  if (
+    !attached ||
+    typeof attached.kind !== 'string' ||
+    typeof attached.externalSessionId !== 'string' ||
+    (attached.affinity !== undefined &&
+      !isSessionSourceAffinity(attached.affinity))
+  )
+    return undefined;
+  return {
+    provider: session.provider,
+    kind: attached.kind,
+    nativeId: attached.externalSessionId,
+    affinity: attached.affinity,
+  };
+}
+
+function recordedAttachedSubjectChanged(
+  before: ProviderSession,
+  current: ProviderSession,
+): boolean {
+  const a = recordedAttachedSubject(before);
+  const b = recordedAttachedSubject(current);
+  if (!a || !b) return Boolean(a) !== Boolean(b);
+  return (
+    a.provider !== b.provider ||
+    a.kind !== b.kind ||
+    a.nativeId !== b.nativeId ||
+    !sameSessionSourceAffinity(a.affinity, b.affinity)
+  );
+}
+
+function sameAttachedSourceSubject(
+  previous: ProviderSession | undefined,
+  source: AttachedSessionSource,
+  descriptor: AttachedSessionDescriptor,
+): boolean {
+  const affinity = previous?.attachedSource?.affinity;
+  if (affinity !== undefined && !isSessionSourceAffinity(affinity))
+    return false;
+  return (
+    previous?.controlMode === 'read-only-attached' &&
+    previous.provider === descriptor.provider &&
+    previous.attachedSource?.kind === source.kind &&
+    previous.attachedSource.externalSessionId === descriptor.sessionId &&
+    sameSessionSourceAffinity(
+      previous.attachedSource.affinity,
+      descriptor.affinity,
+    )
+  );
+}
+
+/** A rejected legacy cursor must be repaired, never declared idle by comparison. */
+function comparableAttachedCursor(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Partial<PersistedAttachedSessionCursor>;
+  const keys = Object.keys(record);
+  if (
+    keys.length !== 4 ||
+    keys.some(
+      (key) => !['kind', 'provider', 'sourceHandle', 'cursor'].includes(key),
+    ) ||
+    record.kind !== ATTACHED_SESSION_CURSOR_KIND ||
+    typeof record.provider !== 'string' ||
+    typeof record.sourceHandle !== 'string' ||
+    !validAttachedSessionCursor(record.cursor)
+  )
+    return false;
+  if (typeof record.cursor === 'number') return true;
+  const cursorKeys = Object.keys(record.cursor);
+  if (
+    cursorKeys.length > 7 ||
+    cursorKeys.some(
+      (key) =>
+        ![
+          'offset',
+          'sourceState',
+          'eventIndex',
+          'turnId',
+          'usageAggregationVersion',
+          'usage',
+          'usageDeferred',
+        ].includes(key),
+    )
+  )
+    return false;
+  if (record.cursor.usage === undefined) return true;
+  const usageKeys = Object.keys(record.cursor.usage);
+  return (
+    usageKeys.length <= 10 &&
+    usageKeys.every((key) =>
+      [
+        'turnId',
+        'promptTokens',
+        'completionTokens',
+        'cacheReadTokens',
+        'cacheWriteTokens',
+        'cacheWriteTokens5m',
+        'cacheWriteTokens1h',
+        'serviceTier',
+        'serviceTierConflict',
+      ].includes(key),
+    )
+  );
+}
+
+/** The complete durable field set, with scalar SQLite defaults normalized. */
+function attachedSessionPersistenceFields(session: ProviderSession): unknown[] {
+  return [
+    session.provider,
+    session.threadId,
+    session.status,
+    session.model ?? null,
+    session.cwd ?? '',
+    session.resumeCursor,
+    session.controlMode ?? 'station-owned',
+    session.attachedSource,
+    session.continuationSourceThreadId ?? null,
+    session.adoptionIdempotencyKey ?? null,
+    session.persistSession ?? null,
+    session.ephemeral === true,
+    session.tenantExecutionContext,
+    session.createdAt,
+  ];
+}
+
+function sameAttachedSessionPersistence(
+  left: ProviderSession,
+  right: ProviderSession,
+): boolean {
+  if (
+    !comparableAttachedCursor(left.resumeCursor) ||
+    !comparableAttachedCursor(right.resumeCursor)
+  )
+    return false;
+  return sameBoundedPersistedValues(
+    attachedSessionPersistenceFields(left),
+    attachedSessionPersistenceFields(right),
+  );
+}
+
+/**
+ * sourceState's codec permits depth 8 and 128 KiB. The enclosing field array,
+ * envelope and cursor add four levels; two compared values plus their scalar
+ * metadata fit this budget. Uncomparable data requires a write, not a no-op.
+ */
+function sameBoundedPersistedValues(left: unknown, right: unknown): boolean {
+  const pending: [unknown, unknown, number][] = [[left, right, 0]];
+  let values = 0;
+  let bytes = 0;
+  const byteLimit = 2 * (128 * 1024 + 16 * 1024);
+  while (pending.length > 0) {
+    const [a, b, depth] = pending.pop()!;
+    if (++values > 4096 || depth > 12) return false;
+    if (a === undefined || b === undefined || a === null || b === null) {
+      if (a !== b) return false;
+      continue;
+    }
+    if (typeof a === 'string' && typeof b === 'string') {
+      if (a.length + b.length > (byteLimit - bytes) / 6) return false;
+      bytes +=
+        6 * (Buffer.byteLength(a, 'utf8') + Buffer.byteLength(b, 'utf8'));
+      if (bytes > byteLimit || a !== b) return false;
+      continue;
+    }
+    if (typeof a === 'number' && typeof b === 'number') {
+      if (!Number.isFinite(a) || !Number.isFinite(b) || a !== b) return false;
+      continue;
+    }
+    if (typeof a === 'boolean' && typeof b === 'boolean') {
+      if (a !== b) return false;
+      continue;
+    }
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (
+        !Array.isArray(a) ||
+        !Array.isArray(b) ||
+        a.length !== b.length ||
+        a.length > 1024
+      )
+        return false;
+      if (values + pending.length + a.length > 4096) return false;
+      for (let index = 0; index < a.length; index++)
+        pending.push([a[index], b[index], depth + 1]);
+      continue;
+    }
+    if (typeof a !== 'object' || typeof b !== 'object') return false;
+    if (
+      ![Object.prototype, null].includes(Object.getPrototypeOf(a)) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(b))
+    )
+      return false;
+    const aKeys = boundedPersistedObjectKeys(a);
+    const bKeys = boundedPersistedObjectKeys(b);
+    if (!aKeys || !bKeys || aKeys.length !== bKeys.length) return false;
+    if (values + pending.length + aKeys.length > 4096) return false;
+    const otherKeys = new Set(bKeys);
+    for (const key of aKeys) {
+      if (!otherKeys.has(key)) return false;
+      bytes += 12 * Buffer.byteLength(key, 'utf8') + 6;
+      if (bytes > byteLimit) return false;
+      pending.push([
+        Object.getOwnPropertyDescriptor(a, key)!.value,
+        Object.getOwnPropertyDescriptor(b, key)!.value,
+        depth + 1,
+      ]);
+    }
+  }
+  return true;
+}
+
+/** Match JSON's omitted undefined object members without invoking getters. */
+function boundedPersistedObjectKeys(value: object): string[] | undefined {
+  const keys = Object.keys(value);
+  if (keys.length > 128) return undefined;
+  const present: string[] = [];
+  for (const key of keys) {
+    if (key.length > 128) return undefined;
+    const field = Object.getOwnPropertyDescriptor(value, key);
+    if (!field || !('value' in field)) return undefined;
+    if (field.value !== undefined) present.push(key);
+  }
+  return present;
 }
 
 function restoredAttachedSessionCursors(
@@ -995,7 +1419,8 @@ function restoredAttachedSessionCursors(
   if (
     persisted?.controlMode !== 'read-only-attached' ||
     !value ||
-    typeof value !== 'object'
+    typeof value !== 'object' ||
+    !comparableAttachedCursor(value)
   ) {
     return cursors;
   }
