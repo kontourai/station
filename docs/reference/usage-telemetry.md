@@ -10,10 +10,10 @@ The saved `telemetryEnabled` setting takes precedence over
 this service sends nothing:** it starts no telemetry timer, buffers no events
 and makes no ingestion request. The repository configures no default endpoint.
 With an endpoint, it still requires a current disclosure acknowledgement before
-buffering or sending. The first-run UI and Settings show the inventory below;
+buffering or sending. The first-run UI and Settings show the event and envelope inventory below;
 the stored acknowledgement records acceptance, not proof the user read it.
 
-A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
+The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
 
 When an operator configures `STATION_TELEMETRY_ENDPOINT`, Station POSTs batches directly to that endpoint. `STATION_USAGE_TELEMETRY_KEY`, when set, is sent only as that endpoint's `x-api-key` request header. `STATION_TELEMETRY_API_KEY` remains exclusive to OTLP exports and is never sent to the product endpoint. The payload carries a SHA-256 hash of a random UUID persisted at `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
 
@@ -37,11 +37,23 @@ person count.
 accepts only the inventory's event/property vocabulary. Its memory buffer holds
 100 events, dropping the oldest on overflow. It flushes batches of 20 at a
 10-second interval or when a batch fills. A request has a one-second timeout;
-failed batches remain in memory for a later attempt. There is no durable queue
-or exactly-once guarantee: an endpoint may accept a request whose response is
-lost. Disabling telemetry clears buffered events and aborts an active request;
+failed batches remain in memory for a later attempt. There is no durable queue. Observation IDs and their producer times/build metadata
+are assigned once and preserved on retry, so a receiver can deduplicate a
+lost-response retry. The sender alone provides no exactly-once guarantee; the
+receiver must commit and deduplicate by source/event identity. Disabling telemetry clears buffered events and aborts an active request;
 it cannot retract data the endpoint already accepted. Shutdown attempts a
 bounded flush and can drop unsent events.
+
+The v1 batch and event shapes are published on
+`@kontourai/station-contracts/product-telemetry`. The Node-only shared
+`product-telemetry` helper renders/fingerprints the inventory and validates the
+strict receiver boundary: bounded batches, exact fields, classified values,
+canonical UTC timestamps and full hashes with explicit provenance. Unknown
+versions, stale inventories and legacy batches are rejected. An older payload
+has no deduplication/time/build guarantees and must not be assigned current
+metadata or included in precise release comparisons. Legacy storage/queries,
+if later supported, need their own explicit ingestion profile. No onboarding
+funnel is inferred from startup; only the three existing classified events ship.
 
 The producers are
 [runtime startup](../../src-server/runtime/bootstrap/station-runtime.ts) and
@@ -67,7 +79,43 @@ controlled endpoints; a live ingestion deployment needs its own delivery evidenc
 
 # Event inventory
 
-This page is rendered from `src-server/services/usage-telemetry-inventory.ts`; its contract test rejects code/inventory drift.
+The contracts/product-telemetry inventory declares event and envelope fields; shared/product-telemetry renders and fingerprints them. The revision includes both inventories.
+
+## Version 1 envelope
+
+### batch fields
+
+| Field | Disclosed meaning |
+| --- | --- |
+| `schema_version` | Protocol version 1. |
+| `inventory_revision` | SHA-256 of the disclosed envelope and event inventory. |
+| `distinct_id` | SHA-256 of a separate random installation UUID; not a person identity. |
+| `events` | One through twenty inventory observations. |
+
+### observation fields
+
+| Field | Disclosed meaning |
+| --- | --- |
+| `event_id` | Random UUID assigned once at observation; unchanged on retry. |
+| `event` | One name from the classified event inventory. |
+| `occurred_at` | Canonical UTC producer wall-clock time when track was called. |
+| `observed_at` | Canonical UTC producer wall-clock time at buffer admission. |
+| `build` | Allowlisted immutable process build metadata; missing facts stay absent. |
+| `properties` | Only the event-specific classified properties below. |
+
+### build fields
+
+| Field | Disclosed meaning |
+| --- | --- |
+| `version` | SemVer application version, present on every event. |
+| `platform` | Operating-system platform from the startup inventory. |
+| `arch` | CPU architecture from the startup inventory. |
+| `sha` | Optional full 40 or 64 hex Git hash, paired with sha_source. |
+| `sha_source` | Optional build-stamp or checkout; checkout does not identify served bundle bytes. |
+| `channel` | Optional stable, preview, nightly, dev or source-checkout. |
+| `dirty` | Optional boolean supplied by the immutable build stamp. |
+
+Producer wall-clock times do not guarantee synchronized clocks or receiver arrival. Branches, hostnames, instance and boot identifiers are excluded.
 
 ## `station_started`
 
