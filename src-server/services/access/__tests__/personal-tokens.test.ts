@@ -224,6 +224,8 @@ describe('personal access tokens', () => {
     });
     const other = new EnvironmentSecurityService({ homeDir, now });
     await other.initialize();
+    // Twice: the first records a last use; the second is a plain lookup.
+    expect(other.verifyCredential(minted.secret)).toBe(true);
     expect(other.verifyCredential(minted.secret)).toBe(true);
 
     expect(
@@ -232,6 +234,7 @@ describe('personal access tokens', () => {
         'human:tailscale-serve:casey',
       ),
     ).toBe(true);
+    expect(other.verifyCredential(minted.secret)).toBe(false);
     // Long enough that a lookup would record a last use.
     advance(48 * 60 * 60 * 1000);
     expect(other.verifyCredential(minted.secret)).toBe(false);

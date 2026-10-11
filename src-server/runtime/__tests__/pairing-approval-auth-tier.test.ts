@@ -1327,12 +1327,16 @@ describe('#3557 personal access tokens at the HTTP boundary', () => {
       bearer(secret, {}),
     );
     expect(administer.status).toBe(403);
+    // The same person's device passes the boundary (the harness mounts no
+    // Project routes behind it), so the 403 is the token's alone.
     expect(
-      harness.security.authorizeCredential(casey.credential, {
-        method: 'POST',
-        path: '/api/projects/demo/access/invitations',
-      }),
-    ).toBe(true);
+      (
+        await harness.request(
+          '/api/projects/demo/access/invitations',
+          bearer(casey.credential, {}),
+        )
+      ).status,
+    ).not.toBe(403);
 
     const listed = await harness.request(
       '/api/access/tokens',
