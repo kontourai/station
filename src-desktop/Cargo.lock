@@ -4380,6 +4380,7 @@ version = "0.1.11"
 dependencies = [
  "apple-native-keyring-store",
  "base64 0.22.1",
+ "block2",
  "dirs",
  "dunce",
  "hpke",

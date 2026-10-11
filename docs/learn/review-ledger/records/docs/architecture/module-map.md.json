@@ -966,7 +966,9 @@
 
     "tests/helpers/fixture-audit.ts",
 
-    "tests/helpers/journey-profile.ts"
+    "tests/helpers/journey-profile.ts",
+
+    "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts"
   ],
 
   "checks": [

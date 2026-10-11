@@ -29,6 +29,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./product-telemetry": "./src/product-telemetry.ts",
     "./connection-proof": "./src/connection-proof.ts",
     ".": "./src/index.ts",
     "./agent-validation": "./src/agent-validation.ts",
