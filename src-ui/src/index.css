@@ -6578,6 +6578,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-bottom: max(0px, var(--safe-bottom, 0px));
   }
 
+  /* #3552: the rule above replaced the dialog footer's own 16px bottom
+     padding with the safe area, which is 0 on a phone without a home
+     indicator, leaving every dialog's buttons on its bottom edge. Keep the
+     footer's padding, and the safe area when it is larger. */
+  .station-dialog__footer.responsive-surface-actions {
+    padding-bottom: max(16px, var(--safe-bottom, 0px));
+  }
+
   /* The transcript's own notice action (Retry, Discard, New chat…): its look is
      inline, its touch floor is here. */
   .ephemeral-message__action {

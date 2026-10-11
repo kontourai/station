@@ -305,6 +305,22 @@ describe('NewProjectModal starter layout picker', () => {
     );
   });
 
+  test('opens with the folder named in the link already chosen (#3552)', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/projects/new?directory=%2Fwork%2Fscratch%2Fapp',
+    );
+    try {
+      render(<NewProjectModal isOpen onClose={onCloseMock} />);
+      expect(
+        (screen.getByLabelText('Working Directory') as HTMLInputElement).value,
+      ).toBe('/work/scratch/app');
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   test('enables local artwork discovery once a directory is picked', async () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 

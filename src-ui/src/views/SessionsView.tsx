@@ -42,6 +42,7 @@ import type { SessionEvidenceReveal } from '../components/session-detail/Mutable
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -284,7 +285,7 @@ export function SessionsView({
   focusHint,
   intentToken,
   onFocusConsumed,
-  onOpenInChat,
+  onContinueInChat,
 }: {
   apiBase: string;
   sessionId?: string;
@@ -301,7 +302,13 @@ export function SessionsView({
   focusHint?: 'evidence';
   intentToken?: number;
   onFocusConsumed?: () => void;
-  onOpenInChat?: (threadId: string) => void;
+  /**
+   * #3552: hands a message typed in an external conversation to Chat, which
+   * continues it (#3454). Activity's pane always passes it. A host without it
+   * continues here, and the confirmed message waits in the continued
+   * session's message box rather than being sent from here.
+   */
+  onContinueInChat?: (threadId: string, draft: string) => void;
 }) {
   // The SSE feed is per-session, so the list itself is kept fresh by polling.
   // The query owns that poll: an interval beside it calling `refetch()` was a
@@ -718,8 +725,8 @@ export function SessionsView({
   ): ActivityRowAction[] => {
     const actions: ActivityRowAction[] = [];
     if (isReadOnlyAttachedSession(s)) {
-      // Attached transcripts keep their existing continuation, which lives
-      // in the detail ("Continue in Station"); "Open" is that detail.
+      // An attached transcript continues from its detail's composer;
+      // "Open" is that detail.
       actions.push({
         id: 'open',
         label: 'Open',
@@ -1150,10 +1157,18 @@ export function SessionsView({
             session={selected}
             evidenceReveal={evidenceReveal}
             onTaskChanged={() => void refetch()}
-            onOpenInChat={
-              onOpenInChat ? () => onOpenInChat(selected.threadId) : undefined
+            onContinueInChat={
+              onContinueInChat
+                ? (draft) => onContinueInChat(selected.threadId, draft)
+                : undefined
             }
-            onAdopted={(child, intent) => {
+            onAdopted={(child, intent, message) => {
+              if (message.trim())
+                chatDraftsStore.setActivityDraft(
+                  apiBase,
+                  child.threadId,
+                  message,
+                );
               adoptedSelectionRef.current = {
                 threadId: child.threadId,
                 intent,
