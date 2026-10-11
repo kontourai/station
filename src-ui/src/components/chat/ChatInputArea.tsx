@@ -632,6 +632,13 @@ export function ChatInputArea({
       ? composerMentionWireLength(input, composerTokens)
       : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
+  // A blocked Send is disabled; it must not keep the active accent that reads
+  // as "ready". The send-mode segment shares this fill so the pair reads as
+  // one split button.
+  const sendReady =
+    !isOverLimit &&
+    !sendBlockedReason &&
+    (workspaceRefused || hasSendableDraft);
   const mentionAutocompleteAvailable = Boolean(
     mentionLocation && mentionRequestScope,
   );
@@ -1562,16 +1569,7 @@ export function ChatInputArea({
                     : (sendBlockedReason ?? 'Send')
                 }
                 className={`send-button chat-input__send-btn ${
-                  !isOverLimit &&
-                  // A blocked Send is disabled; it must not keep the active
-                  // accent that reads as "ready".
-                  !sendBlockedReason &&
-                  (
-                    workspaceRefused ||
-                      input.trim() ||
-                      hasQuotedContext ||
-                      attachments.length > 0
-                  )
+                  sendReady
                     ? 'chat-input__send-btn--active'
                     : 'chat-input__send-btn--inactive'
                 }`}
@@ -1595,7 +1593,9 @@ export function ChatInputArea({
               {turnInFlight && onQueueFollowUp && (
                 <button
                   type="button"
-                  className="choice-trigger chat-input__send-mode"
+                  className={`chat-input__send-mode ${
+                    sendReady ? 'chat-input__send-mode--active' : ''
+                  }`}
                   aria-label={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   title={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   tabIndex={hideMobileSubmit ? -1 : 0}
@@ -1610,9 +1610,6 @@ export function ChatInputArea({
                   </span>
                   <ArrowDownGlyph />
                 </button>
-              )}
-              {!(turnInFlight && onQueueFollowUp) && (
-                <span className="chat-input__mode-slot" aria-hidden="true" />
               )}
             </div>
           </div>

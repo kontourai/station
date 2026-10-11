@@ -6927,7 +6927,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-shrink: 1;
     min-height: 0;
     max-height: 100%;
-    overflow: hidden;
+    /* Not hidden: the @ file picker opens upward over the transcript, and
+       clipping here cut it to the strip above the capsule. The dock body
+       already clips anything that overflows the dock. */
+    overflow: visible;
   }
 
   .conversation-history {

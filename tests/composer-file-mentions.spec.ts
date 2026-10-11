@@ -122,3 +122,28 @@ test('keyboard-selects a scoped mention and preserves it across mounted chat swi
     fullPage: true,
   });
 });
+
+test('the mention picker opens above a phone composer without being clipped', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  const composer = page.getByRole('textbox');
+  await composer.click();
+  await composer.pressSequentially('@');
+  const options = page.getByRole('option');
+  await expect(options).toHaveCount(3);
+  // A clipped option still has a box but is not what the pointer reaches:
+  // each option must be the topmost element at its own centre.
+  for (const option of await options.all()) {
+    const reachable = await option.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      );
+      return Boolean(hit && element.contains(hit));
+    });
+    expect(reachable).toBe(true);
+  }
+});
