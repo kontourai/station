@@ -37,7 +37,9 @@ preserves a draft. Sending and queueing stay blocked until continuation is writa
 The shared popover shell opens toward the roomier viewport edge, including when
 the dock is maximized. Slash commands, `/model` and `@` file results all open
 through one anchored popup outside the composer, so no composer clipping can cut
-them off; the `@` list closes when the input loses focus. A narrow Activity region shows its list or its selected
+them off. The `@` list closes when the input loses focus (pressing inside the
+list does not take focus) and reopens when focus returns with the caret in an
+`@` query. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
 ## Starting and resuming work
