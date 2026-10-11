@@ -1,14 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  DEVICE_PAIRING_PROTOCOL_VERSION,
-  parsePublicStationHandshake,
-  REMOTE_AUTH_PROTOCOL_VERSION,
-  STATION_COMPAT_MIN_CLIENT_PROTOCOL,
-  STATION_COMPAT_PROTOCOL_VERSION,
-  STATION_PROOF_PROTOCOL_VERSION,
-} from '@kontourai/station-contracts';
+import { parsePublicStationHandshake } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test } from 'vitest';
 import packageJson from '../../../../package.json' with { type: 'json' };
@@ -41,14 +34,15 @@ describe('public handshake compatibility block', () => {
       // Not a hardcoded string: a build can never advertise a version it is
       // not. This is the one field that is a release version, on purpose.
       serverVersion: packageJson.version,
-      protocolVersion: STATION_COMPAT_PROTOCOL_VERSION,
-      minClientProtocol: STATION_COMPAT_MIN_CLIENT_PROTOCOL,
+      protocolVersion: 2,
+      minClientProtocol: 1,
       capabilities: {
-        remoteAuth: REMOTE_AUTH_PROTOCOL_VERSION,
-        devicePairing: DEVICE_PAIRING_PROTOCOL_VERSION,
-        environmentProof: STATION_PROOF_PROTOCOL_VERSION,
+        remoteAuth: 1,
+        devicePairing: 1,
+        environmentProof: 1,
         // Literal on purpose: clients key on this exact name (#2962).
         clientProtocolHeader: 1,
+        productTelemetryAcknowledgement: 2,
       },
     });
   });

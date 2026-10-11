@@ -1,0 +1,7 @@
+{
+  "revision": "33e2bc41d87db6264f19526830f8c3196b043a27",
+
+  "notes": [
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed against this branch's change: apply-android-native-bootstrap.mjs now keeps the onCreate hook and inset bridge, strips the legacy Keyring.initializeNdkContext call and bridge, and refuses any other ndk_context initializer (tao 0.37 ndk_glue initializes it; ndk-context 0.1.1 asserts once). build-android.yml now runs reset-android-generated-project.mjs before init. This guide makes no Android pipeline or activity claims; the dependency is transitive through shared build owners. No prose change.","inputs":["docs/guides/desktop-tray.md",".github/workflows/build-android.yml","scripts/apply-android-native-bootstrap.mjs"]}
+  ]
+}

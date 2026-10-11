@@ -1,9 +1,15 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  activityWithNativeCredentialBootstrap,
+  activityWithTauriOnCreate,
   androidNamespace,
   applyAndroidNativeBootstrap,
   manifestWithMediaPermissions,
@@ -33,22 +39,27 @@ function fixture(namespace: string, activity: string) {
   return { root, activityPath };
 }
 
-describe('Android native credential bootstrap', () => {
+describe('Android native bootstrap', () => {
   it.each([
     ['stable', 'io.kontourai.station'],
     ['dev', 'io.kontourai.station'],
     ['beta', 'io.kontourai.station.beta'],
     ['nightly', 'io.kontourai.station.nightly'],
   ])(
-    'initializes the generated %s namespace before Tauri starts',
+    'gives the generated %s namespace an onCreate hook without initializing ndk_context',
     (_channel, namespace) => {
       const { root, activityPath } = fixture(
         namespace,
         `package ${namespace}\n\nclass MainActivity : TauriActivity()\n`,
       );
+      const bridgePath = join(
+        root,
+        'src-desktop/gen/android/app/src/main/java/io/crates/keyring/Keyring.kt',
+      );
+      mkdirSync(dirname(bridgePath), { recursive: true });
+      writeFileSync(bridgePath, 'package io.crates.keyring\n');
       const result = applyAndroidNativeBootstrap({ root });
       const activity = readFileSync(activityPath, 'utf8');
-      const bridge = readFileSync(result.bridgePath, 'utf8');
 
       const manifestPath = join(
         root,
@@ -88,37 +99,47 @@ describe('Android native credential bootstrap', () => {
       applyAndroidNativeBootstrap({ root });
       expect(readFileSync(manifestPath, 'utf8')).toBe(manifest);
       expect(result.namespace).toBe(namespace);
-      expect(activity).toContain('import io.crates.keyring.Keyring');
-      expect(
-        activity.indexOf('Keyring.initializeNdkContext(applicationContext)'),
-      ).toBeLessThan(activity.indexOf('super.onCreate(savedInstanceState)'));
-      expect(bridge).toContain('System.loadLibrary("station_ai_lib")');
+      expect(activity).not.toContain('initializeNdkContext');
+      expect(activity).not.toContain('io.crates.keyring');
+      expect(activity).toContain(
+        'override fun onCreate(savedInstanceState: Bundle?)',
+      );
+      expect(activity).toContain('super.onCreate(savedInstanceState)');
+      expect(existsSync(bridgePath)).toBe(false);
     },
   );
 
-  it('preserves a custom activity and applies the initializer once', () => {
+  it('removes a legacy ndk_context initializer and keeps custom onCreate work', () => {
     const source = `package io.kontourai.station.beta
 
 import android.os.Bundle
+import io.crates.keyring.Keyring
 
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
+    Keyring.initializeNdkContext(applicationContext)
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
   }
 }
 `;
-    const once = activityWithNativeCredentialBootstrap(
-      source,
-      'io.kontourai.station.beta',
-    );
-    const twice = activityWithNativeCredentialBootstrap(
+    const once = activityWithTauriOnCreate(source, 'io.kontourai.station.beta');
+    expect(activityWithTauriOnCreate(once, 'io.kontourai.station.beta')).toBe(
       once,
-      'io.kontourai.station.beta',
     );
-    expect(twice).toBe(once);
-    expect(once.match(/initializeNdkContext/g)).toHaveLength(1);
+    expect(once).not.toContain('initializeNdkContext');
+    expect(once).not.toContain('io.crates.keyring');
     expect(once).toContain('enableEdgeToEdge()');
+    expect(once).toContain('super.onCreate(savedInstanceState)');
+  });
+
+  it('refuses an ndk_context initializer it does not recognize', () => {
+    expect(() =>
+      activityWithTauriOnCreate(
+        `package io.kontourai.station\n\nclass MainActivity : TauriActivity() {\n  override fun onCreate(savedInstanceState: Bundle?) {\n    Other.initializeNdkContext(this)\n    super.onCreate(savedInstanceState)\n  }\n}\n`,
+        'io.kontourai.station',
+      ),
+    ).toThrow(/tao owns/);
   });
 
   it('rejects ambiguous or malformed generated namespaces', () => {

@@ -171,9 +171,9 @@ commit or executable identity. Its schema is:
   "transports": { "http": 1, "sse": 1, "websocket": 1 },
   "compatibility": {
     "serverVersion": "<station package version>",
-    "protocolVersion": 1,
+    "protocolVersion": 2,
     "minClientProtocol": 1,
-    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1 }
+    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1, "productTelemetryAcknowledgement": 2 }
   },
   "capabilities": { "sshEnvironments": true, "webPushNotifications": true }
 }
@@ -183,6 +183,19 @@ The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
 
 ### Client API protocol admission (#2962)
+
+Protocol 2 introduces revision-bound product telemetry acknowledgement as a
+separately versioned capability. Core protocol-1 and headerless callers remain
+admitted at minimum1. The disclosure response reports acknowledgement protocol2;
+its POST requires that version and the displayed inventory revision. Missing or
+unsupported feature versions return426 with update guidance; stale revisions
+return409, and neither creates consent. This prevents an older UI approving
+new metadata it cannot display. An installed older UI can only show its existing
+generic acknowledgement failure until it updates; the current UI renders update
+guidance and retains dismissal/disable actions. No legacy sender fallback runs
+on a new host. See [Usage telemetry](../reference/usage-telemetry.md).
+
+
 
 A client states the client API protocol it was built against in
 `X-Station-Client-Protocol: <integer>` (`CLIENT_PROTOCOL_HEADER` in
