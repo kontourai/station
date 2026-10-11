@@ -194,13 +194,18 @@ function parseTurnClaimOwner(raw: string): {
     )
   )
     throw new Error('Invalid orchestration turn claim owner_json');
-  const { invocation: rawInvocation, ...owner } = value as Record<
-    string,
-    unknown
-  >;
-  const invocation = parseTurnClaimInvocation(rawInvocation);
-  return {
-    owner: owner as unknown as TurnClaimOwner,
-    ...(invocation ? { invocation } : {}),
-  };
+  const parsed = value as TurnClaimOwner & { invocation?: unknown };
+  // Rebuilt field by field so the invocation record never rides along as an
+  // owner property.
+  const owner: TurnClaimOwner =
+    parsed.identityKind === 'exact'
+      ? {
+          pid: parsed.pid,
+          birth: parsed.birth,
+          token: parsed.token,
+          identityKind: 'exact',
+        }
+      : { pid: parsed.pid, token: parsed.token, identityKind: 'unverified' };
+  const invocation = parseTurnClaimInvocation(parsed.invocation);
+  return { owner, ...(invocation ? { invocation } : {}) };
 }
