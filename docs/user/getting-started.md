@@ -546,7 +546,8 @@ continue:
   when the folder shown reaches another folder through a symbolic link
   inside your home folder. To
   continue such a conversation, add a Project for that folder or its
-  repository. Station does not move a conversation into another Project's folder,
+  repository: **Add a project for this folder instead** in the confirmation
+  opens New project with the folder already chosen. Station does not move a conversation into another Project's folder,
   because its history refers to files in the folder it ran in.
 
 A hosted Station does not continue conversations outside your Projects.

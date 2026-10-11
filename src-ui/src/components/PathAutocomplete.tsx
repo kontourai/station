@@ -216,7 +216,10 @@ export function PathAutocomplete({
     const input = inputRef.current;
     if (!input || value === typedValueRef.current) return;
     typedValueRef.current = value;
-    input.setSelectionRange(value.length, value.length);
+    // Moving the caret of an unfocused field can focus it in WebKit, raising
+    // the phone keyboard; only the scroll position is needed then.
+    if (document.activeElement === input)
+      input.setSelectionRange(value.length, value.length);
     input.scrollLeft = input.scrollWidth;
   }, [value]);
 

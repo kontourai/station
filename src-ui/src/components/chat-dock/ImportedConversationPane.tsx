@@ -66,9 +66,15 @@ export default function ImportedConversationPane({
       mounted.current = false;
     };
   }, []);
-  // #3552: a draft handed over from Activity belongs to this visit only.
+  // #3552: a draft handed over from Activity belongs to this visit only. It
+  // is dropped once this pane has settled whether it could show the reader
+  // that takes it, so a dev-mode effect rehearsal while still loading keeps it.
+  const settled = useRef(false);
+  settled.current = Boolean(source.data) || source.isError;
   useEffect(
-    () => () => discardAttachedContinuationHandoff(threadId),
+    () => () => {
+      if (settled.current) discardAttachedContinuationHandoff(threadId);
+    },
     [threadId],
   );
   const openContinued = useCallback(async () => {
