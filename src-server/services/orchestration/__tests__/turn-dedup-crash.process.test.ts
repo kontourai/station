@@ -11,6 +11,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { join, resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
@@ -25,10 +26,17 @@ import type {
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
+import { turnDedupKey } from '../sqlite-turn-dedup-persistence.js';
 
 const CHILD_TIMEOUT_MS = 60_000;
 const THREAD_ID = 'thread-3559';
 const CLIENT_TURN_ID = 'client-turn-3559';
+/**
+ * The claim upsert of the binary before #3559, verbatim
+ * (b45e155766:src-server/services/orchestration/sqlite-turn-dedup-persistence.ts:110).
+ * A peer or downgraded runtime still writes rows with it.
+ */
+const PRE_3559_CLAIM_UPSERT = `INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json) VALUES (?, ?, ?, ?) ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value, created_at = excluded.created_at, owner_json = excluded.owner_json`;
 
 function moduleUrl(path: string): string {
   return JSON.stringify(pathToFileURL(resolve(process.cwd(), path)).href);
@@ -288,6 +296,42 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
       // Fail closed on every later retry too: the answer is durable, not a
       // one-shot verdict that a second attempt could slip past.
       await expect(retry(service)).rejects.toMatchObject({
+        outcome: 'indeterminate',
+      });
+      expect(adapter.sent).toHaveLength(0);
+    },
+    CHILD_TIMEOUT_MS * 2,
+  );
+
+  test(
+    'a retry after an older binary took over a pending claim, invoked and died is indeterminate',
+    async () => {
+      const dbPath = newStorePath();
+      // This binary claimed the key (pending) and died before invoking.
+      await killOwnerAt(dbPath, 'pre-invoke', 'claimed-before-invocation');
+      // An older peer or downgraded runtime then reclaimed that dead claim
+      // under its own owner with its exact upsert, called the provider (which
+      // writes nothing to this table) and died in turn.
+      const database = new DatabaseSync(dbPath);
+      try {
+        database.prepare(PRE_3559_CLAIM_UPSERT).run(
+          turnDedupKey(THREAD_ID, CLIENT_TURN_ID),
+          null,
+          Date.now(),
+          JSON.stringify({
+            pid: 999_999_999,
+            birth: 'older-binary-birth',
+            token: 'older-binary-owner',
+            identityKind: 'exact',
+          }),
+        );
+      } finally {
+        database.close();
+      }
+
+      const { adapter, service } = await restart(dbPath);
+      await expect(retry(service)).rejects.toMatchObject({
+        code: 'foreground_message_indeterminate',
         outcome: 'indeterminate',
       });
       expect(adapter.sent).toHaveLength(0);

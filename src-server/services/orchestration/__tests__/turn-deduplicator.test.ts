@@ -5,7 +5,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
 import { TurnIdempotencyStore } from '../../turn-idempotency.js';
 import { EventStore } from '../event-store.js';
-import { turnDedupKey } from '../sqlite-turn-dedup-persistence.js';
+import {
+  chatTurnDedupKey,
+  turnDedupKey,
+} from '../sqlite-turn-dedup-persistence.js';
 import { createTurnDeduplicator } from '../turn-deduplicator.js';
 
 describe('TurnDeduplicator', () => {
@@ -157,6 +160,41 @@ describe('TurnDeduplicator', () => {
       restarted
         .createTurnDeduplicator()
         .claim({ threadId: 'thread', clientTurnId: 'legacy' }),
+    ).toEqual({ kind: 'indeterminate' });
+    restarted.close();
+  });
+
+  test('a legacy /chat row keeps the dead-owner reclaim rule while a legacy thread row fails closed', () => {
+    const first = open();
+    first.store.close();
+    const database = new DatabaseSync(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      const insert = database.prepare(
+        `INSERT INTO orchestration_turn_dedup
+           (dedup_key, value, created_at, owner_json) VALUES (?, NULL, 0, ?)`,
+      );
+      const deadOwner = JSON.stringify({
+        pid: 999_999_999,
+        birth: 'dead-birth',
+        token: 'legacy-owner',
+        identityKind: 'exact',
+      });
+      // `/chat` rows are written only by the facade, which records no
+      // invocation, so an unmarked `chat:` row is untracked by construction.
+      insert.run(chatTurnDedupKey('legacy-chat'), deadOwner);
+      insert.run(turnDedupKey('thread', 'legacy-thread'), deadOwner);
+    } finally {
+      database.close();
+    }
+
+    const restarted = restartWithDeadOwners(first.directory);
+    expect(restarted.claimChatTurn('legacy-chat')).toEqual({ claimed: true });
+    expect(
+      restarted
+        .createTurnDeduplicator()
+        .claim({ threadId: 'thread', clientTurnId: 'legacy-thread' }),
     ).toEqual({ kind: 'indeterminate' });
     restarted.close();
   });
