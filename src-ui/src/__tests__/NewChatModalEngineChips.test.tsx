@@ -421,8 +421,8 @@ describe('NewChatModal engine chips', () => {
     // No row anywhere says "External" or "ACP" — permanent regression
     // guard.
     for (const row of rows) {
-      expect(row.textContent).not.toContain('External');
-      expect(row.textContent).not.toContain('ACP');
+      expect(wholeRow(row)?.textContent).not.toContain('External');
+      expect(wholeRow(row)?.textContent).not.toContain('ACP');
     }
   });
 
@@ -558,21 +558,23 @@ describe('NewChatModal row hierarchy', () => {
     return button;
   }
 
-  test('the engine reads beside the model, not on a line under the name', () => {
+  test('the engine reads at the end of the name line, not on a line of its own', () => {
     renderPicker();
     const select = row(ACP_OPENCODE.slug);
-    const whole = select.closest('.new-chat-modal__agent-row') as HTMLElement;
-    const engine = whole.querySelector(
-      '.new-chat-modal__agent-runs .new-chat-modal__agent-engine',
+    const header = select.querySelector(
+      '.new-chat-modal__agent-header',
+    ) as HTMLElement;
+    const name = header.querySelector('.new-chat-modal__agent-name');
+    const engine = header.querySelector(
+      '.new-chat-modal__agent-engine',
     ) as HTMLElement;
     expect(engine?.textContent).toBe('OpenCode · GLM-4.7');
-    // Not in the select button: no second line under the name.
-    expect(select.contains(engine)).toBe(false);
+    // On the name (header) line, after the name: no second line, no pill.
+    expect(
+      name!.compareDocumentPosition(engine) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(select.querySelector('.new-chat-modal__agent-meta')).toBeNull();
     expect(select.querySelector('.engine-chip')).toBeNull();
-    // Still part of what the select button announces.
-    expect(select.getAttribute('aria-describedby')?.split(' ')).toContain(
-      engine.id,
-    );
   });
 
   test('a row that cannot start dims its name; a startable row does not', () => {

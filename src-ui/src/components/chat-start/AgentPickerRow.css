@@ -8,22 +8,27 @@
   background: transparent;
 }
 
-/* The model and the engine that runs it, stacked at the row's end: the
-   engine is a quiet line under the model, not a pill under the name. */
-.new-chat-modal__agent-runs {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  min-width: 0;
+/* The name line: avatar, name, state, then the engine that runs the Agent.
+   A grid rather than the header's flex row, so the space goes in priority
+   order: the name grows to its full width before the engine's flexible track
+   gets any, and the engine is the first thing to give up width. (Weighted
+   flex shrink still clipped the name while the engine kept half its text.) */
+.new-chat-modal__agent-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content) auto minmax(0, 1fr);
+}
+.new-chat-modal__agent-header > .new-chat-modal__agent-name {
+  grid-column: 2;
+}
+.new-chat-modal__agent-header > .agent-readiness__status {
+  grid-column: 3;
 }
 .new-chat-modal__agent-engine {
-  max-width: min(40vw, 200px);
+  grid-column: 4;
+  min-width: 0;
   overflow: hidden;
-  /* Under the model's text, not its button edge (the trigger pads 10px). */
-  padding-inline-end: 10px;
   color: var(--text-tertiary);
   font-size: var(--text-sm);
-  text-align: end;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

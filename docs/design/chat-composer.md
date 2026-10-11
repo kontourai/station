@@ -65,8 +65,8 @@ the Project fixed. Project and Station controls sit above the text box;
 separate Agent and Engine & model controls sit inside it beside Start and the overflow
 for visual skills. The Agent list retains each Agent's readiness and repair
 action, with a short purpose for custom Agents. The engine that runs an Agent
-reads as a quiet line under its model at the row's end, not on a line of its
-own. A row does not repeat what the list already states: the Station every row runs on, an engine name that is only
+reads as quiet text at the end of its name line, after its state, not on a
+line of its own. A row does not repeat what the list already states: the Station every row runs on, an engine name that is only
 the Agent's name plus a qualifier (the row keeps the qualifier), or "Model not
 reported": a row with a model catalog but no reported model offers **Choose
 model**, and one with neither shows no model control. The Model picker offers search, recent choices, favorites and provider
