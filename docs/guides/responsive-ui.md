@@ -44,7 +44,10 @@ by themselves produce a complete visual dialog.
 - Escape and backdrop-pointer dismissal when `dismissible` permits it;
 - dialog-history registration when a history host is present and
   `historyMode="entry"` applies;
-- the `responsive-surface-overlay` and `responsive-surface-panel` markers;
+- the `responsive-surface-overlay` and `responsive-surface-panel` markers, and
+  `data-sheet` on the overlay while it presents as a phone sheet (the
+  `useIsMobile` query), so a consumer styles its sheet without a page-local
+  media query;
 - an overlay context, linked to the surface it was opened from, so a menu
   inside it can take a layer above it (see [Action rows](#action-rows)).
 

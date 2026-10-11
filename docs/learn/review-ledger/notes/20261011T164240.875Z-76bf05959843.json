@@ -1,0 +1,7 @@
+{
+  "revision": "9357cb58eaa5f24274257fe80fb34267393c1546",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Capture shows a closed start composer with no read failure; the picker row layout and alert handling changed here are not on screen, so the capture stays accurate.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.css"]}
+  ]
+}
