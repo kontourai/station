@@ -11,10 +11,16 @@ import { absoluteTime, messageTime } from '../../utils/relativeTime';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
-import { PauseGlyph } from '../icons/Glyph';
+import { InboxGlyph, PauseGlyph } from '../icons/Glyph';
 import { UserIcon } from '../icons/UserIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
+import { agentAccentStyle } from './agent-message/agentSenderAccent';
+import {
+  IncomingAgentCause,
+  IncomingAgentHeader,
+  incomingMessageLabel,
+} from './agent-message/IncomingAgentHeader';
 import { ConversationContextBoundary } from './ConversationContextBoundary';
 import { ConversationHandoffBoundary } from './ConversationHandoffBoundary';
 import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
@@ -246,6 +252,11 @@ function MessageBubbleComponent({
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
 
   const isAssistant = msg.role === 'assistant';
+  // #3419: a user-role row another agent sent is that agent's message, never
+  // the person's: its own speaker, header and bubble.
+  const sender = msg.role === 'user' ? msg.sender : undefined;
+  const providerSender =
+    msg.sender?.kind === 'provider' ? msg.sender : undefined;
   // A row is the open turn when it carries the live turn's id, or when the
   // live turn renders as the last row instead of the streaming shell.
   const rowIsLiveTurn =
@@ -329,7 +340,11 @@ function MessageBubbleComponent({
     resolvedRowAgent && turnEngineId
       ? { ...resolvedRowAgent, engineId: turnEngineId }
       : resolvedRowAgent;
-  const avatarContent = isAssistant ? (
+  const avatarContent = sender ? (
+    <span className="agent-incoming__avatar" aria-hidden="true">
+      <InboxGlyph />
+    </span>
+  ) : isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
   ) : (
     <UserIcon size={20} />
@@ -521,6 +536,7 @@ function MessageBubbleComponent({
             deliberately carry no surrogate action. */}
       {!replaying &&
         msg.role === 'user' &&
+        !sender &&
         msg.sourceEventId &&
         msg.sessionId &&
         msg.turnId && (
@@ -751,9 +767,11 @@ function MessageBubbleComponent({
   const details = isMobile ? (
     <MessageDetails
       label={
-        msg.role === 'user'
-          ? 'Your message actions'
-          : 'Answer details and actions'
+        sender
+          ? 'Message actions'
+          : msg.role === 'user'
+            ? 'Your message actions'
+            : 'Answer details and actions'
       }
     >
       {metadataBefore}
@@ -783,9 +801,32 @@ function MessageBubbleComponent({
     details
   );
 
+  if (isMobile && sender)
+    return (
+      <div
+        className="message-row message-row--agent message-row--compact"
+        data-chat-message-key={anchorKey}
+        data-message-mobile={isMobile}
+        style={agentAccentStyle(sender)}
+      >
+        <IncomingAgentCause sender={sender}>
+          <MessageContent
+            contentParts={msg.contentParts}
+            textContent={textContent}
+            chatFontSize={chatFontSize}
+            showReasoning={showReasoning}
+            showToolDetails={showToolDetails}
+            isStreamingMessage={false}
+          />
+          {metadataBefore}
+          {metadataAfter}
+        </IncomingAgentCause>
+      </div>
+    );
+
   return (
     <div
-      className={`message-row ${msg.role === 'user' ? 'message-row--user' : ''}${isMobile ? ' message-row--compact' : ''}${
+      className={`message-row ${msg.role === 'user' && !sender ? 'message-row--user' : ''}${sender ? ' message-row--agent' : ''}${isMobile ? ' message-row--compact' : ''}${
         // Phone: a thin rule opens every exchange after the first. A steer is
         // more input on the same turn, not a new exchange.
         isMobile && msg.role === 'user' && idx > 0 && !continuesTurn
@@ -793,6 +834,10 @@ function MessageBubbleComponent({
           : ''
       }`}
       data-chat-message-key={anchorKey}
+      data-message-mobile={isMobile}
+      // The sender's accent (agentSenderAccent.ts); the avatar and the bubble
+      // both read it, so it is set on the row.
+      style={sender ? agentAccentStyle(sender) : undefined}
     >
       {!isMobile && <div className="message-row__avatar">{avatarContent}</div>}
       <div
@@ -802,13 +847,27 @@ function MessageBubbleComponent({
           // its ⋯ trigger; an answer spends the full width on its words and
           // carries the trigger below it (chat.css `.message-row--compact`).
           maxWidth: isMobile
-            ? msg.role === 'user'
+            ? msg.role === 'user' && !sender
               ? 'calc(100% - 52px)'
               : undefined
             : '70%',
         }}
-        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
+        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
+        {...(sender
+          ? {
+              role: 'group' as const,
+              'aria-label': incomingMessageLabel(sender),
+              'data-agent-sender-session': sender.sessionId,
+            }
+          : {})}
       >
+        {providerSender &&
+          (isMobile ? (
+            <IncomingAgentCause sender={providerSender} />
+          ) : (
+            <IncomingAgentHeader sender={providerSender} />
+          ))}
+        {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
         {!isMobile && metadataBefore}
         <div
           data-quote-source-message={

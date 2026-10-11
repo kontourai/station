@@ -1,3 +1,5 @@
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 /**
  * station#3413: the digest behind Station Control's `get_session_digest`, a
  * compact account of one Session assembled ONLY from facts the event store
@@ -64,6 +66,7 @@ export interface DigestTurn {
   requestClipped?: true;
   /** The engine opened this turn on its own: there is no request. */
   providerTriggered?: true;
+  sender?: ClientOriginSender;
   outcome: DigestTurnOutcome;
   /** Tool calls by name, most used first. */
   toolCalls: Array<{ tool: string; calls: number }>;
@@ -145,7 +148,11 @@ export function digestTurn(
 ): DigestTurn {
   const request =
     facts.promptPrefix !== undefined
-      ? firstLine(facts.promptPrefix)
+      ? firstLine(
+          facts.sender
+            ? (unframeAgentMessage(facts.promptPrefix) ?? facts.promptPrefix)
+            : facts.promptPrefix,
+        )
       : undefined;
   const listedTools = facts.toolCalls.slice(0, TOOLS_PER_TURN);
   const otherTools = facts.toolCalls.slice(TOOLS_PER_TURN);
@@ -159,6 +166,7 @@ export function digestTurn(
     // A prompt longer than the prefix the store read is clipped too.
     ...(request?.clipped ? { requestClipped: true as const } : {}),
     ...(facts.providerTriggered ? { providerTriggered: true as const } : {}),
+    ...(facts.sender ? { sender: facts.sender } : {}),
     outcome: digestTurnOutcome(facts.terminal),
     toolCalls: listedTools.map((entry) => ({
       tool: clipSerialized(entry.toolName, TOOL_NAME_MAX_BYTES),

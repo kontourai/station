@@ -87,6 +87,7 @@ function useActivitySurfaceIntent(): ActivityWorkspacePaneBinding {
       apiBase,
       sessionId: intent?.session,
       focusHint: intent?.focus,
+      messageAnchor: intent?.messageAnchor,
       intentToken: intent?.token,
       onFocusConsumed: clearIntentFocus,
     }),

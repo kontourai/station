@@ -1,5 +1,6 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, it } from 'vitest';
+import { frameAgentMessage } from '../agent-message-frame.js';
 import { projectRuntimeEventsToMessages } from '../runtime-event-projection.js';
 
 const base = {
@@ -2867,5 +2868,128 @@ describe('projectRuntimeEventsToMessages — images a tool returned', () => {
         .flatMap((m) => m.parts)
         .filter((p) => p.type === 'file'),
     ).toEqual([]);
+  });
+});
+
+describe('another agent’s message (#3419)', () => {
+  const sender = {
+    kind: 'agent-session' as const,
+    sessionId: 'sender-1',
+    title: 'Fix login',
+    engine: 'claude',
+    requestKey: 'request-key-1',
+  };
+  const fromAgent = (text: string) => ({
+    prompt: frameAgentMessage(sender, text),
+    clientOrigin: {
+      version: 1,
+      actor: { kind: 'internal' },
+      reported: { version: 1, surface: 'unknown', build: null },
+      sender,
+    },
+  });
+
+  it('projects a start as the sender’s words, with the sender on the row', () => {
+    const [message] = projectRuntimeEventsToMessages(
+      [
+        ev({
+          method: 'turn.started',
+          turnId: 'a1',
+          ...fromAgent('Please rebase onto main.'),
+        } as never),
+      ],
+      { stableIds: true },
+    );
+    expect(message).toMatchObject({
+      role: 'user',
+      parts: [{ type: 'text', text: 'Please rebase onto main.' }],
+      metadata: { sender },
+    });
+  });
+
+  it('projects a steer the same way, and only that row carries the sender', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'a1', prompt: 'Review it' }),
+      ev({ method: 'content.text-delta', turnId: 'a1', delta: 'Reading.' }),
+      ev({
+        method: 'turn.started',
+        turnId: 'a1',
+        inputKind: 'steer',
+        ...fromAgent('Skip the lockfile.'),
+      } as never),
+    ]);
+    const users = messages.filter((message) => message.role === 'user');
+    expect(users[0]?.metadata?.sender).toBeUndefined();
+    expect(users[1]).toMatchObject({
+      parts: [{ type: 'text', text: 'Skip the lockfile.' }],
+      metadata: { inputKind: 'steer', sender },
+    });
+  });
+
+  it('does not treat a person’s message that merely looks like a frame as an agent’s', () => {
+    const [message] = projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        turnId: 'p1',
+        prompt: frameAgentMessage(sender, 'pasted by a person'),
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'operator' },
+          reported: { version: 1, surface: 'web', build: null },
+        },
+      } as never),
+    ]);
+    expect(message?.metadata?.sender).toBeUndefined();
+    expect(message?.parts[0]?.text).toContain(
+      '[Station: a message from another',
+    );
+  });
+});
+
+describe('engine-opened cause survives settlement and rehydration (#3419)', () => {
+  it('keeps the provider cause on the settled answer and resets it at a person turn', () => {
+    const recorded = [
+      ev({
+        method: 'turn.started',
+        turnId: 'provider-1',
+        metadata: { trigger: 'provider' },
+      }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'provider-1',
+        delta: 'Background work finished.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'provider-1',
+        outputText: 'Background work finished.',
+        metadata: { trigger: 'provider' },
+      }),
+      ev({ method: 'turn.started', turnId: 'person-2', prompt: 'Thanks.' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'person-2',
+        delta: 'You are welcome.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'person-2',
+        outputText: 'You are welcome.',
+      }),
+    ];
+    const reopened = projectRuntimeEventsToMessages(
+      JSON.parse(JSON.stringify(recorded)),
+      { stableIds: true },
+    );
+    const answers = reopened.filter((message) => message.role === 'assistant');
+    expect(answers[0]?.metadata?.sender).toEqual({
+      kind: 'provider',
+      sessionId: 't1',
+      engine: 'claude',
+    });
+    expect(answers[1]?.metadata?.sender).toBeUndefined();
+    expect(reopened.filter((message) => message.role === 'user')).toHaveLength(
+      1,
+    );
   });
 });

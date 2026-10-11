@@ -1,0 +1,11 @@
+{
+  "revision": "9daaa106a43b34543698e937c97c4e6fafd9c35c",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed contracts reference change against glossary boundaries: optional recorded sender is attribution for an agent message, not person authority, not Session/Conversation identity replacement, and not proof of delegated-result delivery. Existing Agent/Session/Conversation and authority vocabulary remains accurate. Review is scoped to that additive reference explanation, not a fresh glossary-wide audit.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed additive ConversationReadMessage sender explanation against integration contract boundaries. The existing API/MCP routes, client authentication, scope admission, protocol version and operation semantics are unchanged; optional response attribution does not widen authority or promise completed delivery. No example or integration setup command changes required. Source/reference review only, no new external integration execution claimed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed contracts reference change against this scope instruction: ClientOriginSender remains an existing stable domain type imported by the orchestration contract; no runtime/parser/Node helper was added. The new optional wire field and its attribution/absence limits are documented in the owning reference and exercised through existing real route consumers. No governance instruction change or policy weakening.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

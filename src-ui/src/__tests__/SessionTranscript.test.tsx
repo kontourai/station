@@ -1,6 +1,11 @@
+import { engineId } from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
+import { type ReactNode, useSyncExternalStore } from 'react';
+import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 // @vitest-environment jsdom
 
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import {
   act,
   fireEvent,
@@ -9,7 +14,11 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  navigationEntryIndex,
+  navigationStore,
+} from '../contexts/navigation-store';
 
 /**
  * The session detail's conversation reads the chat dock's source: a durable
@@ -20,6 +29,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
  */
 
 const windowState = vi.hoisted(() => ({
+  realWindow: false,
   events: [] as Array<{ sequence: number; event: unknown }>,
   watermark: 0,
   settled: true,
@@ -31,28 +41,50 @@ const windowState = vi.hoisted(() => ({
   upgradeRequired: false,
 }));
 
-vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
-  useSessionEventWindow: (
-    _apiBase: string,
-    _threadId: string | null,
-    revision = 0,
-  ) => {
-    windowState.revisions.push(revision);
+vi.mock(
+  '../hooks/orchestration/useSessionEventWindow',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../hooks/orchestration/useSessionEventWindow')
+      >();
     return {
-      events: windowState.events,
-      watermark: windowState.watermark,
-      handoffs: [],
-      contextBoundaries: [],
-      hasMore: windowState.hasMore,
-      loadOlder: windowState.loadOlder,
-      reload: windowState.reload,
-      upgradeRequired: windowState.upgradeRequired,
-      error: windowState.error,
-      loading: false,
-      settled: windowState.settled,
-      catchingUp: false,
+      useSessionEventWindow: (
+        _apiBase: string,
+        _threadId: string | null,
+        revision = 0,
+        legacySessionId?: string,
+      ) => {
+        const actualWindow = actual.useSessionEventWindow(
+          _apiBase,
+          windowState.realWindow ? _threadId : null,
+          revision,
+          legacySessionId,
+        );
+        if (windowState.realWindow) return actualWindow;
+        windowState.revisions.push(revision);
+        return {
+          events: windowState.events,
+          watermark: windowState.watermark,
+          handoffs: [],
+          contextBoundaries: [],
+          hasMore: windowState.hasMore,
+          loadOlder: windowState.loadOlder,
+          reload: windowState.reload,
+          upgradeRequired: windowState.upgradeRequired,
+          error: windowState.error,
+          loading: false,
+          settled: windowState.settled,
+          catchingUp: false,
+        };
+      },
     };
   },
+);
+
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  fetchSessionEventWindowCapability: async () => true,
 }));
 
 const ensureStream = vi.hoisted(() => vi.fn(() => () => {}));
@@ -90,6 +122,26 @@ function live(events: CanonicalRuntimeEvent[]) {
   });
 }
 
+function CanonicalActivityBinding({ children }: { children: ReactNode }) {
+  const navigation = useSyncExternalStore(
+    navigationStore.subscribe,
+    navigationStore.getSnapshot,
+  );
+  const intent = navigation.surfaceIntent;
+  return (
+    <ActivityWorkspacePaneBindingProvider
+      binding={{
+        apiBase: API,
+        sessionId: intent?.sessionId,
+        messageAnchor: intent?.messageAnchor,
+        intentToken: navigationEntryIndex(window.history.state),
+      }}
+    >
+      {children}
+    </ActivityWorkspacePaneBindingProvider>
+  );
+}
+
 function renderTranscript(
   isStreaming = true,
   failureShownAbove = false,
@@ -102,14 +154,16 @@ function renderTranscript(
   const tree = (streaming: boolean) => (
     <QueryClientProvider client={queryClient}>
       <PreviewProvider>
-        <SessionTranscript
-          apiBase={API}
-          session={session}
-          agentLabel="Code Reviewer"
-          isStreaming={streaming}
-          failureShownAbove={failureShownAbove}
-          scrollContainerRef={scrollContainerRef}
-        />
+        <CanonicalActivityBinding>
+          <SessionTranscript
+            apiBase={API}
+            session={session}
+            agentLabel="Code Reviewer"
+            isStreaming={streaming}
+            failureShownAbove={failureShownAbove}
+            scrollContainerRef={scrollContainerRef}
+          />
+        </CanonicalActivityBinding>
       </PreviewProvider>
     </QueryClientProvider>
   );
@@ -122,7 +176,16 @@ function renderTranscript(
   };
 }
 
+afterEach(() => vi.unstubAllGlobals());
+
 beforeEach(() => {
+  windowState.realWindow = false;
+  navigationStore.navigate('/', {
+    messageSession: null,
+    messageDirection: null,
+    messageRequest: null,
+  });
+  windowState.loadOlder.mockReset();
   resetSequencedLiveEventsForTests();
   windowState.events = [];
   windowState.watermark = 0;
@@ -528,6 +591,79 @@ describe('conversationPartToContentParts (shared with chat)', () => {
   });
 });
 
+describe('another agent’s message in the Activity transcript (#3419)', () => {
+  const sender = {
+    kind: 'agent-session',
+    sessionId: 'sender-session',
+    title: 'Fix login',
+    engine: 'claude',
+  };
+  const fromAgent = (text: string, withSender = true) => ({
+    prompt: frameAgentMessage(sender as never, text),
+    clientOrigin: {
+      version: 1,
+      actor: { kind: 'internal' },
+      reported: { version: 1, surface: 'unknown', build: null },
+      ...(withSender ? { sender } : {}),
+    },
+  });
+
+  test('is labelled with its sender instead of "You", and keeps the person’s own message as "You"', () => {
+    windowState.events = [
+      {
+        sequence: 1,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'p1',
+          prompt: 'Review it',
+        }),
+      },
+      {
+        sequence: 2,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'a1',
+          ...fromAgent('Please rebase onto main.'),
+        } as never),
+      },
+    ];
+    renderTranscript(false);
+    const rows = screen.getAllByTestId('session-transcript-message');
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByText('You')).toBeTruthy();
+    expect(rows[0]!.classList.contains('agent-incoming')).toBe(false);
+
+    expect(rows[1]!.classList.contains('agent-incoming')).toBe(true);
+    expect(rows[1]!.getAttribute('aria-label')).toBe(
+      'Message from another agent: Fix login, Claude Code',
+    );
+    expect(rows[1]!.textContent).toContain('From Fix login · Claude Code');
+    expect(rows[1]!.textContent).toContain('Please rebase onto main.');
+    expect(rows[1]!.textContent).not.toContain('[Station:');
+    expect(within(rows[1]!).queryByText('You')).toBeNull();
+  });
+
+  test('missing sender provenance on an internal input is a named gap, never You', () => {
+    windowState.events = [
+      {
+        sequence: 1,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'a1',
+          ...fromAgent('Please rebase onto main.', false),
+        } as never),
+      },
+    ];
+    renderTranscript(false);
+    const [row] = screen.getAllByTestId('session-transcript-message');
+    expect(row!.classList.contains('agent-incoming')).toBe(true);
+    expect(within(row!).queryByText('You')).toBeNull();
+    expect(row!.getAttribute('aria-label')).toBe(
+      'Non-person input: sender not recorded',
+    );
+  });
+});
+
 describe('SessionTranscript transcript markers (station#3415)', () => {
   test('a live compaction waits for its turn to close, then renders a marker line after it', () => {
     const view = renderTranscript(true);
@@ -567,4 +703,344 @@ describe('SessionTranscript transcript markers (station#3415)', () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
+});
+
+describe('engine-opened transcript cause (#3419)', () => {
+  test('a rehydrated settled provider answer says that the engine replied on its own', () => {
+    windowState.events = [
+      {
+        sequence: 1,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'provider-cause',
+          metadata: { trigger: 'provider' },
+        }),
+      },
+      {
+        sequence: 2,
+        event: ev({
+          method: 'turn.completed',
+          turnId: 'provider-cause',
+          outputText: 'Checks finished.',
+          metadata: { trigger: 'provider' },
+        }),
+      },
+    ];
+    renderTranscript(false);
+    const row = screen.getByTestId('session-transcript-message');
+    expect(row.getAttribute('aria-label')).toBe(
+      'The engine replied on its own',
+    );
+    expect(row.textContent).toContain('Checks finished.');
+    expect(row.querySelector('details summary')?.textContent).toContain(
+      'The engine replied on its own',
+    );
+    expect(within(row).queryByText('You')).toBeNull();
+  });
+});
+
+describe('exact send/receive navigation through Activity and older pages (#3419)', () => {
+  test.each(['sent', 'received'] as const)(
+    'the canonical %s link loads its older page and focuses the exact record',
+    async (direction) => {
+      const key = 'exact-delivery';
+      const targetEvents =
+        direction === 'received'
+          ? [
+              ev({
+                method: 'turn.started',
+                turnId: 'incoming',
+                prompt: 'Please inspect.',
+                clientOrigin: {
+                  version: 1,
+                  actor: { kind: 'internal' },
+                  reported: { version: 1, surface: 'unknown', build: null },
+                  sender: {
+                    kind: 'agent-session',
+                    sessionId: 'sender',
+                    title: 'Fix login',
+                    requestKey: key,
+                  },
+                },
+              }),
+            ]
+          : [
+              ev({
+                method: 'turn.started',
+                turnId: 'outgoing',
+                prompt: 'Coordinate.',
+              }),
+              ev({
+                method: 'tool.started',
+                turnId: 'outgoing',
+                toolCallId: 'send-exact',
+                toolName: 'mcp__station-control__send_to_session',
+                arguments: {
+                  sessionId: 'recipient',
+                  text: 'Please inspect.',
+                  requestKey: key,
+                },
+              }),
+              ev({
+                method: 'tool.completed',
+                turnId: 'outgoing',
+                toolCallId: 'send-exact',
+                toolName: 'mcp__station-control__send_to_session',
+                output: {
+                  success: true,
+                  data: { outcome: 'started', sessionId: 'recipient' },
+                },
+              }),
+              ev({ method: 'turn.completed', turnId: 'outgoing' }),
+            ];
+      windowState.realWindow = true;
+      const requests: string[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = new URL(String(input));
+          if (!url.pathname.endsWith('/event-window'))
+            return Response.json({ success: true, data: [] });
+          requests.push(url.search);
+          const older = url.searchParams.get('cursor') === 'older-page';
+          const page = {
+            protocolVersion: 1,
+            hasMore: !older,
+            session: {
+              threadId: THREAD,
+              provider: engineId('claude'),
+              status: 'ready',
+              controlMode: 'station-owned',
+              answerability: { answerable: true },
+              isLoaded: true,
+              isPersisted: true,
+              eventCount: 20,
+              createdAt: '2026-10-06T00:00:00Z',
+              updatedAt: '2026-10-06T00:00:00Z',
+            },
+            conversationId: THREAD,
+            currentSessionId: THREAD,
+            watermark: 20,
+            events: older
+              ? targetEvents.map((event, index) => ({
+                  sequence: index + 1,
+                  event,
+                }))
+              : [
+                  {
+                    sequence: 20,
+                    event: ev({
+                      method: 'turn.started',
+                      turnId: 'newest',
+                      prompt: 'Newer unrelated request',
+                    }),
+                  },
+                ],
+            ...(older ? {} : { nextCursor: 'older-page' }),
+            handoffs: [],
+            contextBoundaries: [],
+          } satisfies OrchestrationConversationEventWindow;
+          return Response.json({ success: true, data: page });
+        }),
+      );
+      navigationStore.navigate(
+        `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=${direction}&messageRequest=${key}`,
+      );
+      renderTranscript(false);
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          `Opened the exact ${direction === 'sent' ? 'sending call' : 'received message'}`,
+        ),
+      );
+      expect(requests).toHaveLength(2);
+      expect(new URLSearchParams(requests[1]).get('cursor')).toBe('older-page');
+      const focus = document.activeElement as HTMLElement;
+      expect(
+        direction === 'sent'
+          ? focus.dataset.stationSendRequest
+          : focus.dataset.agentSenderSession,
+      ).toBe(direction === 'sent' ? key : 'sender');
+      expect(
+        focus.closest('[data-testid="session-transcript-message"]')
+          ?.textContent,
+      ).toContain('Please inspect.');
+    },
+  );
+});
+
+describe('real anchor paging failure and resource bound (#3419)', () => {
+  test.each(['page-limit', 'read-error'] as const)(
+    '%s never focuses a guessed target or continues reading',
+    async (mode) => {
+      windowState.realWindow = true;
+      let pages = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = new URL(String(input));
+          if (!url.pathname.endsWith('/event-window'))
+            return Response.json({ success: true, data: [] });
+          pages += 1;
+          if (mode === 'read-error' && pages > 1)
+            return Response.json(
+              { success: false, error: 'Older history unavailable' },
+              { status: 503 },
+            );
+          const page = {
+            protocolVersion: 1,
+            conversationId: THREAD,
+            currentSessionId: THREAD,
+            watermark: 100,
+            hasMore: true,
+            nextCursor: `older-${pages}`,
+            handoffs: [],
+            contextBoundaries: [],
+            events: [
+              {
+                sequence: 100 - pages,
+                event: ev({
+                  method: 'turn.started',
+                  turnId: `other-${pages}`,
+                  prompt: 'Unrelated request',
+                }),
+              },
+            ],
+            session: {
+              threadId: THREAD,
+              provider: engineId('claude'),
+              status: 'ready',
+              controlMode: 'station-owned',
+              answerability: { answerable: true },
+              isLoaded: true,
+              isPersisted: true,
+              eventCount: 100,
+              createdAt: '2026-10-06T00:00:00Z',
+              updatedAt: '2026-10-06T00:00:00Z',
+            },
+          } satisfies OrchestrationConversationEventWindow;
+          return Response.json({ success: true, data: page });
+        }),
+      );
+      navigationStore.navigate(
+        `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=received&messageRequest=not-present`,
+      );
+      const view = renderTranscript(false);
+      if (mode === 'page-limit') {
+        await screen.findByText(
+          /Exact message lookup reached its 20-page limit/,
+        );
+        expect(pages).toBe(21);
+      } else {
+        await screen.findByText('Older history unavailable');
+        expect(pages).toBe(2);
+      }
+      expect(screen.queryByText(/Opened the exact/)).toBeNull();
+      expect(
+        document.activeElement?.closest(
+          '[data-testid="session-transcript-message"]',
+        ),
+      ).toBeNull();
+      view.unmount();
+      expect(pages).toBe(mode === 'page-limit' ? 21 : 2);
+    },
+  );
+});
+
+test('two sends sharing a request key in one answer remain an ambiguous anchor (#3419)', async () => {
+  const key = 'replayed-send-key';
+  const events = [
+    ev({
+      method: 'turn.started',
+      turnId: 'duplicate-sends',
+      prompt: 'Coordinate.',
+    }),
+    ...['first', 'retry'].flatMap((id) => [
+      ev({
+        method: 'tool.started',
+        turnId: 'duplicate-sends',
+        toolCallId: id,
+        toolName: 'mcp__station-control__send_to_session',
+        arguments: {
+          sessionId: 'recipient',
+          text: 'Same delivery',
+          requestKey: key,
+        },
+      }),
+      ev({
+        method: 'tool.completed',
+        turnId: 'duplicate-sends',
+        toolCallId: id,
+        toolName: 'mcp__station-control__send_to_session',
+        output: {
+          success: true,
+          data: { outcome: 'started', sessionId: 'recipient' },
+        },
+      }),
+    ]),
+    ev({ method: 'turn.completed', turnId: 'duplicate-sends' }),
+  ];
+  windowState.events = events.map((event, index) => ({
+    sequence: index + 1,
+    event,
+  }));
+  navigationStore.navigate(
+    `/?surface=activity&session=${encodeURIComponent(THREAD)}&messageSession=${encodeURIComponent(THREAD)}&messageDirection=sent&messageRequest=${key}`,
+  );
+  renderTranscript(false);
+  await screen.findByText(
+    'Message anchor is ambiguous: more than one recorded call or input has this request key.',
+  );
+  expect(screen.queryByText('Opened the exact sending call.')).toBeNull();
+  expect(
+    document.activeElement?.closest(
+      '[data-testid="session-transcript-message"]',
+    ),
+  ).toBeNull();
+});
+
+test('the durable incoming cause follows canonical phone state and expands full details (#3419)', () => {
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  const sender = {
+    kind: 'agent-session' as const,
+    sessionId: 'sender',
+    title: 'Fix login',
+    engine: 'claude',
+    requestKey: 'phone-key',
+  };
+  windowState.events = [
+    {
+      sequence: 1,
+      event: ev({
+        method: 'turn.started',
+        turnId: 'phone-input',
+        prompt: frameAgentMessage(sender, 'Please inspect the login patch.'),
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'internal' },
+          reported: { version: 1, surface: 'unknown', build: null },
+          sender,
+        },
+      }),
+    },
+  ];
+  renderTranscript(false);
+  expect(
+    screen
+      .getByTestId('session-transcript')
+      .getAttribute('data-transcript-mobile'),
+  ).toBe('true');
+  const details = screen
+    .getByTestId('session-transcript-message')
+    .querySelector<HTMLDetailsElement>('details.agent-cause-disclosure')!;
+  expect(details.open).toBe(false);
+  fireEvent.click(details.querySelector('summary')!);
+  expect(details.open).toBe(true);
+  expect(details.textContent).toContain('Please inspect the login patch.');
+  expect(details.querySelector('a')?.href).toContain(
+    'messageRequest=phone-key',
+  );
 });

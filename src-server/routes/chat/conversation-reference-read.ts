@@ -227,6 +227,7 @@ function compactMessage(
     toolBytes += size;
   }
   const timestamp = message.metadata?.timestamp;
+  const sender = message.metadata?.sender;
   const sessionId = message.metadata?.sessionId;
   const reportedModel = message.metadata?.reportedModel;
   const selectedModel = message.metadata?.model;
@@ -234,6 +235,18 @@ function compactMessage(
     index,
     id: readableMessageId(message),
     role: message.role,
+    ...(sender
+      ? {
+          sender: {
+            kind: sender.kind,
+            sessionId: sender.sessionId,
+            ...(sender.title ? { title: sender.title } : {}),
+            ...(sender.agent ? { agent: sender.agent } : {}),
+            ...(sender.engine ? { engine: sender.engine } : {}),
+            ...(sender.requestKey ? { requestKey: sender.requestKey } : {}),
+          },
+        }
+      : {}),
     text,
     ...(typeof sessionId === 'string' ? { sessionId } : {}),
     ...(typeof reportedModel === 'string'

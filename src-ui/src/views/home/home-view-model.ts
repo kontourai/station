@@ -2,6 +2,7 @@ import {
   type EngineId,
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -35,6 +36,7 @@ import { chatWaitsOnUser } from '../../utils/waiting-approvals';
 import { isPeerDelegationRecord } from './work-item-open-policy';
 
 export interface HomeWorkItem {
+  receivedAgentMessage?: true;
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
@@ -397,6 +399,9 @@ function buildSessionWorkItem(
     // "Worker task · delegated review") and fell back to `${agentLabel} task`
     // so one attached Claude session read "Claude Code task" on Home and
     // "Claude Code session" one click away in the list.
+    ...(clientOriginSender(session.turnOrigin?.latest)
+      ? { receivedAgentMessage: true as const }
+      : {}),
     title: sessionTitle(session),
     // archive#3227 A3: `session.projectSlug || 'No project'` DROPPED
     // `delegation.projectSlug` entirely and, worse, rendered the literal

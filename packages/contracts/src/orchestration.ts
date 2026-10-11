@@ -1,7 +1,7 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
 import type { SessionChildWork } from './child-work.js';
-import type { ClientOrigin } from './client-origin.js';
+import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type { InputRequestContent } from './input-request.js';
@@ -1438,6 +1438,7 @@ export interface ConversationHandoffStatusProjection {
 
 /** Bounded agent-facing transcript rows; missing attribution stays unknown. */
 export interface ConversationReadMessage {
+  sender?: ClientOriginSender;
   index: number;
   id: string;
   role: 'user' | 'assistant' | 'system';

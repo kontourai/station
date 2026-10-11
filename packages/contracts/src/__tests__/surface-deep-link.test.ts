@@ -13,6 +13,25 @@ describe('Activity surface deep links', () => {
       '/?surface=activity&session=x%26y%3Dz',
     );
     expect(activityDeepLink({ focus: 'evidence' })).toBe('/?surface=activity');
+    expect(
+      activityDeepLink({
+        messageAnchor: { direction: 'sent', requestKey: 'k' },
+      }),
+    ).toBe('/?surface=activity');
+    expect(
+      activityDeepLink({
+        sessionId: 's',
+        messageAnchor: { direction: 'sent', requestKey: 'x'.repeat(129) },
+      }),
+    ).toBe('/?surface=activity&session=s');
+    expect(
+      activityDeepLink({
+        sessionId: 'sender',
+        messageAnchor: { direction: 'sent', requestKey: 'key / & 1' },
+      }),
+    ).toBe(
+      '/?surface=activity&session=sender&messageSession=sender&messageDirection=sent&messageRequest=key+%2F+%26+1',
+    );
   });
 
   test('builds arbitrary encoded surface ids', () => {

@@ -1,4 +1,7 @@
-import type { ClientOriginSurface } from '@kontourai/station-contracts/client-origin';
+import {
+  type ClientOriginSurface,
+  clientOriginSender,
+} from '@kontourai/station-contracts/client-origin';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { clientOriginSummary } from '../../utils/clientOrigin';
@@ -59,6 +62,7 @@ export function activityOriginShortLabel(
   session: OrchestrationSessionSummary,
 ): string | null {
   const origin = session.turnOrigin?.latest;
+  if (clientOriginSender(origin)) return 'Agent message';
   if (origin) return SHORT_SURFACE_LABELS[origin.reported.surface] ?? null;
   if (isAttached(session)) return attachedEngineName(session);
   return null;
