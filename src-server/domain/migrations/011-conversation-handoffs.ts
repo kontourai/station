@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS orchestration_conversation_handoffs (
   target_execution_agent_id TEXT,
   target_model_id TEXT,
   message_digest TEXT NOT NULL,
+  native_return_source_session_id TEXT,
+  native_return_source_event_id TEXT,
   created_at TEXT NOT NULL,
   UNIQUE (conversation_id, idempotency_key)
 );
@@ -48,6 +50,31 @@ export function ensureConversationHandoffMessageDigestColumn(db: {
   } catch (error) {
     // Another EventStore can complete this additive home upgrade first.
     if (!hasColumn()) throw error;
+  }
+}
+
+export function ensureConversationHandoffNativeReturnColumn(db: {
+  prepare(sql: string): { all(): unknown[] };
+  exec(sql: string): void;
+}): void {
+  for (const name of [
+    'native_return_source_session_id',
+    'native_return_source_event_id',
+  ]) {
+    const hasColumn = () =>
+      (
+        db
+          .prepare('PRAGMA table_info(orchestration_conversation_handoffs)')
+          .all() as Array<{ name?: unknown }>
+      ).some((column) => column.name === name);
+    if (hasColumn()) continue;
+    try {
+      db.exec(
+        `ALTER TABLE orchestration_conversation_handoffs ADD COLUMN ${name} TEXT`,
+      );
+    } catch (error) {
+      if (!hasColumn()) throw error;
+    }
   }
 }
 

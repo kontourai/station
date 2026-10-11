@@ -240,8 +240,7 @@ function ChatMessageListComponent({
               .filter((event) => Boolean(event.eventId)),
           ).filter(
             (request) =>
-              !request.questionnaire &&
-              !request.mcpElicitation &&
+              !request.inputRequest &&
               !activeSession.answeredApprovals?.includes(
                 request.approvalId ?? '',
               ),

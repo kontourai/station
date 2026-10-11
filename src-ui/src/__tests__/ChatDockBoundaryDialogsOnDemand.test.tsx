@@ -133,6 +133,8 @@ vi.mock('../contexts/ModelsContext', () => ({
 
 vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({ projects: [] }),
+  useScopedProjectsQuery: () => ({ data: [], isSuccess: true }),
+  useScopedProjectQuery: () => ({ data: undefined, isSuccess: true }),
   useProject: () => undefined,
 }));
 
@@ -141,7 +143,11 @@ vi.mock('../contexts/ToastContext', () => ({
 }));
 
 vi.mock('../contexts/ActiveChatsContext', () => ({
-  activeChatsStore: { getState: () => ({}), subscribe: () => () => {} },
+  activeChatsStore: {
+    getState: () => ({}),
+    getSnapshot: () => ({}),
+    subscribe: () => () => {},
+  },
   useActiveChatActions: () => ({
     initChat: vi.fn(),
     removeChat: vi.fn(),

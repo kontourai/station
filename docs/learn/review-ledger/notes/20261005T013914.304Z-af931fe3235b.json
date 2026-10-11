@@ -1,0 +1,7 @@
+{
+  "revision": "4badc310c69a63b0f081b5a5caf9aa1785500df7",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Checked the testing guide edit: the merge-queue full regression now names its owner-chosen scope (deferred ci-fast or test-full lanes, plus mergeQueueRegression paths); narrower deferred lanes take the fast path. This document's own claims are unaffected.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

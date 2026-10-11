@@ -50,8 +50,8 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
-| `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
-| `@kontourai/station-contracts/mcp-elicitation` | A tool server's form-mode elicitation normalized to Station's rendered field subset, its accepted content, and the accept/decline/cancel result; validation lives in shared |
+| `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0, removed in 0.10.0: the pre-#3390 harness questionnaire and answer shapes, kept for stored events and `answers` callers |
+| `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
@@ -76,6 +76,40 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
+
+`ProviderContinuityCapabilities.resumeIdentity` is an additive adapter opt-in
+to `require-match`. Foreground native-cursor continuations set
+`ProviderSessionStartInput.requireNativeResumeIdentity` only for that declaration.
+An older adapter that omits it retains its existing resume behavior.
+Claude compares its SDK `init.session_id`; Codex compares the `thread/resume`
+response identity. A match emits server-owned `nativeResumeIdentity: matched`
+metadata. A queued prompt, requested cursor, or process start does not establish
+a match. An exact-resume identity mismatch stops that activation; it does not
+silently claim a fresh thread has continued the original one.
+`nativeReturn: 'same-binding'` additionally permits an explicit Agent handoff
+back to an earlier native thread in this Conversation. Station requires the
+same Agent, Environment, connection, working directory and opaque configuration
+binding, a completed accepted turn, and confirmed engine retirement. Durable
+ownership fences prevent the earlier execution Session from writing or deleting
+the transferred native thread. Missing bindings use the existing bounded replay
+path; a known identity mismatch refuses the activation.
+
+The resumed thread receives a bounded context seed from the execution Sessions
+between departure and return. The handoff's `nativeReturn.sourceSessionId`
+records the requested return; `nativeResumeIdentity: matched` records the
+provider-observed identity separately. Neither proves that every historical
+message fit in context, that a turn completed, or that cross-machine migration
+worked. Private resume-enforcement inputs are excluded from public start inputs.
+
+`ConversationReadPage` retains compact message Session attribution and optional
+model attribution, with `provider-reported` or `selected` provenance. Its
+versioned `provenance` reports ordered execution Sessions, provider handoffs and
+optional explicit fork ancestry. Missing provenance on an older server, or
+`status: 'unavailable'`, means unknown. A parent reference grants no read access.
+See the [provider contract](../../packages/contracts/src/provider.ts),
+[foreground caller](../../src-server/services/execution-target/execution-target-execution.ts),
+[Claude mapper](../../src-server/providers/adapters/claude-adapter-events.ts), and
+[Codex adapter](../../src-server/providers/adapters/codex-adapter.ts).
 
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
@@ -126,12 +160,20 @@ does not establish implementation, deployment, access, or a completed live journ
 
 ```ts
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import type { UsageInsights, InsightsScanCoverage } from '@kontourai/station-contracts/insights';
 import type { LearningReviewProjectionOutcome } from '@kontourai/station-contracts/learning-review';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { SessionMetadata } from '@kontourai/station-contracts/runtime';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import type { UnifiedSearchResult } from '@kontourai/station-contracts/unified-search';
 ```
+
+`insights` owns the monitoring rollup and optional retained-scan coverage.
+Complete scan integrity does not establish lifetime retention or producer
+delivery. Older servers omit coverage; new consumers treat that omission as
+unknown integrity. Failure classifications carry no file paths or foreign-user
+counts. The [Insights route](../../src-server/routes/operations/insights.ts)
+produces coverage; the SDK and existing dashboard consume it.
 
 `learning-review` is a read-only projection contract. Its available form links
 owner-issued source, candidate, evaluation, decision, activation, effect, and

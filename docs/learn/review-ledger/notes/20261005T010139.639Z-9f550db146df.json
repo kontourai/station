@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Planner change only adds a plan field computed from changed paths; the fixture marker's boundary role is unchanged.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/run-changed-verification.mjs"]}
+  ]
+}

@@ -1,7 +1,7 @@
 import { spawnSync as defaultSpawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 
 /**
@@ -123,6 +123,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real OTLP loopback receiver and SDK providers own sockets and export timers.
+  'src-server/__tests__/telemetry.test.ts',
   // Real author-build children refuse FIFO definitions/Skills; timeout follows observed startup.
   'packages/shared/src/__tests__/skill-experience-author.test.ts',
   // Exercises the health CLI refusal before any GitHub request.
@@ -379,6 +381,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
   // #3101: dependency-free planner CLI output and exit status in child processes.
   'scripts/__tests__/fast-checks-plan.test.ts',
+  // Runs the merge-queue regression decision script and the required
+  // aggregate's real bash/jq step as child processes over real plans.
+  // Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/merge-queue-regression-decision.test.ts',
   // #2709 re-land: runs the aggregator's real base-controlled bash/jq step
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.
@@ -386,6 +392,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
+  // #3101 slice F: builds small real Git graphs and runs the pure-merge
+  // classifier, and once the real pre-push hook through `git push` with
+  // stubbed gate commands, as bounded single-shot children.
+  'scripts/__tests__/prepush-pure-merge.test.ts',
+  // #3101 slice F: runs the fixture policy's real main() as a child process
+  // against a small real Git graph (merge base versus main's tip).
+  'scripts/__tests__/test-fixture-policy.process.test.ts',
   // Same shape one gate over: runs the pre-push typecheck scope guard as a
   // real child process — once against a stub `npm` so its REFUSAL exit
   // status is proven, once with an empty scope so the skip path's zero is
@@ -397,6 +410,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to prove reclaim, and runs one real `tsc` on a two-file temp project
   // three times to prove a warm incremental run still reports errors.
   'scripts/__tests__/typecheck-host-slots.test.ts',
+  // Real loopback file-server CLI with owned child cleanup and artifact replacement.
+  'scripts/__tests__/install-smoke-file-server.test.ts',
   // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
   // bundles are ignored and untracked, because .gitignore's text cannot say
   // whether a rule still matches or a file was force-added. Two single-shot

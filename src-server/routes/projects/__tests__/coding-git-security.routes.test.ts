@@ -32,6 +32,11 @@ import {
   humanPrincipal,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import {
+  createWorkspacePackageKey,
+  packWorkspace,
+  unpackWorkspace,
+} from '@kontourai/station-shared/workspace-package';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { FileTreeService } from '../../../services/projects/file-tree-service.js';
@@ -256,6 +261,47 @@ afterEach(() => {
 describe.skipIf(process.platform === 'win32')(
   'coding git routes: repo-local config (#2363)',
   () => {
+    test('an imported workspace supports guarded status without installing external Git policy', async () => {
+      const sourceHead = head();
+      expect(sourceHead).toMatch(/^[a-f0-9]{40}$/);
+      dirty('imported-change.txt', 'workspace change\n');
+      const keyFile = join(root, 'workspace.key');
+      const archive = join(root, 'workspace.enc');
+      createWorkspacePackageKey(keyFile);
+      packWorkspace({
+        workspace: project,
+        keyFile,
+        output: archive,
+        sourcePaused: true,
+      });
+      project = unpackWorkspace({
+        archive,
+        keyFile,
+        destination: join(root, 'imported'),
+      }).workspace;
+
+      const imported = await status();
+      expect(imported.status).toBe(200);
+      expect(imported.json.data).toMatchObject({
+        isRepo: true,
+        repoRoot: project,
+        branch: 'main',
+        lastCommit: { sha: sourceHead.slice(0, 8) },
+        untracked: 1,
+      });
+      expect(imported.json.data.changes).toContain('?? imported-change.txt');
+
+      plain(project, ['config', 'core.attributesFile', '/external/attributes']);
+      plain(project, ['config', 'core.excludesFile', '/external/ignore']);
+      const refused = await status();
+      expect(refused.status).toBe(409);
+      expect(refused.json.code).toBe('repository-config-refused');
+      expect(refused.json.keys).toEqual([
+        'core.attributesfile',
+        'core.excludesfile',
+      ]);
+    });
+
     test('a planted core.fsmonitor does not run when the Project page reads status', async () => {
       plain(project, ['config', 'core.fsmonitor', plant('fsmonitor')]);
       plain(project, ['status', '--porcelain']);

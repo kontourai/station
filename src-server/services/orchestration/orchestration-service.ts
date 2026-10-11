@@ -124,13 +124,10 @@ import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflo
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
-  readHarnessQuestionnaire,
-  validateHarnessQuestionAnswers,
-} from '@kontourai/station-shared/harness-questions';
-import {
-  readMcpElicitationForm,
-  validateMcpElicitationContent,
-} from '@kontourai/station-shared/mcp-elicitation';
+  harnessAnswersToInputContent,
+  inputRequestFromRequestEvent,
+  validateInputRequestContent,
+} from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
@@ -2558,6 +2555,15 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      nativeReturnSupported: (provider) => {
+        const adapter = options.adapterRegistry.get(provider);
+        const continuity = adapter?.metadata.continuity;
+        return (
+          continuity?.resumeIdentity === 'require-match' &&
+          continuity.nativeReturn === 'same-binding' &&
+          typeof adapter?.retireSession === 'function'
+        );
+      },
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -4702,6 +4708,8 @@ export class OrchestrationService {
     resumeCursor?: unknown;
     resumeModel?: string;
     transcriptSeed?: string;
+    nativeSourceSessionId?: string;
+    nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
   }> {
     this.initialize();
@@ -4794,6 +4802,7 @@ export class OrchestrationService {
       modelId?: string;
       idempotencyKey: string;
       messageDigest: string;
+      provider?: EngineId;
     },
   ): ReturnType<ConversationLineage['prepareConversationHandoff']> {
     this.initialize();
@@ -8239,59 +8248,53 @@ export class OrchestrationService {
               command.threadId,
               command.requestId,
             );
-          const questionnaire = readHarnessQuestionnaire(
+          // #3390: a form input request — a harness question or a tool
+          // server's elicitation, read through one reader whether the event
+          // was stored before or after #3390. Accepted content must fit the
+          // form the person was actually shown — this exact opened event —
+          // and is refused with a reason otherwise; never coerced or cut to
+          // fit. This runs whatever the client checked: a client is not
+          // trusted to have run the same validator.
+          const inputForm = inputRequestFromRequestEvent(
             currentQuestionRequest?.state === 'found' &&
               currentQuestionRequest.event.payload.method === 'request.opened'
-              ? currentQuestionRequest.event.payload.payload?.questionnaire
+              ? currentQuestionRequest.event.payload
               : undefined,
           );
-          if (questionnaire || command.answers !== undefined) {
-            if (
-              !questionnaire ||
-              !command.expectedRequestEventId ||
-              command.decision === 'acceptForSession'
-            )
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'Inspect the current question before answering it.',
-              );
-            if (command.decision === 'accept')
-              validateHarnessQuestionAnswers(questionnaire, command.answers);
-            else if (command.answers !== undefined)
-              throw new Error('A cancelled question cannot carry answers.');
-          }
-          // #3284: a tool server's form. Accepted content must fit the form
-          // the person was actually shown — this exact opened event — and is
-          // refused with a reason otherwise; never coerced or cut to fit.
-          const elicitationForm = readMcpElicitationForm(
-            currentQuestionRequest?.state === 'found' &&
-              currentQuestionRequest.event.payload.method === 'request.opened'
-              ? currentQuestionRequest.event.payload.payload?.mcpElicitation
-              : undefined,
-          );
-          let elicitationContent:
-            | ReturnType<typeof validateMcpElicitationContent>
+          let inputContent:
+            | ReturnType<typeof validateInputRequestContent>
             | undefined;
-          if (elicitationForm || command.elicitationContent !== undefined) {
+          if (
+            inputForm ||
+            command.content !== undefined ||
+            command.answers !== undefined
+          ) {
             if (
-              !elicitationForm ||
+              !inputForm ||
               !command.expectedRequestEventId ||
               command.decision === 'acceptForSession'
             )
               throw new RequestEventGuardError(
                 'request_verification_unavailable',
-                'Inspect the current form before answering it.',
+                'Inspect the current request before answering it.',
               );
+            if (command.content !== undefined && command.answers !== undefined)
+              throw new Error('Send the answer once, as content.');
             if (command.decision === 'accept') {
-              if (command.elicitationContent === undefined)
+              const submitted =
+                command.content ??
+                (command.answers !== undefined
+                  ? harnessAnswersToInputContent(inputForm, command.answers)
+                  : undefined);
+              if (submitted === undefined)
                 throw new Error('Fill in the form before sending it.');
-              elicitationContent = validateMcpElicitationContent(
-                elicitationForm,
-                command.elicitationContent,
-              );
-            } else if (command.elicitationContent !== undefined)
+              inputContent = validateInputRequestContent(inputForm, submitted);
+            } else if (
+              command.content !== undefined ||
+              command.answers !== undefined
+            )
               throw new Error(
-                'A declined or cancelled form cannot carry content.',
+                'A declined or cancelled request cannot carry an answer.',
               );
           }
 
@@ -8418,15 +8421,13 @@ export class OrchestrationService {
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
           const requestContext =
-            questionnaire || elicitationForm || context?.clientOrigin
+            inputForm || context?.clientOrigin
               ? {
                   ...(context?.clientOrigin
                     ? { clientOrigin: context.clientOrigin }
                     : {}),
-                  ...(command.answers ? { answers: command.answers } : {}),
-                  ...(elicitationContent ? { elicitationContent } : {}),
-                  ...((questionnaire || elicitationForm) &&
-                  command.expectedRequestEventId
+                  ...(inputContent ? { inputContent } : {}),
+                  ...(inputForm && command.expectedRequestEventId
                     ? { expectedRequestEventId: command.expectedRequestEventId }
                     : {}),
                 }
@@ -8627,6 +8628,134 @@ export class OrchestrationService {
    * `dispatch` (its resolve-to-dispatch gap in the foreground seam) is
    * invisible here; closing that needs the resolve step to reserve the Session.
    */
+  async retireHandoffPredecessor(
+    handoffSessionId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const marker =
+      this.options.eventStore?.conversationHandoffForSession(handoffSessionId);
+    if (!marker)
+      throw new Error('Conversation handoff reservation was not found.');
+    await this.retireNativeContinuationSource(
+      marker.predecessorSessionId,
+      handoffSessionId,
+      authority,
+    );
+  }
+
+  async retireNativeContinuationSource(
+    sourceId: string,
+    targetId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (
+      store?.conversationForSession(targetId)?.predecessorSessionId !== sourceId
+    )
+      throw new Error('Native continuation source was not found.');
+    await this.sessionExecutionCoordinator.runLifecycleTransition(
+      sourceId,
+      async () => {
+        const source = await this.readSession(sourceId, authority);
+        const children =
+          source && this.childWork.read(sourceId, source.session.provider);
+        if (
+          !source ||
+          !this.sessionAuthz.canReadSession(sourceId, authority) ||
+          source.session.hasActiveTurn ||
+          source.session.pendingReview ||
+          this.sendTurnsInDispatch.has(sourceId) ||
+          this.sessionExecutionCoordinator.hasActiveTurn(sourceId) ||
+          (children?.observability === 'reported' &&
+            children.running.length > 0)
+        )
+          throw new Error('The source native engine is not at rest.');
+        const adapter =
+          this.sessionAdapters.get(sourceId) ??
+          this.options.adapterRegistry.get(source.session.provider);
+        if (adapter?.metadata.continuity?.nativeReturn === 'same-binding') {
+          const retirement = await adapter.retireSession?.(sourceId);
+          if (retirement?.status !== 'retired')
+            throw new Error(
+              'The source native engine has not confirmed retirement.',
+            );
+        } else {
+          if (!adapter)
+            throw new Error('The source engine adapter is unavailable.');
+          // After restart a non-native-return adapter may own no live session.
+          // Native reuse still requires the explicit retirement receipt above.
+          if (await adapter.hasSession(sourceId))
+            await this.stopSessionNow(sourceId);
+        }
+        store.recordNativeSessionRetired(sourceId);
+      },
+    );
+  }
+
+  async retireNativeReturnSource(
+    handoffSessionId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const store = this.options.eventStore;
+    const marker = store?.conversationHandoffForSession(handoffSessionId);
+    if (
+      !store ||
+      !marker?.nativeReturnSourceSessionId ||
+      !marker.nativeReturnSourceEventId
+    ) {
+      throw new Error('Native return reservation was not found.');
+    }
+    const sourceId = marker.nativeReturnSourceSessionId;
+    await this.sessionExecutionCoordinator.runLifecycleTransition(
+      sourceId,
+      async () => {
+        const source = await this.readSession(sourceId, authority);
+        const terminal = store
+          .listEvents(sourceId)
+          .filter(
+            (event) =>
+              event.method === 'turn.completed' ||
+              event.method === 'turn.aborted' ||
+              event.method === 'runtime.error',
+          )
+          .at(-1);
+        const children =
+          source && this.childWork.read(sourceId, source.session.provider);
+        if (
+          !source ||
+          !this.sessionAuthz.canReadSession(sourceId, authority) ||
+          source.session.controlMode !== 'station-owned' ||
+          source.session.hasActiveTurn ||
+          source.session.pendingReview ||
+          this.sendTurnsInDispatch.has(sourceId) ||
+          this.sessionExecutionCoordinator.hasActiveTurn(sourceId) ||
+          (children?.observability === 'reported' &&
+            children.running.length > 0) ||
+          terminal?.id !== marker.nativeReturnSourceEventId ||
+          store.conversationSessions(marker.conversationId).at(-1)
+            ?.sessionId !== handoffSessionId
+        ) {
+          throw new Error(
+            'The earlier native engine is not safely available for return.',
+          );
+        }
+        const adapter =
+          this.sessionAdapters.get(sourceId) ??
+          this.options.adapterRegistry.get(source.session.provider);
+        const retirement = await adapter?.retireSession?.(sourceId);
+        if (retirement?.status !== 'retired')
+          throw new Error(
+            'The earlier native engine has not confirmed retirement.',
+          );
+        store.recordNativeSessionRetired(sourceId);
+        store.completeNativeReturnRetirement(handoffSessionId);
+      },
+    );
+  }
+
   async retireNeverRanSession(
     threadId: string,
     context?: {

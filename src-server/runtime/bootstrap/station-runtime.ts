@@ -760,6 +760,18 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    nativeSessionOwnership: {
+      assertMutable: (sessionId) =>
+        this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
+      claim: (key, sessionId, rebind) =>
+        this.orchestrationEventStore.claimNativeSessionIdentity(
+          key,
+          sessionId,
+          rebind,
+        ),
+      retired: (sessionId) =>
+        this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
+    },
     resolveSourceHome: (affinity) =>
       this.claudeTranscriptSource.resolveSourceHome(affinity),
     resolvePreToolPolicy: (input) =>
@@ -868,6 +880,18 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    nativeSessionOwnership: {
+      assertMutable: (sessionId) =>
+        this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
+      claim: (key, sessionId, rebind) =>
+        this.orchestrationEventStore.claimNativeSessionIdentity(
+          key,
+          sessionId,
+          rebind,
+        ),
+      retired: (sessionId) =>
+        this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
+    },
     resolveSourceHome: (affinity) =>
       this.codexRolloutSource.resolveSourceHome(affinity),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
@@ -3315,8 +3339,7 @@ export class StationRuntime {
    * (archive#1019's `custom-writer not found` cross-test contamination).
    */
   async initialize(): Promise<void> {
-    if (this.virtualApplicationConfiguration)
-      this.virtualApplicationLifetime.signal.throwIfAborted();
+    this.virtualApplicationLifetime.signal.throwIfAborted();
     this.virtualApplication?.stop();
     const virtualApplication = this.virtualApplicationConfiguration
       ? new VirtualApplicationIngress(
@@ -3331,8 +3354,8 @@ export class StationRuntime {
     this.initializeInFlight = inFlight;
     try {
       await inFlight;
+      this.virtualApplicationLifetime.signal.throwIfAborted();
       if (virtualApplication) {
-        this.virtualApplicationLifetime.signal.throwIfAborted();
         const application = virtualApplication.activate();
         this.virtualApplicationConfiguration!.ready(application);
         if (this.selfHostedBrokerConfiguration) {
@@ -3349,6 +3372,9 @@ export class StationRuntime {
           });
         }
       }
+      this.virtualApplicationLifetime.signal.throwIfAborted();
+      this.recordRuntimeLifecycle('ready');
+      void this.usageTelemetry?.stationStarted();
     } catch (error) {
       virtualApplication?.stop();
       const cleanupErrors: unknown[] = [];
@@ -3836,8 +3862,6 @@ export class StationRuntime {
     // telemetry inactive, while a missing receipt stays silent and inactive.
     await this.usageTelemetry.loadDisclosureReceipt();
     this.orchestrationService.setUsageTelemetry(this.usageTelemetry);
-    // Never delay a usable runtime for optional telemetry.
-    void this.usageTelemetry.stationStarted();
     this.observeRuntimeConfigurationSources();
     // This is the last awaited startup step. Failed listeners/services above
     // cannot leave an accepted policy decision from an incomplete startup.
@@ -3846,7 +3870,6 @@ export class StationRuntime {
         initialized.registryPolicyApplication,
         initialized.appConfig.registryTrust,
       );
-    this.recordRuntimeLifecycle('ready');
 
     // archive#1575: detected native engines (claude/codex CLIs) become registry
     // engine connections + default Agents without a Providers-UI trip.

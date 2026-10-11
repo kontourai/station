@@ -1,5 +1,6 @@
 import type { ChildWorkModel } from '@kontourai/station-contracts/child-work';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
@@ -149,6 +150,8 @@ export type ChatContentPart = {
   flowRunAttached?: FlowRunBinding;
   flowGateVerdict?: FlowGateVerdictInfo;
   conversationHandoff?: ConversationHandoffProjection;
+  /** #3390: an `input-request` part's record; see `MessagePart`. */
+  inputRequestRecord?: InputRequestRecord;
 };
 
 export type ChatMessage = {

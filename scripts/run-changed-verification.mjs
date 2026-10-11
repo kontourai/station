@@ -63,8 +63,10 @@ import { prepareVerificationExecution } from './lib/verification-request-context
 import { groupFiles, VITEST_CORPUS_GROUPS } from './run-vitest-corpus.mjs';
 import {
   buildTestImpactManifest,
+  dependencyChangeEdges,
   isEscalationPath,
   matches,
+  mergeQueueRegressionPaths,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from './test-impact-manifest.mjs';
@@ -479,6 +481,13 @@ function git(root, args) {
       `git ${args.join(' ')} failed: ${error.stderr?.toString().trim() || error.message}`,
     );
   }
+}
+
+/** A tracked file's content at `revision`, or null when it is absent there. */
+function fileAtRevision(root, revision, path) {
+  if (!git(root, ['ls-tree', '--name-only', revision, '--', path]).trim())
+    return null;
+  return git(root, ['show', `${revision}:${path}`]);
 }
 
 function nameStatusPaths(output) {
@@ -1600,6 +1609,15 @@ export async function runRepresentativeNarrowDiffFixture({
  * manifest routing and its escalations, product-law routing, and the subset
  * that is actually executed. Shared by the unsharded lane and the fast-checks
  * plan (#2709), so both select exactly the same suites.
+ *
+ * @param {string} base
+ * @param {{
+ *   root?: string;
+ *   changedPathsFn?: typeof changedPaths;
+ *   pathExists?: typeof existsSync;
+ *   readBaseFile?: (path: string) => string | null;
+ * }} [options] `readBaseFile` reads a changed file at the merge base (null
+ *   when absent there); it defaults to `git show`.
  */
 export function prepareChangedSelection(
   base,
@@ -1607,18 +1625,27 @@ export function prepareChangedSelection(
     root = process.cwd(),
     changedPathsFn = changedPaths,
     pathExists = existsSync,
+    readBaseFile,
   } = {},
 ) {
   const changed = changedPathsFn({ root, base });
   // The derived manifest adds the path-read pin edges (#1807): a test that
   // reads a source file's text has no import edge to it, so neither the graph
-  // fallback nor `vitest related` would schedule it here.
+  // fallback nor `vitest related` would schedule it here. The dependency
+  // edges (#3149) need the diff's base content, so they are built here.
+  const manifest = [
+    ...buildTestImpactManifest({ root }),
+    ...dependencyChangeEdges({
+      root,
+      paths: changed.paths,
+      readBase:
+        readBaseFile ??
+        ((path) => fileAtRevision(root, changed.mergeBase, path)),
+    }),
+  ];
   const escalated = escalateUnavailableExplicitTests(
     escalateUnavailableRelatedPaths(
-      selectChangedVerification(
-        changed.paths,
-        buildTestImpactManifest({ root }),
-      ),
+      selectChangedVerification(changed.paths, manifest),
       {
         root,
         pathExists,
@@ -2001,6 +2028,9 @@ export async function planChangedVerificationShards(
     shardCount,
     changedPathCount: changed.paths.length,
     deferredLanes: selection.lanes,
+    // Paths whose consumers only the merge-queue full regression runs; the
+    // queue's decision reads this beside deferredLanes.
+    mergeQueueRegressionPaths: mergeQueueRegressionPaths(changed.paths),
     escalated: selection.escalated,
     productLaws: productLawRouting.productLaws,
     ...(emptyRelatedSelection ? { emptyRelatedSelection } : {}),

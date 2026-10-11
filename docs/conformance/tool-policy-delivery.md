@@ -2,10 +2,13 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.278; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.289; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
+
+Version-specific observations below retain the SDK and CLI versions actually
+inspected or executed. They are not new provider results for SDK 0.3.289.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -69,8 +72,8 @@ session option. In a delegated child that cannot grant approvals
 denied at once with the staged evaluator's `delegation_deny_approvals` denial,
 since nobody could answer it. That includes a question from such a child.
 Known `AskUserQuestion` callbacks are handled before those grants: answering
-a question requires an exact structured batch and never creates a session
-tool grant. This is a question interaction boundary, not a new consent floor
+a question requires content that passes the opened form (#3390) and never
+creates a session tool grant. This is a question interaction boundary, not a new consent floor
 for every tool or proof that the engine invokes every callback.
 Stale-generation, delegated-tool, config-protection and approval-guardian
 decisions therefore have a pre-tool delivery path. What it still
@@ -286,12 +289,14 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `decision_reason_type` (`rule`, `mode`, `subcommandResults`,
 `permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
-`decision_reason_code` and `requires_user_interaction`. Agent SDK 0.3.278
-hands `canUseTool` none of them. A test runs the real SDK against a stand-in
-CLI and fails when that changes
+`decision_reason_code` and `requires_user_interaction`. The installed Agent
+SDK 0.3.289 forwards reason type, reason code and interaction fields, but not
+`classifier_approvable`. A test runs the real installed SDK against a stand-in
+CLI and verifies the reason values, request identities and classifier facts
+retained by the tap
 (`src-server/providers/__tests__/claude-code-spawn.sdk.test.ts`). The request
-shapes and reason texts below were read in the CLI bundled with that SDK
-(2.1.278), not captured from a live session.
+shapes and reason texts below were read in Claude Code 2.1.278, not captured
+from a live session.
 
 Station therefore owns the engine spawn through the SDK's
 `spawnClaudeCodeProcess` option

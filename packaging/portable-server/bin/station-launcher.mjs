@@ -73,6 +73,13 @@ export const DEFAULT_TIMINGS = Object.freeze({
   handoffAckMs: 15_000,
   preparedTimeoutMs: 240_000,
   homeSnapshotTimeoutMs: 30 * 60_000,
+  // Self-supervision (see selfSupervised): the first relaunch waits what
+  // systemd's RestartSec=5 does, each further one twice as long up to a
+  // minute, and a run that lasted ten minutes starts the backoff over.
+  relaunchDelayMs: 5_000,
+  relaunchMaxDelayMs: 60_000,
+  relaunchResetMs: 10 * 60_000,
+  parentPollMs: 1_000,
 });
 // Exported for service-launcher.test.ts, which pins the production values.
 // fallow-ignore-next-line unused-export
@@ -104,6 +111,33 @@ function timings() {
   const raw = process.env.STATION_LAUNCHER_TEST_TIMINGS;
   if (!raw) return DEFAULT_TIMINGS;
   return Object.freeze({ ...DEFAULT_TIMINGS, ...JSON.parse(raw) });
+}
+
+/**
+ * Whether this launcher supervises itself (#2675 slice W3). systemd and
+ * launchd restart a launcher that exits and stop it with a signal. Task
+ * Scheduler does neither: it does not rerun a task whose program exits (with
+ * its restart settings applied, a wrapper that exited 3 ran once in 100 s),
+ * `schtasks /End` ends only the cmd.exe wrapper and leaves this process
+ * running, and Windows has no SIGTERM (a child's `kill` is TerminateProcess).
+ * So on Windows the launcher itself:
+ *
+ * - relaunches: where it would exit for its service manager to restart it
+ *   (the active version exited, or a transition failed), it waits and starts
+ *   over from service-state.json, exactly as a restarted launcher would;
+ * - stops when its parent, the task's cmd.exe wrapper, is gone, which is
+ *   how `schtasks /End` (and so `station service stop`) reaches it;
+ * - stops its child by closing their IPC channel, which `service run`
+ *   answers with its own orderly shutdown, instead of TerminateProcess.
+ *
+ * STATION_LAUNCHER_TEST_SELF_SUPERVISED=1 turns the same mode on elsewhere,
+ * for tests that cannot run on Windows.
+ */
+function selfSupervised() {
+  return (
+    process.platform === 'win32' ||
+    process.env.STATION_LAUNCHER_TEST_SELF_SUPERVISED === '1'
+  );
 }
 
 // --- versions ---------------------------------------------------------------
@@ -184,6 +218,47 @@ function fsyncDirectory(directory) {
   }
 }
 
+/**
+ * Renames a file or directory, retrying a refusal Windows gives while
+ * another process (an antivirus scanner, the search indexer) briefly holds a
+ * handle inside it: EPERM, EACCES or EBUSY, up to 10 tries 500 ms apart,
+ * then the first error is thrown; any other error, and every error off
+ * Windows, at once (#3363). packages/shared/src/fs-windows-compat.ts
+ * `renamePathSyncRetrying`, ported (nothing of any version sits beside this
+ * file); service-launcher.test.ts runs both over the same refusals.
+ */
+// Exported for service-launcher.test.ts (the parity pin).
+// fallow-ignore-next-line unused-export
+export function renamePathRetrying(source, destination, options = {}) {
+  const platform = options.platform ?? process.platform;
+  const attempts = options.attempts ?? 10;
+  const rename = options.rename ?? renameSync;
+  const wait =
+    options.wait ??
+    ((milliseconds) =>
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        milliseconds,
+      ));
+  let first;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      rename(source, destination);
+      return;
+    } catch (error) {
+      const transient =
+        platform === 'win32' &&
+        ['EPERM', 'EACCES', 'EBUSY'].includes(error?.code ?? '');
+      if (!transient) throw first ?? error;
+      first ??= error;
+      if (attempt >= attempts) throw first;
+      wait(options.delayMs ?? 500);
+    }
+  }
+}
+
 function statePaths(installRoot) {
   const runtime = join(installRoot, 'runtime');
   return {
@@ -259,7 +334,7 @@ function writeServiceState(installRoot, state) {
     closeSync(fd);
   }
   try {
-    renameSync(temp, paths.state);
+    renamePathRetrying(temp, paths.state);
   } catch (error) {
     rmSync(temp, { force: true });
     throw error;
@@ -290,13 +365,49 @@ function versionFromCurrent(installRoot) {
   return basename(target);
 }
 
-function pointCurrentAt(installRoot, version) {
+function isLink(path) {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+const CURRENT_NEXT = 'current.next';
+
+/**
+ * Points `current` at a version. On POSIX a link renamed over `current`
+ * replaces it atomically. Windows cannot rename over a directory junction,
+ * so there `current` is removed and `current.next` renamed into its place,
+ * and a launcher killed between the two leaves only `current.next`, which
+ * `recoverCurrent` finishes. The Windows rule is install.ps1's
+ * (packages/shared/src/installer/full-install.ts `pointCurrentAt`), ported
+ * rather than imported, since nothing of any version sits beside this file;
+ * service-launcher.test.ts runs both over the same cases.
+ */
+// Exported for service-launcher.test.ts (the parity pin with install.ps1).
+// fallow-ignore-next-line unused-export
+export function pointCurrentAt(
+  installRoot,
+  version,
+  platform = process.platform,
+) {
   const current = join(installRoot, 'current');
   const target = versionPaths(installRoot, version).dir;
   try {
     if (readlinkSync(current) === target) return;
   } catch {
     // Missing or not a link: replaced below.
+  }
+  if (platform === 'win32') {
+    const next = join(installRoot, CURRENT_NEXT);
+    if (isLink(next)) unlinkSync(next);
+    // A junction needs no privilege, unlike a directory symlink.
+    symlinkSync(target, next, 'junction');
+    if (isLink(current)) unlinkSync(current);
+    renamePathRetrying(next, current, { platform });
+    fsyncDirectory(installRoot);
+    return;
   }
   const pending = join(installRoot, `.current.${process.pid}.${randomUUID()}`);
   symlinkSync(target, pending);
@@ -307,6 +418,21 @@ function pointCurrentAt(installRoot, version) {
     throw error;
   }
   fsyncDirectory(installRoot);
+}
+
+/**
+ * Finishes a Windows switch a kill interrupted (see pointCurrentAt): with no
+ * `current`, a `current.next` becomes it; with both, `current` stands and
+ * the stale `current.next` goes. install.ps1's `recoverCurrent`, ported.
+ */
+// Exported for service-launcher.test.ts (the parity pin with install.ps1).
+// fallow-ignore-next-line unused-export
+export function recoverCurrent(installRoot, platform = process.platform) {
+  const current = join(installRoot, 'current');
+  const next = join(installRoot, CURRENT_NEXT);
+  if (!isLink(next)) return;
+  if (isLink(current) || existsSync(current)) unlinkSync(next);
+  else renamePathRetrying(next, current, { platform });
 }
 
 // --- process identity -------------------------------------------------------
@@ -710,6 +836,9 @@ class Launcher {
     if (!this.home)
       throw new Error('the launcher needs the service home (--base=)');
     this.timings = timings();
+    this.selfSupervised = selfSupervised();
+    // A stop someone asked for, as opposed to an exit a relaunch follows.
+    this.stopRequested = false;
     this.state = null;
     this.child = null;
     this.timer = undefined;
@@ -723,10 +852,8 @@ class Launcher {
     });
   }
 
+  /** Signals reach `stop` through `main`, which outlives each run. */
   run() {
-    const onSignal = (signal) => void this.stop(signal);
-    process.once('SIGTERM', onSignal);
-    process.once('SIGINT', onSignal);
     this.enqueue(() => this.recover());
     return this.completion;
   }
@@ -752,6 +879,7 @@ class Launcher {
   }
 
   async stop(signal) {
+    this.stopRequested = true;
     if (this.stopping) return;
     this.stopping = true;
     clearTimeout(this.timer);
@@ -810,7 +938,11 @@ class Launcher {
   async terminate(managed, signal = 'SIGTERM') {
     const { process: child, version } = managed;
     if (child.exitCode === null && child.signalCode === null) {
-      child.kill(signal);
+      // Windows has no SIGTERM: closing the channel is the orderly stop
+      // `service run` answers (see selfSupervised).
+      if (this.selfSupervised) {
+        if (child.connected) child.disconnect();
+      } else child.kill(signal);
       if (!(await waitForExit(child, this.timings.stopGraceMs))) {
         log(
           `${version} did not stop within ${this.timings.stopGraceMs} ms; killing it`,
@@ -818,8 +950,16 @@ class Launcher {
         child.kill('SIGKILL');
         await waitForExit(child, 10_000);
         this.ownStop(version);
+        return;
       }
     }
+    // Self-supervised (Windows), the version's own `stop` also follows an
+    // orderly exit: measured on a Windows runner, `service run`'s shutdown
+    // could refuse to signal its UI ("identity could not be verified") and
+    // exit with it still running, which left the home active and failed the
+    // update's backup; `station stop` by record stopped it. With nothing
+    // left running it does nothing.
+    if (this.selfSupervised) this.ownStop(version);
   }
 
   runVersionCommand(version, args) {
@@ -895,6 +1035,7 @@ class Launcher {
   // --- the transaction ------------------------------------------------------
 
   async recover() {
+    recoverCurrent(this.installRoot);
     let state = readServiceState(this.installRoot);
     if (!state) {
       state = {
@@ -1183,7 +1324,8 @@ class Launcher {
       return;
     }
     // The active version exited on its own: exit too, and the service
-    // manager restarts the unit, as it did before the launcher existed.
+    // manager restarts the unit, as it did before the launcher existed (or,
+    // self-supervised, `main` starts this launcher over).
     this.ownStop(managed.version);
     this.done = true;
     this.stopping = true;
@@ -1333,13 +1475,80 @@ function makeWritable(dir) {
   }
 }
 
+/**
+ * Runs launchers one after another while self-supervised (see
+ * selfSupervised): each run that ends without a requested stop (the active
+ * version exited, a transition failed) is followed, after a backoff, by a
+ * fresh one, which recovers from service-state.json as a restarted launcher
+ * does. Durable state bounds every retry the same way it does under systemd:
+ * a failing restore counts its attempts there and ends in needs-operator,
+ * where a run waits instead of ending.
+ */
+async function superviseRuns(installRoot, childArgs) {
+  const { relaunchDelayMs, relaunchMaxDelayMs, relaunchResetMs, parentPollMs } =
+    timings();
+  let current = null;
+  let stopRequested = false;
+  let wakeBackoff;
+  const requestStop = (signal) => {
+    stopRequested = true;
+    wakeBackoff?.();
+    if (current) void current.stop(signal);
+  };
+  process.once('SIGTERM', () => requestStop('SIGTERM'));
+  process.once('SIGINT', () => requestStop('SIGINT'));
+  // The task's cmd.exe wrapper is this process's parent; `schtasks /End`
+  // ends it and nothing else. Its pid stays in process.ppid after it exits.
+  const parent = process.ppid;
+  const parentWatch = setInterval(() => {
+    if (processState(parent) === 'dead') {
+      clearInterval(parentWatch);
+      log(`the service wrapper (pid ${parent}) is gone; stopping`);
+      requestStop('SIGTERM');
+    }
+  }, parentPollMs);
+  let delay = relaunchDelayMs;
+  try {
+    for (;;) {
+      if (stopRequested) return 0;
+      current = new Launcher({ installRoot, childArgs });
+      const startedAt = Date.now();
+      let code;
+      try {
+        code = await current.run();
+      } catch (error) {
+        log(error instanceof Error ? error.message : String(error));
+        code = 1;
+      }
+      if (stopRequested || current.stopRequested) return code;
+      if (Date.now() - startedAt >= relaunchResetMs) delay = relaunchDelayMs;
+      log(`relaunching in ${delay} ms (the last run ended with ${code})`);
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, delay);
+        wakeBackoff = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+      });
+      wakeBackoff = undefined;
+      delay = Math.min(delay * 2, relaunchMaxDelayMs);
+    }
+  } finally {
+    clearInterval(parentWatch);
+  }
+}
+
 async function main(argv = process.argv.slice(2)) {
   const launcherPath = fileURLToPath(import.meta.url);
   const installRoot = dirname(dirname(launcherPath));
   const release = acquireStateLock(installRoot);
   try {
-    const code = await new Launcher({ installRoot, childArgs: argv }).run();
-    return code;
+    if (selfSupervised()) return await superviseRuns(installRoot, argv);
+    const launcher = new Launcher({ installRoot, childArgs: argv });
+    const onSignal = (signal) => void launcher.stop(signal);
+    process.once('SIGTERM', onSignal);
+    process.once('SIGINT', onSignal);
+    return await launcher.run();
   } finally {
     release();
   }

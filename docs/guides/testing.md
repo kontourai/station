@@ -402,6 +402,13 @@ instead of running them inline, so one shared-helper edit cannot exceed the
 the other changed files keep their related discovery and only the deferring
 file leaves the inline run. Any other deferral, such as an escalation or an
 unavailable related path, still defers the whole related selection.
+A third kind is derived per diff, from its base content: when a `package.json`
+dependency section or a `pnpm-lock.yaml` importer's resolved version changes
+for a sibling `@kontourai/*` package that is not a workspace package, the
+suites that import that package by name are selected (#3149). A version bump
+changes no source file, and both files escalate, so these explicit targets are
+what such a diff runs. Transitive lockfile changes are not followed, and a
+package imported by more than 16 suites defers them to `test-full`.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
@@ -609,7 +616,21 @@ Both roots must be clean, at the exact SHAs, with dependencies matching their
 lockfiles; the gate never installs anything. The suggested baseline is a
 sibling of the primary checkout under `station-worktrees/`, never nested
 inside a checkout. Because the baseline is the merge base, `origin/main`
-moving does not invalidate it; merging `origin/main` into the candidate does.
+moving does not invalidate it; merging `origin/main` into the candidate does,
+unless the push is a pure merge of main (below).
+
+**A pure merge of main skips the expensive lanes (#3101).** When every pushed
+ref only adds clean merges of `origin/main` on top of the tip the remote
+already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
+barrel, Veritas readiness and typecheck; biome, the governance proof and the
+commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
+the remote ref is the record of the last push the hook accepted, each merge's
+second parent must be on `main` as the remote itself reports it (`git
+ls-remote`, never a local ref such as `origin/main`), and each merge's tree
+must equal the conflict-free automatic merge of its parents. Replace objects
+and grafts are disabled for every Git read. A conflict resolution, an edit
+amended into the merge, a new non-merge commit, a new branch, a tag, or any
+Git or network failure runs every lane. The required CI checks still gate the combined head.
 
 **Slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (#1279).** Each
 capture is bounded by a liveness timeout that defaults to 60 000 ms,
@@ -1187,6 +1208,14 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 
 ### Host typecheck slots and incremental compiles
 
+Station uses the pinned native TypeScript 7 compiler for type checks and
+package declaration builds. `typescript-api` is an alias for TypeScript 5.9.3,
+retained only for policy scanners and tests using its JavaScript AST API;
+TypeScript 7's package does not expose that API. Do not use the alias to compile
+Station. Package build/watch scripts retain their standalone `tsc` entry point, backed
+by TypeScript 7. Package builds do not enable incremental reuse; typecheck lanes
+keep their caches.
+
 Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
 one of N host-wide slots for the life of the compiler and adds `--incremental`
 with a per-project build info file under the ignored
@@ -1199,13 +1228,41 @@ pool with its own N. N is one slot per 8 GiB of RAM, rounded, between 1 and 4
 (2 on a ~15.6 GiB hosted runner, 4 on a 48 GB workstation); the `typecheck`
 aggregate prints it once per run and never runs more lanes at once than there
 are slots. `--watch`, `--help`, `--version` and similar non-compiling modes take
-no slot. A crashed or killed compiler's slot is reclaimed from its dead pid.
+no slot. On macOS and Linux the runner replaces itself with the compiler, and
+the next waiter reclaims its record after exit. On Windows an owned Job binds
+the compiler to the runner and settles before releasing the slot; a killed
+holder's record is reclaimed from its dead pid.
+
 Overrides: `STATION_TYPECHECK_SLOTS` (count), `STATION_TYPECHECK_SLOT_WAIT_MS`
 (bounded wait, default 45 minutes, then the lane fails naming the holders),
 `STATION_TYPECHECK_SLOT_DIR` (set it identically for every caller), and
 `STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
 same diagnostics as a cold one: TypeScript checks every input's content hash
 and replays stored errors for unchanged files.
+
+#### Optional Bun diagnostics
+
+For a cold check with a second implementation, install Bun **1.4.3** separately
+and run an explicit project through the same host slot pool:
+
+```sh
+npm run diagnostic:typecheck:bun -- -p src-ui/tsconfig.json
+npm run diagnostic:typecheck:bun -- -p tsconfig.tests.json
+```
+
+`STATION_BUN_EXECUTABLE` may name an absolute Bun executable when it is not on
+`PATH`. The runner refuses other Bun versions or a checker other than TypeScript
+7.0.2, requires an explicit project, and caps each Bun process at four threads
+and its share of available CPUs across the host's compiler slots. It writes no
+build metadata or declaration output. Run `npm run dist:freshness` first when
+the selected project consumes package builds.
+
+This command is diagnostic; pre-push, `ci:fast`, and required hosted checks use
+TypeScript 7. Bun has no persistent incremental cache, and a single project
+check does not replace the twelve-lane aggregate or the scripts coverage gate.
+Do not add `@types/bun` to Station's Node/browser projects to make a check pass.
+Compare diagnostics before treating a disagreement as a Station defect.
+
 
 The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
@@ -1419,7 +1476,32 @@ The `PR: Merge integration` workflow retains the legacy required context
 candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
-The merge path does not run the full corpus.
+
+On each merge-queue candidate the workflow also recomputes the fast-checks
+plan against the queue base, using the same planner and inputs as `fast-checks`.
+[`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
+then chooses a path:
+
+- **Full regression.** The plan defers to the `ci-fast` or `test-full` lane,
+  or it names a `mergeQueueRegression` path. Narrower deferred lanes, such as a
+  packaging leg, take the fast path: the owner limited the scope to keep queue
+  candidates under the shared runner cap. A deferred plan drops related discovery and
+  runs no explicit test above 32, so `fast-checks` cannot cover it. A
+  `mergeQueueRegression` path, such as the SDK transport or the orchestration
+  event store, leaves its consumers to the queue on purpose. The candidate
+  runs the hosted [full regression](../../.github/workflows/full-regression.yml)
+  on its own SHA, with exact-source reuse allowed. The required check passes
+  only when that run passes.
+- **Fast path.** Any other candidate, including one deferred only to a narrower
+  lane, skips the full regression. The check
+  reports `no deferred lane: fast path`.
+
+The decision fails closed. A missing, unreadable or invalid plan runs the full
+regression, and so does a plan for another head or base. If the planner or its
+install fails, or the decision step writes nothing, the full regression runs
+too, because it is skipped only when the decision is exactly `false`. Pull
+requests never run it. In this workflow, `pull_request_target` only reports
+the skipped required context.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
@@ -1476,9 +1558,9 @@ not every way to wait.
 ### Test quarantine
 
 The historical `QUARANTINED_VITEST_FILES` list remains a diagnostic exclusion
-mechanism for explicitly requested corpus runs. Merge integration no longer
-runs the full corpus. Scheduled and release qualification never exclude these
-files: a known flake remains visible and blocks promotion until resolved.
+mechanism for explicitly requested corpus runs. The merge-queue full regression
+for deferred candidates, scheduled qualification and release qualification never
+exclude these files: a known flake remains visible and blocks promotion until resolved.
 
 **When to quarantine.** Only a test that is flaky, not broken: the *same
 commit* both passed and failed it. A test that fails every time is a defect to

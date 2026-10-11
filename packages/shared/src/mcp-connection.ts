@@ -196,6 +196,34 @@ function clientRequestMethod(
   return undefined;
 }
 
+function hasForbiddenElicitationField(request: unknown): boolean {
+  if (
+    !isRecord(request) ||
+    request.method !== 'elicitation/create' ||
+    !isRecord(request.params)
+  )
+    return false;
+  const schema = request.params.requestedSchema;
+  return (
+    isRecord(schema) &&
+    isRecord(schema.properties) &&
+    Object.hasOwn(schema.properties, '__proto__')
+  );
+}
+
+function hasForbiddenInputRequiredField(message: unknown): boolean {
+  if (
+    !isRecord(message) ||
+    !isRecord(message.result) ||
+    message.result.resultType !== 'input_required' ||
+    !isRecord(message.result.inputRequests)
+  )
+    return false;
+  return Object.values(message.result.inputRequests).some(
+    hasForbiddenElicitationField,
+  );
+}
+
 const MCP_APPS_EXTENSION_ID = 'io.modelcontextprotocol/ui';
 const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app';
 
@@ -367,6 +395,43 @@ export function prepareMCPConnection(
                 };
               },
               set(target, property, value) {
+                if (property === 'onmessage' && typeof value === 'function') {
+                  const onmessage: NonNullable<Transport['onmessage']> = (
+                    ...args
+                  ) => {
+                    const message = args[0];
+                    if (
+                      'id' in message &&
+                      (hasForbiddenElicitationField(message) ||
+                        hasForbiddenInputRequiredField(message))
+                    ) {
+                      const refusal = {
+                        jsonrpc: '2.0' as const,
+                        id: message.id,
+                        error: {
+                          code: ProtocolErrorCode.InvalidParams,
+                          message:
+                            'Station refuses MCP elicitation fields named __proto__.',
+                        },
+                      };
+                      // Legacy asks need a wire reply; a modern input-required
+                      // result must fail the owning client call before decoding.
+                      if ('method' in message) {
+                        if (!current()) return;
+                        void track(() => target.send(refusal)).catch((error) =>
+                          target.onerror?.(
+                            error instanceof Error
+                              ? error
+                              : new Error('MCP refusal could not be sent'),
+                          ),
+                        );
+                      } else value(refusal, args[1]);
+                      return;
+                    }
+                    value(...args);
+                  };
+                  return Reflect.set(target, property, onmessage, target);
+                }
                 if (property === 'close') {
                   currentTransportClose = value;
                   return true;

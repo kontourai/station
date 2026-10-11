@@ -189,6 +189,33 @@ function createServer() {
     });
   }
 
+  const protoField = process.env.STATION_MCP_FIXTURE_PROTO_FIELD;
+  if (protoField) {
+    // Inject after server SDK encoding so the real wire carries the forbidden
+    // field. Otherwise the server's own schema parser can erase it first.
+    const connect = server.server.connect.bind(server.server);
+    server.server.connect = (transport, ...args) => {
+      const send = transport.send.bind(transport);
+      transport.send = (message, ...sendArgs) => {
+        const requests =
+          message.method === 'elicitation/create'
+            ? [message]
+            : Object.values(message.result?.inputRequests ?? {});
+        for (const request of requests) {
+          if (request.method !== 'elicitation/create') continue;
+          const schema = request.params.requestedSchema;
+          Object.defineProperty(schema.properties, '__proto__', {
+            value: { type: 'string' },
+            enumerable: true,
+          });
+          if (protoField === 'required')
+            schema.required = [...(schema.required ?? []), '__proto__'];
+        }
+        return send(message, ...sendArgs);
+      };
+      return connect(transport, ...args);
+    };
+  }
   return server;
 }
 

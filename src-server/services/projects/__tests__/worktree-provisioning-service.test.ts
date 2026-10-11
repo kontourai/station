@@ -76,6 +76,7 @@ const scriptedRepository = async (folder: string): Promise<LiveRepository> => ({
   env: { GIT_COMMON_DIR: join(folder, '.git') },
   unchanged: async () => true,
   sameIdentity: async () => true,
+  settleCreatedWorktree: async () => undefined,
   dispose: async () => undefined,
 });
 

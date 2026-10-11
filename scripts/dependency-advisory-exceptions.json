@@ -17,9 +17,9 @@
       "advisory": "GHSA-ch52-4w7c-c8xp",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-10"
+      "expires": "2026-10-17"
     },
     {
       "scope": "root",
@@ -27,9 +27,9 @@
       "advisory": "GHSA-vfj7-8cjw-p6xm",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An untrusted deeply nested brace pattern exhausting a Node process call stack. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: npm latest remains 3.0.3; GitHub advisory covers <=3.0.3 with no first patched version. Threat model: an untrusted deeply nested brace pattern reaching expansion and exhausting a Station Node process stack. Dependency paths include micromatch/fast-glob and VoltAgent; Station-specific entry-point exploitability and non-reachability remain unproved. Exact-root seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified mitigation lands. No unrelated critical/high identity is accepted.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-10"
+      "expires": "2026-10-17"
     },
     {
       "scope": "sdk",
@@ -37,9 +37,9 @@
       "advisory": "GHSA-ch52-4w7c-c8xp",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-10"
+      "expires": "2026-10-17"
     },
     {
       "scope": "shared",
@@ -47,9 +47,9 @@
       "advisory": "GHSA-ch52-4w7c-c8xp",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-10"
+      "expires": "2026-10-17"
     }
   ],
   "residuals": [

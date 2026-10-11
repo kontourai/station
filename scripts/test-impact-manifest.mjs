@@ -1,3 +1,10 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  changedDependencies,
+  DEPENDENCY_TEST_FANOUT_LIMIT,
+  directImporterTests,
+} from './lib/dependency-change-scan.mjs';
 import {
   invertPathReadPins,
   scanPathReadPins,
@@ -66,8 +73,10 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
  * native transport order, credential wake, timeouts, origin headers, failure
  * mapping, request authority, portability. The transport's CONSUMERS' unit
  * and component suites leave the fast lane — and still run before merge:
- * the required `Merge-queue regression` check runs the full-regression
- * corpus on every merge-queue candidate (since 2026-09-23). Fast feedback
+ * `mergeQueueRegression: true` puts the path in the fast-checks plan's
+ * `mergeQueueRegressionPaths`, and the required `Merge-queue regression`
+ * check runs the full-regression corpus on any merge-queue candidate whose
+ * plan names one (scripts/merge-queue-regression-decision.mjs). Fast feedback
  * covers the module's own behaviour; the queue covers everything that
  * imports it.
  *
@@ -101,6 +110,7 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
     Object.freeze({
       pattern,
       tests: SDK_TRANSPORT_TESTS,
+      mergeQueueRegression: true,
       reason:
         'SDK transport: own-behaviour suites; its import graph is too broad ' +
         'for the fast lane, so consumers are covered by the merge-queue ' +
@@ -127,6 +137,7 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
 const SDK_BROAD_MODULE_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'packages/sdk/src/client/api-error-message.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'packages/sdk/src/__tests__/api-error-message.test.ts',
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
@@ -138,6 +149,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
   }),
   Object.freeze({
     pattern: 'packages/sdk/src/client/chatHttpError.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'packages/sdk/src/__tests__/chatRuntimeStream.test.ts',
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
@@ -155,6 +167,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
   // which run in the merge-queue full regression — before merge, not here.
   Object.freeze({
     pattern: 'packages/sdk/src/client/index.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
     ]),
@@ -185,6 +198,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
 const ORCHESTRATION_STORE_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'src-server/services/orchestration/event-store.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
       'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
@@ -207,6 +221,7 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
   }),
   Object.freeze({
     pattern: 'src-server/services/orchestration/transcript-search-queries.ts',
+    mergeQueueRegression: true,
     tests: Object.freeze([
       'src-server/services/orchestration/__tests__/event-store.test.ts',
       'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
@@ -239,6 +254,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     // failures. The suites that exercise the matrix's own declarations run
     // here; its consumers run in the required merge-queue full regression.
     pattern: 'packages/contracts/src/engine-capability-matrix.ts',
+    mergeQueueRegression: true,
     tests: [
       'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
       'packages/contracts/src/__tests__/agent-capability-profile.test.ts',
@@ -667,6 +683,72 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
 ]);
 
 /**
+ * #3149: suites that compose a module through a production entry point, so a
+ * change to it can break them while the diff's own selection never runs them.
+ * Every edge is `supplemental`: it adds the suite and leaves the path's related
+ * selection, escalation and lanes as they were. That is the point — these
+ * paths sit in diffs that escalate (`packages/shared/` is an escalation path),
+ * and an escalated diff drops related discovery and keeps only explicit tests
+ * (`executionSelection` in run-changed-verification.mjs).
+ *
+ * Exact paths, not the import graph: the entry-point suite reaches each of
+ * these through `runCli` or the runtime HTTP composition, and the graph of any
+ * one of them is far larger than the suite that proves the composition.
+ */
+const CLI_SERVICE_ENTRY_POINT_TEST =
+  'packages/cli/src/__tests__/service-dev-home-entry-points.test.ts';
+const RUNTIME_SECURITY_COMPOSITION_TEST =
+  'src-server/routes/system/__tests__/authority-observation.routes.test.ts';
+const COMPOSITION_EDGES = Object.freeze([
+  // #3251 changed the host-owner claim these entry points install a service
+  // through; the suite drives every source-checkout entry point via `runCli`.
+  ...[
+    'packages/shared/src/instance-registry.ts',
+    'packages/cli/src/commands/lifecycle.ts',
+    'packages/cli/src/commands/service.ts',
+    'packages/cli/src/commands/service-liveness.ts',
+    'packages/cli/src/commands/service-run.ts',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([CLI_SERVICE_ENTRY_POINT_TEST]),
+      reason:
+        'the CLI service entry points compose this module through runCli; ' +
+        'kept explicit so an escalated diff still runs them (#3149)',
+    }),
+  ),
+  // #3114 widened the account-bound device gate; the suite runs the REAL
+  // configureRuntimeHttp transport, device gate and principal owner. Every
+  // `src-server/runtime/bootstrap/*gate*` module is listed here, which
+  // test-impact-incidents.test.ts pins against the directory.
+  ...[
+    'src-server/security/**',
+    'src-server/runtime/bootstrap/account-bound-device-gate.ts',
+    'src-server/runtime/bootstrap/agent-audience-gate.ts',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([RUNTIME_SECURITY_COMPOSITION_TEST]),
+      reason:
+        'request security is composed by the production HTTP chain this ' +
+        'suite runs; kept explicit so an escalated diff still runs it (#3149)',
+    }),
+  ),
+  Object.freeze({
+    pattern: 'src-server/runtime/bootstrap/agent-audience-gate.ts',
+    supplemental: true,
+    tests: Object.freeze([
+      'src-server/runtime/routes/__tests__/runtime-routes-agent-audience.test.ts',
+    ]),
+    reason:
+      'Agent audience enforcement through the production route composition; ' +
+      'kept explicit so an escalated diff still runs its caller suite (#3149)',
+  }),
+]);
+
+/**
  * #2176: suites whose subject is a whole source tree, read by walking it.
  * No impact edge can honestly select them — the edge would be every file
  * under the tree, and a supplemental test on every path is noise in the
@@ -685,6 +767,10 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
+  // Walks packages/sdk/src/client. Its packages/sdk/src/client/** edge selects
+  // it, but a diff that escalates with more than 32 explicit tests runs none
+  // of them: #3170 broke it that way and it first failed in qualification.
+  'packages/sdk/src/__tests__/client-entry-portability.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
   // Scans src-server, packages/shared/src and packages/cli/src for Station
   // home-root literals the store registry must list (#2675 D1).
@@ -1463,7 +1549,11 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'doctor recovery command documentation source seam',
   },
   {
+    // Supplemental (#3149): a tests-only edge here suppressed the path's
+    // related selection, so a service.ts change ran this documentation check
+    // and none of the 22 suites that import it.
     pattern: 'packages/cli/src/commands/service.ts',
+    supplemental: true,
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'service-status recovery command documentation source seam',
   },
@@ -1771,6 +1861,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   ...SPAWNED_SCRIPT_EDGES,
   ...UNMODELLED_INPUT_EDGES,
+  ...COMPOSITION_EDGES,
   {
     pattern: 'scripts/prepush-test-manifest.mjs',
     tests: [
@@ -2025,6 +2116,74 @@ export function spawnedScriptEdges({ root = process.cwd(), entries } = {}) {
   return edges;
 }
 
+const DEPENDENCY_DEFERRAL_REASON =
+  `more than ${DEPENDENCY_TEST_FANOUT_LIMIT} suites import this changed ` +
+  'dependency, so they run in test-full rather than inline (#3149)';
+
+/**
+ * Impact edges for the sibling Kontour packages a diff's dependency files
+ * changed (#3149; `scripts/lib/dependency-change-scan.mjs` says why and which).
+ * Each edge is attached to the changed `package.json` or `pnpm-lock.yaml`
+ * that shows the change and selects the suites importing that package.
+ *
+ * Same contract as `spawnedScriptEdges`: every edge is `supplemental`, so it
+ * only adds tests (or, above the fan-out limit, a deferred `test-full` lane)
+ * and never changes the path's escalation. It needs the diff's BASE content,
+ * which the path list does not carry, so it is built per selection by
+ * `prepareChangedSelection` rather than in `buildTestImpactManifest`.
+ *
+ * @param {{
+ *   root?: string,
+ *   paths: readonly string[],
+ *   readBase: (path: string) => string | null,
+ *   readHead?: (path: string) => string | null,
+ *   testFiles?: readonly string[],
+ * }} options
+ * @returns {readonly ImpactEdge[]}
+ */
+export function dependencyChangeEdges({
+  root = process.cwd(),
+  paths,
+  readBase,
+  readHead = (path) => {
+    const absolute = join(root, path);
+    return existsSync(absolute) ? readFileSync(absolute, 'utf8') : null;
+  },
+  testFiles,
+}) {
+  const changes = changedDependencies({ root, paths, readBase, readHead });
+  if (!changes.size) return Object.freeze([]);
+  const importers = directImporterTests({
+    root,
+    names: changes.keys(),
+    ...(testFiles ? { testFiles } : {}),
+  });
+  return Object.freeze(
+    [...changes].flatMap(([name, sources]) => {
+      const tests = importers.get(name) ?? [];
+      if (!tests.length) return [];
+      return [...sources].sort().map((pattern) =>
+        tests.length > DEPENDENCY_TEST_FANOUT_LIMIT
+          ? Object.freeze({
+              pattern,
+              supplemental: true,
+              deferredLanes: Object.freeze(['test-full']),
+              reason: `${DEPENDENCY_DEFERRAL_REASON}: ${name}`,
+            })
+          : Object.freeze({
+              pattern,
+              supplemental: true,
+              tests: Object.freeze(tests),
+              reason:
+                `dependency ${name} changed and this suite imports it ` +
+                'directly; a version bump changes no source file the import ' +
+                'graph could follow (#3149)',
+            }),
+      );
+    }),
+  );
+}
+
 /**
  * The committed manifest plus the pin and spawned-script edges derived from
  * the working tree. `runChangedVerification` selects against this; the exported constant stays
@@ -2039,6 +2198,30 @@ export function buildTestImpactManifest(options) {
     ...pathReadPinEdges(options),
     ...spawnedScriptEdges({ root: options?.root }),
   ]);
+}
+
+/**
+ * Changed paths whose consumers the fast lane deliberately leaves to the
+ * merge queue: a path an unconditional `mergeQueueRegression` edge owns. The
+ * fast-checks plan records them, and a merge-queue candidate that names any
+ * runs the full regression (scripts/merge-queue-regression-decision.mjs).
+ *
+ * @param {readonly string[]} paths
+ * @param {readonly ImpactEdge[]} [manifest]
+ * @returns {string[]}
+ */
+export function mergeQueueRegressionPaths(
+  paths,
+  manifest = TEST_IMPACT_MANIFEST,
+) {
+  const owned = manifest.filter((edge) => edge.mergeQueueRegression === true);
+  return [...new Set(paths)]
+    .filter((path) =>
+      owned.some(
+        (edge) => matches(edge.pattern, path) && !edge.except?.includes(path),
+      ),
+    )
+    .sort();
 }
 
 export function matches(pattern, path) {
@@ -2067,6 +2250,7 @@ export function isEscalationPath(path) {
  *   deferredLanes?: readonly string[],
  *   whenAll?: readonly string[],
  *   except?: readonly string[],
+ *   mergeQueueRegression?: boolean,
  *   reason?: string,
  * }} ImpactEdge
  */
@@ -2088,6 +2272,19 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
       errors.push(`invalid impact edge: ${JSON.stringify(edge)}`);
     // `deferredLanes` is how a supplemental edge adds a lane: it only adds,
     // like the supplemental tests, and never touches the boundary decisions.
+    // A merge-queue regression owner must be a boundary edge naming its own
+    // suites: a supplemental or conditional edge would claim the queue covers
+    // a path whose boundary it does not decide.
+    if (
+      edge?.mergeQueueRegression !== undefined &&
+      (edge.mergeQueueRegression !== true ||
+        edge.supplemental ||
+        edge.whenAll ||
+        !edge.tests?.length)
+    )
+      errors.push(
+        `a merge-queue regression edge must be an unconditional boundary edge with tests: ${edge.pattern}`,
+      );
     if (edge?.deferredLanes?.length && !edge.supplemental)
       errors.push(
         `only a supplemental impact edge may defer to a lane: ${edge.pattern}`,

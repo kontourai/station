@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "types": ["node"],
     "module": "preserve",
     "outDir": "./providers",
     "rootDir": "./src/providers",

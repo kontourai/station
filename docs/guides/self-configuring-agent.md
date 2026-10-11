@@ -28,6 +28,11 @@ example does not grant one implicitly.
 - `read_conversation` to page through a conversation a person referenced in a
   message to the Agent, or to start at a `search_sessions` hit
   (`aroundMessageId`)
+  The compact page retains message Session attribution and versioned continuity
+  provenance: ordered providers, handoff boundaries, requested native returns
+  and separate explicit fork ancestry. Missing or unavailable provenance means
+  unknown. Reads remain scoped and paginated; a native-return request does not
+  prove provider identity or delivery of every historical message.
 - `list_delegation_environments`, `list_delegation_targets`,
   `list_delegated_tasks`, `delegate_task`, `get_task`, `get_task_events`,
   `continue_task`, and `interrupt_task` for resumable work through either a

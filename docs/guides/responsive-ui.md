@@ -74,8 +74,8 @@ lands later in the cascade (today the Diff tools in the Coding side panel's
 head). Nested controls and overflowing content still need their own caller
 test.
 
-On a phone, a request that needs the person — an MCP elicitation form or a
-tool approval — keeps a compact card in the transcript and is answered in
+On a phone, a request that needs the person — a harness question, an MCP
+elicitation form or a tool approval (#3390) — keeps a compact card in the transcript and is answered in
 [`RequestSheet`](../../src-ui/src/components/chat/RequestSheet.tsx), one
 `ResponsiveDialogSurface` consumer shared by every such feature (#3331). It pins
 the feature's own action row below a scrolling body, fits its height to the

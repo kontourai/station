@@ -269,6 +269,210 @@ describe('ClaudeAdapter', () => {
     mockAugmentedSpawnEnv.mockReset();
   });
 
+  test.each(['home', 'profile'] as const)(
+    'a native return refuses a changed %s before starting another Claude process',
+    async (changed) => {
+      let home = '/profiles/original';
+      let profileRef = 'original';
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: async () => ({
+          env: { CLAUDE_CONFIG_DIR: home },
+          profileRef,
+        }),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      try {
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'binding-source',
+        });
+        const event = (await iterator.next()).value;
+        const bindingKey =
+          event?.method === 'session.started'
+            ? event.metadata?.nativeResumeBindingKey
+            : undefined;
+        if (typeof bindingKey !== 'string')
+          throw new Error('No observed source binding');
+        await adapter.stopSession('binding-source');
+        if (changed === 'home') home = '/profiles/replacement';
+        else profileRef = 'replacement';
+        const invocations = mockQuery.mock.calls.length;
+        await expect(
+          adapter.startSession({
+            provider: 'claude',
+            threadId: 'binding-return',
+            resumeCursor: 'native-source',
+            requireNativeResumeIdentity: true,
+            nativeResumeBindingKey: bindingKey,
+          }),
+        ).rejects.toThrow('different engine home or credential profile');
+        expect(mockQuery).toHaveBeenCalledTimes(invocations);
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test.each(['native-original', 'native-other'])(
+    'exact native resume observes Claude init %s before reporting matched continuity',
+    async (observedId) => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const claim = vi.fn();
+      const adapter = new ClaudeAdapter({
+        nativeSessionOwnership: {
+          assertMutable: vi.fn(),
+          claim,
+          retired: vi.fn(),
+        },
+      });
+      const events: Array<{
+        method: string;
+        code?: string;
+        metadata?: Record<string, unknown>;
+      }> = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      try {
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'strict-resume',
+          resumeCursor: 'native-original',
+          requireNativeResumeIdentity: true,
+          metadata: { nativeResumeIdentity: 'matched' },
+        });
+        expect(claim).toHaveBeenCalledOnce();
+        expect(
+          events.some(
+            (event) => event.metadata?.nativeResumeIdentity === 'matched',
+          ),
+        ).toBe(false);
+        controlled.push({
+          type: 'system',
+          subtype: 'init',
+          session_id: observedId,
+          cwd: '/tmp/project',
+          model: 'claude-sonnet',
+          tools: [],
+          mcp_servers: [],
+        });
+        if (observedId === 'native-original') {
+          await vi.waitFor(() =>
+            expect(events).toContainEqual(
+              expect.objectContaining({
+                method: 'session.configured',
+                metadata: expect.objectContaining({
+                  nativeResumeIdentity: 'matched',
+                }),
+              }),
+            ),
+          );
+        } else {
+          await vi.waitFor(() =>
+            expect(events).toContainEqual(
+              expect.objectContaining({
+                method: 'runtime.error',
+                code: 'engine-session-binding-dead',
+                metadata: { nativeResumeIdentity: 'mismatch' },
+              }),
+            ),
+          );
+          expect(controlled.interrupt).toHaveBeenCalledOnce();
+          expect(
+            events.some(
+              (event) => event.metadata?.nativeResumeIdentity === 'matched',
+            ),
+          ).toBe(false);
+          expect(
+            events.some((event) => event.method === 'turn.completed'),
+          ).toBe(false);
+        }
+        expect(claim).toHaveBeenCalledOnce();
+      } finally {
+        await adapter.stopAll();
+        await drain;
+      }
+    },
+  );
+
+  test.each(['claimed', 'refused'] as const)(
+    'fresh native init is %s before publishing ready continuity',
+    async (outcome) => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const order: string[] = [];
+      let session: { status: string } | undefined;
+      const statusAtClaim: Array<string | undefined> = [];
+      const claim = vi.fn<(identityKey: string, sessionId: string) => void>(
+        () => {
+          statusAtClaim.push(session?.status);
+          order.push('claim');
+          if (outcome === 'refused')
+            throw new Error('native ownership conflict');
+        },
+      );
+      const adapter = new ClaudeAdapter({
+        nativeSessionOwnership: {
+          assertMutable: vi.fn(),
+          claim,
+          retired: vi.fn(),
+        },
+      });
+      const events: Array<{ method: string; model?: string }> = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) {
+          events.push(event);
+          if (
+            event.method === 'session.configured' &&
+            event.model === 'native-observed-model'
+          )
+            order.push('configured');
+        }
+      })();
+      try {
+        const started = await adapter.startSession({
+          provider: 'claude',
+          threadId: 'fresh-native-init',
+        });
+        session = started;
+        expect(claim).not.toHaveBeenCalled();
+        controlled.push({
+          type: 'system',
+          subtype: 'init',
+          session_id: 'native-fresh',
+          cwd: '/tmp/project',
+          model: 'native-observed-model',
+          tools: [],
+          mcp_servers: [],
+        });
+        if (outcome === 'claimed') {
+          await vi.waitFor(() =>
+            expect(order).toEqual(['claim', 'configured']),
+          );
+          expect(started.status).toBe('ready');
+        } else {
+          await vi.waitFor(() => expect(started.status).toBe('error'));
+          expect(order).toEqual(['claim']);
+          expect(
+            events.some(
+              (event) =>
+                event.method === 'session.configured' &&
+                event.model === 'native-observed-model',
+            ),
+          ).toBe(false);
+        }
+        expect(claim).toHaveBeenCalledOnce();
+        expect(statusAtClaim).toEqual(['connecting']);
+        expect(claim.mock.calls[0]?.[1]).toBe('fresh-native-init');
+      } finally {
+        await adapter.stopAll();
+        await drain;
+      }
+    },
+  );
+
   test('adopts an external session by forking it and persists only the distinct child cursor', async () => {
     mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
     mockQuery.mockReturnValue(createMockQuery([]));
@@ -3435,7 +3639,7 @@ describe('ClaudeAdapter', () => {
         if (question.kind !== 'prompted') throw new Error('expected a prompt');
         expect(question.event).toMatchObject({
           title: 'The agent has questions for you',
-          payload: { questionnaire: expect.anything() },
+          payload: { inputRequest: expect.anything() },
         });
         expect(logger.info).toHaveBeenCalledWith(
           NOT_APPLIED,
@@ -9268,7 +9472,13 @@ echo '{"loggedIn":true}'
       vi.stubEnv('CLAUDE_CONFIG_DIR', home);
       try {
         const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+        const claim = vi.fn();
         const options = {
+          nativeSessionOwnership: {
+            assertMutable: vi.fn(),
+            claim,
+            retired: vi.fn(),
+          },
           resolveSourceHome: (affinity: typeof identity.affinity) =>
             resolveConfigHomeAffinity('claude-config-home', home, affinity),
           getConnectionEnv: async () => ({
@@ -9331,6 +9541,21 @@ echo '{"loggedIn":true}'
         );
         expect(resumeCall.options.env.CLAUDE_CONFIG_DIR).toBe(home);
         await restarted.stopSession('station-child-conn-env');
+        expect(claim).toHaveBeenCalledTimes(2);
+        expect(claim.mock.calls[0]?.[0]).toEqual(claim.mock.calls[1]?.[0]);
+        claim.mockImplementation(() => {
+          throw new Error('native identity already owned');
+        });
+        const queryCount = mockQuery.mock.calls.length;
+        await expect(
+          new ClaudeAdapter(options).startSession({
+            provider: 'claude',
+            threadId: 'unrelated-child',
+            resumeCursor: child.resumeCursor,
+            cwd: '/workspace/project',
+          }),
+        ).rejects.toThrow('already owned');
+        expect(mockQuery).toHaveBeenCalledTimes(queryCount);
       } finally {
         vi.unstubAllEnvs();
         rmSync(home, { recursive: true, force: true });

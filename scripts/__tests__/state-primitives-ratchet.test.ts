@@ -356,7 +356,7 @@ describe('state-primitives-ratchet', () => {
     // Waits with no shell to keep and no region to skeleton, each named by
     // file AND exact text so none can silently become a free slot for a
     // different sentence in the same file.
-    it('names exactly the pre-auth access check and the two published-SDK default waits', () => {
+    it('names exactly the pre-auth and published-SDK default waits', () => {
       expect(PRE_SHELL_LOADING_EXCLUSIONS).toEqual([
         {
           file: 'src-ui/src/components/LocalUiSessionGate.tsx',

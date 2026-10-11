@@ -219,7 +219,7 @@ describe('#3284 MCP elicitation through a Station turn', () => {
           (event) =>
             !before.has(event.eventId) &&
             event.method === 'request.opened' &&
-            event.payload?.mcpElicitation !== undefined,
+            event.payload?.inputRequest !== undefined,
         ),
     );
     if (opened.method !== 'request.opened') throw new Error('unreachable');
@@ -248,12 +248,17 @@ describe('#3284 MCP elicitation through a Station turn', () => {
       title: 'fixture needs your input',
       description: 'Who should the report be addressed to?',
       payload: {
-        mcpElicitation: {
-          serverId: 'fixture',
-          fields: expect.arrayContaining([
-            expect.objectContaining({ name: 'name', required: true }),
-            expect.objectContaining({ name: 'age', kind: 'integer' }),
-          ]),
+        inputRequest: {
+          schema: 'station.input-request/v1',
+          source: 'mcp:fixture',
+          requester: 'fixture',
+          body: {
+            kind: 'form',
+            fields: expect.arrayContaining([
+              expect.objectContaining({ name: 'name', required: true }),
+              expect.objectContaining({ name: 'age', kind: 'integer' }),
+            ]),
+          },
         },
       },
     });
@@ -263,28 +268,28 @@ describe('#3284 MCP elicitation through a Station turn', () => {
       'Fill in the form before sending it.',
     );
     await expect(
-      service.dispatch({ ...accept, elicitationContent: { age: 36 } }),
+      service.dispatch({ ...accept, content: { age: 36 } }),
     ).rejects.toThrow('Name is required.');
     await expect(
       service.dispatch({
         ...accept,
-        elicitationContent: { name: 'Ada', age: 3.5 },
+        content: { name: 'Ada', age: 3.5 },
       }),
     ).rejects.toThrow('Age must be a whole number.');
     await expect(
       service.dispatch({
         ...accept,
         // Over maxLength 40: refused, never cut to 40.
-        elicitationContent: { name: 'A'.repeat(41) },
+        content: { name: 'A'.repeat(41) },
       }),
     ).rejects.toThrow('Name allows at most 40 characters.');
     await expect(
       service.dispatch({ ...command, decision: 'acceptForSession' }),
-    ).rejects.toThrow('Inspect the current form');
+    ).rejects.toThrow('Inspect the current request');
 
     await service.dispatch({
       ...accept,
-      elicitationContent: { name: 'Ada', age: 36, color: 'blue' },
+      content: { name: 'Ada', age: 36, color: 'blue' },
     });
     expect(received(await result)).toEqual({
       action: 'accept',
@@ -310,9 +315,9 @@ describe('#3284 MCP elicitation through a Station turn', () => {
       service.dispatch({
         ...declined.command,
         decision: 'decline',
-        elicitationContent: { name: 'Ada' },
+        content: { name: 'Ada' },
       }),
-    ).rejects.toThrow('cannot carry content');
+    ).rejects.toThrow('cannot carry an answer');
     await service.dispatch({ ...declined.command, decision: 'decline' });
     expect(received(await declined.result)).toEqual({
       action: 'decline',
@@ -339,7 +344,7 @@ describe('#3284 MCP elicitation through a Station turn', () => {
         requestId: opened.requestId,
         expectedRequestEventId: opened.eventId,
         decision: 'accept',
-        elicitationContent: { name: 'Late' },
+        content: { name: 'Late' },
       }),
     ).rejects.toThrow();
   });
@@ -354,7 +359,7 @@ describe('#3284 MCP elicitation through a Station turn', () => {
         .some(
           (persisted) =>
             persisted.payload.method === 'request.opened' &&
-            persisted.payload.payload?.mcpElicitation !== undefined,
+            persisted.payload.payload?.inputRequest !== undefined,
         ),
     ).toBe(false);
   });

@@ -44,7 +44,13 @@
  * clients, a paired device) read with their own authority, as they can on
  * the `/messages` route; the reference rule is about what an agent may read.
  */
-import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+
+import type {
+  ConversationReadMessage,
+  ConversationReadPage,
+  ConversationReadProvenance,
+  OrchestrationConversationEventWindow,
+} from '@kontourai/station-contracts/orchestration';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
@@ -170,24 +176,7 @@ export function parseConversationReferenceIds(text: string): string[] {
   return ids.filter((id) => id.length > 0);
 }
 
-export interface ReadConversationMessage {
-  /** Position in the whole transcript, from 0. */
-  index: number;
-  id: string;
-  role: ConversationMessage['role'];
-  text: string;
-  /** Present when `text` was clipped: the full text's size. */
-  textTruncated?: { originalBytes: number };
-  /** Tools the message called, by name. */
-  tools?: string[];
-  createdAt?: string;
-  /**
-   * #3419: set on a message another agent sent (`send_to_session`), from
-   * Station's own record of who sent it. `text` is that agent's words, not a
-   * person's request.
-   */
-  sender?: ClientOriginSender;
-}
+export type ReadConversationMessage = ConversationReadMessage;
 
 /**
  * The id a message is known by outside this transcript. A search hit names a
@@ -239,6 +228,9 @@ function compactMessage(
   }
   const timestamp = message.metadata?.timestamp;
   const sender = message.metadata?.sender;
+  const sessionId = message.metadata?.sessionId;
+  const reportedModel = message.metadata?.reportedModel;
+  const selectedModel = message.metadata?.model;
   return {
     index,
     id: readableMessageId(message),
@@ -256,6 +248,12 @@ function compactMessage(
         }
       : {}),
     text,
+    ...(typeof sessionId === 'string' ? { sessionId } : {}),
+    ...(typeof reportedModel === 'string'
+      ? { model: { id: reportedModel, source: 'provider-reported' as const } }
+      : typeof selectedModel === 'string'
+        ? { model: { id: selectedModel, source: 'selected' as const } }
+        : {}),
     ...(text.length < fullText.length
       ? { textTruncated: { originalBytes } }
       : {}),
@@ -407,6 +405,10 @@ function readConversationPageAround(
 export type ConversationReadAccess = 'own' | 'scope' | 'reference' | 'person';
 
 export interface ConversationReferenceReadDeps {
+  readProvenance?(
+    request: Request,
+    conversationId: string,
+  ): Promise<ConversationReadProvenance>;
   /** The owner-scoped unified read (`createConversationMessageReader`). */
   readConversationMessages(
     request: Request,
@@ -446,12 +448,24 @@ export interface ConversationReferenceReadDeps {
 export interface ConversationReferenceReadSources {
   memoryAdapters: Map<string, FileMemoryAdapter>;
   sessions: ConversationLineageReader & {
+    readConversationEventWindow?(
+      conversationId: string,
+      options: { authority: SessionReadAuthority; turnLimit: number },
+    ): Promise<OrchestrationConversationEventWindow | null>;
     readSessionMessages(
       threadId: string,
       authority: SessionReadAuthority,
     ): ConversationMessage[];
   };
   eventStore?: {
+    readConversationForkProvenance?(conversationId: string): {
+      forkedFrom?: {
+        sourceConversationId: string;
+        sourceSessionId?: string;
+        branchPointTurnId?: string;
+        continuation?: 'native' | 'replay-seed';
+      };
+    };
     conversationForSession(
       sessionId: string,
     ): { readonly conversationId: string } | undefined;
@@ -515,6 +529,44 @@ export function conversationReferenceReadDeps(
     },
     turnPromptsContaining: (threadIds, needle) =>
       sources.eventStore?.turnPromptsContaining(threadIds, needle) ?? [],
+    async readProvenance(request, conversationId) {
+      const window = await sources.sessions.readConversationEventWindow?.(
+        conversationId,
+        { authority: sources.authorityFor(request), turnLimit: 1 },
+      );
+      if (!window?.sessionLineage)
+        return { protocolVersion: 1, status: 'unavailable' };
+      const forkedFrom =
+        sources.eventStore?.readConversationForkProvenance?.(
+          conversationId,
+        ).forkedFrom;
+      const provenance: ConversationReadProvenance = {
+        protocolVersion: 1,
+        status: 'available',
+        currentSessionId: window.currentSessionId,
+        sessions: window.sessionLineage,
+        handoffs: window.handoffs,
+        ...(forkedFrom
+          ? {
+              forkedFrom: {
+                sourceConversationId: forkedFrom.sourceConversationId,
+                ...(forkedFrom.sourceSessionId
+                  ? { sourceSessionId: forkedFrom.sourceSessionId }
+                  : {}),
+                ...(forkedFrom.branchPointTurnId
+                  ? { branchPointTurnId: forkedFrom.branchPointTurnId }
+                  : {}),
+                ...(forkedFrom.continuation
+                  ? { continuation: forkedFrom.continuation }
+                  : {}),
+              },
+            }
+          : {}),
+      };
+      return serializedBytes(provenance) <= 32 * 1024
+        ? provenance
+        : { protocolVersion: 1, status: 'unavailable' };
+    },
     isPersonActor(actor) {
       if (!actor || typeof actor !== 'object') return false;
       const { kind, deviceId } = actor as {
@@ -726,28 +778,30 @@ export function createConversationReferenceReadRoutes(
             : {}),
         };
       }
-      return c.json({
-        success: true,
-        data: {
+      const data: ConversationReadPage = {
+        conversationId,
+        access,
+        notice: READ_CONVERSATION_NOTICE,
+        messageCount: messages.length,
+        messages: page.messages,
+        provenance: (await deps.readProvenance?.(
+          c.req.raw,
           conversationId,
-          access,
-          notice: READ_CONVERSATION_NOTICE,
-          messageCount: messages.length,
-          messages: page.messages,
-          prevCursor:
-            page.startOffset > 0
-              ? encodeCursor({
-                  conversationId,
-                  offset: page.startOffset,
-                  direction: 'back',
-                })
-              : null,
-          nextCursor:
-            page.nextOffset === undefined
-              ? null
-              : encodeCursor({ conversationId, offset: page.nextOffset }),
-        },
-      });
+        )) ?? { protocolVersion: 1, status: 'unavailable' },
+        prevCursor:
+          page.startOffset > 0
+            ? encodeCursor({
+                conversationId,
+                offset: page.startOffset,
+                direction: 'back',
+              })
+            : null,
+        nextCursor:
+          page.nextOffset === undefined
+            ? null
+            : encodeCursor({ conversationId, offset: page.nextOffset }),
+      };
+      return c.json({ success: true, data });
     } catch (error) {
       // #3112: a lineage past the read bound is refused, never truncated.
       if (error instanceof ConversationLineageTooLongError)

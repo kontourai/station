@@ -1,0 +1,11 @@
+{
+  "revision": "044bbb5c7e1581431ff21946e5bb1f8d3fe510d7",
+
+  "notes": [
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the only main.tsx delta against the affected entry claims: releaseInitialStartupAnimation is imported and called synchronously before createRoot. This releases the presentation-only HTML canvas for normal, account and shared-answer entries, without waiting on animation, changing provider order, localUiApiBase/VITE_API_BASE selection, permalink routing, credential authority, native renderer commit or environment-variable contracts. Existing explanations and native/share evidence limits remain accurate.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the only main.tsx delta against the affected entry claims: releaseInitialStartupAnimation is imported and called synchronously before createRoot. This releases the presentation-only HTML canvas for normal, account and shared-answer entries, without waiting on animation, changing provider order, localUiApiBase/VITE_API_BASE selection, permalink routing, credential authority, native renderer commit or environment-variable contracts. Existing explanations and native/share evidence limits remain accurate.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the only main.tsx delta against the affected entry claims: releaseInitialStartupAnimation is imported and called synchronously before createRoot. This releases the presentation-only HTML canvas for normal, account and shared-answer entries, without waiting on animation, changing provider order, localUiApiBase/VITE_API_BASE selection, permalink routing, credential authority, native renderer commit or environment-variable contracts. Existing explanations and native/share evidence limits remain accurate.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]}
+  ]
+}

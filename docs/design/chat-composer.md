@@ -62,7 +62,7 @@ live in Settings.
 New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with
 the Project fixed. Project and Station controls sit above the text box;
-separate Agent and Model controls sit inside it beside Start and the overflow
+separate Agent and Engine & model controls sit inside it beside Start and the overflow
 for visual skills. The Agent list retains each Agent's readiness and repair
 action, with a short purpose for custom Agents. The Model picker offers search, recent choices, favorites and provider
 filters; Options reveals capability filters and the selected model's supported
