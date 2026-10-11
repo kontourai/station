@@ -532,23 +532,18 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  test('the model trigger is disabled while the engine reports no catalog', () => {
-    // modelsForAgent is [] for every agent in this harness, so the trigger
-    // must not offer a picker that would open empty; the accessible name
-    // still says what the control is and the tooltip names why.
+  test('an Agent with no reported model and no catalog offers no model control', () => {
+    // modelsForAgent is [] for every agent in this harness and AGENT reports
+    // no model, so there is neither a picker to open nor a model to name: the
+    // row prints no "Model not reported" control (a named model with no
+    // catalog keeps a disabled trigger — AgentPickerRowPresentation.test).
     selectionModelState.agents = [AGENT];
     renderModal();
-    const trigger = document.querySelector(
-      '.new-chat-modal__model-trigger',
-    ) as HTMLButtonElement;
-    expect(trigger.disabled).toBe(true);
-    expect(trigger.getAttribute('aria-label')).toBe(
-      'Model: Model not reported',
-    );
-    expect(trigger.getAttribute('title')).toBe(
-      'This Agent has not reported a model catalog',
-    );
-    fireEvent.click(trigger);
+    expect(
+      document.querySelector(`[data-agent-slug="${AGENT.slug}"]`),
+    ).not.toBeNull();
+    expect(document.querySelector('.new-chat-modal__model-trigger')).toBeNull();
+    expect(screen.queryByText('Model not reported')).toBeNull();
     expect(
       document.querySelector('.new-chat-modal__model-picker-backdrop'),
     ).toBeNull();

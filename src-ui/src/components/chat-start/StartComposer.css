@@ -208,6 +208,14 @@
 
 /* The chip menus (lazy): one panel shape for the Agent list and the project
    list, on top of the shared composer popover shell. */
+/* On a phone a chip menu is a sheet over the start screen, and the shared
+   popover scrim (black at 32%) barely separated it from a dark page: the
+   page's own rows read as part of the sheet. The modal scrim does. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .composer-popover-overlay.start-menu__overlay {
+    background: var(--overlay-modal);
+  }
+}
 .start-menu__panel {
   --composer-popover-width: 440px;
   display: flex;

@@ -123,7 +123,7 @@ export function StartAgentMenu({
       returnFocusTarget={anchor}
       initialFocusRef={searchRef}
       initialFocusPolicy="desktop"
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
       panelClassName="composer-popover-panel start-menu__panel"
     >
       <ResponsiveDialogHeader
@@ -267,7 +267,7 @@ export function StartProjectMenu({
       anchorRef={anchorRef}
       returnFocusTarget={anchor}
       initialFocusPolicy="desktop"
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
       panelClassName="composer-popover-panel start-menu__panel"
     >
       <ResponsiveDialogHeader
@@ -387,7 +387,7 @@ export function StartModelPicker({
       historyMode="entry"
       anchorRef={anchorRef}
       returnFocusTarget={anchor}
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
       panelClassName="composer-popover-panel chat-input__model-popover-panel"
     >
       {loading && models.length === 0 ? (
@@ -451,7 +451,7 @@ function StationScopedModelPicker(
       historyMode="entry"
       anchorRef={anchorRef}
       returnFocusTarget={props.anchor}
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
       panelClassName="composer-popover-panel chat-input__model-popover-panel"
     >
       <React.Suspense

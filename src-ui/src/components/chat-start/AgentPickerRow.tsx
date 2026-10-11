@@ -1,7 +1,11 @@
 import { Fragment } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
-import { agentEngineDescriptor } from '../../utils/engine';
+import {
+  agentEngineDescriptor,
+  type EngineDescriptor,
+} from '../../utils/engine';
+import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { type AgentFixRoute, AgentReadinessCell } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { EngineChip, engineChipLabel } from '../badges/EngineChip';
@@ -9,6 +13,25 @@ import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttributio
 import { AgentIcon } from '../icons/AgentIcon';
 import { resolveNewChatAgentUnavailability } from '../modals/new-chat-modal-utils';
 import { contextGlyph } from './ContextPickerOptions';
+
+/**
+ * The engine as the row's chip names it. An engine named after the Agent
+ * plus a qualifier ("Claude Code (brian-media proxy)" under "Claude Code")
+ * keeps only the qualifier: the name is already the line above.
+ */
+function engineQualifiedBy(
+  engine: EngineDescriptor | null,
+  agentName: string,
+): EngineDescriptor | null {
+  if (!engine) return engine;
+  const match = /^(.+?)\s*\((.+)\)$/.exec(engine.name);
+  if (
+    !match ||
+    normalizedDisplayLabel(match[1]) !== normalizedDisplayLabel(agentName)
+  )
+    return engine;
+  return { ...engine, name: match[2] };
+}
 
 /**
  * One Agent in a start picker: the New Chat list (fork) and the start
@@ -50,9 +73,13 @@ function AgentPickerRow({
   // one surface and not the other would be the exact divergence §5 forbids.
   const devicePresentation = useDevicePresentation();
   const engine = agentEngineDescriptor(agent);
+  const chipEngine = engineQualifiedBy(engine, agent.name);
   const repeatsAgent =
-    normalizedDisplayLabel(engineChipLabel(engine)) ===
+    normalizedDisplayLabel(engineChipLabel(chipEngine)) ===
     normalizedDisplayLabel(agent.name);
+  // A model the engine never reported is nothing to choose and nothing to
+  // name, so the row does not print the gap (the Agent chip hides it too).
+  const showModel = !(modelUnavailable && modelLabel === MODEL_NOT_REPORTED);
   return (
     <div
       className="new-chat-modal__agent-row"
@@ -110,12 +137,9 @@ function AgentPickerRow({
             "Claude Code" with a "Claude Code" chip beneath it. */}
         {!repeatsAgent && (
           <div className="new-chat-modal__agent-meta">
-            <EngineChip engine={engine} />
+            <EngineChip engine={chipEngine} />
           </div>
         )}
-        <span className="new-chat-modal__agent-station">
-          on {devicePresentation?.hostName ?? 'this Station'}
-        </span>
         {!agent.engineDefault && agent.description && (
           <div
             className="new-chat-modal__agent-purpose"
@@ -147,28 +171,30 @@ function AgentPickerRow({
           name — the picker's dominant source of height. The row is a two-column
           grid now; neither the chip nor any action changed. */}
       <div className="new-chat-modal__agent-side">
-        <button
-          type="button"
-          className="new-chat-modal__model-trigger"
-          onClick={(event) => onOpenModel(event.currentTarget)}
-          // An Agent whose engine has reported no catalog has no model to
-          // choose — the trigger opened an empty picker. Disabled (not
-          // hidden) so the row keeps its shape and the tooltip names why.
-          disabled={interactionDisabled || modelUnavailable}
-          aria-label={`Model: ${modelLabel}`}
-          title={
-            modelUnavailable
-              ? 'This Agent has not reported a model catalog'
-              : `Choose model: ${modelLabel}`
-          }
-        >
-          {/* The model name alone. The `Model · ` prefix read four times per
+        {showModel && (
+          <button
+            type="button"
+            className="new-chat-modal__model-trigger"
+            onClick={(event) => onOpenModel(event.currentTarget)}
+            // An Agent whose engine has reported no catalog has no model to
+            // choose — the trigger opened an empty picker. Disabled (not
+            // hidden) while it still names a model, so the tooltip says why.
+            disabled={interactionDisabled || modelUnavailable}
+            aria-label={`Model: ${modelLabel}`}
+            title={
+              modelUnavailable
+                ? 'This Agent has not reported a model catalog'
+                : `Choose model: ${modelLabel}`
+            }
+          >
+            {/* The model name alone. The `Model · ` prefix read four times per
               list and was the first thing the chip's own max-width ellipsized
               — on every seeded row the visible string ended at the model's
               actual name ("Model · Default (r…"), the one part that matters.
               What this control IS stays in the accessible name and tooltip. */}
-          {modelLabel}
-        </button>
+            {modelLabel}
+          </button>
+        )}
         {/*
           DESIGN.md §5: the SAME readiness cell the Agents list row renders.
           The picker used to draw its own chip ("Not set up" behind a warning

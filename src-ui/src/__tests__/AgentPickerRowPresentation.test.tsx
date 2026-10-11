@@ -1,0 +1,113 @@
+// @vitest-environment jsdom
+
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { AgentPickerGroups } from '../components/chat-start/AgentPickerRow';
+import type { AgentData } from '../contexts/AgentsContext';
+
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => ({ hostName: 'brian-media' }),
+}));
+
+// The engine-default row for a connection its owner named after the engine
+// plus where it runs, as the phone picker showed it.
+const PROXIED_CLAUDE: AgentData = {
+  slug: agentId('claude-code'),
+  name: 'Claude Code',
+  source: 'local',
+  engineDefault: true,
+  engineDisplayName: 'Claude Code (brian-media proxy)',
+  execution: { agentConnectionId: engineConnectionId('claude-proxy') },
+};
+// A custom Agent on that same engine: its name is not the engine's, so the
+// whole engine name is what tells the user where it runs.
+const REVIEWER_ON_PROXY: AgentData = {
+  slug: agentId('reviewer'),
+  name: 'Reviewer',
+  source: 'local',
+  engineDisplayName: 'Claude Code (brian-media proxy)',
+  execution: { agentConnectionId: engineConnectionId('claude-proxy') },
+};
+const KIRO: AgentData = {
+  slug: agentId('kiro'),
+  name: 'Kiro CLI',
+  source: 'acp',
+  engineConnectionType: 'acp',
+  connectionName: 'Kiro CLI',
+};
+
+function renderRows(
+  agents: AgentData[],
+  model: (agent: AgentData) => { label: string; unavailable: boolean },
+) {
+  return render(
+    <AgentPickerGroups
+      groups={[{ label: 'Coding apps', glyph: 'engine', agents }]}
+      flatList={agents}
+      selectedIndex={0}
+      onChoose={() => {}}
+      onHover={() => {}}
+      modelLabelFor={(agent) => model(agent).label}
+      modelUnavailableFor={(agent) => model(agent).unavailable}
+      onOpenModel={() => {}}
+      fixDisabledFor={() => undefined}
+      onFix={() => {}}
+    />,
+  );
+}
+
+function row(slug: string): HTMLElement {
+  const button = document.querySelector(`[data-agent-slug="${slug}"]`);
+  const element = button?.closest('.new-chat-modal__agent-row');
+  if (!(element instanceof HTMLElement)) throw new Error(`no row ${slug}`);
+  return element;
+}
+
+afterEach(cleanup);
+
+describe('Agent picker row presentation', () => {
+  test('an engine named after the Agent shows only its qualifier', () => {
+    renderRows([PROXIED_CLAUDE, REVIEWER_ON_PROXY], () => ({
+      label: 'Opus',
+      unavailable: false,
+    }));
+    const proxied = within(row(PROXIED_CLAUDE.slug));
+    expect(proxied.getByText('brian-media proxy')).toBeTruthy();
+    expect(proxied.queryByText('Claude Code (brian-media proxy)')).toBeNull();
+    // An Agent with its own name keeps the whole engine name.
+    expect(
+      within(row(REVIEWER_ON_PROXY.slug)).getByText(
+        'Claude Code (brian-media proxy)',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('rows do not repeat the Station every row runs on', () => {
+    renderRows([PROXIED_CLAUDE, KIRO], () => ({
+      label: 'Opus',
+      unavailable: false,
+    }));
+    expect(screen.queryByText(/^on brian-media$/)).toBeNull();
+  });
+
+  test('an unreported model is not printed as a model', () => {
+    renderRows([PROXIED_CLAUDE, KIRO], (agent) =>
+      agent.slug === KIRO.slug
+        ? { label: 'Model not reported', unavailable: true }
+        : { label: 'Opus', unavailable: true },
+    );
+    expect(
+      within(row(KIRO.slug)).queryByRole('button', { name: /^Model: / }),
+    ).toBeNull();
+    expect(screen.queryByText('Model not reported')).toBeNull();
+    // A named model with no catalog keeps its disabled trigger.
+    const named = within(row(PROXIED_CLAUDE.slug)).getByRole('button', {
+      name: 'Model: Opus',
+    });
+    expect((named as HTMLButtonElement).disabled).toBe(true);
+  });
+});
