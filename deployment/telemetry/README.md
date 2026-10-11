@@ -21,6 +21,17 @@ ref and canonical timestamp. A supplied SHA or image label does not prove that
 the source was clean or qualified. Publication and a digest-bound companion
 release descriptor remain pending.
 
+The receiver build also writes `dist/artifact-manifest.json`, binding both
+bundles to the exact bytes supplied to esbuild, root dependency declarations,
+build configuration and recorded source provenance. Qualification checks the
+manifest, current input hashes and exact source revision before importing a
+bundle or creating its database. A dirty checkout refuses qualification.
+Container provenance is explicitly a supplied release declaration, not proof
+that the image was built from clean or qualified source. The sidecar is
+unsigned build metadata, not publisher authentication, installed-graph proof
+or a canonical release receipt. Build/consumer and four rejected/restored
+manifest controls still need execution on current source.
+
 Prepare a dedicated absolute private directory outside the checkout. Never put
 credentials in a Compose file, Docker build argument, repository, command line
 or screenshot. On a rootful Linux Docker host, the files below must be real

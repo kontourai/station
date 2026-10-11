@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { chmod, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -15,7 +23,74 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from '../../scripts/lib/owned-process.mjs';
-import { createProductBroker, PgProductRepository } from './dist/index.mjs';
+import { readReceiverArtifactManifest } from './artifact-manifest.mjs';
+
+async function qualifyArtifactManifest(manifest, outdir, repoRoot) {
+  const fixture = await mkdtemp(join(tmpdir(), 'station-telemetry-artifact-'));
+  const manifestFile = join(fixture, 'artifact-manifest.json');
+  try {
+    for (const artifact of manifest.artifacts)
+      await writeFile(
+        join(fixture, artifact.path),
+        await readFile(join(outdir, artifact.path)),
+      );
+    const baseline = `${JSON.stringify(manifest)}\n`;
+    await writeFile(manifestFile, baseline);
+    await readReceiverArtifactManifest(fixture, repoRoot);
+    for (const [label, mutate, expected] of [
+      [
+        'stale source',
+        (m) => {
+          m.provenance.head = '0'.repeat(40);
+        },
+        /source revision is stale/,
+      ],
+      [
+        'changed source input',
+        (m) => {
+          m.inputs[0].sha256 = '0'.repeat(64);
+        },
+        /build inputs differ/,
+      ],
+      [
+        'missing artifact record',
+        (m) => {
+          m.artifacts.pop();
+        },
+        /Invalid receiver artifact manifest/,
+      ],
+    ]) {
+      const changed = JSON.parse(baseline);
+      mutate(changed);
+      await writeFile(manifestFile, JSON.stringify(changed));
+      await assert.rejects(
+        readReceiverArtifactManifest(fixture, repoRoot),
+        expected,
+        label,
+      );
+      await writeFile(manifestFile, baseline);
+      await readReceiverArtifactManifest(fixture, repoRoot);
+    }
+    const mainFile = join(fixture, 'main.mjs');
+    const original = await readFile(mainFile);
+    try {
+      await writeFile(
+        mainFile,
+        Buffer.concat([original, Buffer.from('\n// changed fixture bytes\n')]),
+      );
+      await assert.rejects(
+        readReceiverArtifactManifest(fixture, repoRoot),
+        /bundle differs/,
+        'changed bundle',
+      );
+    } finally {
+      await writeFile(mainFile, original);
+    }
+    await readReceiverArtifactManifest(fixture, repoRoot);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+}
 
 async function assertEntrypointRefusal(execution, label) {
   let timer;
@@ -217,6 +292,18 @@ async function qualifyEntrypoint(
 
 // Requires a separate PostgreSQL administrative connection with CREATEDB.
 // Every destructive probe runs in a uniquely named, runner-owned database.
+const buildManifest = await readReceiverArtifactManifest(
+  fileURLToPath(new URL('./dist', import.meta.url)),
+  fileURLToPath(new URL('../..', import.meta.url)),
+);
+const { createProductBroker, PgProductRepository } = await import(
+  './dist/index.mjs'
+);
+await qualifyArtifactManifest(
+  buildManifest,
+  fileURLToPath(new URL('./dist', import.meta.url)),
+  fileURLToPath(new URL('../..', import.meta.url)),
+);
 const connectionString =
   process.env.STATION_TELEMETRY_QUALIFICATION_DATABASE_URL;
 if (!connectionString)
@@ -241,6 +328,9 @@ let created = false;
 let passed = false;
 let report;
 const checks = [];
+checks.push(
+  'artifact manifest: clean source/input/bundle binding, four rejected mutations and exact restoration',
+);
 const artifactSha256 = createHash('sha256')
   .update(readFileSync(new URL('./dist/index.mjs', import.meta.url)))
   .digest('hex');
@@ -551,6 +641,7 @@ try {
     state: 'PASS',
     artifactSha256,
     entrypointSha256,
+    buildManifest,
     postgresVersion,
     database,
     checks,
