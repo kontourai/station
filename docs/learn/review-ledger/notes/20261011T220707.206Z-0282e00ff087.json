@@ -1,0 +1,19 @@
+{
+  "revision": "a71c2783fd72f180d38017aa3b387bcc98437fba",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"#3557 People section: added as an operator-only section inside the existing Devices topic; the rail still has the nine topics named here and row identities/persistence scopes are unchanged.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/views/settings/settings-pages.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"#3557: SettingsView mounts a new operator-only People section; view/highlight parsing, healing and the catalog-id contract described here are unchanged (?view=people&highlight=people follows the same rules).","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"#3557: packages/sdk/src/index.ts only gained the stationPeople exports; the knowledge recall hooks this document cites are unchanged.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"#3557: packages/sdk/src/index.ts only gained the stationPeople exports; the pane-host exports this document cites are unchanged.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"#3557: packages/sdk/src/index.ts only gained the stationPeople exports; the SDK surface this example uses is unchanged.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"#3557: packages/sdk/src/index.ts gained the stationPeople query domain, documented in docs/reference/sdk.md; this README's package-level claims are unchanged.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#3557: docs/reference/sdk.md gained a Connection Hooks entry for people and personal token hooks; this file's routing to the SDK reference still holds.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
