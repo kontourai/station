@@ -2730,8 +2730,13 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-detail').textContent).toContain(
       'station-child',
     );
-    // Continuing here selects the child; it sends nothing on its own.
+    // Without Chat to hand over to, the confirmed message waits in the
+    // continued session's message box; nothing is sent from here.
     expect(sendTurn).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+        .value,
+    ).toBe('carry on');
     expect(
       window.localStorage.getItem(ATTACHED_SESSION_CONTINUATION_STORAGE_KEY),
     ).toBeNull();

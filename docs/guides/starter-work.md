@@ -67,7 +67,7 @@ visible. Run `station doctor` for a local diagnosis.
 ## Continue an Attached Session
 
 Open the terminal Session in **Activity**, where it reads like any chat, then
-type a message and press Send. The chat dock asks once, **Continue here?**,
+type a message and press Send. Chat asks once, **Continue here?**,
 and **Continue and send** continues it there with that message.
 Claude and Codex create independent children, so the original terminal Session
 can keep running. Codex starts from the latest completed turn Station has

@@ -307,6 +307,60 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
     expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
   });
 
+  test('with Activity and the dock open together, Send lands in the dock reader, never Activity’s', () => {
+    adoptOrchestrationSession.mockClear();
+    const activity = renderAttached({
+      onContinueInChat: (draft) =>
+        handOffAttachedContinuation({
+          threadId: 'external:claude:raw-thread-id',
+          draft,
+        }),
+    });
+    const dock = renderAttached({ presentation: 'chat' });
+    const activityView = within(activity.container);
+    const dockView = within(dock.container);
+    fireEvent.change(activityView.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'Typed in Activity' },
+    });
+    fireEvent.click(activityView.getByRole('button', { name: 'Send message' }));
+    const dialogs = screen.getAllByRole('dialog', { name: 'Continue here?' });
+    expect(dialogs).toHaveLength(1);
+    expect(
+      (
+        dockView.getByRole('textbox', {
+          name: 'Message',
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe('Typed in Activity');
+    expect(
+      (
+        activityView.getByRole('textbox', {
+          name: 'Message',
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe('');
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    expect(
+      takeAttachedContinuationHandoff('external:claude:raw-thread-id'),
+    ).toBe(null);
+  });
+
+  test('a dock reader that cannot continue keeps the draft but opens no dead confirmation', () => {
+    handOffAttachedContinuation({
+      threadId: 'external:claude:raw-thread-id',
+      draft: 'Waiting',
+    });
+    renderAttached({
+      presentation: 'chat',
+      session: { provider: 'bedrock' },
+    });
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('Waiting');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   test('a hand-off for another conversation is left for its own reader', () => {
     handOffAttachedContinuation({
       threadId: 'someone-else',

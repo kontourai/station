@@ -42,6 +42,7 @@ import type { SessionEvidenceReveal } from '../components/session-detail/Mutable
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -302,8 +303,10 @@ export function SessionsView({
   intentToken?: number;
   onFocusConsumed?: () => void;
   /**
-   * #3552: hands a message typed in an external conversation to the chat
-   * dock, which continues it (#3454). Without it, continuing happens here.
+   * #3552: hands a message typed in an external conversation to Chat, which
+   * continues it (#3454). Activity's pane always passes it. A host without it
+   * continues here, and the confirmed message waits in the continued
+   * session's message box rather than being sent from here.
    */
   onContinueInChat?: (threadId: string, draft: string) => void;
 }) {
@@ -1159,7 +1162,13 @@ export function SessionsView({
                 ? (draft) => onContinueInChat(selected.threadId, draft)
                 : undefined
             }
-            onAdopted={(child, intent) => {
+            onAdopted={(child, intent, message) => {
+              if (message.trim())
+                chatDraftsStore.setActivityDraft(
+                  apiBase,
+                  child.threadId,
+                  message,
+                );
               adoptedSelectionRef.current = {
                 threadId: child.threadId,
                 intent,

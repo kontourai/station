@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useSendMessage } from '../../hooks/useActiveChatSessionMessaging';
+import { discardAttachedContinuationHandoff } from '../../lib/attached-continuation-handoff';
 import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -65,6 +66,11 @@ export default function ImportedConversationPane({
       mounted.current = false;
     };
   }, []);
+  // #3552: a draft handed over from Activity belongs to this visit only.
+  useEffect(
+    () => () => discardAttachedContinuationHandoff(threadId),
+    [threadId],
+  );
   const openContinued = useCallback(async () => {
     const session = continued.data?.session;
     if (!session) return;

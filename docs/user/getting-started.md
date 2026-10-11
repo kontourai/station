@@ -520,7 +520,7 @@ ones inside a Project, but no account can open them there.
 ## Continue an Attached Session
 
 Open an attached terminal Session in **Activity**. It reads like any chat. To
-continue it in Station, type a message and press Send: the chat dock asks once,
+continue it in Station, type a message and press Send: Chat asks once,
 **Continue here?**, and **Continue and send** continues it there with your
 message. **Cancel** keeps your draft. Claude and Codex create independent child
 Sessions; the original terminal Session can keep running. OpenCode and Grok

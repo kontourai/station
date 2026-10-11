@@ -474,11 +474,13 @@ export function AttachedSessionDetail({
       const handedOver = takeAttachedContinuationHandoff(session.threadId);
       if (handedOver === null) return;
       setDraft(handedOver);
-      setReplyRequested(true);
+      // If this reader cannot continue, its reason shows above the composer;
+      // a confirmation whose action is disabled would hide it.
+      if (continuationSupported) setReplyRequested(true);
     };
     receive();
     return subscribeAttachedContinuationHandoff(receive);
-  }, [handsOff, session.threadId]);
+  }, [handsOff, session.threadId, continuationSupported]);
 
   return (
     <section

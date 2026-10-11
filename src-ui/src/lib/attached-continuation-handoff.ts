@@ -29,6 +29,15 @@ export function takeAttachedContinuationHandoff(
   return draft;
 }
 
+/**
+ * The dock's reader of this conversation is gone without taking its draft
+ * (it never loaded, or the person closed it): drop it, so it cannot surface
+ * later in an unrelated visit.
+ */
+export function discardAttachedContinuationHandoff(threadId: string): void {
+  if (pending?.threadId === threadId) pending = null;
+}
+
 export function subscribeAttachedContinuationHandoff(
   listener: () => void,
 ): () => void {
