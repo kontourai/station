@@ -166,8 +166,9 @@
   min-height: 44px;
 }
 /* A failed read or start under the composer: the warning tone, with its
-   retry on the same line when one fits. */
-.start-composer__alert {
+   retry on the same line when one fits. The attribute outranks the start
+   dialog's muted `.chat-start__body p`. */
+.start-composer__alert[role="alert"] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -178,6 +179,8 @@
 }
 .start-composer__alert .button--link {
   min-height: 44px;
+  /* Flush with the sentence: the link's own padding read as an indent. */
+  padding-inline: 0;
 }
 .start-composer__note {
   margin: 0;
@@ -388,8 +391,11 @@
 .start-menu__list .new-chat-modal__agent {
   padding: var(--k-space-3) var(--start-menu-inset);
 }
+/* Under the name, not the avatar: the same 32px indent as the engine line
+   (a 24px avatar plus the header's 8px gap). */
 .new-chat-modal__agent-purpose {
   display: -webkit-box;
+  padding-left: 32px;
   overflow: hidden;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

@@ -16,7 +16,7 @@ export const READ_FAILURE_FALLBACK = 'Try again in a moment.';
 
 /** A body the client could not parse: what `Response.json()` rejects with. */
 export const READ_FAILURE_UNREADABLE =
-  'Station sent a response this app could not read. Try again in a moment.';
+  'Station sent a response this app could not read.';
 /** The request never got a response: the browser's fetch `TypeError`. */
 export const READ_FAILURE_UNREACHABLE =
   'Could not reach Station. Check the connection, then try again.';

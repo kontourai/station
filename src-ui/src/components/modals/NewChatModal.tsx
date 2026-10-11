@@ -1845,9 +1845,24 @@ export function NewChatModal({
           {/* setupError covers the project list too: a failed read is said,
               never shown as a guessed project chip. */}
           {(selectFeedback || returnError || setupError) && (
-            <p role="alert">
-              {selectFeedback?.text ??
-                describeReadFailure(returnError ?? setupError)}
+            // The same alert the Home composer draws: warning tone, and a
+            // retry for a failed read (a choice's own feedback has none).
+            <p role="alert" className="start-composer__alert">
+              <span>
+                {selectFeedback?.text ??
+                  describeReadFailure(returnError ?? setupError)}
+              </span>
+              {!selectFeedback && refreshSetup && (
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    if (returnedFromSetup) setupReturn.retry();
+                    else void refreshSetup().catch(() => undefined);
+                  }}
+                >
+                  Try again
+                </Button>
+              )}
             </p>
           )}
           {runtimeLoading || modelsLoading ? (
