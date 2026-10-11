@@ -102,13 +102,12 @@ Integrations → Advanced: Secret bindings; selecting or saving it does not
 grant authority implicitly. Invalid destination writes fail before persistence.
 
 Changing the product destination or reference withdraws observations queued
-for the previous destination and fences its requests and probes. Settings
-applies telemetry changes after validated configuration is persisted, before
+for the previous destination and fences its requests and probes. The mounted
+configuration writer applies telemetry changes after validated persistence, before
 unrelated Agent activation; a later activation failure does not undo that
 withdrawal. Product telemetry constructed later during startup uses the current
 saved configuration rather than the earlier Agent configuration snapshot.
-Settings
-delivery status describes only the current process; a connection probe is not
+Delivery status describes only the current process; a connection probe is not
 delivery acceptance. See [Usage telemetry](usage-telemetry.md#delivery-status-and-connection-checks)
 for consent, alias precedence, grant revocation and collector header limits.
 
