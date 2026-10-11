@@ -20870,7 +20870,11 @@ describe('OrchestrationService', () => {
       event.method === 'runtime.warning' &&
       event.code === 'adapter-event-stream-interrupted';
 
-    async function startObservedTurn(threadId: string, turnId: string) {
+    async function startObservedTurn(
+      threadId: string,
+      turnId: string,
+      beforeStart?: () => void,
+    ) {
       const events = new AsyncEventQueue<CanonicalRuntimeEvent>(16);
       (claude as any).events = events;
       const warn = vi.fn();
@@ -20885,6 +20889,7 @@ describe('OrchestrationService', () => {
         type: 'startSession',
         input: { threadId, provider: 'claude', modelId: 'claude-sonnet' },
       });
+      beforeStart?.();
       // Provider-triggered, so the service itself records the accepted turn
       // boundary that boot recovery would banner if the terminal were lost.
       events.push({
@@ -20925,6 +20930,13 @@ describe('OrchestrationService', () => {
           }
           return appendEvent(event, declaredOutputs);
         });
+      // Admission (client-origin attribution, which consumes a send's
+      // accepted attribution, and the raw progress observation) is once per
+      // event: a retry repeats only the publish half.
+      const admissions = vi.spyOn(
+        (isolated as any).clientOriginTurns,
+        'apply',
+      ) as unknown as { mock: { calls: Array<[CanonicalRuntimeEvent]> } };
       events.push({
         eventId: 'transient-terminal',
         provider: 'claude',
@@ -20955,6 +20967,11 @@ describe('OrchestrationService', () => {
         'transient-terminal',
         'transient-terminal',
       ]);
+      expect(
+        admissions.mock.calls.filter(
+          ([event]) => event.eventId === 'transient-terminal',
+        ),
+      ).toHaveLength(1);
       expect(payloads(threadId).some(isInterruptionWarning)).toBe(false);
       expect(await isolated.readSession(threadId)).toMatchObject({
         session: { lifecycleState: 'idle' },
@@ -21146,6 +21163,195 @@ describe('OrchestrationService', () => {
       expect(await isolated.readSession(threadId)).toMatchObject({
         session: { lifecycleState: 'idle' },
       });
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a failed size-cap flush keeps the text buffered before the offered delta', async () => {
+      const threadId = 'cap-flush-thread';
+      const turnId = 'turn-cap';
+      const { events, isolated } = await startObservedTurn(threadId, turnId);
+      const delta = (eventId: string, text: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          turnId,
+          itemId: 'cap-item',
+          createdAt: new Date().toISOString(),
+          method: 'content.text-delta',
+          delta: text,
+        }) as CanonicalRuntimeEvent;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let failed = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          // The merged event keeps the first buffered delta's identity.
+          if (event.eventId === 'cap-delta-a' && failed === 0) {
+            failed += 1;
+            throw busy();
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      // The B delta takes the buffer past the 8,000-character cap, so the
+      // flush that fails is the size-cap flush inside B's own offer.
+      events.push(delta('cap-delta-0', 'Hello'));
+      events.push(delta('cap-delta-a', 'A'.repeat(5_000)));
+      events.push(delta('cap-delta-b', 'B'.repeat(4_000)));
+      events.push({
+        eventId: 'cap-terminal',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          payloads(threadId).some(
+            (event) =>
+              event.eventId === 'cap-terminal' || isInterruptionWarning(event),
+          ),
+        ).toBe(true),
+      );
+
+      expect(failed).toBe(1);
+      const stored = payloads(threadId).filter(
+        (event) =>
+          event.method === 'content.text-delta' ||
+          event.method === 'turn.completed',
+      );
+      expect(
+        stored
+          .filter((event) => event.method === 'content.text-delta')
+          .map((event) => (event as { delta?: string }).delta)
+          .join(''),
+      ).toBe(`Hello${'A'.repeat(5_000)}${'B'.repeat(4_000)}`);
+      expect(stored.at(-1)?.eventId).toBe('cap-terminal');
+      expect(payloads(threadId).some(isInterruptionWarning)).toBe(false);
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a retried provider-started turn.started records one boundary, so a crash before its terminal is bannered once', async () => {
+      const threadId = 'retried-start-thread';
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let startAttempts = 0;
+      let appendSpy: { mockRestore(): void } | undefined;
+      const { isolated } = await startObservedTurn(
+        threadId,
+        'turn-retried-start',
+        () => {
+          appendSpy = vi
+            .spyOn(eventStore, 'appendEvent')
+            .mockImplementation((event, declaredOutputs) => {
+              if (event.eventId === 'turn-retried-start-started') {
+                startAttempts += 1;
+                if (startAttempts === 1) throw busy();
+              }
+              return appendEvent(event, declaredOutputs);
+            });
+        },
+      );
+      expect(startAttempts).toBe(2);
+      appendSpy?.mockRestore();
+
+      // Crash before the turn's terminal, then reopen (see the first test in
+      // this block for why this is a crash and not a graceful shutdown).
+      eventStore.close();
+      await isolated.shutdown().catch(() => undefined);
+      eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+      const rebooted = new OrchestrationService({
+        adapterRegistry: createRegistry([]),
+        eventBus: new EventBus(),
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await (rebooted as any).interruptedTurns.consume();
+      expect(
+        payloads(threadId).filter((event) => event.method === 'turn.aborted'),
+      ).toHaveLength(1);
+    });
+
+    test('the retry is bounded: three attempts under sustained contention, then the store-named warning and no terminal', async () => {
+      const threadId = 'sustained-busy-thread';
+      const { events, isolated } = await startObservedTurn(
+        threadId,
+        'turn-sustained',
+      );
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let terminalAttempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          if (event.method === 'turn.completed') {
+            terminalAttempts += 1;
+            throw busy();
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      events.push({
+        eventId: 'sustained-terminal',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-sustained',
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(payloads(threadId).some(isInterruptionWarning)).toBe(true),
+      );
+
+      expect(terminalAttempts).toBe(3);
+      expect(
+        (payloads(threadId).find(isInterruptionWarning) as { message?: string })
+          ?.message,
+      ).toContain('Orchestration event store is locked (orchestration.sqlite)');
+      expect(
+        payloads(threadId).some((event) => event.method === 'turn.completed'),
+      ).toBe(false);
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a retry asleep when its consumer is stopped neither runs again nor surfaces a warning', async () => {
+      const threadId = 'stopped-during-retry-thread';
+      const { events, isolated } = await startObservedTurn(
+        threadId,
+        'turn-stopped',
+      );
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let terminalAttempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          if (event.method === 'turn.completed') {
+            terminalAttempts += 1;
+            // Stop this adapter's consumer, as a shutdown or adapter swap
+            // does, while the retry is about to sleep.
+            (isolated as any).adapterEventControllers.get(claude)?.abort();
+            throw busy();
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      events.push({
+        eventId: 'stopped-terminal',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-stopped',
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() => expect(terminalAttempts).toBe(1));
+      // Well past the whole retry schedule (25 ms + 100 ms).
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      expect(terminalAttempts).toBe(1);
+      expect(payloads(threadId).some(isInterruptionWarning)).toBe(false);
       appendSpy.mockRestore();
       await isolated.shutdown();
     });

@@ -353,6 +353,117 @@ describe('DeltaCoalescer', () => {
     expect(coalescer.pendingThreadCount()).toBe(0);
   });
 
+  test('a failed size-cap flush retains the text buffered before the offered delta, which the retry then re-offers', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let failNext = false;
+    const coalescer = new DeltaCoalescer(
+      (event) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error('SQLITE_BUSY: database is locked');
+        }
+        emitted.push(event);
+      },
+      {
+        windowMs: 1_000_000,
+        maxChars: 10,
+        setTimer: () => 'timer',
+        clearTimer: () => {},
+        logger: { warn: vi.fn() },
+        retainFailedFlush: () => true,
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '12345'));
+    failNext = true;
+    const reachesCap = delta('t1', '67890');
+    expect(() => coalescer.offer(reachesCap)).toThrow('SQLITE_BUSY');
+    // Only the earlier text: the offered delta is the caller's to re-offer,
+    // and keeping it too would duplicate it.
+    expect(coalescer.pendingThreadCount()).toBe(1);
+
+    expect(coalescer.offer(reachesCap)).toBe(true);
+    expect(texts(emitted)).toEqual(['paint', '1234567890']);
+  });
+
+  test('retained text arms no window timer, so a timer cannot drop it while the owner retry sleeps', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let locked = false;
+    const timers = new Map<number, () => void>();
+    let nextTimer = 0;
+    const coalescer = new DeltaCoalescer(
+      (event) => {
+        if (locked) throw new Error('SQLITE_BUSY: database is locked');
+        emitted.push(event);
+      },
+      {
+        windowMs: 60,
+        setTimer: (fn) => {
+          nextTimer += 1;
+          timers.set(nextTimer, fn);
+          return nextTimer;
+        },
+        clearTimer: (handle) => {
+          timers.delete(handle as number);
+        },
+        logger: { warn: vi.fn() },
+        retainFailedFlush: () => true,
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '-held'));
+    locked = true;
+    const terminal = other('t1', 'turn.completed');
+    expect(() => coalescer.offer(terminal)).toThrow('SQLITE_BUSY');
+
+    // The owner is asleep before its retry and the store is still locked:
+    // any window timer firing now would take the warn path and drop the text.
+    for (const fire of [...timers.values()]) fire();
+    expect(coalescer.pendingThreadCount()).toBe(1);
+
+    locked = false;
+    expect(coalescer.offer(terminal)).toBe(false);
+    expect(texts(emitted)).toEqual(['paint', '-held']);
+  });
+
+  test('text merged into a retained buffer after the retry gave up is timed again', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let locked = false;
+    const timers = new Map<number, () => void>();
+    let nextTimer = 0;
+    const coalescer = new DeltaCoalescer(
+      (event) => {
+        if (locked) throw new Error('SQLITE_BUSY: database is locked');
+        emitted.push(event);
+      },
+      {
+        windowMs: 60,
+        setTimer: (fn) => {
+          nextTimer += 1;
+          timers.set(nextTimer, fn);
+          return nextTimer;
+        },
+        clearTimer: (handle) => {
+          timers.delete(handle as number);
+        },
+        logger: { warn: vi.fn() },
+        retainFailedFlush: () => true,
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '-held'));
+    locked = true;
+    expect(() =>
+      coalescer.offer(delta('t1', 'x', { itemId: 'item-2' })),
+    ).toThrow('SQLITE_BUSY');
+    locked = false;
+    // The owner moved on; a later delta of the same text merges in and must
+    // not sit untimed until some unrelated event flushes it.
+    coalescer.offer(delta('t1', '-more'));
+    for (const fire of [...timers.values()]) fire();
+    expect(texts(emitted)).toEqual(['paint', '-held-more']);
+  });
+
   test('a failed flush the owner declines to retain is dropped, as before', () => {
     let failNext = false;
     const coalescer = new DeltaCoalescer(
