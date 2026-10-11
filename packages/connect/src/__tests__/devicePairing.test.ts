@@ -2,7 +2,6 @@ import {
   DEVICE_PAIRING_PROTOCOL_VERSION,
   type DevicePairingOffer,
   pairingScopePresetString,
-  STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts';
 import { describe, expect, test, vi } from 'vitest';
 import {
@@ -429,7 +428,7 @@ describe('describePairingRequestFailure (station#3158)', () => {
       });
       const init = (fetchSpy.mock.calls[0] as unknown[])[1] as RequestInit;
       expect(new Headers(init.headers).get('X-Station-Client-Protocol')).toBe(
-        String(STATION_COMPAT_PROTOCOL_VERSION),
+        '2',
       );
     } finally {
       vi.unstubAllGlobals();

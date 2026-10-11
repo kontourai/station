@@ -83,7 +83,7 @@ describe('taskGraph SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/tasks?projectId=project-alpha',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -416,7 +416,7 @@ describe('taskGraph SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       'http://example.test/api/tasks/task-3/graph',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(2);
 
@@ -431,7 +431,7 @@ describe('taskGraph SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       3,
       'http://example.test/api/tasks/sessions/session-1/relations',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(3);
   });

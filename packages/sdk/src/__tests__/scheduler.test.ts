@@ -147,7 +147,7 @@ describe('scheduler query domain', () => {
 
     expect(fetch).toHaveBeenNthCalledWith(1, 'http://example.test/api/runs', {
       method: 'GET',
-      headers: { 'X-Station-Client-Protocol': '1' },
+      headers: { 'X-Station-Client-Protocol': '2' },
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
