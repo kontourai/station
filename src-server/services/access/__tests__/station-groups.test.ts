@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { nativeActiveDevice } from '../../../runtime/bootstrap/native-device-proof-runtime.js';
 import { consentDecisionAuthority } from '../../../security/pairing-route-scopes.js';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
@@ -14,6 +14,7 @@ import { EnvironmentSecurityService } from '../../ssh/environment-security-servi
 import {
   STATION_GROUPS_ACTIVATED_FILE,
   STATION_GROUPS_FILE,
+  StationGroupsService,
 } from '../station-groups-service.js';
 
 // Literal: everything a device can have plus the two moderation grants.
@@ -221,6 +222,20 @@ describe('Station groups cap a device tied to a person', () => {
     const again = new EnvironmentSecurityService({ homeDir });
     await again.initialize();
     expect(again.groupOf(person('casey@example.test'))).toBe('member');
+  });
+
+  test('a seed that lost the race to another process leaves the record it finds alone', async () => {
+    const { homeDir } = await station();
+    const groups = new StationGroupsService({
+      securityDir: join(homeDir, 'security'),
+    });
+    await groups.assign(person('casey@example.test'), 'member');
+    await groups.assign(person('dana@example.test'), 'admin');
+    // As if this process checked before the other one wrote the record.
+    vi.spyOn(groups, 'exists').mockReturnValue(false);
+    await groups.seed([person('casey@example.test')]);
+    expect(groups.groupOf(person('casey@example.test'))).toBe('member');
+    expect(groups.groupOf(person('dana@example.test'))).toBe('admin');
   });
 
   test('a lost record is never reseeded: no stored grant re-promotes anyone, everyone sits in Member', async () => {
