@@ -419,6 +419,7 @@ import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-vari
 import { bootstrapRuntimeVoiceAgent } from '../agents/runtime-voice-agent.js';
 import { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import type { StrandsFramework } from '../frameworks/strands-adapter.js';
+import { releaseAllNativeStationControlClients } from '../frameworks/strands-native-client-pool.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   createStationControlCallerRecordResolver,
@@ -5003,10 +5004,7 @@ export class StationRuntime {
     try {
       await Promise.all([
         MCPManager.releaseAllNativeStationControlConnections(this.mcpCustody),
-        import('../frameworks/strands-tool-loader.js').then(
-          ({ releaseAllNativeStationControlClients }) =>
-            releaseAllNativeStationControlClients(this.mcpCustody),
-        ),
+        releaseAllNativeStationControlClients(this.mcpCustody),
       ]);
     } catch (error) {
       failures.push(error);
