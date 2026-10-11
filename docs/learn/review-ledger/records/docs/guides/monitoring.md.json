@@ -126,7 +126,15 @@
 
     "src-ui/src/views/settings/TelemetryDelivery.tsx",
 
-    "packages/telemetry-broker/artifact-manifest.mjs"
+    "packages/telemetry-broker/artifact-manifest.mjs",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
+    "src-server/routes/operations/__tests__/usage-export.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts"
   ],
 
   "checks": [

@@ -180,7 +180,9 @@
 
     "packages/contracts/src/secret-binding.ts",
 
-    "packages/shared/src/product-telemetry.ts"
+    "packages/shared/src/product-telemetry.ts",
+
+    "packages/contracts/src/usage-export.ts"
   ],
 
   "checks": [
