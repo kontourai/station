@@ -21,11 +21,16 @@ npm run build:telemetry-broker
 ```
 
 The build writes both bundles and `dist/artifact-manifest.json`. It captures
-hashes of the bytes supplied to esbuild, records root dependency/build inputs
-and source provenance, and refuses an input/provenance change during the build.
-The qualifier checks current source revision/input and bundle hashes before
-import or database setup, then exercises four copy-only manifest corruption
-and restoration controls. Rebuild after a source commit; an older build cannot
+hashes of the bytes supplied to esbuild, binds the sorted input inventory's
+count/digest and required root/build/entrypoint files, and refuses an
+input/provenance change during the build. Reads require regular files with
+nonblocking/no-follow opens: manifest 1 MiB, inputs 16 MiB, bundles 64 MiB each.
+The qualifier captures both validated bundles into one private execution
+snapshot, validates that copy before import or database setup, and runs every
+entrypoint child from it. Receipt hashes describe that snapshot, which is
+removed after settlement. Seven copy-only corruption/refusal and restoration
+controls include removed input records and a FIFO bundle. Rebuild after a
+source commit; an older build cannot
 qualify a new head. These authored checks remain unexecuted on the current
 source. The unsigned sidecar is build-only metadata, not a source/publisher
 attestation, installed dependency-graph proof or deployment/release acceptance.

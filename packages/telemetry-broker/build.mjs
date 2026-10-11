@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import {
+  RECEIVER_REQUIRED_BUILD_INPUTS,
   receiverBuildInputs,
   receiverBuildProvenance,
   writeReceiverArtifactManifest,
@@ -13,13 +14,7 @@ const repoRoot = await realpath(join(root, '../..'));
 const outdir = join(root, 'dist');
 const provenance = await receiverBuildProvenance(repoRoot);
 const inputs = receiverBuildInputs(repoRoot);
-for (const file of [
-  'package.json',
-  'pnpm-lock.yaml',
-  'pnpm-workspace.yaml',
-  'packages/telemetry-broker/build.mjs',
-  'packages/telemetry-broker/artifact-manifest.mjs',
-])
+for (const file of RECEIVER_REQUIRED_BUILD_INPUTS)
   await inputs.capture(join(repoRoot, file));
 const result = await build({
   absWorkingDir: repoRoot,

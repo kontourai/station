@@ -24,12 +24,15 @@ release descriptor remain pending.
 The receiver build also writes `dist/artifact-manifest.json`, binding both
 bundles to the exact bytes supplied to esbuild, root dependency declarations,
 build configuration and recorded source provenance. Qualification checks the
-manifest, current input hashes and exact source revision before importing a
-bundle or creating its database. A dirty checkout refuses qualification.
+manifest, canonical input inventory/count/digest, required inputs and exact
+source revision. Bounded regular-file reads refuse symlinks and FIFOs. It
+validates a private bundle snapshot before importing it or creating its
+database, runs its child entrypoints from that snapshot and reports those
+exact hashes. A dirty checkout refuses qualification.
 Container provenance is explicitly a supplied release declaration, not proof
 that the image was built from clean or qualified source. The sidecar is
 unsigned build metadata, not publisher authentication, installed-graph proof
-or a canonical release receipt. Build/consumer and four rejected/restored
+or a canonical release receipt. Build/consumer and seven rejected/restored
 manifest controls still need execution on current source.
 
 Prepare a dedicated absolute private directory outside the checkout. Never put

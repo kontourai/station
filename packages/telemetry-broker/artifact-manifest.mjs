@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants, existsSync } from 'node:fs';
-import { open, readFile, realpath, writeFile } from 'node:fs/promises';
+import { open, realpath, writeFile } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import { version as esbuildVersion } from 'esbuild';
 import { execFileSyncBounded } from '../../scripts/lib/bounded-capture.mjs';
@@ -10,6 +10,25 @@ import { sanitizedGitEnvironment } from '../../scripts/lib/git-environment.mjs';
 const SHA256 = /^[0-9a-f]{64}$/;
 const SHA = /^[0-9a-f]{40}$/;
 const ARTIFACTS = ['index.mjs', 'main.mjs'];
+const INPUT_LIMIT = 16 * 1024 * 1024;
+const BUNDLE_LIMIT = 64 * 1024 * 1024;
+export const RECEIVER_REQUIRED_BUILD_INPUTS = [
+  'package.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  'packages/telemetry-broker/package.json',
+  'packages/telemetry-broker/build.mjs',
+  'packages/telemetry-broker/artifact-manifest.mjs',
+  'packages/telemetry-broker/src/index.ts',
+  'packages/telemetry-broker/src/main.ts',
+  'scripts/lib/bounded-capture.mjs',
+  'scripts/lib/git-environment.mjs',
+  'scripts/lib/container-release-metadata.mjs',
+  'scripts/lib/module-entry.mjs',
+  'packages/shared/src/release-manifest.mjs',
+  'packages/shared/src/portable-server-targets.mjs',
+  'packages/shared/src/release-rings.generated.mjs',
+];
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const fields = (value, keys) =>
   value &&
@@ -17,20 +36,32 @@ const fields = (value, keys) =>
   !Array.isArray(value) &&
   Object.keys(value).every((key) => keys.includes(key));
 
-async function manifestBytes(outdir) {
+async function regularBytes(file, limit) {
   const handle = await open(
-    join(outdir, 'artifact-manifest.json'),
+    file,
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   );
   try {
     const metadata = await handle.stat();
-    if (!metadata.isFile() || metadata.size > 1024 * 1024)
-      throw new Error('Receiver artifact manifest exceeds its file bound');
-    const bytes = Buffer.alloc(1024 * 1024 + 1);
-    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
-    if (bytesRead > 1024 * 1024)
-      throw new Error('Receiver artifact manifest exceeds its file bound');
-    return bytes.subarray(0, bytesRead);
+    if (!metadata.isFile() || metadata.size > limit)
+      throw new Error(
+        'Receiver build file must be regular and within its size bound',
+      );
+    const bytes = Buffer.alloc(metadata.size + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const { bytesRead } = await handle.read(
+        bytes,
+        length,
+        bytes.length - length,
+        length,
+      );
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    if (length !== metadata.size)
+      throw new Error('Receiver build file size changed during capture');
+    return bytes.subarray(0, length);
   } finally {
     await handle.close();
   }
@@ -60,7 +91,9 @@ export async function receiverBuildProvenance(repoRoot) {
     };
   }
   const supplied = JSON.parse(
-    await readFile(join(repoRoot, '.station-release.json'), 'utf8'),
+    (
+      await regularBytes(join(repoRoot, '.station-release.json'), 64 * 1024)
+    ).toString('utf8'),
   );
   const release = createPackagedReleaseManifest({
     tag: supplied.ref,
@@ -79,7 +112,7 @@ export function receiverBuildInputs(repoRoot) {
   const inputs = new Map();
   const capture = async (file) => {
     const path = await inputPath(repoRoot, file);
-    const bytes = await readFile(file);
+    const bytes = await regularBytes(join(repoRoot, path), INPUT_LIMIT);
     const digest = hash(bytes);
     const prior = inputs.get(path);
     if (prior && prior !== digest)
@@ -105,7 +138,7 @@ export function receiverBuildInputs(repoRoot) {
   };
   const records = () =>
     [...inputs]
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([path, sha256]) => ({ path, sha256 }));
   return { capture, plugin, records };
 }
@@ -127,10 +160,21 @@ async function assertInputs(repoRoot, inputs) {
     const file = join(repoRoot, input.path);
     if (
       (await inputPath(repoRoot, file)) !== input.path ||
-      hash(await readFile(file)) !== input.sha256
+      hash(await regularBytes(file, INPUT_LIMIT)) !== input.sha256
     )
       throw new Error('Receiver build inputs differ from the artifact');
   }
+}
+
+function inputInventory(inputs) {
+  const paths = inputs.map((input) => input?.path);
+  if (
+    new Set(paths).size !== inputs.length ||
+    !RECEIVER_REQUIRED_BUILD_INPUTS.every((path) => paths.includes(path)) ||
+    paths.some((path, index) => index > 0 && paths[index - 1] >= path)
+  )
+    throw new Error('Invalid receiver build input inventory');
+  return { count: inputs.length, sha256: hash(JSON.stringify(inputs)) };
 }
 
 export async function writeReceiverArtifactManifest(
@@ -141,6 +185,7 @@ export async function writeReceiverArtifactManifest(
   provenance,
 ) {
   await assertInputs(repoRoot, inputs);
+  const inventory = inputInventory(inputs);
   const current = await receiverBuildProvenance(repoRoot);
   if (JSON.stringify(current) !== JSON.stringify(provenance))
     throw new Error('Receiver source provenance changed during build');
@@ -149,7 +194,12 @@ export async function writeReceiverArtifactManifest(
     const file = outputFiles.find(
       (output) => output.path === join(outdir, name),
     );
-    if (!file) throw new Error('Receiver build omitted a required artifact');
+    if (
+      !file ||
+      file.contents.byteLength === 0 ||
+      file.contents.byteLength > BUNDLE_LIMIT
+    )
+      throw new Error('Receiver build omitted or exceeded a required artifact');
     await writeFile(file.path, file.contents);
     artifacts.push({
       path: name,
@@ -170,6 +220,7 @@ export async function writeReceiverArtifactManifest(
     },
     provenance,
     inputs,
+    inputInventory: inventory,
     artifacts,
   };
   await writeFile(
@@ -181,7 +232,10 @@ export async function writeReceiverArtifactManifest(
 
 export async function readReceiverArtifactManifest(outdir, repoRoot) {
   repoRoot = await realpath(repoRoot);
-  const bytes = await manifestBytes(outdir);
+  const bytes = await regularBytes(
+    join(outdir, 'artifact-manifest.json'),
+    1024 * 1024,
+  );
   const manifest = JSON.parse(bytes.toString('utf8'));
   if (
     manifest?.schemaVersion !== 1 ||
@@ -193,6 +247,7 @@ export async function readReceiverArtifactManifest(outdir, repoRoot) {
       'build',
       'provenance',
       'inputs',
+      'inputInventory',
       'artifacts',
     ]) ||
     manifest.kind !== 'station-product-receiver-build' ||
@@ -208,13 +263,20 @@ export async function readReceiverArtifactManifest(outdir, repoRoot) {
     ) ||
     !['checkout', 'declared-release'].includes(manifest.provenance?.kind) ||
     !Array.isArray(manifest.inputs) ||
-    manifest.inputs.length === 0 ||
-    new Set(manifest.inputs.map((input) => input?.path)).size !==
-      manifest.inputs.length ||
+    !fields(manifest.inputInventory, ['count', 'sha256']) ||
+    !Number.isSafeInteger(manifest.inputInventory.count) ||
+    !SHA256.test(manifest.inputInventory.sha256) ||
     !Array.isArray(manifest.artifacts) ||
     manifest.artifacts.length !== ARTIFACTS.length
   )
     throw new Error('Invalid receiver artifact manifest');
+  await assertInputs(repoRoot, manifest.inputs);
+  const inventory = inputInventory(manifest.inputs);
+  if (
+    inventory.count !== manifest.inputInventory.count ||
+    inventory.sha256 !== manifest.inputInventory.sha256
+  )
+    throw new Error('Receiver build input inventory differs from its manifest');
   if (manifest.provenance.kind === 'checkout') {
     if (
       !fields(manifest.provenance, ['kind', 'head', 'dirty']) ||
@@ -230,6 +292,7 @@ export async function readReceiverArtifactManifest(outdir, repoRoot) {
       createdAt: manifest.provenance.createdAt,
     });
   }
+  const bundles = new Map();
   for (const name of ARTIFACTS) {
     const entries = manifest.artifacts.filter((entry) => entry?.path === name);
     if (
@@ -237,21 +300,22 @@ export async function readReceiverArtifactManifest(outdir, repoRoot) {
       !fields(entries[0], ['path', 'sha256', 'bytes']) ||
       !Number.isSafeInteger(entries[0].bytes) ||
       entries[0].bytes < 1 ||
+      entries[0].bytes > BUNDLE_LIMIT ||
       !SHA256.test(entries[0].sha256)
     )
       throw new Error('Invalid receiver artifact record');
-    const artifact = await readFile(join(outdir, name));
+    const artifact = await regularBytes(join(outdir, name), BUNDLE_LIMIT);
     if (
       artifact.byteLength !== entries[0].bytes ||
       hash(artifact) !== entries[0].sha256
     )
       throw new Error('Receiver bundle differs from its build manifest');
+    bundles.set(name, artifact);
   }
-  await assertInputs(repoRoot, manifest.inputs);
   const current = await receiverBuildProvenance(repoRoot);
   if (JSON.stringify(current) !== JSON.stringify(manifest.provenance))
     throw new Error('Receiver artifact source revision is stale');
   if (current.kind === 'checkout' && current.dirty)
     throw new Error('Receiver qualification requires a clean source checkout');
-  return manifest;
+  return { manifest, bundles };
 }
