@@ -12,6 +12,27 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
+`useTelemetryDeliveryStatusQuery` and `useCheckTelemetryConnectionMutation`.
+These read current-process product and OTel delivery status and request explicit
+content-free connection checks. They receive an API base and request authority;
+query caches partition by API base and authority key. Unsupported or malformed
+responses throw instead of supplying healthy defaults. Product commit receipts
+and collector HTTP acceptance remain distinct from downstream delivery. See
+[Monitoring](../guides/monitoring.md#environment-variables) for the operator
+journey and limits. This surface requires a published SDK version containing it.
+
+`@kontourai/station-sdk/secret-bindings` also exports
+`listTelemetrySecretBindings(apiBase, options?)` and
+`updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options?)`.
+The latter accepts `bind` or `unbind`, the exact destination grant and an
+`expectedRevision`; it returns confirmed metadata, never key material. The
+`/secret-bindings-query` subpath provides the corresponding
+`useTelemetrySecretBindingsQuery` and `useTelemetrySecretBindingGrantMutation`
+hooks. Pass the render-captured request scope: caches partition by API base and
+authority key, and old responses cannot update a replacement authority. Existing
+MCP consumer inputs and results retain their own separate client functions.
+
 ## Agent development entry
 
 `@kontourai/station-sdk/agent` is the React-free Agent authoring and execution

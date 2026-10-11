@@ -151,6 +151,14 @@ vi.mock('@kontourai/station-sdk', async () => {
     // about.
     useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
     useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useTelemetryDeliveryStatusQuery: () => {
+      throw new Error('Catalog fixture has no captured telemetry authority');
+    },
+    useCheckTelemetryConnectionMutation: () => {
+      throw new Error(
+        'Catalog fixture must not initiate a telemetry connection check',
+      );
+    },
     useInvalidateQuery: () => invalidateQuery,
     useSystemStatusForApiBaseQuery: () => ({
       data: {

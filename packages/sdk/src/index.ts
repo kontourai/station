@@ -1271,6 +1271,12 @@ export type {
   SetupImportPreview,
   SetupImportReceipt,
 } from './query-domains/setupImports';
+export {
+  checkTelemetryConnection,
+  fetchTelemetryDeliveryStatus,
+  useCheckTelemetryConnectionMutation,
+  useTelemetryDeliveryStatusQuery,
+} from './query-domains/telemetryDelivery';
 export { extractUIBlocks } from './query-domains/uiBlocks.js';
 // station#3390 introduced these alongside useModelPickerCatalogQuery (exported
 // above). publicBarrel derives its expected list from the domain module by

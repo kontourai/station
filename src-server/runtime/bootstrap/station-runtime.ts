@@ -199,6 +199,7 @@ import {
   orchestrationStreamPresenceRosterOps,
 } from '../../telemetry/metrics.js';
 import { configuredTelemetryShutdownTask } from '../../telemetry.js';
+import { reconfigureOtelTelemetryDelivery } from '../../telemetry-delivery-state.js';
 import { setRuntimeControlApiBase } from '../../tools/station-control-shared.js';
 import {
   applyConfiguredLogLevel,
@@ -2602,6 +2603,7 @@ export class StationRuntime {
     this.assertAgentConfigurationRevisions(configurationBefore, composition);
     this.appConfig = appConfig;
     this.usageTelemetry?.reconfigure(appConfig);
+    reconfigureOtelTelemetryDelivery(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
     if (registryPolicyApplication)
       await this.registryTrustPolicyAuthority!.publishApplied(
@@ -3167,6 +3169,7 @@ export class StationRuntime {
       this.assertAgentConfigurationRevisions(configurationBefore);
       this.appConfig = appConfig;
       this.usageTelemetry?.reconfigure(appConfig);
+      reconfigureOtelTelemetryDelivery(appConfig);
       this.recordLoadedConfigurationRevisions(configurationBefore);
     });
   }
@@ -3857,6 +3860,7 @@ export class StationRuntime {
       version: packageJson.version,
       buildProvenance: this.buildProvenanceSnapshot ?? null,
       logger: this.logger,
+      telemetrySecretResolver: this.secretBindingAdministration,
     });
     // A saved, current receipt remains consent after a restart. This read is
     // fail-closed: loadDisclosureReceipt logs malformed receipts and leaves

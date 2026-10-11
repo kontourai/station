@@ -54,6 +54,13 @@ await generateStationDocs({ check: true });
 await Promise.all([
   esbuild.build({
     ...shared,
+    entryPoints: [
+      './src-server/services/secrets/telemetry-key-materialization-child.ts',
+    ],
+    outfile: `${serverDir}/telemetry-key-materialization-child.js`,
+  }),
+  esbuild.build({
+    ...shared,
     entryPoints: ['./src-server/index.ts'],
     outfile: `${serverDir}/command-station.js`,
   }),

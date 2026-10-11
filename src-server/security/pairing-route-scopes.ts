@@ -616,6 +616,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/usage-telemetry/connection-checks:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/connection-checks',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   // The preview request uses POST only so the selected file path and line
   // range stay out of URLs and proxies. It is nevertheless a bounded,
   // project-owned read: no mutation, caller-supplied root, or cross-project

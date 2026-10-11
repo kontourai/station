@@ -315,9 +315,22 @@ The Grafana dashboard auto-provisions from `monitoring/grafana/dashboards/statio
 |-----------------------------|----------|-------------|--------------------------------------------------|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint. Unset means no OTel SDK initialization; local monitoring remains available. |
 | `OTEL_SERVICE_NAME` | No | `station` | OTel service name. |
-| `STATION_TELEMETRY_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
+| `STATION_OTEL_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
+| `STATION_TELEMETRY_API_KEY` | No | — | Legacy alias for the OTel key; a nonempty canonical key wins. |
 | `STATION_EVENT_LOG_RETENTION_DAYS` | No | `30` | UTC daily monitoring files retained on disk. |
 | `STATION_EVENT_LOG_MAX_BYTES` | No | `268435456` | Maximum retained monitoring-event bytes; the active UTC day's file is protected. |
+
+Product observations use separate `STATION_PRODUCT_TELEMETRY_*` variables and
+disclosure authority; see [usage telemetry](../reference/usage-telemetry.md).
+Legacy names remain supported until a separate release decision. Bootstrap
+notices name aliases or conflicts without printing key material.
+
+Settings → Telemetry distinguishes exporter initialization, metric and trace
+callback acceptance/failure, and explicit connection checks. An OTLP check sends
+empty trace and metric requests and establishes only collector HTTP acceptance.
+The response marks downstream delivery unverified; stored metrics, trace
+queries and dashboards need their own runtime qualification. Status and
+connection results describe the current Station process.
 
 To enable telemetry against the local stack:
 
@@ -717,8 +730,10 @@ name/duration also travel into the local result event. Follow the
 caller instead of copying a partial snippet that changes those conditions.
 
 The optional SDK shutdown joins Station's shared 1.5-second network-teardown
-budget. It is best effort; process exit or that deadline is not proof of
-collector delivery.
+budget. Configured exporters can flush during that budget. Expiry fences their
+credentials and probes immediately, even if SDK shutdown is still pending;
+later callbacks cannot record an accepted delivery. It is best effort; process
+exit or that deadline is not proof of collector delivery.
 
 ## Application-Level Monitoring (MonitoringEmitter)
 

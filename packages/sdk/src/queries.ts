@@ -716,6 +716,12 @@ export {
   useUpdateTaskStatusMutation,
 } from './query-domains/taskGraph';
 export {
+  checkTelemetryConnection,
+  fetchTelemetryDeliveryStatus,
+  useCheckTelemetryConnectionMutation,
+  useTelemetryDeliveryStatusQuery,
+} from './query-domains/telemetryDelivery';
+export {
   type TrustBundleSourceVM,
   type TrustBundleSummaryVM,
   type TrustReportClaimVM,

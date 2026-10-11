@@ -1529,6 +1529,36 @@ Datum only; they never materialize. Resolution requires one current, non-revoked
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
 
+`TelemetrySecretResolver.resolveForTelemetry` is a separate narrow capability
+for an instance binding with an exact `instance-telemetry-destination` grant.
+The transport (`product` or `otel`) and normalized complete destination must
+both match. MCP/ACP grants confer no telemetry authority, and person-owned
+bindings cannot supply a shared emitter. Materialization rechecks revision,
+revocation and the exact grant before returning; the result carries an
+`assertCurrent` check for dispatch and response settlement. The product sender
+consumes that check and refuses stale authority without environment fallback.
+
+Environment material resolves through Datum without a process. Keychain and
+1Password materialization runs in a fixed private child with a three-second
+deadline, bounded response and process-tree cleanup; the child carries only
+platform/secret-backend environment, no Station bootstrap credentials. Backend
+output and errors are not logged. Its entry is built beside the server bundle.
+The owning process controls are
+`src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts`;
+their source does not certify packaged or native execution. Saved OTLP
+bootstrap observes only the existing bounded app document before synchronous
+provider registration, then dynamically loads the resolver on the first
+export. Metrics imports therefore remain after provider registration. An
+export's async-local authority supplies its headers and validates callback
+settlement; a revoked grant cannot report an accepted export. Saved collector
+changes require restart and fence the old owner immediately. Standard
+environment-header inheritance is refused for saved destinations/references.
+
+The v1 document retains legacy records unchanged and adds optional
+`telemetryDestinationGrants` only when a telemetry grant is written. Older
+strict readers reject that new property; an upgrade/rollback must preserve and
+restore a compatible binding document, never delete grants to bypass admission.
+
 **Ownership (#3279).** A binding has an owner: `instance` (absent on records written
 before #3279, which keep their behavior), `principal`, or `principal-project`. The
 owner id is an existing human `PrincipalRef.id` from request resolution; a paired

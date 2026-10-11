@@ -1,6 +1,12 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { withOperatorPrincipal } from '../../__test-utils__/operator-principal.js';
-import { SecretBindingConflictError } from '../../services/secrets/secret-binding-administration.js';
+import {
+  FileSecretBindingAdministration,
+  SecretBindingConflictError,
+} from '../../services/secrets/secret-binding-administration.js';
 import { createSecretBindingRoutes } from '../secret-bindings.js';
 
 const binding = {
@@ -13,6 +19,64 @@ const binding = {
   updatedAt: '2026-08-24T00:00:00.000Z',
   availability: { backend: 'env' as const, available: true },
 };
+
+test('telemetry bind/unbind persists only exact instance destination authority through the existing operator route', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'station-telemetry-grant-route-'));
+  const service = new FileSecretBindingAdministration(root, {
+    environment: { PRODUCT_KEY: 'private-product-material' },
+  });
+  const grant = {
+    kind: 'instance-telemetry-destination',
+    transport: 'product',
+    destination: 'https://receiver.test/v1/product/events',
+  };
+  try {
+    await service.create({
+      id: 'product-source',
+      name: 'Product source',
+      authRef: { env: 'PRODUCT_KEY' },
+    });
+    const app = withOperatorPrincipal(createSecretBindingRoutes(service));
+    const send = (path: string, data: unknown) =>
+      app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+    const unknown = await send('/product-source/bind', {
+      ...grant,
+      expectedRevision: 1,
+      integrationId: 'impersonated-mcp',
+    });
+    expect(unknown.status).toBe(400);
+    expect((await service.get('product-source'))?.revision).toBe(1);
+    const accepted = await send('/product-source/bind', {
+      ...grant,
+      expectedRevision: 1,
+    });
+    expect(accepted.status).toBe(200);
+    const view = await accepted.json();
+    expect(view.data.telemetryDestinationGrants).toEqual([grant]);
+    expect(view.data.grants).toEqual([]);
+    expect(JSON.stringify(view)).not.toContain('private-product-material');
+    expect(
+      (await send('/product-source/unbind', { ...grant, expectedRevision: 1 }))
+        .status,
+    ).toBe(409);
+    expect(
+      (await send('/product-source/unbind', { ...grant, expectedRevision: 2 }))
+        .status,
+    ).toBe(200);
+    expect(
+      (await service.get('product-source'))?.telemetryDestinationGrants,
+    ).toBeUndefined();
+    expect(
+      await readFile(join(root, 'security', 'secret-bindings.json'), 'utf8'),
+    ).not.toContain('private-product-material');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 test('secret binding routes pass service results through and map a missing binding to 404', async () => {
   // The route does no projection; the metadata-only shape is the service's.
   const revoked = { ...binding, revokedAt: binding.updatedAt };

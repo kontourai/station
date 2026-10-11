@@ -55,13 +55,24 @@ the old one.
 | `DELETE /v1/operator/sources/:id` | Operator Bearer key; commits revocation, fenced against concurrent ingestion |
 | `GET /v1/operator/trends?from=...&to=...` | Operator Bearer key; UTC ISO bounds, at most 365 days and 1,000 aggregate rows |
 | `POST /v1/product/events` | Source `x-api-key`; strict v1 disclosed batch; 202 returns a committed receipt |
+| `POST /v1/product/probes` | Source `x-api-key`; content-free v1 probe checks source authority and compatible storage without inserting a source, observation or receipt |
 | `GET /v1/product/receipts/:id` | Source `x-api-key`; only that source's receipt, otherwise 404 |
 
-Set Station's `STATION_TELEMETRY_ENDPOINT` to the full
-`/v1/product/events` URL and `STATION_USAGE_TELEMETRY_KEY` to its source key.
+Set Station's `STATION_PRODUCT_TELEMETRY_ENDPOINT` to the full
+`/v1/product/events` URL and `STATION_PRODUCT_TELEMETRY_KEY` to its source key.
+The legacy aliases `STATION_TELEMETRY_ENDPOINT` and
+`STATION_USAGE_TELEMETRY_KEY` remain supported until a separate release decision;
+valid nonempty canonical values win. Neither resolves an OTLP key.
 Station still requires telemetry enablement and acknowledgement of the current
 inventory. These settings do not configure OTel or authorize personal receipt
 sync.
+
+An explicit Settings connection check sends
+`{protocol: "station-product-probe/v1", inventoryRevision: "<current revision>"}`
+to the sibling `/v1/product/probes` route. Its response identifies
+`storage: "postgres-schema-v1"` with a source UUID and check timestamp. A revoked
+source, incompatible schema or non-durable storage refuses the request. Probe
+readiness establishes no delivered observation and does not grant consent.
 
 Trends count **received product observations** by producer wall-clock day,
 event, release and reported engine/outcome. They explicitly return
@@ -111,9 +122,10 @@ Station execution and release qualification require their own receipts.
 `STATION_TELEMETRY_QUALIFICATION_DATABASE_URL` with permission to create a
 separate database. Build the broker first. The runner creates a unique owned
 database, tests HTTP commit/deduplication, revocation, saturation, ten malformed
-schema cases across all eight repository entrypoints, and a stalled PostgreSQL
+schema cases across all nine repository entrypoints and the HTTP probe, and a stalled PostgreSQL
 transport followed by connection recovery. Missing prerequisites fail the
-command. Successful runs remove only their owned database; failed runs retain
+command. It also checks that a probe inserts no source, observation or commit,
+and that foreign and revoked keys cannot probe. Successful runs remove only their owned database; failed runs retain
 it and report its name for diagnosis.
 
 The runner does not certify Station execution, persistent deployment, backup

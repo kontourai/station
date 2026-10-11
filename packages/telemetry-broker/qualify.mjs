@@ -89,6 +89,56 @@ try {
     });
     return { status: response.status, body: await response.json() };
   };
+  const probe = async (key = sourceKey) => {
+    const response = await fetch(`${base}/v1/product/probes`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key },
+      body: JSON.stringify({
+        protocol: 'station-product-probe/v1',
+        inventoryRevision: inventory.inventoryRevision,
+      }),
+      signal: AbortSignal.timeout(6000),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const beforeProbe = (
+    await pool.query(`SELECT
+    (SELECT count(*)::integer FROM station_telemetry.events) AS events,
+    (SELECT count(*)::integer FROM station_telemetry.commits) AS commits,
+    (SELECT count(*)::integer FROM station_telemetry.sources) AS sources`)
+  ).rows[0];
+  assert.equal(beforeProbe.events, 0);
+  assert.equal(beforeProbe.commits, 0);
+  const checked = await probe();
+  assert.equal(checked.status, 200);
+  assert.deepEqual(checked.body.probe, {
+    protocol: 'station-product-probe/v1',
+    sourceId,
+    inventoryRevision: inventory.inventoryRevision,
+    checkedAt: checked.body.probe.checkedAt,
+    storage: 'postgres-schema-v1',
+  });
+  assert.equal(
+    new Date(checked.body.probe.checkedAt).toISOString(),
+    checked.body.probe.checkedAt,
+  );
+  assert.equal((await probe(operatorKey)).status, 401);
+  assert.equal(
+    (await probe(`stp_${randomBytes(32).toString('base64url')}`)).status,
+    401,
+  );
+  assert.deepEqual(
+    (
+      await pool.query(`SELECT
+    (SELECT count(*)::integer FROM station_telemetry.events) AS events,
+    (SELECT count(*)::integer FROM station_telemetry.commits) AS commits,
+    (SELECT count(*)::integer FROM station_telemetry.sources) AS sources`)
+    ).rows[0],
+    beforeProbe,
+  );
+  checks.push(
+    'HTTP source probe verifies schema/query, refuses foreign credentials and inserts no source, observation or commit',
+  );
   const first = await send(batch);
   assert.equal(first.status, 202);
   assert.equal(first.body.receipt.inserted, 1);
@@ -181,6 +231,8 @@ try {
       await assert.rejects(store.trends(from, to), incompatible);
       await assert.rejects(store.retain(), incompatible);
       await assert.rejects(store.ingest(sourceKey, batch), incompatible);
+      await assert.rejects(store.probe(sourceKey), incompatible);
+      assert.equal((await probe()).status, 503);
       await assert.rejects(
         store.receipt(sourceKey, first.body.receipt.receiptId),
         incompatible,
@@ -203,12 +255,15 @@ try {
       1,
     );
     checks.push(
-      `${name}: all eight repository entrypoints refused; restored readiness/data`,
+      `${name}: all nine repository entrypoints and HTTP probe refused; restored readiness/data`,
     );
   }
   assert.equal(await store.revokeSource(sourceId), true);
   assert.equal((await send(batch)).status, 401);
-  checks.push('committed source revocation fences ingestion');
+  assert.equal((await probe()).status, 401);
+  checks.push(
+    'committed source revocation fences ingestion and connection probes',
+  );
 
   const bounded = new PgProductRepository(pool, 0);
   await assert.rejects(

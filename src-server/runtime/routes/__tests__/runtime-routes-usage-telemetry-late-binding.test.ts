@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import type { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
+import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 const runtimeSupport = vi.hoisted(() => {
@@ -84,7 +84,11 @@ function runtimeContext(
       app,
       port: 4321,
       host: '127.0.0.1',
-      appConfig: {},
+      appConfig: {
+        defaultModel: 'configured-model',
+        invokeModel: 'configured-model',
+        structureModel: 'configured-model',
+      },
       configLoader: {
         getProjectHomeDir: () => homeDir,
         loadAppConfig: () => ({}),
@@ -173,6 +177,18 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       success: false,
       error: { code: 'telemetry_not_ready' },
     });
+    for (const [method, path] of [
+      ['GET', '/api/usage-telemetry/delivery-status'],
+      ['POST', '/api/usage-telemetry/connection-checks/product'],
+      ['POST', '/api/usage-telemetry/connection-checks/otel'],
+    ]) {
+      const pending = await app.request(path, { method }, loopbackEnv());
+      expect(pending.status).toBe(503);
+      await expect(pending.json()).resolves.toEqual({
+        success: false,
+        error: { code: 'telemetry_not_ready' },
+      });
+    }
 
     // `StationRuntime` finishes constructing it. No re-registration happens in
     // production, and none happens here.
@@ -251,5 +267,75 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       success: true,
       data: disclosure,
     });
+
+    const fetch = vi.fn();
+    const live = new UsageTelemetryService({
+      homeDir,
+      appConfig: {
+        defaultModel: 'configured-model',
+        invokeModel: 'configured-model',
+        structureModel: 'configured-model',
+      },
+      version: '1.2.3',
+      logger: { warn: vi.fn() },
+      env: {
+        STATION_TELEMETRY_ENDPOINT: 'https://private-receiver.test/legacy',
+        STATION_USAGE_TELEMETRY_KEY: 'private-product-key',
+      },
+      fetch,
+    });
+    usageTelemetry = live;
+    try {
+      const status = await app.request(
+        '/api/usage-telemetry/delivery-status',
+        undefined,
+        loopbackEnv(),
+      );
+      expect(status.status).toBe(200);
+      expect(status.headers.get('cache-control')).toBe('private, no-store');
+      const body = await status.json();
+      expect(body).toMatchObject({
+        success: true,
+        data: {
+          protocol: 'station-telemetry-delivery/v1',
+          product: {
+            scope: 'current-process',
+            phase: 'awaiting-disclosure',
+            endpointConfigured: true,
+            keyConfigured: true,
+            disclosureAcknowledged: false,
+            queued: 0,
+            counts: { buffered: 0, acknowledged: 0, attempts: 0 },
+          },
+          otel: { scope: 'current-process', downstreamDelivery: 'unverified' },
+        },
+      });
+      expect(JSON.stringify(body)).not.toContain('private-product-key');
+      expect(JSON.stringify(body)).not.toContain('private-receiver.test');
+      const checked = await app.request(
+        '/api/usage-telemetry/connection-checks/product',
+        { method: 'POST' },
+        loopbackEnv(),
+      );
+      expect(checked.status).toBe(200);
+      await expect(checked.json()).resolves.toMatchObject({
+        success: true,
+        data: {
+          phase: 'unsupported',
+          scope: null,
+          failure: { code: 'probe_unsupported' },
+        },
+      });
+      const invalid = await app.request(
+        '/api/usage-telemetry/connection-checks/unknown',
+        { method: 'POST' },
+        loopbackEnv(),
+      );
+      expect(invalid.status).toBe(400);
+      expect(fetch).not.toHaveBeenCalled();
+      expect((await live.disclosure()).acknowledged).toBe(false);
+    } finally {
+      await live.shutdown();
+    }
   });
 });

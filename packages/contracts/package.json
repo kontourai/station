@@ -26,6 +26,7 @@
   ],
   "exports": {
     "./product-telemetry": "./src/product-telemetry.ts",
+    "./telemetry-delivery": "./src/telemetry-delivery.ts",
     "./relay-management": "./src/relay-management.ts",
     "./usage-stats": "./src/usage-stats.ts",
     "./native-relay-link": "./src/native-relay-link.ts",
