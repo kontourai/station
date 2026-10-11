@@ -521,9 +521,10 @@ server. It also lists the [shipped manual](../reference/station-docs.md) as a
 bundle-only document (`"publish": false`, so it gets no page) and mirrors the
 `docs/learn/mcp-topics.json` topics as anchors into it, so the shared server
 answers with the same sections as Station Docs. `docs-kit-manifest.test.ts`
-fails when either drifts. Check it with
-`npx -y github:kontourai/docs-kit#<sha> docs-kit check` before a pull request,
-because its CI gate runs only after merge.
+fails when either drifts. `PR: Docs kit` runs `docs-kit check` on pull
+requests, merge-queue entries and main as an advisory, non-required check; run
+`npx -y github:kontourai/docs-kit#<sha> docs-kit check` locally for faster
+feedback.
 
 The learning atlas and Station Docs MCP share the concept catalog and module
 map. The [shipped manual](../reference/station-docs.md) owns the MCP's introductory

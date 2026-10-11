@@ -8,8 +8,8 @@ import { readStationDocsInputs } from '../generate-station-docs.mjs';
 // pages that site renders: the bundle's docs/<path>.html URLs point at them.
 // Its topics mirror the shipped Station Docs MCP topics, so the shared docs
 // MCP answers with the same sections the in-app server does. Its own docs-kit
-// gate runs only after merge (.github/workflows/docs-kit.yml), so this is the
-// pull-request check that the manifests have not drifted.
+// gate (.github/workflows/docs-kit.yml) is advisory, so this is the blocking
+// check that the manifests have not drifted.
 // The shape generate-station-docs.mjs returns for each shipped topic; the
 // generator is untyped JavaScript, so name the fields this test reads.
 interface ShippedTopic {
