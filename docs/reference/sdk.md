@@ -1962,7 +1962,7 @@ providers return a guidance projection instead of local account controls.
 answer to "what authority is this request acting as": the current public home
 identity, the server-resolved effective principal (kind+id only, no contacts),
 and the verified grant tier (operator, or paired Device with its public Device
-id and granted scopes). The read is authorization-neutral — it describes
+id and the scopes it may use: its grant, capped by its person's Station group). The read is authorization-neutral — it describes
 authority and grants nothing — and fails closed on absent, conflicting, or
 revoked authority, never a guessed identity. Pass the SAME `ClientRequestOptions`
 (request scope, credential, headers) as the caller's other protected requests;

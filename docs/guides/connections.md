@@ -988,7 +988,8 @@ either place, removes it for good and says so.
 
 An operator can separately grant **Approve pairing requests** (`access:approve`).
 This allows that Device to list, approve, or deny pending requests, without
-Device-management access. A pairing notification opens the exact request in
+Device-management access. A Device tied to a person keeps it only while that
+person's Station group is Admin (#3557). A pairing notification opens the exact request in
 **Notifications**; opening it does not approve it. Devices without approval
 authority see the trusted-Station remedy instead of decision controls.
 
