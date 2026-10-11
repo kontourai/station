@@ -50,6 +50,15 @@ interface OtelDeliveryOwner {
   credentialAbort: AbortController;
 }
 
+function savedConfiguration(
+  config: OtelDeliveryOwner['savedConfig'],
+): OtelDeliveryOwner['savedConfig'] {
+  return {
+    otelTelemetryEndpoint: config.otelTelemetryEndpoint?.trim() || undefined,
+    otelTelemetryKeyRef: config.otelTelemetryKeyRef?.trim() || undefined,
+  };
+}
+
 let current: OtelDeliveryOwner = {
   status: initialStatus(),
   endpoint: undefined,
@@ -74,7 +83,7 @@ export function beginOtelTelemetryDelivery(
     status,
     endpoint,
     key,
-    savedConfig: { ...savedConfig },
+    savedConfig: savedConfiguration(savedConfig),
     credentialAbort: new AbortController(),
   };
   return current;
@@ -108,12 +117,14 @@ export function beginOtelExport(
 
 /** Collector changes are restart-activated; saved changes revoke the old process's export authority now. */
 export function reconfigureOtelTelemetryDelivery(config: AppConfig): void {
+  const observed = savedConfiguration(config);
   if (
     current.savedConfig.otelTelemetryEndpoint ===
-      config.otelTelemetryEndpoint &&
-    current.savedConfig.otelTelemetryKeyRef === config.otelTelemetryKeyRef
+      observed.otelTelemetryEndpoint &&
+    current.savedConfig.otelTelemetryKeyRef === observed.otelTelemetryKeyRef
   )
     return;
+  current.savedConfig = observed;
   current.status.phase = 'restart-required';
   current.credentialAbort.abort();
   current.probeAbort?.abort();

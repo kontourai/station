@@ -28,6 +28,7 @@ import { UsageTelemetryService } from '../../../services/usage-telemetry-service
 import {
   beginOtelExport,
   beginOtelTelemetryDelivery,
+  checkOtelTelemetryConnection,
   getOtelTelemetryDeliveryStatus,
 } from '../../../telemetry-delivery-state.js';
 import { StationRuntime } from '../../bootstrap/station-runtime.js';
@@ -647,6 +648,41 @@ describe('persisted telemetry configuration during Agent activation', () => {
         await expect(response.json()).resolves.toMatchObject({
           configurationActivation: { status: 'pending' },
         });
+        if (collectorChanged) {
+          const refusedProbe = await checkOtelTelemetryConnection();
+          expect(refusedProbe).toMatchObject({
+            phase: 'failed',
+            failure: { code: 'restart_required' },
+          });
+          const repeat = await app.request(
+            '/config/app',
+            {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(await loader.loadAppConfig()),
+            },
+            loopbackEnv(),
+          );
+          expect(repeat.status).toBe(202);
+          expect(getOtelTelemetryDeliveryStatus().probe).toEqual(refusedProbe);
+          expect(collector.credentialAbort.signal.aborted).toBe(true);
+          const restoredBootSettings = await app.request(
+            '/config/app',
+            {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(initial),
+            },
+            loopbackEnv(),
+          );
+          expect(restoredBootSettings.status).toBe(202);
+          expect(getOtelTelemetryDeliveryStatus().phase).toBe(
+            'restart-required',
+          );
+          expect(collector.credentialAbort.signal.aborted).toBe(true);
+          completeOldExport(true);
+          expect(getOtelTelemetryDeliveryStatus().traces.accepted).toBe(0);
+        }
       } finally {
         runtime.agentConfigurationMutationsClosed = true;
         releaseActivation();
