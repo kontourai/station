@@ -22,6 +22,12 @@ import {
 } from '@kontourai/station-shared/json-file-storage';
 
 export const STATION_GROUPS_FILE = 'station-groups.json';
+/**
+ * When Station groups shipped. First-use seeding only considers devices
+ * issued before this, so it reproduces the pre-groups state, never a grant
+ * made afterwards.
+ */
+export const STATION_GROUPS_INTRODUCED_AT = Date.UTC(2026, 9, 12);
 const RECORD_VERSION = 1;
 const MAX_BYTES = 256 * 1024;
 const MAX_PRINCIPAL_ID_LENGTH = 512;
@@ -145,7 +151,9 @@ export class StationGroupsService {
     let key: string;
     try {
       const status = statSync(this.#path);
-      key = `${status.size}:${status.mtimeMs}`;
+      // Atomic replacement changes the inode, so a rewrite of equal size
+      // within the mtime granularity still invalidates the cache.
+      key = `${status.ino}:${status.size}:${status.mtimeMs}:${status.ctimeMs}`;
     } catch {
       return emptyRecord();
     }
@@ -159,8 +167,9 @@ export class StationGroupsService {
         }),
       );
     } catch {
-      // Fail closed: an unreadable record places everyone in Member.
-      record = emptyRecord();
+      // Fail closed: an unreadable record places everyone in Member. Not
+      // cached, so a transient read failure ends with the next read.
+      return emptyRecord();
     }
     this.#cache = { key, record };
     return record;

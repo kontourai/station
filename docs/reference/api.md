@@ -3514,7 +3514,9 @@ sealing, activation, cancellation, recovery and evidence limits.
 
 ## People and Station groups
 
-Operator only, on the pairing family's gate (`currentOperator`):
+Like the device list, `GET` is admitted by the pairing family's boundary (the
+operator credential or the desktop's own local grant); changing a group needs
+the operator credential itself, as changing a device's access does:
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
   with a group assignment or a live device tied to them, each with `group`,

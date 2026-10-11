@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { afterEach, describe, expect, test } from 'vitest';
+import { nativeActiveDevice } from '../../../runtime/bootstrap/native-device-proof-runtime.js';
 import { consentDecisionAuthority } from '../../../security/pairing-route-scopes.js';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
@@ -23,13 +24,20 @@ afterEach(() => {
     rmSync(home, { recursive: true, force: true });
 });
 
-async function station() {
+async function station(now?: () => number) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-groups-'));
   homes.push(homeDir);
-  const security = new EnvironmentSecurityService({ homeDir });
+  const security = new EnvironmentSecurityService({
+    homeDir,
+    ...(now ? { now } : {}),
+  });
   await security.initialize();
   return { homeDir, security };
 }
+
+// Literal: the day before groups shipped, and the day after.
+const BEFORE_GROUPS = () => Date.UTC(2026, 9, 1);
+const AFTER_GROUPS = () => Date.UTC(2026, 9, 20);
 
 function pair(
   pairing: DevicePairingService,
@@ -164,7 +172,7 @@ describe('Station groups cap a device tied to a person', () => {
   });
 
   test('first use seeds Admin for people whose devices already held an elevated grant, so nothing is taken away', async () => {
-    const { homeDir, security } = await station();
+    const { homeDir, security } = await station(BEFORE_GROUPS);
     const casey = pair(
       security.devicePairing,
       'Casey phone',
@@ -180,7 +188,10 @@ describe('Station groups cap a device tied to a person', () => {
     // As before groups shipped: no record yet.
     rmSync(join(homeDir, 'security', STATION_GROUPS_FILE), { force: true });
 
-    const restarted = new EnvironmentSecurityService({ homeDir });
+    const restarted = new EnvironmentSecurityService({
+      homeDir,
+      now: BEFORE_GROUPS,
+    });
     await restarted.initialize();
     expect(restarted.groupOf(person('casey@example.test'))).toBe('admin');
     expect(restarted.groupOf(person('dana@example.test'))).toBe('member');
@@ -192,6 +203,40 @@ describe('Station groups cap a device tied to a person', () => {
     const again = new EnvironmentSecurityService({ homeDir });
     await again.initialize();
     expect(again.groupOf(person('casey@example.test'))).toBe('member');
+  });
+
+  test('a lost record never re-promotes anyone from a grant made after groups shipped', async () => {
+    const { homeDir, security } = await station(AFTER_GROUPS);
+    const casey = pair(
+      security.devicePairing,
+      'Casey phone',
+      ADMIN_LIKE,
+      'casey@example.test',
+    );
+    rmSync(join(homeDir, 'security', STATION_GROUPS_FILE), { force: true });
+    const restarted = new EnvironmentSecurityService({
+      homeDir,
+      now: AFTER_GROUPS,
+    });
+    await restarted.initialize();
+    expect(restarted.groupOf(person('casey@example.test'))).toBe('member');
+    expect(restarted.resolveGrantedScope(casey.credential)).toBe(STANDARD);
+  });
+
+  test("a native request acts with the capped scope, through the runtime's device lookup", async () => {
+    const { security } = await station();
+    const casey = pair(
+      security.devicePairing,
+      'Casey phone',
+      ADMIN_LIKE,
+      'casey@example.test',
+    );
+    const phone = pair(security.devicePairing, 'My phone', ADMIN_LIKE);
+    const activeDevice = nativeActiveDevice(security.devicePairing);
+    expect(activeDevice(casey.device.id)?.scope).toBe(STANDARD);
+    expect(activeDevice(phone.device.id)?.scope).toBe(ADMIN_LIKE);
+    await security.assignGroup(person('casey@example.test'), 'admin');
+    expect(activeDevice(casey.device.id)?.scope).toBe(ADMIN_LIKE);
   });
 
   test('only a person can be placed in a group', async () => {

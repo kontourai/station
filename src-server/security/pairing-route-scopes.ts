@@ -1688,11 +1688,8 @@ export interface ConsentDecisionCredentialResolver {
   identifyDevice(
     candidate: string,
   ): { scope?: string; id?: string; name?: string; createdAt?: number } | null;
-  /**
-   * #3557: the scope the credential may actually use (Station group cap).
-   * Preferred over the device's granted scope when present.
-   */
-  resolveGrantedScope?(candidate: string): string | undefined;
+  /** #3557: the scope the credential may actually use (Station group cap). */
+  resolveGrantedScope(candidate: string): string | undefined;
 }
 
 export type ConsentCredentialAuthority =
@@ -1725,9 +1722,7 @@ export function consentDecisionAuthority(
   if (resolver.verifyOperatorCredential(credential)) {
     return 'operator-credential';
   }
-  const scope = resolver.resolveGrantedScope
-    ? resolver.resolveGrantedScope(credential)
-    : resolver.identifyDevice(credential)?.scope;
+  const scope = resolver.resolveGrantedScope(credential);
   if (
     scope !== undefined &&
     pairingScopeIncludes(scope, PAIRING_SCOPE_CONSENT_DECIDE)

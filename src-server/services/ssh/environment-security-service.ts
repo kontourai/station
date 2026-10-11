@@ -66,7 +66,10 @@ import packageJson from '../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
-import { StationGroupsService } from '../access/station-groups-service.js';
+import {
+  STATION_GROUPS_INTRODUCED_AT,
+  StationGroupsService,
+} from '../access/station-groups-service.js';
 import { DevicePairingService } from './device-pairing-service.js';
 
 const SECURITY_DIRECTORY = 'security';
@@ -225,18 +228,12 @@ export class EnvironmentSecurityService {
   /**
    * #3557: what a device may actually use. A device tied to a person is
    * capped by that person's Station group. Uncapped: a device tied to no
-   * person (the operator's own), a peer Station delegation, and a
-   * home-possession credential (the operator's own UI on this host).
+   * person (the operator's own, including the desktop's home-possession
+   * credentials, which are never tied to anyone) and a peer Station
+   * delegation.
    */
-  #capScope = (
-    device: PairedDevice,
-    locality: 'home-possession' | undefined,
-  ): string => {
-    if (
-      !device.principalBinding ||
-      device.kind === 'delegation' ||
-      locality === 'home-possession'
-    )
+  #capScope = (device: PairedDevice): string => {
+    if (!device.principalBinding || device.kind === 'delegation')
       return device.scope;
     return capScopeToGroup(
       device.scope,
@@ -247,9 +244,11 @@ export class EnvironmentSecurityService {
   };
 
   /**
-   * #3557, first use only: people whose tied devices already hold a
-   * permission Member would remove start as Admin, so turning groups on
-   * takes nothing away. Afterwards the operator decides.
+   * #3557, first use only: people whose tied devices already held a
+   * permission Member would remove before groups existed start as Admin, so
+   * turning groups on takes nothing away. Afterwards the operator decides.
+   * Only devices issued before groups shipped count, so a lost record never
+   * re-promotes someone from a grant the operator has since capped.
    */
   async #seedGroups(pairing: DevicePairingService): Promise<void> {
     if (this.#groups.exists()) return;
@@ -258,7 +257,8 @@ export class EnvironmentSecurityService {
       if (
         device.revokedAt !== null ||
         !device.principalBinding ||
-        device.kind === 'delegation'
+        device.kind === 'delegation' ||
+        (device.issuedAt ?? device.createdAt) >= STATION_GROUPS_INTRODUCED_AT
       )
         continue;
       if (capScopeToGroup(device.scope, 'member') !== device.scope)

@@ -411,6 +411,7 @@ import {
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
+import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -9085,6 +9086,10 @@ export function configureDevicePairingHostRoutes(
     return c.json({
       devices: devices.map((device) => ({
         ...device,
+        // #3557: what it may use now (its person's Station group cap).
+        ...(device.revokedAt === null
+          ? { effectiveScope: pairing.effectiveScopeOfDevice(device.id) }
+          : {}),
         connectedClients: connected?.get(device.id) ?? null,
       })),
     });
@@ -9227,8 +9232,10 @@ export function configureDevicePairingHostRoutes(
     );
     try {
       await options.groups.assign(principalId, body.group);
-    } catch {
-      return c.json({ error: 'invalid_principal' }, 400);
+    } catch (error) {
+      return error instanceof StationGroupsError
+        ? c.json({ error: 'invalid_principal' }, 400)
+        : c.json({ error: 'groups_unavailable' }, 503);
     }
     observeOperatorCredentialUse(
       c,

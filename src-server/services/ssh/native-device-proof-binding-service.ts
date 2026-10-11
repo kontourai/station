@@ -294,11 +294,6 @@ class NativeDeviceProofOperatorApprovalContext {
 export interface NativeDeviceProofPairingSource {
   environmentId(): string;
   listDevices(): PairedDevice[];
-  /**
-   * #3557: the scope a device may use (its Station group's cap). Optional for
-   * narrow test sources; without it the device's granted scope is used.
-   */
-  effectiveScopeOfDevice?(deviceId: string): string | undefined;
 }
 
 interface BindingStoreFile {
@@ -809,19 +804,12 @@ export class NativeDeviceProofBindingService {
     if (binding.stationId !== stationId) return null;
     const device = this.#activeDeviceOrNull(input.deviceId);
     if (!device) return null;
-    // Binding validity follows the granted scope, so a Station group change
-    // never invalidates a binding; what the request may do follows the
-    // effective (group-capped) scope.
     if (!isPairingScopeSubset(binding.deviceScopeAtApproval, device.scope)) {
       return null;
     }
     return {
       binding: cloneBinding(binding),
-      device: {
-        id: device.id,
-        scope:
-          this.#pairing.effectiveScopeOfDevice?.(device.id) ?? device.scope,
-      },
+      device: { id: device.id, scope: device.scope },
     };
   }
 
