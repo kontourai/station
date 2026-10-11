@@ -1,0 +1,8 @@
+/* The Agent row owns the hover highlight (`.new-chat-modal__agent-row:hover`
+   in index.css), so its select button stays clear on hover: the global
+   `button:hover` outranks the button's own transparent background and painted
+   a rounded box over half the row and its accent bar. */
+.new-chat-modal__agent:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+}

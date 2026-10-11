@@ -8900,14 +8900,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-family: inherit;
 }
 
-/* The row owns the hover highlight (below), so the button stays clear on
-   hover too: the global `button:hover` outranks the class above and painted
-   a rounded box over half the row and its accent bar. */
-.new-chat-modal__agent:hover:not(:disabled) {
-  border-color: transparent;
-  background: transparent;
-}
-
 /* archive#3027(d): the row is the layout unit, so it owns the hairline that
    separates one agent from the next (it used to sit on the select button,
    which spans only the first column) and the two-column grid that puts state

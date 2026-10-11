@@ -13,6 +13,7 @@ import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttributio
 import { AgentIcon } from '../icons/AgentIcon';
 import { resolveNewChatAgentUnavailability } from '../modals/new-chat-modal-utils';
 import { contextGlyph } from './ContextPickerOptions';
+import './AgentPickerRow.css';
 
 /**
  * The engine as the row's chip names it. An engine named after the Agent
