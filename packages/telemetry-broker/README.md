@@ -132,8 +132,8 @@ refusals and private-file/legacy-environment positive controls. It binds the
 entrypoint and repository bundle digests separately and requires owned process
 cleanup. These authored controls still need execution on the current source;
 they are not image, Compose, private-host, backup/restore or release evidence.
-The runner also creates a unique owned
-database, tests HTTP commit/deduplication, revocation, saturation, ten malformed
+In that same database, the runner tests HTTP commit/deduplication, revocation,
+saturation, ten malformed
 schema cases across all nine repository entrypoints and the HTTP probe, and a stalled PostgreSQL
 transport followed by connection recovery. Missing prerequisites fail the
 command. It also checks that a probe inserts no source, observation or commit,

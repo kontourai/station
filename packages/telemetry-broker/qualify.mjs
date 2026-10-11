@@ -17,14 +17,131 @@ import {
 } from '../../scripts/lib/owned-process.mjs';
 import { createProductBroker, PgProductRepository } from './dist/index.mjs';
 
+async function assertEntrypointRefusal(execution, label) {
+  let timer;
+  try {
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label}: no bounded startup refusal`)),
+        6000,
+      );
+    });
+    const result = await Promise.race([execution.completion, deadline]);
+    assert.equal(result.error, undefined, label);
+    assert.equal(result.status, 1, label);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function assertEntrypointProbe(
+  execution,
+  port,
+  sourceKey,
+  sourceId,
+  label,
+) {
+  const base = `http://127.0.0.1:${port}`;
+  const deadline = performance.now() + 6000;
+  let inventory;
+  while (true) {
+    try {
+      const response = await fetch(`${base}/health/live`, {
+        signal: AbortSignal.timeout(500),
+      });
+      assert.equal(response.status, 200, label);
+      inventory = await response.json();
+      break;
+    } catch (error) {
+      if (
+        error.cause?.code !== 'ECONNREFUSED' ||
+        !execution.isAlive() ||
+        performance.now() >= deadline
+      )
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  const response = await fetch(`${base}/v1/product/probes`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': sourceKey },
+    body: JSON.stringify({
+      protocol: 'station-product-probe/v1',
+      inventoryRevision: inventory.inventoryRevision,
+    }),
+    signal: AbortSignal.timeout(6000),
+  });
+  assert.equal(response.status, 200, label);
+  assert.equal((await response.json()).probe.sourceId, sourceId, label);
+}
+
+async function exerciseEntrypoint({
+  label,
+  credential,
+  expected,
+  operatorFile,
+  databaseFile,
+  sourceKey,
+  sourceId,
+}) {
+  const reservation = createTcpServer();
+  await new Promise((resolve, reject) => {
+    reservation.once('error', reject);
+    reservation.listen(0, '127.0.0.1', resolve);
+  });
+  const port = reservation.address().port;
+  await new Promise((resolve) => reservation.close(resolve));
+  const execution = executeOwnedProcess(
+    process.execPath,
+    [fileURLToPath(new URL('./dist/main.mjs', import.meta.url))],
+    undefined,
+    'telemetry receiver entrypoint',
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      env: {
+        PATH: process.env.PATH,
+        STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: databaseFile,
+        STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE: operatorFile,
+        STATION_TELEMETRY_BROKER_HOST: '127.0.0.1',
+        STATION_TELEMETRY_BROKER_PORT: String(port),
+        ...credential,
+      },
+    },
+  );
+  const output = captureOwnedProcessOutput(execution, { maxBytes: 65536 });
+  try {
+    if (expected) await assertEntrypointRefusal(execution, label);
+    else
+      await assertEntrypointProbe(execution, port, sourceKey, sourceId, label);
+  } finally {
+    const cleanup = await terminateSuiteExecution(execution, {
+      terminationGraceMs: 7000,
+      terminationForceMs: 1000,
+      waitForSuiteSettlement,
+    });
+    assert(
+      cleanup.settled && !cleanup.escalated && cleanup.errors.length === 0,
+      `${label}: owned process cleanup failed`,
+    );
+  }
+  const result = await execution.completion;
+  assert.equal(result.status, expected ? 1 : 0, label);
+  const captured = output.finish();
+  assert(
+    !captured.truncated && !captured.invalidUtf8,
+    `${label}: incomplete process evidence`,
+  );
+  if (expected) assert.match(captured.stderr.text, expected, label);
+  return captured;
+}
+
 async function qualifyEntrypoint(
   databaseUrl,
   operatorKey,
   sourceKey,
   sourceId,
 ) {
-  if (process.platform === 'win32')
-    throw new Error('Entrypoint qualification requires the Unix file profile');
   const root = await mkdtemp(join(tmpdir(), 'station-telemetry-entrypoint-'));
   const operatorFile = join(root, 'operator-key');
   const databaseFile = join(root, 'database-url');
@@ -76,113 +193,20 @@ async function qualifyEntrypoint(
         null,
       ],
     ]) {
-      const reservation = createTcpServer();
-      await new Promise((resolve) =>
-        reservation.listen(0, '127.0.0.1', resolve),
-      );
-      const port = reservation.address().port;
-      await new Promise((resolve) => reservation.close(resolve));
-      const execution = executeOwnedProcess(
-        process.execPath,
-        [fileURLToPath(new URL('./dist/main.mjs', import.meta.url))],
-        undefined,
-        'telemetry receiver entrypoint',
-        {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: true,
-          env: {
-            PATH: process.env.PATH,
-            STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: databaseFile,
-            STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE: operatorFile,
-            STATION_TELEMETRY_BROKER_HOST: '127.0.0.1',
-            STATION_TELEMETRY_BROKER_PORT: String(port),
-            ...credential,
-          },
-        },
-      );
-      const output = captureOwnedProcessOutput(execution, { maxBytes: 65536 });
-      let timeout;
-      try {
-        if (expected) {
-          const deadline = new Promise((_, reject) => {
-            timeout = setTimeout(
-              () => reject(new Error(`${label}: no bounded startup refusal`)),
-              6000,
-            );
-          });
-          const result = await Promise.race([execution.completion, deadline]);
-          assert.equal(result.error, undefined, label);
-          assert.equal(result.status, 1, label);
-        } else {
-          const deadline = performance.now() + 6000;
-          while (true) {
-            try {
-              const response = await fetch(
-                `http://127.0.0.1:${port}/health/live`,
-                { signal: AbortSignal.timeout(500) },
-              );
-              assert.equal(response.status, 200, label);
-              await response.json();
-              break;
-            } catch (error) {
-              if (
-                error.cause?.code !== 'ECONNREFUSED' ||
-                !execution.isAlive() ||
-                performance.now() >= deadline
-              )
-                throw error;
-              await new Promise((resolve) => setTimeout(resolve, 50));
-            }
-          }
-          const response = await fetch(
-            `http://127.0.0.1:${port}/v1/product/probes`,
-            {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-                'x-api-key': sourceKey,
-              },
-              body: JSON.stringify({
-                protocol: 'station-product-probe/v1',
-                inventoryRevision: (
-                  await (
-                    await fetch(`http://127.0.0.1:${port}/health/live`, {
-                      signal: AbortSignal.timeout(500),
-                    })
-                  ).json()
-                ).inventoryRevision,
-              }),
-              signal: AbortSignal.timeout(6000),
-            },
-          );
-          assert.equal(response.status, 200, label);
-          assert.equal((await response.json()).probe.sourceId, sourceId, label);
-        }
-      } finally {
-        clearTimeout(timeout);
-        const cleanup = await terminateSuiteExecution(execution, {
-          terminationGraceMs: 7000,
-          terminationForceMs: 1000,
-          waitForSuiteSettlement,
-        });
-        assert(
-          cleanup.settled && !cleanup.escalated && cleanup.errors.length === 0,
-          `${label}: owned process cleanup failed`,
-        );
-      }
-      const result = await execution.completion;
-      assert.equal(result.status, expected ? 1 : 0, label);
-      const captured = output.finish();
-      assert(
-        !captured.truncated && !captured.invalidUtf8,
-        `${label}: incomplete process evidence`,
-      );
+      const captured = await exerciseEntrypoint({
+        label,
+        credential,
+        expected,
+        operatorFile,
+        databaseFile,
+        sourceKey,
+        sourceId,
+      });
       assert(
         !captured.stderr.text.includes(privateSentinel) &&
           !captured.stdout.text.includes(privateSentinel),
         `${label}: private input leaked`,
       );
-      if (expected) assert.match(captured.stderr.text, expected, label);
     }
   } finally {
     await rm(root, { recursive: true, force: true });
