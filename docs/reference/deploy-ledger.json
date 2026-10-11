@@ -1,5 +1,48 @@
 [
   {
+    "timestampUtc": "2026-10-11T11:06:12Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2475.3",
+    "sha": "5cb1c6b57f2ed893fff22a8cd8e7777d1ec7485d",
+    "artifactBuiltAt": "2026-10-11T10:26:12.896Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38129794582",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38129794582)"
+    ],
+    "changelog": {
+      "previousSha": "cb877da85eb6224508afcecf61eca139b084636d",
+      "groups": {
+        "feat": [
+          "[#3538](https://github.com/kontourai/station/pull/3538) feat(telemetry): version observations and bind disclosure acknowledgements"
+        ],
+        "fix": [
+          "[#3549](https://github.com/kontourai/station/pull/3549) fix: P1 bug sweep: 11 fixes and 5 partial fixes from the validated backlog",
+          "[#3546](https://github.com/kontourai/station/pull/3546) fix(ios): require iOS 16.4, where WebKit gained the regex lookbehind the UI uses; a Model reset never reads a bare \"Use\"",
+          "[#3525](https://github.com/kontourai/station/pull/3525) fix(notifications): silence external transcripts and repair Windows verification",
+          "[#3540](https://github.com/kontourai/station/pull/3540) fix(browser): keep compact panes and menus usable",
+          "[#3544](https://github.com/kontourai/station/pull/3544) fix(desktop): keep slow sidecar boots alive and recover inside the startup cover",
+          "[#3542](https://github.com/kontourai/station/pull/3542) fix(android): leave ndk_context to tao so Tauri 2.12 nightlies launch",
+          "[#3537](https://github.com/kontourai/station/pull/3537) fix(insights): expose retained scan coverage and reject unavailable totals"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3550](https://github.com/kontourai/station/pull/3550) docs(pages): publish a docs-kit bundle for the Kontour docs hub and shared MCP"
+        ],
+        "other": [
+          "[#3545](https://github.com/kontourai/station/pull/3545) perf(native): strip and LTO release builds; gate Android native size",
+          "[#3533](https://github.com/kontourai/station/pull/3533) perf: defer optional runtime and chat loads, reuse verification parsing",
+          "[#3543](https://github.com/kontourai/station/pull/3543) test(connect): wait for the initialized recovery controller"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-10-11T10:26:06Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2475.38129794582",
