@@ -51,9 +51,7 @@ export function resolveProductTelemetryEnvironment(
   };
 }
 
-function resolveOtelTelemetryEnvironment(
-  environment: NodeJS.ProcessEnv,
-) {
+function resolveOtelTelemetryEnvironment(environment: NodeJS.ProcessEnv) {
   return {
     endpoint: environment.OTEL_EXPORTER_OTLP_ENDPOINT?.trim() || undefined,
     key: resolveEnvironmentValue(
