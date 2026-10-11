@@ -635,6 +635,7 @@ import {
   reviewEvidenceDuration,
   reviewEvidenceOperations,
 } from '../../telemetry/metrics.js';
+import { reconfigureOtelTelemetryDelivery } from '../../telemetry-delivery-state.js';
 import {
   buildStationBasisProjectionToolResult,
   buildStationBasisUnavailableToolResult,
@@ -6226,6 +6227,10 @@ export function configureRuntimeRoutes(
       (request) =>
         isBoundRuntimeLocalOperator(request) &&
         isRequestPrincipalCurrent(request),
+      (config) => {
+        context.getUsageTelemetry?.()?.reconfigure(config);
+        reconfigureOtelTelemetryDelivery(config);
+      },
     ),
   );
   context.app.route(

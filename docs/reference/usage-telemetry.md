@@ -75,6 +75,12 @@ Selecting a reference or saving an address never grants it implicitly. A revoked
 or person-owned reference cannot receive an instance destination grant.
 Changing a destination or key reference withdraws queued observations bound to
 the old destination, aborts/fences its attempts and clears its current health.
+The config PUT applies this change from the validated persisted configuration
+before awaiting Agent/provider activation. Disabling product telemetry also
+withdraws queued observations at that boundary. A pending Agent activation
+response does not defer telemetry withdrawal. Unchanged telemetry settings
+preserve requests, queues and delivery health. External reconciliation applies
+telemetry after its validated config read, before preparing Agents.
 External secret backend reads run through a deadline-owned Datum child; raw
 keys never persist in AppConfig or appear in status.
 

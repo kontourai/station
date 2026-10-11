@@ -5,6 +5,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
+  type AppConfig,
   describeFirstRunTransitionViolation,
   type FirstRunTransitionRequest,
   firstRunStateForTransition,
@@ -252,6 +253,7 @@ export function createConfigRoutes(
   // that never ask about a project see no behavior change.
   readProject?: (slug: string) => ProjectConfig | undefined,
   authorizeContributionMutation?: (request: Request) => boolean,
+  onAppConfigPersisted?: (config: AppConfig) => void,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -710,9 +712,9 @@ export function createConfigRoutes(
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
       const contributionRequested = Object.hasOwn(accepted, 'contribution');
-      const update = (beginMutation: () => void) => {
+      const update = async (beginMutation: () => void) => {
         beginMutation();
-        return configLoader.mutateAppConfig((current) => {
+        const updated = await configLoader.mutateAppConfig((current) => {
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -742,6 +744,9 @@ export function createConfigRoutes(
           }
           return accepted;
         });
+        // Telemetry withdrawal must not wait for unrelated Agent activation.
+        onAppConfigPersisted?.(updated);
+        return updated;
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,

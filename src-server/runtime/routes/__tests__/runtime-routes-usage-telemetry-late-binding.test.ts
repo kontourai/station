@@ -16,9 +16,21 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { FileSecretBindingAdministration } from '../../../services/secrets/secret-binding-administration.js';
+import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../../services/usage-telemetry-service.js';
+import {
+  beginOtelExport,
+  beginOtelTelemetryDelivery,
+  getOtelTelemetryDeliveryStatus,
+} from '../../../telemetry-delivery-state.js';
+import { StationRuntime } from '../../bootstrap/station-runtime.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 const runtimeSupport = vi.hoisted(() => {
@@ -338,4 +350,313 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       await live.shutdown();
     }
   });
+});
+
+describe('persisted telemetry configuration during Agent activation', () => {
+  const homes: Array<{ homeDir: string; loader: ConfigLoader }> = [];
+  afterEach(async () => {
+    for (const { homeDir, loader } of homes.splice(0)) {
+      await loader.dispose();
+      await loader.whenWatcherClosed();
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+  // The existing service suite owns receipt validity and exact grants. This
+  // boundary owns whether a real saved change reaches those services before
+  // the real mutation runner finishes unrelated Agent activation.
+  test.each([
+    { label: 'disable', update: { telemetryEnabled: false } },
+    {
+      label: 'replace product destination',
+      update: {
+        productTelemetryEndpoint: 'https://replacement.test/v1/product/events',
+      },
+    },
+    {
+      label: 'clear product reference',
+      update: { productTelemetryKeyRef: null },
+    },
+    {
+      label: 'replace collector destination',
+      update: { otelTelemetryEndpoint: 'https://replacement-collector.test' },
+    },
+    {
+      label: 'clear collector reference',
+      update: { otelTelemetryKeyRef: null },
+    },
+    { label: 'unchanged full settings round-trip', update: {} },
+  ])(
+    '$label fences only changed telemetry before held/failing activation',
+    async ({ update }) => {
+      const homeDir = mkdtempSync(
+        join(tmpdir(), 'station-telemetry-persisted-'),
+      );
+      const loader = new ConfigLoader({
+        projectHomeDir: homeDir,
+        watchFiles: false,
+      });
+      homes.push({ homeDir, loader });
+      const logger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      };
+      const initial = await loader.updateAppConfig({
+        telemetryEnabled: true,
+        productTelemetryEndpoint: 'https://receiver.test/v1/product/events',
+        productTelemetryKeyRef: 'product-source',
+        otelTelemetryEndpoint: 'https://collector.test',
+        otelTelemetryKeyRef: 'otel-source',
+      });
+      const bindings = new FileSecretBindingAdministration(homeDir, {
+        environment: { PRODUCT_KEY: 'private-old-product-key' },
+      });
+      await bindings.create({
+        id: 'product-source',
+        name: 'Source',
+        authRef: { env: 'PRODUCT_KEY' },
+      });
+      await bindings.grant({
+        id: 'product-source',
+        expectedRevision: 1,
+        grant: {
+          kind: 'instance-telemetry-destination',
+          transport: 'product',
+          destination: initial.productTelemetryEndpoint!,
+        },
+      });
+
+      const runtime = Object.create(StationRuntime.prototype);
+      Object.assign(runtime, {
+        configLoader: loader,
+        logger,
+        appConfig: initial,
+        agentConfigurationRevision: 0,
+        agentConfigurationPersistenceRevision: 0,
+        agentConfigurationMutationQueue: Promise.resolve(),
+        agentConfigurationPersistenceQueue: Promise.resolve(),
+        agentConfigurationMutationsClosed: false,
+        agentConfigurationActivationDeadlineMs: 10_000,
+        configurationReconciliationAttempt: 0,
+        configurationReconciliationScheduled: false,
+        timers: [],
+        runtimeConfigurationSourcesAreLoaded: () => false,
+      });
+      let releaseActivation!: () => void;
+      const heldActivation = new Promise<void>((resolve) => {
+        releaseActivation = resolve;
+      });
+      runtime.reloadAgentsFromDisk = vi.fn(async () => {
+        await heldActivation;
+        throw new Error('injected unrelated Agent activation failure');
+      });
+
+      const app = new Hono();
+      bindOperatorPrincipal(app);
+      let live: UsageTelemetryService | undefined;
+      const mounted = configureRuntimeRoutesProduction(
+        runtimeContext(app, homeDir, {
+          configLoader: loader,
+          usageTelemetry: undefined,
+          getUsageTelemetry: () => live,
+          applyAgentConfigurationMutation:
+            runtime.applyAgentConfigurationMutation.bind(runtime),
+        }),
+      );
+      await mounted.kitLifecycleReady;
+
+      let releaseResponse!: () => void;
+      let releaseProbe: (() => void) | undefined;
+      let probeSignal: AbortSignal | null | undefined;
+      let pendingSignal: AbortSignal | null | undefined;
+      const accepted = (init?: RequestInit) => {
+        const batch = JSON.parse(String(init?.body)) as ProductTelemetryBatch;
+        return Response.json(
+          {
+            receipt: {
+              protocol: 'station-product-commit/v1',
+              receiptId: '11111111-2222-4333-8444-555555555555',
+              sourceId: '22222222-2222-4333-8444-555555555555',
+              eventIds: batch.events.map((event) => event.event_id),
+              inserted: batch.events.length,
+              alreadyPresent: 0,
+              storedAt: '2026-10-11T06:00:00.000Z',
+            },
+          },
+          { status: 202 },
+        );
+      };
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockImplementationOnce(async (_input, init) => accepted(init))
+        .mockImplementation(
+          (input, init) =>
+            new Promise<Response>((resolve) => {
+              if (String(input).endsWith('/probes')) {
+                probeSignal = init?.signal;
+                releaseProbe = () =>
+                  resolve(
+                    Response.json({
+                      probe: {
+                        protocol: 'station-product-probe/v1',
+                        sourceId: '22222222-2222-4333-8444-555555555555',
+                        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+                        checkedAt: '2026-10-11T06:00:00.000Z',
+                        storage: 'postgres-schema-v1',
+                      },
+                    }),
+                  );
+                return;
+              }
+              pendingSignal = init?.signal;
+              // Deliberately ignores cancellation: a late valid receipt must still
+              // lose authority when the saved configuration changes.
+              releaseResponse = () => resolve(accepted(init));
+            }),
+        );
+      live = new UsageTelemetryService({
+        homeDir,
+        appConfig: initial,
+        version: '1.2.3',
+        logger,
+        env: {},
+        fetch,
+        telemetrySecretResolver: bindings,
+        setInterval: vi.fn() as typeof setInterval,
+      });
+      const collector = beginOtelTelemetryDelivery(
+        initial.otelTelemetryEndpoint!,
+        undefined,
+        initial,
+      );
+      const completeOldExport = beginOtelExport(collector, 'traces');
+      let flushing: Promise<void> | undefined;
+      let probing:
+        | ReturnType<UsageTelemetryService['checkConnection']>
+        | undefined;
+      let saving: Promise<Response> | undefined;
+      try {
+        await live.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
+        await live.stationStarted();
+        await live.flush();
+        const acknowledged = await live.deliveryStatus();
+        expect(acknowledged.counts.acknowledged).toBe(1);
+        expect(acknowledged.lastAcknowledged).not.toBeNull();
+        await live.stationStarted();
+        flushing = live.flush();
+        await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+        expect(fetch.mock.calls[1][1]?.headers).toMatchObject({
+          'x-api-key': 'private-old-product-key',
+        });
+        const productDestinationChanged =
+          'productTelemetryEndpoint' in update ||
+          'productTelemetryKeyRef' in update;
+        if (productDestinationChanged) {
+          probing = live.checkConnection();
+          await vi.waitFor(() => expect(releaseProbe).toBeTypeOf('function'));
+        }
+        const before = await live.deliveryStatus();
+        const refused = await app.request(
+          '/config/app',
+          {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              productTelemetryEndpoint:
+                'https://receiver.test/events?key=private',
+              telemetryEnabled: false,
+            }),
+          },
+          loopbackEnv(),
+        );
+        expect(refused.status).toBe(400);
+        expect(await loader.loadAppConfig()).toEqual(initial);
+        expect(runtime.reloadAgentsFromDisk).not.toHaveBeenCalled();
+        expect(pendingSignal?.aborted).toBe(false);
+        expect((await live.deliveryStatus()).queued).toBe(1);
+        let saveSettled = false;
+        saving = app
+          .request(
+            '/config/app',
+            {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ ...initial, ...update }),
+            },
+            loopbackEnv(),
+          )
+          .then((response) => {
+            saveSettled = true;
+            return response;
+          });
+        await vi.waitFor(() =>
+          expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
+        );
+        const persisted = await loader.loadAppConfig();
+        for (const [key, value] of Object.entries(update)) {
+          expect(persisted[key as keyof AppConfig]).toBe(
+            value === null ? undefined : value,
+          );
+        }
+        expect(saveSettled).toBe(false);
+        expect(runtime.appConfig).toBe(initial);
+
+        const productChanged =
+          'telemetryEnabled' in update ||
+          'productTelemetryEndpoint' in update ||
+          'productTelemetryKeyRef' in update;
+        const collectorChanged =
+          'otelTelemetryEndpoint' in update || 'otelTelemetryKeyRef' in update;
+        const during = await live.deliveryStatus();
+        if (productChanged) {
+          expect(pendingSignal?.aborted).toBe(true);
+          expect(during.queued).toBe(0);
+          expect(during.counts.withdrawn).toBe(1);
+          if ('telemetryEnabled' in update)
+            expect(during.phase).toBe('disabled');
+        } else {
+          expect(pendingSignal?.aborted).toBe(false);
+          expect(during.queued).toBe(1);
+          expect(during.lastAcknowledged).toEqual(before.lastAcknowledged);
+        }
+        expect(getOtelTelemetryDeliveryStatus().phase).toBe(
+          collectorChanged ? 'restart-required' : 'initializing',
+        );
+        expect(collector.credentialAbort.signal.aborted).toBe(collectorChanged);
+        completeOldExport(true);
+        expect(getOtelTelemetryDeliveryStatus().traces.accepted).toBe(
+          collectorChanged ? 0 : 1,
+        );
+        if (productDestinationChanged) {
+          expect(probeSignal?.aborted).toBe(true);
+          releaseProbe!();
+          await probing;
+          expect((await live.deliveryStatus()).probe.phase).not.toBe('ready');
+        }
+        releaseResponse();
+        await flushing;
+        const afterLateReceipt = await live.deliveryStatus();
+        expect(afterLateReceipt.counts.acknowledged).toBe(
+          productChanged ? 1 : 2,
+        );
+        expect(fetch).toHaveBeenCalledTimes(productDestinationChanged ? 3 : 2);
+        releaseActivation();
+        const response = await saving;
+        expect(response.status).toBe(202);
+        await expect(response.json()).resolves.toMatchObject({
+          configurationActivation: { status: 'pending' },
+        });
+      } finally {
+        runtime.agentConfigurationMutationsClosed = true;
+        releaseActivation();
+        releaseResponse?.();
+        releaseProbe?.();
+        await Promise.allSettled([saving, flushing, probing]);
+        for (const timer of runtime.timers) clearTimeout(timer);
+        await runtime.drainConfigurationQueues();
+        await live.shutdown();
+      }
+    },
+  );
 });

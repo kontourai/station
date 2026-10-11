@@ -2595,6 +2595,7 @@ export class StationRuntime {
       },
       loadAppConfig: async () => {
         stagedAppConfig = await this.configLoader.loadAppConfig();
+        this.applyPersistedTelemetryConfiguration(stagedAppConfig);
         return stagedAppConfig;
       },
     });
@@ -2602,8 +2603,6 @@ export class StationRuntime {
     this.rebuildGlobalToolRegistry();
     this.assertAgentConfigurationRevisions(configurationBefore, composition);
     this.appConfig = appConfig;
-    this.usageTelemetry?.reconfigure(appConfig);
-    reconfigureOtelTelemetryDelivery(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
     if (registryPolicyApplication)
       await this.registryTrustPolicyAuthority!.publishApplied(
@@ -3161,6 +3160,7 @@ export class StationRuntime {
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
       const appConfig = await this.configLoader.loadAppConfig();
+      this.applyPersistedTelemetryConfiguration(appConfig);
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -3168,10 +3168,13 @@ export class StationRuntime {
       this.rebuildGlobalToolRegistry();
       this.assertAgentConfigurationRevisions(configurationBefore);
       this.appConfig = appConfig;
-      this.usageTelemetry?.reconfigure(appConfig);
-      reconfigureOtelTelemetryDelivery(appConfig);
       this.recordLoadedConfigurationRevisions(configurationBefore);
     });
+  }
+
+  private applyPersistedTelemetryConfiguration(config: AppConfig): void {
+    this.usageTelemetry?.reconfigure(config);
+    reconfigureOtelTelemetryDelivery(config);
   }
 
   private async reloadDefaultAgentFromConfig(
