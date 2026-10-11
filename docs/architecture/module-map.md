@@ -905,19 +905,20 @@ recovery once, but never restarts or signals the sidecar. An overdue epoch
 still admits the exact late ticket, identity proof and mount, which reveal the
 window without user action. The renderer's
 [bundled-profile bootstrap](../../src-ui/src/platform/native/bundledLocalProfileBootstrap.ts)
-likewise has no wall-clock limit while the owned sidecar is `starting`,
-`restarting` (the supervisor's attempt cap ends that in `failed`) or
-`stopping` (set only by a manual restart, which always respawns), so a fresh
-home still gets the profile its identity proof requires after a long boot. For
-a `failed` or `stopped` sidecar it asks the host whether its WebView is
-already shown (`startup_window_admitted`: a non-main window, or the main window
-once readiness is Ready or bypassed). A covered main window keeps waiting in
-place, behind a cover that offers Restart/Quit after the deadline, and an
-explicit Restart lets the same bootstrap author and authorize on its normal
-path; a shown window releases the loader at once to the in-app recovery UI and
-stops polling. Identity commit plus renderer mount can reveal the window
-before the bootstrap finishes authorizing (the mount commit sits outside
-`PlatformBootstrap`), exactly as before this change. On macOS the cover switches
+treats `starting`, `restarting` (the supervisor's attempt cap ends that in
+`failed`) and `stopping` (set only by a manual restart, which always respawns)
+as progressing. It asks the host whether its WebView is already shown
+(`startup_window_admitted`: a non-main window, or the main window once
+readiness is Ready or bypassed) when the owned sidecar is `failed` or
+`stopped`, and after its fast-poll budget of about a minute. A covered main
+window has no wall-clock limit: it keeps waiting in place behind a cover that
+offers Restart/Quit after the deadline, so a fresh home still gets the profile
+its identity proof requires after a long boot, and an explicit Restart lets the
+same bootstrap author and authorize on its normal path. A shown window has only
+the in-app recovery UI, so it releases the loader at once for a terminal
+sidecar, or after that budget for a progressing one, and then stops polling.
+Because the mount commit sits outside `PlatformBootstrap`, identity commit plus
+renderer mount can reveal the window while the bootstrap is still authorizing. On macOS the cover switches
 in place to a "taking longer than usual" message with **Restart** (the default
 button) and **Quit**; a background (tray-only) launch defers it until
 activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
@@ -947,8 +948,11 @@ readiness.
 
 Pure Rust state/claim tests and
 [startup wiring tests](../../scripts/__tests__/startup-readiness-static.test.ts)
-cover the decision boundaries. They do not prove AppKit pixels, the cover's
-buttons, OS dialogs, real IPC or packaged behavior. The [native verification guide](../guides/native-shell-verification.md)
+cover the decision boundaries, including the fronting decision for a window
+the user hid. That AppKit code applies that decision (every window-raising
+call gated by it) is only a source-structure pin. These tests do not prove
+AppKit pixels, the cover's buttons, OS dialogs, real IPC or packaged
+behavior. The [native verification guide](../guides/native-shell-verification.md)
 and [recovery guide](../user/native-recovery.md) keep those platform checks
 separate.
 

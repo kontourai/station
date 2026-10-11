@@ -54,14 +54,15 @@ You do not have to choose. Desktop does not stop its local service when the
 30 seconds pass. When the service finishes starting, the window opens without
 any action from you (unless Station was launched in the background, or you
 closed the window while waiting), and the macOS cover and its buttons
-disappear. There is no time limit while the service is still starting,
-including on a first launch, when Station creates this computer's local
-connection only after the service is running. If the service fails instead,
+disappear. While that window is still waiting to open there is no time limit
+on the service starting, including on a first launch, when Station creates
+this computer's local connection only after the service is running. If the service fails instead,
 waiting does not help: the **Restart** and **Quit** choices above still appear
 when the 30 seconds pass, and Restart starts it again and lets Station finish
 opening. If Station's window is already open (for example after you reload it,
-or in a separate workspace window) and its service has stopped or failed, the
-window shows Station's recovery screen right away instead of waiting. On
+or in a separate workspace window), it shows Station's recovery screen right
+away if the service has stopped or failed, and after about a minute if the
+service is still starting or restarting. On
 Windows and Linux, the dialog
 can stay open after the window appears; its buttons are then ignored. On
 macOS, activating the app (Dock, second launch, deep link) shows the cover
