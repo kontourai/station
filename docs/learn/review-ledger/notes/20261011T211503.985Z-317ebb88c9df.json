@@ -1,0 +1,9 @@
+{
+  "revision": "5f0bf7872e70b86b47a281c543386212540d7706",
+
+  "notes": [
+    {"path":"docs/adr/0005-require-a-second-consumer-before-extraction.md","note":"Added the dated two-tier amendment from the maintainer decision on #3558 (item 2), keeping the original decision text visible under a status line. Checked the Ephemeris precedent against src-server/services/scheduling (imports @kontourai/ephemeris; cron.ts removed per archive#1940 comment in scheduler.test.ts) and ADR 0021's SDK-split rule for scope. No implementation claim: the boundary check, conformance suite and kernel package do not exist yet.","inputs":["docs/adr/0005-require-a-second-consumer-before-extraction.md"]},
+
+    {"path":"CONTEXT.md","note":"Updated the extraction sentence in Codebase design and verification to name ADR 0005's two tiers; the Tier 2 criteria (second consumer, public contract, product-owned verification, reduced Station-owned code) are retained unchanged. Other sections not re-reviewed.","inputs":["CONTEXT.md"]}
+  ]
+}
