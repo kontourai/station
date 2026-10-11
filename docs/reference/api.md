@@ -1062,6 +1062,29 @@ write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
 See [config reference](config.md) for effective defaults and consumer limits.
 
+Telemetry destination/reference fields have an additional operator or
+`access:manage` guard; an internal-agent request cannot write them. Invalid
+addresses fail before persistence. Product destination changes fence the old
+queue and requests; saved collector changes require restart activation. See
+[telemetry settings](config.md#telemetry-destinations) for the exact fields.
+
+### Telemetry delivery status and connection checks
+
+`GET /api/usage-telemetry/delivery-status` requires `orchestration:read` and
+returns the current process's product queue, exact-receipt acknowledgements,
+loss/failure counters and OTel callback/probe state. It carries presence flags
+and counters rather than addresses, keys, installation IDs or receipt IDs.
+Unsupported versions and unavailable state must not be replaced with healthy
+defaults or cached success.
+
+`POST /api/usage-telemetry/connection-checks/product` and
+`POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
+Product checks use a separate content-free source/schema probe;
+OTel checks send empty metrics and trace requests. Neither creates product
+disclosure consent or establishes downstream delivery/query acceptance. The
+[usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
+owns the protocol, saved authority and failure limits.
+
 ---
 
 ## Connections
