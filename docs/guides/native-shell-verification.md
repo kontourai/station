@@ -375,9 +375,13 @@ The static test pins release-channel hidden-window configuration and the one
 native reveal authority. The renderer does not commit startup readiness; the
 native shell requests that commit itself. The Rust lane
 proves pure readiness and sidecar-supervisor transitions, including stale
-generation, deadline, retry, service recovery-surface recommit, and the
-four automatic respawns before the fifth counted exit is terminal. None launches
-a packaged app or sees a native dialog.
+generation, a deadline that never restarts the sidecar, late-ticket reveal,
+explicit retry, service recovery-surface recommit, and the four automatic
+respawns before the fifth counted exit is terminal. Desktop crate tests also
+drive the deadline, Restart/Quit and dialog routing through a recording host,
+and on macOS the cover's pure key routing. None launches a packaged app or sees
+the native cover or dialog; the macOS-only cover tests do not run on the Linux
+Desktop Rust lane.
 
 For the existing hostile-plugin browser test, use a distinct disposable home,
 a unique instance, and an OS-allocated non-default port block. Keep allocation,
@@ -446,21 +450,50 @@ backend, a recovery-surface commit can admit the mounted shell without a
 sidecar ticket. This establishes recovery UI readiness, not backend availability.
 
 The native host arms a 30-second deadline for each epoch. If readiness is still
-waiting, it normally shows Retry/Exit once. A pending activation instead starts
-another readiness epoch; activation after failure also resumes readiness.
-An owned sidecar with a current ticket gets one non-disruptive reprobe. If that
-does not settle and another retry follows, or there is no current ticket,
-the host requests an owned-sidecar restart. A non-owned backend receives a
-recovery-surface recommit, never a durable-service restart. These effects are
-routed by [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).
+waiting, the epoch becomes overdue: the host offers Restart/Quit once and keeps
+the sidecar running. The deadline never restarts, reprobes or signals the
+sidecar, and an overdue epoch still admits the exact late ticket, identity
+proof and mount, so a slow cold boot reveals the window on its own. (Before
+this, the deadline restarted a still-booting sidecar; a 30-40 s cold boot then
+looped indefinitely.) Restart is the only route to a process effect: an owned
+sidecar with a current ticket gets one non-disruptive reprobe, and if that does
+not settle and Restart is chosen again, or there is no current ticket, the host
+requests an owned-sidecar restart. A non-owned backend re-runs the native
+recovery commit (so a late renderer mount still reveals), never a
+durable-service restart. Quit exits only
+while the same epoch is still overdue. Activation never restarts. These effects
+are routed by [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs). The
+sidecar supervisor itself has no boot or handshake timeout; it waits for the
+generation-tagged handshake or child exit.
 
 On macOS, pending activation may present a native-owned cover so the WebView
-can render while the proof proceeds. Application content remains covered until
-identity and mount readiness converge. Other desktop platforms retain the
-hidden-window behavior. Interactive second launch, accepted deep link, and
-macOS reopen use this authority; explicit background/tray-only launches can
-suppress activation. Home/schema preparation refusals before supervisor setup
-have a separate Exit-only dialog and start no backend.
+can render while the proof proceeds. It shows the application icon and
+**Starting Station**; when the epoch becomes overdue it switches in place to
+**Station is taking longer than usual to start.** with native **Restart**
+(default) and **Quit** buttons, replacing the former modal alert. While the
+cover is up, a window-scoped key monitor evicts the hidden WebView from first
+responder (WebKit can retake it) and routes key-down/key-up events (modifier-only
+`flagsChanged` events still reach the page): it maps Return to Restart, lets
+Tab/Space operate only the cover's buttons, swallows Escape and typing, and
+passes only app and window management Command shortcuts, identified by the
+typed ASCII letter or, for a non-ASCII character, the US ANSI key position. A cover task that fails, including an early
+return inside the WebView callback, falls back to a non-blocking dialog once
+per epoch. Closing the covered window only hides it; recovery is deferred and
+each cover change decides on the main thread when it applies whether to order
+the window front, so neither a queued cover nor the late reveal brings it back
+until the next activation. An overdue
+background (tray-only) launch defers that cover until activation. Application
+content remains covered until identity and mount readiness converge; reveal
+removes the cover and its buttons. Other desktop platforms retain the
+hidden-window behavior and show a native dialog with **Restart**, **Quit** and
+**Keep Waiting**; dismissal keeps waiting and re-offers the choice after 30,
+60, then every 120 seconds while still overdue. That dialog (and the macOS
+fallback alert) can remain open after a late reveal, where its buttons are
+inert. Interactive
+second launch, accepted deep link, and macOS reopen use this authority;
+explicit background/tray-only launches can suppress activation. Home/schema
+preparation refusals before supervisor setup have a separate Exit-only dialog
+and start no backend.
 
 The sidecar supervisor in
 [`src-desktop/src/bundled_server_state.rs`](../../src-desktop/src/bundled_server_state.rs)
@@ -474,7 +507,7 @@ Interpret evidence narrowly:
 
 | Observation | It establishes | It does not establish |
 | --- | --- | --- |
-| Rust readiness/supervisor test passes | State-machine transition contract | Tauri window visibility, dialog rendering, real process lifetime, or package behavior |
+| Rust readiness/supervisor test passes | State-machine transition contract | Tauri window visibility, cover or dialog rendering, real process lifetime, or package behavior |
 | Startup-readiness static test passes | Source wiring for native proof and renderer-mount separation | An executed authenticated Tauri IPC exchange, a visible window, or correct pixels |
 | Browser hostile-plugin spec passes | Isolated browser-frame containment | Native plugin IPC denial or a release-shell sandbox |
 | Sidecar status reaches `failed` after five attempts | Supervisor exhausted automatic sidecar restarts | Cause of the child failure or renderer recovery |
@@ -482,9 +515,9 @@ Interpret evidence narrowly:
 
 Window recreation exists, but this review establishes no automatic
 renderer-process-death detection, kill-the-WebView command, or physically
-proved bounded renderer-reload loop. There is no packaged startup/retry/Exit
+proved bounded renderer-reload loop. There is no packaged startup/Restart/Quit
 journey receipt here. A missing mount stays
-behind the native cover and reaches the existing Retry/Exit surface; it never
+behind the native cover and reaches the overdue Restart/Quit surface; it never
 authorizes WebsiteData deletion or a CSP bypass.
 Do not invent a `tauri-driver` command or claim that the browser test exercises those features.
 The historical renderer/stdio work is
@@ -553,10 +586,10 @@ Checkout Doctor reports local tool and runtime prerequisites. Packaged Doctor
 uses the target command: it reports the selected endpoint, discovery reachability,
 saved credential state and configured local service. Neither reports native-window state.
 Service status checks a durable installed service, not a Desktop-owned sidecar.
-The shell log can show a timeout warning, a secondary-launch request, or an
-invalid desktop log level; it cannot prove that a dialog was visible, that a
-user chose Retry/Exit, that a window drew, or that a macOS Apple Event callback
-did not panic before output flushed.
+The shell log can show an overdue-startup warning, the Restart/Quit choice, a
+secondary-launch request, or an invalid desktop log level; it cannot prove
+that the cover or a dialog was visible, that a window drew, or that a macOS
+Apple Event callback did not panic before output flushed.
 
 For the macOS abort class, record separately whether launch used Finder/Dock
 or a direct executable: [archive#3496](https://github.com/kontourai/station-archive/issues/3496)
@@ -633,7 +666,7 @@ person separately before claiming fresh relay-only acceptance.
 
 | Target or behavior | Current runnable evidence | Required physical evidence | Status |
 | --- | --- | --- | --- |
-| macOS packaged startup, Retry/Exit, Finder/Dock/reopen | Rust/static/UI checks | Installed package, actual native window/dialog, and launch-method record | **NOT_VERIFIED** |
+| macOS packaged startup, overdue cover Restart/Quit, Finder/Dock/reopen | Rust/static/UI checks | Installed package, actual native window/cover, and launch-method record | **NOT_VERIFIED** |
 | Windows packaged startup, second launch, tray | Rust/static/UI checks | Installed package, actual shell/tray and service-backend record | **NOT_VERIFIED** |
 | Linux packaged startup and indicator behavior | Rust/static/UI checks | Installed package on a supported desktop shell, indicator result recorded | **NOT_VERIFIED** |
 | Android/iOS startup recovery | No equivalent desktop readiness harness | Real device and a defined mobile recovery contract | **NOT_VERIFIED** |

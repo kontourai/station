@@ -871,33 +871,91 @@ reports only mount through `useLayoutEffect`, outside `PlatformBootstrap`.
 StrictMode/remounts share one module-owned attempt. The host retains early
 page/mount facts until DesktopServerState exists and replays them in order.
 
-While waiting on macOS, the host can show a native startup cover. The WebView
+While waiting on macOS, the host can show a native startup cover laid out like
+the renderer startup screen: the application icon (which carries the channel
+art) centered at 96 pt and a short centered status line below it. The WebView
 stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
 same WebView. Merely hiding the WebView or copying a reveal-time accessibility
-snapshot would change those guarantees.
+snapshot would change those guarantees. Covering always clears first
+responder before the default **Restart** may take it, and WebKit can still
+retake it for the hidden WebView, so while the cover is up a window-scoped key
+monitor evicts the WebView from first responder and routes every key-down and
+key-up event (modifier-only changes still reach the page; they type nothing):
+Return chooses **Restart**, Tab/Shift-Tab/Space operate only the cover's own
+buttons, Escape and typing are swallowed, and only the Quit, Close, Hide, Hide
+Others, Minimize and window-cycling Command shortcuts pass, identified by the
+typed ASCII letter or, when the layout types a non-ASCII character, by the US
+ANSI key position (editing shortcuts would target the page). Reveal or
+main-window destruction removes the monitor and the retained button target.
+Closing the main window only hides it; until the next explicit activation,
+startup recovery is deferred, and each cover change decides on the main thread
+when it applies whether to order the window front, so neither a queued cover
+nor a late reveal brings the hidden window back. Cover
+content is requested while the readiness lock is held, so it cannot land after
+the reveal of an admitted window.
 
 **Recovery.** Server loss invalidates a pending identity proof without erasing
 an already mounted renderer. A new main page invalidates its pre-ready mount
 without inventing server loss. Proof is single-flight; a relevant profile write
-can wake a bounded retry while waiting. Timeout produces one diagnostic per
-epoch. Retry starts a new epoch: with a current owned ticket it first reprobes
-without restarting; a later retry or missing ticket restarts only the owned
-sidecar. A service-owned/unowned backend uses recovery-surface recommit instead
-of signaling a durable service. Dev has an explicit bypass. Activation waits
-for the appropriate state, and startup readiness does not re-hide a window
-already admitted as ready.
+can wake a bounded retry while waiting. The 30-second deadline is a waiting
+threshold, not a liveness verdict: it marks the epoch overdue and offers
+recovery once, but never restarts or signals the sidecar. An overdue epoch
+still admits the exact late ticket, identity proof and mount, which reveal the
+window without user action. The renderer's
+[bundled-profile bootstrap](../../src-ui/src/platform/native/bundledLocalProfileBootstrap.ts)
+treats `starting`, `restarting` (the supervisor's attempt cap ends that in
+`failed`) and `stopping` (set only by a manual restart, which always respawns)
+as progressing. It asks the host whether its WebView is already shown
+(`startup_window_admitted`: a non-main window, or the main window once
+readiness is Ready or bypassed) when the owned sidecar is `failed` or
+`stopped`, and after its fast-poll budget of about a minute. A covered main
+window has no wall-clock limit: it keeps waiting in place behind a cover that
+offers Restart/Quit after the deadline, so a fresh home still gets the profile
+its identity proof requires after a long boot, and an explicit Restart lets the
+same bootstrap author and authorize on its normal path. A shown window has only
+the in-app recovery UI, so it releases the loader at once for a terminal
+sidecar, or after that budget for a progressing one, and then stops polling.
+Because the mount commit sits outside `PlatformBootstrap`, identity commit plus
+renderer mount can reveal the window while the bootstrap is still authorizing. On macOS the cover switches
+in place to a "taking longer than usual" message with **Restart** (the default
+button) and **Quit**; a background (tray-only) launch defers it until
+activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
+that did not start, or an overdue cover task that failed) show a native dialog
+with **Restart**, **Quit** and **Keep Waiting**. The dialog does not block the
+main thread; dismissing it keeps waiting and re-offers the choice after 30,
+then 60, then every 120 seconds while that epoch is still overdue. Like the
+Windows/Linux dialog, a macOS fallback alert can outlive the condition that
+showed it (for example after the window reveals); its buttons are then inert.
+Restart starts a new epoch: with a current owned ticket it first reprobes
+without restarting; a later Restart or a missing ticket restarts only the owned
+sidecar. A service-owned/unowned backend re-runs the native recovery commit
+instead of signaling a durable service, so a late renderer mount still
+reveals. Quit exits only while that same epoch is still overdue. Routing is
+exercised through a recording host in the
+[desktop crate tests](../../src-desktop/src/lib.rs).
+Activation never restarts anything. Dev has an explicit bypass. Activation
+waits for the appropriate state, and startup readiness does not re-hide a
+window already admitted as ready.
 
 The status bridge projects sidecar generation/instance/boot identity and clears
 child fields after loss; the generation-tagged stdout handshake remains a
-separate admission check. No browser timer, automatic renderer polling, cache
-reset or CSP weakening supplies readiness.
+separate admission check. The supervisor has no boot or handshake timeout of
+its own: it waits for that handshake or for the child to exit. No browser
+timer, automatic renderer polling, cache reset or CSP weakening supplies
+readiness.
 
 Pure Rust state/claim tests and
 [startup wiring tests](../../scripts/__tests__/startup-readiness-static.test.ts)
-cover the decision boundaries. They do not prove AppKit pixels, OS dialogs,
-real IPC or packaged behavior. The [native verification guide](../guides/native-shell-verification.md)
+cover the decision boundaries, including the fronting decision for a window
+the user hid. That AppKit code applies that decision is only a
+source-structure pin: each occurrence of a fixed list of window-raising
+spellings (order-front, activate, unhide, show and focus variants) in the cover
+code must sit inside the fronting gate; other ways of raising a window would
+not be detected. These tests do not prove
+AppKit pixels, the cover's buttons, OS dialogs, real IPC or packaged
+behavior. The [native verification guide](../guides/native-shell-verification.md)
 and [recovery guide](../user/native-recovery.md) keep those platform checks
 separate.
 
