@@ -12830,7 +12830,7 @@ export class EventStore {
     // #3559: `/chat` claims are untracked and an unmarked `chat:` row reads as
     // untracked, so no chat claim can be indeterminate. Refuse rather than
     // report it as contended if that ever stops holding.
-    if (claim.indeterminate)
+    if (!claim.claimed && claim.indeterminate)
       throw new Error(
         'A /chat turn claim cannot be indeterminate; it records no invocation.',
       );
