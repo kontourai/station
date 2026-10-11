@@ -325,8 +325,9 @@ the Tauri export flag is not treated as evidence.
 
 The iOS app requires iOS 16.4 (`src-desktop/tauri.ios.conf.json`, and
 `IPHONEOS_DEPLOYMENT_TARGET` in `src-desktop/gen/apple`). WebKit gained regex
-lookbehind in 16.4, and the UI and its bundled dependencies use it, so chat
-Markdown and diffs fail on earlier versions (#3399). Lower the floor only
+lookbehind in 16.4, and the UI and its bundled dependencies use it; on an
+earlier version each one throws when its module loads, so whole screens, not
+just chat Markdown and diffs, fail (#3399). Lower the floor only
 after removing every lookbehind from the built UI bundle, dependencies
 included.
 

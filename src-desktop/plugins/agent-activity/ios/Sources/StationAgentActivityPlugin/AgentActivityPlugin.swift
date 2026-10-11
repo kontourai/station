@@ -159,8 +159,8 @@ class AgentActivityPlugin: Plugin {
       return
     }
     Task { @MainActor in
-      // The completion-handler form: the async one needs iOS 15, and the
-      // app still deploys below it.
+      // The completion-handler form: the async one needs iOS 15, and this
+      // package still declares iOS 13 (Package.swift).
       let granted = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
           continuation.resume(returning: granted)

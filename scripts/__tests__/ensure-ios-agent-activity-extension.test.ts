@@ -463,6 +463,26 @@ describe('iOS agent-activity extension project spec', () => {
     expect(readFileSync(path, 'utf8')).toBe(written);
   });
 
+  test("the committed Xcode project deploys at the app's iOS floor", () => {
+    // #3399: every declaration of the floor agrees with tauri.ios.conf.json.
+    expect(IOS_APP_MINIMUM).toBe('16.4');
+    expect(YAML.parse(readFileSync(committedSpec, 'utf8')).options).toEqual(
+      expect.objectContaining({
+        deploymentTarget: { iOS: Number(IOS_APP_MINIMUM) },
+      }),
+    );
+    const targets = [
+      ...readFileSync(committedXcodeProject, 'utf8').matchAll(
+        /IPHONEOS_DEPLOYMENT_TARGET = ([\d.]+);/g,
+      ),
+    ].map((match) => match[1]);
+    expect(targets.length).toBeGreaterThan(0);
+    expect(new Set(targets)).toEqual(new Set([IOS_APP_MINIMUM]));
+    expect(readFileSync('src-desktop/gen/apple/Podfile', 'utf8')).toContain(
+      `platform :ios, '${IOS_APP_MINIMUM}'`,
+    );
+  });
+
   test('the committed project does not carry the extension until a build enables it', () => {
     // Every build path that uses the committed gen/apple (CI simulator
     // builds, build:ios:simulator, tauri ios dev, a local App Store export)
