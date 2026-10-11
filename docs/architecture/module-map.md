@@ -949,8 +949,11 @@ readiness.
 Pure Rust state/claim tests and
 [startup wiring tests](../../scripts/__tests__/startup-readiness-static.test.ts)
 cover the decision boundaries, including the fronting decision for a window
-the user hid. That AppKit code applies that decision (every window-raising
-call gated by it) is only a source-structure pin. These tests do not prove
+the user hid. That AppKit code applies that decision is only a
+source-structure pin: each occurrence of a fixed list of window-raising
+spellings (order-front, activate, unhide, show and focus variants) in the cover
+code must sit inside the fronting gate; other ways of raising a window would
+not be detected. These tests do not prove
 AppKit pixels, the cover's buttons, OS dialogs, real IPC or packaged
 behavior. The [native verification guide](../guides/native-shell-verification.md)
 and [recovery guide](../user/native-recovery.md) keep those platform checks
