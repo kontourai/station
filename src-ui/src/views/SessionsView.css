@@ -608,10 +608,13 @@
   display: flex;
 }
 
-/* Link-styled, but a full touch target that starts on the text's edge. */
+/* Link-styled, but a full touch target that starts on the text's edge, and
+   underlined so it does not read as a link by colour alone. */
 .sessions-detail__confirm-alternative .button {
   min-height: 44px;
   padding-inline: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Spacing for the continuation confirmation's paragraphs. */
