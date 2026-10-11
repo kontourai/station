@@ -2,7 +2,6 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import {
   fetchOrchestrationSession,
   interruptOrchestrationTurn,
-  sendOrchestrationTurn,
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
 import {
@@ -43,7 +42,6 @@ import type { SessionEvidenceReveal } from '../components/session-detail/Mutable
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
-import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -286,6 +284,7 @@ export function SessionsView({
   focusHint,
   intentToken,
   onFocusConsumed,
+  onContinueInChat,
 }: {
   apiBase: string;
   sessionId?: string;
@@ -302,6 +301,11 @@ export function SessionsView({
   focusHint?: 'evidence';
   intentToken?: number;
   onFocusConsumed?: () => void;
+  /**
+   * #3552: hands a message typed in an external conversation to the chat
+   * dock, which continues it (#3454). Without it, continuing happens here.
+   */
+  onContinueInChat?: (threadId: string, draft: string) => void;
 }) {
   // The SSE feed is per-session, so the list itself is kept fresh by polling.
   // The query owns that poll: an interval beside it calling `refetch()` was a
@@ -718,8 +722,8 @@ export function SessionsView({
   ): ActivityRowAction[] => {
     const actions: ActivityRowAction[] = [];
     if (isReadOnlyAttachedSession(s)) {
-      // Attached transcripts keep their existing continuation, which lives
-      // in the detail ("Continue in Station"); "Open" is that detail.
+      // An attached transcript continues from its detail's composer;
+      // "Open" is that detail.
       actions.push({
         id: 'open',
         label: 'Open',
@@ -1150,44 +1154,12 @@ export function SessionsView({
             session={selected}
             evidenceReveal={evidenceReveal}
             onTaskChanged={() => void refetch()}
-            onAdopted={(child, intent, message) => {
-              // #3552: the person confirmed sending this exact text. It
-              // waits as the continued session's draft, so a send that
-              // fails leaves it in that session's composer to retry.
-              if (message.trim()) {
-                chatDraftsStore.setActivityDraft(
-                  apiBase,
-                  child.threadId,
-                  message,
-                );
-                void sendOrchestrationTurn({
-                  threadId: child.threadId,
-                  text: message,
-                  apiBase,
-                })
-                  .then(() => {
-                    if (
-                      chatDraftsStore.getActivityDraft(
-                        apiBase,
-                        child.threadId,
-                      ) === message
-                    )
-                      chatDraftsStore.clearActivityDraft(
-                        apiBase,
-                        child.threadId,
-                      );
-                  })
-                  .catch(() =>
-                    toastStore.show(
-                      'Continued, but your message was not sent. It is still in the message box.',
-                      child.threadId,
-                      5000,
-                      undefined,
-                      undefined,
-                      'error',
-                    ),
-                  );
-              }
+            onContinueInChat={
+              onContinueInChat
+                ? (draft) => onContinueInChat(selected.threadId, draft)
+                : undefined
+            }
+            onAdopted={(child, intent) => {
               adoptedSelectionRef.current = {
                 threadId: child.threadId,
                 intent,

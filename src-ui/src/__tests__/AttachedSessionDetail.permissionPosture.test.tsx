@@ -3,6 +3,7 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -62,6 +63,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 import { AdoptSessionError } from '@kontourai/station-sdk';
 import { AttachedSessionDetail } from '../components/session-detail/AttachedSessionDetail';
 import { ToastProvider } from '../contexts/ToastContext';
+import {
+  handOffAttachedContinuation,
+  takeAttachedContinuationHandoff,
+} from '../lib/attached-continuation-handoff';
 
 function classifiedAdoptionError(
   failureClass:
@@ -97,6 +102,7 @@ function renderAttached({
   historyStoppedTerminal,
   capabilityRecoveryExhausted,
   onRetryCapabilityRecovery,
+  onContinueInChat,
   session: sessionOverrides,
   events,
 }: {
@@ -111,6 +117,7 @@ function renderAttached({
   historyStoppedTerminal?: boolean;
   capabilityRecoveryExhausted?: boolean;
   onRetryCapabilityRecovery?: () => void;
+  onContinueInChat?: (draft: string) => void;
   session?: Record<string, unknown>;
   events?: CanonicalRuntimeEvent[];
 } = {}) {
@@ -178,6 +185,7 @@ function renderAttached({
           historyStoppedTerminal={historyStoppedTerminal}
           capabilityRecoveryExhausted={capabilityRecoveryExhausted}
           onRetryCapabilityRecovery={onRetryCapabilityRecovery}
+          onContinueInChat={onContinueInChat}
           visualViewport={{ style: {} } as any}
         />
       </ToastProvider>
@@ -245,6 +253,69 @@ test('Enter confirms the exact draft only after consent; Shift+Enter and IME do 
     ),
   );
   expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+});
+
+describe('a message typed in Activity is continued by the chat dock (#3552, #3454)', () => {
+  test('Activity hands the exact draft over and continues nothing itself', () => {
+    adoptOrchestrationSession.mockClear();
+    const onContinueInChat = vi.fn();
+    renderAttached({ onContinueInChat });
+    sendFromComposer('My exact\nmessage');
+    expect(onContinueInChat).toHaveBeenCalledWith('My exact\nmessage');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  });
+
+  test('the dock reader opens with the handed-over draft awaiting one confirmation', async () => {
+    adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    const onAdopted = vi.fn();
+    handOffAttachedContinuation({
+      threadId: 'external:claude:raw-thread-id',
+      draft: 'From Activity',
+    });
+    renderAttached({ presentation: 'chat', onAdopted });
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('From Activity');
+    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    await waitFor(() =>
+      expect(onAdopted).toHaveBeenCalledWith(
+        { threadId: 'continued' },
+        expect.any(Number),
+        'From Activity',
+      ),
+    );
+  });
+
+  test('a dock reader already open on the conversation receives the hand-off', () => {
+    renderAttached({ presentation: 'chat' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    act(() =>
+      handOffAttachedContinuation({
+        threadId: 'external:claude:raw-thread-id',
+        draft: 'While open',
+      }),
+    );
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('While open');
+    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+  });
+
+  test('a hand-off for another conversation is left for its own reader', () => {
+    handOffAttachedContinuation({
+      threadId: 'someone-else',
+      draft: 'Not mine',
+    });
+    renderAttached({ presentation: 'chat' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(takeAttachedContinuationHandoff('someone-else')).toBe('Not mine');
+  });
 });
 
 describe('AttachedSessionDetail permission-posture row badge (station#1424)', () => {

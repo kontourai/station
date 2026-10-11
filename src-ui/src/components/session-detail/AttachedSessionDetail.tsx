@@ -15,11 +15,15 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
+import {
+  subscribeAttachedContinuationHandoff,
+  takeAttachedContinuationHandoff,
+} from '../../lib/attached-continuation-handoff';
 import {
   type AttachedSessionContinuationRead,
   browserAttachedSessionContinuationStore,
@@ -85,6 +89,7 @@ export function AttachedSessionDetail({
   apiBase,
   chatFontSize = 14,
   showHeader = false,
+  onContinueInChat,
   openingContinuation = false,
   continuationCreated = false,
   onLoadOlder,
@@ -109,6 +114,12 @@ export function AttachedSessionDetail({
    * already names it in its own header.
    */
   showHeader?: boolean;
+  /**
+   * #3454: a continuation is made in the chat dock, whose reader opens it as
+   * its Agent's chat. A host that is not the dock passes this, and Send hands
+   * the exact draft to the dock instead of continuing here.
+   */
+  onContinueInChat?: (draft: string) => void;
   openingContinuation?: boolean;
   continuationCreated?: boolean;
   onLoadOlder?: () => Promise<void>;
@@ -446,8 +457,28 @@ export function AttachedSessionDetail({
   const composerDisabled =
     !continuationSupported || adoption.isPending || continued;
   const requestSend = () => {
-    if (draft.trim() && !composerDisabled) setReplyRequested(true);
+    if (!draft.trim() || composerDisabled) return;
+    if (onContinueInChat) {
+      onContinueInChat(draft);
+      setDraft('');
+      return;
+    }
+    setReplyRequested(true);
   };
+  // A draft handed over from Activity arrives with its confirmation open:
+  // the person already pressed Send there.
+  const handsOff = Boolean(onContinueInChat);
+  useEffect(() => {
+    if (handsOff) return;
+    const receive = () => {
+      const handedOver = takeAttachedContinuationHandoff(session.threadId);
+      if (handedOver === null) return;
+      setDraft(handedOver);
+      setReplyRequested(true);
+    };
+    receive();
+    return subscribeAttachedContinuationHandoff(receive);
+  }, [handsOff, session.threadId]);
 
   return (
     <section

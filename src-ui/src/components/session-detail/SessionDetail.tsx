@@ -18,12 +18,15 @@ export function SessionDetail({
   session,
   onTaskChanged,
   onAdopted,
+  onContinueInChat,
   getSelectionIntent,
   evidenceReveal,
   presentation = 'inspector',
   openingContinuation,
   continuationCreated,
 }: {
+  /** Activity hands an external conversation's message to the dock. */
+  onContinueInChat?: (draft: string) => void;
   /** Where the detail is hosted: Activity's pane, or the chat dock. */
   presentation?: 'inspector' | 'chat';
   openingContinuation?: boolean;
@@ -118,6 +121,7 @@ export function SessionDetail({
           onLoadOlder={hasMore ? loadOlder : undefined}
           session={session}
           onAdopted={onAdopted}
+          onContinueInChat={onContinueInChat}
           getSelectionIntent={getSelectionIntent}
           events={events}
           connected={connected}

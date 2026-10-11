@@ -358,6 +358,7 @@ function renderView(
   intentToken?: number,
   onFocusConsumed?: () => void,
   apiBase = 'http://test.local',
+  onContinueInChat?: (threadId: string, draft: string) => void,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -376,6 +377,7 @@ function renderView(
           focusHint={nextFocusHint}
           intentToken={nextIntentToken}
           onFocusConsumed={nextOnFocusConsumed}
+          onContinueInChat={onContinueInChat}
         />
       </NavigationProvider>
     </QueryClientProvider>
@@ -2728,48 +2730,45 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-detail').textContent).toContain(
       'station-child',
     );
-    // The exact confirmed text is sent once, to the continued session.
-    await waitFor(() =>
-      expect(sendTurn).toHaveBeenCalledWith({
-        threadId: 'station-child',
-        text: 'carry on',
-        apiBase: 'http://test.local',
-      }),
-    );
-    expect(sendTurn).toHaveBeenCalledTimes(1);
+    // Continuing here selects the child; it sends nothing on its own.
+    expect(sendTurn).not.toHaveBeenCalled();
     expect(
       window.localStorage.getItem(ATTACHED_SESSION_CONTINUATION_STORAGE_KEY),
     ).toBeNull();
     expect(sessions[0]?.controlMode).toBe('read-only-attached');
   });
 
-  test('a continued message that fails to send stays in the continued session’s message box', async () => {
+  test('with a chat dock, Send hands the exact draft to it and continues nothing here (#3454)', () => {
     sessions[0] = {
       ...sessions[0],
-      threadId: 'external:claude:send-fails',
+      threadId: 'external:claude:handoff',
       controlMode: 'read-only-attached',
       attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
-    adoptSession.mockImplementation(async () => {
-      const child = {
-        ...sessions[0],
-        threadId: 'station-send-fails-child',
-        controlMode: 'station-owned',
-      };
-      sessions = [sessions[0], child];
-      return child;
-    });
-    sendTurn.mockRejectedValueOnce(new Error('send failed'));
-
-    renderView('external:claude:send-fails');
-    continueFromComposer('keep this text');
-
-    const input = (await screen.findByLabelText(
-      'Send input to session',
-    )) as HTMLTextAreaElement;
-    await waitFor(() => expect(sendTurn).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(input.value).toBe('keep this text'));
+    const onContinueInChat = vi.fn();
+    renderView(
+      'external:claude:handoff',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onContinueInChat,
+    );
+    const composer = screen.getByRole('textbox', {
+      name: 'Message',
+    }) as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'My exact\nmessage' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(onContinueInChat).toHaveBeenCalledWith(
+      'external:claude:handoff',
+      'My exact\nmessage',
+    );
+    expect(onContinueInChat).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptSession).not.toHaveBeenCalled();
+    expect(launchContinueSessionStarter).not.toHaveBeenCalled();
+    expect(composer.value).toBe('');
   });
 
   test('reuses the exact continuation operation after response loss and remount', async () => {

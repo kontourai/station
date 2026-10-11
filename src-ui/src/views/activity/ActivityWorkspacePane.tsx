@@ -1,4 +1,6 @@
 import { isCanonicalWorkspaceActivityPaneInstance } from '@kontourai/station-contracts/workspace-activity-pane';
+import { useShowSurface } from '../../contexts/useShowSurface';
+import { handOffAttachedContinuation } from '../../lib/attached-continuation-handoff';
 import type { BuiltinWorkspacePaneProps } from '../../workspace-panes/builtinWorkspacePaneRegistry';
 import { WorkspacePaneBindingUnavailable } from '../../workspace-panes/WorkspacePaneBindingUnavailable';
 import { SessionsView } from '../SessionsView';
@@ -27,6 +29,7 @@ import { useActivityWorkspacePaneBinding } from './ActivityWorkspacePaneBinding'
  */
 export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const binding = useActivityWorkspacePaneBinding();
+  const showSurface = useShowSurface();
   if (!isCanonicalWorkspaceActivityPaneInstance(instance))
     return (
       <WorkspacePaneBindingUnavailable
@@ -36,6 +39,10 @@ export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   if (!binding) return null;
   return (
     <SessionsView
+      onContinueInChat={(threadId, draft) => {
+        handOffAttachedContinuation({ threadId, draft });
+        showSurface('chat', { session: threadId });
+      }}
       apiBase={binding.apiBase}
       sessionId={binding.sessionId}
       focusHint={binding.focusHint}
