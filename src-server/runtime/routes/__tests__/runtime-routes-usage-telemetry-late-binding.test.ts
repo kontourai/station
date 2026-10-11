@@ -13,14 +13,13 @@
  * envelope proof; receipt persistence and revision idempotence belong to
  * usage-telemetry-service.test.ts.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { FileSecretBindingAdministration } from '../../../services/secrets/secret-binding-administration.js';
 import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../../services/usage-telemetry-inventory.js';
@@ -178,6 +177,8 @@ function configurationRuntime(
   return runtime;
 }
 
+const makeTempDir = trackTempDirs();
+
 const disclosure = {
   acknowledged: false,
   inventoryRevision: 'inventory-revision',
@@ -185,17 +186,8 @@ const disclosure = {
 };
 
 describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () => {
-  const directories: string[] = [];
-
-  afterEach(() => {
-    for (const directory of directories.splice(0)) {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
   test('answers 503 while the service is unconstructed, then 200 once the SAME app resolves it', async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'station-usage-telemetry-'));
-    directories.push(homeDir);
+    const homeDir = makeTempDir('station-usage-telemetry-');
     const app = new Hono();
 
     // Exactly the production lifecycle: `configureRuntimeRoutes` runs first
@@ -385,12 +377,11 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
 });
 
 describe('persisted telemetry configuration during Agent activation', () => {
-  const homes: Array<{ homeDir: string; loader: ConfigLoader }> = [];
+  const loaders: ConfigLoader[] = [];
   afterEach(async () => {
-    for (const { homeDir, loader } of homes.splice(0)) {
+    for (const loader of loaders.splice(0)) {
       await loader.dispose();
       await loader.whenWatcherClosed();
-      rmSync(homeDir, { recursive: true, force: true });
     }
   });
   // The existing service suite owns receipt validity and exact grants. This
@@ -420,14 +411,12 @@ describe('persisted telemetry configuration during Agent activation', () => {
   ])(
     '$label fences only changed telemetry before held/failing activation',
     async ({ update }) => {
-      const homeDir = mkdtempSync(
-        join(tmpdir(), 'station-telemetry-persisted-'),
-      );
+      const homeDir = makeTempDir('station-telemetry-persisted-');
       const loader = new ConfigLoader({
         projectHomeDir: homeDir,
         watchFiles: false,
       });
-      homes.push({ homeDir, loader });
+      loaders.push(loader);
       const logger = {
         debug: vi.fn(),
         info: vi.fn(),
@@ -716,15 +705,14 @@ describe('persisted telemetry configuration during Agent activation', () => {
 });
 
 describe('product telemetry constructed after a persisted startup edit', () => {
-  const homes: Array<{ homeDir: string; loader: ConfigLoader }> = [];
+  const loaders: ConfigLoader[] = [];
   afterEach(async () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
-    for (const { homeDir, loader } of homes.splice(0)) {
+    for (const loader of loaders.splice(0)) {
       await loader.dispose();
       await loader.whenWatcherClosed();
-      rmSync(homeDir, { recursive: true, force: true });
     }
   });
 
@@ -795,12 +783,12 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       heldDisclosure: true,
     },
   ])('$label survives held and failing Agent activation', async (scenario) => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'station-late-telemetry-'));
+    const homeDir = makeTempDir('station-late-telemetry-');
     const loader = new ConfigLoader({
       projectHomeDir: homeDir,
       watchFiles: false,
     });
-    homes.push({ homeDir, loader });
+    loaders.push(loader);
     const logger = {
       debug: vi.fn(),
       info: vi.fn(),

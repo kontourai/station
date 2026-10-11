@@ -1,8 +1,10 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { delimiter, dirname, join } from 'node:path';
 import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { materializeTelemetryCredential } from '../../../domain/telemetry-credential-materialization.js';
+
+const makeTempDir = trackTempDirs();
 
 const alive = (pid: number) => {
   try {
@@ -18,9 +20,7 @@ test
   .each(['cancellation', 'deadline'] as const)(
   'bounded Datum materialization preserves the key only in the caller and terminates its stalled CLI on %s',
   async (stop) => {
-    const root = await mkdtemp(
-      join(tmpdir(), 'station-telemetry-secret-process-'),
-    );
+    const root = makeTempDir('station-telemetry-secret-process-');
     const marker = join(root, 'owned-op-pid');
     await writeFile(
       join(root, 'op'),
@@ -81,7 +81,6 @@ if (process.argv[3] === 'op://fixture/key/value') {
     } finally {
       if (stalledPid !== undefined && alive(stalledPid))
         process.kill(stalledPid, 'SIGKILL');
-      await rm(root, { recursive: true, force: true });
     }
   },
 );
