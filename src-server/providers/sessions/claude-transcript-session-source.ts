@@ -57,6 +57,8 @@ const PROMPT_SOURCE = 'claude-transcript';
  * delta reads (a handful of lines) yield-free.
  */
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
+/** `runtime.warning` code for a transcript record skipped by `maxLineBytes`. */
+export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
 const EPOCH = '1970-01-01T00:00:00.000Z';
 const SOURCE_HOME_NAMESPACE = 'claude-config-home';
 
@@ -351,6 +353,21 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       if (lineLength > this.maxLineBytes) {
         outcome = 'line_limit';
         offset = lineEnd + 1;
+        // #216: the bound stays (archive#1997), but the record it drops (often
+        // a large tool result) must not vanish silently. Record the gap at its
+        // position with a content-free warning; the byte offset keeps its id
+        // stable across replays of an append-only transcript. The loop guard
+        // leaves room for this one event.
+        events.push(
+          transcriptLineSkippedWarning(
+            session,
+            windowStart + lineStart,
+            lineLength,
+            this.maxLineBytes,
+            activeTurnId,
+            events.at(-1)?.createdAt ?? session.createdAt,
+          ),
+        );
         continue;
       }
       const line = content.subarray(offset, lineEnd).toString('utf8').trim();
@@ -1059,6 +1076,28 @@ function timestamp(value: unknown): string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value))
     ? value
     : EPOCH;
+}
+
+function transcriptLineSkippedWarning(
+  session: AttachedSessionDescriptor,
+  byteOffset: number,
+  byteLength: number,
+  maxLineBytes: number,
+  turnId: string | undefined,
+  createdAt: string,
+): CanonicalRuntimeEvent {
+  return {
+    eventId: eventId(session.sessionId, `line@${byteOffset}`, 0, 'skipped'),
+    provider: 'claude',
+    threadId: session.threadId,
+    createdAt,
+    ...(turnId ? { turnId } : {}),
+    method: 'runtime.warning',
+    severity: 'warning',
+    code: TRANSCRIPT_LINE_SKIPPED_CODE,
+    message: `A ${byteLength}-byte transcript record exceeds the ${maxLineBytes}-byte line limit and was not imported; this session's history is missing it.`,
+    details: { byteOffset, byteLength, maxLineBytes },
+  };
 }
 
 function eventId(
