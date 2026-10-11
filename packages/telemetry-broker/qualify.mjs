@@ -1,11 +1,193 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getRequestListener } from '@hono/node-server';
 import { Pool } from 'pg';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedProcess,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../../scripts/lib/owned-process.mjs';
 import { createProductBroker, PgProductRepository } from './dist/index.mjs';
+
+async function qualifyEntrypoint(
+  databaseUrl,
+  operatorKey,
+  sourceKey,
+  sourceId,
+) {
+  if (process.platform === 'win32')
+    throw new Error('Entrypoint qualification requires the Unix file profile');
+  const root = await mkdtemp(join(tmpdir(), 'station-telemetry-entrypoint-'));
+  const operatorFile = join(root, 'operator-key');
+  const databaseFile = join(root, 'database-url');
+  const publicFile = join(root, 'public-url');
+  const oversizedFile = join(root, 'oversized-url');
+  const malformedFile = join(root, 'malformed-url');
+  const symlinkFile = join(root, 'linked-url');
+  const privateSentinel = 'private-url-value-not-for-diagnostics';
+  try {
+    await writeFile(operatorFile, operatorKey, { mode: 0o400 });
+    await writeFile(databaseFile, databaseUrl, { mode: 0o400 });
+    await writeFile(publicFile, databaseUrl, { mode: 0o644 });
+    await writeFile(oversizedFile, 'x'.repeat(4097), { mode: 0o400 });
+    await writeFile(malformedFile, privateSentinel, { mode: 0o400 });
+    await symlink(databaseFile, symlinkFile);
+    for (const [label, credential, expected] of [
+      [
+        'both database sources',
+        { STATION_TELEMETRY_BROKER_DATABASE_URL: databaseUrl },
+        /Select one database credential source/,
+      ],
+      [
+        'public database file',
+        { STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: publicFile },
+        /Credential must be a private, owned regular file/,
+      ],
+      [
+        'oversized database file',
+        { STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: oversizedFile },
+        /Credential must be a private, owned regular file/,
+      ],
+      [
+        'symlink database file',
+        { STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: symlinkFile },
+        /ELOOP/,
+      ],
+      [
+        'malformed database URL',
+        { STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: malformedFile },
+        /A valid PostgreSQL connection URL file is required/,
+      ],
+      ['private database file', {}, null],
+      [
+        'legacy database environment',
+        {
+          STATION_TELEMETRY_BROKER_DATABASE_URL: databaseUrl,
+          STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: undefined,
+        },
+        null,
+      ],
+    ]) {
+      const reservation = createTcpServer();
+      await new Promise((resolve) =>
+        reservation.listen(0, '127.0.0.1', resolve),
+      );
+      const port = reservation.address().port;
+      await new Promise((resolve) => reservation.close(resolve));
+      const execution = executeOwnedProcess(
+        process.execPath,
+        [fileURLToPath(new URL('./dist/main.mjs', import.meta.url))],
+        undefined,
+        'telemetry receiver entrypoint',
+        {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+          env: {
+            PATH: process.env.PATH,
+            STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: databaseFile,
+            STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE: operatorFile,
+            STATION_TELEMETRY_BROKER_HOST: '127.0.0.1',
+            STATION_TELEMETRY_BROKER_PORT: String(port),
+            ...credential,
+          },
+        },
+      );
+      const output = captureOwnedProcessOutput(execution, { maxBytes: 65536 });
+      let timeout;
+      try {
+        if (expected) {
+          const deadline = new Promise((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error(`${label}: no bounded startup refusal`)),
+              6000,
+            );
+          });
+          const result = await Promise.race([execution.completion, deadline]);
+          assert.equal(result.error, undefined, label);
+          assert.equal(result.status, 1, label);
+        } else {
+          const deadline = performance.now() + 6000;
+          while (true) {
+            try {
+              const response = await fetch(
+                `http://127.0.0.1:${port}/health/live`,
+                { signal: AbortSignal.timeout(500) },
+              );
+              assert.equal(response.status, 200, label);
+              await response.json();
+              break;
+            } catch (error) {
+              if (
+                error.cause?.code !== 'ECONNREFUSED' ||
+                !execution.isAlive() ||
+                performance.now() >= deadline
+              )
+                throw error;
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+          }
+          const response = await fetch(
+            `http://127.0.0.1:${port}/v1/product/probes`,
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-api-key': sourceKey,
+              },
+              body: JSON.stringify({
+                protocol: 'station-product-probe/v1',
+                inventoryRevision: (
+                  await (
+                    await fetch(`http://127.0.0.1:${port}/health/live`, {
+                      signal: AbortSignal.timeout(500),
+                    })
+                  ).json()
+                ).inventoryRevision,
+              }),
+              signal: AbortSignal.timeout(6000),
+            },
+          );
+          assert.equal(response.status, 200, label);
+          assert.equal((await response.json()).probe.sourceId, sourceId, label);
+        }
+      } finally {
+        clearTimeout(timeout);
+        const cleanup = await terminateSuiteExecution(execution, {
+          terminationGraceMs: 7000,
+          terminationForceMs: 1000,
+          waitForSuiteSettlement,
+        });
+        assert(
+          cleanup.settled && !cleanup.escalated && cleanup.errors.length === 0,
+          `${label}: owned process cleanup failed`,
+        );
+      }
+      const result = await execution.completion;
+      assert.equal(result.status, expected ? 1 : 0, label);
+      const captured = output.finish();
+      assert(
+        !captured.truncated && !captured.invalidUtf8,
+        `${label}: incomplete process evidence`,
+      );
+      assert(
+        !captured.stderr.text.includes(privateSentinel) &&
+          !captured.stdout.text.includes(privateSentinel),
+        `${label}: private input leaked`,
+      );
+      if (expected) assert.match(captured.stderr.text, expected, label);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
 
 // Requires a separate PostgreSQL administrative connection with CREATEDB.
 // Every destructive probe runs in a uniquely named, runner-owned database.
@@ -13,6 +195,8 @@ const connectionString =
   process.env.STATION_TELEMETRY_QUALIFICATION_DATABASE_URL;
 if (!connectionString)
   throw new Error('A qualification PostgreSQL connection is required');
+if (process.platform === 'win32')
+  throw new Error('Entrypoint qualification requires the Unix file profile');
 const database = `station_telemetry_qa_${randomUUID().replaceAll('-', '')}`;
 const config = {
   connectionString,
@@ -33,6 +217,9 @@ let report;
 const checks = [];
 const artifactSha256 = createHash('sha256')
   .update(readFileSync(new URL('./dist/index.mjs', import.meta.url)))
+  .digest('hex');
+const entrypointSha256 = createHash('sha256')
+  .update(readFileSync(new URL('./dist/main.mjs', import.meta.url)))
   .digest('hex');
 try {
   await admin.query(`CREATE DATABASE "${database}"`);
@@ -57,6 +244,10 @@ try {
       'qualification',
       createHash('sha256').update(key).digest('hex'),
     );
+  await qualifyEntrypoint(url.href, operatorKey, sourceKey, sourceId);
+  checks.push(
+    'real bundled entrypoint: seven private-file/environment startup controls, source-scoped PostgreSQL probe and owned process cleanup',
+  );
   const app = createProductBroker(store, operatorKey);
   server = createServer(getRequestListener(app.fetch));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -333,6 +524,7 @@ try {
   report = {
     state: 'PASS',
     artifactSha256,
+    entrypointSha256,
     postgresVersion,
     database,
     checks,

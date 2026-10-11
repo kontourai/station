@@ -127,6 +127,12 @@ Station execution and release qualification require their own receipts.
 `npm run qualify:telemetry-broker` requires
 `STATION_TELEMETRY_QUALIFICATION_DATABASE_URL` with permission to create a
 separate database. Build the broker first. The runner creates a unique owned
+database and exercises the real bundled Unix entrypoint with five startup
+refusals and private-file/legacy-environment positive controls. It binds the
+entrypoint and repository bundle digests separately and requires owned process
+cleanup. These authored controls still need execution on the current source;
+they are not image, Compose, private-host, backup/restore or release evidence.
+The runner also creates a unique owned
 database, tests HTTP commit/deduplication, revocation, saturation, ten malformed
 schema cases across all nine repository entrypoints and the HTTP probe, and a stalled PostgreSQL
 transport followed by connection recovery. Missing prerequisites fail the
