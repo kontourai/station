@@ -957,6 +957,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/tools/__tests__/store-integrity-probe.test.ts',
   'src-server/services/evidence/__tests__/veritas-readiness-service.test.ts',
   'src-server/services/__tests__/flow-agents-work-item-provider.process-tree.test.ts',
+  // #776: drives the vended bash tool's real persistent shell into a stdin
+  // EPIPE (exit mid-write, and exit before 'close'). Single-shot shells, a
+  // 2s backgrounded sleep at most; nothing asserts a wall-clock bound.
+  'src-server/runtime/tools/__tests__/vended-tool-compat.stdin.process.test.ts',
   // station#2238: starts real Station children against one SQLite claims
   // store to prove construction preserves live ownership.
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
