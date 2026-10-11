@@ -4314,7 +4314,8 @@ Supply a captured `options.requestScope` and `query.expectedStationId` alongside
 the requested `from`, `to`, `scope`, and optional `pageSize`. The transport must
 have matching current authority; the client provides no ambient host fallback.
 The [client](../../packages/sdk/src/client/usage-export.ts) validates the schema,
-receipt shapes, selected source/window/scope, committed order and page size, with
+receipt shapes and observation clocks within the selected UTC window,
+selected source/window/scope, committed order and page size, with
 a 2 MiB response ceiling. It preserves reported currencies, estimates and their
 pricing snapshots, repeated receipt restatements, missing measurements and
 unknown coverage without folding a page into a total.
@@ -4331,10 +4332,12 @@ authority, expected Station, dates, scope, cursor, page size and snapshot.
 Missing scope disables dispatch; the hook withholds cached data during
 revalidation and on errors, never supplies the preceding key as placeholder
 data, and pauses polling on failure. Its explicit `refetch()` rejects on a
-refusal instead of returning retained rows as a successful answer. Hosts must
+refusal or a selection change while waiting instead of returning retained rows
+or a replacement page as a successful answer. Hosts must
 change the captured scope when current authority changes.
 
-The export source, SDK and authentication controls remain unexecuted.
+The server export and authentication controls remain unexecuted; SDK fetcher
+and hook controls provide focused client evidence only.
 `useUsageRollupQuery` retains its interactive limits and is not a complete
 long-term export. No sync/checkpoint consumer is delivered by this page reader;
 #3459/#3460 retain grant, destination credential custody, deletion, restore and

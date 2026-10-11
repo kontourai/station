@@ -1,4 +1,5 @@
 import type { RefetchOptions } from '@tanstack/react-query';
+import { useRef } from 'react';
 import {
   type ApiRequestScope,
   StationRequestAuthorityError,
@@ -26,22 +27,31 @@ export function useUsageExportQuery(
     ...input,
     ...(input.snapshot ? { snapshot: { ...input.snapshot } } : {}),
   };
+  const key = [
+    'analytics',
+    'usage-export',
+    authority?.apiBase ?? null,
+    authority?.authorityKey ?? null,
+    captured.expectedStationId,
+    captured.from,
+    captured.to,
+    captured.scope,
+    captured.cursor ?? null,
+    captured.pageSize ?? 100,
+    captured.snapshot?.streamEpoch ?? null,
+    captured.snapshot?.highWater ?? null,
+    captured.snapshot?.afterGlobalSequence ?? null,
+  ];
+  const signature = JSON.stringify(key);
+  const selection = useRef({ signature, generation: 0 });
+  if (selection.current.signature !== signature)
+    selection.current = {
+      signature,
+      generation: selection.current.generation + 1,
+    };
+  const generation = selection.current.generation;
   const query = useApiQuery(
-    [
-      'analytics',
-      'usage-export',
-      authority?.apiBase ?? null,
-      authority?.authorityKey ?? null,
-      captured.expectedStationId,
-      captured.from,
-      captured.to,
-      captured.scope,
-      captured.cursor ?? null,
-      captured.pageSize ?? 100,
-      captured.snapshot?.streamEpoch ?? null,
-      captured.snapshot?.highWater ?? null,
-      captured.snapshot?.afterGlobalSequence ?? null,
-    ],
+    key,
     (signal) => {
       if (!authority) throw new StationRequestAuthorityError();
       return fetchUsageExport(authority.apiBase, captured, {
@@ -67,7 +77,13 @@ export function useUsageExportQuery(
         : undefined,
     async refetch(options?: RefetchOptions) {
       if (!authority) throw new StationRequestAuthorityError();
-      return query.refetch({ ...options, throwOnError: true });
+      if (selection.current.generation !== generation)
+        throw new Error('Usage export selection changed while waiting');
+      const result = await query.refetch({ ...options, throwOnError: true });
+      // QueryObserver returns its current selection after awaiting the old one.
+      if (selection.current.generation !== generation)
+        throw new Error('Usage export selection changed while waiting');
+      return result;
     },
   };
 }

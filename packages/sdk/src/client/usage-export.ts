@@ -45,7 +45,7 @@ const receipt = z.strictObject({
   conversationId: identity.optional(),
   taskId: identity.optional(),
   occurredAt: time.optional(),
-  observedAt: time.optional(),
+  observedAt: time,
   inputTokens: amount.optional(),
   outputTokens: amount.optional(),
   cacheReadTokens: amount.optional(),
@@ -174,6 +174,8 @@ export async function fetchUsageExport(
     throw new Error('Usage export is invalid or unsupported');
   const result = envelope.data.data;
   let previous = input.snapshot?.afterGlobalSequence ?? 0;
+  const from = Date.parse(`${input.from}T00:00:00.000Z`);
+  const to = Date.parse(`${input.to}T23:59:59.999Z`);
   if (
     result.stationId !== input.expectedStationId ||
     result.scope !== input.scope ||
@@ -189,7 +191,14 @@ export async function fetchUsageExport(
     if (
       observation.globalSequence <= previous ||
       observation.globalSequence > result.highWater ||
-      observation.receipts.some((item) => item.stationId !== result.stationId)
+      observation.receipts.some((item) => {
+        const observedAt = Date.parse(item.observedAt);
+        return (
+          item.stationId !== result.stationId ||
+          observedAt < from ||
+          observedAt > to
+        );
+      })
     )
       throw new Error(
         'Usage export observations do not match the captured source order',
