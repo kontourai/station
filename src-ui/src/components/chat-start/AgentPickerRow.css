@@ -13,7 +13,9 @@
    order: the name grows to its full width before the engine's flexible track
    gets any, and the engine is the first thing to give up width. (Weighted
    flex shrink still clipped the name while the engine kept half its text.) */
-.new-chat-modal__agent-header {
+/* Doubled class: index.css's flex rule has equal specificity, and this must
+   not depend on which stylesheet loads last. */
+.new-chat-modal__agent-header.new-chat-modal__agent-header {
   display: grid;
   grid-template-columns: auto minmax(0, max-content) auto minmax(0, 1fr);
 }
@@ -22,6 +24,8 @@
 }
 .new-chat-modal__agent-header > .agent-readiness__status {
   grid-column: 3;
+  /* The state keeps one line; the name and engine give width first. */
+  white-space: nowrap;
 }
 .new-chat-modal__agent-engine {
   grid-column: 4;

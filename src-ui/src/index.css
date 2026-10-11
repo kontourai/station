@@ -9032,32 +9032,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-tertiary);
 }
 
-/* One quiet line: engine chip + description, at the rung below the name.
-   The left inset lines it up under the name rather than under the avatar —
-   `AgentIcon size="small"` is 24px and the header's gap is 8px. */
-.new-chat-modal__agent-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  margin-top: 3px;
-  padding-left: 32px;
-}
-
-/* The chip's own `margin-left` assumes it trails a name on the same line.
-   Scoped to this surface; `.engine-chip` itself is untouched for the agent
-   lists, session tabs and hub cards that still place it that way.
-
-   The colour override that used to sit beside this rule is gone: it existed
-   only because the shared `.engine-chip__pill` failed AA on its own fill, and
-   station#3140 fixed that at source by moving the shared rule to the same
-   `--text-tertiary` this override was pinning. Re-declaring it here would now
-   just restate the base rule. */
-.new-chat-modal__agent-meta .engine-chip {
-  margin-left: 0;
-  min-width: 0;
-}
-
 /* archive#3027(b): a disabled row's unavailable reason must read as a
    reason, not blend into the muted description above it — same warning tone
    as .new-chat-modal__compat-warning (--warning-text: the accessible,
