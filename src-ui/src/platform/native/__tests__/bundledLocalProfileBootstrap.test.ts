@@ -16,24 +16,24 @@ describe('bundled local profile bootstrap', () => {
   /**
    * Runs the bootstrap with its production timer (`window.setTimeout`) on a
    * virtual clock. `phaseAt` decides the owned sidecar's phase from elapsed
-   * virtual milliseconds, standing in for a slow cold boot. `statusFails`
-   * makes a status read reject at that elapsed time.
+   * virtual milliseconds; `shownAt` decides whether the native host reports
+   * this WebView as already shown (revealed main window, bypass, pop-out).
    */
   async function bootstrapOnVirtualClock(
     phaseAt: (elapsedMs: number) => string,
     runForMs: number,
-    statusFails: (elapsedMs: number) => boolean = () => false,
+    shownAt: (elapsedMs: number) => boolean = () => false,
   ) {
     vi.useFakeTimers();
     const startedAt = Date.now();
-    const getBundledServerStatus = vi.fn(async () => {
-      const elapsed = Date.now() - startedAt;
-      if (statusFails(elapsed)) throw new Error('status bridge unavailable');
-      return {
-        status: 'ok',
-        value: { phase: phaseAt(elapsed), ownership: 'sidecar' },
-      };
-    });
+    const getBundledServerStatus = vi.fn(async () => ({
+      status: 'ok',
+      value: { phase: phaseAt(Date.now() - startedAt), ownership: 'sidecar' },
+    }));
+    const isStartupWindowAdmitted = vi.fn(async () => ({
+      status: 'ok',
+      value: shownAt(Date.now() - startedAt),
+    }));
     const invoke = vi.fn(async (command: string) =>
       command === 'station_ensure_bundled_local_profile' ? 'local' : undefined,
     );
@@ -43,13 +43,11 @@ describe('bundled local profile bootstrap', () => {
       pendingLocalSelfProvisionProfileName: vi.fn(() => undefined),
       authorizeActiveConnection: vi.fn(async () => true),
     };
-    const reload = vi.fn(() => undefined);
     let settled = false;
     const result = bootstrapBundledLocalProfile({
-      adapter: { getBundledServerStatus } as never,
+      adapter: { getBundledServerStatus, isStartupWindowAdmitted } as never,
       repository: repository as never,
       invoke,
-      reload,
     }).finally(() => {
       settled = true;
     });
@@ -58,20 +56,31 @@ describe('bundled local profile bootstrap', () => {
       result,
       settled: () => settled,
       getBundledServerStatus,
+      isStartupWindowAdmitted,
       invoke,
       repository,
-      reload,
     };
   }
 
-  /** The background wait may only reload; it never authors or authorizes. */
-  function expectNoBackgroundAuthoring(run: {
+  function expectNothingAuthored(run: {
     invoke: ReturnType<typeof vi.fn>;
     repository: Record<string, ReturnType<typeof vi.fn>>;
   }) {
     expect(run.invoke).not.toHaveBeenCalled();
     expect(run.repository.refresh).not.toHaveBeenCalled();
     expect(run.repository.authorizeActiveConnection).not.toHaveBeenCalled();
+  }
+
+  function expectAuthoredInPlace(run: {
+    invoke: ReturnType<typeof vi.fn>;
+    repository: Record<string, ReturnType<typeof vi.fn>>;
+  }) {
+    expect(run.invoke).toHaveBeenCalledWith(
+      'station_ensure_bundled_local_profile',
+    );
+    expect(run.repository.authorizeActiveConnection).toHaveBeenCalledWith(
+      'station-profile:local',
+    );
   }
 
   test('keeps waiting for an owned sidecar whose cold boot outlasts a minute, then authors and authorizes its profile', async () => {
@@ -81,32 +90,12 @@ describe('bundled local profile bootstrap', () => {
     );
     expect(run.settled()).toBe(true);
     await expect(run.result).resolves.toEqual({});
-    expect(run.invoke).toHaveBeenCalledWith(
-      'station_ensure_bundled_local_profile',
-    );
-    expect(run.repository.authorizeActiveConnection).toHaveBeenCalledWith(
-      'station-profile:local',
-    );
-    expect(run.reload).not.toHaveBeenCalled();
+    expectAuthoredInPlace(run);
     // After the first minute the wait backs off instead of polling at 10 Hz.
     expect(run.getBundledServerStatus.mock.calls.length).toBeLessThan(700);
   });
 
-  test.each(['failed', 'stopped', 'stopping'])(
-    'a reload while the owned sidecar is %s releases the loader to the recovery UI at once',
-    async (phase) => {
-      const run = await bootstrapOnVirtualClock(() => phase, 0);
-      expect(run.settled()).toBe(true);
-      await expect(run.result).resolves.toEqual({});
-      // A sidecar that never recovers is watched quietly: no reload, and the
-      // background never authors a profile or blocks the shell.
-      await vi.advanceTimersByTimeAsync(300_000);
-      expect(run.reload).not.toHaveBeenCalled();
-      expectNoBackgroundAuthoring(run);
-    },
-  );
-
-  test('an explicit Restart after a failed owned sidecar reloads once so first paint re-runs the bootstrap', async () => {
+  test('behind the startup cover a failed sidecar is waited for, and a Restart that reaches running authors in place', async () => {
     const run = await bootstrapOnVirtualClock(
       (elapsed) =>
         elapsed < 40_000
@@ -114,56 +103,87 @@ describe('bundled local profile bootstrap', () => {
           : elapsed < 100_000
             ? 'starting'
             : 'running',
-      0,
-    );
-    expect(run.settled()).toBe(true);
-    await vi.advanceTimersByTimeAsync(99_000);
-    expect(run.reload).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(3_000);
-    expect(run.reload).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(run.reload).toHaveBeenCalledTimes(1);
-    expectNoBackgroundAuthoring(run);
-  });
-
-  test('a crash right after the handshake (running then restarting) still reloads exactly once and authors nothing in the background', async () => {
-    const run = await bootstrapOnVirtualClock(
-      (elapsed) =>
-        elapsed < 10_000
-          ? 'failed'
-          : elapsed < 11_000
-            ? 'running'
-            : elapsed < 20_000
-              ? 'restarting'
-              : 'running',
-      60_000,
-    );
-    expect(run.settled()).toBe(true);
-    expect(run.reload).toHaveBeenCalledTimes(1);
-    expectNoBackgroundAuthoring(run);
-  });
-
-  test('status-bridge failures while waiting in the background are not unhandled rejections', async () => {
-    const run = await bootstrapOnVirtualClock(
-      (elapsed) => (elapsed < 30_000 ? 'failed' : 'running'),
-      40_000,
-      (elapsed) => elapsed > 1_000 && elapsed < 20_000,
-    );
-    expect(run.settled()).toBe(true);
-    expect(run.reload).toHaveBeenCalledTimes(1);
-    expectNoBackgroundAuthoring(run);
-  });
-
-  test('restarting is waited for and settles to the recovery UI once the supervisor reports failed', async () => {
-    const run = await bootstrapOnVirtualClock(
-      (elapsed) => (elapsed < 20_000 ? 'restarting' : 'failed'),
-      19_000,
+      99_000,
+      () => false,
     );
     expect(run.settled()).toBe(false);
-    await vi.advanceTimersByTimeAsync(2_000);
+    expectNothingAuthored(run);
+    await vi.advanceTimersByTimeAsync(3_000);
     expect(run.settled()).toBe(true);
     await expect(run.result).resolves.toEqual({});
-    expectNoBackgroundAuthoring(run);
+    expectAuthoredInPlace(run);
+  });
+
+  test.each(['failed', 'stopped'])(
+    'a window already shown to the user releases the loader at once when the owned sidecar is %s, and stops polling',
+    async (phase) => {
+      const run = await bootstrapOnVirtualClock(
+        () => phase,
+        0,
+        () => true,
+      );
+      expect(run.settled()).toBe(true);
+      await expect(run.result).resolves.toEqual({});
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(run.getBundledServerStatus).toHaveBeenCalledTimes(1);
+      expectNothingAuthored(run);
+    },
+  );
+
+  test('a covered window that is revealed while the sidecar is failed releases at its next observation', async () => {
+    const run = await bootstrapOnVirtualClock(
+      () => 'failed',
+      30_000,
+      (elapsed) => elapsed >= 20_000,
+    );
+    expect(run.settled()).toBe(true);
+    expectNothingAuthored(run);
+  });
+
+  test('stopping always respawns, so it is waited for even in a shown window', async () => {
+    const run = await bootstrapOnVirtualClock(
+      (elapsed) =>
+        elapsed < 5_000 ? 'stopping' : elapsed < 8_000 ? 'starting' : 'running',
+      4_000,
+      () => true,
+    );
+    expect(run.settled()).toBe(false);
+    expect(run.isStartupWindowAdmitted).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(run.settled()).toBe(true);
+    expectAuthoredInPlace(run);
+  });
+
+  test('an adapter without native readiness releases rather than hang a visible window', async () => {
+    vi.useFakeTimers();
+    const getBundledServerStatus = vi.fn(async () => ({
+      status: 'ok',
+      value: { phase: 'failed', ownership: 'sidecar' },
+    }));
+    const result = await bootstrapBundledLocalProfile({
+      adapter: {
+        getBundledServerStatus,
+        isStartupWindowAdmitted: vi.fn(async () => ({
+          status: 'unsupported',
+          command: 'startup-window-admitted',
+          reason: 'no native readiness',
+        })),
+      } as never,
+      repository: {} as never,
+      invoke: vi.fn(),
+    });
+    expect(result).toEqual({});
+    expect(getBundledServerStatus).toHaveBeenCalledTimes(1);
+  });
+
+  test('restarting is waited for, then a covered window keeps waiting once the supervisor reports failed', async () => {
+    const run = await bootstrapOnVirtualClock(
+      (elapsed) => (elapsed < 20_000 ? 'restarting' : 'failed'),
+      60_000,
+    );
+    expect(run.settled()).toBe(false);
+    expect(run.isStartupWindowAdmitted).toHaveBeenCalled();
+    expectNothingAuthored(run);
   });
 
   test('does not author a profile while the owned sidecar is not running', async () => {

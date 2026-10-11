@@ -6,24 +6,26 @@ import type { NativePlatformAdapter } from './types';
 // Large migrated homes, or a slow host, can spend tens of seconds (sometimes
 // more than a minute) loading agents, plugins, and event indexes before the
 // native-owned sidecar publishes its handshake. While that owned sidecar is
-// still progressing (`starting`, or `restarting`, which the supervisor bounds
-// with its own attempt cap before reporting `failed`), there is no wall-clock
-// limit: giving up would leave a fresh home without the profile its native
-// identity proof requires. A terminal phase (`failed`, `stopping`, `stopped`)
-// releases the loader at once so the shell can render its recovery UI rather
-// than hang a visible (reloaded or dev) window; for an owned sidecar at first
-// launch that UI stays behind the native cover until readiness admits it.
+// progressing (`starting`; `restarting`, which the supervisor bounds with its
+// own attempt cap before reporting `failed`; or `stopping`, which only a
+// manual restart sets and which always respawns) there is no wall-clock limit:
+// giving up would leave a fresh home without the profile its native identity
+// proof requires.
 //
-// Only an explicit Restart brings a terminal owned sidecar back to `running`.
-// When that happens the page reloads, so first paint re-runs this bootstrap:
-// authoring, authorization and their errors keep their single first-paint
-// path instead of a second, out-of-band one.
+// A terminal owned sidecar (`failed`, `stopped`) is waited for only while the
+// main window is still covered by native startup readiness, whose cover offers
+// Restart/Quit once its deadline passes; an explicit Restart then lets this
+// same bootstrap continue in place on its normal path. A window already shown
+// to the user (a reload of the revealed main window, the dev bypass, or a
+// workspace pop-out) releases the loader at once to the in-app recovery UI,
+// with no background polling.
 const STATUS_RETRY_MS = 100;
 const STATUS_RETRY_SLOW_MS = 1_000;
 const STATUS_FAST_ATTEMPTS = 600;
 const PROGRESSING_PHASES: ReadonlySet<string> = new Set([
   'starting',
   'restarting',
+  'stopping',
 ]);
 
 interface BootstrapDependencies {
@@ -31,8 +33,6 @@ interface BootstrapDependencies {
   repository: NativeStationProfileRepository & { refresh(): Promise<boolean> };
   invoke(command: string, args?: Record<string, unknown>): Promise<unknown>;
   wait?: (milliseconds: number) => Promise<void>;
-  /** Re-runs first paint; injectable because jsdom cannot stub reload. */
-  reload?: () => void;
 }
 
 export interface BundledLocalProfileBootstrapResult {
@@ -50,30 +50,13 @@ function defaultWait(milliseconds: number) {
 }
 
 /**
- * After the loader was released for a terminal owned sidecar, wait gently for
- * an explicit Restart to bring it to `running`, then reload once so first
- * paint re-runs the bootstrap. It never authors, authorizes or refreshes.
+ * Whether this WebView is already shown to the user. Without an answer (an
+ * adapter with no native readiness, or a failed read) it releases rather than
+ * risk hanging a visible window on the loader.
  */
-async function reloadWhenOwnedSidecarRuns(
-  dependencies: BootstrapDependencies,
-): Promise<void> {
-  const wait = dependencies.wait ?? defaultWait;
-  const reload = dependencies.reload ?? (() => window.location.reload());
-  for (;;) {
-    await wait(STATUS_RETRY_SLOW_MS);
-    const status = await dependencies.adapter
-      .getBundledServerStatus()
-      .catch(() => undefined);
-    if (status?.status !== 'ok') continue;
-    if (
-      status.value.ownership === 'sidecar' &&
-      status.value.phase !== 'running'
-    ) {
-      continue;
-    }
-    reload();
-    return;
-  }
+async function windowAlreadyShown(adapter: NativePlatformAdapter) {
+  const admitted = await adapter.isStartupWindowAdmitted();
+  return admitted.status !== 'ok' || admitted.value;
 }
 
 /** Bootstrap and authorize a fresh desktop-owned sidecar before first paint. */
@@ -87,8 +70,10 @@ export async function bootstrapBundledLocalProfile(
     if (status.status !== 'ok') return {};
     const ownsSidecar = status.value.ownership === 'sidecar';
     if (ownsSidecar && status.value.phase !== 'running') {
-      if (!PROGRESSING_PHASES.has(status.value.phase)) {
-        void reloadWhenOwnedSidecarRuns(dependencies);
+      if (
+        !PROGRESSING_PHASES.has(status.value.phase) &&
+        (await windowAlreadyShown(adapter))
+      ) {
         return {};
       }
       await wait(

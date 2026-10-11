@@ -11885,6 +11885,21 @@ fn renderer_mount_label_admitted(label: &str) -> bool {
     label == "main"
 }
 
+/// Whether the calling WebView is already shown to the user. A window other
+/// than the main one (a workspace pop-out) always is; the main window is once
+/// startup readiness admitted it (Ready, or the dev bypass). Before that the
+/// native cover owns recovery, so the renderer bootstrap keeps waiting.
+#[cfg(not(mobile))]
+fn startup_window_admitted_for(label: &str, main_window_admitted: bool) -> bool {
+    !renderer_mount_label_admitted(label) || main_window_admitted
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+fn startup_window_admitted(window: tauri::WebviewWindow, app: AppHandle) -> bool {
+    startup_window_admitted_for(window.label(), main_window_activation_available(&app))
+}
+
 #[cfg(not(mobile))]
 #[tauri::command]
 fn commit_renderer_mount(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> {
@@ -13371,6 +13386,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         commit_renderer_mount,
         commit_startup_readiness,
         commit_startup_recovery_ui,
+        startup_window_admitted,
         ssh_env_probe,
         ssh_launch_start,
         ssh_launch_status,
@@ -15236,6 +15252,23 @@ mod tests {
         assert!(
             cover.contains("let front = native_cover_should_front(main_window_hidden_by_user());")
         );
+        // The decision is consulted, never amended: the bare identifier
+        // `front` appears only in its one binding and the two gates.
+        let is_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let front_tokens = cover
+            .match_indices("front")
+            .filter(|(at, token)| {
+                !cover[..*at].chars().next_back().is_some_and(is_ident)
+                    && !cover[at + token.len()..]
+                        .chars()
+                        .next()
+                        .is_some_and(is_ident)
+            })
+            .count();
+        assert_eq!(
+            front_tokens, 3,
+            "one `let front` binding and two `if front` gates"
+        );
         let fronts = cover.match_indices("makeKeyAndOrderFront(None)").count();
         assert_eq!(fronts, 2, "one order-front each for cover and reveal");
         for (at, _) in cover.match_indices("makeKeyAndOrderFront(None)") {
@@ -15982,9 +16015,18 @@ mod tests {
 
     #[test]
     #[cfg(not(mobile))]
-    fn a_cover_change_fronts_the_window_only_while_the_user_has_not_hidden_it() {
-        assert!(native_cover_should_front(false));
-        assert!(!native_cover_should_front(true));
+    fn only_a_shown_window_counts_as_admitted_for_the_renderer_bootstrap() {
+        assert!(
+            !startup_window_admitted_for("main", false),
+            "covered main window"
+        );
+        assert!(
+            startup_window_admitted_for("main", true),
+            "revealed or bypassed main window"
+        );
+        for pop_out in ["workspace-pop-out-1", "preview", ""] {
+            assert!(startup_window_admitted_for(pop_out, false), "{pop_out:?}");
+        }
     }
 
     /// A late ticket after the routed deadline still reveals with no restart.
