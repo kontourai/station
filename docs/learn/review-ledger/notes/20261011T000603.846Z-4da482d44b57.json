@@ -1,0 +1,7 @@
+{
+  "revision": "f60717c3dd95d6421d911229b95b465f40d79755",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed merged current-main ledger input and generated projection. New nightly npm row retains source cb877da, exact run38094285896, version0.7.0-nightly.2474.38094285896, null artifactBuiltAt and its explicit unknown-manifest caveat; generated Markdown exactly matches JSON through renderLedgerMarkdown. REST confirms the named run/source association and currently reports the workflow in progress; this review establishes projection/metadata consistency only, not independently completed release gates, package availability or canonical qualification. Existing page caveats keep publication and recording outcomes distinct.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}
