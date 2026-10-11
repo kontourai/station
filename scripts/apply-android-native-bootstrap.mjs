@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyAndroidInsets } from './lib/android-window-insets.mjs';
@@ -8,20 +14,13 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATED_ANDROID = join('src-desktop', 'gen', 'android', 'app');
-const KEYRING_BRIDGE = `package io.crates.keyring
-
-import android.content.Context
-
-class Keyring private constructor() {
-  companion object {
-    init {
-      System.loadLibrary("station_ai_lib")
-    }
-
-    external fun initializeNdkContext(context: Context)
-  }
-}
-`;
+// tao 0.37 (Tauri 2.12) initializes ndk_context from its own onCreate, and
+// ndk_context asserts it is initialized exactly once. The activity used to
+// initialize it first through android-native-keyring-store's JNI bridge, so
+// every launch panicked inside Rust onCreate and aborted. The keyring store
+// reads the context tao installs; nothing may initialize it again.
+const LEGACY_CONTEXT_INIT = 'Keyring.initializeNdkContext(applicationContext)';
+const LEGACY_CONTEXT_IMPORT = 'import io.crates.keyring.Keyring';
 
 export function androidNamespace(buildGradle) {
   const matches = [...buildGradle.matchAll(/\bnamespace\s*=\s*"([^"]+)"/g)];
@@ -48,38 +47,49 @@ function addImport(source, packageName, imported) {
   return source.replace(declaration, `${declaration}\n\nimport ${imported}`);
 }
 
-export function activityWithNativeCredentialBootstrap(source, packageName) {
-  const initialize = 'Keyring.initializeNdkContext(applicationContext)';
-  if (source.includes(initialize)) return source;
-
-  let next = addImport(source, packageName, 'io.crates.keyring.Keyring');
+export function activityWithTauriOnCreate(source, packageName) {
+  if (!source.startsWith(`package ${packageName}`)) {
+    throw new Error(`MainActivity.kt does not declare package ${packageName}.`);
+  }
+  const next = source
+    .split('\n')
+    .filter(
+      (line) =>
+        line.trim() !== LEGACY_CONTEXT_INIT &&
+        line.trim() !== LEGACY_CONTEXT_IMPORT,
+    )
+    .join('\n');
+  if (next.includes('initializeNdkContext')) {
+    throw new Error(
+      'MainActivity initializes ndk_context; tao owns that initialization.',
+    );
+  }
   if (next.includes('override fun onCreate(savedInstanceState: Bundle?)')) {
     if (!next.includes('super.onCreate(savedInstanceState)')) {
       throw new Error(
         'MainActivity onCreate does not call Tauri super.onCreate.',
       );
     }
-    return next.replace(
-      'super.onCreate(savedInstanceState)',
-      `${initialize}\n    super.onCreate(savedInstanceState)`,
-    );
+    return next;
   }
 
-  next = addImport(next, packageName, 'android.os.Bundle');
+  const withBundle = addImport(next, packageName, 'android.os.Bundle');
   const body = `class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
-    ${initialize}
     super.onCreate(savedInstanceState)
   }
 }`;
-  if (/class MainActivity\s*:\s*TauriActivity\(\)\s*\{\s*\}/.test(next)) {
-    return next.replace(
+  if (/class MainActivity\s*:\s*TauriActivity\(\)\s*\{\s*\}/.test(withBundle)) {
+    return withBundle.replace(
       /class MainActivity\s*:\s*TauriActivity\(\)\s*\{\s*\}/,
       body,
     );
   }
-  if (/class MainActivity\s*:\s*TauriActivity\(\)\s*$/.test(next)) {
-    return next.replace(/class MainActivity\s*:\s*TauriActivity\(\)\s*$/, body);
+  if (/class MainActivity\s*:\s*TauriActivity\(\)\s*$/.test(withBundle)) {
+    return withBundle.replace(
+      /class MainActivity\s*:\s*TauriActivity\(\)\s*$/,
+      body,
+    );
   }
   throw new Error(
     'Unsupported generated MainActivity shape; refusing an unsafe bootstrap edit.',
@@ -225,35 +235,19 @@ export function applyAndroidNativeBootstrap({ root = ROOT } = {}) {
     );
   }
   const current = readFileSync(activityPath, 'utf8');
-  const next = activityWithNativeCredentialBootstrap(current, namespace);
+  const next = activityWithTauriOnCreate(current, namespace);
   if (next !== current) writeFileSync(activityPath, next);
   applyAndroidInsets(activityPath, namespace);
 
+  // A bridge left by an earlier bootstrap would invite the double
+  // initialization back; the generated project must not carry one.
   const bridgePath = join(javaRoot, 'io', 'crates', 'keyring', 'Keyring.kt');
-  if (existsSync(bridgePath)) {
-    const bridge = readFileSync(bridgePath, 'utf8');
-    for (const required of [
-      'package io.crates.keyring',
-      'System.loadLibrary("station_ai_lib")',
-      'external fun initializeNdkContext(context: Context)',
-    ]) {
-      if (!bridge.includes(required)) {
-        throw new Error(
-          `Existing Android keyring bridge is missing ${required}.`,
-        );
-      }
-    }
-  } else {
-    mkdirSync(dirname(bridgePath), { recursive: true });
-    writeFileSync(bridgePath, KEYRING_BRIDGE);
-  }
+  if (existsSync(bridgePath)) rmSync(bridgePath);
 
-  return { namespace, activityPath, bridgePath };
+  return { namespace, activityPath };
 }
 
 if (invokedDirectly(import.meta.url)) {
   const result = applyAndroidNativeBootstrap();
-  console.log(
-    `Android native credential bootstrap applied to ${result.namespace}.`,
-  );
+  console.log(`Android native bootstrap applied to ${result.namespace}.`);
 }
