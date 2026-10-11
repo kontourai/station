@@ -1278,7 +1278,7 @@ describe('ChatInputArea', () => {
         defaultModelSource: source,
         onModelReset: vi.fn(),
       });
-      expect(screen.getByRole('button', { name, exact: true })).toBeTruthy();
+      expect(screen.getByRole('button', { name })).toBeTruthy();
     },
   );
 
