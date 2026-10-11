@@ -12,7 +12,7 @@ interfaces and composition rules.
 | `src-ui/` | React application, workspace navigation, product UI |
 | `src-desktop/` | Tauri shell and native platform integration |
 | `src-shared/` | Checkout-level shared source |
-| `packages/` | Contracts, SDK, shared helpers, pairing, CLI, and pane packages |
+| `packages/` | Contracts, SDK, shared helpers, pairing, CLI, pane packages, and the optional product telemetry receiver |
 | `examples/` | Documented plugin and integration examples |
 | `experiments/` | Experiments with explicit limitations, not implied product support |
 

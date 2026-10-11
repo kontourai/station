@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '66fd53a3f3257e21d5e59b7fcb76bb56ab2378874b0116330220653896409b1a';
+  'dc2b237fb1fbedfee90ae095cd0e93e524e8e396f97405f6ca66ad8826d0ffa9';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -1178,7 +1178,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Scheduling, events, notifications, and voice',
     summary:
       'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.',
-    body: 'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Who owns retry, deduplication, and retention?\n- What survives a process restart?\n- Does a delivery receipt prove a person saw a notification?\n\nRead module topics with get_station_docs_topic:\n- architecture-operationaleventoutbox: OperationalEventOutbox\n- architecture-operationaleventdelivery: OperationalEventDelivery\n- architecture-operationaleventsubscriptions: OperationalEventSubscriptions\n- architecture-extensionnotificationbindings: ExtensionNotificationBindings\n- architecture-schedulerledger-and-builtinscheduler: SchedulerLedger and BuiltinScheduler\n- architecture-nativeinvocationruns: NativeInvocationRuns\n- architecture-monitoring-history-and-agent-catalog-reads: Monitoring history and Agent catalog reads\n- architecture-native-notification-feed: Native notification feed\n\nCanonical reading:\n- docs/guides/monitoring.md\n- docs/guides/web-push-notifications.md\n- docs/reference/usage-telemetry.md\n- docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1\n- docs/learn/walkthroughs.md#inspect-an-approval',
+    body: 'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Who owns retry, deduplication, and retention?\n- What survives a process restart?\n- Does a delivery receipt prove a person saw a notification?\n\nRead module topics with get_station_docs_topic:\n- architecture-operationaleventoutbox: OperationalEventOutbox\n- architecture-operationaleventdelivery: OperationalEventDelivery\n- architecture-operationaleventsubscriptions: OperationalEventSubscriptions\n- architecture-extensionnotificationbindings: ExtensionNotificationBindings\n- architecture-schedulerledger-and-builtinscheduler: SchedulerLedger and BuiltinScheduler\n- architecture-nativeinvocationruns: NativeInvocationRuns\n- architecture-monitoring-history-and-agent-catalog-reads: Monitoring history and Agent catalog reads\n- architecture-producttelemetryreceiver: ProductTelemetryReceiver\n- architecture-native-notification-feed: Native notification feed\n\nCanonical reading:\n- docs/guides/monitoring.md\n- docs/guides/web-push-notifications.md\n- docs/reference/usage-telemetry.md\n- packages/telemetry-broker/README.md\n- docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1\n- docs/learn/walkthroughs.md#inspect-an-approval',
     tags: ['architecture', 'background'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -1268,6 +1268,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-background',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'monitoring-history-and-agent-catalog-reads',
+  },
+  {
+    id: 'architecture-producttelemetryreceiver',
+    title: 'ProductTelemetryReceiver',
+    summary:
+      'Interface, composition, invariants, and documented evidence for ProductTelemetryReceiver.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## ProductTelemetryReceiver\n\n**Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)\naccepts the shared disclosed product envelope. Its\n[HTTP owner](../../packages/telemetry-broker/src/app.ts) separates source ingest\nand source-scoped receipt lookup from operator source management, storage health\nand bounded received-observation trends. The\n[PostgreSQL repository](../../packages/telemetry-broker/src/store.ts) validates\ncompatible permanent tables and constraints inside every transaction, fences\nrevocation against ingestion, deduplicates retained source/event UUIDs, and\nreturns acceptance only after acknowledged durable commit. Database waits and\nrequest concurrency are bounded; uncertainty returns a failure.\n\n**Composition and limits.** The\n[Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private\noperator credentials and composes the database pool separately from Station's\nruntime. No endpoint is enabled automatically. This product namespace neither\ncollects OTel metrics/traces nor authorizes personal receipt synchronization.\nProducer clocks and unknown delivery coverage remain explicit in queries;\ninstallation hashes are not people. Retention limits deduplication, and deleted\nrows do not guarantee physical database-file shrinkage.\n\n**Evidence.** Focused HTTP mocks own parser/credential/admission behavior. The\n[live qualifier](../../packages/telemetry-broker/qualify.mjs) uses its own PostgreSQL\ndatabase to exercise commit/replay, revocation, capacity, corrupt live schemas\nand stalled transport recovery. Neither establishes persistent deployment,\nactual Station execution, final-source backup/restore or native acceptance.",
+    tags: ['architecture', 'background', 'ProductTelemetryReceiver'],
+    parentId: 'architecture-background',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'producttelemetryreceiver',
   },
   {
     id: 'architecture-native-notification-feed',
