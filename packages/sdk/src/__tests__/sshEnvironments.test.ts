@@ -35,7 +35,7 @@ describe('SSH environments SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/environments/ssh',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
 
@@ -50,7 +50,7 @@ describe('SSH environments SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       'http://example.test/api/environments/ssh/hosts',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -110,7 +110,7 @@ describe('SSH environments SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/environments/ssh/sessions',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
