@@ -142,7 +142,9 @@ export function createPersonalTokenRoutes(
         return c.json({ error: { code: 'account_bound_person' } }, 400);
       if (error instanceof PersonalTokenUnavailableError)
         return c.json({ error: { code: 'tokens_unavailable' } }, 503);
-      return c.json({ error: { code: 'invalid_request' } }, 400);
+      if (error instanceof DevicePairingError)
+        return c.json({ error: { code: 'invalid_request' } }, 400);
+      throw error;
     }
   });
 

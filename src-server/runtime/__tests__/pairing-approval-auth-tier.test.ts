@@ -1209,6 +1209,7 @@ describe('#3557 Station groups at the HTTP boundary', () => {
           principalId: casey.principalId,
           group: 'admin',
           devices: [{ id: casey.device.id, effectiveScope: ELEVATED }],
+          canHoldTokens: true,
         },
       ],
     });
@@ -1459,9 +1460,8 @@ describe('#3557 personal access tokens at the HTTP boundary', () => {
       people: { principalId: string; tokens: { name: string }[] }[];
     };
     expect(
-      people.people.find((person) => person.principalId === casey.principalId)
-        ?.tokens,
-    ).toMatchObject([{ name: 'Ops' }]);
+      people.people.find((person) => person.principalId === casey.principalId),
+    ).toMatchObject({ tokens: [{ name: 'Ops' }], canHoldTokens: false });
 
     const mint = await harness.request(
       '/.well-known/station/v1/pairing/local-grant',

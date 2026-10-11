@@ -358,6 +358,8 @@ export class EnvironmentSecurityService {
       });
       this.#fsyncSecurityDirectory();
       this.#devicePairingService.resetEnvironment(reset.environmentId);
+      // Again: a token minted while the reset ran must not outlive it.
+      await this.#devicePairingService.clearPersonalTokens();
       return reset;
     });
   }

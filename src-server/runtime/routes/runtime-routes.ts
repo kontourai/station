@@ -9164,6 +9164,7 @@ export function configureDevicePairingHostRoutes(
           assigned,
           devices: [],
           tokens: pairing.listPersonalTokens(principalId),
+          canHoldTokens: false,
         };
         people.set(principalId, person);
       }
@@ -9177,7 +9178,13 @@ export function configureDevicePairingHostRoutes(
       )
         continue;
       const principal = principalForDeviceBinding(device.principalBinding);
-      personFor(principal.id, principal.display).devices.push({
+      const person = personFor(principal.id, principal.display);
+      if (
+        !('kind' in device.principalBinding) ||
+        device.principalBinding.kind !== 'account'
+      )
+        person.canHoldTokens = true;
+      person.devices.push({
         id: device.id,
         name: device.name,
         scope: device.scope,
@@ -9274,6 +9281,7 @@ export function configureDevicePairingHostRoutes(
       assigned: body.group !== 'member',
       devices: [],
       tokens: [],
+      canHoldTokens: false,
     };
     return c.json({ person, revocations });
   });
@@ -9337,7 +9345,9 @@ export function configureDevicePairingHostRoutes(
         return c.json({ error: 'account_bound_person' }, 400);
       if (error instanceof PersonalTokenUnavailableError)
         return c.json({ error: 'tokens_unavailable' }, 503);
-      return c.json({ error: 'invalid_request' }, 400);
+      if (error instanceof DevicePairingError)
+        return c.json({ error: 'invalid_request' }, 400);
+      throw error;
     }
   });
   app.delete('/api/pairing/people/:principalId/tokens/:tokenId', async (c) => {

@@ -3557,7 +3557,7 @@ person_device_required`:
 
 Present the secret as `Authorization: Bearer stp_…`. The operator credential
 manages anyone's tokens: `GET /api/pairing/people` lists each person's
-`tokens`, `POST /api/pairing/people/:principalId/tokens` (same body; `404
+`tokens` and whether a token can be made for them (`canHoldTokens`), `POST /api/pairing/people/:principalId/tokens` (same body; `404
 person_not_found` unless a live device is tied to the person) mints one, and
 `DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
 operator-minted token is bounded by the person's Station group rather than

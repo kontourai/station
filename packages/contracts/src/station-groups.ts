@@ -117,4 +117,10 @@ export interface StationPerson {
   devices: StationPersonDevice[];
   /** #3557: their active personal access tokens (never secrets). */
   tokens: PersonalAccessToken[];
+  /**
+   * #3557: whether a token can be made for them now: a live device ties
+   * them by a Tailscale identity (an account's devices need its session,
+   * which a script does not hold).
+   */
+  canHoldTokens: boolean;
 }

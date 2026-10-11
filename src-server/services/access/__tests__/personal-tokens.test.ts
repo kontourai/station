@@ -3,7 +3,13 @@
  * authenticates as a headless device of its person, is stored only as a
  * hash, expires, revokes, and never touches the paired-device registry.
  */
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -210,6 +216,20 @@ describe('personal access tokens', () => {
     });
     await security.resetEnvironment();
     expect(security.verifyCredential(minted.secret)).toBe(false);
+  });
+
+  test('a reset that cannot revoke tokens changes nothing', async () => {
+    const { homeDir, security } = await station();
+    const casey = pairCasey(security.devicePairing);
+    const environmentId = async () =>
+      (await new EnvironmentSecurityService({ homeDir }).initialize())
+        .environmentId;
+    const before = await environmentId();
+    // The token record's path is unusable: a directory sits there.
+    mkdirSync(join(homeDir, 'security', PERSONAL_TOKENS_FILE));
+    await expect(security.resetEnvironment()).rejects.toThrow();
+    expect(await environmentId()).toBe(before);
+    expect(security.verifyCredential(casey.credential)).toBe(true);
   });
 
   test('a revocation holds for another Station process on the home, which never writes it back', async () => {

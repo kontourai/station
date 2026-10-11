@@ -530,7 +530,8 @@ owner-only, or a link) or unreadable token file authenticates no one, and
 Station refuses to mint or revoke over it (`503 tokens_unavailable`). The
 20-token limit is decided under the lock, so it holds across processes. An
 environment reset revokes every token first, and fails without changing
-anything if it cannot.
+anything if it cannot; it revokes them again once done, so a token minted
+while it ran does not survive it.
 
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
