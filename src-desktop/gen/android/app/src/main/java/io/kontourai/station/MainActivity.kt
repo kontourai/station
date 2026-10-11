@@ -6,7 +6,6 @@ import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import io.crates.keyring.Keyring
 
 class MainActivity : TauriActivity() {
   // Android's WebView reports env(safe-area-inset-*) as 0 for system bars, so
@@ -18,7 +17,6 @@ class MainActivity : TauriActivity() {
   private var safeAreaJson = "{\"top\":0,\"right\":0,\"bottom\":0,\"left\":0}"
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    Keyring.initializeNdkContext(applicationContext)
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
   }
