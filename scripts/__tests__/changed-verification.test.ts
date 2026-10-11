@@ -1733,8 +1733,46 @@ setInterval(() => {}, 1000);`,
         kind: 'explicit',
         exitCode: 1,
         infrastructureError: true,
+        error: 'Vitest child terminated by signal SIGTERM',
       }),
     ]);
+  });
+  test('retains a redacted bounded child infrastructure cause in the diagnostic artifact', async () => {
+    const writeReceipt = vi.fn();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: reportedRun({
+        status: null,
+        report: null,
+        result: {
+          error: new Error(
+            `Authorization: Bearer fixture-child-secret\n${'detail '.repeat(1000)}`,
+          ),
+        },
+      }),
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [scenarios.sourceEdges.dynamicScript],
+      }),
+      collectProvenance: provenance,
+      writeReceipt,
+    });
+    expect(result.receipt.terminal.status).toBe('infrastructure_error');
+    expect(result.executed[0].error).toContain('[REDACTED]');
+    expect(Buffer.byteLength(result.executed[0].error)).toBeLessThanOrEqual(
+      2048,
+    );
+    const diagnostic = writeReceipt.mock.calls.find(
+      ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
+    );
+    expect(diagnostic).toBeDefined();
+    const artifact = JSON.parse(diagnostic![1]);
+    expect(artifact.counts).toMatchObject({
+      infrastructureErrors: 1,
+      parserErrors: 0,
+    });
+    expect(artifact.executions[0].error).toBe(result.executed[0].error);
+    expect(JSON.stringify(result)).not.toContain('fixture-child-secret');
   });
   test('retains failed cleanup with a conservative nonzero survivor sentinel', async () => {
     const terminate = vi.fn(async () => {});

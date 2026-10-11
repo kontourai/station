@@ -1,0 +1,7 @@
+{
+  "revision": "586658c49d5459b7bc1a7ddf86a9778f19606712",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the VerificationCoordinator section against the bounded waiter-cap fixture and its real coordinator calls. The fixture retains the same cap, rejection receipt and zero-phase assertions, ci-fast admission, successful terminal receipts and 30-second deadline. Only its polling cadence changes from 1ms to 100ms and cleanup now releases, aborts and awaits all started requests before deleting its root. Production ownership, identity, admission and receipt claims remain accurate. The focused coordinator suite passed 121 tests and independent read-only delta review found no issue; this does not establish the cause of the earlier stack-only CI failure or canonical release qualification.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts"]}
+  ]
+}
