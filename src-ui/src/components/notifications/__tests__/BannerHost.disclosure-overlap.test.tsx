@@ -169,40 +169,49 @@ describe.skipIf(!chromiumAvailable)(
         try {
           await page.setContent(buildFixtureHtml(markup));
 
-          const disclosure = await page
-            .locator('.banner-host__disclosure')
-            .boundingBox();
+          // Measure one animation frame: separate browser calls can observe
+          // different positions during the banner's entrance translation.
+          const { disclosure, detailBox, lineRects } = await page.evaluate(
+            () => {
+              const box = (selector: string) => {
+                const rect = document
+                  .querySelector(selector)
+                  ?.getBoundingClientRect();
+                return rect
+                  ? {
+                      x: rect.x,
+                      y: rect.y,
+                      width: rect.width,
+                      height: rect.height,
+                    }
+                  : null;
+              };
+              const messageEl = document.querySelector('.banner-host__message');
+              const textNode = messageEl?.childNodes[0];
+              const range = document.createRange();
+              if (textNode) range.selectNodeContents(textNode);
+              return {
+                disclosure: box('.banner-host__disclosure'),
+                detailBox: box('.banner-host__detail'),
+                lineRects: textNode
+                  ? [...range.getClientRects()].map((r) => ({
+                      x: r.left,
+                      y: r.top,
+                      width: r.width,
+                      height: r.height,
+                    }))
+                  : [],
+              };
+            },
+          );
           expect(disclosure, '.banner-host__disclosure not visible').not.toBe(
             null,
           );
-          // The overlap fix must not regress the touch-target floor
-          // (archive#3453) it shares CSS with.
           expect(disclosure!.height).toBeGreaterThanOrEqual(
             MIN_TOUCH_TARGET_PX,
           );
-
-          const detailBox = await page
-            .locator('.banner-host__detail')
-            .boundingBox();
           expect(detailBox, '.banner-host__detail not visible').not.toBe(null);
 
-          // Every visual LINE of the message's own text, independent of the
-          // disclosure's own inline position within it — `Range.getClientRects`
-          // returns one rect per wrapped line, which a block-level
-          // `getBoundingClientRect` on `.banner-host__message` cannot.
-          const lineRects: Box[] = await page.evaluate(() => {
-            const messageEl = document.querySelector('.banner-host__message');
-            const textNode = messageEl?.childNodes[0];
-            if (!textNode) return [];
-            const range = document.createRange();
-            range.selectNodeContents(textNode);
-            return [...range.getClientRects()].map((r) => ({
-              x: r.left,
-              y: r.top,
-              width: r.width,
-              height: r.height,
-            }));
-          });
           expect(
             lineRects.length,
             'expected at least one message text line rect',
