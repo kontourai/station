@@ -17,6 +17,7 @@ import { join, resolve } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-server-targets.mjs';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   assertOnlyExpectedAssets,
   createReleaseInventory,
@@ -26,7 +27,6 @@ import {
   validateReleaseInventory,
   verifyTauriUpdaterSignature,
 } from '../lib/release-artifacts.mjs';
-import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { generateReleaseSboms } from '../lib/release-sbom-generation.mjs';
 
 const roots: string[] = [];
