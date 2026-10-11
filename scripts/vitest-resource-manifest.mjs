@@ -201,6 +201,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Epic #2323 S3: real FIFOs (`mkfifo`) as plugin inputs, and a bounded
   // child process for the tsconfig read a regression would block.
   'packages/shared/src/__tests__/plugin-build-fifo.test.ts',
+  // #699: every buildPlugin call starts esbuild's service child. The file
+  // imports no child_process itself, so the direct-import detector cannot
+  // see that seam; under the ordinary four-worker corpus two of its cases
+  // timed out at canonical phase load.
+  'packages/shared/src/__tests__/plugin-build.test.ts',
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
