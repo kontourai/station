@@ -197,8 +197,7 @@ path also has a [binding sidecar](../../src-server/services/ssh/native-device-pr
 and a separate credential-free Request principal. The
 [native runtime factory](../../src-server/runtime/bootstrap/native-device-proof-runtime.ts)
 composes server admission behind explicit opt-in and provider/native connector
-checks; the active paired Device it supplies carries the scope its person's
-Station group allows (#3557), never the raw stored grant. The [binding management routes](../../src-server/routes/system/native-device-proof-binding-routes.ts)
+checks. The [binding management routes](../../src-server/routes/system/native-device-proof-binding-routes.ts)
 require current operator credentials and expose historical/current binding
 readback. A separate [Device self-receipt route](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts)
 admits only the owning current ordinary Device bearer. The Desktop
