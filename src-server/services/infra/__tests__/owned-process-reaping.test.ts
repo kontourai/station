@@ -1649,6 +1649,9 @@ describe.skipIf(!groupSurvivorPlatform)(
 
     test('an unreadable group listing still retains the record, with an unknown member count', async () => {
       const fixture = await leaderDeadGroupAlive();
+      // `isAlive` reads a killed-but-unreaped member as alive, so the spy is
+      // what proves nothing was signaled on this branch.
+      const signals = spyOnSignals();
 
       const result = await sweepOrphanedOwnedProcesses({
         registryDir: fixture.registryDir,
@@ -1660,6 +1663,7 @@ describe.skipIf(!groupSurvivorPlatform)(
       expect(result.survivingGroups).toEqual([
         { pgid: fixture.leaderPid, members: null },
       ]);
+      expect(signals()).toEqual([]);
       expect(isAlive(fixture.memberPids[0])).toBe(true);
       expect(existsSync(fixture.recordFile)).toBe(true);
     });

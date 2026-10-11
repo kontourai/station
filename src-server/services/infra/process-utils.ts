@@ -932,8 +932,9 @@ export function spawnOwnedChild(
 /**
  * Release an owned child's registry record once its whole process group has
  * exited, not just the leader (#561). A leader that exits while descendants
- * keep its group alive keeps its record, so the next startup sweep after this
- * owner is gone can reap them. On Windows there is no group to wait for.
+ * keep its group alive keeps its record, so the startup sweeps after this
+ * owner is gone retain and report that group (never signal it) until it is
+ * empty. On Windows there is no group to wait for.
  */
 export function releaseOwnedChildAfterGroupExit(
   proc: Pick<ChildProcess, 'pid' | 'once'>,
