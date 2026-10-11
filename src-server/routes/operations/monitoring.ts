@@ -227,18 +227,17 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
             healthy: !!agent.model && deps.memoryAdapters.has(slug),
           };
           if (hosted) return agentState;
+          // #463: no `cost`. Nothing here prices an agent's usage; this row
+          // used to carry a literal 0 that `totalCost` then summed into an
+          // invented $0 of spend.
           return {
             ...agentState,
             conversationCount: stats?.conversationCount ?? 0,
             messageCount: stats?.messageCount ?? 0,
-            cost: 0,
           };
         }),
       );
 
-      const totalCost = hosted
-        ? undefined
-        : agents.reduce((sum, a) => sum + ('cost' in a ? a.cost : 0), 0);
       const totalMessages = hosted
         ? undefined
         : agents.reduce(
@@ -254,7 +253,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
             totalAgents: agents.length,
             activeAgents: 0,
             runningAgents: 0,
-            ...(hosted ? {} : { totalMessages, totalCost }),
+            ...(hosted ? {} : { totalMessages }),
           },
         },
       });
@@ -300,21 +299,35 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
       // Aggregate by agent
       const agentMetrics = new Map<
         string,
-        { messages: number; conversations: Set<string>; cost: number }
+        {
+          messages: number;
+          conversations: Set<string>;
+          pricedCost: number;
+          priced: number;
+          unpriced: number;
+        }
       >();
       for (const metric of filteredMetrics) {
         if (!agentMetrics.has(metric.agentSlug)) {
           agentMetrics.set(metric.agentSlug, {
             messages: 0,
             conversations: new Set(),
-            cost: 0,
+            pricedCost: 0,
+            priced: 0,
+            unpriced: 0,
           });
         }
         const stats = agentMetrics.get(metric.agentSlug)!;
         stats.messages += metric.messageCount || 0;
-        // Missing means UNPRICED rather than free. This legacy numeric total
-        // still coalesces the signal; #463(b) will consume and expose it.
-        stats.cost += metric.cost || 0;
+        // #463: a missing cost means UNPRICED, never free. Sum only the
+        // priced completions and count the rest, so an agent with no priced
+        // completion has no `totalCost` at all rather than an invented $0.
+        if (typeof metric.cost === 'number' && Number.isFinite(metric.cost)) {
+          stats.pricedCost += metric.cost;
+          stats.priced++;
+        } else {
+          stats.unpriced++;
+        }
         if (metric.conversationId) {
           stats.conversations.add(metric.conversationId);
         }
@@ -325,7 +338,11 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
           agentSlug: slug,
           messageCount: stats.messages,
           conversationCount: stats.conversations.size,
-          totalCost: stats.cost,
+          // Absent when nothing was priced. When some completions were
+          // unpriced, `totalCost` covers only the priced ones and
+          // `unpricedCount` says how many it leaves out.
+          ...(stats.priced > 0 ? { totalCost: stats.pricedCost } : {}),
+          ...(stats.unpriced > 0 ? { unpricedCount: stats.unpriced } : {}),
         }),
       );
 

@@ -2459,7 +2459,12 @@ describe('OnboardingGate', () => {
       document.head.append(style);
       try {
         showCredentialBanner();
-        const banner = await screen.findByRole('alert');
+        // station#529: the live region is the message cell; the card is
+        // what is positioned.
+        const banner = (await screen.findByRole('alert')).closest(
+          '.banner-host__item',
+        ) as HTMLElement;
+        expect(banner).not.toBeNull();
 
         const computed = getComputedStyle(banner);
         expect(
@@ -2478,8 +2483,10 @@ describe('OnboardingGate', () => {
 
     test('marks the strip as a drag region so the overlay title bar still drags', async () => {
       showCredentialBanner();
-      const banner = await screen.findByRole('alert');
-      expect(banner.hasAttribute('data-tauri-drag-region')).toBe(true);
+      const banner = (await screen.findByRole('alert')).closest(
+        '.banner-host__item',
+      );
+      expect(banner?.hasAttribute('data-tauri-drag-region')).toBe(true);
     });
 
     test('offers a named, keyboard-reachable dismiss that hides the banner', async () => {

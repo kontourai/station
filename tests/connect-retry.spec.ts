@@ -192,7 +192,7 @@ test('a decision-worthy reachability failure still names the host and address', 
   await page.goto('/');
 
   const banner = page.locator(
-    '[role="alert"][data-banner-id="chrome:connection:offline"]',
+    '[data-banner-id="chrome:connection:offline"]:has([role="alert"])',
   );
   await expect(banner).toContainText("Can't reach Local");
   await expect(banner).toContainText('http://localhost:59173');

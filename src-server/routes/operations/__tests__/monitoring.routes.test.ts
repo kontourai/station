@@ -117,6 +117,59 @@ describe('Monitoring Routes', () => {
     expect(body.data.range).toBe('today');
   });
 
+  /**
+   * #463: nothing on this route prices an agent's usage. Each personal row
+   * carried a literal `cost: 0`, and `summary.totalCost` summed those into an
+   * invented $0 of spend.
+   */
+  test('GET /stats reports no per-agent cost or total cost that nothing measured', async () => {
+    const app = createMonitoringRoutes(createMockDeps() as any);
+    const body = await json(await app.request('/stats'));
+    expect(body.success).toBe(true);
+    // Personal mode: the counted fields are present...
+    expect(body.data.agents[0]).toHaveProperty('messageCount', 0);
+    expect(body.data.summary).toHaveProperty('totalMessages', 0);
+    // ...and the unmeasured ones are absent, not zero.
+    expect(body.data.agents[0]).not.toHaveProperty('cost');
+    expect(body.data.summary).not.toHaveProperty('totalCost');
+  });
+
+  test('GET /metrics never turns unpriced completions into a $0 total', async () => {
+    const deps = createMockDeps();
+    // The chat lifecycle's own shape: `cost` is present only when priced.
+    const completion = (agentSlug: string, cost?: number) => ({
+      timestamp: Date.now(),
+      agentSlug,
+      event: 'completion',
+      conversationId: `${agentSlug}-conversation`,
+      messageCount: 2,
+      ...(cost !== undefined ? { cost } : {}),
+    });
+    deps.metricsLog.push(
+      completion('unpriced'),
+      completion('unpriced'),
+      completion('mixed', 0.25),
+      completion('mixed'),
+      completion('priced', 0.1),
+      completion('priced', 0.2),
+    );
+    const app = createMonitoringRoutes(deps as any);
+    const body = await json(await app.request('/metrics?range=today'));
+    const bySlug = Object.fromEntries(
+      body.data.metrics.map((metric: { agentSlug: string }) => [
+        metric.agentSlug,
+        metric,
+      ]),
+    );
+
+    expect(bySlug.unpriced).not.toHaveProperty('totalCost');
+    expect(bySlug.unpriced.unpricedCount).toBe(2);
+    expect(bySlug.mixed.totalCost).toBe(0.25);
+    expect(bySlug.mixed.unpricedCount).toBe(1);
+    expect(bySlug.priced.totalCost).toBeCloseTo(0.3);
+    expect(bySlug.priced).not.toHaveProperty('unpricedCount');
+  });
+
   test('GET /events with time range returns historical JSON', async () => {
     const deps = createMockDeps();
     deps.queryEventsFromDisk.mockResolvedValue([

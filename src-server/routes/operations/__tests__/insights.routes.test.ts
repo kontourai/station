@@ -278,6 +278,9 @@ describe('Insights Routes', () => {
       traceId: 'trace-1',
       reason: 'stop',
       model: 'claude-3',
+      // Real reported usage on the span. The route still has no honest
+      // per-agent token figure to derive from it (#463), so it reports none.
+      usage: { inputTokens: 120, outputTokens: 30 },
     });
     emitter.emitHealth({
       slug: 'default',
@@ -292,6 +295,8 @@ describe('Insights Routes', () => {
     expect(body.data.totalChats).toBe(1);
     expect(body.data.totalToolCalls).toBe(4);
     expect(body.data.agentUsage.default.chats).toBe(1);
+    // #463: never an invented `tokens: 0` beside the counted chats.
+    expect(body.data.agentUsage.default).toEqual({ chats: 1 });
     expect(body.data.modelUsage['claude-3']).toBe(1);
     expect(body.data.totalErrors).toBe(1);
     // outcomeUnknown is new (archive#3075): results whose producer reported

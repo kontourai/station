@@ -248,8 +248,6 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
       ]
         .filter(Boolean)
         .join(' ')}
-      role={banner.ariaLive === 'polite' ? 'status' : 'alert'}
-      aria-live={banner.ariaLive}
       data-banner-id={banner.id}
       data-phase={banner.phase ?? 'live'}
       data-collapsed={collapsed || undefined}
@@ -264,7 +262,19 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
         : {})}
     >
       <div className="banner-host__item-inner" ref={innerRef}>
-        <div className="banner-host__message">
+        {/* station#529: the live region is the message cell, never the
+            whole card. The actions row sits OUTSIDE it on purpose — a
+            two-step confirm relabels its button ("Remove" -> "Confirm") and
+            a 5s timer relabels it back, and any text change inside a
+            `role="alert"` (implicitly assertive + atomic) can re-announce the
+            whole alert unprompted. Collapse and dismiss controls are outside
+            it for the same reason. The cell stays mounted while the card is
+            collapsed, so a collapsed banner still announces. */}
+        <div
+          className="banner-host__message"
+          role={banner.ariaLive === 'polite' ? 'status' : 'alert'}
+          aria-live={banner.ariaLive}
+        >
           {banner.badge ? (
             <span className="banner-host__badge">{banner.badge}</span>
           ) : null}

@@ -157,6 +157,126 @@ describe('OrchestrationMonitoringBridge', () => {
     ]);
   });
 
+  /**
+   * #463: Codex's `token-usage.updated` is a session-to-date total
+   * (PROVIDER_USAGE_SCOPE). Stamping the last frame on each turn's end span
+   * attributed the whole session to every turn: turn 2 below would carry
+   * 250, not its own 150. Nothing here can derive turn 2's own figure
+   * reliably, so its usage is absent, never the session total.
+   */
+  test('never stamps a session-cumulative total on a turn span', async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, context);
+    for (const [turnId, cumulative] of [
+      ['turn-1', 100],
+      ['turn-2', 250],
+    ] as const) {
+      bridge.onTurnDispatched({
+        provider: 'codex',
+        threadId: 'conversation-1',
+        turnId,
+        prompt: 'hello',
+      });
+      bridge.onRuntimeEvent(
+        runtimeEvent({
+          turnId,
+          method: 'token-usage.updated',
+          promptTokens: cumulative - 10,
+          completionTokens: 10,
+          totalTokens: cumulative,
+        }),
+      );
+      bridge.onRuntimeEvent(
+        runtimeEvent({ turnId, method: 'turn.completed', outputText: 'ok' }),
+      );
+    }
+    await emitter.flush();
+
+    const ends = persisted.filter(
+      (event) =>
+        event[K.OP_NAME] === OP.INVOKE_AGENT && event[K.SPAN_KIND] === SPAN.END,
+    );
+    expect(ends).toHaveLength(2);
+    for (const end of ends) {
+      expect(end[K.INPUT_TOKENS]).toBeUndefined();
+      expect(end[K.OUTPUT_TOKENS]).toBeUndefined();
+    }
+  });
+
+  test("sums a per-turn provider's own frames onto its turn, and keeps an undeclared one unknown", async () => {
+    const persisted: Record<string, unknown>[] = [];
+    const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
+      persisted.push(event);
+    });
+    const bridge = new OrchestrationMonitoringBridge(emitter, context);
+    bridge.onTurnDispatched({
+      provider: 'claude',
+      threadId: 'conversation-1',
+      turnId: 'turn-1',
+      prompt: 'hello',
+    });
+    for (const [prompt, completion] of [
+      [3, 5],
+      [7, 11],
+    ] as const) {
+      bridge.onRuntimeEvent(
+        runtimeEvent({
+          provider: 'claude',
+          method: 'token-usage.updated',
+          promptTokens: prompt,
+          completionTokens: completion,
+        }),
+      );
+    }
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        provider: 'claude',
+        method: 'turn.completed',
+        outputText: 'ok',
+      }),
+    );
+
+    bridge.onTurnDispatched({
+      provider: 'future-engine',
+      threadId: 'conversation-1',
+      turnId: 'turn-2',
+      prompt: 'hello',
+    });
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        provider: 'future-engine',
+        turnId: 'turn-2',
+        method: 'token-usage.updated',
+        promptTokens: 40,
+        completionTokens: 2,
+      }),
+    );
+    bridge.onRuntimeEvent(
+      runtimeEvent({
+        provider: 'future-engine',
+        turnId: 'turn-2',
+        method: 'turn.completed',
+        outputText: 'ok',
+      }),
+    );
+    await emitter.flush();
+
+    const ends = persisted.filter(
+      (event) =>
+        event[K.OP_NAME] === OP.INVOKE_AGENT && event[K.SPAN_KIND] === SPAN.END,
+    );
+    expect(ends).toHaveLength(2);
+    expect(ends[0]).toMatchObject({
+      [K.INPUT_TOKENS]: 10,
+      [K.OUTPUT_TOKENS]: 16,
+    });
+    expect(ends[1]?.[K.INPUT_TOKENS]).toBeUndefined();
+    expect(ends[1]?.[K.OUTPUT_TOKENS]).toBeUndefined();
+  });
+
   test('closes every open thread turn when an async runtime error has no turn id', async () => {
     const persisted: Record<string, unknown>[] = [];
     const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {
