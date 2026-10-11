@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-11T07:40:38Z | nightly-npm | 0.7.0-nightly.2475.38117103565 | `632ad4f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38117103565) |
 | 2026-10-11T06:40:49Z | nightly-npm | 0.7.0-nightly.2475.38115754306 | `cabb39c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38115754306) |
 | 2026-10-11T00:24:57Z | nightly-desktop | 0.1.11-nightly.2474.2 | `cb877da` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38094285896) |
 | 2026-10-11T00:24:54Z | nightly-android | 0.1.11-nightly.2474.2 | `cb877da` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38094285896) |
@@ -237,6 +238,22 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-11T07:40:38Z · nightly-npm · 0.7.0-nightly.2475.38117103565
+
+- Ship SHA: `632ad4f7924f00ae4b56cd17bd0b600969c45ec1`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2475.38117103565 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `cabb39c` ([full sha](https://github.com/kontourai/station/commit/cabb39c824877a714b63bfd21105d1c4acfd5064)):
+
+**Fixes**
+
+- [#3546](https://github.com/kontourai/station/pull/3546) fix(ios): require iOS 16.4, where WebKit gained the regex lookbehind the UI uses; a Model reset never reads a bare "Use"
+- [#3525](https://github.com/kontourai/station/pull/3525) fix(notifications): silence external transcripts and repair Windows verification
 
 ## 2026-10-11T06:40:49Z · nightly-npm · 0.7.0-nightly.2475.38115754306
 

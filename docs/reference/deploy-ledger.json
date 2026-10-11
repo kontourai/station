@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-10-11T07:40:38Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2475.38117103565",
+    "sha": "632ad4f7924f00ae4b56cd17bd0b600969c45ec1",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38117103565",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2475.38117103565 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "cabb39c824877a714b63bfd21105d1c4acfd5064",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3546](https://github.com/kontourai/station/pull/3546) fix(ios): require iOS 16.4, where WebKit gained the regex lookbehind the UI uses; a Model reset never reads a bare \"Use\"",
+          "[#3525](https://github.com/kontourai/station/pull/3525) fix(notifications): silence external transcripts and repair Windows verification"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-11T06:40:49Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2475.38115754306",
