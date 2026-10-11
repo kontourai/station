@@ -433,6 +433,32 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // #3557: a person's own personal access tokens. The handler also requires
+  // a device tied to a person and caps the minted scope by what it may use.
+  {
+    id: '/api/access/tokens:read',
+    method: 'GET',
+    prefix: '/api/access/tokens',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/access/tokens:mint',
+    method: 'POST',
+    prefix: '/api/access/tokens',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/access/tokens/:tokenId:revoke',
+    method: 'DELETE',
+    prefix: '/api/access/tokens/:tokenId',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   {
     id: '/api/operator/accounts:operator-read',
     method: 'GET',

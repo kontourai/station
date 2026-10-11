@@ -215,6 +215,10 @@ import {
   listProviders,
   registerPullRequestProvider,
 } from '../../providers/registries/registry.js';
+import {
+  createPersonalTokenRoutes,
+  parseTokenExpiry,
+} from '../../routes/access/personal-token-routes.js';
 import { createAgentToolRoutes } from '../../routes/agents/agent-tools.js';
 import { createAgentRoutes } from '../../routes/agents/agents.js';
 import {
@@ -4795,6 +4799,11 @@ export function configureRuntimeRoutes(
     );
     await next();
   });
+  // #3557: a person's own personal access tokens (see the module).
+  context.app.route(
+    '/api/access/tokens',
+    createPersonalTokenRoutes(context.environmentSecurityService.devicePairing),
+  );
   context.app.route(
     '/api/operator/accounts',
     createLocalAccountAdministrationRoutes(
@@ -9148,6 +9157,7 @@ export function configureDevicePairingHostRoutes(
           group: groups.groupOf(principalId),
           assigned,
           devices: [],
+          tokens: pairing.listPersonalTokens(principalId),
         };
         people.set(principalId, person);
       }
@@ -9251,8 +9261,78 @@ export function configureDevicePairingHostRoutes(
       group: body.group,
       assigned: body.group !== 'member',
       devices: [],
+      tokens: [],
     };
     return c.json({ person, revocations });
+  });
+  // #3557: the operator makes or revokes a token for a person. The person
+  // must be known by a device tied to them (their binding is the token's);
+  // the token stays capped by their group, so it never exceeds their access.
+  app.post('/api/pairing/people/:principalId/tokens', async (c) => {
+    const request = c.req.raw;
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const principalId = c.req.param('principalId');
+    const body = (await request.json().catch(() => null)) as {
+      name?: unknown;
+      scope?: unknown;
+      expiresInDays?: unknown;
+    } | null;
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const expiresAt = parseTokenExpiry(body?.expiresInDays, Date.now());
+    if (
+      typeof body?.name !== 'string' ||
+      typeof body.scope !== 'string' ||
+      expiresAt === 'invalid'
+    )
+      return c.json({ error: 'invalid_request' }, 400);
+    const binding = pairing
+      .listDevices()
+      .find(
+        (device) =>
+          device.revokedAt === null &&
+          device.kind !== 'delegation' &&
+          device.principalBinding !== undefined &&
+          principalForDeviceBinding(device.principalBinding).id === principalId,
+      )?.principalBinding;
+    if (!binding) return c.json({ error: 'person_not_found' }, 404);
+    try {
+      return c.json(
+        pairing.mintPersonalToken({
+          name: body.name,
+          binding,
+          ownerPrincipalId: principalId,
+          scope: body.scope,
+          expiresAt,
+        }),
+        201,
+      );
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof DevicePairingError &&
+            error.code === 'identity_credential_quota_reached'
+              ? 'token_limit_reached'
+              : 'invalid_request',
+        },
+        error instanceof DevicePairingError &&
+          error.code === 'identity_credential_quota_reached'
+          ? 409
+          : 400,
+      );
+    }
+  });
+  app.delete('/api/pairing/people/:principalId/tokens/:tokenId', (c) => {
+    if (!currentOperator(c, c.req.raw))
+      return c.json({ error: 'authentication_required' }, 401);
+    return pairing.revokePersonalToken(
+      c.req.param('tokenId'),
+      c.req.param('principalId'),
+    )
+      ? c.json({ revoked: true })
+      : c.json({ error: 'not_found' }, 404);
   });
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
