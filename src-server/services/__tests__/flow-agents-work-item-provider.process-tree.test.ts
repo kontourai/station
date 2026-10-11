@@ -106,3 +106,38 @@ describe.skipIf(process.platform === 'win32')(
     }, 15_000);
   },
 );
+
+/**
+ * #776: a CLI that exits before reading its input leaves the runner writing
+ * into a pipe with no reader. The write fails with EPIPE on the stdin stream,
+ * which the ChildProcess 'error' listener never sees; unlistened, it is an
+ * uncaught exception that ends the server. The 4 MiB input outlasts any pipe
+ * buffer, so part of it is still queued when the child is gone.
+ */
+describe.skipIf(process.platform === 'win32')(
+  'createDefaultFlowAgentsCliRunner (child exits before reading stdin)',
+  () => {
+    test('settles with the child exit code and lets no stdin EPIPE escape', async () => {
+      const dir = makeTempDir('flow-agents-epipe-');
+      const scriptPath = join(dir, 'exit-early.cjs');
+      writeFileSync(scriptPath, 'process.exit(3);\n');
+
+      const escaped: unknown[] = [];
+      const onUncaught = (error: unknown) => escaped.push(error);
+      process.on('uncaughtException', onUncaught);
+      try {
+        const result = await createDefaultFlowAgentsCliRunner()(
+          scriptPath,
+          [],
+          { cwd: dir, input: 'x'.repeat(4 * 1024 * 1024), timeoutMs: 10_000 },
+        );
+        expect(result.exitCode).toBe(3);
+        // Let a late stream error land before asserting none escaped.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } finally {
+        process.off('uncaughtException', onUncaught);
+      }
+      expect(escaped).toEqual([]);
+    }, 15_000);
+  },
+);

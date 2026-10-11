@@ -63,6 +63,15 @@ function stackedCards(element: Element): [number, number] {
   return [top, top + 60];
 }
 
+/** station#529: the live region is the message cell; card state lives on the card. */
+function bannerCard(): HTMLElement {
+  const card = screen
+    .getByRole('alert')
+    .closest<HTMLElement>('.banner-host__item');
+  if (!card) throw new Error('alert is not inside a banner card');
+  return card;
+}
+
 function presentBlocking(overrides: Record<string, unknown> = {}) {
   act(() => {
     bannerStore.present({
@@ -141,7 +150,7 @@ describe('BannerHost space reservation', () => {
     presentBlocking({ overlay: true });
     const { container } = render(<BannerHost />);
 
-    expect(screen.getByRole('alert').getAttribute('data-overlay')).toBe('true');
+    expect(bannerCard().getAttribute('data-overlay')).toBe('true');
     expect(
       container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
     ).toBe('');
@@ -278,7 +287,7 @@ describe('BannerHost per-banner collapse', () => {
       screen.getByRole('button', { name: 'Collapse notice' }).click();
     });
 
-    const card = screen.getByRole('alert');
+    const card = bannerCard();
     expect(card.dataset.collapsed).toBe('true');
     expect(card.className).toMatch(/banner-host__item--collapsed/);
     // Not a blank strip: the badge, the message and the remedy all survive.
@@ -299,7 +308,7 @@ describe('BannerHost per-banner collapse', () => {
     act(() => {
       screen.getByRole('button', { name: 'Collapse notice' }).click();
     });
-    expect(screen.getByRole('alert').dataset.collapsed).toBe('true');
+    expect(bannerCard().dataset.collapsed).toBe('true');
 
     // The poll that would otherwise undo the user's decision every 10s.
     presentBlocking({
@@ -307,7 +316,7 @@ describe('BannerHost per-banner collapse', () => {
       message: 'Changed copy.',
     });
 
-    expect(screen.getByRole('alert').dataset.collapsed).toBe('true');
+    expect(bannerCard().dataset.collapsed).toBe('true');
   });
 
   test('a new occurrence of the same condition arrives expanded', () => {
@@ -316,11 +325,11 @@ describe('BannerHost per-banner collapse', () => {
     act(() => {
       screen.getByRole('button', { name: 'Collapse notice' }).click();
     });
-    expect(screen.getByRole('alert').dataset.collapsed).toBe('true');
+    expect(bannerCard().dataset.collapsed).toBe('true');
 
     presentBlocking({ occurrence: 'host-moved' });
 
-    expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
+    expect(bannerCard().dataset.collapsed).toBeUndefined();
   });
 
   test('an old occurrence coming back does not resurrect the old collapse', () => {
@@ -332,13 +341,13 @@ describe('BannerHost per-banner collapse', () => {
 
     // Superseded by a different occurrence, which arrives expanded...
     presentBlocking({ occurrence: 'host-moved' });
-    expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
+    expect(bannerCard().dataset.collapsed).toBeUndefined();
     //.and the first condition recurring is a new thing to read, not a
     // resumption of the showing the user collapsed. Same posture as
     // dismissal, whose suppression key is released the same way.
     presentBlocking({ occurrence: 'pairing-required' });
 
-    expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
+    expect(bannerCard().dataset.collapsed).toBeUndefined();
   });
 
   test('clear(prefix) releases the collapsed state with the banner', () => {
@@ -351,7 +360,7 @@ describe('BannerHost per-banner collapse', () => {
     act(() => bannerStore.clear('test:'));
     presentBlocking();
 
-    expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
+    expect(bannerCard().dataset.collapsed).toBeUndefined();
   });
 
   test('an exiting banner is never forced through the collapsed layout', () => {

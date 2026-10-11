@@ -15,9 +15,9 @@ const usageInsightsSchema = z
         .passthrough(),
     ),
     hourlyActivity: z.array(insightCount).length(24),
-    agentUsage: z.record(
-      z.object({ chats: insightCount, tokens: insightCount }).passthrough(),
-    ),
+    // #463: no `tokens`. Older Stations send an unmeasured `tokens: 0`,
+    // which passthrough tolerates and nothing reads.
+    agentUsage: z.record(z.object({ chats: insightCount }).passthrough()),
     modelUsage: z.record(insightCount),
     totalChats: insightCount,
     totalToolCalls: insightCount,

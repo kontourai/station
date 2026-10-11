@@ -450,7 +450,7 @@ show where token and sampling values are passed.
 | `maxTokens` | number | Maximum output tokens (overrides `defaultMaxOutputTokens`) |
 | `maxSteps` | number | Present in the TypeScript type and read by VoltAgent, but rejected inside `guardrails` by the current Agent JSON schema. Set top-level `maxSteps` in `agent.json`. Strands does not apply the configured step cap. |
 | `temperature` | number | Sampling temperature; file schema accepts 0–2, while a provider may impose narrower limits. |
-| `topP` | number | Nucleus sampling probability |
+| `topP` | number | Nucleus sampling probability. On VoltAgent it is ignored, with a warning, when `temperature` is also set: several providers reject both together, so `temperature` wins. Strands passes both through. |
 | `stopSequences` | string[] | Not currently applied. Typed and accepted, but no engine reads it today — do not rely on it to constrain output. |
 
 ### ui / quickPrompts

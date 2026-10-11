@@ -1,5 +1,6 @@
 import { lstat, open } from 'node:fs/promises';
 import { join } from 'node:path';
+import { guardChildStdin } from '../../utils/child-stdin.js';
 import {
   execGit,
   type GitHardeningOptions,
@@ -235,16 +236,23 @@ function addPaths(root: string, paths: readonly string[]): Promise<void> {
       clearTimeout(timer);
       reject(error);
     });
+    // #776: git can exit before reading every path (a failing hook or
+    // filter). The write then fails with EPIPE on stdin itself, which would be
+    // an uncaught exception without this listener.
+    const stdinError = child.stdin
+      ? guardChildStdin(child.stdin)
+      : () => undefined;
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code === 0 && !killed) resolve();
+      if (code === 0 && !killed && !stdinError()) resolve();
       else
         reject(
           new CodingGitCommandError(
             'add',
             killed
               ? 'git add did not finish in time and was stopped'
-              : stderr.trim(),
+              : stderr.trim() ||
+                  (stdinError() ? 'git add did not read every path' : ''),
           ),
         );
     });

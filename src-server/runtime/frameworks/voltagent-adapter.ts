@@ -485,6 +485,39 @@ function chainAfterComposition(
   };
 }
 
+/**
+ * #323: VoltAgent (2.10) keeps constructor `temperature`/`maxOutputTokens`
+ * as per-call defaults but discards constructor `topP`; `topP` reaches the
+ * model only as a per-call option. Station registers the bare Agent (the
+ * wrapper's `raw`) as the live chat agent, so the default is bound onto the
+ * Agent instance itself rather than onto `VoltAgentWrapper`. A caller's own
+ * per-call `topP` still wins.
+ */
+function bindDefaultTopP(agent: Agent, topP: number | undefined): void {
+  if (topP === undefined) return;
+  const withTopP = (options: unknown) => {
+    const callOptions =
+      typeof options === 'object' && options !== null ? options : {};
+    return 'topP' in callOptions && callOptions.topP !== undefined
+      ? callOptions
+      : { ...callOptions, topP };
+  };
+  for (const method of [
+    'generateText',
+    'streamText',
+    'generateObject',
+    'streamObject',
+  ] as const) {
+    const original = agent[method];
+    Object.defineProperty(agent, method, {
+      configurable: true,
+      writable: true,
+      value: (input: unknown, options?: unknown, ...rest: unknown[]) =>
+        Reflect.apply(original, agent, [input, withTopP(options), ...rest]),
+    });
+  }
+}
+
 class VoltAgentWrapper implements IAgent {
   constructor(
     private inner: Agent,
@@ -1071,7 +1104,6 @@ export class VoltAgentFramework {
           maxOutputTokens:
             spec.guardrails.maxTokens ??
             config.appConfig.defaultMaxOutputTokens,
-          topP: spec.guardrails.topP,
         }),
         // maxSteps controls VoltAgent's agentic loop limit (VoltAgent's own
         // default is a stingy 10). Priority: agent guardrails > agent spec >
@@ -1085,6 +1117,20 @@ export class VoltAgentFramework {
           ? { maxOutputTokens: config.appConfig.defaultMaxOutputTokens }
           : {}),
       });
+      // #323 review: when both guardrails are set, temperature wins, which is
+      // what @ai-sdk/anthropic already does for Claude. Some providers forward
+      // both (Bedrock), and newer Claude models reject a request that carries
+      // both, so binding topP there would turn a silently ignored setting
+      // into a failing agent.
+      const topP = spec.guardrails?.topP;
+      if (topP !== undefined && spec.guardrails?.temperature !== undefined) {
+        opts.logger?.warn?.(
+          'guardrails.topP is ignored because guardrails.temperature is also set',
+          { agent: slug },
+        );
+      } else {
+        bindDefaultTopP(agent, topP);
+      }
 
       return new VoltAgentWrapper(
         agent,

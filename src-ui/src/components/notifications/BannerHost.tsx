@@ -248,8 +248,6 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
       ]
         .filter(Boolean)
         .join(' ')}
-      role={banner.ariaLive === 'polite' ? 'status' : 'alert'}
-      aria-live={banner.ariaLive}
       data-banner-id={banner.id}
       data-phase={banner.phase ?? 'live'}
       data-collapsed={collapsed || undefined}
@@ -264,12 +262,28 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
         : {})}
     >
       <div className="banner-host__item-inner" ref={innerRef}>
+        {/* station#529: the live region is the badge and message text only,
+            never the whole card. Every control sits OUTSIDE it on purpose —
+            a two-step confirm relabels its button ("Remove" -> "Confirm") and
+            a 5s timer relabels it back, and disarming re-collapses a card the
+            confirm force-expanded, which unmounts the Details disclosure and
+            its text. Any change inside a `role="alert"` (implicitly
+            assertive + atomic) can re-announce the whole alert unprompted, so
+            the actions row, the collapse/dismiss controls and the Details
+            disclosure all stay out of it. The live span stays mounted while
+            the card is collapsed, so a collapsed banner still announces. */}
         <div className="banner-host__message">
-          {banner.badge ? (
-            <span className="banner-host__badge">{banner.badge}</span>
-          ) : null}
-          {banner.badge ? ' ' : null}
-          {banner.message}
+          <span
+            className="banner-host__live"
+            role={banner.ariaLive === 'polite' ? 'status' : 'alert'}
+            aria-live={banner.ariaLive}
+          >
+            {banner.badge ? (
+              <span className="banner-host__badge">{banner.badge}</span>
+            ) : null}
+            {banner.badge ? ' ' : null}
+            {banner.message}
+          </span>
           {/* archive#3297: one line, tap to expand. The detail is rendered
               inside the message cell so it wraps under the summary rather
               than fighting the action column for width.

@@ -24,7 +24,13 @@ export interface UsageInsights {
     }
   >;
   hourlyActivity: number[];
-  agentUsage: Record<string, { chats: number; tokens: number }>;
+  /**
+   * Per-agent chat counts. There is no per-agent token figure (#463): the
+   * route never measured one, and retained spans cannot be summed honestly
+   * because older Codex turn spans carry session-cumulative totals. Stations
+   * before this change sent an unmeasured `tokens: 0`; ignore it.
+   */
+  agentUsage: Record<string, { chats: number }>;
   modelUsage: Record<string, number>;
   totalChats: number;
   totalToolCalls: number;

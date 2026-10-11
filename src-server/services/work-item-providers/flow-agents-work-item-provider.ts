@@ -42,6 +42,7 @@ import type {
   IWorkItemProvider,
   WorkItemProjectContext,
 } from '../../providers/provider-interfaces.js';
+import { guardChildStdin } from '../../utils/child-stdin.js';
 import { errorMessage } from '../../utils/error-message.js';
 
 const require = createRequire(import.meta.url);
@@ -231,6 +232,10 @@ export function createDefaultFlowAgentsCliRunner(
           exitCode: timedOut ? null : code,
         });
       });
+      // #776: a CLI that exits before reading its input must not end the
+      // server with an unlistened stdin EPIPE. Its exit code, settled on
+      // 'close', remains the result.
+      guardChildStdin(child.stdin);
       if (options.input !== undefined) child.stdin.write(options.input);
       child.stdin.end();
     });

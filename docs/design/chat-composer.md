@@ -420,7 +420,10 @@ simple per-device preference rather than claiming to detect an attached keyboard
   its action (**Upload again**, **Retry**, **Remove**). A full staging capacity
   (5 unsent uploads per login) offers no Retry: the line under the chips names
   the limit and how to free it, with **Remove attachments**, and wins over the
-  generic upload failure. Chips wrap to a second row (two per row on a phone)
+  generic upload failure. A Station that cannot tell who is uploading
+  (`principal_unresolved`) offers no Retry either: the chip reads **Couldn't
+  confirm who you are**, and the line says to remove the attachment, then
+  reconnect or pair again, with **Remove attachments**. Chips wrap to a second row (two per row on a phone)
   instead of scrolling sideways.
 - Attachment messages sit between the chips and the draft. When Send is
   blocked only by the attachments, that line carries **Remove attachments**,
