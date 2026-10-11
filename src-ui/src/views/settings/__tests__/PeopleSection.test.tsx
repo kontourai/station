@@ -406,7 +406,7 @@ describe('People section', () => {
     ['failing', () => json({ error: 'boom' }, 500)],
   ])(
     'the secret survives a list refetch that comes back %s after the mint',
-    async (_label, afterMint) => {
+    async (label, afterMint) => {
       let minted = false;
       const list = peopleRoute(() => [ada()]);
       handler = (call) => {
@@ -424,6 +424,17 @@ describe('People section', () => {
         expect(settledInError(client, PEOPLE_KEY)).toBe(true),
       );
       expect(screen.getByDisplayValue('stp_keep_me')).toBeTruthy();
+      if (label === 'failing') {
+        // A failure that is not a refusal keeps the cached list, marked as
+        // not refreshed, with the secret still inside its owner's card.
+        const card = screen
+          .getByText('ada@example.com', { selector: 'h4' })
+          .closest('article') as HTMLElement;
+        expect(within(card).getByDisplayValue('stp_keep_me')).toBeTruthy();
+        expect(screen.getByRole('alert').textContent).toContain(
+          'couldn’t be refreshed',
+        );
+      }
       fireEvent.click(screen.getByRole('button', { name: 'Done' }));
       await waitFor(() =>
         expect(screen.queryByDisplayValue('stp_keep_me')).toBeNull(),
