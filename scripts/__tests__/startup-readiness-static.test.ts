@@ -302,6 +302,42 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).not.toContain('tauri_plugin_window_state');
   });
 
+  // The webview names native commands by string; a rename or a dropped
+  // handler registration would make the readiness bridge fail at runtime
+  // (for startup_window_admitted, a failed read releases the loader).
+  it('registers every startup-readiness command the native adapter invokes', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    const adapter = read('src-ui/src/platform/native/tauri.ts');
+    const handlerStart = lib.indexOf(
+      '#[cfg(not(mobile))]\n    let builder = builder.invoke_handler(tauri::generate_handler![',
+    );
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    const handler = lib.slice(handlerStart, lib.indexOf(']);', handlerStart));
+    const registered = new Set(
+      [...handler.matchAll(/(?:[a-z_]+::)*([a-z_]+),?\s*$/gm)].map(
+        (match) => match[1] ?? '',
+      ),
+    );
+    const methods = {
+      isStartupWindowAdmitted: 'startup_window_admitted',
+      commitRendererMount: 'commit_renderer_mount',
+      commitStartupReadiness: 'commit_startup_readiness',
+      commitStartupRecoveryUi: 'commit_startup_recovery_ui',
+      getBundledServerStatus: 'bundled_server_status',
+    };
+    for (const [method, command] of Object.entries(methods)) {
+      const body = rustBlock(adapter, `async ${method}(`);
+      const invoked = [
+        ...body.matchAll(/\.invoke(?:<[^>]*>)?\(\s*['"`]([a-z_]+)['"`]/g),
+      ].map((match) => match[1]);
+      expect([method, invoked]).toEqual([method, [command]]);
+      expect([command, registered.has(command)]).toEqual([command, true]);
+      expect(lib).toMatch(
+        new RegExp(`#\\[tauri::command\\]\\s*(?:async\\s+)?fn ${command}\\(`),
+      );
+    }
+  });
+
   it('replays a cold pairing-link activation after native readiness management', () => {
     const lib = read('src-desktop/src/lib.rs');
     const handler = lib.indexOf('deep_link().on_open_url');

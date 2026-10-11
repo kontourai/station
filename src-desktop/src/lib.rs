@@ -15269,15 +15269,47 @@ mod tests {
             front_tokens, 3,
             "one `let front` binding and two `if front` gates"
         );
-        let fronts = cover.match_indices("makeKeyAndOrderFront(None)").count();
-        assert_eq!(fronts, 2, "one order-front each for cover and reveal");
-        for (at, _) in cover.match_indices("makeKeyAndOrderFront(None)") {
+        // Every AppKit call that can bring the window or app forward sits
+        // directly inside `if front {`: deminiaturize plus the order-front
+        // for both the cover and the reveal, and nothing else.
+        const WINDOW_RAISING_CALLS: [&str; 8] = [
+            "makeKeyAndOrderFront(",
+            "orderFront(",
+            "orderFrontRegardless(",
+            "orderFrontWithKey",
+            "orderWindow(",
+            "activateIgnoringOtherApps",
+            ".activate(",
+            "deminiaturize(",
+        ];
+        let mut raising = Vec::new();
+        for call in WINDOW_RAISING_CALLS {
+            for (at, _) in cover.match_indices(call) {
+                if cover[..at].ends_with("make") && call == "orderFront(" {
+                    continue;
+                }
+                raising.push((at, call));
+            }
+        }
+        raising.sort();
+        raising.dedup_by_key(|(at, _)| *at);
+        assert_eq!(
+            raising.iter().map(|(_, call)| *call).collect::<Vec<_>>(),
+            vec![
+                "deminiaturize(",
+                "makeKeyAndOrderFront(",
+                "deminiaturize(",
+                "makeKeyAndOrderFront(",
+            ],
+            "the cover and the reveal each raise the window exactly once"
+        );
+        for (at, call) in raising {
             let gate = cover[..at]
                 .rfind("if front {")
-                .expect("order-front is gated by the hidden-window decision");
+                .unwrap_or_else(|| panic!("{call} is not gated by the hidden-window decision"));
             assert!(
                 !cover[gate..at].contains('}'),
-                "order-front must sit directly inside `if front {{`"
+                "{call} must sit directly inside `if front {{`"
             );
         }
         assert!(cover.contains("applicationIconImage()"));
@@ -16011,6 +16043,19 @@ mod tests {
         run_slow_start_reoffer(&host, 1, 3, |_| {});
         answer_slow_start_dialog_with(&host, 1, 3, None);
         assert_eq!(host.take_calls(), Vec::<HostCall>::new());
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn a_cover_change_fronts_the_window_only_while_the_user_has_not_hidden_it() {
+        assert!(
+            native_cover_should_front(false),
+            "a window the user has not hidden is brought forward"
+        );
+        assert!(
+            !native_cover_should_front(true),
+            "a window the user closed (hid) stays hidden until activation"
+        );
     }
 
     #[test]
