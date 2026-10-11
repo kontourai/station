@@ -1,7 +1,9 @@
 import {
+  approvalRefusalRemedy,
+  defaultKeptScope,
+  keepsElevatedScope,
   keptScopeForApproval,
   RequestedScopeChecklist,
-  requestedScopeTokens,
 } from '@kontourai/station-connect';
 import type {
   AttentionPeerRequestReference,
@@ -303,8 +305,8 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
   // unticked. An older Station sends no requested scope: no list, and
   // Approve keeps whatever the request carries.
   const requestedScope = item.requestedScope ?? '';
-  const [kept, setKept] = useState<ReadonlySet<PairingScope>>(
-    () => new Set(requestedScopeTokens(requestedScope)),
+  const [kept, setKept] = useState<ReadonlySet<PairingScope>>(() =>
+    defaultKeptScope(requestedScope),
   );
   // #765 D5 live verification: `access:approve` is operator-promotion-only,
   // so a paired browser session can read this item but the pairing routes
@@ -318,7 +320,7 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         className="attention-item__detail"
         data-testid="attention-pairing-remedy"
       >
-        {pairingApprovalRemedy(item, operatorCli)}
+        {pairingApprovalRemedy(item, operatorCli, kept)}
       </div>
     );
   }
@@ -366,6 +368,7 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
           item,
           'approve',
           operatorCli,
+          kept,
         )}
       />
       <MutationError
@@ -374,6 +377,7 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
           item,
           'deny',
           operatorCli,
+          kept,
         )}
       />
     </>
@@ -388,8 +392,19 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
 function pairingApprovalRemedy(
   item: DevicePairingAttentionItem,
   operatorCli: string,
+  kept: ReadonlySet<PairingScope>,
+  refusedKeepingElevated = false,
 ): string {
-  return `Approving “${item.deviceName}” needs a trusted Station session. Run this on the Station: ${operatorCli} environment access approve ${item.source.requestId} --force`;
+  return approvalRefusalRemedy({
+    deviceName: item.deviceName,
+    requestId: item.source.requestId,
+    operatorCli,
+    // The printed command keeps what this card would have kept, never more.
+    keptScope: item.requestedScope
+      ? keptScopeForApproval(item.requestedScope, kept)
+      : undefined,
+    keepsElevated: refusedKeepingElevated,
+  });
 }
 
 /**
@@ -404,6 +419,7 @@ function describePairingActionError(
   item: DevicePairingAttentionItem,
   action: 'approve' | 'deny',
   operatorCli: string,
+  kept: ReadonlySet<PairingScope>,
 ): unknown {
   if (error == null) return null;
   if (!(error instanceof DevicePairingRequestActionError)) return error;
@@ -413,7 +429,9 @@ function describePairingActionError(
     );
   }
   if (error.status === 403 && action === 'approve') {
-    return new Error(pairingApprovalRemedy(item, operatorCli));
+    return new Error(
+      pairingApprovalRemedy(item, operatorCli, kept, keepsElevatedScope(kept)),
+    );
   }
   if (error.status === 404 || error.status === 410) {
     return new Error(

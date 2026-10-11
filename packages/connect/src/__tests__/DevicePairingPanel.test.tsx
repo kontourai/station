@@ -1473,7 +1473,7 @@ describe('device pairing panels', () => {
     ]);
   });
 
-  test('lists what a request asks for, and Approve sends only what is still ticked', async () => {
+  test('lists what a request asks for; the elevated grant starts unticked, and Approve sends only what is ticked', async () => {
     const request = {
       requestId: 'request-trim',
       offerId: 'offer-trim',
@@ -1511,8 +1511,12 @@ describe('device pairing panels', () => {
     const fullAccess = screen.getByRole('checkbox', {
       name: /Allow full access/,
     }) as HTMLInputElement;
-    expect(fullAccess.checked).toBe(true);
-    fireEvent.click(fullAccess);
+    // Asking grants nothing: keeping full access is a deliberate tick.
+    expect(fullAccess.checked).toBe(false);
+    expect(
+      (screen.getByRole('checkbox', { name: /^Read/ }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
     expect(
       screen.getByText('Approving grants only what is ticked.'),
     ).toBeTruthy();

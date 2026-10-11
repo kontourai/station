@@ -8959,8 +8959,10 @@ export function configureDevicePairingHostRoutes(
             pairing.credentialLocality(actor.credential) ===
               'home-possession' &&
             pairing.credentialMintKind(actor.credential) === 'local-grant';
+          // Thrown, not returned, so it is counted and audited as the
+          // refusal it is, with the service's own refusals below.
           if (!operatorCredential && !localGrant)
-            return approvalRequiresOperator(c);
+            throw new DevicePairingError('approval_requires_operator');
         }
       }
       const request =
@@ -9022,6 +9024,11 @@ export function configureDevicePairingHostRoutes(
           });
         }
       }
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'approval_requires_operator'
+      )
+        return approvalRequiresOperator(c);
       return c.json(
         { error: pairingErrorCode(error) },
         pairingErrorStatus(error),

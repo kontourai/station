@@ -2350,6 +2350,9 @@ station environment peers remove <environment-id>
   each request asks for (`asksFor`), and `approve` names it before confirming.
   `approve --scope=<scope,…>` keeps only those of the requested scopes; it can
   only narrow the request, and cannot be combined with `--bind-account`.
+  Without `--scope`, an approval leaves out the elevated grants a device asked
+  for (`coding:exec`, `approval:full-access`) and prints the `--scope` that
+  would include them.
 - `access devices`/`scope`/`scopes` manage what each paired device may do, on
   the same host-only operator channel (#1796). `access devices` lists the live
   paired devices with id, name, last seen and scopes. `access scope` adds,

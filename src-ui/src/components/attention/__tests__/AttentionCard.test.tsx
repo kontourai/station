@@ -377,25 +377,63 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     expect(pairingMocks.denyPairing).not.toHaveBeenCalled();
   });
 
-  test('lists what the device asks for; Approve keeps all of it, or only what is still ticked', () => {
+  test('lists what the device asks for; the elevated grant is kept only when ticked', () => {
     const asked =
       'orchestration:read orchestration:operate terminal:operate approval:full-access';
     const first = renderCard(basePairing({ requestedScope: asked }));
     expect(screen.getByText('Test Phone asks for')).toBeTruthy();
-    // Everything ticked: the bodyless approval, which keeps what was asked.
+    // Asking grants nothing: an untouched Approve leaves full access out.
     screen.getByRole('button', { name: 'Approve' }).click();
-    expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith('pair-req-1');
+    expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith({
+      requestId: 'pair-req-1',
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+    });
     first.unmount();
 
     renderCard(basePairing({ requestedScope: asked }));
     fireEvent.click(
       screen.getByRole('checkbox', { name: /Allow full access/ }),
     );
+    // Everything ticked: the bodyless approval, which keeps what was asked.
     screen.getByRole('button', { name: 'Approve' }).click();
-    expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith({
-      requestId: 'pair-req-1',
-      scope: 'orchestration:read orchestration:operate terminal:operate',
-    });
+    expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith('pair-req-1');
+  });
+
+  test("a session that cannot decide is shown a command that keeps only the card's ticked scope", () => {
+    renderCard(
+      basePairing({
+        viewerCanDecide: false,
+        requestedScope:
+          'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      }),
+    );
+    expect(
+      screen.getByText(
+        /environment access approve pair-req-1 --scope=orchestration:read,orchestration:operate,terminal:operate --force$/,
+      ),
+    ).toBeTruthy();
+  });
+
+  test('a refusal to keep the elevated grant says to untick it, and its command keeps only what is ticked', () => {
+    pairingMocks.confirmPairingState.error =
+      new pairingMocks.MockDevicePairingRequestActionError(
+        403,
+        'approval_requires_operator',
+      );
+    renderCard(
+      basePairing({
+        requestedScope:
+          'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Allow full access/ }),
+    );
+    expect(
+      screen.getByText(
+        /Only this Station's operator can grant Allow full access or Run commands\. Untick them to approve the rest/,
+      ),
+    ).toBeTruthy();
   });
 
   test('Deny denies the exact request', () => {

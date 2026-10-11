@@ -20,6 +20,7 @@ import type {
 import {
   buildStationProofMessage,
   DEFAULT_PAIRING_SCOPE_PRESET,
+  deviceRequestedExtraScopes,
   PAIRING_SCOPES,
   type PairingScope,
   PUBLIC_STATION_PROOF_PATH,
@@ -2127,10 +2128,28 @@ async function runLocalAccessCommand(
   }
   // `--scope` keeps only part of what the device asked for, as the approval
   // surfaces' permission list does. It can only narrow the request.
-  const keptScope =
+  // Without it, the elevated grants a device asked for (full access, running
+  // commands) are left out, as every approval surface leaves them unticked:
+  // keeping one is a deliberate `--scope` that names it.
+  const explicitScope =
     action === 'approve' && parsed.flags.scope !== undefined
       ? approvalKeptScope(selected, parsed.flags.scope, bindAccount)
       : undefined;
+  const elevatedAsked: string[] =
+    action === 'approve' && !bindAccount && selected.scope
+      ? deviceRequestedExtraScopes(selected.scope)
+      : [];
+  const keptScope =
+    explicitScope ??
+    (elevatedAsked.length > 0 && selected.scope
+      ? (parsePairingScope(selected.scope) ?? [])
+          .filter((token) => !elevatedAsked.includes(token))
+          .join(' ')
+      : undefined);
+  if (explicitScope === undefined && elevatedAsked.length > 0 && keptScope)
+    (dependencies.stderr ?? console.error)(
+      `${accessRequestLabel(selected)} also asks for ${elevatedAsked.join(', ')}, which this approval leaves out. To grant it, approve with --scope=${[...keptScope.split(' '), ...elevatedAsked].join(',')}`,
+    );
   const asksFor = keptScope ?? selected.scope;
   const force = parsed.flags.force === true;
   if (!force) {

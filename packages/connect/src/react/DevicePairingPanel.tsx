@@ -61,6 +61,8 @@ import { QRDisplay } from './QRDisplay';
 import { QRScanner } from './QRScanner';
 import {
   DEFAULT_REQUESTED_ACCESS,
+  defaultKeptScope,
+  keepsElevatedScope,
   keptScopeForApproval,
   RequestAccessPicker,
   type RequestedAccessChoice,
@@ -1020,6 +1022,29 @@ export function JoinDevicePairingPanel({
   );
 }
 
+/**
+ * What to do when this session may not approve: keep the elevated grants out
+ * (when it tried to keep one), or run the exact approval on the host, with
+ * the same kept scope, so the command never grants more than was chosen.
+ */
+export function approvalRefusalRemedy(input: {
+  deviceName: string;
+  requestId: string;
+  operatorCli: string;
+  /** The kept scope sent with the approval, when the approver trimmed it. */
+  keptScope?: string;
+  keepsElevated: boolean;
+  extraFlag?: string;
+}): string {
+  const scopeFlag = input.keptScope
+    ? ` --scope=${input.keptScope.split(' ').join(',')}`
+    : '';
+  const command = `${input.operatorCli} environment access approve ${input.requestId}${scopeFlag} --force${input.extraFlag ?? ''}`;
+  return input.keepsElevated
+    ? `Only this Station's operator can grant Allow full access or Run commands. Untick them to approve the rest of “${input.deviceName}”'s request, or run this on the Station: ${command}`
+    : `Approving “${input.deviceName}” needs a trusted Station session. Run this on the Station: ${command}`;
+}
+
 function authHeaders(credential: string | undefined): HeadersInit {
   return credential ? { Authorization: `Bearer ${credential}` } : {};
 }
@@ -1218,8 +1243,7 @@ export function HostDevicePairingPanel({
     ReadonlyMap<string, ReadonlySet<PairingScope>>
   >(new Map());
   const keptScopeOf = (request: DevicePairingRequest) =>
-    keptScopes.get(request.requestId) ??
-    new Set(requestedScopeTokens(request.scope));
+    keptScopes.get(request.requestId) ?? defaultKeptScope(request.scope);
   const [requestActionIds, setRequestActionIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -1381,7 +1405,21 @@ export function HostDevicePairingPanel({
               // remedy is a different, credentialed session, so name the one
               // that always exists on the host.
               response.status === 403 && action === 'approve'
-              ? `Approving “${request.deviceName}” needs a trusted Station session. Run this on the Station: ${operatorCli ?? 'station'} environment access approve ${request.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : ''}`
+              ? approvalRefusalRemedy({
+                  deviceName: request.deviceName,
+                  requestId: request.requestId,
+                  operatorCli: operatorCli ?? 'station',
+                  keptScope: scope,
+                  keepsElevated:
+                    request.kind !== 'delegation' &&
+                    !bindAccount &&
+                    keepsElevatedScope(keptScopeOf(request)),
+                  extraFlag: bindPerson
+                    ? ' --bind-person'
+                    : bindAccount
+                      ? ' --bind-account'
+                      : '',
+                })
               : response.status === 404 || response.status === 410
                 ? 'That access request has already expired or been removed.'
                 : `This Station could not ${action} that access request. Try again.`,

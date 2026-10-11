@@ -473,9 +473,14 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // instead of it, so promotion after pairing is the only shape that is both
   // additive and backward-compatible.
   [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
-  // #2412: operator promotion only, for the reasons on its docblock.
+  // #2412 / #2436: still the operator's grant, for the reasons on their
+  // docblocks. A device may ASK for either at pairing
+  // (DEVICE_REQUESTABLE_EXTRA_SCOPES), but asking grants nothing: every
+  // approval surface leaves them unticked, and only the operator credential
+  // or the desktop's own local grant may keep one when approving. That
+  // approval is the operator promoting the device at pairing time, never a
+  // pairing preset, so the least-known device never receives them by default.
   [PAIRING_SCOPE_CODING_EXEC]: ['operator-promotion'],
-  // #2436: operator promotion only, for the reasons on its docblock.
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: ['operator-promotion'],
 };
 
@@ -584,10 +589,11 @@ export const DEVICE_REQUESTABLE_BASE_PRESETS = [
 ] as const satisfies readonly PairingScopePreset[];
 
 /**
- * The elevated grants a device may ask for at pairing time. Each needs the
- * operator, never an `access:approve` device or an unauthenticated approval,
- * to keep it when approving. Every other elevated grant stays operator-added
- * after pairing.
+ * The elevated grants a device may ask for at pairing time. Asking grants
+ * nothing: approval surfaces leave them unticked, and keeping one needs the
+ * operator, never an `access:approve` device or an unauthenticated approval.
+ * The same rule covers an operator-created offer that carries one. Every
+ * other elevated grant stays operator-added after pairing.
  */
 export const DEVICE_REQUESTABLE_EXTRA_SCOPES = [
   PAIRING_SCOPE_CODING_EXEC,

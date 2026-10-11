@@ -79,7 +79,7 @@ export function RequestAccessPicker({
         ))}
       </div>
       <span className="requested-access__group-header">
-        Also ask for (only the operator can grant these)
+        Also ask for (the operator decides on these)
       </span>
       {DEVICE_REQUESTABLE_EXTRA_SCOPES.map((token) => (
         <label key={token} className="requested-access__option">
@@ -112,6 +112,27 @@ export function requestedScopeTokens(scope: string): PairingScope[] {
   return PAIRING_SCOPES.filter((token) => tokens.has(token));
 }
 
+const REQUESTABLE_EXTRAS: readonly PairingScope[] =
+  DEVICE_REQUESTABLE_EXTRA_SCOPES;
+
+/**
+ * What an approval keeps before the approver touches the list: everything
+ * requested except the elevated extras. Keeping full access or running
+ * commands is an explicit tick, never a reflexive Approve.
+ */
+export function defaultKeptScope(scope: string): Set<PairingScope> {
+  return new Set(
+    requestedScopeTokens(scope).filter(
+      (token) => !REQUESTABLE_EXTRAS.includes(token),
+    ),
+  );
+}
+
+/** Whether a kept set still includes an elevated extra. */
+export function keepsElevatedScope(kept: ReadonlySet<PairingScope>): boolean {
+  return REQUESTABLE_EXTRAS.some((token) => kept.has(token));
+}
+
 /**
  * The scope to send with an approval: `undefined` when everything requested
  * is kept (the route's bodyless approval), otherwise the kept tokens.
@@ -127,13 +148,11 @@ export function keptScopeForApproval(
     : keptTokens.join(' ');
 }
 
-const EXTRAS: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
-
 /**
- * What a pending request asks for, one line per permission, each ticked. The
- * approver unticks what the device should not get; at least one must stay.
- * Elevated extras are marked, and a scope no device can be granted any more
- * (`access:manage`, from an older default grant) is said so.
+ * What a pending request asks for, one line per permission. The ordinary
+ * ones start ticked and the elevated extras start unticked (see
+ * {@link defaultKeptScope}); the approver changes either, keeping at least
+ * one.
  */
 export function RequestedScopeChecklist({
   deviceName,
@@ -172,8 +191,10 @@ export function RequestedScopeChecklist({
             />
             <span>
               {PAIRING_SCOPE_DESCRIPTIONS[token].label}
-              {EXTRAS.includes(token) && (
-                <span className="requested-access__tag">Elevated</span>
+              {REQUESTABLE_EXTRAS.includes(token) && (
+                <span className="requested-access__tag">
+                  Elevated · tick to grant
+                </span>
               )}
               <span className="requested-access__detail">
                 {PAIRING_SCOPE_DESCRIPTIONS[token].summary}

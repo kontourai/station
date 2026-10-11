@@ -469,13 +469,19 @@ inherits `access:manage`.
 
 Every approval surface (the **Paired devices** inbox, **Needs attention**, and
 `station environment access approve --scope=<scope,…>`) lists what the request
-asks for, each item ticked, and the approver can untick any of it. The confirm
+asks for. The ordinary items start ticked; the requested extras start unticked
+(the CLI leaves them out unless `--scope` names them), so granting one is a
+deliberate choice, never a reflexive Approve. The confirm
 route takes the kept scope as `scope`, which must be a non-empty subset of the
 request; omitted, the device gets what it asked for. Requested extras are the
 operator's to grant: an approval that keeps one needs the operator credential or
 the desktop's own local grant, never an `access:approve` device or the
 unauthenticated at-the-machine approval, which may still approve the rest with
-the extras unticked. A delegation or relay grant cannot be trimmed. A request that names no scope still receives the historical
+the extras unticked. The same rule covers an operator-created offer whose scope
+carries one. A delegation, relay or account-bound grant cannot be trimmed, and
+its **Needs attention** item carries no `requestedScope`. Pairing with a Station
+that predates `scope` ignores it, and that Station's own approval surface shows
+the default grant it would issue. A request that names no scope still receives the historical
 default grant, which Station peers (`station environment access request`) and
 older clients rely on; a Station that predates the field ignores it. The 202
 response, and an approval refused with `approval_requires_operator`, carry

@@ -391,6 +391,33 @@ describe('environment CLI commands', () => {
       }),
     );
 
+    // Without --scope, the elevated grant it asked for is left out, and the
+    // operator is told the --scope that would include it.
+    stderr.mockReset();
+    const plain = makeAccessApi([pending], {
+      ...pending,
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+      status: 'confirmed',
+    });
+    await runEnvironmentCommand(
+      ['access', 'approve', 'request-scoped', '--force'],
+      { ...deps(), request: plain },
+    );
+    expect(plain).toHaveBeenLastCalledWith(
+      DEFAULT_LOOPBACK_API_BASE,
+      '/api/pairing/requests/request-scoped/confirm',
+      expect.objectContaining({
+        body: JSON.stringify({
+          scope: 'orchestration:read orchestration:operate terminal:operate',
+        }),
+      }),
+    );
+    expect(stderr).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'also asks for approval:full-access, which this approval leaves out. To grant it, approve with --scope=orchestration:read,orchestration:operate,terminal:operate,approval:full-access',
+      ),
+    );
+
     // It only narrows: a scope the device did not ask for is refused before
     // anything is sent.
     const refused = makeAccessApi([pending]);

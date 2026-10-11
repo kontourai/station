@@ -167,7 +167,10 @@ export {
   useConnections,
 } from './react/ConnectionsContext';
 export type { PairingResult } from './react/DevicePairingPanel';
-export { JoinDevicePairingPanel } from './react/DevicePairingPanel';
+export {
+  approvalRefusalRemedy,
+  JoinDevicePairingPanel,
+} from './react/DevicePairingPanel';
 export { HttpsPreferenceHint } from './react/HttpsPreferenceHint';
 export type {
   PairingCompletionDeps,
@@ -180,6 +183,8 @@ export type { QRScannerProps } from './react/QRScanner';
 export { QRScanner } from './react/QRScanner';
 export type { RequestedAccessChoice } from './react/RequestedAccess';
 export {
+  defaultKeptScope,
+  keepsElevatedScope,
   keptScopeForApproval,
   RequestAccessPicker,
   RequestedScopeChecklist,

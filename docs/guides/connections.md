@@ -975,11 +975,13 @@ WebSockets additionally require `terminal:operate`; **Standard** includes that
 scope along with read and operate. The operator changes an existing Device's
 scope in place with **Paired devices** → the Device → **Change access**, or on
 the Station host with `station environment access scope`; `access:manage` is
-never granted this way. A phone or browser that asks for access from Station
-chooses what to ask for: **Standard** (pre-selected) or **Read-only**, and
-optionally **Run commands** or **Allow full access**. Whoever approves sees that
-list, each item ticked, and can untick any of it first; only the operator can
-approve the two elevated ones. A Device paired by an older Station may still hold
+never granted this way. A phone or browser that uses Station's **Request
+access** screen chooses what to ask for: **Standard** (pre-selected) or
+**Read-only**, and optionally **Run commands** or **Allow full access**. Whoever
+approves sees that list and can change it first: the ordinary items start
+ticked, the two elevated ones start unticked, and only the operator can tick
+and grant them. (The share prompt's **Request pairing for this browser** still
+asks for the full default grant; it says so on screen.) A Device paired by an older Station may still hold
 `access:manage` from the historical default grant; its first access change, in
 either place, removes it for good and says so.
 
