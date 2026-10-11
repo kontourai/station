@@ -1,0 +1,7 @@
+{
+  "revision": "d66c23e28d00317191b274fb1260864d0f993731",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed upstream integration ledger records and their generated projection as historical inputs. The documented channel, source SHA, workflow URL, gate text and same-SHA changelog conventions remain accurate. This audit validates projection semantics only; it does not renew registry, native, hosted or installed release evidence.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}
