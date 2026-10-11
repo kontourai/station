@@ -9,6 +9,7 @@
   gap: var(--space-2, 8px);
   height: 100%;
   min-height: 0;
+  overflow: auto;
   padding: var(--space-2, 8px);
 }
 
@@ -225,7 +226,7 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  min-height: 0;
+  min-height: 6rem;
   position: relative;
 }
 
@@ -561,14 +562,6 @@
     padding-top: 0;
     padding-bottom: 0;
   }
-}
-
-.browser-pane:has(.browser-pane__console) {
-  overflow: auto;
-}
-
-.browser-pane:has(.browser-pane__console) > .browser-pane__stage {
-  min-height: 6rem;
 }
 
 .browser-pane__console-bar {
