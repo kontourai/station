@@ -485,12 +485,14 @@ liveness, native-device admission), so a demotion takes effect on the next
 request, re-authenticates live terminal and voice connections, and resets
 any full access the device had granted. The stored grant is never rewritten,
 so a promotion restores it without re-pairing. Uncapped: a device tied to no
-person (the operator's own), a peer Station delegation, a home-possession
-credential and the operator credential. An unreadable groups record places
-everyone in Member (fail closed). On first use, a person whose tied device,
-issued before groups shipped, already held a governed token Member would
-remove starts as Admin, so turning groups on takes nothing away; a lost record
-re-seeds only from those devices, never from a later grant. The operator, or the desktop's own local
+person (the operator's own, which includes every home-possession credential,
+since those are never tied to a person), a peer Station delegation and the
+operator credential. An unreadable groups record places everyone in Member
+(fail closed). The first time a Station runs with groups, a person whose
+tied device already held a governed token Member would remove starts as
+Admin, so turning groups on takes nothing away. That moment is stamped in a
+separate file, so a lost record re-seeds only from devices issued before it,
+never from a later grant. The operator, or the desktop's own local
 grant, lists people (`GET /api/pairing/people`, the pairing family's boundary);
 only the operator credential changes a group, as for a device's access.
 

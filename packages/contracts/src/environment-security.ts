@@ -1057,14 +1057,14 @@ export interface PairedDevice {
    */
   requester?: TailscaleServeRequester;
   /**
-   * Ephemeral connection state, added only by the access-management listing.
-   * It is not persisted with a paired device and never includes session ids.
-   */
-  /**
    * #3557: device lists only. What a live device may use now: `scope`
    * capped by its person's Station group (equal to `scope` when untied).
    */
   effectiveScope?: string;
+  /**
+   * Ephemeral connection state, added only by the access-management listing.
+   * It is not persisted with a paired device and never includes session ids.
+   */
   connectedClients?: ConnectedClientProjection | null;
 }
 
