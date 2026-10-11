@@ -218,6 +218,7 @@ async function exerciseEntrypoint({
   sourceKey,
   sourceId,
   entrypoint,
+  activeEntrypoints,
 }) {
   const reservation = createTcpServer();
   await new Promise((resolve, reject) => {
@@ -244,6 +245,7 @@ async function exerciseEntrypoint({
       },
     },
   );
+  activeEntrypoints.add(execution);
   const output = captureOwnedProcessOutput(execution, { maxBytes: 65536 });
   try {
     if (expected) await assertEntrypointRefusal(execution, label);
@@ -255,6 +257,7 @@ async function exerciseEntrypoint({
       terminationForceMs: 1000,
       waitForSuiteSettlement,
     });
+    if (cleanup.settled) activeEntrypoints.delete(execution);
     assert(
       cleanup.settled && !cleanup.escalated && cleanup.errors.length === 0,
       `${label}: owned process cleanup failed`,
@@ -277,6 +280,7 @@ async function qualifyEntrypoint(
   sourceKey,
   sourceId,
   entrypoint,
+  activeEntrypoints,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'station-telemetry-entrypoint-'));
   const operatorFile = join(root, 'operator-key');
@@ -340,6 +344,7 @@ async function qualifyEntrypoint(
         sourceKey,
         sourceId,
         entrypoint,
+        activeEntrypoints,
       });
       assert(
         !captured.stderr.text.includes(privateSentinel) &&
@@ -348,13 +353,18 @@ async function qualifyEntrypoint(
       );
     }
   } finally {
-    await rm(root, { recursive: true, force: true });
+    if (activeEntrypoints.size === 0)
+      await rm(root, { recursive: true, force: true });
+    else
+      console.error(
+        `Unsettled entrypoint; private credential fixture retained: ${root}`,
+      );
   }
 }
 
 // Requires a separate PostgreSQL administrative connection with CREATEDB.
 // Every destructive probe runs in a uniquely named, runner-owned database.
-async function qualifyReceiver(snapshot, buildManifest) {
+async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
   const { createProductBroker, PgProductRepository } = await import(
     pathToFileURL(join(snapshot, 'index.mjs')).href
   );
@@ -423,6 +433,7 @@ async function qualifyReceiver(snapshot, buildManifest) {
       sourceKey,
       sourceId,
       join(snapshot, 'main.mjs'),
+      activeEntrypoints,
     );
     checks.push(
       'real bundled entrypoint: seven private-file/environment startup controls, source-scoped PostgreSQL probe and owned process cleanup',
@@ -738,6 +749,7 @@ const captured = await readReceiverArtifactManifest(
   repoRoot,
 );
 const snapshot = await mkdtemp(join(tmpdir(), 'station-telemetry-execution-'));
+const activeEntrypoints = new Set();
 try {
   for (const [name, bytes] of captured.bundles)
     await writeFile(join(snapshot, name), bytes, { mode: 0o400, flag: 'wx' });
@@ -747,7 +759,12 @@ try {
     { mode: 0o400, flag: 'wx' },
   );
   const checked = await readReceiverArtifactManifest(snapshot, repoRoot);
-  await qualifyReceiver(snapshot, checked.manifest);
+  await qualifyReceiver(snapshot, checked.manifest, activeEntrypoints);
 } finally {
-  await rm(snapshot, { recursive: true, force: true });
+  if (activeEntrypoints.size === 0)
+    await rm(snapshot, { recursive: true, force: true });
+  else
+    console.error(
+      `Unsettled entrypoint; frozen execution snapshot retained: ${snapshot}; child PIDs: ${[...activeEntrypoints].map((execution) => execution.child.pid).join(',')}`,
+    );
 }

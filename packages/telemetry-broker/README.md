@@ -28,11 +28,13 @@ nonblocking/no-follow opens: manifest 1 MiB, inputs 16 MiB, bundles 64 MiB each.
 The qualifier captures both validated bundles into one private execution
 snapshot, validates that copy before import or database setup, and runs every
 entrypoint child from it. Receipt hashes describe that snapshot, which is
-removed after settlement. Seven copy-only corruption/refusal and restoration
-controls include removed input records and a FIFO bundle. Rebuild after a
-source commit; an older build cannot
-qualify a new head. These authored checks remain unexecuted on the current
-source. The unsigned sidecar is build-only metadata, not a source/publisher
+removed after all launched children settle. If settlement is unproven,
+qualification fails and retains the frozen snapshot and private credential
+fixture for its owning recovery lane. Seven copy-only corruption/refusal and
+restoration controls include removed input records and a FIFO bundle. Rebuild
+after a source commit; an older build cannot qualify a new head. These authored
+checks remain unexecuted on the current source. The unsigned sidecar is
+build-only metadata, not a source/publisher
 attestation, installed dependency-graph proof or deployment/release acceptance.
 
 Configure these environment variables for the built entrypoint:

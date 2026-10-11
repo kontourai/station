@@ -28,7 +28,9 @@ manifest, canonical input inventory/count/digest, required inputs and exact
 source revision. Bounded regular-file reads refuse symlinks and FIFOs. It
 validates a private bundle snapshot before importing it or creating its
 database, runs its child entrypoints from that snapshot and reports those
-exact hashes. A dirty checkout refuses qualification.
+exact hashes. Unproven child settlement fails qualification and retains the
+snapshot and private credential fixture for the owning recovery lane. A dirty
+checkout refuses qualification.
 Container provenance is explicitly a supplied release declaration, not proof
 that the image was built from clean or qualified source. The sidecar is
 unsigned build metadata, not publisher authentication, installed-graph proof
