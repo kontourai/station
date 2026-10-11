@@ -1,0 +1,7 @@
+{
+  "revision": "6c40c7c269db9edcbc50f3166ecad66836f89c9a",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed removal of the new unused internal facade renderer export. Event inventory consumers keep their established imports; envelope rendering/fingerprinting remains on the published Shared leaf and its field authority. No sender/parser/disclosure behavior changes. The sender45 focused cases passed after removal; this closes the code-health export blocker without suppressing it.","inputs":["docs/reference/usage-telemetry.md","src-server/services/usage-telemetry-inventory.ts"]}
+  ]
+}

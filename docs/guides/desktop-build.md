@@ -107,8 +107,11 @@ Packaged desktop startup has an explicit readiness and recovery boundary. Read
 [Recover a desktop start](../user/native-recovery.md) for the user behavior,
 logs, second-launch/tray distinction, and evidence limits. Read [Native shell
 verification](native-shell-verification.md) for the exact source checks and
-the physical-platform `NOT_VERIFIED` matrix. These build checks do not prove a
-native window, dialog, tray, or release package.
+the physical-platform `NOT_VERIFIED` matrix. A readiness deadline never
+restarts a still-booting sidecar; it offers Restart/Quit (in the macOS startup
+cover, or a dialog elsewhere) while a late start can still reveal the window.
+These build checks do not prove a native window, startup cover, dialog, tray,
+or release package.
 
 ## Committed-input policy
 

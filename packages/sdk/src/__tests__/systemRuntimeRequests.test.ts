@@ -108,7 +108,7 @@ describe('systemRuntimeRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/branding',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -168,7 +168,7 @@ describe('systemRuntimeRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/monitoring/metrics?range=week',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -289,7 +289,7 @@ describe('systemRuntimeRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://custom.test/api/system/core-update',
-      { method: 'POST', headers: { 'X-Station-Client-Protocol': '1' } },
+      { method: 'POST', headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -332,7 +332,7 @@ describe('systemRuntimeRequests', () => {
       'http://custom.test/api/system/core-update/restart-status',
       {
         signal: controller.signal,
-        headers: { 'X-Station-Client-Protocol': '1' },
+        headers: { 'X-Station-Client-Protocol': '2' },
       },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -774,7 +774,7 @@ describe('systemRuntimeRequests', () => {
         'http://custom.test/api/system/core-update',
         {
           signal: controller.signal,
-          headers: { 'X-Station-Client-Protocol': '1' },
+          headers: { 'X-Station-Client-Protocol': '2' },
         },
       );
       expect(fetch).toHaveBeenCalledTimes(1);
@@ -867,7 +867,7 @@ describe('systemRuntimeRequests', () => {
         'http://custom.test/api/system/identity',
         {
           signal: controller.signal,
-          headers: { 'X-Station-Client-Protocol': '1' },
+          headers: { 'X-Station-Client-Protocol': '2' },
         },
       );
       expect(fetch).toHaveBeenCalledTimes(1);
@@ -1019,7 +1019,7 @@ describe('systemRuntimeRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/system/capabilities',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

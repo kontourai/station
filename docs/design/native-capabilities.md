@@ -45,9 +45,10 @@ Desktop startup readiness is also Rust-owned. A sidecar status may carry the
 secret-free exact `(generation, instanceId, bootId, apiBase)` observation that
 the renderer must match after an authenticated identity read; it is not a
 credential and does not authorize arbitrary loopback traffic. The pure epoch
-authority has timeout, stale-receipt, loss, retry, activation-deferral, and dev
-bypass semantics. OS window reveal/dialog wiring and physical packaged-channel
-proof remain **NOT_VERIFIED**. Readiness does not depend on a window-state
+authority has overdue-without-restart timeout, late-ticket reveal,
+stale-receipt, loss, explicit retry, activation-deferral, and dev bypass
+semantics. OS window reveal, startup cover/dialog wiring and physical
+packaged-channel proof remain **NOT_VERIFIED**. Readiness does not depend on a window-state
 plugin; conditional desktop updater registration is a separate owner below.
 
 The current host does not emit inbound share events yet. The event name is a
