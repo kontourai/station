@@ -219,6 +219,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // The CLI fixture imports child_process only to forbid every launch while
   // patching builtin exports around the real read-only dispatch seam.
   'packages/cli/src/__tests__/home-recovery-plan.test.ts',
+  // #577: runs the interactive-workspace bridge spec through the real
+  // Playwright CLI as a child (a runner plus one worker) to prove a
+  // non-reference host launches no browser and provisions no Station.
+  'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
   // Owns Chromium and esbuild children for the real exposed-binding artifact seam.
   'scripts/__tests__/interactive-workspace-driver-artifact.test.ts',
   // Real runtime identity probes and SQLite workers for source-absent recovery.
