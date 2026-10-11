@@ -337,8 +337,8 @@ export class EnvironmentSecurityService {
         now: this.#now,
         capScope: this.#capScope,
       });
-      // #3557: personal access tokens go first. A reset that cannot revoke
-      // them fails before it changes anything, never half done.
+      // #3557: personal access tokens go first, so a reset that cannot
+      // revoke them fails before changing anything.
       await this.#devicePairingService.clearPersonalTokens();
       const reset = createRecord();
       const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
@@ -358,7 +358,8 @@ export class EnvironmentSecurityService {
       });
       this.#fsyncSecurityDirectory();
       this.#devicePairingService.resetEnvironment(reset.environmentId);
-      // Again: a token minted while the reset ran must not outlive it.
+      // Again, for a token minted while the reset ran. A mint finishing after
+      // this can still survive, but its person's devices are gone by then.
       await this.#devicePairingService.clearPersonalTokens();
       return reset;
     });
