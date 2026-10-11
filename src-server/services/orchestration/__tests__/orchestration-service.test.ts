@@ -29,7 +29,10 @@ import {
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  PROVIDER_TURN_TRIGGER,
+} from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -20849,6 +20852,288 @@ describe('OrchestrationService', () => {
     } finally {
       process.off('unhandledRejection', captureUnhandled);
     }
+  });
+
+  // #3560: a failed append of an observed event was treated as observation
+  // loss. The loop surfaced a warning and restarted, but the event it had
+  // already dequeued was never offered again, so a lost `turn.completed` left
+  // the thread folding as running and boot recovery bannered a turn that had
+  // actually completed.
+  describe('observed events survive a transient append or flush failure (#3560)', () => {
+    /** The real node:sqlite BUSY shape (errcode 5). */
+    const busy = () =>
+      Object.assign(new Error('database is locked'), {
+        errcode: 5,
+        code: 'ERR_SQLITE_ERROR',
+      });
+    const isInterruptionWarning = (event: CanonicalRuntimeEvent) =>
+      event.method === 'runtime.warning' &&
+      event.code === 'adapter-event-stream-interrupted';
+
+    async function startObservedTurn(threadId: string, turnId: string) {
+      const events = new AsyncEventQueue<CanonicalRuntimeEvent>(16);
+      (claude as any).events = events;
+      const warn = vi.fn();
+      const isolated = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus,
+        eventStore,
+        logger: { debug: vi.fn(), warn },
+      });
+      isolated.initialize();
+      await isolated.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude', modelId: 'claude-sonnet' },
+      });
+      // Provider-triggered, so the service itself records the accepted turn
+      // boundary that boot recovery would banner if the terminal were lost.
+      events.push({
+        eventId: `${turnId}-started`,
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        metadata: { trigger: PROVIDER_TURN_TRIGGER },
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(async () =>
+        expect(await isolated.readSession(threadId)).toMatchObject({
+          session: { lifecycleState: 'running' },
+        }),
+      );
+      return { events, isolated, warn };
+    }
+
+    function payloads(threadId: string): CanonicalRuntimeEvent[] {
+      return eventStore.listEvents(threadId).map((entry) => entry.payload);
+    }
+
+    test('a transient SQLITE_BUSY on turn.completed is retried with the same eventId, persisted once, and survives a reopen without a banner', async () => {
+      const threadId = 'transient-terminal-thread';
+      const { events, isolated } = await startObservedTurn(
+        threadId,
+        'turn-transient',
+      );
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      const terminalAttempts: string[] = [];
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          if (event.method === 'turn.completed') {
+            terminalAttempts.push(event.eventId);
+            if (terminalAttempts.length === 1) throw busy();
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      events.push({
+        eventId: 'transient-terminal',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-transient',
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      // Settles on either outcome, so the unfixed tree fails on the
+      // assertions below rather than on a timeout.
+      await vi.waitFor(() =>
+        expect(
+          payloads(threadId).some(
+            (event) =>
+              event.eventId === 'transient-terminal' ||
+              isInterruptionWarning(event),
+          ),
+        ).toBe(true),
+      );
+
+      expect(
+        payloads(threadId).filter(
+          (event) => event.eventId === 'transient-terminal',
+        ),
+      ).toHaveLength(1);
+      expect(terminalAttempts).toEqual([
+        'transient-terminal',
+        'transient-terminal',
+      ]);
+      expect(payloads(threadId).some(isInterruptionWarning)).toBe(false);
+      expect(await isolated.readSession(threadId)).toMatchObject({
+        session: { lifecycleState: 'idle' },
+      });
+      appendSpy.mockRestore();
+
+      // Crash and reopen. Not a graceful shutdown: that appends session.exited,
+      // which closes every boundary on its own and would hide the one this
+      // checks. Closing the store first releases its boundary owner and fixes
+      // the durable image; the service's shutdown writes then cannot land.
+      // The fresh EventStore reconciles at construction, as a real restart
+      // does, and boot recovery must find nothing to abort or banner.
+      const before = payloads(threadId).length;
+      eventStore.close();
+      await isolated.shutdown().catch(() => undefined);
+      eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+      const rebooted = new OrchestrationService({
+        adapterRegistry: createRegistry([]),
+        eventBus: new EventBus(),
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await (rebooted as any).interruptedTurns.consume();
+      const afterReboot = payloads(threadId);
+      expect(afterReboot).toHaveLength(before);
+      expect(afterReboot.some((event) => event.method === 'turn.aborted')).toBe(
+        false,
+      );
+      expect(await rebooted.readSession(threadId)).toMatchObject({
+        session: { lifecycleState: 'idle' },
+      });
+    });
+
+    test('a failed coalescer flush ahead of a terminal keeps the delta, and both persist in order', async () => {
+      const threadId = 'transient-flush-thread';
+      const turnId = 'turn-flush';
+      const { events, isolated, warn } = await startObservedTurn(
+        threadId,
+        turnId,
+      );
+      const delta = (eventId: string, text: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          turnId,
+          itemId: 'flush-item',
+          createdAt: new Date().toISOString(),
+          method: 'content.text-delta',
+          delta: text,
+        }) as CanonicalRuntimeEvent;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let failedFlushes = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          // The merged delta keeps the identity of the first delta it holds.
+          if (event.eventId === 'flush-delta-1' && failedFlushes === 0) {
+            failedFlushes += 1;
+            throw busy();
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      // The first delta paints at once; the next two buffer and are flushed
+      // by the terminal, synchronously and well inside the 60ms window.
+      events.push(delta('flush-delta-0', 'Hello'));
+      events.push(delta('flush-delta-1', ', '));
+      events.push(delta('flush-delta-2', 'world'));
+      events.push({
+        eventId: 'flush-terminal',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          payloads(threadId).some(
+            (event) =>
+              event.eventId === 'flush-terminal' ||
+              isInterruptionWarning(event),
+          ),
+        ).toBe(true),
+      );
+
+      expect(failedFlushes).toBe(1);
+      // The failure hit the synchronous flush the terminal triggered, not the
+      // window timer (whose failures are logged and dropped).
+      expect(warn).not.toHaveBeenCalledWith(
+        'Content delta could not be published',
+        expect.anything(),
+      );
+      const stored = eventStore
+        .listEvents(threadId)
+        .filter(
+          (entry) =>
+            entry.payload.method === 'content.text-delta' ||
+            entry.payload.method === 'turn.completed',
+        );
+      expect(
+        stored.map((entry) => [
+          entry.payload.eventId,
+          (entry.payload as { delta?: string }).delta,
+        ]),
+      ).toEqual([
+        ['flush-delta-0', 'Hello'],
+        ['flush-delta-1', ', world'],
+        ['flush-terminal', undefined],
+      ]);
+      expect(payloads(threadId).some(isInterruptionWarning)).toBe(false);
+      expect(await isolated.readSession(threadId)).toMatchObject({
+        session: { lifecycleState: 'idle' },
+      });
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a non-retryable append failure is not retried: it surfaces the interruption warning and leaves the turn durably running, not completed', async () => {
+      const threadId = 'nonretryable-terminal-thread';
+      const { events, isolated } = await startObservedTurn(
+        threadId,
+        'turn-nonretryable',
+      );
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let terminalAttempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          if (event.method === 'turn.completed') {
+            terminalAttempts += 1;
+            // A constraint failure is a fact about the row, not about a
+            // peer holding the lock: repeating it cannot succeed.
+            throw Object.assign(
+              new Error('UNIQUE constraint failed: orchestration_events.id'),
+              { errcode: 2067, code: 'ERR_SQLITE_ERROR' },
+            );
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      events.push({
+        eventId: 'nonretryable-terminal',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-nonretryable',
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(payloads(threadId).some(isInterruptionWarning)).toBe(true),
+      );
+
+      expect(terminalAttempts).toBe(1);
+      const warning = payloads(threadId).find(isInterruptionWarning);
+      expect((warning as { message?: string })?.message).toContain(
+        'this warning does not report turn completion or failure',
+      );
+      // The honest durable state: Station did not record the terminal, so it
+      // claims neither completion nor a provider failure. The turn stays
+      // running, so its boundary still stands for boot recovery, and nothing
+      // here permits a retry of the turn.
+      const stored = payloads(threadId);
+      expect(stored.some((event) => event.method === 'turn.completed')).toBe(
+        false,
+      );
+      expect(
+        stored.some(
+          (event) =>
+            event.method === 'runtime.error' || event.method === 'turn.aborted',
+        ),
+      ).toBe(false);
+      expect(await isolated.readSession(threadId)).toMatchObject({
+        session: { lifecycleState: 'running' },
+      });
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
   });
 
   test('stops a smoke session when startup fails after adapter ownership is tracked', async () => {

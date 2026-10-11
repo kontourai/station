@@ -313,6 +313,69 @@ describe('DeltaCoalescer', () => {
     expect(texts(emitted)).toEqual(['paint']);
   });
 
+  // #3560: the owner can ask for a failed flush ahead of another event to be
+  // held for that event's retry, so the terminal cannot overtake the text.
+  test('a failed flush ahead of another event is retained when the owner asks, and the retry delivers it first', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let failNext = false;
+    const retainFailedFlush = vi.fn(() => true);
+    const coalescer = new DeltaCoalescer(
+      (event) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error('SQLITE_BUSY: database is locked');
+        }
+        emitted.push(event);
+      },
+      {
+        windowMs: 1_000_000,
+        setTimer: () => 'timer',
+        clearTimer: () => {},
+        logger: { warn: vi.fn() },
+        retainFailedFlush,
+      },
+    );
+
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '-held'));
+    failNext = true;
+    const terminal = other('t1', 'turn.completed');
+    expect(() => coalescer.offer(terminal)).toThrow('SQLITE_BUSY');
+    expect(retainFailedFlush).toHaveBeenCalledWith(
+      expect.objectContaining({ delta: '-held' }),
+      expect.any(Error),
+    );
+    expect(coalescer.pendingThreadCount()).toBe(1);
+
+    // The caller's retry of the same terminal flushes the held text first.
+    expect(coalescer.offer(terminal)).toBe(false);
+    expect(texts(emitted)).toEqual(['paint', '-held']);
+    expect(coalescer.pendingThreadCount()).toBe(0);
+  });
+
+  test('a failed flush the owner declines to retain is dropped, as before', () => {
+    let failNext = false;
+    const coalescer = new DeltaCoalescer(
+      () => {
+        if (failNext) throw new Error('UNIQUE constraint failed');
+      },
+      {
+        windowMs: 1_000_000,
+        setTimer: () => 'timer',
+        clearTimer: () => {},
+        logger: { warn: vi.fn() },
+        retainFailedFlush: () => false,
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '-held'));
+    failNext = true;
+    expect(() => coalescer.offer(other('t1', 'turn.completed'))).toThrow(
+      'UNIQUE',
+    );
+    expect(coalescer.pendingThreadCount()).toBe(0);
+  });
+
   test('a delivery that throws on the timer path does not propagate, and the coalescer stays usable', () => {
     const emitted: CanonicalRuntimeEvent[] = [];
     let fire: (() => void) | undefined;
