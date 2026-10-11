@@ -64,7 +64,10 @@ operator's Project page renders a compact version above its activity with
 the Project fixed. Project and Station controls sit above the text box;
 separate Agent and Engine & model controls sit inside it beside Start and the overflow
 for visual skills. The Agent list retains each Agent's readiness and repair
-action, with a short purpose for custom Agents. The Model picker offers search, recent choices, favorites and provider
+action, with a short purpose for custom Agents. A row does not repeat what the
+list already states: the Station every row runs on, an engine name that is only
+the Agent's name plus a qualifier (the row keeps the qualifier), or a model the
+engine never reported. The Model picker offers search, recent choices, favorites and provider
 filters; Options reveals capability filters and the selected model's supported
 runtime controls. Reviewed canonical model identities still own grouping across
 provider routes; similar names do not establish equivalence.

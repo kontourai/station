@@ -214,16 +214,34 @@
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .composer-popover-overlay.start-menu__overlay {
     background: var(--overlay-modal);
+    /* Docked to the bottom and side edges like a native sheet: the shared
+       surface's 8px float left a strip of page under the sheet and its last
+       row ending above the home indicator. The list pads that inset instead. */
+    padding: var(--safe-top, 0px) 0 0;
+  }
+  .composer-popover-panel.start-menu__panel {
+    --start-menu-inset: var(--k-space-4);
+    border-width: 1px 0 0;
+    border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
+  }
+  .start-menu__list {
+    padding-bottom: max(var(--k-space-2), var(--safe-bottom, 0px));
   }
 }
 .start-menu__panel {
   --composer-popover-width: 440px;
+  /* One inset for every left and right edge in the menu (header, filter,
+     group labels, rows, the Model column), so they line up. */
+  --start-menu-inset: var(--k-space-3);
   display: flex;
   flex-direction: column;
   max-height: min(70dvh, 560px);
 }
+.composer-popover-panel.start-menu__panel {
+  --responsive-header-padding: var(--start-menu-inset);
+}
 .start-menu__search {
-  margin: var(--k-space-2) var(--k-space-3);
+  margin: var(--k-space-2) var(--start-menu-inset);
   min-height: 44px;
 }
 .start-menu__list {
@@ -235,7 +253,7 @@
   padding-bottom: var(--k-space-2);
 }
 .start-menu__hint {
-  margin: var(--k-space-2) var(--k-space-3);
+  margin: var(--k-space-2) var(--start-menu-inset);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
@@ -306,7 +324,28 @@
 }
 .start-menu__list .new-chat-modal__agent-side {
   flex-wrap: nowrap;
-  padding: 6px 12px 6px 4px;
+  padding: var(--k-space-1) var(--start-menu-inset) var(--k-space-1)
+    var(--k-space-1);
+}
+/* The model name is the column's text, so its right edge, not its 10px
+   button padding, meets the inset the header's close button ends on. */
+.start-menu__list .new-chat-modal__agent-side .new-chat-modal__model-trigger {
+  margin-right: calc(-1 * var(--k-space-2));
+  padding-inline: var(--k-space-2);
+}
+.start-menu__list .new-chat-modal__group-label,
+.start-menu__list .new-chat-modal__compat-warning {
+  padding-inline: var(--start-menu-inset);
+}
+.start-menu__list .new-chat-modal__dropdown-item {
+  padding-inline: var(--start-menu-inset);
+}
+/* Loading, empty and error states are boxes of their own: inset them like
+   the filter above, or the docked phone sheet runs them into its edges. */
+.start-menu__list > .error-state,
+.start-menu__list > .empty,
+.start-menu__list > .skeleton-list {
+  margin-inline: var(--start-menu-inset);
 }
 .start-menu__list .new-chat-modal__agent-side .button--link {
   min-height: 44px;
@@ -353,7 +392,7 @@
   color: var(--k-text-muted);
 }
 .start-menu__list .new-chat-modal__agent {
-  padding: var(--k-space-3);
+  padding: var(--k-space-3) var(--start-menu-inset);
 }
 .new-chat-modal__agent-purpose {
   display: -webkit-box;

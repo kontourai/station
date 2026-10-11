@@ -86,6 +86,21 @@ describe('Agent picker row presentation', () => {
     ).toBeTruthy();
   });
 
+  test('a row with no resolvable engine draws no empty engine line', () => {
+    // A custom Agent bound to a connection the catalog cannot name has no
+    // engine descriptor; its meta line used to render empty and add height.
+    const unresolved: AgentData = {
+      slug: agentId('unresolved'),
+      name: 'Unresolved',
+      source: 'local',
+      execution: { agentConnectionId: engineConnectionId('elsewhere') },
+    };
+    renderRows([unresolved], () => ({ label: 'Opus', unavailable: false }));
+    expect(
+      row(unresolved.slug).querySelector('.new-chat-modal__agent-meta'),
+    ).toBeNull();
+  });
+
   test('rows do not repeat the Station every row runs on', () => {
     renderRows([PROXIED_CLAUDE, KIRO], () => ({
       label: 'Opus',

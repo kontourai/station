@@ -135,7 +135,7 @@ function AgentPickerRow({
         {/* Y1, in §5 as well as §2: a chip that only repeats the name is the
             engine word printed twice — every seeded engine row read
             "Claude Code" with a "Claude Code" chip beneath it. */}
-        {!repeatsAgent && (
+        {chipEngine && !repeatsAgent && (
           <div className="new-chat-modal__agent-meta">
             <EngineChip engine={chipEngine} />
           </div>
@@ -221,7 +221,7 @@ function AgentPickerRow({
 interface AgentPickerGroup {
   label: string;
   icon?: string;
-  glyph?: 'engine' | 'globe' | 'plug' | 'time';
+  glyph?: 'engine' | 'code' | 'globe' | 'plug' | 'time';
   agents: AgentData[];
 }
 
